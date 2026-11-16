@@ -82,7 +82,6 @@ def modules_in_sequence(settings: object) -> dict[str, list[str]]:
     return sequences
 
 
-
 def verify_iso_mount_binding(iso: Path, squashfs: Path, mount_root: Path) -> None:
     """Prove that the read-only SquashFS is on a loop mount of the hashed ISO."""
     if mount_root.is_symlink() or not mount_root.is_mount():
@@ -99,7 +98,11 @@ def verify_iso_mount_binding(iso: Path, squashfs: Path, mount_root: Path) -> Non
         timeout=15,
     )
     parts = result.stdout.strip().split()
-    if len(parts) != 2 or parts[1] != "iso9660" or not re.fullmatch(r"/dev/loop[0-9]+", parts[0]):
+    if (
+        len(parts) != 2
+        or parts[1] != "iso9660"
+        or not re.fullmatch(r"/dev/loop[0-9]+", parts[0])
+    ):
         raise ValueError("Expected a dedicated loop-backed ISO9660 mount")
     result = subprocess.run(
         ["losetup", "-n", "-O", "BACK-FILE", parts[0]],
@@ -111,6 +114,7 @@ def verify_iso_mount_binding(iso: Path, squashfs: Path, mount_root: Path) -> Non
     backing = result.stdout.strip()
     if not backing or not Path(backing).samefile(iso):
         raise ValueError("ISO mount backing file differs from the SHA-256-verified image")
+
 
 def inventory(iso: Path, squashfs: Path, out: Path, mount_root: Path) -> dict:
     if iso.is_symlink() or squashfs.is_symlink():
