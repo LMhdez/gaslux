@@ -123,8 +123,26 @@ def audit_q4os_native_hooks(root: Path) -> dict:
     # EFI/debian/grub.cfg and invoke grub-install --force. Detection here
     # documents the hazard; it emphatically does NOT approve execution.
     efi_source = source_contents["usr__sbin__q4os-hook3a.sh"]
+    hook2 = source_contents["usr__sbin__debian_adjust2.sh"]
+    hook3 = source_contents["usr__sbin__debian_adjust3.sh"]
+    hook5 = source_contents["usr__sbin__debian_adjust5.sh"]
     changes_efi_debian = b"/boot/efi/EFI/debian/grub.cfg" in efi_source
     invokes_forced_grub = b"grub-install" in efi_source and b"--force" in efi_source
+    risk_observations = {
+        "dynamicTargetDiscoveryFromCalamaresMount": (
+            b"grep calamares" in hook2 and b"grep calamares" in hook3
+        ),
+        "liveMediumBindMount": b"mount --bind" in hook2,
+        "unquotedChrootPathRemoval": b"rm -rf $CHROOT" in hook2 or b"rm -rf $CHROOT" in hook3,
+        "guestTargetAptPurge": b"apt-get -y --purge autoremove" in hook3,
+        "guestTargetEssentialPackageForcePurge": (
+            b"--force-remove-essential q4os-loopin" in hook3
+        ),
+        "legacyEfiDirectoryCreation": b'/boot/efi/EFI/debian/' in hook3,
+        "legacyEfiConfigRewrite": changes_efi_debian,
+        "forcedEfiGrubInstallInAuxiliaryHook": invokes_forced_grub,
+        "chrootUpdateGrub": b"chroot $CHROOT update-grub" in hook5,
+    }
     cfg = _yaml(root, "etc__calamares__settings.conf")
     jobs = cfg["sequence"][1]["exec"]
     order = ("q4oshook2", "bootloader", "q4oshook3", "initramfs", "q4oshook5")
@@ -145,6 +163,8 @@ def audit_q4os_native_hooks(root: Path) -> dict:
         },
         "unownedEfiDebianWriteRiskObserved": changes_efi_debian,
         "forcedGrubInstallRiskObserved": invokes_forced_grub,
+        "riskObservations": risk_observations,
+        "unreviewedOperationsRequireTransactionOwnership": True,
         "sharedWindowsEspHookRiskReviewed": False,
         "nativeHookCommandsExecuted": False,
         "hookExecutionAuthorized": False,
