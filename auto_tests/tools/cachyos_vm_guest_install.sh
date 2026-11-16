@@ -9,7 +9,7 @@ echo 'GASLUX_VM_INSTALL_BEGIN'
 [[ "$(id -u)" == 0 && "$(systemd-detect-virt --vm)" == qemu ]] || {
   echo 'Refusing non-QEMU root'; exit 11;
 }
-[[ -r /mnt/lab.env && -r /mnt/stage.sh ]] || {
+[[ -r /run/gaslux-control/lab.env && -r /run/gaslux-control/stage.sh ]] || {
   echo 'Missing read-only laboratory control medium'; exit 12;
 }
 # This control medium is generated from the workflow checkout, not network.
@@ -24,7 +24,7 @@ printf '%s  /mnt/stage.sh\n' "$STAGE_SHA256" | sha256sum --check --status || {
 [[ -b /dev/vdb1 && -b /dev/vdc ]] || exit 17
 [[ "$(blkid -s LABEL -o value /dev/vdc)" == GASLUXESP ]] || exit 18
 [[ "$(lsblk -dn -o TYPE /dev/vdc)" == disk ]] || exit 19
-[[ ",$(findmnt -rn -M /mnt -o OPTIONS)," == *,ro,* ]] || exit 20
+[[ ",$(findmnt -rn -M /run/gaslux-control -o OPTIONS)," == *,ro,* ]] || exit 20
 export GASLUX_DISPOSABLE_VM=I_ACCEPT_DISPOSABLE_VM_ONLY
 mkdir -p /mnt/target
 mount -t ext4 -o rw /dev/vdb1 /mnt/target
@@ -38,7 +38,7 @@ fi
 # Minimal kernel/userspace only: this is NOT the full desktop product.
 pacstrap -K /mnt/target \
   base linux-cachyos mkinitcpio grub efibootmgr \
-  cachyos-keyring cachyos-mirrorlist cachyos-settings \
+  cachyos-keyring cachyos-mirrorlist cachyos-settings cachyos-hooks \
   pacman e2fsprogs dosfstools
 [[ -s /mnt/target/boot/vmlinuz-linux-cachyos ]] || {
   echo 'CachyOS pacstrap did not create a kernel'; exit 21;

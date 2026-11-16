@@ -92,12 +92,13 @@ if not lines[i].endswith('\n'): raise SystemExit('Kernel line lacks newline')
 # kernel line selects systemd.unit=multi-user.target. Without an explicit
 # systemd.wants=kernel-command-line.service, the generated service is never
 # started (proven by Actions 43948740731: ISO login but no installer).
-# Also mount the FAT control medium read-only but executable so the
-# service can exec its shebang; a non-executable script would fail closed.
+# Mount FAT controls read-only and executable under /run/gaslux-control, never
+# under /mnt: /mnt is the distinct rw ext4 installation mount namespace.
+# A non-executable or missing script fails closed without any disk writes.
 # No raw shell commands or physical disk identifiers enter this GRUB entry.
 flags=(
-    ' systemd.mount-extra=LABEL=GASLUXCTL:/mnt:vfat:ro,exec'
-    ' systemd.run=/mnt/gaslux-run.sh'
+    ' systemd.mount-extra=LABEL=GASLUXCTL:/run/gaslux-control:vfat:ro,exec'
+    ' systemd.run=/run/gaslux-control/gaslux-run.sh'
     ' systemd.wants=kernel-command-line.service'
     ' systemd.run_success_action=none systemd.run_failure_action=none'
 )

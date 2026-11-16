@@ -43,11 +43,16 @@ jobs:
           assert 'readonly=on' in host and 'q35,accel=tcg' in host
           assert 'GASLUX_VM_FIRSTBOOT_PASS:' in host and guest
           assert 'systemd-detect-virt --vm' in guest
-          assert 'bash /mnt/stage.sh --validate-target' in guest
+          assert 'bash /run/gaslux-control/stage.sh --validate-target' in guest
           assert 'pacstrap -K /mnt/target' in guest
           assert 'arch-chroot /mnt/target grub-install' in guest
           assert 'systemd.run=' in host
-          assert 'source /mnt/lab.env' in guest
+          assert 'systemd.wants=kernel-command-line.service' in host
+          assert 'systemd.mount-extra=LABEL=GASLUXCTL:/run/gaslux-control:vfat:ro,exec' in host
+          assert 'systemd.run=/run/gaslux-control/gaslux-run.sh' in host
+          assert 'cachyos-hooks' in guest
+          assert 'mkdir -p /mnt/target' in guest
+          assert 'source /run/gaslux-control/lab.env' in guest
           assert '/dev/vdb1' in guest and '/dev/vdc' in guest
           print('PASS: CI-only disk ownership and first-boot structural contract')
           PY

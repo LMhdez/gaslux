@@ -134,7 +134,7 @@ install_target() {
   check_identity "$username" "$hostname" "$locale" "$timezone" "$secret"
   pacstrap -K "$TARGET" \
     base linux-cachyos linux-firmware mkinitcpio \
-    cachyos-keyring cachyos-mirrorlist cachyos-settings \
+    cachyos-keyring cachyos-mirrorlist cachyos-settings cachyos-hooks \
     pacman sudo networkmanager grub efibootmgr os-prober \
     e2fsprogs dosfstools ntfs-3g \
     plasma-meta sddm konsole dolphin xorg-server xorg-xwayland python
