@@ -40,6 +40,28 @@ class CachyosReleaseGateTests(unittest.TestCase):
                 )
                 self.assertNotIn(prohibited, commands)
 
+    def test_install_is_rejected_without_disposable_vm_sentinel(self):
+        import os
+        env = os.environ.copy()
+        env.pop('GASLUX_DISPOSABLE_VM', None)
+        command = ['bash', str(STAGE), '--install',
+                   'testuser', 'testhost', 'pt_PT.UTF-8',
+                   'Europe/Lisbon', '/tmp/no-such-password-secret',
+                   'run-id-12345678', '01234567-89ab-cdef-0123-456789abcdef']
+        result = subprocess.run(command, capture_output=True, text=True,
+                                timeout=5, env=env, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('disposable VM', result.stderr)
+
+    def test_stage_vm_guard_is_checked_before_host_or_disk(self):
+        content = STAGE.read_text()
+        start = content.index('install_target() {')
+        install = content[start:content.index('\n}', start)]
+        self.assertLess(install.index('check_disposable_vm'),
+                        install.index('check_host'))
+        self.assertLess(install.index('check_disposable_vm'),
+                        install.index('check_target'))
+
     def test_script_requires_explicit_install_arguments(self):
         proc = subprocess.run(['bash', str(STAGE), '--install'],
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
