@@ -49,9 +49,7 @@ def test_same_iso_config_identity_and_module_provenance_are_recorded(tmp_path, m
     assert result["q4osVersionMatchesOfficialIso"]
     assert result["upstreamEfiFallbackEnabled"]
     assert result["efiFallbackWriteSafeForWindows"] is False
-    assert result["nativeUnpackfsSources"] == [
-        "/run/live/medium/live/filesystem.squashfs"
-    ]
+    assert result["nativeUnpackfsSources"] == ["/run/live/medium/live/filesystem.squashfs"]
     assert result["calamaresUnattendedHandoffVerified"] is False
     assert result["calamaresBinaryPresent"]
     assert result["calamaresSettingsFile"] == "etc/calamares/settings.conf"
@@ -143,6 +141,7 @@ def test_loop_backing_must_match_verified_iso(tmp_path, monkeypatch):
     monkeypatch.setattr(probe.subprocess, "run", lambda *_, **__: next(responses))
     with pytest.raises(ValueError, match="backing file differs"):
         probe.verify_iso_mount_binding(iso, squashfs, root)
+
 
 def test_disabled_fallback_does_not_implicitly_authorize_install(tmp_path, monkeypatch):
     iso, squashfs, files, _ = _fixture(tmp_path, monkeypatch)

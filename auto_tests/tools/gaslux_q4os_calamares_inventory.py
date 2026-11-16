@@ -151,13 +151,9 @@ def inventory(iso: Path, squashfs: Path, out: Path, mount_root: Path) -> dict:
     if settings_path and settings_path in captured:
         settings = yaml.safe_load(captured[settings_path])
     stages = modules_in_sequence(settings)
-    bootloader = yaml.safe_load(
-        captured.get("etc/calamares/modules/bootloader.conf", b"{}")
-    )
+    bootloader = yaml.safe_load(captured.get("etc/calamares/modules/bootloader.conf", b"{}"))
     bootloader = bootloader if isinstance(bootloader, dict) else {}
-    unpackfs = yaml.safe_load(
-        captured.get("etc/calamares/modules/unpackfs.conf", b"{}")
-    )
+    unpackfs = yaml.safe_load(captured.get("etc/calamares/modules/unpackfs.conf", b"{}"))
     unpackfs = unpackfs if isinstance(unpackfs, dict) else {}
     entries = unpackfs.get("unpack", [])
     sources = (
@@ -220,9 +216,7 @@ def main() -> int:
     if not report["q4osVersionMatchesOfficialIso"]:
         print("FAIL: Q4OS release marker does not match official pinned ISO")
         return 1
-    if report["nativeUnpackfsSources"] != [
-        "/run/live/medium/live/filesystem.squashfs"
-    ]:
+    if report["nativeUnpackfsSources"] != ["/run/live/medium/live/filesystem.squashfs"]:
         print("FAIL: Q4OS native Calamares filesystem source mismatch")
         return 1
     if not (report["calamaresBinaryPresent"] and report["calamaresSettingsFile"]):
