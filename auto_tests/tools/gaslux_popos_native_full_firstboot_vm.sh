@@ -229,8 +229,6 @@ guest="$!"
 verified=0
 for _ in $(seq 1 290); do
   if [[ -f "$work/installed.serial.log" ]]; then
-    # Serial ttyS0 can output CRLF; retain raw evidence but compare normalized
-    # complete lines to avoid confusing a real boot proof with a line ending.
     tr -d '\r' < "$work/installed.serial.log" > "$work/installed.normalized.log"
     if grep -Fq 'GASLUX_POP_NATIVE_FIRSTBOOT_FAILURE=' "$work/installed.normalized.log"; then
       tail -n 40 "$work/installed.serial.log" >&2
@@ -240,51 +238,9 @@ for _ in $(seq 1 290); do
         "$work/installed.normalized.log" &&
        grep -Fxq 'GASLUX_POP_NATIVE_FIRSTBOOT_OS_ID=pop' \
         "$work/installed.normalized.log" &&
-       grep -Eq '^GASLUX_POP_NATIVE_FIRSTBOOT_KERNEL=[^[:space:]]+
-      verified=1
-      break
-    fi
-  fi
-  kill -0 "$guest" >/dev/null 2>&1 || break
-  sleep 1
-done
-kill "$guest" >/dev/null 2>&1 || true
-set +e
-wait "$guest"
-qemu_rc="$?"
-set -e
-guest=''
-printf '%s\n' "$qemu_rc" > "$work/installed-qemu.exit"
-if [[ "$verified" != 1 ]]; then
-  tail -n 70 "$work/installed.serial.log" >&2 || true
-  die 'No first boot of actual installed Pop via native systemd-boot proved'
-fi
-printf 'GASLUX_POP_NATIVE_FIRSTBOOT_WITHOUT_LIVE_ISO=1\n'
-printf 'NOT TESTED: Windows 10/11 boot, BCD, WinRE, real dual boot, upgrades, rollback.\n'
- \
+       grep -Eq '^GASLUX_POP_NATIVE_FIRSTBOOT_KERNEL=[^[:space:]]+$' \
         "$work/installed.normalized.log" &&
-       grep -Eq '^GASLUX_POP_NATIVE_FIRSTBOOT_ROOT_PARTUUID=[a-f0-9-]{36}
-      verified=1
-      break
-    fi
-  fi
-  kill -0 "$guest" >/dev/null 2>&1 || break
-  sleep 1
-done
-kill "$guest" >/dev/null 2>&1 || true
-set +e
-wait "$guest"
-qemu_rc="$?"
-set -e
-guest=''
-printf '%s\n' "$qemu_rc" > "$work/installed-qemu.exit"
-if [[ "$verified" != 1 ]]; then
-  tail -n 70 "$work/installed.serial.log" >&2 || true
-  die 'No first boot of actual installed Pop via native systemd-boot proved'
-fi
-printf 'GASLUX_POP_NATIVE_FIRSTBOOT_WITHOUT_LIVE_ISO=1\n'
-printf 'NOT TESTED: Windows 10/11 boot, BCD, WinRE, real dual boot, upgrades, rollback.\n'
- \
+       grep -Eq '^GASLUX_POP_NATIVE_FIRSTBOOT_ROOT_PARTUUID=[a-f0-9-]{36}$' \
         "$work/installed.normalized.log"; then
       verified=1
       break
