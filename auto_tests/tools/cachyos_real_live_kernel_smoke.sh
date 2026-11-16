@@ -44,10 +44,24 @@ grub-mkstandalone --format=x86_64-efi --output="$w/BOOTX64.EFI" \
   "boot/grub/grub.cfg=$w/grub.cfg"
 fat="$w/boot.img"
 truncate -s 96M "$fat"
-mkfs.vfat -F 32 "$fat" >/dev/null
+mkfs.vfat -F 32 -n GASLUXLAB "$fat" >/dev/null
 mmd -i "$fat" ::/EFI
 mmd -i "$fat" ::/EFI/BOOT
 mcopy -i "$fat" "$w/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+# In the explicit lab-only mode, inject an immutable, hash-checked copy of
+# the actual guarded stage script on the VM's removable FAT boot disk.
+if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
+  stage="$PWD/assets/live/cachyos-stage-target.sh"
+  guest_probe="$PWD/auto_tests/tools/cachyos_live_guest_readonly_probe.sh"
+  [[ -f "$stage" && -f "$guest_probe" ]] || {
+    echo 'Missing stage script or readonly guest probe' >&2; exit 2;
+  }
+  hash="$(sha256sum "$stage" | cut -d' ' -f1)"
+  printf '%s  stage.sh\n' "$hash" > "$w/stage.sha256"
+  mcopy -i "$fat" "$stage" ::/stage.sh
+  mcopy -i "$fat" "$guest_probe" ::/probe.sh
+  mcopy -i "$fat" "$w/stage.sha256" ::/stage.sha256
+fi
 code=''
 vars=''
 for suff in _4M ''; do
@@ -57,6 +71,10 @@ for suff in _4M ''; do
 done
 [[ -n "$code" && -n "$vars" ]] || { echo 'No OVMF' >&2; exit 2; }
 cp "$vars" "$w/nvram.fd"
+serial_flags=(-serial "file:$w/serial.log")
+if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
+  serial_flags=(-chardev "socket,id=gaslux_serial,path=$w/guest-serial.sock,server=on,wait=off,logfile=$w/serial.log" -serial chardev:gaslux_serial)
+fi
 timeout --kill-after=5s 380s qemu-system-x86_64 \
   -machine q35,accel=tcg -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -boot order=c \
@@ -67,13 +85,25 @@ timeout --kill-after=5s 380s qemu-system-x86_64 \
   -device usb-storage,drive=bootimg \
   -drive if=none,id=isoimg,format=raw,readonly=on,file="$disk" \
   -device virtio-blk-pci,drive=isoimg \
-  -serial file:"$w/serial.log" &
+  "${serial_flags[@]}" &
 vm_pid=$!
+guest_proven=0
+if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
+  set +e
+  python3 auto_tests/tools/cachyos_live_guest_serial.py \
+    --socket "$w/guest-serial.sock" --transcript "$w/guest-console.log" \
+    --boot-timeout 345
+  guest_rc=$?
+  set -e
+  if [[ "$guest_rc" -eq 0 ]]; then guest_proven=1; fi
+  kill "$vm_pid" 2>/dev/null || true
+fi
 # The pinned 260809 ISO boots with a quiet kernel console under OVMF.
 # An earlier assertion looked only for "Linux version ..." and falsely
 # rejected a guest that had actually reached the CachyOS serial login.
 # Require an exact CachyOS login banner AND systemd's kernel/userspace
 # startup timings; neither a GRUB echo nor finding the kernel file suffices.
+if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" != 1 ]]; then
 for _ in $(seq 1 76); do
   sleep 5
   if grep -Eq 'CachyOS [0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cachyos-lts \(ttyS0\)' "$w/serial.log" 2>/dev/null &&
@@ -84,6 +114,7 @@ for _ in $(seq 1 76); do
   fi
   kill -0 "$vm_pid" 2>/dev/null || break
 done
+fi
 set +e
 wait "$vm_pid"
 rc=$?
@@ -91,9 +122,12 @@ set -e
 if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" && -f "$w/serial.log" ]]; then
   mkdir -p "$GASLUX_BOOT_EVIDENCE_DIR"
   install -m 0600 "$w/serial.log" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-live-serial.log"
+  if [[ -s "$w/guest-console.log" ]]; then
+    install -m 0600 "$w/guest-console.log" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-guest-probe-serial.log"
+  fi
   (
     cd "$GASLUX_BOOT_EVIDENCE_DIR"
-    sha256sum cachyos-live-serial.log > cachyos-live-serial.sha256
+    sha256sum *.log > cachyos-live-serial.sha256
   )
 fi
 if ! grep -Eq 'CachyOS [0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cachyos-lts \(ttyS0\)' "$w/serial.log"; then
@@ -108,4 +142,13 @@ if ! grep -Fq 'CachyOS login:' "$w/serial.log" ||
   exit 1
 fi
 echo 'PASS: official CachyOS LTS kernel and systemd reached real serial login in QEMU/OVMF.'
+if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
+  [[ "$guest_proven" -eq 1 ]] && \
+    grep -Eq '^GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r?
+echo 'NOT TESTED: installed CachyOS, Windows dual boot, target disk mutation or WinRE recovery.'
+ "$w/guest-console.log" || {
+      echo 'FAIL: real CachyOS --check did not pass inside guest' >&2; exit 1;
+    }
+  echo 'PASS: official Archiso live --check, pacman/pacstrap dependencies and secure-boot refusal inputs.'
+fi
 echo 'NOT TESTED: installed CachyOS, Windows dual boot, target disk mutation or WinRE recovery.'
