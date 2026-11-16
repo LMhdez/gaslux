@@ -56,14 +56,19 @@ def generate(
     iso_root: Path,
 ) -> tuple[str, dict[str, Any]]:
     """Return exact backend-rendered GRUB, with only read-only serial diagnostics."""
-    require(isinstance(pinned_sha256, str) and _HASH.fullmatch(pinned_sha256) is not None,
-            "invalid SHA-256 pin")
-    require(isinstance(volume_uuid, str) and _UUID.fullmatch(volume_uuid) is not None,
-            "invalid disposable volume UUID")
-    require(iso_path.name == "cachyos.iso" and iso_path.is_file() and not iso_path.is_symlink(),
-            "expected a regular, unlinked cachyos.iso")
-    require(iso_path.parent.is_dir() and not iso_path.parent.is_symlink(),
-            "unsafe ISO directory")
+    require(
+        isinstance(pinned_sha256, str) and _HASH.fullmatch(pinned_sha256) is not None,
+        "invalid SHA-256 pin",
+    )
+    require(
+        isinstance(volume_uuid, str) and _UUID.fullmatch(volume_uuid) is not None,
+        "invalid disposable volume UUID",
+    )
+    require(
+        iso_path.name == "cachyos.iso" and iso_path.is_file() and not iso_path.is_symlink(),
+        "expected a regular, unlinked cachyos.iso",
+    )
+    require(iso_path.parent.is_dir() and not iso_path.parent.is_symlink(), "unsafe ISO directory")
     require(iso_root.is_dir() and not iso_root.is_symlink(), "ISO root is absent or symlinked")
     require(iso_path.parent.resolve() != iso_root.resolve(), "ISO mounts must be distinct")
 
@@ -79,31 +84,41 @@ def generate(
         "isoSizeBytes": iso_path.stat().st_size,
     }
     handoff = _HANDOFF.prepare(plan, storage_root=iso_path.parent, iso_root=iso_root)
-    require(handoff["ok"] is True
-            and handoff["isoSha256Verified"] is True
-            and handoff["isoLayoutVerified"] is True
-            and handoff["productionInstallSupported"] is False
-            and handoff["windowsRecoveryVerified"] is False,
-            "unexpected backend readiness or distribution identity")
+    require(
+        handoff["ok"] is True
+        and handoff["isoSha256Verified"] is True
+        and handoff["isoLayoutVerified"] is True
+        and handoff["productionInstallSupported"] is False
+        and handoff["windowsRecoveryVerified"] is False,
+        "unexpected backend readiness or distribution identity",
+    )
 
     original = handoff["grubEntry"]
-    require(isinstance(original, str)
-            and original.count("menuentry 'CachyOS Archiso (experimental)'") == 1,
-            "unexpected backend GRUB menu")
+    require(
+        isinstance(original, str)
+        and original.count("menuentry 'CachyOS Archiso (experimental)'") == 1,
+        "unexpected backend GRUB menu",
+    )
     lines = original.splitlines(keepends=True)
-    linux = [i for i, line in enumerate(lines)
-             if line.startswith("    linux (gaslux_iso)/")]
+    linux = [i for i, line in enumerate(lines) if line.startswith("    linux (gaslux_iso)/")]
     initrd = [line for line in lines if line.startswith("    initrd (gaslux_iso)/")]
-    require(len(linux) == 1 and len(initrd) == 1
-            and len([line for line in lines if line.startswith("    loopback ")]) == 1,
-            "expected exactly one live kernel, initramfs and ISO loopback")
+    require(
+        len(linux) == 1
+        and len(initrd) == 1
+        and len([line for line in lines if line.startswith("    loopback ")]) == 1,
+        "expected exactly one live kernel, initramfs and ISO loopback",
+    )
     kernel = handoff["liveKernelPath"]
     initramfs = handoff["liveInitramfsPath"]
-    require(lines[linux[0]].startswith(f"    linux (gaslux_iso)/{kernel} ")
-            and initrd[0].strip() == f"initrd (gaslux_iso)/{initramfs}",
-            "kernel/initramfs differ from backend identity")
-    require("img_dev=UUID=" + volume_uuid + " img_loop=/cachyos.iso" in lines[linux[0]],
-            "GRUB img_dev/img_loop no longer reflect the disposable disk")
+    require(
+        lines[linux[0]].startswith(f"    linux (gaslux_iso)/{kernel} ")
+        and initrd[0].strip() == f"initrd (gaslux_iso)/{initramfs}",
+        "kernel/initramfs differ from backend identity",
+    )
+    require(
+        "img_dev=UUID=" + volume_uuid + " img_loop=/cachyos.iso" in lines[linux[0]],
+        "GRUB img_dev/img_loop no longer reflect the disposable disk",
+    )
     require(lines[linux[0]].endswith("\n"), "GRUB kernel entry is not line-terminated")
     lines[linux[0]] = lines[linux[0]][:-1] + _DIAGNOSTIC_FLAGS + "\n"
     config = _HEADER + "".join(lines)
@@ -140,15 +155,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         config, evidence = generate(
-            args.iso, args.pinned_sha256, args.disposable_ext4_uuid,
+            args.iso,
+            args.pinned_sha256,
+            args.disposable_ext4_uuid,
             args.mounted_iso_root,
         )
         # The caller creates a private temp directory. Refuse replacing files.
         for file in (args.output_grub_cfg, args.output_evidence_json):
-            require(not file.exists() and not file.is_symlink(),
-                    "refusing to overwrite existing boot artifact")
-            require(file.parent.is_dir() and not file.parent.is_symlink(),
-                    "boot artifact parent is unsafe")
+            require(
+                not file.exists() and not file.is_symlink(),
+                "refusing to overwrite existing boot artifact",
+            )
+            require(
+                file.parent.is_dir() and not file.parent.is_symlink(),
+                "boot artifact parent is unsafe",
+            )
         for path, data in (
             (args.output_grub_cfg, config),
             (args.output_evidence_json, json.dumps(evidence, sort_keys=True) + "\n"),

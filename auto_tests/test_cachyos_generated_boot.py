@@ -87,9 +87,7 @@ class GeneratedBootTests(unittest.TestCase):
         new = cfg.splitlines()[5:]
         self.assertEqual(len(unchanged), len(new))
         changed = [
-            (old, actual)
-            for old, actual in zip(unchanged, new, strict=True)
-            if old != actual
+            (old, actual) for old, actual in zip(unchanged, new, strict=True) if old != actual
         ]
         self.assertEqual(len(changed), 1)
         self.assertTrue(changed[0][0].startswith("    linux (gaslux_iso)/"))
@@ -123,6 +121,7 @@ class GeneratedBootTests(unittest.TestCase):
     def test_backend_cannot_claim_production_support(self):
         def unsafe(plan, **kwargs):
             return {**fake_handoff(plan, **kwargs), "productionInstallSupported": True}
+
         with (
             patch.object(boot._HANDOFF, "prepare", side_effect=unsafe),
             self.assertRaisesRegex(boot.LabBootError, "backend readiness"),
@@ -134,6 +133,7 @@ class GeneratedBootTests(unittest.TestCase):
             obj = fake_handoff(plan, **kwargs)
             obj["grubEntry"] = obj["grubEntry"].replace("    initrd ", "    absent ")
             return obj
+
         with (
             patch.object(boot._HANDOFF, "prepare", side_effect=no_initrd),
             self.assertRaisesRegex(boot.LabBootError, "exactly one"),
@@ -147,6 +147,7 @@ class GeneratedBootTests(unittest.TestCase):
                 "img_dev=UUID=" + UUID, "img_dev=UUID=" + "0" * 36
             )
             return obj
+
         with (
             patch.object(boot._HANDOFF, "prepare", side_effect=stale),
             self.assertRaisesRegex(boot.LabBootError, "img_dev"),
