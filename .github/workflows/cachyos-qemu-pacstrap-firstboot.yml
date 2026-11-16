@@ -44,7 +44,9 @@ jobs:
           assert 'accel=kvm' in host and 'GASLUX_QEMU_ACCELERATOR=' in host
           assert 'sudo setfacl -m' in host and 'kvm_probe_rc == 124' in host
           assert '    -S -nodefaults ' not in host
-          assert '    -nodefaults -display none -monitor none -serial none' in host
+          assert '    -nodefaults ' in host
+          assert '    -global driver=cfi.pflash01,property=secure,value=on' in host
+          assert '    -drive if=pflash,format=raw,file="$w/nvram-kvm-probe.fd"' in host
           assert 'GASLUX_KVM_VCPU_EXECUTION_PROVEN=true' in host
           assert 'nvram-kvm-probe.fd' in host
           assert 'GASLUX_KVM_REAL_BOOT_DENIED_FALLBACK_TCG=true' in host
