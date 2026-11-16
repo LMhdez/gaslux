@@ -40,9 +40,7 @@ def test_guest_native_agent_and_target_identity_are_fail_closed():
     for forbidden in ("--new-table", " --delete", " --move", " --modify-boot"):
         assert forbidden not in content
     assert TARGET_PASSED.search(b"\r\nGASLUX_POP_DISTINST_VM_TARGET_TEST_PASS=1\r\n")
-    assert not TARGET_PASSED.search(
-        b"printf 'GASLUX_POP_DISTINST_VM_TARGET_TEST_PASS=1'"
-    )
+    assert not TARGET_PASSED.search(b"printf 'GASLUX_POP_DISTINST_VM_TARGET_TEST_PASS=1'")
 
 
 def test_workflow_scopes_writes_to_vm_only():
