@@ -21,6 +21,21 @@ READY = re.compile(rb"(?m)^GASLUX_ROOT_SHELL_READY\r?$")
 PASSED = re.compile(rb"(?m)^GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r?$")
 FAILED = re.compile(rb"(?m)^GASLUX_GUEST_PREFLIGHT_FAILURE(?::[^\r\n]*)?\r?$")
 
+# The official 260809 Archiso console wraps commands in systemd OSC 3008
+# command-lifecycle markers, and uses CSI bracketed-paste sequences. Strip
+# terminal control codes for matching ONLY; the original raw transcript is
+# always preserved and SHA-256 hashed separately.
+_TERMINAL_CONTROL = re.compile(
+    rb"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
+    rb"|\x1b\[[0-9;?]*[ -/]*[@-~]"
+    rb"|\x1bP[^\x1b]*\x1b\\"
+)
+
+
+def normalized_tty(data: bytes) -> bytes:
+    return _TERMINAL_CONTROL.sub(b"", data).replace(b"\r\n", b"\n")
+
+
 
 class ProbeError(ValueError):
     """The verified CachyOS guest did not complete the non-mutating preflight."""
@@ -36,10 +51,13 @@ def wait_for(
 ) -> int:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
+        # Permit only known terminal control codes around complete output
+        # lines. Never treat an echoed shell command as success.
+        text = normalized_tty(bytes(transcript))
         for index, pattern in enumerate(accepted):
-            if pattern.search(bytes(transcript)):
+            if pattern.search(text):
                 return index
-        if failure and failure.search(bytes(transcript)):
+        if failure and failure.search(text):
             raise ProbeError("read-only guest script explicitly failed")
         sock.settimeout(min(1, max(0.1, deadline - time.monotonic())))
         try:
@@ -91,11 +109,12 @@ def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345) -
             raise ProbeError("serial connection closed during live root login")
         prompt_bytes.extend(chunk)
         trace.extend(chunk)
-        if PASSWORD.search(bytes(prompt_bytes)):
+        prompt_text = normalized_tty(bytes(prompt_bytes))
+        if PASSWORD.search(prompt_text):
             sock.sendall(b"cachyos\r")
             break
-        if b"Last login:" in prompt_bytes or re.search(
-            rb"(?m)\[?root@CachyOS[^\r\n]{0,120}\]?#\s*$", prompt_bytes
+        if b"Last login:" in prompt_text or re.search(
+            rb"(?m)\[?root@CachyOS[^\r\n]{0,120}\]?#\s*$", prompt_text
         ):
             break
         if b"Login incorrect" in prompt_bytes:
