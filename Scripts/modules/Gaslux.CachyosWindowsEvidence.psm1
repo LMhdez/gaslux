@@ -64,7 +64,7 @@ function Assert-GasluxWindowsEvidence {
             $start -gt ([long]$disk.size - $length) -or
             $start % [int]$disk.logicalSectorSize -ne 0 -or
             $length % [int]$disk.logicalSectorSize -ne 0 -or
-            $guid -notmatch '^[{]?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[}]? -or
+            $guid -notmatch '^[{]?[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?\z' -or
             $usedGuids.ContainsKey($guid.ToLowerInvariant())) {
             throw 'Overlapping/invalid Windows partition geometry.'
         }
