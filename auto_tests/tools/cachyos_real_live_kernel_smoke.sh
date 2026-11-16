@@ -57,7 +57,6 @@ for suff in _4M ''; do
 done
 [[ -n "$code" && -n "$vars" ]] || { echo 'No OVMF' >&2; exit 2; }
 cp "$vars" "$w/nvram.fd"
-set +e
 timeout --kill-after=5s 380s qemu-system-x86_64 \
   -machine q35,accel=tcg -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -boot order=c \
@@ -68,7 +67,20 @@ timeout --kill-after=5s 380s qemu-system-x86_64 \
   -device usb-storage,drive=bootimg \
   -drive if=none,id=isoimg,format=raw,readonly=on,file="$disk" \
   -device virtio-blk-pci,drive=isoimg \
-  -serial file:"$w/serial.log"
+  -serial file:"$w/serial.log" &
+vm_pid=$!
+# Stop early once both kernel and userspace evidence are captured.
+for _ in $(seq 1 76); do
+  sleep 5
+  if grep -Eq 'Linux version [0-9]' "$w/serial.log" 2>/dev/null &&
+     grep -Eq 'systemd\[1\]|systemd[ -]udevd|Welcome to CachyOS' "$w/serial.log" 2>/dev/null; then
+    kill "$vm_pid" 2>/dev/null || true
+    break
+  fi
+  kill -0 "$vm_pid" 2>/dev/null || break
+done
+set +e
+wait "$vm_pid"
 rc=$?
 set -e
 if ! grep -Eq 'Linux version [0-9]' "$w/serial.log"; then
