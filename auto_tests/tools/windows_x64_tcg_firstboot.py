@@ -361,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
                 "qemu-system-x86_64", "-machine", "q35,accel=tcg,smm=on",
                 "-global", "driver=cfi.pflash01,property=secure,value=on",
                 "-cpu", "max", "-smp", "2", "-m", "4096",
-                "-display", "none", "-vga", "std", "-no-reboot",
+                "-display", "none", "-vga", "std",
                 "-monitor", "none", "-net", "none",
                 "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
                 "-drive", f"if=pflash,format=raw,file={nvram}",
