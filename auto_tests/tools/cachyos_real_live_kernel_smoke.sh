@@ -62,21 +62,28 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
   mcopy -i "$fat" "$guest_probe" ::/probe.sh
   mcopy -i "$fat" "$w/stage.sha256" ::/stage.sha256
 fi
-code=''
-vars=''
-for suff in _4M ''; do
-  c="/usr/share/OVMF/OVMF_CODE"$suff".fd"
-  v="/usr/share/OVMF/OVMF_VARS"$suff".fd"
-  if [[ -f "$c" && -f "$v" ]]; then code="$c"; vars="$v"; break; fi
-done
-[[ -n "$code" && -n "$vars" ]] || { echo 'No OVMF' >&2; exit 2; }
+# The live preflight requires explicit SecureBoot=0 firmware evidence.
+# The plain OVMF_CODE_4M.fd variant can omit the SecureBoot EFI variable
+# entirely, making the test correctly fail as "unverifiable" even though
+# unsigned code boots. Use SECURE-BOOT-CAPABLE OVMF with an EMPTY key store:
+# enabled capability != active Secure Boot. Never change the guest's policy
+# at runtime or weaken the production SecureBoot=0 check.
+code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
+vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+[[ -f "$code" && -f "$vars" && ! -L "$code" ]] || {
+  echo 'Missing dedicated OVMF Secure Boot-capable code and empty key store' >&2
+  exit 2
+}
+# Only this disposable VM uses the local OVMF variable template.
 cp "$vars" "$w/nvram.fd"
+echo 'OVMF lab mode: Secure Boot-capable firmware, fresh no-key NVRAM copy; SecureBoot=0 must still be verified IN the guest.'
 serial_flags=(-serial "file:$w/serial.log")
 if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
   serial_flags=(-chardev "socket,id=gaslux_serial,path=$w/guest-serial.sock,server=on,wait=off,logfile=$w/serial.log" -serial chardev:gaslux_serial)
 fi
 timeout --kill-after=5s 380s qemu-system-x86_64 \
-  -machine q35,accel=tcg -smp 2 -m 4096 \
+  -machine q35,accel=tcg,smm=on -global driver=cfi.pflash01,property=secure,value=on \
+  -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -boot order=c \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
   -drive if=pflash,format=raw,file="$w/nvram.fd" \
