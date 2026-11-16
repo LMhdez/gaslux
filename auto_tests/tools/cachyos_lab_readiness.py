@@ -22,6 +22,68 @@ def require(condition: bool, message: str) -> None:
         raise LabReadinessError(message)
 
 
+# A VM can be disposable only if ALL writable block devices belong to its
+# exclusive Proxmox image namespace. An allowlisted VMID by itself is
+# insufficient: a VM may attach /dev/disk/by-id, a foreign VM disk or USB/PCI
+# passthrough. Never run an installer against those configurations.
+_DRIVE_KEY = re.compile(r"^(?:scsi|sata|virtio|ide)[0-9]+$")
+_IMAGE_VOL = re.compile(
+    r"^[A-Za-z0-9_.-]{1,64}:(?:(?P<directory>[0-9]+)/)?"
+    r"vm-(?P<owner>[0-9]+)-disk-[0-9]+(?:\.(?:qcow2|raw|vmdk))?$"
+)
+_ISO_VOL = re.compile(r"^[A-Za-z0-9_.-]{1,64}:iso/[A-Za-z0-9_.-]+\.iso$")
+_FORBIDDEN = re.compile(
+    r"^(?:hostpci[0-9]+|usb[0-9]+|unused[0-9]+|virtiofs[0-9]+|serial[0-9]+)$"
+)
+_FORBIDDEN_OTHER = {"args", "hookscript", "ivshmem", "hostusb"}
+
+
+def _attached_volumes(config: object, vmid: int, profile: str) -> dict[str, str]:
+    """Return exclusively VM-owned writable disks from a read-only PVE response."""
+    require(isinstance(config, dict), f"{profile}: missing Proxmox VM config")
+    volumes: dict[str, str] = {}
+    for key, val in config.items():
+        require(
+            isinstance(key, str)
+            and key not in _FORBIDDEN_OTHER
+            and _FORBIDDEN.fullmatch(key) is None,
+            f"{profile}: host-device passthrough, hooks or unowned disks are forbidden",
+        )
+        if not (_DRIVE_KEY.fullmatch(key) or key in {"efidisk0", "tpmstate0"}):
+            continue
+        require(isinstance(val, str) and val.strip(), f"{profile}: empty {key}")
+        props = val.split(",")
+        identifier = props[0].removeprefix("file=")
+        require("shared=1" not in props and "snapshot=0" not in props,
+                f"{profile}: shared or non-snapshot disk forbidden")
+        if "media=cdrom" in props:
+            require(_DRIVE_KEY.fullmatch(key) is not None
+                    and (identifier == "none" or _ISO_VOL.fullmatch(identifier)),
+                    f"{profile}: untrusted CD-ROM backing device")
+            continue
+        match = _IMAGE_VOL.fullmatch(identifier)
+        require(
+            match is not None
+            and int(match.group("owner")) == vmid
+            and (
+                match.group("directory") is None
+                or int(match.group("directory")) == vmid
+            ),
+            f"{profile}: disk {key} is not an exclusive VM-owned storage volume",
+        )
+        require(identifier not in volumes.values(),
+                f"{profile}: multiple guest disks share a backing volume")
+        volumes[key] = identifier
+    require("efidisk0" in volumes,
+            f"{profile}: dedicated snapshot-backed EFI variables are required")
+    if profile == "windows11-uefi":
+        require("tpmstate0" in volumes,
+                f"{profile}: dedicated snapshot-backed vTPM storage required")
+    require(any(_DRIVE_KEY.fullmatch(key) for key in volumes),
+            f"{profile}: no exclusive writable installation disk")
+    return volumes
+
+
 def classify_vm(vm: Any) -> str | None:
     os_label = str(vm.os).strip().lower()
     if vm.firmware != "uefi":
@@ -62,6 +124,7 @@ def select_authorized_lab_vms(settings: Any) -> dict[str, Any]:
 def probe(settings: Any, client: Any) -> dict[str, object]:
     selected = select_authorized_lab_vms(settings)
     guests = []
+    observed_volumes: set[str] = set()
     for profile in ("windows10-uefi", "windows11-uefi"):
         vm = selected[profile]
         node = client.locate_vm(vm.vmid)
@@ -75,12 +138,28 @@ def probe(settings: Any, client: Any) -> dict[str, object]:
                 f"{profile}: UEFI/OVMF firmware is not configured")
         require(bool(config.get("efidisk0")),
                 f"{profile}: independent EFI variable disk is missing")
-        require(any(str(key).startswith(("scsi", "sata", "virtio", "ide")) and
-                    str(key)[-1].isdigit() for key in config),
-                f"{profile}: no virtual installation disk configured")
-        if profile == "windows11-uefi":
-            require(bool(config.get("tpmstate0")),
-                    "Windows 11 guest requires a configured vTPM")
+        attached = _attached_volumes(config, vm.vmid, profile)
+        # Default config may show PENDING disk attachments. The actual
+        # running configuration must match both current and snapshot.
+        live_config = client._request(
+            "GET", f"/nodes/{node}/qemu/{vm.vmid}/config?current=1",
+            step="cachyos.lab_readiness.current_configuration",
+        )
+        snapshot_config = client._request(
+            "GET",
+            f"/nodes/{node}/qemu/{vm.vmid}/snapshot/{settings.reset_snapshot}/config",
+            step="cachyos.lab_readiness.snapshot_configuration",
+        )
+        for label, observed in (("current", live_config), ("snapshot", snapshot_config)):
+            require(isinstance(observed, dict), f"{profile}: {label} config missing")
+            require(str(observed.get("bios", "")) == "ovmf",
+                    f"{profile}: {label} firmware is not OVMF")
+            require(_attached_volumes(observed, vm.vmid, profile) == attached,
+                    f"{profile}: {label} volume bindings differ from VM configuration")
+        for volume in attached.values():
+            require(volume not in observed_volumes,
+                    f"{profile}: guest shares a writable volume with another lab VM")
+            observed_volumes.add(volume)
         status = client.get_vm_status(node, vm.vmid, step="cachyos.lab_readiness.status")
         require(status.get("status") in ("running", "stopped"),
                 f"{profile}: VM is in an unknown state")
@@ -89,11 +168,16 @@ def probe(settings: Any, client: Any) -> dict[str, object]:
             "node": node, "snapshot": settings.reset_snapshot,
             "powerState": status["status"],
             "firmware": "uefi",
+            "exclusiveVirtualDiskCount": len(attached),
+            "vmDiskIsolationVerified": True,
+            "snapshotBackingVerified": True,
         })
     return {
         "ok": True,
         "readOnlyProxmoxProbe": True,
         "guestInventoryVerified": True,
+        "noHostDiskPassthrough": True,
+        "snapshotDiskOwnershipVerified": True,
         "vmProfiles": guests,
         "fullInstallationExecuted": False,
         "dualBootVerified": False,

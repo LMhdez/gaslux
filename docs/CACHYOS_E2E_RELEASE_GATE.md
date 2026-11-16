@@ -93,3 +93,21 @@ References:
 - auto_tests/app/services/automation_postinstall.py
 - docs/CACHYOS_VALIDATION_MATRIX.md
 - https://wiki.cachyos.org/cachyos_basic/download/
+
+## Additional guest disk isolation contract
+
+Before launching any destructive VM campaign, the read-only Proxmox probe now
+requests the **current, pending and snapshot** QEMU configurations by GET. It
+rejects `hostpci*`, `usb*`, `unused*`, `virtiofs*`, `args`, `hookscript`
+and serial passthrough, as well as any writable disk not using a unique
+`vm-VMID-disk-N` Proxmox storage identifier owned by the authorized guest.
+An `efidisk0` volume (and Windows 11 `tpmstate0`) must be VM-owned.
+Disk identifiers must agree across the current and pre-install snapshot
+configurations. Ordinary read-only ISO CD-ROMs are supported.
+
+This rules out obvious physical disk passthrough and cross-VM shared volumes
+before preparing an installation; it does not independently prove how a
+Proxmox storage backend maps onto the physical host. An operator must also
+verify the storage inventory, snapshot recoverability and physical isolation
+before granting destructive VM automation permission. A successful probe
+only reports lab **configuration readiness**, never dual-boot validation.
