@@ -65,5 +65,5 @@ def test_disposable_target_only_and_installed_boot_requires_guest_serial_proof()
     assert "No installed Q4OS root boot proof" in src
     assert "-net none" in src
     assert "-cdrom" not in src
-    assert "id=guesttarget,format=raw,file=$disk" in src
+    assert 'id=guesttarget,format=raw,file="$disk"' in src
     assert "guest-only" in src.lower() or "guest-only" in SCRIPT.read_text(encoding="utf-8")
