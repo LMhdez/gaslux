@@ -51,9 +51,7 @@ def _validate_target(
 )
 @pytest.mark.parametrize("firmware", ["bios", "uefi"])
 def test_original_mint_zorin_targets_remain_eligible(distro, os_id, backend, firmware):
-    result = _validate_target(
-        distro=distro, os_id=os_id, backend=backend, firmware=firmware
-    )
+    result = _validate_target(distro=distro, os_id=os_id, backend=backend, firmware=firmware)
     assert result.returncode == 0, result.stderr
 
 
@@ -122,8 +120,6 @@ def test_legacy_guard_is_not_a_popos_install_entrypoint():
 
 
 def test_unsupported_firmware_is_rejected_without_target_mutation():
-    result = _validate_target(
-        distro="mint", os_id="linuxmint", backend=None, firmware="invalid"
-    )
+    result = _validate_target(distro="mint", os_id="linuxmint", backend=None, firmware="invalid")
     assert result.returncode == 2
     assert "Unsupported firmware mode" in result.stderr
