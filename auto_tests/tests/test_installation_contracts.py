@@ -1383,14 +1383,17 @@ def validate_schema_document(schema_name: str, document: dict[str, object]) -> N
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(document)
 
 
-@pytest.mark.parametrize(("distro_id", "os_release_id"), [
-    ("mint", "zorin"),
-    ("zorin", "linuxmint"),
-    ("cachyos", "cachyos"),
-    ("popos", "pop"),
-    ("bazzite", "bazzite"),
-    ("q4os", "q4os"),
-])
+@pytest.mark.parametrize(
+    ("distro_id", "os_release_id"),
+    [
+        ("mint", "zorin"),
+        ("zorin", "linuxmint"),
+        ("cachyos", "cachyos"),
+        ("popos", "pop"),
+        ("bazzite", "bazzite"),
+        ("q4os", "q4os"),
+    ],
+)
 @pytest.mark.parametrize("firmware", ["bios", "uefi"])
 def test_unapproved_backend_is_rejected_before_live_installation(
     plan_module: ModuleType,
@@ -1405,10 +1408,13 @@ def test_unapproved_backend_is_rejected_before_live_installation(
         plan_module.validate_plan(plan, require_installer=True)
 
 
-@pytest.mark.parametrize(("distro_id", "os_release_id"), [
-    ("mint", "linuxmint"),
-    ("zorin", "zorin"),
-])
+@pytest.mark.parametrize(
+    ("distro_id", "os_release_id"),
+    [
+        ("mint", "linuxmint"),
+        ("zorin", "zorin"),
+    ],
+)
 @pytest.mark.parametrize("firmware", ["bios", "uefi"])
 def test_existing_backend_identity_remains_valid(
     plan_module: ModuleType,
@@ -1423,9 +1429,7 @@ def test_existing_backend_identity_remains_valid(
 
 
 def test_signed_release_config_schema_rejects_unknown_legacy_backend() -> None:
-    schema = json.loads(
-        (ROOT / "schemas/release-config.schema.json").read_text(encoding="utf-8")
-    )
+    schema = json.loads((ROOT / "schemas/release-config.schema.json").read_text(encoding="utf-8"))
     config = json.loads((ROOT / "release-config.json").read_text(encoding="utf-8"))
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
     assert validator.is_valid(config)
