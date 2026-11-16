@@ -93,6 +93,12 @@ done
 [[ -n "$code" && -n "$vars" ]] || die 'OVMF firmware not installed'
 cp "$vars" "$work/nvram.fd"
 
+serial_boot_args='systemd.wants=serial-getty@ttyS0.service'
+if [[ "${GASLUX_POP_GUEST_DISTINST_PROBE:-0}" == 1 ]]; then
+  [[ "$distro" == popos ]] || die 'Debug shell confined to Pop disposable lab'
+  serial_boot_args='systemd.debug_shell=ttyS0'
+fi
+
 cat > "$work/grub.cfg" <<EOF
 serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
 terminal_input serial
@@ -111,7 +117,7 @@ menuentry 'Gaslux $distro real live-kernel lab boot' {
     echo 'Pinned guest live initramfs not found'
     halt
   fi
-  linux (\$source)/$kernel $boot console=tty0 console=ttyS0,115200n8 systemd.log_target=console systemd.log_level=info systemd.unit=multi-user.target systemd.wants=serial-getty@ttyS0.service
+  linux (\$source)/$kernel $boot console=tty0 console=ttyS0,115200n8 systemd.log_target=console systemd.log_level=info systemd.unit=multi-user.target $serial_boot_args
   initrd (\$source)/$initrd
 }
 EOF
