@@ -33,7 +33,7 @@ ISO_PLAN = {
     "isoStorageUuid": "A4F10E38BCD29475",
     "isoRelativePath": "/Gaslux/cachyos.iso",
     "isoSha256": hashlib.sha256(ISO_BYTES).hexdigest(),
-    "isoSizeBytes": len(ISO_BYTES),
+    "isoSizeBytes": 3_000_000_000,  # ISO bytes are mocked; release-size policy remains enforced
 }
 DOC = {
     "schemaVersion": 1,
