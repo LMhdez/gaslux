@@ -197,7 +197,14 @@ run_live_guest() {
       echo "GASLUX_VM_PROGRESS_SECONDS=$((attempt * 5))"
       grep -aE 'GASLUX_VM_|CACHYOS_STAGE_ERROR|pacstrap|error:|failed' "$w/live-serial.log" 2>/dev/null | tail -n 14 || true
     fi
-    if grep -q 'GASLUX_VM_INSTALL_FAILED:' "$w/live-serial.log" 2>/dev/null; then
+    # Old TCG run 43959640657 had no Bash EXIT marker but systemd itself
+  # reported a failed installation service; do not waste 55 minutes waiting.
+  if grep -Fq 'kernel-command-line.service: Failed with result' "$w/live-serial.log" 2>/dev/null; then
+    echo 'GASLUX_VM_EARLY_SERVICE_FAILURE_DETECTED'
+    kill "$vm_pid" 2>/dev/null || true
+    break
+  fi
+  if grep -q 'GASLUX_VM_INSTALL_FAILED:' "$w/live-serial.log" 2>/dev/null; then
       kill "$vm_pid" 2>/dev/null || true
       break
     fi
