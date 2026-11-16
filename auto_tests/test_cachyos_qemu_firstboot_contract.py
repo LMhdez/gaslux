@@ -82,7 +82,7 @@ class CachyosFirstBootContracts(unittest.TestCase):
             "I_ACCEPT_DISPOSABLE_VM_ONLY", "systemd-detect-virt --vm",
             "/dev/disk/by-id/virtio-GASLUXLABTARGET",
             "lsblk -dn -o TYPE", "blockdev --getsize64",
-            "signed kernel handoff", "SecureBoot", "SetupMode",
+            "signed boot or Secure Boot proof rejected", "SecureBoot", "SetupMode",
             "sgdisk --clear", "mkfs.ext4", "mkfs.vfat",
             "pacstrap -K", "linux-cachyos-lts",
             "grub-install --target=x86_64-efi",
