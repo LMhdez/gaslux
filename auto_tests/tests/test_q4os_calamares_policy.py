@@ -165,6 +165,9 @@ _HOOK_PATHS = (
     "usr/lib/calamares/modules/q4oshook2/module.desc",
     "usr/lib/calamares/modules/q4oshook3/module.desc",
     "usr/lib/calamares/modules/q4oshook5/module.desc",
+    "usr/sbin/debian_adjust2.sh",
+    "usr/sbin/debian_adjust3.sh",
+    "usr/sbin/debian_adjust5.sh",
     "usr/sbin/q4os-hook2a.sh",
     "usr/sbin/q4os-hook3a.sh",
     "usr/sbin/q4os-hook3b.sh",
@@ -196,9 +199,9 @@ def _synthetic_hook_evidence(evidence):
 def test_q4os_hook_sources_stay_non_executable_even_when_manifest_is_valid(evidence):
     _synthetic_hook_evidence(evidence)
     report = audit_q4os_native_hooks(evidence)
-    assert report["nativeHookSourcesCount"] == 9
+    assert report["nativeHookSourcesCount"] == 12
     assert report["moduleDescriptorSourceCount"] == 3
-    assert report["shellSourceCount"] == 6
+    assert report["shellSourceCount"] == 9
     assert report["nativeHookCommandsExecuted"] is False
     assert report["hookExecutionAuthorized"] is False
     assert report["nativeInstallationProven"] is False
