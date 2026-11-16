@@ -97,7 +97,7 @@ def _check_user(root: Path, username: str) -> None:
     _require(sudoers.stat().st_mode & 0o777 == 0o440, 'sudoers file mode must be 0440')
 
 
-def verify_target(root: Path, run_id: str, username: str, *, phase: str = 'packages', root_uuid: str | None = None, esp_uuid: str | None = None) -> dict[str, object]:
+def verify_target(root: Path, run_id: str, username: str, *, phase: str = 'packages', root_uuid: str | None = None, esp_uuid: str | None = None, windows_loader_sha256: str | None = None) -> dict[str, object]:
     _require(root.is_absolute() and root != Path('/'), 'must inspect an explicit non-root absolute path')
     _require(root.is_dir() and not root.is_symlink(), 'target root missing/symlink')
     root = root.resolve()
@@ -127,11 +127,25 @@ def verify_target(root: Path, run_id: str, username: str, *, phase: str = 'packa
         mounts = _mount_entries(root)
         _require(mounts.get('/') == ('UUID=' + root_uuid, 'ext4'), 'root fstab identity mismatch')
         _require(mounts.get('/boot/efi') == ('UUID=' + esp_uuid, 'vfat'), 'ESP fstab identity mismatch')
+        _require(bool(windows_loader_sha256 and re.fullmatch(r'[0-9a-f]{64}', windows_loader_sha256)),
+                 'expected Windows Boot Manager SHA-256 required')
         grub = _safe_file(root, 'boot/grub/grub.cfg').read_text(encoding='utf-8')
-        _require('menuentry' in grub and 'Windows Boot Manager' in grub, 'GRUB menu does not include Windows')
-        efi = _safe_file(root, 'boot/efi/EFI/Libertix/grubx64.efi')
+        _require('Windows Boot Manager' in grub and '--id gaslux-windows' in grub,
+                 'GRUB menu does not include the transaction-owned Windows entry')
+        _require('vmlinuz-linux-cachyos' in grub,
+                 'GRUB menu does not include the CachyOS kernel')
+        efi_root = 'boot/efi/EFI/Gaslux-CachyOS/'
+        efi_owner = _safe_file(root, efi_root + '.gaslux-owner')
+        _require(efi_owner.read_text(encoding='utf-8').strip() == run_id,
+                 'EFI loader transaction ownership mismatch')
+        efi = _safe_file(root, efi_root + 'grubx64.efi')
         with efi.open('rb') as stream:
             _require(stream.read(2) == b'MZ', 'installed UEFI loader is not a PE image')
+        # Protect the existing Windows boot binary against silent replacement.
+        import hashlib
+        windows_loader = _safe_file(root, 'boot/efi/EFI/Microsoft/Boot/bootmgfw.efi')
+        _require(hashlib.sha256(windows_loader.read_bytes()).hexdigest() == windows_loader_sha256,
+                 'Windows Boot Manager hash mismatch')
         # These checks do NOT prove firmware NVRAM, signatures or reboot health.
     return result
 
@@ -144,9 +158,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--phase', choices=('packages', 'bootable'), default='packages')
     parser.add_argument('--root-uuid')
     parser.add_argument('--esp-uuid')
+    parser.add_argument('--windows-loader-sha256')
     args = parser.parse_args(argv)
     try:
-        result = verify_target(args.root, args.run_id, args.username, phase=args.phase, root_uuid=args.root_uuid, esp_uuid=args.esp_uuid)
+        result = verify_target(args.root, args.run_id, args.username, phase=args.phase, root_uuid=args.root_uuid, esp_uuid=args.esp_uuid, windows_loader_sha256=args.windows_loader_sha256)
     except (TargetError, OSError, UnicodeError) as error:
         print(json.dumps({'ok': False, 'error': str(error)}))
         return 1
