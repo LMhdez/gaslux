@@ -41,14 +41,11 @@ jobs:
           # The origin truncates multi-gigabyte transfers. Use resumable range
           # requests from independent CachyOS mirrors. Only the pinned
           # maintainer-published hash decides whether any bytes are trusted.
-          cat > "$workspace/iso-mirrors.txt" <<'MIRRORS'
-          https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso
-            dir=$workspace
-            out=cachyos.iso
-          MIRRORS
-          # aria2 .input-file options are not shell-expanded; replace the
-          # workspace placeholder before running the range downloader.
-          sed -i "s|\\$workspace|$workspace|g" "$workspace/iso-mirrors.txt"
+          {
+            printf '%s\n' 'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
+            printf '  dir=%s\n' "$workspace"
+            printf '  out=cachyos.iso\n'
+          } > "$workspace/iso-mirrors.txt"
           aria2c --input-file="$workspace/iso-mirrors.txt" \
             --split=8 --min-split-size=32M --max-connection-per-server=8 \
             --max-concurrent-downloads=1 --continue=true \
