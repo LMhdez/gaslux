@@ -123,6 +123,36 @@ def prepare(evidence: Path, pinned_iso_sha256: str) -> tuple[str, str, str]:
         "gaslux.key_sha256": digest(data["test-only-public.pem"]),
     }
     require(boot == expected, "signed GRUB kernel arguments are not plan-bound")
+    # Check every executable GRUB instruction, not just the kernel args.
+    # A compromised test attestation must not be able to smuggle extra GRUB
+    # commands into a VM boot even if its SHA256SUMS were also rewritten.
+    cmdline = " ".join(f"{key}={value}" for key, value in expected.items())
+    expected_entry = (
+        "# Gaslux CachyOS Archiso handoff — lab-only, not a production installer\n"
+        f"# Transaction {LAB_RUN_ID}\n"
+        "menuentry 'CachyOS Archiso (experimental)' --id gaslux-cachyos-archiso {\n"
+        "    insmod part_gpt\n"
+        "    insmod ext2\n"
+        "    insmod iso9660\n"
+        f"    search --no-floppy --fs-uuid --set=gaslux_iso_dev {LAB_ISO_UUID}\n"
+        "    set gaslux_iso_path='/cachyos.iso'\n"
+        "    if [ ! -f ($gaslux_iso_dev)$gaslux_iso_path ]; then\n"
+        "        echo 'Verified CachyOS ISO location is missing'\n"
+        "        sleep 10\n"
+        "        reboot\n"
+        "    fi\n"
+        "    loopback gaslux_iso ($gaslux_iso_dev)$gaslux_iso_path\n"
+        "    if [ ! -f (gaslux_iso)/arch/boot/x86_64/vmlinuz-linux-cachyos-lts ]; then\n"
+        "        echo 'CachyOS ISO kernel is missing'\n"
+        "        sleep 10\n"
+        "        reboot\n"
+        "    fi\n"
+        f"{KERNEL}archisobasedir=arch img_dev=UUID={LAB_ISO_UUID} "
+        f"img_loop=/cachyos.iso cow_spacesize=10G copytoram=auto {cmdline}\n"
+        f"{INITRD}\n"
+        "}\n"
+    )
+    require(entry == expected_entry, "signed GRUB instructions differ from pinned lab template")
     result = AUTH.verify(
         evidence / "test-only-handoff.json",
         evidence / "test-only-handoff.sig",
