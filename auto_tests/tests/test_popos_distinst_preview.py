@@ -40,7 +40,7 @@ def test_uefi_gpt_reuses_esp_without_formatting(request):
     assert outcome["requiresIndependentDiskProof"] is True
     assert outcome["requiresVmWriteIsolation"] is True
     assert outcome["requiresFirstBootAndWindowsRecovery"] is True
-    assert "systemd-boot" == outcome["bootloader"]
+    assert outcome["bootloader"] == "systemd-boot"
     assert f"{TARGET}:1:reuse:mount=/boot/efi" in argv
     assert f"{TARGET}:3:ext4:mount=/" in argv
     assert not any(":fat32:mount=/boot/efi" in token for token in argv)
