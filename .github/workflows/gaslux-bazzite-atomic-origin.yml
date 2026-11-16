@@ -24,6 +24,8 @@ jobs:
         uses: sigstore/cosign-installer@v3.8.2
       - name: Verify upstream Bazzite image signature and build attestation
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/bazzite-evidence"
