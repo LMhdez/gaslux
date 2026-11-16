@@ -1,0 +1,27 @@
+name: CachyOS VM-only target isolation and pacstrap preflight
+
+on:
+  push:
+    branches:
+      - feature/cachyos-stage-target-safety-contract
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-target-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Bash syntax and no-VM rejection tests
+        run: |
+          bash -n assets/live/cachyos-stage-target.sh
+          python3 -m unittest auto_tests.test_cachyos_stage_target_safety -v
+      - name: Explicit limits
+        run: |
+          echo 'PASS: unsafe targets are rejected without installing packages.'
+          echo 'NOT TESTED: actual pacstrap, CachyOS installed boot, Windows dual boot or rollback.'
