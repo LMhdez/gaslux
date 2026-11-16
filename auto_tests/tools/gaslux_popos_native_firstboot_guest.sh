@@ -25,7 +25,9 @@ mounted="$(readlink -e "$(findmnt -n -o SOURCE /)")"
   fail 'target disk capacity differs'
 [[ "$(lsblk -dn -o SERIAL "$by_id" | tr -d '[:space:]')" == GASLUXPOPFULLVM ]] ||
   fail 'wrong installed disk serial'
-[[ "$(lsblk -dn -o TYPE | grep -cx disk)" == 1 ]] ||
+disks="$(lsblk -dn -o NAME,TYPE |
+  awk '$2=="disk" && $1 !~ /^(zram|ram)[0-9]+$/ {n++} END {print n+0}')"
+[[ "$disks" == 1 ]] ||
   fail 'live ISO or extra disk attached on installed first boot'
 [[ -s /boot/efi/EFI/systemd/systemd-bootx64.efi ]] ||
   fail 'native systemd-boot missing'

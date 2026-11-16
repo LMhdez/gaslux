@@ -57,6 +57,7 @@ def test_real_distinst_not_test_mode_and_only_linux_owned_disk():
     assert "lsblk -dn -o SERIAL" in source
     assert "blockdev --getsize64" in source
     assert "root already contains a filesystem" in source
+    assert "lsblk -dn -o NAME,TYPE" in source
     assert "filesystem.manifest-remove" in source
     assert 'mount -t vfat -o ro "$by_id-part1"' in source
     assert "EFI/systemd/systemd-bootx64.efi" in source
@@ -82,7 +83,8 @@ def test_firstboot_marker_is_from_real_installed_pop_root():
         "readlink -e",
         "findmnt -n -o SOURCE /",
         "virtio-GASLUXPOPFULLVM",
-        "lsblk -dn -o TYPE",
+        "lsblk -dn -o NAME,TYPE",
+        "zram|ram",
         "EFI/systemd/systemd-bootx64.efi",
         "GASLUX_POP_NATIVE_FIRSTBOOT_VERIFIED=1",
     ):

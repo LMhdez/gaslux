@@ -58,9 +58,7 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
             ready_start = len(transcript)
             conn.sendall(b"printf 'GASLUX_POP_LIVE_SHELL_READY\\n'\r")
             try:
-                wait_for(
-                    conn, transcript, READY, timeout_seconds=25, start=ready_start
-                )
+                wait_for(conn, transcript, READY, timeout_seconds=25, start=ready_start)
             except GuestProbeError as error:
                 if "timed out" not in str(error) or attempt == 9:
                     raise

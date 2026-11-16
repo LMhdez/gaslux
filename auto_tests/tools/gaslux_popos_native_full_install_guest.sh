@@ -39,8 +39,11 @@ disk="$(readlink -e "$by_id")"
   fail 'unexpected disk capacity'
 [[ "$(lsblk -dn -o RO "$disk" | tr -d '[:space:]')" == 0 ]] ||
   fail 'owned target not writable'
-[[ "$(lsblk -dn -o TYPE | grep -cx disk)" == 3 ]] ||
-  fail 'unexpected number of guest block disks'
+# Pop live can expose /dev/zram0 as TYPE=disk. Exclude virtual memory
+# devices but refuse any additional physical-style guest disks.
+disks="$(lsblk -dn -o NAME,TYPE |
+  awk '$2=="disk" && $1 !~ /^(zram|ram)[0-9]+$/ {n++} END {print n+0}')"
+[[ "$disks" == 3 ]] || fail 'unexpected number of guest block disks'
 for n in 1 2; do
   [[ -b "$by_id-part$n" ]] || fail "missing expected owned partition $n"
 done
