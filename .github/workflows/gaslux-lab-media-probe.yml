@@ -38,8 +38,8 @@ jobs:
           bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
           shopt -s nullglob
           sources=(assets/live/gaslux_lab_media_probe.py assets/live/gaslux_candidate_handoff.py assets/live/gaslux_candidate_target_audit.py assets/live/gaslux_*preflight.py)
-          tests=(auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_candidate_handoff.py auto_tests/tests/test_candidate_target_audit.py auto_tests/tests/test_*preflight.py)
+          tests=(auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_candidate_handoff.py auto_tests/tests/test_candidate_target_audit.py auto_tests/tests/test_*preflight.py auto_tests/tests/test_popos_ovmf_optical_isolation.py)
           python -m compileall -q "${sources[@]}" "${tests[@]}"
           python -m ruff check --config auto_tests/pyproject.toml "${sources[@]}" "${tests[@]}"
           python -m ruff format --check --config auto_tests/pyproject.toml "${sources[@]}" "${tests[@]}"
-          python -m pytest -q "${tests[@]}" auto_tests/tests/test_popos_ovmf_optical_isolation.py
+          python -m pytest -q "${tests[@]}"
