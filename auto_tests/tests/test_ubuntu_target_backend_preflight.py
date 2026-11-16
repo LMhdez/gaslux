@@ -10,7 +10,9 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "assets/live/configure-target-main.sh"
 
 
-def _validate_target(*, distro: str, os_id: str, backend: str | None) -> subprocess.CompletedProcess:
+def _validate_target(
+    *, distro: str, os_id: str, backend: str | None
+) -> subprocess.CompletedProcess:
     # Execute only function definitions and the pure routing guard; never main().
     # The installed-system /tmp helper is omitted because no real devices are used.
     source = TARGET.read_text(encoding="utf-8")
