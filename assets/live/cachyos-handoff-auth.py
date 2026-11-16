@@ -21,7 +21,7 @@ from typing import Any, Callable
 KEYS = frozenset({
     "schemaVersion", "backend", "distribution", "runId", "bootNonce",
     "firmware", "partitionStyle", "secureBootEnabled", "isoSha256",
-    "isoSizeBytes", "isoStorageUuid", "rootUuid", "targetDiskId",
+    "isoSizeBytes", "isoStorageUuid", "isoStorageFilesystem", "isoRelativePath", "rootUuid", "targetDiskId",
     "windowsEspUuid", "windowsLoaderSha256",
 })
 ARGS = frozenset({
@@ -86,6 +86,19 @@ def validate_document(doc: dict[str, Any]) -> None:
     ):
         require(isinstance(doc[key], str) and regex.fullmatch(doc[key]) is not None,
                 "invalid " + key)
+    require(doc["isoStorageFilesystem"] in ("ntfs", "ext4"),
+            "invalid signed ISO storage filesystem")
+    require(isinstance(doc["isoRelativePath"], str) and
+            re.fullmatch(r"/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*[.]iso",
+                         doc["isoRelativePath"]) is not None and
+            not any(part in (".", "..") for part in doc["isoRelativePath"].split("/")),
+            "invalid signed ISO relative path")
+    if doc["isoStorageFilesystem"] == "ntfs":
+        require(re.fullmatch(r"[0-9A-F]{16}", doc["isoStorageUuid"]) is not None,
+                "NTFS source UUID malformed")
+    else:
+        require(UUID.fullmatch(doc["isoStorageUuid"]) is not None,
+                "ext4 source UUID malformed")
     require(type(doc["isoSizeBytes"]) is int and
             doc["isoSizeBytes"] >= 500_000_000 and
             doc["isoSizeBytes"] <= 12_000_000_000,
