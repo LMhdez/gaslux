@@ -191,6 +191,44 @@ TimeoutStartSec=40
 WantedBy=multi-user.target
 UNIT
 arch-chroot "$TARGET" systemctl enable gaslux-ci-firstboot.service
+# This separate lab feature installs a disabled-by-default update test service
+# into the disposable VM. It does NOTHING unless QEMU fw_cfg contains the
+# exact, host-provided update phase marker. Not a product update mechanism.
+[[ -f /run/gaslux-lab/update.sh && ! -L /run/gaslux-lab/update.sh &&
+   -f /run/gaslux-lab/update.sha256 && ! -L /run/gaslux-lab/update.sha256 ]] ||
+  die 'missing isolated test updater from signed QEMU boot volume'
+(cd /run/gaslux-lab && sha256sum --check update.sha256) ||
+  die 'update guest script failed SHA-256 verification'
+install -m 0755 /run/gaslux-lab/update.sh "$TARGET/usr/local/sbin/gaslux-ci-vm-update"
+mkdir -p "$TARGET/etc/systemd/network"
+cat > "$TARGET/etc/systemd/network/20-gaslux-disposable-qemu.network" <<'NET'
+[Match]
+Name=en*
+
+[Network]
+DHCP=ipv4
+NET
+[[ -f "$TARGET/usr/lib/systemd/system/systemd-networkd.service" &&
+   -f "$TARGET/usr/lib/systemd/system/systemd-resolved.service" ]] ||
+  die 'native systemd network services missing from minimal target'
+arch-chroot "$TARGET" systemctl enable systemd-networkd systemd-resolved
+ln -sfn /run/systemd/resolve/stub-resolv.conf "$TARGET/etc/resolv.conf"
+cat > "$TARGET/etc/systemd/system/gaslux-ci-vm-update.service" <<'UNIT'
+[Unit]
+Description=Gaslux QEMU-only signed pacman/GRUB update fault injection
+After=gaslux-ci-firstboot.service network-online.target
+Wants=gaslux-ci-firstboot.service network-online.target
+ConditionVirtualization=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/gaslux-ci-vm-update
+TimeoutStartSec=40min
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+arch-chroot "$TARGET" systemctl enable gaslux-ci-vm-update.service
 sync
 echo 'GASLUX_LAB_TARGET_INSTALLED=1'
 echo 'GASLUX_LAB_WINDOWS_RECOVERY_NOT_TESTED=1'
