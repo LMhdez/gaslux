@@ -145,7 +145,7 @@ iso_args=(-drive "if=none,id=officialiso,readonly=on,format=raw,file=$iso"
           -device virtio-blk-pci,drive=officialiso,bootindex=2)
 timeout --kill-after=5s 720s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
-  -display none -vnc 127.0.0.1:1 -vga std -monitor none -no-reboot -net none \
+  -display none -vnc 127.0.0.1:1 -vga virtio -monitor none -no-reboot -net none \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
