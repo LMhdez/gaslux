@@ -110,6 +110,14 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
     sha256sum "$lab_script" | awk '{print $1 "  install.sh"}' > "$w/install.sha256"
     mcopy -i "$fat" "$lab_script" ::/install.sh
     mcopy -i "$fat" "$w/install.sha256" ::/install.sha256
+    updater="$PWD/auto_tests/tools/cachyos_vm_update_recovery_guest.sh"
+    [[ -f "$updater" && ! -L "$updater" ]] || {
+      echo 'Missing VM-only update recovery helper' >&2
+      exit 2
+    }
+    sha256sum "$updater" | awk '{print $1 "  update.sh"}' > "$w/update.sha256"
+    mcopy -i "$fat" "$updater" ::/update.sh
+    mcopy -i "$fat" "$w/update.sha256" ::/update.sha256
   fi
 fi
 # The live preflight requires explicit SecureBoot=0 firmware evidence.
@@ -276,7 +284,15 @@ if [[ "$lab_install" -eq 1 ]]; then
     exit 1
   fi
   echo 'PASS: independent installed CachyOS LTS kernel, ext4 root and GRUB EFI boot.'
-  echo 'NOT TESTED: full desktop, Windows dual boot, update/rollback or hardware.'
+  if [[ "${GASLUX_LAB_UPDATE_ROLLBACK:-0}" == 1 ]]; then
+    [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" ]] || {
+      echo 'VM update/recovery requires an evidence directory' >&2
+      exit 2
+    }
+    bash auto_tests/tools/cachyos_qemu_update_rollback.sh \
+      "$w/target.qcow2" "$code" "$vars" "$GASLUX_BOOT_EVIDENCE_DIR"
+  fi
+  echo 'NOT TESTED: full desktop, Windows dual boot, production rollback or hardware.'
 else
   echo 'NOT TESTED: installed CachyOS, Windows dual boot, or Windows recovery.'
 fi
