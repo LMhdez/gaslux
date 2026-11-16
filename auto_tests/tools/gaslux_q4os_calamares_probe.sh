@@ -81,7 +81,7 @@ mkdir -m 0700 "$hooks_dir"
 for file in "${hook_files[@]}"; do
   # Positive regular-file proof from the verified ISO SquashFS metadata.
   if ! unsquashfs -ll "$squash" "$file" |
-       grep -E "^[-]r[-wxsStT]{9} " |
+       grep -E "^[-]r[-rwxstST]{9} " |
        grep -Fq "squashfs-root/$file"; then
     die "Q4OS hook is missing, symlinked or not a regular SquashFS file: $file"
   fi
