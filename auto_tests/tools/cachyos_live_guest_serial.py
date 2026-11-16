@@ -94,7 +94,9 @@ def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345) -
         if PASSWORD.search(bytes(prompt_bytes)):
             sock.sendall(b"cachyos\r")
             break
-        if b"Last login:" in prompt_bytes or re.search(rb"(?m)[^\r\n]*[~\s]#\s*$", prompt_bytes):
+        if b"Last login:" in prompt_bytes or re.search(
+            rb"(?m)\[?root@CachyOS[^\r\n]{0,120}\]?#\s*$", prompt_bytes
+        ):
             break
         if b"Login incorrect" in prompt_bytes:
             raise ProbeError("the live console refused the root login")
