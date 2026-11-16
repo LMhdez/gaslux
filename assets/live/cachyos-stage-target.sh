@@ -29,8 +29,7 @@ PY
   for cmd in pacstrap arch-chroot pacman findmnt blkid; do
     command -v "$cmd" >/dev/null || die "required command missing: $cmd"
   done
-  grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*$' "$TARGET/etc/pacman.conf" || die 'installed pacman config lacks CachyOS'
-  printf '%s\n' "$hostname" > "$TARGET/etc/hostname"
+  grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*$' /etc/pacman.conf || die 'CachyOS pacman repo missing'
 }
 
 check_target() {
@@ -73,10 +72,8 @@ install_target() {
     e2fsprogs dosfstools ntfs-3g \
     plasma-meta sddm konsole dolphin xorg-server xorg-xwayland python
   [ -f "$TARGET/etc/os-release" ] || die 'pacstrap did not create the target OS'
-  # Keep the installed system on the same signed CachyOS/Arch repositories
-  # used by the verified live installer. pacstrap may otherwise leave a plain
-  # Arch pacman.conf with no CachyOS repositories after the first upgrade.
-  [ -f /etc/pacman.conf ] && [ ! -L /etc/pacman.conf ] || die 'trusted live pacman configuration missing'
+  # Preserve signed CachyOS repositories and mirror configuration after pacstrap.
+  [ -f /etc/pacman.conf ] && [ ! -L /etc/pacman.conf ] || die 'trusted pacman configuration missing'
   install -m 0644 /etc/pacman.conf "$TARGET/etc/pacman.conf"
   install -d -m 0755 "$TARGET/etc/pacman.d"
   for mirror in mirrorlist cachyos-mirrorlist cachyos-v3-mirrorlist cachyos-v4-mirrorlist; do
@@ -86,34 +83,9 @@ install_target() {
   done
   [ -s "$TARGET/etc/pacman.d/mirrorlist" ] || die 'Arch repository mirrorlist missing'
   [ -s "$TARGET/etc/pacman.d/cachyos-mirrorlist" ] || die 'CachyOS repository mirrorlist missing'
-  grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*  printf '%s\n' "$hostname" > "$TARGET/etc/hostname"
-  printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' "$hostname" "$hostname" > "$TARGET/etc/hosts"
-  printf 'LANG=%s\n' "$locale" > "$TARGET/etc/locale.conf"
-  printf '%s UTF-8\n' "$locale" >> "$TARGET/etc/locale.gen"
-  arch-chroot "$TARGET" locale-gen
-  arch-chroot "$TARGET" ln -sfn "/usr/share/zoneinfo/$timezone" /etc/localtime
-  arch-chroot "$TARGET" hwclock --systohc
-  arch-chroot "$TARGET" useradd -m -s /bin/bash -G wheel "$username"
-  IFS= read -r hash < "$secret" || true
-  printf '%s:%s\n' "$username" "$hash" | arch-chroot "$TARGET" chpasswd --encrypted
-  hash=''
-  install -d -m 0750 "$TARGET/etc/sudoers.d"
-  printf '%%wheel ALL=(ALL:ALL) ALL\n' > "$TARGET/etc/sudoers.d/10-libertix-wheel"
-  chmod 0440 "$TARGET/etc/sudoers.d/10-libertix-wheel"
-  arch-chroot "$TARGET" visudo -cf /etc/sudoers
-  arch-chroot "$TARGET" mkinitcpio -P
-  arch-chroot "$TARGET" systemctl enable NetworkManager.service sddm.service
-  echo 'Target configured, but deliberately not bootable: EFI/GRUB not installed.'
-}
-
-case "${1:---help}" in
-  --check) [ "$#" -eq 1 ] || { usage; exit 2; }; check_host ;;
-  --install) [ "$#" -eq 8 ] || { usage; exit 2; }; install_target "$2" "$3" "$4" "$5" "$6" "$7" "$8" ;;
-  -h|--help) usage ;;
-  *) usage >&2; exit 2 ;;
-esac
- "$TARGET/etc/pacman.conf" || die 'installed pacman config lacks CachyOS'
+  grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*$' "$TARGET/etc/pacman.conf" || die 'CachyOS repository missing from target'
   printf '%s\n' "$hostname" > "$TARGET/etc/hostname"
+  printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' "$hostname" "$hostname" > "$TARGET/etc/hosts"
   printf 'LANG=%s\n' "$locale" > "$TARGET/etc/locale.conf"
   printf '%s UTF-8\n' "$locale" >> "$TARGET/etc/locale.gen"
   arch-chroot "$TARGET" locale-gen
