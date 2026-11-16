@@ -90,6 +90,7 @@ def inspect_cachyos_iso_root(iso_root: Path, *, runner: Runner = subprocess.run)
         "ID_LIKE": "arch",
         "NAME": "CachyOS Linux",
         "IMAGE_ID": "cachyos",
+        "IMAGE_VERSION": "2026.08.09",
     }
     if any(os_release.get(key) != value for key, value in expected.items()):
         raise PreflightError("Not the expected CachyOS 260809 Archiso live identity")
