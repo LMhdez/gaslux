@@ -52,20 +52,23 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 acl
           sudo setfacl -m "u:$(id -un):rw" /dev/kvm
-          # Start an empty machine with CPUs paused (-S). No drive argument,
-          # no network and no operating-system image: cannot modify disks.
+          # Never use -S: the prior paused probe incorrectly claimed KVM
+          # supported even though actual vCPU execution failed with EPERM.
+          # This launches a diskless machine without any block, host device,
+          # network or guest image; CPU must run for the timeout duration.
           set +e
-          timeout --kill-after=2s 3s qemu-system-x86_64 \
+          timeout --kill-after=2s 5s qemu-system-x86_64 \
             -machine q35,accel=kvm,smm=on -cpu host -smp 2 -m 256 \
-            -S -nodefaults -display none -monitor none -serial none \
+            -nodefaults -display none -monitor none -serial none \
             > "$RUNNER_TEMP/kvm-only-probe.log" 2>&1
           rc=$?
           set -e
-          if [[ "$rc" == 124 ]]; then
-            echo 'GASLUX_QEMU_KVM_BOOTSTRAP=true'
-            echo 'GASLUX_QEMU_KVM_BOOTSTRAP=true' >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$rc" == 124 ]] &&
+             ! grep -Eiq 'permission denied|failed to initialize kvm|could not access kvm' "$RUNNER_TEMP/kvm-only-probe.log"; then
+            echo 'GASLUX_QEMU_KVM_VCPU_EXECUTES=true'
+            echo 'GASLUX_QEMU_KVM_VCPU_EXECUTES=true' >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "GASLUX_QEMU_KVM_BOOTSTRAP=false (QEMU=$rc)"
-            echo 'GASLUX_QEMU_KVM_BOOTSTRAP=false' >> "$GITHUB_STEP_SUMMARY"
+            echo "GASLUX_QEMU_KVM_VCPU_EXECUTES=false (QEMU=$rc)"
+            echo 'GASLUX_QEMU_KVM_VCPU_EXECUTES=false' >> "$GITHUB_STEP_SUMMARY"
             tail -c 2000 "$RUNNER_TEMP/kvm-only-probe.log"
           fi
