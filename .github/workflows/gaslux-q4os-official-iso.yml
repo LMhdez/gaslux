@@ -6,6 +6,7 @@ on:
       - feature/q4os-native-preflight
     paths:
       - '.github/workflows/gaslux-q4os-official-iso.yml'
+      - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
   workflow_dispatch:
 
 permissions:
