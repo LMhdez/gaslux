@@ -23,7 +23,10 @@ class PacmanTrustTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.config = Path(self.temp.name) / "pacman.conf"
-        self.config.write_text("[options]\nSigLevel = Required DatabaseOptional\n[core]\n", encoding="utf-8")
+        self.config.write_text(
+            "[options]\nSigLevel = Required DatabaseOptional\n[core]\n",
+            encoding="utf-8",
+        )
         self.outputs = {
             ("SigLevel",): "Required DatabaseOptional",
             ("--repo-list",): "cachyos\ncore\nextra\n",

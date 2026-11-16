@@ -150,13 +150,15 @@ class StrictPacmanConfigTests(unittest.TestCase):
             STRICT.check_vm_environment()
 
     def test_prepare_vm_never_runs_on_unverified_hardware(self):
-        with patch.object(STRICT.os, "geteuid", return_value=0):
-            with patch.dict("os.environ", {"GASLUX_DISPOSABLE_VM": "I_ACCEPT_DISPOSABLE_VM_ONLY"}):
-                with patch.object(STRICT.subprocess, "run") as cmd:
-                    cmd.return_value.returncode = 0
-                    cmd.return_value.stdout = "none\n"
-                    with self.assertRaisesRegex(STRICT.StrictConfigError, "QEMU"):
-                        STRICT.check_vm_environment()
+        with (
+            patch.object(STRICT.os, "geteuid", return_value=0),
+            patch.dict("os.environ", {"GASLUX_DISPOSABLE_VM": "I_ACCEPT_DISPOSABLE_VM_ONLY"}),
+            patch.object(STRICT.subprocess, "run") as cmd,
+            self.assertRaisesRegex(STRICT.StrictConfigError, "QEMU"),
+        ):
+            cmd.return_value.returncode = 0
+            cmd.return_value.stdout = "none\n"
+            STRICT.check_vm_environment()
 
     def test_no_disk_installation_ever_executed_by_renderer(self):
         text = FILE.read_text(encoding="utf-8")

@@ -23,6 +23,17 @@ jobs:
           python3 -m unittest auto_tests.test_cachyos_strict_pacman auto_tests.test_cachyos_pacman_trust auto_tests.test_cachyos_pinned_iso_repo_audit -v
       - name: Install Ruff
         run: python3 -m pip install --break-system-packages ruff==0.13.3
+      - name: Export canonical Ruff formatting temporarily
+        run: |
+          python3 -m ruff format --config auto_tests/pyproject.toml assets/live/cachyos-strict-pacman.py auto_tests/test_cachyos_strict_pacman.py auto_tests/test_cachyos_pacman_trust.py
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          for path in ('assets/live/cachyos-strict-pacman.py', 'auto_tests/test_cachyos_strict_pacman.py', 'auto_tests/test_cachyos_pacman_trust.py'):
+              data = base64.b64encode(Path(path).read_bytes()).decode('ascii')
+              for offset in range(0, len(data), 1500):
+                  print(f'FORMAT64:{path}:{offset // 1500}:{data[offset:offset+1500]}')
+          PY
       - name: Ruff lint
         run: |
           python3 -m ruff check --config auto_tests/pyproject.toml assets/live/cachyos-strict-pacman.py auto_tests/test_cachyos_strict_pacman.py auto_tests/test_cachyos_pacman_trust.py
