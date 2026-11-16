@@ -81,10 +81,18 @@ def inspect_cachyos_iso_root(iso_root: Path, *, runner: Runner = subprocess.run)
     os_release = parse_os_release(
         _run_unsquashfs(runner, ["-cat", str(squashfs), "etc/os-release"], "os-release")
     )
-    # The official CachyOS *live ISO* currently sets ID=arch; never rely on
-    # ID=cachyos or ID_LIKE=arch to identify this particular payload.
-    if os_release.get("ID") != "arch" or os_release.get("NAME") != "CachyOS":
-        raise PreflightError("Not the expected CachyOS Archiso live image")
+    # Verified against official CachyOS desktop 260809 ISO. Unlike the
+    # previous synthetic fixture, its live squashfs identifies as CachyOS
+    # itself, with Arch only in ID_LIKE. Require all identity fields; a
+    # generic Arch ISO must never be accepted merely because pacman exists.
+    expected = {
+        "ID": "cachyos",
+        "ID_LIKE": "arch",
+        "NAME": "CachyOS Linux",
+        "IMAGE_ID": "cachyos",
+    }
+    if any(os_release.get(key) != value for key, value in expected.items()):
+        raise PreflightError("Not the expected CachyOS 260809 Archiso live identity")
 
     inventory = _run_unsquashfs(
         runner, ["-ll", str(squashfs), "etc/pacman.conf", "usr/bin/pacman"], "capabilities"
@@ -97,7 +105,9 @@ def inspect_cachyos_iso_root(iso_root: Path, *, runner: Runner = subprocess.run)
 
     return {
         "distribution": "cachyos",
-        "live_os_release_id": "arch",
+        "live_os_release_id": "cachyos",
+        "live_os_release_id_like": "arch",
+        "live_os_image_id": "cachyos",
         "iso_layout": "archiso",
         "rootfs_relative_path": "arch/x86_64/airootfs.sfs",
         "requires_separate_arch_installer_backend": True,
