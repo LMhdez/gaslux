@@ -23,7 +23,7 @@ jobs:
       - name: Prepare isolated ISO lab tools
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso gnupg curl ca-certificates ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso gnupg curl ca-certificates ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools gdisk
       - name: Resolve official ISO API with exact release identity and versioned URL
         shell: bash
         run: |
