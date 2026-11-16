@@ -88,9 +88,12 @@ if len(entries)!=1 or 'systemd.run=' in lines[entries[0]]:
     raise SystemExit('Unexpected backend GRUB kernel line')
 i=entries[0]
 if not lines[i].endswith('\n'): raise SystemExit('Kernel line lacks newline')
+# Avoid GRUB/kernel command-line quoting ambiguity entirely. The fstab
+# generator mounts the read-only control media before the run-generator
+# starts a SINGLE, argument-free executable (both documented by systemd).
 flags=(
-    ' systemd.run="/usr/bin/mount -L GASLUXCTL -o ro /mnt"'
-    ' systemd.run="/usr/bin/bash /mnt/gaslux-run.sh"'
+    ' systemd.mount-extra=LABEL=GASLUXCTL:/mnt:vfat:ro'
+    ' systemd.run=/mnt/gaslux-run.sh'
     ' systemd.run_success_action=none systemd.run_failure_action=none'
 )
 lines[i]=lines[i][:-1]+flags+'\n'
@@ -130,8 +133,15 @@ timeout --kill-after=5s 3300s qemu-system-x86_64 \
   -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
   -serial "file:$w/live-serial.log" &
 vm_pid=$!
-for _ in $(seq 1 655); do
+for attempt in $(seq 1 655); do
   sleep 5
+  # A booted live ISO with no running guest installation is NOT a pass.
+  # Stop promptly if the systemd hook never executes (max 15 minutes).
+  if (( attempt == 180 )) && ! grep -q 'GASLUX_VM_INSTALL_BEGIN' "$w/live-serial.log" 2>/dev/null; then
+    echo 'FAIL: live Archiso never executed the authenticated QEMU-only installer'
+    kill "$vm_pid" 2>/dev/null || true
+    break
+  fi
   if grep -q 'GASLUX_VM_INSTALL_FAILED:' "$w/live-serial.log" 2>/dev/null; then
     kill "$vm_pid" 2>/dev/null || true
     break
