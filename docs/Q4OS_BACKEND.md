@@ -119,3 +119,47 @@ be claimed after reviewing the exact-head GitHub Actions result.
 
 The production catalogue, WPF wizard and Windows/BCD/ESP writers remain
 untouched. Q4OS remains experimental; no stable dual-boot support is claimed.
+
+## Native package-owned EFI GRUB and two-boot disposable OVMF proof
+
+The follow-on experimental [PR #45](https://github.com/LMhdez/gaslux/pull/45)
+tests a second boot using a **package-installed EFI GRUB loader** instead
+of the earlier runner-built temporary EFI loader. This is not full Calamares
+execution or a production Windows coexistence test.
+
+The exact Q4OS 6.10 r2 live SquashFS initially lacked `x86_64-efi` GRUB
+modules. The lab downloads `grub-efi-amd64-unsigned` and
+`grub-efi-amd64-bin` with **Debian 13 signed APT repository metadata**,
+requires matching package versions and verifies their SHA-256 before
+offline guest `dpkg -i`. The observed packages had version
+`2.12-9+deb13u2`. The guest verifies package status and module ownership
+with `dpkg-query` and `dpkg -S` before invoking its own
+`grub-install --target=x86_64-efi --no-nvram --recheck` and
+`grub-mkconfig`.
+
+All native bootloader writes stay on the guest-created GPT ESP. Guest code
+rejects Windows EFI files, incorrect root/ESP filesystem/UUID/partition
+labels, additional disks, non-QEMU firmware, and unexpected changes to the
+original lab-created fallback EFI file. No NVRAM creation or host device
+passthrough is permitted. The controlled guest-only fallback copy happens
+after all these checks, and is prohibited for any Windows/shared ESP.
+
+In the second QEMU invocation, only the same disposable GPT image and
+temporary OVMF variables are presented, with **no ISO**. A pass requires
+the real guest's second-boot systemd service to attest the pinned
+`uname -r`, `BOOT_IMAGE` kernel command line, Q4OS version,
+guest-owned ext4 root UUID and both EFI loader file hashes, as well as
+the Q4OS native GRUB menu output. A mere GRUB menu is never accepted as
+proof of a successful Linux boot.
+
+[GitHub Actions #43978320653](https://github.com/LMhdez/gaslux/actions/runs/43978320653)
+reached a **passing native GRUB installed-guest two-boot step** on commit
+`00fca87de6ffc5cd2744a78a4a347aeeb0f52dac`.
+Its separate ISO live-boot stage must be checked independently for a
+complete workflow pass.
+
+**Still not demonstrated:** full Q4OS Calamares view modules, Q4OS
+`q4oshook*` execution, real account/localization provisioning, final
+signed installation transaction, Windows 10/11 dual boot, loader updates,
+boot durability, removal or WinRE/BCD/ESP/MBR rollback. Native package
+boot alone cannot authorize an end-user Q4OS installation or stable release.
