@@ -88,12 +88,17 @@ if len(entries)!=1 or 'systemd.run=' in lines[entries[0]]:
     raise SystemExit('Unexpected backend GRUB kernel line')
 i=entries[0]
 if not lines[i].endswith('\n'): raise SystemExit('Kernel line lacks newline')
-# Avoid GRUB/kernel command-line quoting ambiguity entirely. The fstab
-# generator mounts the read-only control media before the run-generator
-# starts a SINGLE, argument-free executable (both documented by systemd).
+# systemd.run-generator targets default.target, but the real Gaslux live
+# kernel line selects systemd.unit=multi-user.target. Without an explicit
+# systemd.wants=kernel-command-line.service, the generated service is never
+# started (proven by Actions 43948740731: ISO login but no installer).
+# Also mount the FAT control medium read-only but executable so the
+# service can exec its shebang; a non-executable script would fail closed.
+# No raw shell commands or physical disk identifiers enter this GRUB entry.
 flags=(
-    ' systemd.mount-extra=LABEL=GASLUXCTL:/mnt:vfat:ro'
+    ' systemd.mount-extra=LABEL=GASLUXCTL:/mnt:vfat:ro,exec'
     ' systemd.run=/mnt/gaslux-run.sh'
+    ' systemd.wants=kernel-command-line.service'
     ' systemd.run_success_action=none systemd.run_failure_action=none'
 )
 lines[i]=lines[i][:-1]+flags+'\n'
