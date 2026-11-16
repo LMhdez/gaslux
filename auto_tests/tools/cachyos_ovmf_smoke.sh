@@ -57,7 +57,7 @@ timeout --kill-after=2s 55s qemu-system-x86_64 \
     -display none \
     -monitor none \
     -no-reboot \
-    -boot order=d \
+    -boot order=c \
     -drive if=pflash,format=raw,readonly=on,file="$code" \
     -drive if=pflash,format=raw,file="$workspace/OVMF_VARS.fd" \
     -device qemu-xhci \
