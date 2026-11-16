@@ -13,6 +13,7 @@ on:
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
       - 'auto_tests/tools/gaslux_popos_guest_serial.py'
       - 'auto_tests/tools/gaslux_popos_vm_guest_probe.sh'
+      - 'auto_tests/tools/gaslux_popos_vm_target_test.sh'
   workflow_dispatch:
 
 permissions:
