@@ -9,7 +9,7 @@ BOOT = ROOT / "auto_tests/tools/gaslux_candidate_live_boot.sh"
 def test_iso_is_emulated_as_read_only_optical_and_never_host_block_device():
     source = BOOT.read_text(encoding="utf-8")
     assert 'printf \'%s  %s\\n\' "$digest" "$iso" | sha256sum -c --status' in source
-    assert 'readonly=on,format=raw,file=$iso' in source
+    assert "readonly=on,format=raw,file=$iso" in source
     assert "-device virtio-blk-pci,drive=officialiso,bootindex=2" in source
     assert "-device qemu-xhci" not in source
     assert 'iso_args=(-cdrom "$iso")' in source
