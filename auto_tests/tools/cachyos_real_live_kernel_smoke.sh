@@ -2,7 +2,11 @@
 # Real CachyOS Archiso live-kernel smoke, from ISO file on a disposable
 # ext4 QEMU disk. Never uses any host or Windows physical block device.
 set -Eeuo pipefail
-[[ $# -eq 2 ]] || { echo 'Usage: smoke.sh ISO PINNED_SHA256' >&2; exit 2; }
+[[ $# -eq 2 || ( $# -eq 3 && "$3" == "--generated" ) ]] || {
+  echo 'Usage: smoke.sh ISO PINNED_SHA256 [--generated]' >&2; exit 2;
+}
+generated=0
+if [[ $# -eq 3 ]]; then generated=1; fi
 iso="$(realpath "$1")"
 hash="$2"
 [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || exit 2
@@ -15,7 +19,14 @@ for tool in grub-mkstandalone qemu-system-x86_64 mkfs.ext4 debugfs \
   command -v "$tool" >/dev/null || { echo "Missing $tool" >&2; exit 2; }
 done
 w="$(mktemp -d -t cachyos-real-boot-XXXXXX)"
-trap 'rm -rf "$w"' EXIT
+iso_mounted=0
+cleanup() {
+  if [[ "$iso_mounted" == 1 ]]; then
+    sudo umount "$w/mounted" || true
+  fi
+  rm -rf "$w"
+}
+trap cleanup EXIT
 uuid="$(python3 -c 'import uuid; print(uuid.uuid4())')"
 disk="$w/ext4.img"
 truncate -s 5G "$disk"
@@ -25,6 +36,18 @@ debugfs -R "stat /cachyos.iso" "$disk" > "$w/stat.log" 2>&1
 grep -Eq 'Size: [1-9][0-9]+' "$w/stat.log" || {
   echo 'No ISO in disposable virtual ext4 volume' >&2; exit 1;
 }
+if (( generated )); then
+  command -v grub-script-check >/dev/null ||
+    { echo 'Missing grub-script-check' >&2; exit 2; }
+  mkdir -p "$w/mounted"
+  sudo mount -o ro,loop "$iso" "$w/mounted"
+  iso_mounted=1
+  python3 auto_tests/tools/cachyos_generated_boot_config.py \
+    "$iso" "$hash" "$uuid" "$w/mounted" "$w/grub.cfg" "$w/boot-report.json"
+  grub-script-check "$w/grub.cfg"
+  sudo umount "$w/mounted"
+  iso_mounted=0
+else
 cat > "$w/grub.cfg" <<GRUB
 serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
 terminal_input serial
@@ -40,6 +63,15 @@ menuentry 'CachyOS real Archiso kernel validation' {
   initrd (iso)/arch/boot/x86_64/initramfs-linux-cachyos-lts.img
 }
 GRUB
+fi
+if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" ]]; then
+  mkdir -p "$GASLUX_BOOT_EVIDENCE_DIR"
+  install -m 0600 "$w/grub.cfg" "$GASLUX_BOOT_EVIDENCE_DIR/grub.cfg"
+  if (( generated )); then
+    install -m 0600 "$w/boot-report.json" "$GASLUX_BOOT_EVIDENCE_DIR/generated-boot-report.json"
+  fi
+  ( cd "$GASLUX_BOOT_EVIDENCE_DIR" && sha256sum grub.cfg > grub.sha256 )
+fi
 grub-mkstandalone --format=x86_64-efi --output="$w/BOOTX64.EFI" \
   "boot/grub/grub.cfg=$w/grub.cfg"
 fat="$w/boot.img"
@@ -108,4 +140,7 @@ if ! grep -Fq 'CachyOS login:' "$w/serial.log" ||
   exit 1
 fi
 echo 'PASS: official CachyOS LTS kernel and systemd reached real serial login in QEMU/OVMF.'
+if (( generated )); then
+  echo 'PASS: GRUB entry derived from Gaslux Archiso backend (CI-only serial flags).'
+fi
 echo 'NOT TESTED: installed CachyOS, Windows dual boot, target disk mutation or WinRE recovery.'
