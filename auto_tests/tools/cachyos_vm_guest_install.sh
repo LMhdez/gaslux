@@ -59,9 +59,45 @@ timeout 120s nm-online -q --timeout=90 || {
   echo 'GASLUX_VM_NETWORK_NOT_READY'; exit 42;
 }
 echo 'GASLUX_VM_WAIT_KEYRING'
-timeout 240s systemctl start pacman-init.service || {
-  echo 'GASLUX_VM_LIVE_KEYRING_NOT_READY'; exit 43;
-}
+# Archiso already starts pacman-init.service at boot. Calling systemctl
+# start again races with the existing keyring setup and can hide the
+# underlying failure behind the kernel-command-line.service exit code.
+# Poll the single native initialization transaction instead. No pacstrap
+# may proceed while this service is activating or failed.
+keyring_ready=0
+for attempt in $(seq 1 240); do
+  if systemctl is-active --quiet pacman-init.service; then
+    keyring_ready=1
+    break
+  fi
+  if systemctl is-failed --quiet pacman-init.service; then
+    echo 'GASLUX_VM_PACMAN_INIT_FAILED'
+    break
+  fi
+  if (( attempt % 30 == 0 )); then
+    echo "GASLUX_VM_PACMAN_INIT_WAIT_SECONDS=$attempt"
+    systemctl show pacman-init.service -p LoadState -p ActiveState -p SubState -p Result --no-pager || true
+  fi
+  sleep 1
+done
+if (( keyring_ready != 1 )); then
+  # Diagnostic output is permitted only after native service failure.
+  # Never bypass package signature verification or delete keys here.
+  echo 'GASLUX_VM_LIVE_KEYRING_NOT_READY'
+  date -u --iso-8601=seconds || true
+  systemctl status pacman-init.service --no-pager -l || true
+  systemctl show pacman-init.service -p LoadState -p ActiveState -p SubState -p Result -p ExecMainStatus --no-pager || true
+  journalctl -b -u pacman-init.service --no-pager -o cat -n 85 || true
+  echo 'GASLUX_VM_PACMAN_KEYRING_DIAGNOSTICS_END'
+  exit 43
+fi
+# The required trust anchors are vendor-supplied and must be present,
+# never manufactured, downloaded without a pinned origin, or bypassed.
+for keyring in archlinux cachyos; do
+  [[ -s "/usr/share/pacman/keyrings/$keyring.gpg" ]] || {
+    echo "GASLUX_VM_TRUST_ANCHOR_MISSING:$keyring"; exit 44;
+  }
+done
 echo 'GASLUX_VM_NETWORK_KEYRING_READY'
 set +x
 echo 'GASLUX_VM_PACSTRAP_BEGIN'
