@@ -33,8 +33,8 @@ jobs:
       - name: Python syntax and lint
         run: |
           python -m compileall -q assets/live/libertix-installation-plan.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py
-          python -m ruff check assets/live/libertix-installation-plan.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py
-          python -m ruff format --check assets/live/libertix-installation-plan.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py
       - name: Validate live plan and signed catalog schemas
         env:
           PYTHONPATH: auto_tests
@@ -47,9 +47,15 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore and build WPF solution
+        shell: pwsh
+        run: |
+          msbuild Libertix.sln /restore /m /p:Configuration=Release '/p:Platform=Any CPU'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: C# contract tests
         shell: pwsh
-        run: dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release
+        run: dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-build
       - name: Install Pester
         shell: pwsh
         run: Install-Module Pester -Scope CurrentUser -MinimumVersion 5.0.0 -Force -SkipPublisherCheck
