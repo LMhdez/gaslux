@@ -121,7 +121,7 @@ jobs:
           result = audit_q4os_calamares(root)
           print(json.dumps(result, sort_keys=True, indent=2))
           (root / 'native-calamares-audit.json').write_text(
-              json.dumps(result, indent=2, sort_keys=True) + '\\n', encoding='utf-8'
+              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
           )
           if result['installationAuthorized'] or result['windowsEspFallbackWriteAuthorized']:
               raise SystemExit('Q4OS native Calamares must remain lab-only')
@@ -148,11 +148,11 @@ jobs:
           bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
           bash auto_tests/tools/gaslux_candidate_live_boot.sh \
             q4os "$GASLUX_Q4OS_FILE" "$Q4OS_SHA256"
-      - name: Retain SHA-linked read-only evidence
+      - name: Retain provenance-linked disposable guest laboratory evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: q4os-official-610-iso-evidence
+          name: q4os-official-610-disposable-lab-evidence
           path: ${{ runner.temp }}/gaslux-q4os/evidence/
           if-no-files-found: warn
           retention-days: 14
