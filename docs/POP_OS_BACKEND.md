@@ -76,9 +76,10 @@ GitHub Actions can verify the official Pop!_OS ISO but older QEMU runs failed
 because GRUB could not find the live kernel on emulated CD-ROM or USB optical devices.
 The serial evidence listed only the lab EFI disk, so the test now uses a
 second explicitly read-only virtio-blk disk for the verified ISO.
-The dedicated disposable-VM experiment now attaches the signed/digest-checked
+The Pop-specific disposable-VM experiment now attaches the signed/digest-checked
 ISO as a **read-only virtio block device** (separate from the fresh temporary GPT
 ESP disk) and requires a matching live kernel/initramfs and **serial login**.
+The shared Q4OS smoke harness retains its previous optical-media path.
 A missing GRUB device remains a failure, not a boot success. This is a live
 smoke test only; the Windows target disk, System76 distinst, and bootloader
 writers are never attached or invoked.
