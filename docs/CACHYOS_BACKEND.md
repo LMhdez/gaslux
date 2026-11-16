@@ -120,3 +120,71 @@ The official CachyOS ISO's `os-release` uses `ID=arch`, whereas an installed
 CachyOS root is expected to use `ID=cachyos`. The verifier deliberately
 rejects an Archiso live system as an installed target. This distinction must
 remain explicit in any final installer pipeline.
+
+
+## QEMU/KVM UEFI laboratory boot stage (still NOT stable)
+
+A separate branch implements a **lab-only** UEFI configuration and bootloader
+installation path. This DOES NOT connect to the Windows WPF installer.
+
+- `assets/live/cachyos-uefi-config.py`: pure, read-only JSON renderer for an
+  already authenticated transaction. Requires exact ext4 UUID, ESP UUID,
+  Windows ESP UUID, a trusted Windows Boot Manager SHA-256, UEFI firmware and
+  disabled Secure Boot. Rejects unknown fields, malformed identifiers,
+  cross-ESP chainloads and command injection.
+- `assets/live/cachyos-uefi-lab.py`: default mode only prints the generated
+  fstab and Windows GRUB entry. `--apply-vm-lab` requires root, a QEMU/KVM
+  guest, UEFI Secure Boot *provably disabled*, and the environment variable
+  `GASLUX_DISPOSABLE_VM=I_ACCEPT_DISPOSABLE_VM_ONLY`.
+- For a dedicated disposable guest **with its own virtual Windows/ESP and
+  Linux volumes already created**, the apply stage additionally checks Linux
+  UUID/transaction ownership and the SHA-256 of the Windows loader before
+  writing. It refuses existing Linux configuration/EFI objects, then runs
+  `grub-install --target=x86_64-efi --no-nvram --no-extra-removable` in the
+  Arch chroot. It verifies GRUB syntax, Linux/Windows menu entries, the EFI
+  executable, and rechecks the Windows loader hash.
+- No `efibootmgr` writes or firmware BootOrder changes are implemented.
+  Windows EFI files are never overwritten. Consequently this stage **does
+  not demonstrate an automatically bootable installation**.
+- Failure cleanup is limited to transaction-created guest files and EFI
+  directories. The full Windows partition/BCD/WinRE recovery system is
+  neither invoked nor validated here.
+
+### Read-only local test
+
+Example plan input (replace values with *verified values from a disposable
+virtual machine*; do not use production disk identifiers):
+
+```json
+{
+  "version": 1,
+  "firmware": "uefi",
+  "secureBootEnabled": false,
+  "runId": "cachyos-lab-2026",
+  "rootUuid": "01234567-89ab-cdef-0123-456789abcdef",
+  "espUuid": "AB12-CD34",
+  "windowsBootUuid": "AB12-CD34",
+  "windowsBootManagerSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "linuxLabel": "CachyOS Linux",
+  "grubResolution": "1920x1080"
+}
+```
+
+```bash
+python3 assets/live/cachyos-uefi-config.py ./vm-plan.json
+python3 assets/live/cachyos-uefi-lab.py ./vm-plan.json
+python3 -m unittest discover -s auto_tests -p 'test_cachyos_*.py' -v
+```
+
+The example digest is illustrative and is NOT an approved Windows boot binary
+digest. The presence of a GRUB executable on the ESP is not evidence of
+successful firmware boot, a valid Windows return path, or recoverable rollback.
+
+### What is needed before the "stable" label
+
+The highest-risk missing component is a verified Windows-to-Archiso handoff
+and full rollback across EFI/BCD/WinRE and power failure. The official
+CachyOS installer requires a different live system from Libertix's Debian
+mini-ISO. No current test executes the end-to-end installation on a
+Windows 10 or 11 VM, and the working branch deliberately keeps CachyOS
+disabled in the release catalog. See issue #3 for the full acceptance matrix.
