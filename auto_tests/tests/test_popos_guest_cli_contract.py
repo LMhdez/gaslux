@@ -9,8 +9,8 @@ sys.path.insert(0, str(ROOT / "auto_tests/tools"))
 from gaslux_popos_guest_serial import (  # noqa: E402
     FAILED,
     LOGIN,
-    PASSWORD,
     PASSED,
+    PASSWORD,
     READY,
     SHA,
     normalized,
