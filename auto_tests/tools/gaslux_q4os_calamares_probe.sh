@@ -60,6 +60,49 @@ grep -Eq '^VERSION_ID="?13"?$' "$evidence/etc__os-release" ||
 grep -Eq '^6[.]10' "$evidence/etc__q4os_version" ||
   die 'Pinned native ISO has unexpected Q4OS release'
 ( cd "$evidence" && sha256sum etc__* > calamares-files.sha256 )
+# Native Q4OS Calamares process-job descriptors and their referenced shell
+# scripts must originate from THIS SAME ISO, not the runner or a web mirror.
+# This is source inspection, NOT invocation of any of these scripts.
+hook_files=(
+  usr/lib/calamares/modules/q4oshook2/module.desc
+  usr/lib/calamares/modules/q4oshook3/module.desc
+  usr/lib/calamares/modules/q4oshook5/module.desc
+  usr/sbin/q4os-hook2a.sh
+  usr/sbin/q4os-hook3a.sh
+  usr/sbin/q4os-hook3b.sh
+  usr/sbin/q4oshook1.sh
+  usr/sbin/q4oshook4.sh
+  usr/share/apps/q4os_system/bhooks/bhook1_50_live1.sh
+)
+hooks_dir="$evidence/native-hooks"
+[[ ! -e "$hooks_dir" && ! -L "$hooks_dir" ]] ||
+  die 'Hook evidence destination is not fresh'
+mkdir -m 0700 "$hooks_dir"
+for file in "${hook_files[@]}"; do
+  # Positive regular-file proof from the verified ISO SquashFS metadata.
+  if ! unsquashfs -ll "$squash" "$file" |
+       grep -E "^[-]r[-wxsStT]{9} " |
+       grep -Fq "squashfs-root/$file"; then
+    die "Q4OS hook is missing, symlinked or not a regular SquashFS file: $file"
+  fi
+  dest="$hooks_dir/${file//\//__}"
+  [[ ! -e "$dest" && ! -L "$dest" ]] ||
+    die "Q4OS hook evidence destination collision: $file"
+  unsquashfs -cat "$squash" "$file" > "$dest" ||
+    die "Q4OS hook source missing from the pinned ISO: $file"
+  [[ -s "$dest" && "$(stat -c %s "$dest")" -le 131072 ]] ||
+    die "Q4OS hook source empty or oversized: $file"
+done
+(cd "$hooks_dir" && sha256sum -- * > q4os-hooks-files.sha256)
+printf 'GASLUX_Q4OS_HOOK_SOURCES=from-same-SHA256-verified-native-ISO\n'
+printf 'GASLUX_Q4OS_HOOK_EXECUTION_AUTHORIZED=false\n'
+# Show only native hook module descriptors, not their scripts (which can contain
+# commands that must be reviewed independently before running any job).
+for module in q4oshook2 q4oshook3 q4oshook5; do
+  echo "--- Q4OS native descriptor: $module ---"
+  sed -n '1,100p' "$hooks_dir/usr__lib__calamares__modules__${module}__module.desc"
+done
+
 printf 'GASLUX_Q4OS_PINNED_ISO_SHA256=%s\n' "$expected"
 printf 'GASLUX_Q4OS_CALAMARES_SOURCE=verified-iso/live/filesystem.squashfs\n'
 printf 'GASLUX_Q4OS_VERSION='
