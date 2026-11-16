@@ -29,6 +29,8 @@ def test_native_grub_installation_is_guest_owned_and_never_changes_nvram():
     assert "grub-mkconfig -o /boot/grub/grub.cfg" in script
     assert '"$native_loader" "$boot_fallback"' in script
     assert "GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=" in script
+    assert "GASLUX_Q4OS_NATIVE_GRUB_SECOND_KERNEL=6.12.111+deb13-amd64" in script
+    assert "second-kernel-was-not-started-by-grub" in script
     assert "GASLUX_Q4OS_NATIVE_GRUB_INSTALLED=" in script
     assert "efibootmgr -c" not in script
     assert "mkfs." not in script
@@ -67,6 +69,8 @@ def test_host_uses_exactly_its_temporary_gpt_and_two_vm_reboots():
     assert "native-grub-guest verify-second" in script
     assert "GASLUX_Q4OS_NATIVE_GRUB_INSTALLED=6.10-deb13u1" in script
     assert "GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=6.10-deb13u1" in script
+    assert "GASLUX_Q4OS_NATIVE_GRUB_SECOND_KERNEL=6.12.111+deb13-amd64" in script
+    assert "Loading Q4OS operating system" in script
     assert "serial-native-grub.log" in script
     assert "No second installed Q4OS boot proof from package-owned GRUB" in script
     assert "-net none" in script
