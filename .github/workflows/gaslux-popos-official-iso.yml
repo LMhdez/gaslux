@@ -22,18 +22,15 @@ jobs:
       - name: Prepare isolated ISO lab tools
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso
-      - name: Resolve official release API against separately pinned System76 SHA-256
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso gnupg curl ca-certificates
+      - name: Resolve official ISO API with exact release identity and versioned URL
         shell: bash
-        env:
-          POP_OFFICIAL_SHA256: 49567ae95aedbfc0fd238893447df9b2dde3bc6eb7f28653257785a4a067d0b7
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/gaslux-popos"
-          python3 - "$RUNNER_TEMP/gaslux-popos" "$POP_OFFICIAL_SHA256" <<'PY'
+          python3 - "$RUNNER_TEMP/gaslux-popos" <<'PY'
           import json, pathlib, re, sys, urllib.request
           out = pathlib.Path(sys.argv[1])
-          expected = sys.argv[2]
           with urllib.request.urlopen(
               "https://api.pop-os.org/builds/24.04/intel", timeout=40
           ) as response:
@@ -46,8 +43,9 @@ jobs:
               url
           ) is None:
               raise SystemExit("Unexpected official Pop!_OS ISO URL")
-          if data.get("sha_sum") != expected:
-              raise SystemExit("Public System76 download checksum differs from API")
+          digest = data.get("sha_sum")
+          if not isinstance(digest, str) or re.fullmatch("[0-9a-f]{64}", digest) is None:
+              raise SystemExit("Missing or invalid official API SHA-256")
           size = data.get("size")
           if type(size) is not int or size < 2000000000 or size > 6000000000:
               raise SystemExit("Unreasonable or missing official ISO size")
@@ -55,23 +53,56 @@ jobs:
           with open(pathlib.Path(sys.argv[1]) / "download.sh", "w") as stream:
               stream.write('POP_ISO_URL=' + url + '\n')
               stream.write('POP_ISO_SIZE=' + str(size) + '\n')
-          print("Verified official System76 ISO SHA and size metadata, pinned by release URL")
+              stream.write('POP_ISO_SHA256=' + digest + '\n')
+          print("Resolved versioned official System76 API metadata; signature verification still required")
           PY
           source "$RUNNER_TEMP/gaslux-popos/download.sh"
           echo "GASLUX_POP_ISO_URL=$POP_ISO_URL" >> "$GITHUB_ENV"
           echo "GASLUX_POP_ISO_SIZE=$POP_ISO_SIZE" >> "$GITHUB_ENV"
-      - name: Download pinned official ISO and verify bytes
+          echo "GASLUX_POP_ISO_SHA256=$POP_ISO_SHA256" >> "$GITHUB_ENV"
+      - name: Verify official Pop ISO signing key and detached checksum manifest
         shell: bash
-        env:
-          POP_OFFICIAL_SHA256: 49567ae95aedbfc0fd238893447df9b2dde3bc6eb7f28653257785a4a067d0b7
+        run: |
+          set -Eeuo pipefail
+          cd "$RUNNER_TEMP/gaslux-popos"
+          base="${GASLUX_POP_ISO_URL%/*}"
+          curl -fLsS --retry 4 --connect-timeout 20 --max-time 120 -o SHA256SUMS "$base/SHA256SUMS"
+          curl -fLsS --retry 4 --connect-timeout 20 --max-time 120 -o SHA256SUMS.gpg "$base/SHA256SUMS.gpg"
+          # Official pop-os/iso repository names key ID 204DD8AEC33A7AFF.
+          # Pin the complete independently cross-checked key fingerprint.
+          export GNUPGHOME="$RUNNER_TEMP/gaslux-popos/gnupg"
+          install -d -m 0700 "$GNUPGHOME"
+          gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys 204DD8AEC33A7AFF
+          fpr="$(gpg --batch --with-colons --fingerprint 204DD8AEC33A7AFF |
+              awk -F: '$1=="fpr" { print $10; exit }')"
+          test "$fpr" = "63C46DF0140D738961429F4E204DD8AEC33A7AFF" || {
+            echo "::error::Official Pop signing key fingerprint mismatch"; exit 1;
+          }
+          gpg --batch --verify SHA256SUMS.gpg SHA256SUMS
+          basename="${GASLUX_POP_ISO_URL##*/}"
+          python3 - "$basename" "$GASLUX_POP_ISO_SHA256" <<'PY'
+          import re, sys
+          from pathlib import Path
+          name, expected = sys.argv[1:]
+          matches = []
+          for line in Path("SHA256SUMS").read_text(encoding="utf-8").splitlines():
+              m = re.fullmatch(r"([0-9a-f]{64})\s+\*?([^/\s]+)", line)
+              if m and m.group(2) == name:
+                  matches.append(m.group(1))
+          if matches != [expected]:
+              raise SystemExit("Signed ISO checksum does not match exact official API build")
+          print("PASS: Pop ISO digest is authenticated by the official signed SHA256SUMS")
+          PY
+      - name: Download versioned GPG-authenticated ISO and verify exact bytes
+        shell: bash
         run: |
           set -Eeuo pipefail
           cd "$RUNNER_TEMP/gaslux-popos"
           aria2c --continue=true --split=8 --max-connection-per-server=8 \
             --max-tries=6 --retry-wait=8 --timeout=60 --connect-timeout=30 \
             --file-allocation=none --check-integrity=true \
-            --checksum="sha-256=$POP_OFFICIAL_SHA256" -o popos.iso "$GASLUX_POP_ISO_URL"
-          printf '%s  %s\n' "$POP_OFFICIAL_SHA256" popos.iso | sha256sum --check --status
+            --checksum="sha-256=$GASLUX_POP_ISO_SHA256" -o popos.iso "$GASLUX_POP_ISO_URL"
+          printf '%s  %s\n' "$GASLUX_POP_ISO_SHA256" popos.iso | sha256sum --check --status
           test "$(stat -c '%s' popos.iso)" -eq "$GASLUX_POP_ISO_SIZE"
           echo "GASLUX_POP_ISO_FILE=$RUNNER_TEMP/gaslux-popos/popos.iso" >> "$GITHUB_ENV"
       - name: Inspect System76 native live runtime from verified ISO read-only
