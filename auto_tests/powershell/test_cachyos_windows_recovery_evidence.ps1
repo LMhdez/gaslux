@@ -139,6 +139,11 @@ Run-Case 'GPT duplicated partition GUID' {
     $other.partitions[1].guid=$other.partitions[0].guid
     Require-Failure { Assert-GasluxWindowsEvidence $other } 'Overlapping'
 }
+Run-Case 'malformed GPT GUID refused' {
+    $other=New-TestEvidence
+    $other.partitions[1].guid=('{'+ ('-' * 36) +'}')
+    Require-Failure { Assert-GasluxWindowsEvidence $other } 'Overlapping'
+}
 Run-Case 'foreign Windows ESP' {
     $other=New-TestEvidence
     $other.esp.partitionGuid='{33333333-3333-4333-a333-333333333333}'
