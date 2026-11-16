@@ -16,14 +16,19 @@ def _fixture(tmp_path, monkeypatch):
     iso.write_bytes(b"synthetic-not-official")
     squashfs.write_bytes(b"synthetic-squashfs")
     files = {
-        "etc/q4os_version": b"6.10\n",
+        "etc/q4os_version": b"6.10-deb13u1\n",
         "etc/os-release": b"ID=debian\nVERSION_ID=13\n",
         "etc/calamares/settings.conf": (
             b"sequence:\n  - show: [partition, users]\n"
             b"  - exec: [mount, unpackfs, bootloader]\n"
             b"dont-chroot: false\n"
         ),
-        "etc/calamares/modules/unpackfs.conf": b"unpack: []\n",
+        "etc/calamares/modules/unpackfs.conf": (
+            b"unpack:\n  - source: /run/live/medium/live/filesystem.squashfs\n"
+        ),
+        "etc/calamares/modules/bootloader.conf": (
+            b"efiBootLoader: grub\ninstallEFIFallback: true\n"
+        ),
     }
     paths = {key: "-" for key in files}
     paths["usr/bin/calamares"] = "-"
@@ -40,7 +45,14 @@ def test_same_iso_config_identity_and_module_provenance_are_recorded(tmp_path, m
     result = probe.inventory(iso, squashfs, out, tmp_path)
     assert result["source"] == "same-pinned-official-iso-live-squashfs"
     assert result["q4osVersionFile"] == "etc/q4os_version"
-    assert result["q4osVersionText"] == "6.10"
+    assert result["q4osVersionText"] == "6.10-deb13u1"
+    assert result["q4osVersionMatchesOfficialIso"]
+    assert result["upstreamEfiFallbackEnabled"]
+    assert result["efiFallbackWriteSafeForWindows"] is False
+    assert result["nativeUnpackfsSources"] == [
+        "/run/live/medium/live/filesystem.squashfs"
+    ]
+    assert result["calamaresUnattendedHandoffVerified"] is False
     assert result["calamaresBinaryPresent"]
     assert result["calamaresSettingsFile"] == "etc/calamares/settings.conf"
     assert result["calamaresDontChroot"] is False
@@ -48,7 +60,7 @@ def test_same_iso_config_identity_and_module_provenance_are_recorded(tmp_path, m
     assert result["manifest"]["etc/calamares/settings.conf"]["sha256"] == (
         hashlib.sha256(files["etc/calamares/settings.conf"]).hexdigest()
     )
-    assert (out / "source/etc/q4os_version").read_bytes() == b"6.10\n"
+    assert (out / "source/etc/q4os_version").read_bytes() == b"6.10-deb13u1\n"
     assert (out / "calamares-inventory.json").is_file()
     assert result["installationAuthorized"] is False
     assert result["firstBootProven"] is False
@@ -131,3 +143,21 @@ def test_loop_backing_must_match_verified_iso(tmp_path, monkeypatch):
     monkeypatch.setattr(probe.subprocess, "run", lambda *_, **__: next(responses))
     with pytest.raises(ValueError, match="backing file differs"):
         probe.verify_iso_mount_binding(iso, squashfs, root)
+
+def test_disabled_fallback_does_not_implicitly_authorize_install(tmp_path, monkeypatch):
+    iso, squashfs, files, _ = _fixture(tmp_path, monkeypatch)
+    files["etc/calamares/modules/bootloader.conf"] = (
+        b"efiBootLoader: grub\ninstallEFIFallback: false\n"
+    )
+    result = probe.inventory(iso, squashfs, tmp_path / "out", tmp_path)
+    assert result["upstreamEfiFallbackEnabled"] is False
+    assert result["efiFallbackWriteSafeForWindows"] is False
+    assert result["installationAuthorized"] is False
+
+
+def test_mismatched_release_marker_is_not_trusted(tmp_path, monkeypatch):
+    iso, squashfs, files, _ = _fixture(tmp_path, monkeypatch)
+    files["etc/q4os_version"] = b"not-q4os\n"
+    result = probe.inventory(iso, squashfs, tmp_path / "out", tmp_path)
+    assert not result["q4osVersionMatchesOfficialIso"]
+    assert not result["installationAuthorized"]

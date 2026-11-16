@@ -151,6 +151,21 @@ def inventory(iso: Path, squashfs: Path, out: Path, mount_root: Path) -> dict:
     if settings_path and settings_path in captured:
         settings = yaml.safe_load(captured[settings_path])
     stages = modules_in_sequence(settings)
+    bootloader = yaml.safe_load(
+        captured.get("etc/calamares/modules/bootloader.conf", b"{}")
+    )
+    bootloader = bootloader if isinstance(bootloader, dict) else {}
+    unpackfs = yaml.safe_load(
+        captured.get("etc/calamares/modules/unpackfs.conf", b"{}")
+    )
+    unpackfs = unpackfs if isinstance(unpackfs, dict) else {}
+    entries = unpackfs.get("unpack", [])
+    sources = (
+        [entry.get("source") for entry in entries if isinstance(entry, dict)]
+        if isinstance(entries, list)
+        else []
+    )
+    fallback_enabled = bootloader.get("installEFIFallback", True) is not False
     version = captured.get(version_path or "", b"").decode("utf-8", errors="replace").strip()
     has_binary = any(
         paths.get(p) in ("-", "l")
@@ -164,6 +179,11 @@ def inventory(iso: Path, squashfs: Path, out: Path, mount_root: Path) -> dict:
         "q4osVersionText": version[:120],
         "calamaresBinaryPresent": has_binary,
         "calamaresSettingsFile": settings_path,
+        "nativeUnpackfsSources": sources,
+        "q4osVersionMatchesOfficialIso": version == "6.10-deb13u1",
+        "upstreamEfiFallbackEnabled": fallback_enabled,
+        "efiFallbackWriteSafeForWindows": False,
+        "calamaresUnattendedHandoffVerified": False,
         "calamaresDontChroot": settings.get("dont-chroot") if isinstance(settings, dict) else None,
         "sequence": stages,
         "moduleConfigCount": len(module_paths),
@@ -192,8 +212,19 @@ def main() -> int:
     print("Q4OS identity path:", report["q4osVersionFile"])
     print("Calamares binary:", report["calamaresBinaryPresent"])
     print("Calamares settings:", report["calamaresSettingsFile"])
+    print("Q4OS version:", report["q4osVersionText"])
+    print("Native Calamares unpackfs:", report["nativeUnpackfsSources"])
+    print("Upstream EFI fallback enabled:", report["upstreamEfiFallbackEnabled"])
     print("Calamares exec modules:", ", ".join(report["sequence"]["exec"]))
     print("INSTALLATION_AUTHORIZED=false")
+    if not report["q4osVersionMatchesOfficialIso"]:
+        print("FAIL: Q4OS release marker does not match official pinned ISO")
+        return 1
+    if report["nativeUnpackfsSources"] != [
+        "/run/live/medium/live/filesystem.squashfs"
+    ]:
+        print("FAIL: Q4OS native Calamares filesystem source mismatch")
+        return 1
     if not (report["calamaresBinaryPresent"] and report["calamaresSettingsFile"]):
         print("FAIL: native Calamares binary/config not positively identified")
         return 1
