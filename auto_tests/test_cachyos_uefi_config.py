@@ -22,6 +22,7 @@ GOOD = {
     "rootUuid": "01234567-89ab-cdef-0123-456789abcdef",
     "espUuid": "AB12-CD34",
     "windowsBootUuid": "AB12-CD34",
+    "windowsBootManagerSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "linuxLabel": "CachyOS Linux",
     "grubResolution": "1920x1080",
 }
@@ -57,6 +58,10 @@ class UefiConfigTests(unittest.TestCase):
     def test_refuse_cross_disk_windows_loader(self):
         with self.assertRaisesRegex(uefi.PlanError, "share"):
             self.render(windowsBootUuid="EF56-7890")
+
+    def test_refuse_invalid_windows_efi_hash(self):
+        with self.assertRaises(uefi.PlanError):
+            self.render(windowsBootManagerSha256="not-a-checksum")
 
     def test_refuse_non_string_uuid(self):
         with self.assertRaises(uefi.PlanError):
