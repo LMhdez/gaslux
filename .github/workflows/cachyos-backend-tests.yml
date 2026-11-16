@@ -35,6 +35,7 @@ jobs:
             assets/live/cachyos-uefi-config.py \
             assets/live/cachyos-archiso-handoff.py \
             assets/live/cachyos-handoff-auth.py \
+            assets/live/cachyos-signed-grub-handoff.py \
             auto_tests/tools/cachyos_release_gate.py \
             auto_tests/tools/cachyos_lab_readiness.py \
             assets/live/cachyos-uefi-lab.py \
