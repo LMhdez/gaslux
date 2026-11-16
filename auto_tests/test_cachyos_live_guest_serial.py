@@ -20,21 +20,31 @@ class SerialGuestContractTests(unittest.TestCase):
         received = []
         errors = []
 
+        def read_line():
+            line = bytearray()
+            guest.settimeout(3)
+            while not line.endswith(b"\r"):
+                chunk = guest.recv(1)
+                if not chunk:
+                    raise ConnectionError("fake serial client ended mid-command")
+                line.extend(chunk)
+            return bytes(line)
+
         def guest_session():
             try:
                 guest.sendall(b"Welcome to CachyOS\nCachyOS login: ")
-                received.append(guest.recv(1024))
+                received.append(read_line())
                 if password:
                     guest.sendall(b"Password: ")
-                    received.append(guest.recv(1024))
+                    received.append(read_line())
                 guest.sendall(b"[root@CachyOS ~]# ")
-                ready = guest.recv(1024)
+                ready = read_line()
                 received.append(ready)
                 guest.sendall(
                     b"printf 'GASLUX_ROOT_SHELL_READY\\n'\r\n"
                     b"GASLUX_ROOT_SHELL_READY\r\n"
                 )
-                command = guest.recv(4096)
+                command = read_line()
                 received.append(command)
                 if result:
                     guest.sendall(
