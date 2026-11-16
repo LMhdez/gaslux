@@ -139,7 +139,7 @@ class WindowsRecoveryFixtureTests(unittest.TestCase):
     def test_recovery_status_does_not_override_raw_evidence(self):
         self.rejected(
             lambda a, b: b.update(winreRaw="Windows RE status: Disabled"),
-            message="winreRaw",
+            message="Windows WinRE raw status",
         )
 
     def test_encrypted_windows_cannot_be_cachyos_installation_source(self):
