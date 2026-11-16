@@ -24,9 +24,17 @@ findmnt -rn -M /run/gaslux-pop-lab -o OPTIONS | tr , '\n' | grep -qx ro ||
 [[ -d /sys/firmware/efi/efivars ]] || fail 'guest did not enter UEFI mode'
 shopt -s nullglob
 secure=("/sys/firmware/efi/efivars"/SecureBoot-*)
-[[ "${#secure[@]}" == 1 ]] || fail 'ambiguous SecureBoot firmware state'
+setup=("/sys/firmware/efi/efivars"/SetupMode-*)
+[[ "${#secure[@]}" == 1 && "${#setup[@]}" == 1 ]] ||
+  fail 'missing or ambiguous EFI SecureBoot/SetupMode firmware state'
+[[ "$(stat -c '%s' "${secure[0]}")" == 5 &&
+   "$(stat -c '%s' "${setup[0]}")" == 5 ]] ||
+  fail 'invalid EFI security variable lengths'
 secure_value="$(od -An -tu1 -j4 -N1 "${secure[0]}" | tr -d '[:space:]')"
-[[ "$secure_value" == 0 ]] || fail 'Secure Boot enabled or unreadable'
+setup_value="$(od -An -tu1 -j4 -N1 "${setup[0]}" | tr -d '[:space:]')"
+[[ "$secure_value" == 0 && "$setup_value" == 1 ]] ||
+  fail 'Secure Boot enabled or EFI SetupMode not keyless'
+printf 'GASLUX_POP_VM_SECUREBOOT_DISABLED_SETUPMODE_1=1\n' > /dev/ttyS0
 
 # Strongly bind the by-id symlink and the canonical device BEFORE any writer.
 by_id=/dev/disk/by-id/virtio-GASLUXPOPFULLVM

@@ -52,6 +52,8 @@ def test_real_distinst_not_test_mode_and_only_linux_owned_disk():
     source = INSTALL.read_text(encoding="utf-8")
     assert "systemd-detect-virt --vm" in source
     assert "SecureBoot-" in source
+    assert "SetupMode-" in source
+    assert "GASLUX_POP_VM_SECUREBOOT_DISABLED_SETUPMODE_1=1" in source
     assert "sha256sum /usr/bin/distinst" in source
     assert "virtio-GASLUXPOPFULLVM" in source
     assert "lsblk -dn -o SERIAL" in source
@@ -93,6 +95,8 @@ def test_firstboot_marker_is_from_real_installed_pop_root():
 
 def test_serial_proof_does_not_accept_shell_echo_or_failed_install():
     assert SUCCESS.search(b"\nGASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1\r\n")
+    assert not RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_FAILURE: ")
+    assert RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_FAILURE: missing firmware\n")
     assert not SUCCESS.search(b"echo GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1")
     assert RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_FAILURE: disk validation\r\n")
     assert re.fullmatch(r"[a-f0-9]{64}", "b" * 64)

@@ -17,10 +17,12 @@ from gaslux_popos_guest_serial import (
     wait_for,
 )
 
+# Require a NEWLINE, not a partial chunk containing only the failure prefix.
+# Otherwise the controller disconnects before receiving diagnostic details.
 RESULT = re.compile(
-    rb"(?m)^GASLUX_POP_NATIVE_(?:FULL_INSTALL_COMPLETED=1|INSTALL_FAILURE: [^\r\n]*)\r?$"
+    rb"(?m)^GASLUX_POP_NATIVE_(?:FULL_INSTALL_COMPLETED=1|INSTALL_FAILURE: [^\r\n]+)\r?\n"
 )
-SUCCESS = re.compile(rb"(?m)^GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1\r?$")
+SUCCESS = re.compile(rb"(?m)^GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1\r?\n")
 
 
 def connect(path: Path) -> socket.socket:
