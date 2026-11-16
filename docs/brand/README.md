@@ -23,9 +23,9 @@ This directory contains the original visual identity for the **Gaslux** project,
 
 Suggested **About** description (repository Settings / About):
 
-> Windows-first, USB-free native Linux dual-boot installer. Built on Libertix; expanding to independently verified distribution backends.
+> USB-free Linux dual-boot installer for Windows 10/11, with native distro backends and a recovery-first design. In development.
 
-Suggested topics are listed in [metadata.json](metadata.json). These are suggestions, **not automatically configured on GitHub**.
+Suggested topics are listed in [metadata.json](metadata.json). These are suggestions, **not automatically configured on GitHub**. The share-card title comes from GitHub's repository metadata; this file cannot override it.
 
 For the repository **Social preview**, use a 1280 × 640 PNG or JPEG exported from the [hero source](hero.svg), and upload it in GitHub's repository settings. The committed SVG does **not** automatically become the GitHub Open Graph preview image. Do not use a fake installed-system screenshot as a social preview.
 
