@@ -142,3 +142,27 @@ Windows partition payloads, and permits **only** the measured root change.
 It outputs the root's final PARTUUID/LBA for future plan reconciliation.
 These allowances are lab-only; the production transaction writer remains
 blocked pending durable root identity, recovery and genuine Windows tests.
+
+## Native System76 install + installed-system first boot (experimental VM only)
+
+This stage uses the exact signed Pop!_OS ISO and the SHA-256-identified native
+`distinst` executable. The experiment runs without physical disks or a NIC in
+a disposable QEMU/KVM UEFI VM with a **separate, newly generated Linux-only**
+GPT target (owned 1-GiB ESP and 28-GiB root). The temporary GRUB used to start
+the ISO is on a *different* disposable disk. After a full native `distinst`
+invocation (not `--test`), the guest verifies the installed `ID=pop`, dpkg,
+root filesystem, systemd-boot binary, UEFI fallback file and boot entries.
+
+For first-boot verification only, the test then installs a hash-checked systemd
+service into the newly installed virtual root. A second QEMU starts with fresh
+OVMF NVRAM and **only the installed Linux disk attached**: no ISO, temporary
+GRUB disk or extra volumes. The service reports its real root partition,
+actual kernel, EFI mount and installed Pop identity over the virtual serial
+port. Missing/failed proof is a CI failure. The service is laboratory-only and
+is never delivered to production machines.
+
+Even a successful test does NOT prove the actual Windows-to-Linux transaction,
+full account provisioning, Secure Boot variants, upgrades, uninstallation,
+Windows 10/11 boot (BCD, WinRE, BitLocker) or rollback. These need later
+snapshotted Windows VMs and explicit disk ownership proof. The production
+backend remains unimplemented and blocked in the stable catalogue.
