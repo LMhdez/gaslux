@@ -31,6 +31,7 @@ FIELDS = {
     "windowsPartitionGuid",
     "espPartitionGuid",
     "windowsEfiSha256",
+    "winreWimSha256",
     "secureBootEnabled",
     "winreEnabled",
     "winreRaw",
@@ -106,6 +107,11 @@ def validate(doc: Any, phase: str) -> None:
         isinstance(doc["windowsEfiSha256"], str)
         and SHA256.fullmatch(doc["windowsEfiSha256"]) is not None,
         "missing SHA-256 of Windows Boot Manager",
+    )
+    require(
+        isinstance(doc["winreWimSha256"], str)
+        and SHA256.fullmatch(doc["winreWimSha256"]) is not None,
+        "missing SHA-256 of WinRE image",
     )
     require(type(doc["secureBootEnabled"]) is bool, "Secure Boot status is unknown")
     require(doc["winreEnabled"] is True, "WinRE must be enabled and observable")
@@ -227,6 +233,7 @@ def compare(before: dict[str, Any], after: dict[str, Any], mode: str) -> dict[st
         "windowsPartitionGuid",
         "espPartitionGuid",
         "windowsEfiSha256",
+        "winreWimSha256",
         "bitlocker",
         "bcdCurrentRaw",
         "bcdAllRaw",

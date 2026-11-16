@@ -32,6 +32,17 @@ function Test-GasluxWinReEnabled {
     return [bool]($Output -match '(?im)(Windows\s+RE\s+status|Estado\s+(?:do|de)\s+Windows\s+RE)\s*:\s*(Enabled|Ativado|Activado)\b')
 }
 
+function Get-GasluxWinReImagePath {
+    param([string]$Info, [int]$SystemDiskNumber)
+    # Microsoft documents GLOBALROOT for WinRE WIM; never mount Recovery.
+    $expression = '(?i)\\\\\?\\GLOBALROOT\\device\\harddisk([0-9]+)\\partition[0-9]+(?:\\[a-z0-9._-]+)+'
+    $match = [regex]::Match($Info, $expression)
+    if (-not $match.Success -or [int]$match.Groups[1].Value -ne $SystemDiskNumber) {
+        throw 'WinRE is not on the chosen Windows system disk.'
+    }
+    return $match.Value.TrimEnd('\') + '\winre.wim'
+}
+
 function Get-GasluxWindowsEfiHash {
     param($Esp)
     # Get-Volume yields a read-only GUID path without assigning a drive letter.
@@ -108,6 +119,11 @@ function Invoke-GasluxWindowsRecoveryEvidence {
     if (-not (Test-GasluxWinReEnabled -Output $winre)) {
         throw 'Windows Recovery Environment is not provably enabled.'
     }
+    $image = Get-GasluxWinReImagePath -Info $winre -SystemDiskNumber $winDisk.Number
+    if (-not (Test-Path -LiteralPath $image -PathType Leaf)) {
+        throw 'Windows Recovery image is unreadable without mounting the partition.'
+    }
+    $winreWimSha256 = (Get-FileHash -LiteralPath $image -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
     $bcd = Join-Path $env:SystemRoot 'System32\bcdedit.exe'
     $bcdCurrent = Invoke-GasluxReadOnlyCommand -Executable $bcd -Arguments @('/enum','{current}','/v')
     $bcdAll = Invoke-GasluxReadOnlyCommand -Executable $bcd -Arguments @('/enum','all','/v')
@@ -139,6 +155,7 @@ function Invoke-GasluxWindowsRecoveryEvidence {
         windowsPartitionGuid = ([string]$winPart.Guid).Trim('{}').ToLowerInvariant()
         espPartitionGuid = ([string]$espParts[0].Guid).Trim('{}').ToLowerInvariant()
         windowsEfiSha256 = $loaderSha256
+        winreWimSha256 = $winreWimSha256
         secureBootEnabled = $secureBoot
         winreEnabled = $true
         winreRaw = $winre
