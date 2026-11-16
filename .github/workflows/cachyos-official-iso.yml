@@ -27,7 +27,8 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            squashfs-tools grub-common aria2
+            squashfs-tools grub-common aria2 ovmf qemu-system-x86 \
+            grub-efi-amd64-bin mtools dosfstools e2fsprogs
       - name: Fetch and verify pinned official CachyOS desktop ISO
         shell: bash
         env:
@@ -121,3 +122,14 @@ jobs:
           printf 'Real CachyOS LTS boot pair and live distribution identity verified\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Real CachyOS ISO verification passed\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'This job did not install Linux or touch Windows boot files.\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Boot real CachyOS live kernel and init in disposable OVMF/QEMU
+        shell: bash
+        env:
+          ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+        run: |
+          set -Eeuo pipefail
+          bash auto_tests/tools/cachyos_real_live_kernel_smoke.sh \
+            "$GASLUX_ISO_WORKSPACE/cachyos.iso" "$ISO_SHA256"
+          printf 'Pinned official CachyOS live kernel and initramfs boot: PASS in QEMU\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'No Windows, installed root or rollback was tested.\n' >> "$GITHUB_STEP_SUMMARY"
