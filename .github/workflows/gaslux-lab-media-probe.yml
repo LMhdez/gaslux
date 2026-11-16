@@ -10,6 +10,7 @@ on:
       - feature/q4os-ovmf-verified-virtio-live
       - feature/q4os-verified-calamares-target-lab
       - feature/q4os-native-grub-reboot-lab
+      - feature/q4os-native-hook-source-audit
   pull_request:
     paths:
       - 'assets/live/gaslux_*probe.py'
