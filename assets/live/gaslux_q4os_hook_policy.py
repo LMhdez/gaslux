@@ -14,7 +14,6 @@ import stat
 from pathlib import Path
 
 import yaml
-
 from gaslux_q4os_calamares_policy import (
     CalamaresRefusal,
     _UniqueYaml,
@@ -128,7 +127,8 @@ def audit_q4os_native_hooks(root: Path) -> dict:
     invokes_forced_grub = b"grub-install" in efi_source and b"--force" in efi_source
     cfg = _yaml(root, "etc__calamares__settings.conf")
     jobs = cfg["sequence"][1]["exec"]
-    indexes = [jobs.index(n) for n in ("q4oshook2", "bootloader", "q4oshook3", "initramfs", "q4oshook5")]
+    order = ("q4oshook2", "bootloader", "q4oshook3", "initramfs", "q4oshook5")
+    indexes = [jobs.index(n) for n in order]
     if indexes != sorted(indexes):
         raise CalamaresRefusal("Q4OS module/GRUB/initramfs ordering differs")
     return {
