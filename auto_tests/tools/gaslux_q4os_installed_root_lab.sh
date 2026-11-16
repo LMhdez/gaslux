@@ -15,6 +15,13 @@ digest="$2"
 [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || die 'No pinned official ISO digest'
 [[ -d "$3" && ! -L "$3" ]] || die 'Evidence path must be a non-symlink directory'
 evidence="$(realpath -e -- "$3")"
+native_grub="${GASLUX_Q4OS_NATIVE_GRUB_LAB:-no}"
+[[ "$native_grub" == yes || "$native_grub" == no ]] ||
+  die 'Unrecognized native GRUB laboratory mode'
+if [[ "$native_grub" == yes ]]; then
+  [[ "${GITHUB_ACTIONS:-}" == true ]] ||
+    die 'Native GRUB guest boot test requires a disposable GitHub Actions runner'
+fi
 for tool in sha256sum sudo mount umount findmnt unsquashfs sgdisk losetup blkid \
             mkfs.ext4 mkfs.vfat grub-mkstandalone qemu-system-x86_64 timeout; do
   command -v "$tool" >/dev/null || die "Missing guest-only lab tool: $tool"
@@ -46,7 +53,7 @@ cleanup() {
   if [[ "$mounted_root" -eq 1 ]]; then sudo umount "$work/root" >/dev/null 2>&1 || true; fi
   if [[ -n "$loop" ]]; then sudo losetup -d "$loop" >/dev/null 2>&1 || true; fi
   if [[ "$mounted_iso" -eq 1 ]]; then sudo umount "$work/iso" >/dev/null 2>&1 || true; fi
-  for filename in serial-installed.log grub-installed.cfg installed-result.txt; do
+  for filename in serial-installed.log serial-native-grub.log grub-installed.cfg installed-result.txt; do
     if [[ -f "$work/$filename" ]]; then
       cp -- "$work/$filename" "$evidence/$filename" || true
     fi
@@ -101,6 +108,38 @@ UUID=$root_uuid / ext4 defaults 0 1
 UUID=$esp_uuid /boot/efi vfat umask=0077 0 2
 EOF
 printf 'gaslux-q4os-lab\n' | sudo tee "$work/root/etc/hostname" >/dev/null
+if [[ "$native_grub" == yes ]]; then
+  guest_tool="$(dirname "$0")/gaslux_q4os_native_grub_guest.sh"
+  [[ -f "$guest_tool" && ! -L "$guest_tool" ]] ||
+    die 'Missing trusted native GRUB guest-only code'
+  sudo install -D -m 0755 "$guest_tool"     "$work/root/usr/local/sbin/gaslux-q4os-native-grub-guest"
+  printf '%s\n' "$root_uuid" |
+    sudo tee "$work/root/etc/gaslux-q4os-lab-root.uuid" >/dev/null
+  sudo tee "$work/root/etc/systemd/system/gaslux-q4os-native-grub.service" >/dev/null <<'UNIT'
+[Unit]
+Description=Gaslux Q4OS guest-only native GRUB installation proof
+After=local-fs.target
+[Service]
+Type=oneshot
+TimeoutStartSec=220
+ExecStart=/usr/local/sbin/gaslux-q4os-native-grub-guest install
+[Install]
+WantedBy=multi-user.target
+UNIT
+  sudo tee "$work/root/etc/systemd/system/gaslux-q4os-native-second.service" >/dev/null <<'UNIT'
+[Unit]
+Description=Gaslux Q4OS guest-only second boot from native GRUB
+After=local-fs.target
+[Service]
+Type=oneshot
+TimeoutStartSec=30
+ExecStart=/usr/local/sbin/gaslux-q4os-native-grub-guest verify-second
+[Install]
+WantedBy=multi-user.target
+UNIT
+  sudo mkdir -p "$work/root/etc/systemd/system/multi-user.target.wants"
+  sudo ln -s /etc/systemd/system/gaslux-q4os-native-grub.service     "$work/root/etc/systemd/system/multi-user.target.wants/gaslux-q4os-native-grub.service"
+fi
 # A guest-only systemd unit prints a marker ONLY if the installed root (not
 # the live medium) was actually mounted by Linux and its identity matches.
 sudo tee "$work/root/etc/systemd/system/gaslux-q4os-lab-proof.service" >/dev/null <<EOF
@@ -145,6 +184,10 @@ grub-mkstandalone --format=x86_64-efi --output="$work/BOOTX64.EFI" \
   "boot/grub/grub.cfg=$work/grub-installed.cfg"
 sudo mkdir -p "$work/root/boot/efi/EFI/BOOT"
 sudo cp "$work/BOOTX64.EFI" "$work/root/boot/efi/EFI/BOOT/BOOTX64.EFI"
+if [[ "$native_grub" == yes ]]; then
+  printf '%s  /boot/efi/EFI/BOOT/BOOTX64.EFI\n'     "$(sha256sum "$work/BOOTX64.EFI" | cut -d' ' -f1)" |
+    sudo tee "$work/root/etc/gaslux-q4os-lab-temp-efi.sha256" >/dev/null
+fi
 sync
 sudo umount "$work/root/boot/efi"
 mounted_efi=0
@@ -171,6 +214,7 @@ printf 'GASLUX_Q4OS_DISPOSABLE_TARGET=own-temporary-12GiB-GPT-file\n'
 printf 'GASLUX_Q4OS_GUEST_ROOT_UUID=%s\n' "$root_uuid"
 printf 'GASLUX_Q4OS_ISO_ATTACHED_TO_INSTALLED_BOOT=false\n'
 printf 'GASLUX_Q4OS_BOOTLOADER_PROVENANCE=temporary-lab-grub-not-Q4OS-package\n'
+printf 'GASLUX_Q4OS_NATIVE_GRUB_GUEST_LAB=%s\n' "$native_grub"
 timeout --kill-after=5s 480s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
@@ -183,11 +227,18 @@ guest="$!"
 verified=0
 for _ in $(seq 1 94); do
   sleep 5
-  if [[ -s "$work/serial-installed.log" ]] &&
-     grep -Fq 'GASLUX_Q4OS_INSTALLED_ROOT_PROOF=6.10-deb13u1' "$work/serial-installed.log" &&
-     grep -Eiq 'Linux version|Freeing unused kernel|systemd\[1\]' "$work/serial-installed.log"; then
-    verified=1
-    break
+  if [[ -s "$work/serial-installed.log" ]]; then
+    if grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_REFUSED=' "$work/serial-installed.log"; then
+      break
+    fi
+    if grep -Fq 'GASLUX_Q4OS_INSTALLED_ROOT_PROOF=6.10-deb13u1' "$work/serial-installed.log" &&
+       grep -Eiq 'Linux version|Freeing unused kernel|systemd\[1\]' "$work/serial-installed.log"; then
+      if [[ "$native_grub" == no ]] ||
+         grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_INSTALLED=6.10-deb13u1' "$work/serial-installed.log"; then
+        verified=1
+        break
+      fi
+    fi
   fi
   kill -0 "$guest" >/dev/null 2>&1 || break
 done
@@ -197,8 +248,41 @@ guest=''
 if [[ "$verified" -eq 1 ]]; then
   printf 'PASS: pinned Q4OS root filesystem booted from disposable GPT disk without ISO.\n' |
     tee "$work/installed-result.txt"
-  printf 'NOT TESTED: complete Calamares jobs, native bootloader maintenance, Windows dual boot, rollback.\n' |
-    tee -a "$work/installed-result.txt"
+  if [[ "$native_grub" == yes ]]; then
+    printf 'PASS: Q4OS native installed GRUB command and guest-owned EFI replacement observed.\n' |
+      tee -a "$work/installed-result.txt"
+    timeout --kill-after=5s 480s qemu-system-x86_64       -machine q35,accel=tcg -cpu max -smp 2 -m 4096       -display none -monitor none -no-reboot -net none       -drive if=pflash,format=raw,readonly=on,file="$code"       -drive if=pflash,format=raw,file="$work/guest-vars.fd"       -drive if=none,id=guesttarget,format=raw,file="$disk"       -device virtio-blk-pci,drive=guesttarget,bootindex=1       -boot order=c,menu=off -serial "file:$work/serial-native-grub.log" &
+    guest="$!"
+    second_verified=0
+    for _ in $(seq 1 94); do
+      sleep 5
+      if [[ -s "$work/serial-native-grub.log" ]]; then
+        if grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_REFUSED=' "$work/serial-native-grub.log"; then
+          break
+        fi
+        if grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=6.10-deb13u1' "$work/serial-native-grub.log" &&
+           grep -Eiq 'Linux version|Freeing unused kernel|systemd\[1\]' "$work/serial-native-grub.log"; then
+          second_verified=1
+          break
+        fi
+      fi
+      kill -0 "$guest" >/dev/null 2>&1 || break
+    done
+    kill "$guest" >/dev/null 2>&1 || true
+    wait "$guest" >/dev/null 2>&1 || true
+    guest=''
+    if [[ "$second_verified" -ne 1 ]]; then
+      tail -c 9000 "$work/serial-native-grub.log" >&2 || true
+      die 'No second installed Q4OS boot proof from package-owned GRUB'
+    fi
+    printf 'PASS: package-owned Q4OS GRUB launched a second guest boot without the ISO.\n' |
+      tee -a "$work/installed-result.txt"
+    printf 'NOT TESTED: complete Calamares GUI/jobs, Windows dual boot, updates, rollback.\n' |
+      tee -a "$work/installed-result.txt"
+  else
+    printf 'NOT TESTED: complete Calamares jobs, native bootloader maintenance, Windows dual boot, rollback.\n' |
+      tee -a "$work/installed-result.txt"
+  fi
 else
   tail -c 9000 "$work/serial-installed.log" >&2 || true
   die 'No installed Q4OS root boot proof; disposable experiment failed'
