@@ -48,7 +48,7 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
         wait_for(
             conn,
             transcript,
-            re.compile(rb"Linux version|systemd\\[1\\]"),
+            re.compile(rb"Linux version|systemd\[1\]"),
             timeout_seconds=180,
         )
         wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=240)
