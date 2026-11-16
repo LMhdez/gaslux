@@ -50,6 +50,33 @@ if setup != 1:
     raise SystemExit('GASLUX_SECUREBOOT_EFIVAR: unexpected key enrollment in lab')
 print('GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1')
 PY
+# When booting the verified ephemeral signed GRUB entry, independently
+# observe its exact four bound arguments from the running kernel. A manifest
+# copied to the guest is NOT itself proof that GRUB executed that entry.
+if [ -e /run/gaslux-lab/boot-args.json ]; then
+  [ -f /run/gaslux-lab/boot-args.json ] &&
+    [ ! -L /run/gaslux-lab/boot-args.json ] ||
+    fail 'signed-boot expected arguments are not a regular file'
+  python3 - <<'PY' || fail 'running kernel did not receive signed GRUB arguments'
+import json
+from pathlib import Path
+expected = json.loads(Path('/run/gaslux-lab/boot-args.json').read_text())
+keys = {'gaslux.run', 'gaslux.nonce', 'gaslux.plan_sha256', 'gaslux.key_sha256'}
+if not isinstance(expected, dict) or set(expected) != keys:
+    raise SystemExit('invalid signed boot expectation')
+actual = {}
+for token in Path('/proc/cmdline').read_text().split():
+    name, sep, value = token.partition('=')
+    if not name.startswith('gaslux.'):
+        continue
+    if name not in keys or not sep or not value or name in actual:
+        raise SystemExit('unexpected or repeated signed boot argument')
+    actual[name] = value
+if actual != expected:
+    raise SystemExit('running kernel boot identity differs from signed handoff')
+print('GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1')
+PY
+fi
 [ -f /run/gaslux-lab/stage.sh ] && [ ! -L /run/gaslux-lab/stage.sh ] ||
   fail 'guarded backend script missing'
 [ -f /run/gaslux-lab/stage.sha256 ] ||
