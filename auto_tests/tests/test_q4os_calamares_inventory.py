@@ -121,10 +121,12 @@ def test_loop_backing_must_match_verified_iso(tmp_path, monkeypatch):
     squashfs = root / "filesystem.squashfs"
     squashfs.write_bytes(b"fake")
     monkeypatch.setattr(Path, "is_mount", lambda _: True)
-    responses = iter([
-        SimpleNamespace(stdout="/dev/loop3 iso9660\\n"),
-        SimpleNamespace(stdout=str(wrong) + "\\n"),
-    ])
+    responses = iter(
+        [
+            SimpleNamespace(stdout="/dev/loop3 iso9660\\n"),
+            SimpleNamespace(stdout=str(wrong) + "\\n"),
+        ]
+    )
     monkeypatch.setattr(probe.subprocess, "run", lambda *_, **__: next(responses))
     with pytest.raises(ValueError, match="backing file differs"):
         probe.verify_iso_mount_binding(iso, squashfs, root)
