@@ -10,6 +10,10 @@ on:
       - feature/cachyos-live-guest-preflight-smoke
     paths:
       - .github/workflows/cachyos-official-iso.yml
+      - auto_tests/tools/cachyos_real_live_kernel_smoke.sh
+      - auto_tests/tools/cachyos_live_guest_serial.py
+      - auto_tests/tools/cachyos_live_guest_readonly_probe.sh
+      - assets/live/cachyos-stage-target.sh
 
 permissions:
   contents: read
