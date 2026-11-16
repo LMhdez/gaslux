@@ -14,7 +14,7 @@ permissions:
 jobs:
   inspect-official-cachyos:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -25,7 +25,7 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            squashfs-tools grub-common
+            squashfs-tools grub-common aria2
       - name: Fetch and verify pinned official CachyOS desktop ISO
         shell: bash
         env:
@@ -38,13 +38,23 @@ jobs:
           mkdir -p "$workspace/mounted"
           echo "GASLUX_ISO_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           echo "$ISO_URL" > "$workspace/source-url.txt"
-          # Large ISO downloads can be cut off by intermediaries. Force HTTP/1.1,
-          # resume only from the already downloaded byte count and verify the
-          # complete file against CachyOS's independently published SHA-256.
-          curl --http1.1 --fail --location --silent --show-error \
-            --retry 8 --retry-all-errors --retry-delay 5 --retry-max-time 1400 \
-            --connect-timeout 30 --max-time 1350 --continue-at - \
-            --output "$workspace/cachyos.iso" "$ISO_URL"
+          # The origin truncates multi-gigabyte transfers. Use resumable range
+          # requests from independent CachyOS mirrors. Only the pinned
+          # maintainer-published hash decides whether any bytes are trusted.
+          cat > "$workspace/iso-mirrors.txt" <<'MIRRORS'
+          https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso
+            dir=$workspace
+            out=cachyos.iso
+          MIRRORS
+          # aria2 .input-file options are not shell-expanded; replace the
+          # workspace placeholder before running the range downloader.
+          sed -i "s|\\$workspace|$workspace|g" "$workspace/iso-mirrors.txt"
+          aria2c --input-file="$workspace/iso-mirrors.txt" \
+            --split=8 --min-split-size=32M --max-connection-per-server=8 \
+            --max-concurrent-downloads=1 --continue=true \
+            --file-allocation=none --retry-wait=8 --max-tries=8 \
+            --timeout=45 --connect-timeout=25 \
+            --check-integrity=true --checksum="sha-256=$ISO_SHA256"
           printf '%s  %s\n' "$ISO_SHA256" "$workspace/cachyos.iso" | sha256sum --check --status
           echo "Verified official CachyOS ISO version $RELEASE SHA-256: $ISO_SHA256"
       - name: Mount verified ISO read-only and inspect live Archiso payload
