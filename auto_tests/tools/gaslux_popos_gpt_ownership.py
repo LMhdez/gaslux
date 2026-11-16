@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import stat
 import struct
 import sys
@@ -148,7 +147,7 @@ def validate_delta(before: dict, after: dict) -> dict:
     old_entries, new_entries = before["entries"], after["entries"]
     if len(old_entries) != 128 or len(new_entries) != 128:
         raise GptRefusal("Unexpected GPT entry count")
-    for index, (old, new) in enumerate(zip(old_entries, new_entries)):
+    for index, (old, new) in enumerate(zip(old_entries, new_entries, strict=True)):
         if index != ROOT_INDEX and old != new:
             raise GptRefusal(f"Foreign GPT entry {index + 1} changed")
     old_root = _root_entry(old_entries[ROOT_INDEX])
@@ -187,7 +186,9 @@ def main() -> int:
         output.write_text(json.dumps(result, sort_keys=True) + "\n", encoding="utf-8")
         return 0
     if len(sys.argv) == 4 and sys.argv[1] == "verify":
-        before, after = (json.loads(Path(name).read_text(encoding="utf-8")) for name in sys.argv[2:])
+        before, after = (
+            json.loads(Path(name).read_text(encoding="utf-8")) for name in sys.argv[2:]
+        )
         proof = validate_delta(before, after)
         print("GASLUX_POP_VM_PROTECTED_GPT_ENTRIES_IDENTICAL=1")
         print(json.dumps(proof, sort_keys=True))
