@@ -43,7 +43,7 @@ jobs:
           # requests from independent CachyOS mirrors. Only the pinned
           # maintainer-published hash decides whether any bytes are trusted.
           {
-            printf '%s\n' 'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
+            printf '%s\t%s\n' 'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' 'https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
             printf '  dir=%s\n' "$workspace"
             printf '  out=cachyos.iso\n'
           } > "$workspace/iso-mirrors.txt"
