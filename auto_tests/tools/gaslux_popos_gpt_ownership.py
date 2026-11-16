@@ -135,9 +135,7 @@ def _root_entry(value: str) -> dict:
 
 
 def validate_delta(before: dict, after: dict) -> dict:
-    if set(before) != {"mbrSha256", "primary", "backup", "entries"} or set(after) != set(
-        before
-    ):
+    if set(before) != {"mbrSha256", "primary", "backup", "entries"} or set(after) != set(before):
         raise GptRefusal("Missing or extra GPT evidence fields")
     if before["mbrSha256"] != after["mbrSha256"]:
         raise GptRefusal("Protective Windows MBR changed")
