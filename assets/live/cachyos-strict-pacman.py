@@ -44,7 +44,8 @@ def sha(value: str) -> str:
 def safe_source(root: Path, relative: str) -> Path:
     candidate = root / relative
     require(
-        candidate.is_file() and not candidate.is_symlink()
+        candidate.is_file()
+        and not candidate.is_symlink()
         and candidate.resolve().is_relative_to(root.resolve()),
         "untrusted source file: " + relative,
     )
@@ -52,13 +53,17 @@ def safe_source(root: Path, relative: str) -> Path:
 
 
 def require_https(url: str) -> None:
-    require(len(url) <= 2048 and all(ord(c) > 32 and ord(c) < 127 for c in url),
-            "invalid mirror URL")
+    require(
+        len(url) <= 2048 and all(ord(c) > 32 and ord(c) < 127 for c in url), "invalid mirror URL"
+    )
     parsed = urlsplit(url)
     require(
-        parsed.scheme == "https" and bool(parsed.hostname)
-        and parsed.username is None and parsed.password is None
-        and not parsed.query and not parsed.fragment
+        parsed.scheme == "https"
+        and bool(parsed.hostname)
+        and parsed.username is None
+        and parsed.password is None
+        and not parsed.query
+        and not parsed.fragment
         and _SAFE_PATH.fullmatch(parsed.path) is not None
         and parsed.netloc == parsed.netloc.lower()
         and ".." not in parsed.path.split("/"),
@@ -72,8 +77,9 @@ def require_https(url: str) -> None:
 
 
 def filter_mirrors(content: str) -> str:
-    require(isinstance(content, str) and 0 < len(content) <= 256_000,
-            "missing or oversized mirrorlist")
+    require(
+        isinstance(content, str) and 0 < len(content) <= 256_000, "missing or oversized mirrorlist"
+    )
     servers: list[str] = []
     for line in content.splitlines():
         value = line.strip()
@@ -84,8 +90,7 @@ def filter_mirrors(content: str) -> str:
         url = matched.group(1)
         # Omit HTTP/FTP mirrors, but never permit an invalid HTTPS URL.
         if not url.startswith("https://"):
-            require(url.startswith(("http://", "ftp://")),
-                    "unexpected non-HTTPS mirror scheme")
+            require(url.startswith(("http://", "ftp://")), "unexpected non-HTTPS mirror scheme")
             continue
         require_https(url)
         if url not in servers:
@@ -96,9 +101,8 @@ def filter_mirrors(content: str) -> str:
 
 def config_for(mirrors_prefix: str) -> str:
     require(
-        mirrors_prefix in ("/etc/pacman.d",) or re.fullmatch(
-            r"/run/gaslux-pacman-[A-Za-z0-9_-]{12,100}", mirrors_prefix
-        ) is not None,
+        mirrors_prefix in ("/etc/pacman.d",)
+        or re.fullmatch(r"/run/gaslux-pacman-[A-Za-z0-9_-]{12,100}", mirrors_prefix) is not None,
         "unsafe pacman mirror directory",
     )
     lines = [
@@ -111,32 +115,37 @@ def config_for(mirrors_prefix: str) -> str:
         "RemoteFileSigLevel = Required TrustedOnly",
     ]
     for repo, mirror in _REPO_MIRRORS.items():
-        lines.extend([
-            "",
-            "[" + repo + "]",
-            "SigLevel = " + _FIXED_POLICY,
-            "Include = " + mirrors_prefix + "/" + mirror,
-        ])
+        lines.extend(
+            [
+                "",
+                "[" + repo + "]",
+                "SigLevel = " + _FIXED_POLICY,
+                "Include = " + mirrors_prefix + "/" + mirror,
+            ]
+        )
     return "\n".join(lines) + "\n"
 
 
 def render(root: Path, run_id: str) -> dict[str, Any]:
-    require(isinstance(run_id, str) and _RUN_ID.fullmatch(run_id) is not None,
-            "invalid transaction identifier")
-    require(root.is_absolute() and root.is_dir() and not root.is_symlink()
-            and root.resolve() == root,
-            "live root must be an explicit canonical directory")
+    require(
+        isinstance(run_id, str) and _RUN_ID.fullmatch(run_id) is not None,
+        "invalid transaction identifier",
+    )
+    require(
+        root.is_absolute() and root.is_dir() and not root.is_symlink() and root.resolve() == root,
+        "live root must be an explicit canonical directory",
+    )
     os_release = safe_source(root, "etc/os-release").read_text(encoding="utf-8")
-    require("ID=cachyos" in os_release.splitlines()
-            and "IMAGE_ID=cachyos" in os_release.splitlines()
-            and "IMAGE_VERSION=2026.08.09" in os_release.splitlines(),
-            "unsupported CachyOS Archiso live identity")
+    require(
+        "ID=cachyos" in os_release.splitlines()
+        and "IMAGE_ID=cachyos" in os_release.splitlines()
+        and "IMAGE_VERSION=2026.08.09" in os_release.splitlines(),
+        "unsupported CachyOS Archiso live identity",
+    )
     live_pacman = safe_source(root, "etc/pacman.conf")
     require(live_pacman.stat().st_size > 0, "missing live pacman configuration")
     mirror_data = {
-        file: filter_mirrors(safe_source(root, "etc/pacman.d/" + file).read_text(
-            encoding="utf-8"
-        ))
+        file: filter_mirrors(safe_source(root, "etc/pacman.d/" + file).read_text(encoding="utf-8"))
         for file in _MIRROR_FILES
     }
     output_path = "/run/gaslux-pacman-" + run_id
@@ -169,19 +178,24 @@ def check_vm_environment() -> None:
         "missing explicit disposable-VM consent",
     )
     output = subprocess.run(
-        ["systemd-detect-virt", "--vm"], capture_output=True,
-        text=True, check=False, timeout=8
+        ["systemd-detect-virt", "--vm"], capture_output=True, text=True, check=False, timeout=8
     )
-    require(output.returncode == 0 and output.stdout.strip() in {"kvm", "qemu"},
-            "physical devices and non-QEMU virtual machines are forbidden")
+    require(
+        output.returncode == 0 and output.stdout.strip() in {"kvm", "qemu"},
+        "physical devices and non-QEMU virtual machines are forbidden",
+    )
     fs = subprocess.run(
         ["findmnt", "-rn", "-M", "/run", "-o", "FSTYPE"],
-        capture_output=True, text=True, check=False, timeout=8
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=8,
     )
-    require(fs.returncode == 0 and fs.stdout.strip() == "tmpfs",
-            "only an exact ephemeral /run tmpfs is acceptable")
-    require(Path("/run").is_dir() and not Path("/run").is_symlink(),
-            "unsafe lab tmpfs root")
+    require(
+        fs.returncode == 0 and fs.stdout.strip() == "tmpfs",
+        "only an exact ephemeral /run tmpfs is acceptable",
+    )
+    require(Path("/run").is_dir() and not Path("/run").is_symlink(), "unsafe lab tmpfs root")
 
 
 def prepare_vm(result: dict[str, Any]) -> Path:
@@ -215,17 +229,27 @@ def main(argv: list[str] | None = None) -> int:
             prepared = prepare_vm(report)
         else:
             prepared = None
-        summary = {k: v for k, v in report.items()
-                   if k not in {"installerConfig", "installedTargetConfig",
-                                "mirrorlist", "cachyos-mirrorlist"}}
-        summary.update({
-            "ok": True,
-            "preparedVmTmpfsDirectory": str(prepared) if prepared else None,
-            "readyForProduction": False,
-            "trustedPackageDownloadTested": False,
-        })
-    except (StrictConfigError, OSError, ValueError, UnicodeError,
-            subprocess.TimeoutExpired) as error:
+        summary = {
+            k: v
+            for k, v in report.items()
+            if k
+            not in {"installerConfig", "installedTargetConfig", "mirrorlist", "cachyos-mirrorlist"}
+        }
+        summary.update(
+            {
+                "ok": True,
+                "preparedVmTmpfsDirectory": str(prepared) if prepared else None,
+                "readyForProduction": False,
+                "trustedPackageDownloadTested": False,
+            }
+        )
+    except (
+        StrictConfigError,
+        OSError,
+        ValueError,
+        UnicodeError,
+        subprocess.TimeoutExpired,
+    ) as error:
         print(json.dumps({"ok": False, "error": str(error)}), file=sys.stderr)
         return 1
     print(json.dumps(summary, sort_keys=True))

@@ -35,7 +35,7 @@ class StrictPacmanConfigTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / "etc/pacman.d").mkdir(parents=True)
         (self.root / "etc/os-release").write_text(
-            'ID=cachyos\nID_LIKE=arch\nIMAGE_ID=cachyos\nIMAGE_VERSION=2026.08.09\n'
+            "ID=cachyos\nID_LIKE=arch\nIMAGE_ID=cachyos\nIMAGE_VERSION=2026.08.09\n"
         )
         (self.root / "etc/pacman.conf").write_text(
             "[options]\nSigLevel = Optional TrustAll\n[cachyos]\nSigLevel = Optional TrustAll\n"
@@ -71,13 +71,15 @@ class StrictPacmanConfigTests(unittest.TestCase):
     def test_non_https_mirrors_removed_and_order_preserved(self):
         report = self.render()
         self.assertEqual(report["mirrorlist"], "Server = https://arch.example.org/$repo/os/$arch\n")
-        self.assertEqual(report["cachyos-mirrorlist"],
-                         "Server = https://cachy.example.org/repo/$arch/$repo\n")
+        self.assertEqual(
+            report["cachyos-mirrorlist"], "Server = https://cachy.example.org/repo/$arch/$repo\n"
+        )
 
     def test_run_id_injection_denied(self):
         for value in ("../x", "bad;reboot", "short", "", "/dev/sda", "a" * 101):
-            with self.subTest(value=value), self.assertRaisesRegex(
-                STRICT.StrictConfigError, "transaction identifier"
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(STRICT.StrictConfigError, "transaction identifier"),
             ):
                 self.render(run_id=value)
 

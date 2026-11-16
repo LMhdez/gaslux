@@ -2,6 +2,7 @@
 
 Uses mocked pacman-conf output, never uses pacman or writes a real disk.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -41,8 +42,10 @@ class PacmanTrustTests(unittest.TestCase):
         self.assertTrue(capture_output)
         self.assertTrue(text)
         return subprocess.CompletedProcess(
-            args, 0 if tuple(args[3:]) in self.outputs else 1,
-            self.outputs.get(tuple(args[3:]), ""), ""
+            args,
+            0 if tuple(args[3:]) in self.outputs else 1,
+            self.outputs.get(tuple(args[3:]), ""),
+            "",
         )
 
     def check(self):
@@ -59,7 +62,7 @@ class PacmanTrustTests(unittest.TestCase):
     def test_arch_standard_database_optional_does_not_disable_package_sig(self):
         self.assertEqual(
             POLICY.verify_tokens("Required DatabaseOptional", label="global"),
-            ["Required", "DatabaseOptional"]
+            ["Required", "DatabaseOptional"],
         )
 
     def test_cachyos_lax_live_signature_policy_rejected(self):
@@ -129,14 +132,19 @@ class PacmanTrustTests(unittest.TestCase):
         fn = stage.split("install_target() {", 1)[1]
         self.assertLess(fn.index("check_identity "), fn.index("--prepare-vm --run-id"))
         self.assertLess(fn.index("--prepare-vm --run-id"), fn.index("  pacstrap -K -C"))
-        self.assertIn("--config \"$strict_dir/pacman-install.conf\"", fn)
-        self.assertIn("--config \"$TARGET/etc/pacman.conf\"", fn)
+        self.assertIn('--config "$strict_dir/pacman-install.conf"', fn)
+        self.assertIn('--config "$TARGET/etc/pacman.conf"', fn)
         self.assertNotIn("install -m 0644 /etc/pacman.conf", fn)
 
     def test_no_trust_bypass_in_guard(self):
         raw = SOURCE.read_text()
-        for word in ("--skippgpcheck", "--assume-installed", "--noconfirm",
-                     "SigLevel = Never", "SigLevel = Optional TrustAll"):
+        for word in (
+            "--skippgpcheck",
+            "--assume-installed",
+            "--noconfirm",
+            "SigLevel = Never",
+            "SigLevel = Optional TrustAll",
+        ):
             self.assertNotIn(word, raw)
 
 
