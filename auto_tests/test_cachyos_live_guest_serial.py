@@ -84,6 +84,42 @@ class SerialGuestContractTests(unittest.TestCase):
             SERIAL.PASSED.search(b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n")
         )
 
+    def test_real_cachyos_systemd_osc_command_marker_is_normalized(self):
+        # Captured structure of the official live ISO's systemd OSC 3008
+        # command lifecycle plus CSI bracketed-paste terminal sequences.
+        raw = (
+            b"\x1b]3008;start=123;user=root;hostname=CachyOS;type=command\x1b\\"
+            b"\x1b[?2004l\r\n"
+            b"GASLUX_ROOT_SHELL_READY\r\n"
+            b"\x1b]3008;end=123;exit=success\x1b\\"
+            b"\x1b[?2004h"
+        )
+        clean = SERIAL.normalized_tty(raw)
+        self.assertIn(b"GASLUX_ROOT_SHELL_READY\n", clean)
+        self.assertIsNotNone(SERIAL.READY.search(clean))
+        self.assertNotIn(b"\x1b", clean)
+
+    def test_real_cachyos_systemd_osc_success_line_is_normalized(self):
+        raw = (
+            b"preflight starting\r\n"
+            b"\x1b]3008;start=456;user=root;type=command\x1b\\"
+            b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"
+        )
+        self.assertIsNotNone(SERIAL.PASSED.search(SERIAL.normalized_tty(raw)))
+
+    def test_terminal_echo_does_not_count_as_guest_success(self):
+        raw = (
+            b"\x1b]3008;start=567;user=root;type=command\x1b\\"
+            b"[root@CachyOS ~]# printf 'GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\\n'\r\n"
+        )
+        self.assertIsNone(SERIAL.PASSED.search(SERIAL.normalized_tty(raw)))
+
+    def test_unknown_escape_sequence_never_fakes_success(self):
+        raw = b"\x1b[?9000zGASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"
+        # Unknown control sequences are not stripped; they cannot be treated
+        # as an exact, anchored stdout proof.
+        self.assertIsNone(SERIAL.PASSED.search(SERIAL.normalized_tty(raw)))
+
     def test_empty_serial_transport_fails_closed(self):
         with self.assertRaisesRegex(SERIAL.ProbeError, "serial connection terminated"):
             SERIAL.probe(FakeSerial(b""), bytearray(), boot_timeout=3)
