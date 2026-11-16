@@ -100,6 +100,10 @@ def verify_mounts(plan: dict[str, Any]) -> None:
     ensure(not (TARGET / "etc/fstab").exists(), "refusing pre-existing fstab")
     ensure(not (TARGET / "etc/default/grub.d/99-gaslux.cfg").exists(),
            "refusing pre-existing GRUB defaults")
+    ensure(not (TARGET / "boot/grub/grub.cfg").exists(),
+           "refusing to overwrite an existing GRUB configuration")
+    ensure(not (TARGET / "boot/grub/grub.cfg.gaslux-candidate").exists(),
+           "refusing an existing GRUB configuration candidate")
 
 
 def write_new(path: Path, value: str, mode: int) -> None:
@@ -129,22 +133,37 @@ def apply_vm_lab(plan: dict[str, Any]) -> dict[str, str]:
     generator = TARGET / "etc/grub.d/45_gaslux_windows"
     fstab = TARGET / "etc/fstab"
     defaults = TARGET / "etc/default/grub.d/99-gaslux.cfg"
-    tracked = [generator, fstab, defaults]
+    # All writes are scoped to the transaction-owned disposable guest.
+    # A GRUB candidate is generated and checked before publishing grub.cfg.
+    created: list[Path] = []
+    candidate = TARGET / "boot/grub/grub.cfg.gaslux-candidate"
+    grub_cfg = TARGET / "boot/grub/grub.cfg"
+    efi_dir_created = False
+    candidate_started = False
     try:
         write_new(fstab, files["fstab"], 0o644)
+        created.append(fstab)
         write_new(defaults, files["grubDefaults"], 0o644)
+        created.append(defaults)
         script = '#!/bin/sh\nexec tail -n +3 "$0"\n' + files["windowsGrubEntry"]
         write_new(generator, script, 0o755)
+        created.append(generator)
         efi_dir.mkdir(mode=0o700, parents=False, exist_ok=False)
+        efi_dir_created = True
         write_new(efi_dir / ".gaslux-owner", plan["runId"] + "\n", 0o600)
         run("arch-chroot", str(TARGET), "grub-install", "--target=x86_64-efi",
             "--efi-directory=/boot/efi", "--bootloader-id=Gaslux-CachyOS",
             "--no-nvram", "--no-extra-removable", "--recheck")
-        run("arch-chroot", str(TARGET), "grub-mkconfig", "-o", "/boot/grub/grub.cfg")
-        run("arch-chroot", str(TARGET), "grub-script-check", "/boot/grub/grub.cfg")
+        candidate_started = True
+        run("arch-chroot", str(TARGET), "grub-mkconfig",
+            "-o", "/boot/grub/grub.cfg.gaslux-candidate")
+        run("arch-chroot", str(TARGET), "grub-script-check",
+            "/boot/grub/grub.cfg.gaslux-candidate")
+        ensure(candidate.is_file() and not candidate.is_symlink(),
+               "GRUB candidate was not generated")
         ensure(safe_file(efi_dir, "grubx64.efi").read_bytes()[:2] == b"MZ",
                "GRUB EFI binary is absent/invalid")
-        grub_text = safe_file(TARGET, "boot/grub/grub.cfg").read_text()
+        grub_text = candidate.read_text(encoding="utf-8")
         ensure("Windows Boot Manager" in grub_text and
                "gaslux-windows" in grub_text and
                "vmlinuz-linux-cachyos" in grub_text,
@@ -153,17 +172,26 @@ def apply_vm_lab(plan: dict[str, Any]) -> dict[str, str]:
         ensure(hashlib.sha256(verified_windows.read_bytes()).hexdigest() ==
                plan["windowsBootManagerSha256"],
                "Windows Boot Manager changed during GRUB installation")
+        # Atomic no-clobber publication: link() fails if any grub.cfg already
+        # exists. This never replaces a previously working boot configuration.
+        os.link(candidate, grub_cfg, follow_symlinks=False)
+        created.append(grub_cfg)
+        candidate.unlink()
     except Exception:
-        # Fail closed: only remove files created by this transaction. Do NOT
-        # touch EFI/Microsoft or BootOrder, and do not claim Windows recovery.
-        for path in tracked:
-            if path.exists() and not path.is_symlink():
+        # Only remove this transaction's recorded files; the Windows loader,
+        # NVRAM and foreign target paths are never removed or overwritten.
+        for path in reversed(created):
+            if path.is_file() and not path.is_symlink():
                 path.unlink()
+        if candidate_started and candidate.is_file() and not candidate.is_symlink():
+            candidate.unlink()
         marker = efi_dir / ".gaslux-owner"
-        if marker.is_file() and not marker.is_symlink() and marker.read_text().strip() == plan["runId"]:
-            # Remove only our own one-off EFI directory in the disposable VM.
+        if (efi_dir_created and marker.is_file() and not marker.is_symlink()
+                and marker.read_text().strip() == plan["runId"]):
             import shutil
             shutil.rmtree(efi_dir)
+        elif efi_dir_created and efi_dir.is_dir() and not any(efi_dir.iterdir()):
+            efi_dir.rmdir()
         raise
     return {
         "status": "vm-lab-efi-files-installed",
