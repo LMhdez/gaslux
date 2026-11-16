@@ -72,22 +72,22 @@ class SerialGuestContractTests(unittest.TestCase):
 
     def test_signed_grub_boot_proof_accepted_only_as_exact_guest_line(self):
         guest = self.fake(result=(
-            b"GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\\r\\n"
-            b"GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\\r\\n"
-            b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\\r\\n"
+            b"GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r\n"
+            b"GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\r\n"
+            b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"
         ))
         SERIAL.probe(guest, bytearray(), boot_timeout=3,
                      require_signed_entry=True)
         self.assertIsNone(SERIAL.SIGNED_GRUB_CMDLINE.search(
-            b"echo GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\\r\\n"
+            b"echo GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\r\n"
         ))
 
     def test_guest_failure_rejects_even_if_pass_marker_exists(self):
         guest = self.fake(result=(
-            b"GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\\r\\n"
-            b"GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\\r\\n"
-            b"GASLUX_GUEST_PREFLIGHT_FAILURE: aborted\\r\\n"
-            b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\\r\\n"
+            b"GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r\n"
+            b"GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\r\n"
+            b"GASLUX_GUEST_PREFLIGHT_FAILURE: aborted\r\n"
+            b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"
         ))
         with self.assertRaisesRegex(SERIAL.ProbeError, "explicitly failed"):
             SERIAL.probe(guest, bytearray(), boot_timeout=3,
