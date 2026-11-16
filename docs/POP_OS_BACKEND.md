@@ -39,3 +39,33 @@ Sources:
 - https://support.system76.com/support/bootloader
 - https://support.system76.com/support/windows
 - https://github.com/pop-os/iso/blob/master/config/pop-os/24.04.mk
+
+## Ubuntu-family target configuration reuse (experimental bridge)
+
+The inherited `assets/live/configure-target-main.sh` is split into two
+explicitly ordered phases without changing the Mint/Zorin operations:
+
+- `configure_common_ubuntu_target`: account, Windows sharing and preferences,
+  locale, keyboard, timezone and development-access configuration.
+- `configure_legacy_grub_target`: Casper cleanup, initramfs rebuild, GRUB,
+  boot-update guards and first-boot resize setup.
+
+`validate_legacy_target_backend_or_die` executes **before target configuration**
+and requires exactly `mint/linuxmint` or `zorin/zorin`. This check runs
+inside the installed target, **after live disk staging and extraction**;
+it is not a substitute for an earlier Windows/live pre-disk authorization gate. The only accepted
+backend remains `debian-squashfs` (the legacy default); `system76`, `popos/pop`
+and unknown identities all fail closed. The selection function is deliberately
+not wired to a Pop!_OS writer. This does not override Windows preflight or
+authorize disk/EFI changes.
+
+The next integration must separately prove that each shared operation works on
+the verified System76 installed target. Pop!_OS still requires native
+`distinst`/installer integration, its own boot/update/verification policy
+(systemd-boot UEFI, GRUB BIOS), authenticated Windows-to-live handoff,
+and disposable Windows VM installation/dual-boot/rollback evidence.
+
+`auto_tests/tests/test_ubuntu_target_backend_preflight.py` executes only the
+Bash validation function with synthetic environment inputs, confirms negative
+and positive policy cases and guards the historical operation order. It does
+not execute installer or disk commands.
