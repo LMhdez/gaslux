@@ -15,7 +15,7 @@ from gaslux_popos_distinst_preview import (  # noqa: E402
 
 
 @pytest.fixture
-def request():
+def candidate():
     return {
         "runId": "lab-pop-verified-20261116",
         "operation": "preview-only",
@@ -33,8 +33,8 @@ def request():
     }
 
 
-def test_uefi_gpt_reuses_esp_without_formatting(request):
-    outcome = preview_native_distinst(request)
+def test_uefi_gpt_reuses_esp_without_formatting(candidate):
+    outcome = preview_native_distinst(candidate)
     argv = outcome["args"]
     assert outcome["installationAuthorized"] is False
     assert outcome["requiresIndependentDiskProof"] is True
@@ -74,20 +74,20 @@ def test_uefi_gpt_reuses_esp_without_formatting(request):
         {"runId": ""},
     ],
 )
-def test_unsafe_target_contracts_refused(request, mutations):
-    request.update(mutations)
+def test_unsafe_target_contracts_refused(candidate, mutations):
+    candidate.update(mutations)
     with pytest.raises(PopDistinstPlanRefusal):
-        preview_native_distinst(request)
+        preview_native_distinst(candidate)
 
 
-def test_extra_or_missing_fields_refused(request):
-    request["unsupported"] = True
+def test_extra_or_missing_fields_refused(candidate):
+    candidate["unsupported"] = True
     with pytest.raises(PopDistinstPlanRefusal):
-        preview_native_distinst(request)
-    del request["unsupported"]
-    del request["windowsBootProofSha256"]
+        preview_native_distinst(candidate)
+    del candidate["unsupported"]
+    del candidate["windowsBootProofSha256"]
     with pytest.raises(PopDistinstPlanRefusal):
-        preview_native_distinst(request)
+        preview_native_distinst(candidate)
 
 
 def test_no_process_or_disk_writers_in_preview_module():
