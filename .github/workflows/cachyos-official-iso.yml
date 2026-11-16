@@ -10,9 +10,11 @@ on:
       - feature/cachyos-live-guest-preflight-smoke
       - feature/cachyos-signed-real-iso-contract
       - feature/cachyos-ovmf-secureboot-lab-proof
+      - feature/cachyos-signed-grub-qemu-execution
     paths:
       - .github/workflows/cachyos-official-iso.yml
       - auto_tests/tools/cachyos_real_live_kernel_smoke.sh
+      - auto_tests/tools/cachyos_signed_grub_vm_config.py
       - auto_tests/tools/cachyos_live_guest_serial.py
       - auto_tests/tools/cachyos_live_guest_readonly_probe.sh
       - assets/live/cachyos-stage-target.sh
@@ -158,12 +160,14 @@ jobs:
           ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
           GASLUX_BOOT_EVIDENCE_DIR: 'gaslux-boot-evidence'
           GASLUX_LIVE_GUEST_PROBE: '1'
+          GASLUX_SIGNED_EVIDENCE_DIR: 'gaslux-signed-evidence'
         run: |
           set -Eeuo pipefail
           bash auto_tests/tools/cachyos_real_live_kernel_smoke.sh \
             "$GASLUX_ISO_WORKSPACE/cachyos.iso" "$ISO_SHA256"
           printf 'Pinned official CachyOS live kernel and initramfs boot: PASS in QEMU\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Real CachyOS guarded backend --check on disposable VM: PASS\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Ephemeral Ed25519 GRUB entry executed in QEMU; guest cmdline proof: PASS\\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'No Windows, installed root or rollback was tested.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve virtual CachyOS serial boot evidence for independent review
         if: always()
