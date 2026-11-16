@@ -60,6 +60,11 @@ jobs:
           assert 'systemd-detect-virt --vm' in guest
           assert 'bash /run/gaslux-control/stage.sh --validate-target' in guest
           assert 'pacstrap -K /mnt/target' in guest
+          assert 'systemctl is-active --quiet pacman-init.service' in guest
+          assert 'systemctl is-failed --quiet pacman-init.service' in guest
+          assert 'journalctl -b -u pacman-init.service' in guest
+          assert 'systemctl start pacman-init.service' not in guest
+          assert 'SigLevel = Never' not in guest
           assert 'arch-chroot /mnt/target grub-install' in guest
           assert 'systemd.run=' in host
           assert 'systemd.wants=kernel-command-line.service' in host
