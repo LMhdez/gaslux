@@ -142,9 +142,18 @@ if ! grep -Eq 'CachyOS [0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cachyos-lts \(ttyS0\)' "$w/
   tail -c 5000 "$w/serial.log" >&2 || true
   exit 1
 fi
-if ! grep -Fq 'CachyOS login:' "$w/serial.log" ||
+if ! grep -Fq 'CachyOS login:' "$w/serial.log"; then
+  echo "INCOMPLETE: no real CachyOS live ttyS0 login prompt (QEMU status=$rc)" >&2
+  tail -c 5000 "$w/serial.log" >&2 || true
+  exit 1
+fi
+# In the interactive live-guest test, the root login and signed-stage
+# preflight markers (enforced below) are stronger evidence of userspace
+# than a formatting-specific systemd startup timing line. CachyOS 260809
+# can print "Startup finished in 3.560s." with no "(kernel) + (userspace)".
+if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" != 1 ]] &&
    ! grep -Eq 'Startup finished in .* \(kernel\) \+ .* \(userspace\)' "$w/serial.log"; then
-  echo "INCOMPLETE: live kernel did not reach systemd boot and serial login (QEMU status=$rc)" >&2
+  echo "INCOMPLETE: non-interactive live boot has no systemd startup timing evidence (QEMU status=$rc)" >&2
   tail -c 5000 "$w/serial.log" >&2 || true
   exit 1
 fi
