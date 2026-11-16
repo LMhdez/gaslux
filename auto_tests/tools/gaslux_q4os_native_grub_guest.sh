@@ -47,6 +47,12 @@ if [[ "$1" == verify-second ]]; then
   [[ "$actual" == "$(cat "$state")" ]] || fatal 'second-boot-native-efi-hash'
   cmp -s "$native_loader" "$boot_fallback" || fatal 'fallback-does-not-match-native-grub'
   [[ -s /boot/grub/grub.cfg ]] || fatal 'native-grub-cfg-missing'
+  [[ "$(uname -r)" == '6.12.111+deb13-amd64' ]] ||
+    fatal 'second-kernel-version-does-not-match-pinned-q4os-iso'
+  [[ -r /proc/cmdline ]] || fatal 'second-kernel-cmdline-unavailable'
+  grep -Fq 'BOOT_IMAGE=' /proc/cmdline ||
+    fatal 'second-kernel-was-not-started-by-grub'
+  printf 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_KERNEL=6.12.111+deb13-amd64\n' > /dev/ttyS0
   printf 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=6.10-deb13u1\n' > /dev/ttyS0
   exit 0
 fi
