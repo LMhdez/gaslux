@@ -88,6 +88,14 @@ set +e
 wait "$vm_pid"
 rc=$?
 set -e
+if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" && -f "$w/serial.log" ]]; then
+  mkdir -p "$GASLUX_BOOT_EVIDENCE_DIR"
+  install -m 0600 "$w/serial.log" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-live-serial.log"
+  (
+    cd "$GASLUX_BOOT_EVIDENCE_DIR"
+    sha256sum cachyos-live-serial.log > cachyos-live-serial.sha256
+  )
+fi
 if ! grep -Eq 'CachyOS [0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cachyos-lts \(ttyS0\)' "$w/serial.log"; then
   echo "FAIL: pinned CachyOS LTS login banner not observed (QEMU status=$rc)" >&2
   tail -c 5000 "$w/serial.log" >&2 || true
