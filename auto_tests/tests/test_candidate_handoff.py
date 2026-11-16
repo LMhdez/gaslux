@@ -206,5 +206,5 @@ def test_bazzite_mbr_rejected_even_with_valid_signature(bound):
         rootFilesystem="btrfs",
     )
     bound["write"](p)
-    with pytest.raises(CandidateHandoffError, match="Backend/layout"):
+    with pytest.raises(CandidateHandoffError, match="Invalid or unauthenticated"):
         check(bound)
