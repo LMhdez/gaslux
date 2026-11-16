@@ -38,6 +38,12 @@ function Assert-GasluxWindowsEvidence {
             throw "Invalid UTC timestamp for $name."
         }
     }
+    # Reject fabricated or contradictory chronology before interpreting a reboot.
+    # LastBootUpTime is allowed to precede collection, never to follow it.
+    if ([DateTimeOffset]::Parse([string]$Record.windowsBootUtc) -gt
+        [DateTimeOffset]::Parse([string]$Record.capturedUtc)) {
+        throw 'Windows boot timestamp is later than its evidence capture.'
+    }
     foreach ($name in @('windowsLoaderSha256','bcdSha256','firmwareBcdSha256','winReInfoSha256')) {
         if ([string]$Record.$name -cnotmatch '^[0-9a-f]{64}$') {
             throw "Invalid SHA-256 for $name."
@@ -111,10 +117,14 @@ function Compare-GasluxWindowsRecoveryEvidence {
         (ConvertTo-Json -InputObject $observed -Depth 20 -Compress)) {
         throw 'Windows geometry, BCD, firmware, WinRE, BitLocker or EFI changed.'
     }
+    $beforeCapture = [DateTimeOffset]::Parse([string]$Before.capturedUtc)
+    $afterCapture = [DateTimeOffset]::Parse([string]$After.capturedUtc)
+    if ($afterCapture -le $beforeCapture) {
+        throw 'Post-install evidence was not captured after the baseline.'
+    }
     if ($RequireWindowsReboot -and
-        [DateTimeOffset]::Parse([string]$After.windowsBootUtc) -le
-        [DateTimeOffset]::Parse([string]$Before.windowsBootUtc)) {
-        throw 'No later Windows boot was observed.'
+        [DateTimeOffset]::Parse([string]$After.windowsBootUtc) -le $beforeCapture) {
+        throw 'Windows did not reboot after the pre-install baseline was collected.'
     }
     return [pscustomobject]@{
         schemaVersion = 1
