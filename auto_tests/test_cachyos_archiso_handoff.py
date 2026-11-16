@@ -97,17 +97,59 @@ class HandoffTests(unittest.TestCase):
 
     def test_missing_kernel(self):
         (self.iso / "arch/boot/x86_64/vmlinuz-linux-cachyos").unlink()
-        with self.assertRaisesRegex(handoff.HandoffError, "file missing"):
+        with self.assertRaisesRegex(handoff.HandoffError, "pairing mismatch|file missing"):
             self.call()
 
     def test_missing_initrd(self):
         (self.iso / "arch/boot/x86_64/initramfs-linux-cachyos.img").unlink()
-        with self.assertRaisesRegex(handoff.HandoffError, "file missing"):
+        with self.assertRaisesRegex(handoff.HandoffError, "pairing mismatch|file missing"):
+            self.call()
+
+    def test_official_lts_live_kernel_is_supported(self):
+        kernel = self.iso / "arch/boot/x86_64/vmlinuz-linux-cachyos"
+        initrd = self.iso / "arch/boot/x86_64/initramfs-linux-cachyos.img"
+        kernel.unlink()
+        initrd.unlink()
+        lts_kernel = kernel.with_name("vmlinuz-linux-cachyos-lts")
+        lts_initrd = initrd.with_name("initramfs-linux-cachyos-lts.img")
+        lts_kernel.write_bytes(b"official live kernel fixture")
+        lts_initrd.write_bytes(b"official live initramfs fixture")
+        result = self.call()
+        self.assertEqual(result["liveKernelPath"], "arch/boot/x86_64/vmlinuz-linux-cachyos-lts")
+        self.assertEqual(result["liveInitramfsPath"], "arch/boot/x86_64/initramfs-linux-cachyos-lts.img")
+        self.assertIn("linux (gaslux_iso)/arch/boot/x86_64/vmlinuz-linux-cachyos-lts", result["grubEntry"])
+        self.assertIn("initrd (gaslux_iso)/arch/boot/x86_64/initramfs-linux-cachyos-lts.img", result["grubEntry"])
+
+    def test_prefer_official_lts_when_two_complete_pairs_exist(self):
+        path = self.iso / "arch/boot/x86_64"
+        (path / "vmlinuz-linux-cachyos-lts").write_bytes(b"lts")
+        (path / "initramfs-linux-cachyos-lts.img").write_bytes(b"lts")
+        result = self.call()
+        self.assertTrue(result["liveKernelPath"].endswith("cachyos-lts"))
+
+    def test_partial_lts_pair_is_rejected_even_if_non_lts_exists(self):
+        path = self.iso / "arch/boot/x86_64"
+        (path / "vmlinuz-linux-cachyos-lts").write_bytes(b"lts")
+        with self.assertRaisesRegex(handoff.HandoffError, "pairing mismatch"):
+            self.call()
+
+    def test_live_kernel_symlink_rejected(self):
+        kernel = self.iso / "arch/boot/x86_64/vmlinuz-linux-cachyos"
+        kernel.unlink()
+        kernel.symlink_to("/etc/passwd")
+        with self.assertRaisesRegex(handoff.HandoffError, "file missing/symlink"):
+            self.call()
+
+    def test_empty_lts_initramfs_rejected(self):
+        path = self.iso / "arch/boot/x86_64"
+        (path / "vmlinuz-linux-cachyos-lts").write_bytes(b"lts")
+        (path / "initramfs-linux-cachyos-lts.img").touch()
+        with self.assertRaisesRegex(handoff.HandoffError, "empty ISO component"):
             self.call()
 
     def test_missing_rootfs(self):
         (self.iso / "arch/x86_64/airootfs.sfs").unlink()
-        with self.assertRaisesRegex(handoff.HandoffError, "file missing"):
+        with self.assertRaisesRegex(handoff.HandoffError, "pairing mismatch|file missing"):
             self.call()
 
     def test_unsafe_relative_iso_path(self):
