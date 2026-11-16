@@ -1,4 +1,4 @@
-"""Read-only guards for ephemeral OVMF Pop!_OS optical ISO attachment."""
+"""Read-only guards for ephemeral OVMF Pop!_OS ISO block-device attachment."""
 
 from pathlib import Path
 
@@ -10,8 +10,8 @@ def test_iso_is_emulated_as_read_only_optical_and_never_host_block_device():
     source = BOOT.read_text(encoding="utf-8")
     assert 'printf \'%s  %s\\n\' "$digest" "$iso" | sha256sum -c --status' in source
     assert 'readonly=on,format=raw,file="$iso"' in source
-    assert "-device qemu-xhci" in source
-    assert "-device usb-storage,drive=officialiso" in source
+    assert "-device virtio-blk-pci,drive=officialiso" in source
+    assert "-device qemu-xhci" not in source
     assert '  -cdrom "$iso"' not in source
     assert '  -device virtio-blk-pci,drive=labefi,bootindex=1' in source
     assert ' -net none' in source
