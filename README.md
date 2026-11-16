@@ -190,6 +190,28 @@ The existing Windows build is based on `Libertix.sln`, and the two inherited ins
 
 Contributions should use a dedicated branch and a reviewed pull request, preserve Mint/Zorin regressions, run the relevant C#/Pester/Python/ShellCheck/build checks, and distinguish read-only unit tests from real VM boots or recovery evidence. Never run destructive tests on an ordinary physical disk.
 
+### Validate the existing baseline
+
+The current repository still uses the inherited Libertix build and test entry points. Run relevant checks in a configured development environment before submitting installation or recovery changes.
+
+**Windows application** (Visual Studio 2022 Build Tools and the .NET Framework 4.8 targeting pack):
+
+~~~powershell
+msbuild .\Libertix.sln /restore /m /p:Configuration=Release "/p:Platform=Any CPU"
+~~~
+
+**Python regression suite** (requires `uv` and the dependencies declared in `auto_tests/`):
+
+~~~bash
+cd auto_tests
+uv sync --frozen --extra dev
+uv run --frozen python -m ruff check app tests tools ../assets/live/*.py ../iso-tools/*.py ../grub/*.py
+uv run --frozen python -m ruff format --check app tests tools ../assets/live/*.py ../iso-tools/*.py ../grub/*.py
+uv run --frozen python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+~~~
+
+The relevant CI jobs also run C# contract tests, PowerShell/Pester validation, ShellCheck and ISO builds. For VM automation, configuration, and safety restrictions, follow [auto_tests/README.md](auto_tests/README.md). **Passing these tests alone does not certify a new backend for a real Windows dual-boot installation.**
+
 ## Origin and credits
 
 **Gaslux is based on [Libertix](https://github.com/ekimiateam/libertix)** and builds upon its original architecture, code, design and documentation. This new project identity does not erase the original authorship or imply that the original maintainers endorse or maintain Gaslux.
