@@ -73,8 +73,7 @@ def connect_serial(path: Path, *, timeout_seconds: float = 40) -> socket.socket:
     raise ProbeError("QEMU guest serial socket was not created")
 
 
-def probe(sock: socket.socket, *, boot_timeout: float = 345) -> bytes:
-    trace = bytearray()
+def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345) -> None:
     # A ttyS0 login is produced only by executing CachyOS's live kernel/init.
     wait_for(sock, trace, (LOGIN,), timeout_seconds=boot_timeout, failure=None)
     sock.sendall(b"root\r")
@@ -109,7 +108,6 @@ def probe(sock: socket.socket, *, boot_timeout: float = 345) -> bytes:
         b"bash /run/gaslux-lab/probe.sh\r"
     )
     wait_for(sock, trace, (PASSED,), timeout_seconds=45)
-    return bytes(trace)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -118,14 +116,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--transcript", type=Path, required=True)
     parser.add_argument("--boot-timeout", type=float, default=345)
     args = parser.parse_args(argv)
+    transcript = bytearray()
     try:
         with connect_serial(args.socket) as sock:
-            data = probe(sock, boot_timeout=args.boot_timeout)
-        # The script's transcript is diagnostic and not a secret. Its SHA-256
-        # is stored by the host QEMU wrapper after the guest has shut down.
-        args.transcript.write_bytes(data)
+            probe(sock, transcript, boot_timeout=args.boot_timeout)
     except (ProbeError, OSError, UnicodeError) as error:
         print(f"GASLUX_GUEST_PROBE_FAILED: {error}", file=sys.stderr)
+        returncode = 1
+    else:
+        returncode = 0
+    finally:
+        # Keep failure transcripts as diagnostic evidence too.
+        args.transcript.write_bytes(bytes(transcript))
+    if returncode:
         return 1
     print("GASLUX_GUEST_PROBE_VERIFIED: live root and guarded --check succeeded")
     return 0
