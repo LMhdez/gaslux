@@ -30,6 +30,7 @@ PLAN = {
     "partitionStyle": "gpt", "secureBootEnabled": False,
     "isoSha256": "2" * 64, "isoSizeBytes": 3_000_000_000,
     "isoStorageUuid": "F01A2299B12C348E",
+    "isoStorageFilesystem": "ntfs", "isoRelativePath": "/Gaslux/cachyos.iso",
     "rootUuid": ROOT_ID, "targetDiskId": "NVME-transaction-0001",
     "windowsEspUuid": "AB12-CD34",
     "windowsLoaderSha256": "3" * 64,
@@ -155,6 +156,18 @@ class SignedHandoffTests(unittest.TestCase):
         self.plan["distribution"] = "mint"
         self.sign()
         with self.assertRaisesRegex(AUTH.AuthError, "distro/backend"):
+            self.verify()
+
+    def test_iso_path_injection_rejected(self):
+        self.plan["isoRelativePath"] = "/Gaslux/a.iso';reboot"
+        self.sign()
+        with self.assertRaisesRegex(AUTH.AuthError, "ISO relative path"):
+            self.verify()
+
+    def test_iso_filesystem_uuid_policy_rejected(self):
+        self.plan["isoStorageFilesystem"] = "ext4"
+        self.sign()
+        with self.assertRaisesRegex(AUTH.AuthError, "ext4 source UUID"):
             self.verify()
 
     def test_unknown_json_field_rejected(self):
