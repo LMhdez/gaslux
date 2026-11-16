@@ -10,6 +10,7 @@ on:
       - feature/cachyos-real-iso-contract
       - feature/cachyos-live-guest-preflight-smoke
       - feature/cachyos-signed-real-iso-contract
+      - feature/cachyos-ovmf-secureboot-lab-proof
   pull_request:
     branches:
       - main
