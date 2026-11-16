@@ -23,11 +23,12 @@ function Require-Failure {
 function New-TestEvidence {
     param([switch]$Rebooted)
     $boot = if ($Rebooted) { '2026-11-16T16:10:00.0000000+00:00' } else { '2026-11-16T15:10:00.0000000+00:00' }
+    $capture = if ($Rebooted) { '2026-11-16T17:10:00.0000000+00:00' } else { '2026-11-16T15:30:00.0000000+00:00' }
     return [pscustomobject]@{
         schemaVersion = 1
         runId = 'gaslux-test-case-20261116'
         computerName = 'WINDOWS-VM'
-        capturedUtc = '2026-11-16T17:10:00.0000000+00:00'
+        capturedUtc = $capture
         windowsBootUtc = $boot
         disk = [pscustomobject]@{
             number = 1
@@ -85,6 +86,21 @@ Run-Case 'unchanged Windows recovery baseline' {
     Require-Equal $out.laterWindowsBootObserved $true 'Windows reboot'
     Require-Equal $out.linuxBootVerified $false 'Linux proof'
     Require-Equal $out.physicalInstallerReady $false 'Hardware release'
+}
+Run-Case 'fake later boot before baseline collection rejected' {
+    $after=New-TestEvidence -Rebooted
+    $after.windowsBootUtc='2026-11-16T15:20:00.0000000+00:00'
+    Require-Failure { Compare-GasluxWindowsRecoveryEvidence (New-TestEvidence) $after -RequireWindowsReboot } 'Windows did not reboot after'
+}
+Run-Case 'evidence timestamp from future boot rejected' {
+    $after=New-TestEvidence -Rebooted
+    $after.windowsBootUtc='2026-11-16T18:10:00.0000000+00:00'
+    Require-Failure { Assert-GasluxWindowsEvidence $after } 'later than its evidence capture'
+}
+Run-Case 'same baseline capture time rejected' {
+    $after=New-TestEvidence -Rebooted
+    $after.capturedUtc='2026-11-16T15:30:00.0000000+00:00'
+    Require-Failure { Compare-GasluxWindowsRecoveryEvidence (New-TestEvidence) $after } 'not captured after the baseline'
 }
 Run-Case 'same Windows boot is not a reboot' {
     Require-Failure { Compare-GasluxWindowsRecoveryEvidence (New-TestEvidence) (New-TestEvidence) -RequireWindowsReboot } 'No later Windows boot'
