@@ -100,7 +100,8 @@ def connect_serial(path: Path, *, timeout_seconds: float = 40) -> socket.socket:
 
 
 def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,
-          require_signed_entry: bool = False, run_lab_install: bool = False) -> None:
+          require_signed_entry: bool = False, run_lab_install: bool = False,
+          run_lab_graphical: bool = False) -> None:
     # A ttyS0 login is produced only by executing CachyOS's live kernel/init.
     wait_for(sock, trace, (LOGIN,), timeout_seconds=boot_timeout, failure=None)
     sock.sendall(b"root\r")
@@ -143,13 +144,16 @@ def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,
     if require_signed_entry:
         wait_for(sock, trace, (SIGNED_GRUB_CMDLINE,), timeout_seconds=45)
     wait_for(sock, trace, (PASSED,), timeout_seconds=45)
+    if run_lab_graphical and not run_lab_install:
+        raise ProbeError("graphical VM stage requires the real signed installer")
     if run_lab_install:
         if not require_signed_entry:
             raise ProbeError("lab installation requires the signed boot")
+        graphical_flag = b"export GASLUX_LAB_GRAPHICAL=1 && " if run_lab_graphical else b""
         sock.sendall(
             b"cd /run/gaslux-lab && sha256sum -c install.sha256 && "
             b"export GASLUX_DISPOSABLE_VM=I_ACCEPT_DISPOSABLE_VM_ONLY && "
-            b"bash /run/gaslux-lab/install.sh\r"
+            + graphical_flag + b"bash /run/gaslux-lab/install.sh\r"
         )
         start_pos = len(trace)  # reject any success line printed before install command
         deadline = time.monotonic() + 2700
@@ -181,13 +185,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="demand real guest /proc/cmdline signed-handoff proof")
     parser.add_argument("--run-lab-install", action="store_true",
                         help="MUTATES only a separately identified disposable QEMU disk")
+    parser.add_argument("--run-lab-graphical", action="store_true",
+                        help="installs native KDE Plasma only in the disposable QEMU disk")
     args = parser.parse_args(argv)
     transcript = bytearray()
     try:
         with connect_serial(args.socket) as sock:
             probe(sock, transcript, boot_timeout=args.boot_timeout,
                   require_signed_entry=args.require_signed_entry,
-                  run_lab_install=args.run_lab_install)
+                  run_lab_install=args.run_lab_install,
+                  run_lab_graphical=args.run_lab_graphical)
     except (ProbeError, OSError, UnicodeError) as error:
         print(f"GASLUX_GUEST_PROBE_FAILED: {error}", file=sys.stderr)
         returncode = 1
