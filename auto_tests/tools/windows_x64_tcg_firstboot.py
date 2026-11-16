@@ -57,9 +57,15 @@ def validate_environment(workspace: Path) -> None:
             "not the expressly authorized disposable GitHub Linux TCG laboratory")
     require(platform.system() == "Linux" and platform.machine() == "x86_64",
             "only Linux x64 host is supported")
-    require(workspace.is_absolute() and workspace.is_dir() and
+    host_temp = Path(os.environ.get("RUNNER_TEMP", ""))
+    require(os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux" and
+            host_temp.is_absolute() and host_temp.is_dir() and
+            not host_temp.is_symlink() and
+            host_temp == Path("/home/runner/work/_temp") and
+            workspace.parent == host_temp and
+            workspace.is_absolute() and workspace.is_dir() and
             not workspace.is_symlink() and workspace.resolve() == workspace,
-            "unsafe temporary workspace")
+            "not an exclusively file-backed, hosted GitHub-runner temporary workspace")
     require(shutil.disk_usage(workspace).free > 25 * 1024**3,
             "insufficient free storage before official Windows download")
     for binary in ("qemu-img", "qemu-system-x86_64", "mkfs.vfat", "mcopy"):
@@ -278,7 +284,9 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
         try:
             while time.monotonic() - started < limit:
                 if transcript.is_file():
-                    data = transcript.read_bytes()[-400_000:]
+                    with transcript.open("rb") as source:
+                        source.seek(max(0, transcript.stat().st_size - 400_000))
+                        data = source.read(400_000)
                     if FAILURE.encode() in data:
                         return False, "installed Windows reported failed boot audit"
                     required = (
@@ -399,7 +407,8 @@ def main(argv: list[str] | None = None) -> int:
                 dest = evidence / f"{args.profile}-serial.log"
                 require(not dest.exists(), "existing evidence log")
                 shutil.copyfile(serial, dest)
-                digest = hashlib.sha256(dest.read_bytes()).hexdigest()
+                with dest.open("rb") as logstream:
+                    digest = hashlib.file_digest(logstream, "sha256").hexdigest()
                 (evidence / f"{args.profile}-serial.sha256").write_text(
                     f"{digest}  {dest.name}\n", encoding="ascii")
             if not ok:
@@ -411,9 +420,15 @@ def main(argv: list[str] | None = None) -> int:
         status = 1
     else:
         status = 0
-    evidence.mkdir(exist_ok=True)  # only existing CI-created evidence directory
-    (evidence / f"{args.profile}-result.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # On any preflight failure, never create report paths outside the
+    # authorization-controlled GitHub Actions evidence directory.
+    if (evidence.is_absolute() and evidence.is_dir() and
+            not evidence.is_symlink() and evidence.resolve() == evidence and
+            evidence.name == "windows-x64-tcg-evidence"):
+        report_path = evidence / f"{args.profile}-result.json"
+        if not report_path.exists() and not report_path.is_symlink():
+            report_path.write_text(
+                json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(report, sort_keys=True))
     return status
 
