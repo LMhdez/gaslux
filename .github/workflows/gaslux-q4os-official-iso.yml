@@ -23,7 +23,7 @@ jobs:
       - name: Prepare isolated ISO lab tools
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools gdisk
       - name: Download Q4OS 6.10 r2 from project mirror, independently verify public SHA-256
         shell: bash
         env:
