@@ -58,3 +58,65 @@ The JSON output intentionally sets `libertix_installation_supported=false`; succ
 - https://github.com/CachyOS/CachyOS-Live-ISO/blob/master/archiso/profiledef.sh
 - https://github.com/CachyOS/CachyOS-Live-ISO/blob/master/archiso/airootfs/etc/os-release
 - https://wiki.cachyos.org/installation/installation_on_root/
+
+
+## Experimental target provisioning stage (not production)
+
+Added in `feature/cachyos-target-backend`:
+
+- `assets/live/cachyos-stage-target.sh` only runs from the official CachyOS
+  Archiso with UEFI firmware and *provably disabled* Secure Boot. It refuses
+  a missing/different transaction marker, root UUID mismatch, wrong filesystem,
+  existing OS installation or unrelated target files.
+- The installer invokes `pacstrap -K` to install a basic CachyOS KDE desktop.
+  It creates an account, configures locale/hostname/timezone, provisions sudo,
+  generates the initramfs, and enables SDDM and NetworkManager.
+- The stage **never partitions/formats disks, never writes Windows volumes,
+  never installs EFI files or GRUB, and never changes UEFI NVRAM**.
+  It requires an ext4 mount already prepared at `/mnt/target` and a matching
+  `.libertix-stage-owner` file left by a separately trusted transaction.
+- `assets/live/cachyos-target-verify.py` checks a provisioned root read-only:
+  installed CachyOS identity, key pacman packages, user/wheel/sudo, kernel and
+  initramfs, and optional fstab/GRUB/EFI artifact presence. It always reports
+  `bootable_proved=false` and `windows_recovery_proved=false`.
+- `auto_tests/test_cachyos_target_verify.py` contains disk-free unit tests.
+  The `CachyOS backend safety tests` GitHub Action runs them alongside the
+  original ISO preflight tests.
+
+**Lab command (inspect only):**
+
+```bash
+bash assets/live/cachyos-stage-target.sh --check
+python3 -m unittest discover -s auto_tests -p 'test_cachyos_*.py' -v
+```
+
+The `--install` mode is **for an explicitly configured disposable VM only**.
+It is not connected to Windows, cannot complete a bootable installation, and
+has never been tested with real CachyOS package repositories by this workflow.
+
+## Remaining mandatory release blockers
+
+1. Source/target transport: Libertix's mini-ISO is Debian-based. It cannot
+   invoke the Archiso-only pacstrap stage. Design a verified Archiso handoff
+   preserving the signed installation-plan identity and independent rollback.
+2. Wire distribution/backend catalog choices across Windows C#, PowerShell,
+   JSON schemas and the signed release mechanism. Do not add the CachyOS
+   selection before a boot-and-recovery test matrix succeeds.
+3. Build an Arch-aware fstab, GRUB configuration and EFI installation path
+   which preserves the current Windows Boot Manager and handles kernel updates.
+   Do not reuse Debian shim, dpkg-divert, APT hooks or Debian initramfs names.
+4. Adapt BIOS/UEFI final verification, Windows recovery/rollback, boot ownership,
+   the first-boot verifier and Windows-side success-evidence contracts.
+5. Full VM test matrix: Windows 10 and 11 UEFI/GPT, successful dual boot,
+   failed downloads, network absence, power interruption and rollback,
+   Secure Boot enabled rejection before disk mutation, Windows health after
+   failure, and Linux package/kernel updates.
+6. Separately perform supervised test deployments on real hardware, including
+   backup and restore validation. **Until then, do not label this stable.**
+
+### Notes
+
+The official CachyOS ISO's `os-release` uses `ID=arch`, whereas an installed
+CachyOS root is expected to use `ID=cachyos`. The verifier deliberately
+rejects an Archiso live system as an installed target. This distinction must
+remain explicit in any final installer pipeline.
