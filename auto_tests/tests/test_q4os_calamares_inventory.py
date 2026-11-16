@@ -28,6 +28,7 @@ def _fixture(tmp_path, monkeypatch):
     paths = {key: "-" for key in files}
     paths["usr/bin/calamares"] = "-"
     monkeypatch.setattr(probe, "sha256_file", lambda _: probe.PINNED_Q4OS_SHA256)
+    monkeypatch.setattr(probe, "verify_iso_mount_binding", lambda *_: None)
     monkeypatch.setattr(probe, "listing_paths", lambda _: paths)
     monkeypatch.setattr(probe, "squashfs_cat", lambda _, name: files[name])
     return iso, squashfs, files, paths
@@ -36,7 +37,7 @@ def _fixture(tmp_path, monkeypatch):
 def test_same_iso_config_identity_and_module_provenance_are_recorded(tmp_path, monkeypatch):
     iso, squashfs, files, _ = _fixture(tmp_path, monkeypatch)
     out = tmp_path / "evidence"
-    result = probe.inventory(iso, squashfs, out)
+    result = probe.inventory(iso, squashfs, out, tmp_path)
     assert result["source"] == "same-pinned-official-iso-live-squashfs"
     assert result["q4osVersionFile"] == "etc/q4os_version"
     assert result["q4osVersionText"] == "6.10"
@@ -58,7 +59,7 @@ def test_missing_installer_does_not_become_authorized(tmp_path, monkeypatch):
     iso, squashfs, _, paths = _fixture(tmp_path, monkeypatch)
     del paths["usr/bin/calamares"]
     del paths["etc/calamares/settings.conf"]
-    out = probe.inventory(iso, squashfs, tmp_path / "out")
+    out = probe.inventory(iso, squashfs, tmp_path / "out", tmp_path)
     assert not out["calamaresBinaryPresent"]
     assert out["calamaresSettingsFile"] is None
     assert not out["installationAuthorized"]
@@ -79,9 +80,9 @@ def test_symlinked_iso_and_live_root_refused(tmp_path, monkeypatch):
     squash_link = tmp_path / "link.squashfs"
     squash_link.symlink_to(squashfs)
     with pytest.raises(ValueError, match="symlink"):
-        probe.inventory(iso_link, squashfs, tmp_path / "out1")
+        probe.inventory(iso_link, squashfs, tmp_path / "out1", tmp_path)
     with pytest.raises(ValueError, match="symlink"):
-        probe.inventory(iso, squash_link, tmp_path / "out2")
+        probe.inventory(iso, squash_link, tmp_path / "out2", tmp_path)
 
 
 def test_squashfs_cat_rejects_parent_traversal(tmp_path):
@@ -95,3 +96,35 @@ def test_invalid_and_empty_modules_are_not_reported_as_exec():
         "show": [],
         "exec": [],
     }
+
+def test_iso_mount_must_actually_contain_the_squashfs(tmp_path, monkeypatch):
+    iso = tmp_path / "official.iso"
+    iso.write_bytes(b"mock")
+    root = tmp_path / "iso-root"
+    root.mkdir()
+    squashfs = tmp_path / "other.squashfs"
+    squashfs.write_bytes(b"not from ISO")
+    monkeypatch.setattr(Path, "is_mount", lambda _: True)
+    with pytest.raises(ValueError, match="outside the mounted official ISO"):
+        probe.verify_iso_mount_binding(iso, squashfs, root)
+
+
+def test_loop_backing_must_match_verified_iso(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    iso = tmp_path / "official.iso"
+    iso.write_bytes(b"mock")
+    wrong = tmp_path / "wrong.iso"
+    wrong.write_bytes(b"other")
+    root = tmp_path / "iso-root"
+    root.mkdir()
+    squashfs = root / "filesystem.squashfs"
+    squashfs.write_bytes(b"fake")
+    monkeypatch.setattr(Path, "is_mount", lambda _: True)
+    responses = iter([
+        SimpleNamespace(stdout="/dev/loop3 iso9660\\n"),
+        SimpleNamespace(stdout=str(wrong) + "\\n"),
+    ])
+    monkeypatch.setattr(probe.subprocess, "run", lambda *_, **__: next(responses))
+    with pytest.raises(ValueError, match="backing file differs"):
+        probe.verify_iso_mount_binding(iso, squashfs, root)
