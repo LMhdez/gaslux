@@ -26,13 +26,24 @@ _PROFILES = {
     "q4os": ("q4os-native", {"bios/mbr", "uefi/gpt"}, "ext4"),
     "bazzite": ("fedora-atomic", {"uefi/gpt"}, "btrfs"),
 }
-_KEYS = frozenset({
-    "schemaVersion", "distributionId", "backend", "runId",
-    "firmwareLayout", "isoSha256", "isoSizeBytes",
-    "windowsDiskProofSha256", "windowsBootProofSha256",
-    "targetRootUuid", "espUuid", "rootFilesystem",
-    "operation", "guestOnly",
-})
+_KEYS = frozenset(
+    {
+        "schemaVersion",
+        "distributionId",
+        "backend",
+        "runId",
+        "firmwareLayout",
+        "isoSha256",
+        "isoSizeBytes",
+        "windowsDiskProofSha256",
+        "windowsBootProofSha256",
+        "targetRootUuid",
+        "espUuid",
+        "rootFilesystem",
+        "operation",
+        "guestOnly",
+    }
+)
 
 
 class CandidateHandoffError(ValueError):
@@ -41,8 +52,9 @@ class CandidateHandoffError(ValueError):
 
 def canonical_json(payload: dict) -> bytes:
     """Canonical encoding required by this lab protocol (not generic RFC 8785)."""
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
-                      allow_nan=False).encode("ascii")
+    return json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+    ).encode("ascii")
 
 
 def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
@@ -71,19 +83,23 @@ def _validate_payload(payload: object) -> dict:
     if type(distro) is not str or distro not in _PROFILES:
         raise CandidateHandoffError("Unknown candidate distribution")
     backend, layouts, fs = _PROFILES[distro]
-    if (payload["backend"] != backend or payload["firmwareLayout"] not in layouts
-            or payload["rootFilesystem"] != fs):
+    if (
+        payload["backend"] != backend
+        or payload["firmwareLayout"] not in layouts
+        or payload["rootFilesystem"] != fs
+    ):
         raise CandidateHandoffError("Backend/layout/root filesystem mismatch")
     if type(payload["runId"]) is not str or not _RUN.fullmatch(payload["runId"]):
         raise CandidateHandoffError("Invalid transaction ID")
     for field in ("isoSha256", "windowsDiskProofSha256", "windowsBootProofSha256"):
         if type(payload[field]) is not str or not _SHA.fullmatch(payload[field]):
             raise CandidateHandoffError("Invalid digest: " + field)
-    if (type(payload["isoSizeBytes"]) is not int or
-            not 80 * 1024 <= payload["isoSizeBytes"] <= 16 * 1024**3):
+    if (
+        type(payload["isoSizeBytes"]) is not int
+        or not 80 * 1024 <= payload["isoSizeBytes"] <= 16 * 1024**3
+    ):
         raise CandidateHandoffError("Invalid ISO size")
-    if (type(payload["targetRootUuid"]) is not str or
-            not _UUID.fullmatch(payload["targetRootUuid"])):
+    if type(payload["targetRootUuid"]) is not str or not _UUID.fullmatch(payload["targetRootUuid"]):
         raise CandidateHandoffError("Invalid root UUID")
     esp = payload["espUuid"]
     if payload["firmwareLayout"] == "uefi/gpt":
@@ -109,9 +125,21 @@ def verify_handoff(
         raise CandidateHandoffError("Missing independently pinned trust-anchor digest")
     if type(expected) is not dict or not expected or any(k not in _KEYS for k in expected):
         raise CandidateHandoffError("Missing trusted context")
-    if not {"runId", "distributionId", "backend", "isoSha256", "isoSizeBytes",
-            "windowsDiskProofSha256", "windowsBootProofSha256",
-            "targetRootUuid", "espUuid", "firmwareLayout"} <= expected.keys():
+    if (
+        not {
+            "runId",
+            "distributionId",
+            "backend",
+            "isoSha256",
+            "isoSizeBytes",
+            "windowsDiskProofSha256",
+            "windowsBootProofSha256",
+            "targetRootUuid",
+            "espUuid",
+            "firmwareLayout",
+        }
+        <= expected.keys()
+    ):
         raise CandidateHandoffError("Independent binding context is incomplete")
 
     pub = _read_file(trusted_key_path, 32)

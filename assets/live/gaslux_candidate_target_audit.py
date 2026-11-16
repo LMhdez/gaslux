@@ -126,12 +126,19 @@ def audit_candidate_target(
     Neither root-mount identity nor EFI NVRAM can be attested from a directory.
     Return values are explicitly non-authoritative.
     """
-    if (not isinstance(root, Path) or not root.is_absolute()
-            or root.is_symlink() or not root.is_dir()):
+    if (
+        not isinstance(root, Path)
+        or not root.is_absolute()
+        or root.is_symlink()
+        or not root.is_dir()
+    ):
         raise ProbeRefusal("Unsafe target directory")
-    if (type(run_id) is not str or _RUN.fullmatch(run_id) is None
-            or type(expected_root_uuid) is not str
-            or _UUID.fullmatch(expected_root_uuid) is None):
+    if (
+        type(run_id) is not str
+        or _RUN.fullmatch(run_id) is None
+        or type(expected_root_uuid) is not str
+        or _UUID.fullmatch(expected_root_uuid) is None
+    ):
         raise ProbeRefusal("Invalid transaction or root filesystem identity")
     expected = _TARGETS.get(distribution_id)
     if expected is None or backend != expected[1]:
@@ -149,12 +156,17 @@ def audit_candidate_target(
     if firmware_layout == "uefi/gpt":
         if type(esp_uuid) is not str or _FAT_UUID.fullmatch(esp_uuid) is None:
             raise ProbeRefusal("Missing ESP UUID")
-        matches = [mount for mount in ("/boot", "/boot/efi")
-                   if mounts.get(mount) == ("UUID=" + esp_uuid, "vfat")]
+        matches = [
+            mount
+            for mount in ("/boot", "/boot/efi")
+            if mounts.get(mount) == ("UUID=" + esp_uuid, "vfat")
+        ]
         if len(matches) != 1:
             raise ProbeRefusal("Missing/ambiguous ESP mount")
-        if (type(windows_loader_sha256) is not str
-                or _SHA256.fullmatch(windows_loader_sha256) is None):
+        if (
+            type(windows_loader_sha256) is not str
+            or _SHA256.fullmatch(windows_loader_sha256) is None
+        ):
             raise ProbeRefusal("Missing independently measured Windows Boot Manager hash")
         loader = _safe(root, matches[0].lstrip("/") + "/EFI/Microsoft/Boot/bootmgfw.efi")
         if hashlib.sha256(loader.read_bytes()).hexdigest() != windows_loader_sha256:
