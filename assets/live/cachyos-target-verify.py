@@ -107,6 +107,12 @@ def verify_target(root: Path, run_id: str, username: str, *, phase: str = 'packa
     _require(marker.read_text(encoding='utf-8').strip() == run_id, 'target is not owned by this transaction')
     os_id = _load_os_release(_safe_file(root, 'etc/os-release').read_text(encoding='utf-8'))
     _require(os_id.get('ID') == 'cachyos' and os_id.get('NAME', '').startswith('CachyOS'), 'not an installed CachyOS target')
+    pacman_config = _safe_file(root, "etc/pacman.conf").read_text(encoding="utf-8")
+    _require(re.search(r"^\\s*\\[cachyos\\]\\s*$", pacman_config, re.MULTILINE) is not None,
+             "installed pacman configuration lacks CachyOS repository")
+    for mirror in ("mirrorlist", "cachyos-mirrorlist"):
+        _require(_safe_file(root, "etc/pacman.d/" + mirror).stat().st_size > 0,
+                 "empty repository mirrorlist: " + mirror)
     pkgs = _packages(root)
     required = {'base', 'linux-cachyos', 'linux-firmware', 'cachyos-keyring', 'cachyos-mirrorlist', 'sudo', 'grub', 'efibootmgr', 'networkmanager', 'plasma-meta', 'sddm', 'mkinitcpio'}
     missing = sorted(required - pkgs)
