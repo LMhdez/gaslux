@@ -69,7 +69,10 @@ namespace Libertix.Installation
             bool supportsUefi = cap.FirmwareLayouts.Contains("uefi/gpt");
             if ((supportsBios && bios == "none") || (supportsUefi && uefi == "none") ||
                 (id == "bazzite" && (supportsBios || !supportsUefi)) ||
-                ((id == "mint" || id == "zorin") && (!supportsBios || !supportsUefi)) ||
+                ((id == "mint" || id == "zorin") &&
+                    (!supportsBios || !supportsUefi ||
+                    cap.FirmwareLayouts[0] != "bios/mbr" ||
+                    cap.FirmwareLayouts[1] != "uefi/gpt")) ||
                 (id == "bazzite" && cap.MinimumDiskGiB < 50))
                 throw new InvalidOperationException("Unsupported firmware/partition capability.");
 

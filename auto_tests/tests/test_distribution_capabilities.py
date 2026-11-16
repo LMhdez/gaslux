@@ -54,7 +54,10 @@ def test_mint_zorin_v2_capability_is_released_and_schema_valid():
         ("cachyos", "cachyos", "archiso-cachyos", "archiso", "unsupported", "grub", "grub"),
         ("popos", "pop", "system76", "pop-live", "unsupported", "grub", "systemd-boot"),
         ("q4os", "q4os", "q4os-native", "q4os-native-iso", "unsupported", "grub", "grub"),
-        ("bazzite", "bazzite", "fedora-atomic", "fedora-atomic-iso", "manual-enrollment", "none", "grub"),
+        (
+            "bazzite", "bazzite", "fedora-atomic", "fedora-atomic-iso",
+            "manual-enrollment", "none", "grub",
+        ),
     ],
 )
 def test_candidate_validates_but_cannot_be_released(

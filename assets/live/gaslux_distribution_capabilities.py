@@ -29,7 +29,12 @@ def validate_capabilities(distribution_id: str, os_release_id: str, cap: object)
         ),
     }
     expected = profiles.get((distribution_id, os_release_id))
-    if not isinstance(cap, dict) or set(cap) != expected_keys or cap["version"] != 1 or not expected:
+    if (
+        not isinstance(cap, dict)
+        or set(cap) != expected_keys
+        or cap["version"] != 1
+        or not expected
+    ):
         raise CapabilityError("unknown identity or invalid capability shape")
     boot = cap["bootloader"]
     if not isinstance(boot, dict) or set(boot) != {"bios", "uefi"}:
