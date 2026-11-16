@@ -11,7 +11,7 @@ printf '%s  %s\n' "$hash" "$iso" | sha256sum --check --status || {
   echo 'ISO hash mismatch; refusing VM boot' >&2; exit 1;
 }
 for tool in grub-mkstandalone qemu-system-x86_64 mkfs.ext4 debugfs \
-            mkfs.vfat mcopy mmd python3 timeout; do
+            mkfs.vfat mcopy mmd python3 timeout grub-script-check; do
   command -v "$tool" >/dev/null || { echo "Missing $tool" >&2; exit 2; }
 done
 w="$(mktemp -d -t cachyos-real-boot-XXXXXX)"
@@ -33,6 +33,25 @@ if [[ -n "${GASLUX_SIGNED_EVIDENCE_DIR:-}" ]]; then
   signed_mode=1
 else
   uuid="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+fi
+# Guest installation requires a separate newly created QEMU target.
+lab_install=0
+lab_disks=()
+lab_network=()
+lab_timeout=380
+if [[ "${GASLUX_LAB_FIRSTBOOT:-0}" == 1 ]]; then
+  [[ "$signed_mode" == 1 && "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]] || {
+    echo 'Refusing VM install without signed source and guest probe' >&2
+    exit 2
+  }
+  command -v qemu-img >/dev/null || exit 2
+  lab_install=1
+  lab_timeout=2900
+  qemu-img create -f qcow2 "$w/target.qcow2" 12G
+  lab_disks=(-drive "if=none,id=gaslux_target,format=qcow2,file=$w/target.qcow2"
+             -device "virtio-blk-pci,drive=gaslux_target,serial=GASLUXLABTARGET")
+  lab_network=(-netdev user,id=gaslux_net
+               -device virtio-net-pci,netdev=gaslux_net)
 fi
 disk="$w/ext4.img"
 truncate -s 5G "$disk"
@@ -85,6 +104,13 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
   if [[ "$signed_mode" -eq 1 ]]; then
     mcopy -i "$fat" "$w/boot-args.json" ::/boot-args.json
   fi
+  if [[ "$lab_install" -eq 1 ]]; then
+    lab_script="$PWD/auto_tests/tools/cachyos_guest_vm_only_install.sh"
+    [[ -f "$lab_script" && ! -L "$lab_script" ]] || exit 2
+    sha256sum "$lab_script" | awk '{print $1 "  install.sh"}' > "$w/install.sha256"
+    mcopy -i "$fat" "$lab_script" ::/install.sh
+    mcopy -i "$fat" "$w/install.sha256" ::/install.sha256
+  fi
 fi
 # The live preflight requires explicit SecureBoot=0 firmware evidence.
 # The plain OVMF_CODE_4M.fd variant can omit the SecureBoot EFI variable
@@ -105,7 +131,7 @@ serial_flags=(-serial "file:$w/serial.log")
 if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
   serial_flags=(-chardev "socket,id=gaslux_serial,path=$w/guest-serial.sock,server=on,wait=off,logfile=$w/serial.log" -serial chardev:gaslux_serial)
 fi
-timeout --kill-after=5s 380s qemu-system-x86_64 \
+timeout --kill-after=5s "${lab_timeout}s" qemu-system-x86_64 \
   -machine q35,accel=tcg,smm=on -global driver=cfi.pflash01,property=secure,value=on \
   -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -boot order=c \
@@ -116,6 +142,7 @@ timeout --kill-after=5s 380s qemu-system-x86_64 \
   -device usb-storage,drive=bootimg \
   -drive if=none,id=isoimg,format=raw,readonly=on,file="$disk" \
   -device virtio-blk-pci,drive=isoimg \
+  "${lab_disks[@]}" "${lab_network[@]}" \
   "${serial_flags[@]}" &
 vm_pid=$!
 guest_proven=0
@@ -123,6 +150,7 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
   set +e
   guest_flags=()
   if [[ "$signed_mode" -eq 1 ]]; then guest_flags+=(--require-signed-entry); fi
+  if [[ "$lab_install" -eq 1 ]]; then guest_flags+=(--run-lab-install); fi
   python3 auto_tests/tools/cachyos_live_guest_serial.py \
     --socket "$w/guest-serial.sock" --transcript "$w/guest-console.log" \
     --boot-timeout 345 "${guest_flags[@]}"
@@ -208,4 +236,47 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
     echo 'PASS: guest /proc/cmdline matched the host-verified ephemeral Ed25519 GRUB handoff.'
   fi
 fi
-echo 'NOT TESTED: installed CachyOS, Windows dual boot, or Windows recovery.'
+if [[ "$lab_install" -eq 1 ]]; then
+  echo 'GASLUX_LAB_STAGE_COMPLETE: now BOOT ONLY target qcow2; no live ISO and no boot FAT.'
+  cp "$vars" "$w/installed-nvram.fd"
+  timeout --kill-after=5s 430s qemu-system-x86_64 \
+    -machine q35,accel=tcg,smm=on \
+    -global driver=cfi.pflash01,property=secure,value=on \
+    -smp 2 -m 4096 -display none -monitor none -no-reboot \
+    -drive if=pflash,format=raw,readonly=on,file="$code" \
+    -drive if=pflash,format=raw,file="$w/installed-nvram.fd" \
+    -drive if=none,id=only_target,format=qcow2,file="$w/target.qcow2" \
+    -device virtio-blk-pci,drive=only_target,serial=GASLUXLABTARGET,bootindex=1 \
+    -serial "file:$w/installed-serial.log" &
+  installed_pid=$!
+  installed_success=0
+  for _ in $(seq 1 84); do
+    sleep 5
+    if [[ -f "$w/installed-serial.log" ]] &&
+       tr -d '\r' < "$w/installed-serial.log" |
+         grep -Fxq 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1'; then
+      installed_success=1
+      break
+    fi
+    kill -0 "$installed_pid" 2>/dev/null || break
+  done
+  kill "$installed_pid" 2>/dev/null || true
+  wait "$installed_pid" || true
+  if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" && -f "$w/installed-serial.log" ]]; then
+    install -m 0600 "$w/installed-serial.log" \
+      "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-installed-firstboot-serial.log"
+    ( cd "$GASLUX_BOOT_EVIDENCE_DIR"
+      sha256sum cachyos-installed-firstboot-serial.log > cachyos-firstboot.sha256 )
+  fi
+  if [[ "$installed_success" -ne 1 ]] ||
+     tr -d '\r' < "$w/installed-serial.log" |
+       grep -Fq 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_FAIL:'; then
+    echo 'FAIL: installed CachyOS did not prove first boot from virtual disk' >&2
+    tail -c 6000 "$w/installed-serial.log" >&2 || true
+    exit 1
+  fi
+  echo 'PASS: independent installed CachyOS LTS kernel, ext4 root and GRUB EFI boot.'
+  echo 'NOT TESTED: full desktop, Windows dual boot, update/rollback or hardware.'
+else
+  echo 'NOT TESTED: installed CachyOS, Windows dual boot, or Windows recovery.'
+fi
