@@ -42,14 +42,13 @@ jobs:
           fi
           git remote add upstream https://github.com/ekimiateam/libertix.git
           git fetch --no-tags upstream main
-          # Merge preserves upstream history AND the target repository's bootstrap commit.
-          git merge --no-ff --allow-unrelated-histories -m "Import upstream Libertix history" upstream/main
-          # Prevent upstream's release/signing CI from running in this separate fork.
-          # Keep the original unchanged for future re-enablement after fork configuration.
-          if [ -f .github/workflows/ci.yml ]; then
-            git mv .github/workflows/ci.yml .github/workflows/ci.yml.upstream-disabled
-            git commit -sm "Disable upstream release workflow in the unconfigured fork"
-          fi
+          # GitHub Actions tokens cannot import upstream workflow files. Import a
+          # pinned source snapshot, excluding release workflows and bootstrap files.
+          git restore --source=upstream/main --staged --worktree -- . ':(exclude).github/workflows/**' ':(exclude)bootstrap/**'
+          upstream_sha="$(git rev-parse upstream/main)"
+          printf 'Imported from ekimiateam/libertix at commit %s.\\nOriginal source: https://github.com/ekimiateam/libertix\\nUpstream release workflows were intentionally not copied.\\n' "$upstream_sha" > UPSTREAM-SOURCE.md
+          git add UPSTREAM-SOURCE.md
+          git commit -sm "Import upstream Libertix source snapshot without release workflows"
           git switch -c feature/cachyos-preflight
           git apply --check bootstrap/libertix-cachyos-preflight.patch
           git apply bootstrap/libertix-cachyos-preflight.patch
