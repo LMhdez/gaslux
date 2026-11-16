@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/cachyos-target-backend
+      - feature/cachyos-uefi-lab
   pull_request:
     branches:
       - main
