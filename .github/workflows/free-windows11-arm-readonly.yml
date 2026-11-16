@@ -32,11 +32,20 @@ jobs:
           # Do not mount, assign, format, resize, unlock or modify any volume.
           $disks = @(Get-Disk -ErrorAction Stop)
           if ($disks.Count -lt 1) { throw 'Get-Disk returned no observable disks.' }
-          $parts = @(
-              foreach ($disk in $disks) {
-                  Get-Partition -DiskNumber $disk.Number -ErrorAction Stop
+          $parts = @()
+          $partitionApiAvailable = $true
+          foreach ($disk in $disks) {
+              try {
+                  $parts += @(Get-Partition -DiskNumber $disk.Number -ErrorAction Stop)
+              } catch {
+                  # The hosted ARM image may expose an OS disk through a
+                  # provider that does not publish MSFT_Partition objects.
+                  # Report that limitation, never substitute fake topology.
+                  $partitionApiAvailable = $false
+                  $parts = @()
+                  break
               }
-          )
+          }
           $efi = @($parts | Where-Object {
               ([string]$_.GptType) -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
           })
@@ -69,6 +78,8 @@ jobs:
               diskCount = $disks.Count
               partitionCount = $parts.Count
               efiPartitionCount = $efi.Count
+              partitionApiEnumerated = [bool]$partitionApiAvailable
+              fullDiskGeometryVerified = $false
               reagentcReadAccessible = [bool]$winReAccessible
               bcdReadAccessible = [bool]$bcdAccessible
               actualGasluxInstallExecuted = $false
@@ -79,10 +90,10 @@ jobs:
           }
           $report | ConvertTo-Json -Depth 3 | Out-File -LiteralPath 'windows11-arm-readonly.json' -Encoding utf8NoBOM
           Write-Output 'Windows 11 ARM64 client: verified. Windows x64 dual boot: NOT TESTED.'
-          Write-Output ('Disk/partition read-only enumeration: ' + $disks.Count + '/' + $parts.Count)
+          Write-Output ('Disk count: ' + $disks.Count + ', partition API available: ' + $partitionApiAvailable)
           Write-Output ('WinRE/BCD command accessibility: ' + $winReAccessible + '/' + $bcdAccessible)
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (
-              'Windows 11 **ARM64 client** and Get-Disk/Get-Partition APIs observed. ' +
+              'Windows 11 **ARM64 client** and Get-Disk observed; partition API may be unavailable. ' +
               'Not Windows 10/11 x64, not Gaslux-installed, no Linux boot or rollback tested.'
           )
       - name: Install Pester for compatibility regression tests
