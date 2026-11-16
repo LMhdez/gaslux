@@ -12,6 +12,7 @@ on:
       - feature/cachyos-signed-real-iso-contract
       - feature/cachyos-ovmf-secureboot-lab-proof
       - feature/cachyos-signed-grub-qemu-execution
+      - feature/cachyos-qemu-pacstrap-firstboot
   pull_request:
     branches:
       - main
@@ -35,6 +36,7 @@ jobs:
           bash -n assets/live/cachyos-stage-target.sh
           bash -n auto_tests/tools/cachyos_real_live_kernel_smoke.sh
           bash -n auto_tests/tools/cachyos_live_guest_readonly_probe.sh
+          bash -n auto_tests/tools/cachyos_guest_vm_only_install.sh
       - name: Python syntax check
         run: |
           python3 -m py_compile \
