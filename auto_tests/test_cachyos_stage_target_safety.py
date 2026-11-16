@@ -79,6 +79,16 @@ class StageTargetSafetyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("--validate-target", result.stdout)
 
+    def test_official_cachyos_archiso_identity_is_fail_closed(self):
+        source = SCRIPT.read_text()
+        host = source.split("check_host() {", 1)[1].split("\n}\n", 1)[0]
+        # Pinned official CachyOS 260809: ID=cachyos and ID_LIKE=arch.
+        self.assertIn('[ "$host_id" = cachyos ]', host)
+        self.assertIn('[ "$host_like" = arch ]', host)
+        self.assertIn('[ "$host_name" = CachyOS ]', host)
+        self.assertNotIn('[ "$host_id" = arch ]', host)
+        self.assertIn("not official CachyOS Archiso", host)
+
     def test_static_guard_remains_before_pacstrap(self):
         source = SCRIPT.read_text()
         install = source.split("install_target() {", 1)[1].split("\ncase ", 1)[0]
