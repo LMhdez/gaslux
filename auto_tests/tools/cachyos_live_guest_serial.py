@@ -18,7 +18,8 @@ from pathlib import Path
 LOGIN = re.compile(rb"CachyOS login:\s*$", re.M)
 PASSWORD = re.compile(rb"Password:\s*$", re.M)
 READY = re.compile(rb"(?m)^GASLUX_ROOT_SHELL_READY\r?$")
-SECURE_BOOT_DISABLED = re.compile(rb"(?m)^GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r?$")
+SECURE_BOOT_DISABLED = re.compile(rb"(?m)^GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\\r?$")
+SIGNED_GRUB_CMDLINE = re.compile(rb"(?m)^GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\\r?$")
 PASSED = re.compile(rb"(?m)^GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r?$")
 FAILED = re.compile(rb"(?m)^GASLUX_GUEST_PREFLIGHT_FAILURE(?::[^\r\n]*)?\r?$")
 
@@ -59,11 +60,11 @@ def wait_for(
         # Permit only known terminal control codes around complete output
         # lines. Never treat an echoed shell command as success.
         text = normalized_tty(bytes(transcript))
+        if failure and failure.search(text):
+            raise ProbeError("read-only guest script explicitly failed")
         for index, pattern in enumerate(accepted):
             if pattern.search(text):
                 return index
-        if failure and failure.search(text):
-            raise ProbeError("read-only guest script explicitly failed")
         sock.settimeout(min(1, max(0.1, deadline - time.monotonic())))
         try:
             chunk = sock.recv(8192)
@@ -96,7 +97,7 @@ def connect_serial(path: Path, *, timeout_seconds: float = 40) -> socket.socket:
     raise ProbeError("QEMU guest serial socket was not created")
 
 
-def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345) -> None:
+def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,\n          require_signed_entry: bool = False) -> None:
     # A ttyS0 login is produced only by executing CachyOS's live kernel/init.
     wait_for(sock, trace, (LOGIN,), timeout_seconds=boot_timeout, failure=None)
     sock.sendall(b"root\r")
@@ -136,6 +137,8 @@ def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345) -
     # Require an exact live-guest SecureBoot=0 proof, not only a stage-script
     # success marker. Both outputs must come from the executed guest script.
     wait_for(sock, trace, (SECURE_BOOT_DISABLED,), timeout_seconds=45)
+    if require_signed_entry:
+        wait_for(sock, trace, (SIGNED_GRUB_CMDLINE,), timeout_seconds=45)
     wait_for(sock, trace, (PASSED,), timeout_seconds=45)
 
 
@@ -144,11 +147,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--socket", type=Path, required=True)
     parser.add_argument("--transcript", type=Path, required=True)
     parser.add_argument("--boot-timeout", type=float, default=345)
+    parser.add_argument("--require-signed-entry", action="store_true",
+                        help="demand real guest /proc/cmdline signed-handoff proof")
     args = parser.parse_args(argv)
     transcript = bytearray()
     try:
         with connect_serial(args.socket) as sock:
-            probe(sock, transcript, boot_timeout=args.boot_timeout)
+            probe(sock, transcript, boot_timeout=args.boot_timeout,\n                  require_signed_entry=args.require_signed_entry)
     except (ProbeError, OSError, UnicodeError) as error:
         print(f"GASLUX_GUEST_PROBE_FAILED: {error}", file=sys.stderr)
         returncode = 1
@@ -160,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     if returncode:
         return 1
     print("GASLUX_GUEST_PROBE_VERIFIED: live root and guarded --check succeeded")
+    if args.require_signed_entry:
+        print("GASLUX_GUEST_SIGNED_GRUB_BOOT_VERIFIED: authenticated lab args reached the kernel")
     return 0
 
 
