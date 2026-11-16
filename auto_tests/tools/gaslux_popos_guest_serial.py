@@ -45,7 +45,7 @@ def wait_for(
         conn.settimeout(min(1.0, max(0.1, until - time.monotonic())))
         try:
             data = conn.recv(16384)
-        except socket.timeout:
+        except TimeoutError:
             continue
         if not data:
             raise GuestProbeError("QEMU serial stream terminated")
