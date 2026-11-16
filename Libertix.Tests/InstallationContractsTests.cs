@@ -779,6 +779,50 @@ namespace Libertix.Tests
         }
 
         [TestMethod]
+        public void CatalogV2RejectsUnknownAndDuplicatedCapabilityFields()
+        {
+            var source = JsonNode.Parse(File.ReadAllText(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestData", "catalog.json")));
+            source["schemaVersion"] = 2;
+            foreach (JsonNode distro in source["distributions"].AsArray())
+            {
+                distro["capabilities"] = JsonSerializer.SerializeToNode(
+                    new
+                    {
+                        version = 1,
+                        backend = "debian-squashfs",
+                        source = "casper-squashfs",
+                        firmwareLayouts = new[] { "bios/mbr", "uefi/gpt" },
+                        secureBoot = "ms-shim",
+                        bootloader = new { bios = "grub", uefi = "grub" },
+                        status = "released",
+                        minimumRamMiB = 2048,
+                        minimumDiskGiB = 20
+                    });
+            }
+
+            var parse = typeof(DistributionCatalogLoader).GetMethod(
+                "ParseCatalog",
+                System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic);
+            Assert.IsNotNull(parse);
+            parse.Invoke(null, new object[] { System.Text.Encoding.UTF8.GetBytes(source.ToJsonString()) });
+
+            source["distributions"][0]["capabilities"]["arbitrary"] = true;
+            Assert.ThrowsException<System.Reflection.TargetInvocationException>(() =>
+                parse.Invoke(null, new object[] {
+                    System.Text.Encoding.UTF8.GetBytes(source.ToJsonString()) }));
+
+            source["distributions"][0]["capabilities"].AsObject().Remove("arbitrary");
+            string duplicated = source.ToJsonString().Replace(
+                "\"version\":1",
+                "\"version\":1,\"version\":1");
+            Assert.ThrowsException<System.Reflection.TargetInvocationException>(() =>
+                parse.Invoke(null, new object[] {
+                    System.Text.Encoding.UTF8.GetBytes(duplicated) }));
+        }
+
+        [TestMethod]
         public void SignedCapabilitiesPreserveExistingMintAndZorinBackends()
         {
             foreach (string id in new[] { "mint", "zorin" })

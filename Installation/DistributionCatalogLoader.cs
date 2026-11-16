@@ -173,7 +173,56 @@ namespace Libertix.Installation
                 Encoding.UTF8.GetString(manifest),
                 options);
             ValidateCatalog(catalog);
+            if (catalog.SchemaVersion == 2)
+                ValidateV2CatalogueJsonShape(manifest);
             return catalog;
+        }
+
+        private static void ValidateV2CatalogueJsonShape(byte[] manifest)
+        {
+            // System.Text.Json deserialization ignores extra fields and accepts
+            // duplicate property names. Version 2 must match its signed JSON
+            // Schema exactly, including every capability/bootloader field.
+            using (var document = JsonDocument.Parse(manifest))
+            {
+                JsonElement root = document.RootElement;
+                AssertExactFields(root, "catalog",
+                    "schemaVersion", "artifacts", "distributions");
+                foreach (JsonElement distro in root.GetProperty("distributions").EnumerateArray())
+                {
+                    AssertExactFields(distro, "distribution",
+                        "id", "name", "osReleaseId", "grubDisplayName", "grubIcon",
+                        "secureBootMicrosoftAuthorities", "description", "imageUrl",
+                        "isoInstaller", "isoInstallerFileName", "isoInstallerSha256",
+                        "isoInstallerSizeBytes", "sizeInGB", "capabilities");
+                    JsonElement cap = distro.GetProperty("capabilities");
+                    AssertExactFields(cap, "capabilities",
+                        "version", "backend", "source", "firmwareLayouts", "secureBoot",
+                        "bootloader", "status", "minimumRamMiB", "minimumDiskGiB");
+                    AssertExactFields(cap.GetProperty("bootloader"), "bootloader",
+                        "bios", "uefi");
+                }
+            }
+        }
+
+        private static void AssertExactFields(
+            JsonElement json, string path, params string[] required)
+        {
+            if (json.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException(
+                    "Signed catalog field " + path + " must be an object.");
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var expected = new HashSet<string>(required, StringComparer.Ordinal);
+            foreach (JsonProperty property in json.EnumerateObject())
+            {
+                if (!expected.Contains(property.Name) || !seen.Add(property.Name))
+                    throw new InvalidOperationException(
+                        "Signed catalog field " + path + " has an unknown or duplicate key.");
+            }
+            if (!seen.SetEquals(expected))
+                throw new InvalidOperationException(
+                    "Signed catalog field " + path + " has missing keys.");
         }
 
         private static void ValidateCatalog(DistributionCatalogJson catalog)
