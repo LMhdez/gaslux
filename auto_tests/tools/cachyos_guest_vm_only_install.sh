@@ -92,10 +92,20 @@ pacman-key --gpgdir "$TARGET/etc/pacman.d/gnupg" --list-keys \
 echo 'GASLUX_LAB_OFFICIAL_KEYRING_POPULATED=1'
 # Minimal, REAL CachyOS packages from official live pacman repos, with
 # pacman's signature verification unchanged. NOT a finished desktop installer.
-pacstrap -K "$TARGET" \
-  base linux-cachyos-lts mkinitcpio grub efibootmgr \
-  cachyos-keyring cachyos-mirrorlist cachyos-settings cachyos-hooks \
-  sudo e2fsprogs dosfstools python
+packages=(base linux-cachyos-lts mkinitcpio grub efibootmgr
+          cachyos-keyring cachyos-mirrorlist cachyos-settings cachyos-hooks
+          sudo e2fsprogs dosfstools python)
+graphical=0
+if [[ "${GASLUX_LAB_GRAPHICAL:-0}" == 1 ]]; then
+  graphical=1
+  # Complete native KDE Plasma X11 desktop and SDDM, not the Archiso rootfs.
+  # Official CachyOS documentation requires separate X11, KWin and Xorg
+  # packages for a functional Plasma X11 session.
+  packages+=(plasma-meta plasma-x11-session kwin-x11 xorg-server sddm
+            mesa xf86-video-vesa ttf-dejavu dolphin konsole plasma-nm
+            networkmanager)
+fi
+pacstrap -K "$TARGET" "${packages[@]}"
 echo 'GASLUX_LAB_PACSTRAP_FINISHED=1'
 # An Arch-derived base package initially declares ID=arch. This is NOT
 # a CachyOS install until its official native branding package is installed
@@ -133,11 +143,13 @@ arch-chroot "$TARGET" passwd -l gasluxtest
 arch-chroot "$TARGET" mkinitcpio -P
 [[ -s "$TARGET/boot/initramfs-linux-cachyos-lts.img" ]] || die 'initramfs missing'
 mkdir -p "$TARGET/etc/default/grub.d"
-cat > "$TARGET/etc/default/grub.d/95-gaslux-ci.cfg" <<'EOF'
+boot_target=multi-user.target
+if [[ "$graphical" == 1 ]]; then boot_target=graphical.target; fi
+cat > "$TARGET/etc/default/grub.d/95-gaslux-ci.cfg" <<EOF
 GRUB_TIMEOUT=2
 GRUB_TIMEOUT_STYLE=menu
 GRUB_DISABLE_OS_PROBER=true
-GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0,115200n8 console=tty0 systemd.unit=multi-user.target"
+GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0,115200n8 console=tty0 systemd.unit=$boot_target"
 EOF
 # No NVRAM writes. --removable installs EFI fallback ONLY on VM ESP.
 arch-chroot "$TARGET" grub-install --target=x86_64-efi \
@@ -191,6 +203,67 @@ TimeoutStartSec=40
 WantedBy=multi-user.target
 UNIT
 arch-chroot "$TARGET" systemctl enable gaslux-ci-firstboot.service
+if [[ "$graphical" == 1 ]]; then
+  [[ -s "$TARGET/usr/share/xsessions/plasmax11.desktop" ]] ||
+    die 'official Plasma X11 desktop session absent'
+  arch-chroot "$TARGET" pacman -Q plasma-meta plasma-x11-session \
+    kwin-x11 xorg-server sddm >/dev/null ||
+    die 'native signed Plasma/SDDM packages missing'
+  mkdir -p "$TARGET/etc/sddm.conf.d"
+  cat > "$TARGET/etc/sddm.conf.d/95-gaslux-qemu-only.conf" <<'SDDM'
+# CI ONLY: auto login an isolated throwaway account. NEVER production.
+[General]
+DisplayServer=x11
+
+[Autologin]
+User=gasluxtest
+Session=plasmax11.desktop
+Relogin=false
+SDDM
+  # No remote credentials or host/user password are created. This autologin
+  # is allowed ONLY on the disposable QEMU guest, not in Gaslux production.
+  arch-chroot "$TARGET" systemctl enable sddm.service
+  arch-chroot "$TARGET" systemctl set-default graphical.target
+  cat > "$TARGET/usr/local/sbin/gaslux-ci-plasma-audit" <<'AUDIT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+fail() { printf 'GASLUX_VM_GRAPHICAL_FAILURE: %s\n' "$*" >/dev/ttyS0; exit 1; }
+case "$(systemd-detect-virt --vm)" in qemu|kvm) ;; *) fail 'not QEMU' ;; esac
+grep -qx 'ID=cachyos' /etc/os-release || fail 'wrong installed distribution'
+[[ "$(cat /.libertix-stage-owner)" == lab-real-iso-signed-20261116 ]] ||
+  fail 'wrong installed owner'
+[[ -s /usr/share/xsessions/plasmax11.desktop ]] || fail 'Plasma X11 session missing'
+pacman -Q plasma-meta plasma-x11-session kwin-x11 xorg-server sddm >/dev/null ||
+  fail 'Plasma package DB incomplete'
+for _ in $(seq 1 100); do
+  if systemctl is-active --quiet sddm.service &&
+     pgrep -u gasluxtest -x plasmashell >/dev/null &&
+     pgrep -u gasluxtest -x kwin_x11 >/dev/null; then
+    printf 'GASLUX_VM_CACHYOS_PLASMA_X11_SESSION_PASS=1\n' >/dev/ttyS0
+    exit 0
+  fi
+  sleep 4
+done
+fail 'SDDM did not launch a real Plasma/KWin session for disposable user'
+AUDIT
+  chmod 0755 "$TARGET/usr/local/sbin/gaslux-ci-plasma-audit"
+  cat > "$TARGET/etc/systemd/system/gaslux-ci-plasma-audit.service" <<'UNIT'
+[Unit]
+Description=Gaslux VM-only real native Plasma X11 session audit
+After=gaslux-ci-firstboot.service sddm.service
+Wants=sddm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/gaslux-ci-plasma-audit
+TimeoutStartSec=9min
+
+[Install]
+WantedBy=graphical.target
+UNIT
+  arch-chroot "$TARGET" systemctl enable gaslux-ci-plasma-audit.service
+  echo 'GASLUX_LAB_NATIVE_PLASMA_PACKAGES_INSTALLED=1'
+fi
 sync
 echo 'GASLUX_LAB_TARGET_INSTALLED=1'
 echo 'GASLUX_LAB_WINDOWS_RECOVERY_NOT_TESTED=1'
