@@ -11,6 +11,8 @@ on:
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
       - 'auto_tests/tools/gaslux_q4os_calamares_probe.sh'
       - 'auto_tests/tests/test_q4os_calamares_probe.py'
+      - 'assets/live/gaslux_q4os_calamares_policy.py'
+      - 'auto_tests/tests/test_q4os_calamares_policy.py'
       - 'auto_tests/tests/test_candidate_live_boot_transport.py'
   workflow_dispatch:
 
@@ -101,6 +103,27 @@ jobs:
             "$GASLUX_Q4OS_FILE" "$Q4OS_SHA256" \
             "$RUNNER_TEMP/gaslux-q4os/evidence"
           echo 'Read-only effective Calamares configurations saved for independent audit.'
+      - name: Audit Q4OS native Calamares unpack/GRUB/EFI policy (fail closed)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get install -y --no-install-recommends python3-yaml
+          (cd "$RUNNER_TEMP/gaslux-q4os/evidence" && sha256sum -c calamares-files.sha256)
+          PYTHONPATH=assets/live python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from gaslux_q4os_calamares_policy import audit_q4os_calamares
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'gaslux-q4os/evidence'
+          result = audit_q4os_calamares(root)
+          print(json.dumps(result, sort_keys=True, indent=2))
+          (root / 'native-calamares-audit.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\\n', encoding='utf-8'
+          )
+          if result['installationAuthorized'] or result['windowsEspFallbackWriteAuthorized']:
+              raise SystemExit('Q4OS native Calamares must remain lab-only')
+          PY
       - name: Boot actual verified Q4OS live ISO in disposable OVMF/QEMU
         shell: bash
         env:
