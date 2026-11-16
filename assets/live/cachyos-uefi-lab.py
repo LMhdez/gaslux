@@ -153,7 +153,6 @@ def apply_vm_lab(plan: dict[str, Any]) -> dict[str, str]:
         ensure(hashlib.sha256(verified_windows.read_bytes()).hexdigest() ==
                plan["windowsBootManagerSha256"],
                "Windows Boot Manager changed during GRUB installation")
-               "generated boot menu is incomplete")
     except Exception:
         # Fail closed: only remove files created by this transaction. Do NOT
         # touch EFI/Microsoft or BootOrder, and do not claim Windows recovery.
