@@ -1,6 +1,6 @@
 # Q4OS — native partitioned installation workstream
 
-**Status: read-only experimental candidate probe, no installer.**
+**Status: experimental. Pinned ISO and two installed-root QEMU boots are proven; full Calamares and Windows dual boot are not.**
 Independent of CachyOS. Stacked only on shared lab-media preflight.
 
 Q4OS 6.10 Andromeda was announced as the updated stable release on
@@ -163,3 +163,53 @@ complete workflow pass.
 signed installation transaction, Windows 10/11 dual boot, loader updates,
 boot durability, removal or WinRE/BCD/ESP/MBR rollback. Native package
 boot alone cannot authorize an end-user Q4OS installation or stable release.
+
+
+## Native Q4OS Calamares process-hook provenance and safety gate
+
+Follow-up draft [PR #49](https://github.com/LMhdez/gaslux/pull/49)
+extends inspection of the same pinned official Q4OS 6.10 r2 SquashFS.
+The genuine Calamares process descriptors do not call the apparent
+`q4os-hook*.sh` scripts directly: `q4oshook2` invokes
+`/usr/sbin/debian_adjust2.sh` (3,600 s), `q4oshook3` invokes
+`/usr/sbin/debian_adjust3.sh` (18,000 s), and `q4oshook5` invokes
+`/usr/sbin/debian_adjust5.sh` (600 s). All fields `type: job`,
+`interface: process`, command and timeout are validated against
+descriptors extracted from the *same verified ISO*.
+
+The source inventory includes nine shell scripts and three module
+descriptors. All 12 are extracted as inert evidence, checked against an
+individual SHA-256 manifest, and audited **without invoking them**.
+Missing sources, unexpected process commands, hash changes, symlinks,
+unsafe manifest paths or changed Calamares job ordering are refusals.
+The extraction is ISO-hash-bound by the workflow, not an independent
+upstream digital signature.
+
+The genuine upstream files expose production blockers:
+
+- `debian_adjust2.sh` derives `CHROOT` by grepping the current mount
+  table for `calamares` and performs bind mounts, target mutations and
+  unquoted cleanup. Gaslux cannot accept this path without independent
+  transaction-owned disk/partition identity proof.
+- `debian_adjust3.sh` creates a legacy `EFI/debian` directory in the
+  target ESP, runs target `apt-get --purge autoremove` operations,
+  removes installation files and conditionally invokes
+  `dpkg --purge --force-remove-essential q4os-loopin`. Each action needs
+  explicit scope and recovery.
+- The auxiliary `q4os-hook3a.sh` includes writes to
+  `EFI/debian/grub.cfg` and `grub-install --force`. Its invocation in
+  the Q4OS 6.10 script is conditional on older Debian `bullseye`, but
+  the dangerous logic still exists in the ISO.
+- `debian_adjust5.sh` runs `chroot $CHROOT update-grub` based on
+  that discovered mount path, without Gaslux transaction ownership.
+
+These are observations about inert upstream sources, **not** completed
+Calamares jobs or approval to run them. The auditor always returns
+`hookExecutionAuthorized: false`, `windowsEspWriteAuthorized: false`,
+`nativeInstallationProven: false` and `diskWrites: 0`.
+
+[The successful pinned-ISO source extraction and boot run](https://github.com/LMhdez/gaslux/actions/runs/43981235254)
+retained the original hook descriptors and scripts in an Actions artifact.
+The next gate is a transaction-bound, VM-only implementation or
+replacement of unsafe Q4OS hook effects, verified before touching any
+Windows or shared EFI resources.
