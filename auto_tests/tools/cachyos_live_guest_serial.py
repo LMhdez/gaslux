@@ -33,7 +33,11 @@ _TERMINAL_CONTROL = re.compile(
 
 
 def normalized_tty(data: bytes) -> bytes:
-    return _TERMINAL_CONTROL.sub(b"", data).replace(b"\r\n", b"\n")
+    # The real Archiso tty writes standalone CR cursor-return bytes between
+    # OSC command markers and program stdout. Normalize CRLF and bare CR
+    # separately, without touching the preserved raw serial transcript.
+    text = _TERMINAL_CONTROL.sub(b"", data)
+    return text.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
 
