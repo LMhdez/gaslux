@@ -14,7 +14,7 @@ digest="$3"
 [[ -f "$iso" && ! -L "$iso" ]] || die 'Refuse symlink/non-regular ISO'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
   die 'Actual ISO bytes differ from independently pinned SHA-256'
-for tool in qemu-system-x86_64 grub-mkstandalone mkfs.vfat mcopy mmd timeout sudo; do
+for tool in qemu-system-x86_64 grub-mkstandalone mkfs.vfat mcopy mmd sgdisk dd timeout sudo; do
   command -v "$tool" >/dev/null || die "Missing laboratory tool: $tool"
 done
 
@@ -113,11 +113,17 @@ menuentry 'Gaslux $distro real live-kernel lab boot' {
 EOF
 grub-mkstandalone --format=x86_64-efi --output="$work/BOOTX64.EFI" \
   "boot/grub/grub.cfg=$work/grub.cfg"
-truncate -s 128M "$work/efi.img"
-mkfs.vfat -F 32 -n GASLUXLAB "$work/efi.img" >/dev/null
-mmd -i "$work/efi.img" ::/EFI
-mmd -i "$work/efi.img" ::/EFI/BOOT
-mcopy -i "$work/efi.img" "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+# Create an actual GPT disk image containing one 128-MiB EFI System Partition.
+# Raw FAT "superfloppy" media are not reliably boot-enumerated by QEMU/OVMF.
+truncate -s 256M "$work/efi-disk.img"
+sgdisk --zap-all --new=1:2048:+128M --typecode=1:EF00 \
+  --change-name=1:GASLUX-LAB-ESP "$work/efi-disk.img" >/dev/null
+truncate -s 128M "$work/efi-part.img"
+mkfs.vfat -F 32 -n GASLUXLAB "$work/efi-part.img" >/dev/null
+mmd -i "$work/efi-part.img" ::/EFI
+mmd -i "$work/efi-part.img" ::/EFI/BOOT
+mcopy -i "$work/efi-part.img" "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc status=none
 
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
@@ -128,10 +134,10 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -display none -monitor none -no-reboot -net none \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
-  -device qemu-xhci \
-  -drive if=none,id=labefi,format=raw,file="$work/efi.img" \
-  -device usb-storage,drive=labefi \
+  -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
+  -device virtio-blk-pci,drive=labefi,bootindex=1 \
   -cdrom "$iso" \
+  -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
 guest="$!"
 guest_verified=0
