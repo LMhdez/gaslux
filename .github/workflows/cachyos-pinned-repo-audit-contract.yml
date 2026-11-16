@@ -1,0 +1,28 @@
+name: CachyOS pinned ISO repository audit safety (no disk writes)
+on:
+  push:
+    branches:
+      - feature/cachyos-pinned-iso-repo-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Run 13 pinned-ISO mount/signature audit regressions and 17 trust-guard tests
+        run: |
+          python3 -m unittest auto_tests.test_cachyos_pinned_iso_repo_audit auto_tests.test_cachyos_pacman_trust -v
+          python3 -m py_compile auto_tests/tools/cachyos_pinned_iso_repo_audit.py auto_tests/test_cachyos_pinned_iso_repo_audit.py
+      - name: Install Ruff
+        run: python3 -m pip install --break-system-packages ruff==0.13.3
+      - name: Ruff lint
+        run: python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/cachyos_pinned_iso_repo_audit.py auto_tests/test_cachyos_pinned_iso_repo_audit.py
+      - name: Ruff format check
+        run: python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/cachyos_pinned_iso_repo_audit.py auto_tests/test_cachyos_pinned_iso_repo_audit.py
