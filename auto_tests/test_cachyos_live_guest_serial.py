@@ -120,6 +120,28 @@ class SerialGuestContractTests(unittest.TestCase):
         # as an exact, anchored stdout proof.
         self.assertIsNone(SERIAL.PASSED.search(SERIAL.normalized_tty(raw)))
 
+    def test_official_serial_log_bare_cr_before_ready_is_normalized(self):
+        # Captured from real CachyOS 260809 QEMU guest: a lone CR is
+        # emitted immediately before stdout, not CRLF.
+        raw = (
+            b"\x1b]3008;start=123;type=command\x1b\\"
+            b"\rGASLUX_ROOT_SHELL_READY\r\n"
+            b"\x1b]3008;end=123;exit=success\x1b\\"
+        )
+        clean = SERIAL.normalized_tty(raw)
+        self.assertIsNotNone(SERIAL.READY.search(clean))
+        self.assertIn(b"\nGASLUX_ROOT_SHELL_READY\n", clean)
+
+    def test_official_serial_log_bare_cr_before_guest_pass_is_normalized(self):
+        raw = (
+            b"[root@CachyOS ~]# bash /run/gaslux-lab/probe.sh\r\n"
+            b"\x1b]3008;start=123;type=command\x1b\\"
+            b"\rGASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"
+        )
+        self.assertIsNotNone(
+            SERIAL.PASSED.search(SERIAL.normalized_tty(raw))
+        )
+
     def test_empty_serial_transport_fails_closed(self):
         with self.assertRaisesRegex(SERIAL.ProbeError, "serial connection terminated"):
             SERIAL.probe(FakeSerial(b""), bytearray(), boot_timeout=3)
