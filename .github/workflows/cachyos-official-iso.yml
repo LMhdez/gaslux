@@ -1,0 +1,89 @@
+name: Official CachyOS ISO integrity and Archiso contract (not an installer)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/cachyos-archiso-handoff
+    paths:
+      - .github/workflows/cachyos-official-iso.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-official-cachyos:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install ISO verification prerequisites
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            squashfs-tools grub-common
+      - name: Fetch and verify pinned official CachyOS desktop ISO
+        shell: bash
+        env:
+          RELEASE: '260809'
+          ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+          ISO_URL: 'https://build.cachyos.org/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
+        run: |
+          set -Eeuo pipefail
+          workspace="$(mktemp -d -t gaslux-real-cachyos-XXXXXX)"
+          mkdir -p "$workspace/mounted"
+          echo "GASLUX_ISO_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          echo "$ISO_URL" > "$workspace/source-url.txt"
+          curl -fLsS --retry 3 --retry-delay 4 --connect-timeout 30 \
+            --max-time 1050 -o "$workspace/cachyos.iso" "$ISO_URL"
+          printf '%s  %s\n' "$ISO_SHA256" "$workspace/cachyos.iso" | sha256sum --check --status
+          echo "Verified official CachyOS ISO version $RELEASE SHA-256: $ISO_SHA256"
+      - name: Mount verified ISO read-only and inspect live Archiso payload
+        shell: bash
+        env:
+          ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+        run: |
+          set -Eeuo pipefail
+          w="$GASLUX_ISO_WORKSPACE"
+          sudo mount -o loop,ro "$w/cachyos.iso" "$w/mounted"
+          cleanup() { sudo umount "$w/mounted" || true; }
+          trap cleanup EXIT
+          python3 assets/live/libertix-cachyos-preflight.py "$w/mounted" > "$w/preflight.json"
+          python3 - "$w" "$ISO_SHA256" <<'PY'
+          import hashlib, importlib.util, json, sys
+          from pathlib import Path
+          w = Path(sys.argv[1])
+          expected = sys.argv[2]
+          iso = w / 'cachyos.iso'
+          plan = {
+              'schemaVersion': 1,
+              'firmware': 'uefi',
+              'secureBootEnabled': False,
+              'runId': 'official-cachyos-260809',
+              'isoStorageFilesystem': 'ext4',
+              'isoStorageUuid': '01234567-89ab-cdef-0123-456789abcdef',
+              'isoRelativePath': '/cachyos.iso',
+              'isoSha256': expected,
+              'isoSizeBytes': iso.stat().st_size,
+          }
+          path = Path('assets/live/cachyos-archiso-handoff.py').resolve()
+          spec = importlib.util.spec_from_file_location('gaslux_official_handoff', path)
+          assert spec and spec.loader
+          handoff = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(handoff)
+          result = handoff.prepare(plan, storage_root=w, iso_root=w / 'mounted')
+          assert result['ok'] and result['isoSha256Verified'] and result['isoLayoutVerified']
+          assert result['productionInstallSupported'] is False
+          assert result['isoMountedFromVerifiedSource'] is False  # not a dedicated storage volume
+          (w / 'grub.cfg').write_text(result['grubEntry'])
+          print('Official ISO Archiso identity, kernel/initramfs paths and SHA-256: PASS')
+          print('This is inspection only; Windows disk UUID and production boot were NOT verified.')
+          PY
+          grub-script-check "$w/grub.cfg"
+          echo "Generated GRUB loopback entry syntax: PASS"
+          printf 'Real CachyOS ISO verification passed\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'This job did not install Linux or touch Windows boot files.\n' >> "$GITHUB_STEP_SUMMARY"
