@@ -18,7 +18,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 _HERE = Path(__file__).resolve().parents[2]
 _GUARD = _HERE / "assets/live/cachyos-pacman-trust.py"
@@ -127,7 +128,9 @@ def audit(
     try:
         policy = _POLICY.assess(config, run=guest_pacman_conf)
     except _POLICY.PolicyError as error:
-        raise AuditError("pinned CachyOS ISO package signature policy refused: " + str(error)) from error
+        raise AuditError(
+            "pinned CachyOS ISO package signature policy refused: " + str(error)
+        ) from error
     return {
         "ok": True,
         "source": "gaslux-pinned-archiso-readonly-signature-audit-v1",

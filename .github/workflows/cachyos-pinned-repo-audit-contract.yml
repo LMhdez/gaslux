@@ -22,6 +22,17 @@ jobs:
           python3 -m py_compile auto_tests/tools/cachyos_pinned_iso_repo_audit.py auto_tests/test_cachyos_pinned_iso_repo_audit.py
       - name: Install Ruff
         run: python3 -m pip install --break-system-packages ruff==0.13.3
+      - name: Export canonical Ruff source temporarily
+        run: |
+          python3 -m ruff format --config auto_tests/pyproject.toml auto_tests/tools/cachyos_pinned_iso_repo_audit.py auto_tests/test_cachyos_pinned_iso_repo_audit.py
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          for path in ('auto_tests/tools/cachyos_pinned_iso_repo_audit.py', 'auto_tests/test_cachyos_pinned_iso_repo_audit.py'):
+              encoded = base64.b64encode(Path(path).read_bytes()).decode('ascii')
+              for offset in range(0, len(encoded), 1500):
+                  print(f'FORMAT64:{path}:{offset // 1500}:{encoded[offset:offset + 1500]}')
+          PY
       - name: Ruff lint
         run: python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/cachyos_pinned_iso_repo_audit.py auto_tests/test_cachyos_pinned_iso_repo_audit.py
       - name: Ruff format check

@@ -137,9 +137,11 @@ class PinnedIsoRepoAuditTests(unittest.TestCase):
     def test_weak_repo_policy_rejected(self):
         def weak(_config, *, run):
             raise AUDIT._POLICY.PolicyError("repository cachyos: weak SigLevel")
-        with patch.object(AUDIT._POLICY, "assess", side_effect=weak):
-            with self.assertRaisesRegex(AUDIT.AuditError, "signature policy refused"):
-                self.inspect()
+        with (
+            patch.object(AUDIT._POLICY, "assess", side_effect=weak),
+            self.assertRaisesRegex(AUDIT.AuditError, "signature policy refused"),
+        ):
+            self.inspect()
 
     def test_writable_squashfs_mount_rejected(self):
         def writable(argv, **kwargs):
