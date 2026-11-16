@@ -13,14 +13,14 @@ def test_iso_is_emulated_as_read_only_optical_and_never_host_block_device():
     assert "-device virtio-blk-pci,drive=officialiso" in source
     assert "-device qemu-xhci" not in source
     assert '  -cdrom "$iso"' not in source
-    assert '  -device virtio-blk-pci,drive=labefi,bootindex=1' in source
-    assert ' -net none' in source
-    assert ' -no-reboot' in source
+    assert "  -device virtio-blk-pci,drive=labefi,bootindex=1" in source
+    assert " -net none" in source
+    assert " -no-reboot" in source
 
 
 def test_kernel_lookup_fails_closed_and_guest_login_is_required():
     source = BOOT.read_text(encoding="utf-8")
-    assert 'if ! search --no-floppy --file --set=source /$kernel; then' in source
+    assert "if ! search --no-floppy --file --set=source /$kernel; then" in source
     assert "Verified live kernel is not visible on any guest block device" in source
     assert "guest_verified=0" in source
     assert "NO REAL GUEST LOGIN PROOF" in source
