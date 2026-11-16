@@ -66,7 +66,7 @@ def load_catalog(path: Path = CATALOG) -> dict:
         url = urlparse(p.get("downloadUrl", ""))
         if (url.scheme != "https" or url.hostname != "go.microsoft.com" or
                 url.username or url.password or url.fragment or
-                not re.fullmatch(r"/fwlink(?:/p/)?", url.path)):
+                url.path not in ("/fwlink/", "/fwlink/p/")):
             raise ValueError(f"{key}: not an official HTTPS Microsoft fwlink")
         if key.startswith("win10") and p.get("expectedWindowsBuildPrefix") != "19045":
             raise ValueError("Windows 10 build expectation changed")
