@@ -12,6 +12,7 @@ from gaslux_q4os_calamares_policy import (  # noqa: E402
     CalamaresRefusal,
     audit_q4os_calamares,
 )
+from gaslux_q4os_hook_policy import audit_q4os_native_hooks  # noqa: E402
 
 
 @pytest.fixture
@@ -158,3 +159,92 @@ def test_refuse_invalid_distribution_version(evidence):
     (evidence / "etc__q4os_version").write_text("6.11-deb13u1\n", encoding="utf-8")
     with pytest.raises(CalamaresRefusal, match="identity"):
         audit_q4os_calamares(evidence)
+
+
+_HOOK_PATHS = (
+    "usr/lib/calamares/modules/q4oshook2/module.desc",
+    "usr/lib/calamares/modules/q4oshook3/module.desc",
+    "usr/lib/calamares/modules/q4oshook5/module.desc",
+    "usr/sbin/q4os-hook2a.sh",
+    "usr/sbin/q4os-hook3a.sh",
+    "usr/sbin/q4os-hook3b.sh",
+    "usr/sbin/q4oshook1.sh",
+    "usr/sbin/q4oshook4.sh",
+    "usr/share/apps/q4os_system/bhooks/bhook1_50_live1.sh",
+)
+
+
+def _synthetic_hook_evidence(evidence):
+    import hashlib
+
+    folder = evidence / "native-hooks"
+    folder.mkdir()
+    lines = []
+    for path in _HOOK_PATHS:
+        name = path.replace("/", "__")
+        content = ("# inert synthetic fixture\n" if path.endswith(".sh") else "type: process\n").encode()
+        (folder / name).write_bytes(content)
+        lines.append(f"{hashlib.sha256(content).hexdigest()}  {name}")
+    (folder / "q4os-hooks-files.sha256").write_text(
+        "\n".join(sorted(lines)) + "\n", encoding="ascii"
+    )
+    return folder
+
+
+def test_q4os_hook_sources_stay_non_executable_even_when_manifest_is_valid(evidence):
+    _synthetic_hook_evidence(evidence)
+    report = audit_q4os_native_hooks(evidence)
+    assert report["nativeHookSourcesCount"] == 9
+    assert report["moduleDescriptorSourceCount"] == 3
+    assert report["shellSourceCount"] == 6
+    assert report["nativeHookCommandsExecuted"] is False
+    assert report["hookExecutionAuthorized"] is False
+    assert report["nativeInstallationProven"] is False
+    assert report["windowsEspWriteAuthorized"] is False
+    assert report["diskWrites"] == 0
+
+
+def test_refuse_q4os_hook_source_tampering(evidence):
+    folder = _synthetic_hook_evidence(evidence)
+    (folder / "usr__sbin__q4os-hook2a.sh").write_text("changed contents\n")
+    with pytest.raises(CalamaresRefusal, match="SHA-256 mismatch"):
+        audit_q4os_native_hooks(evidence)
+
+
+def test_refuse_symlinked_q4os_hook_source(evidence):
+    folder = _synthetic_hook_evidence(evidence)
+    target = folder / "usr__sbin__q4os-hook2a.sh"
+    target.unlink()
+    target.symlink_to(folder / "usr__sbin__q4oshook1.sh")
+    with pytest.raises(CalamaresRefusal, match="symlinked"):
+        audit_q4os_native_hooks(evidence)
+
+
+def test_refuse_hook_manifest_path_traversal(evidence):
+    folder = _synthetic_hook_evidence(evidence)
+    manifest = folder / "q4os-hooks-files.sha256"
+    lines = manifest.read_text().splitlines()
+    lines[0] = lines[0].split("  ")[0] + "  ../../unauthorized.sh"
+    manifest.write_text("\n".join(lines) + "\n")
+    with pytest.raises(CalamaresRefusal, match="Malformed or unsafe"):
+        audit_q4os_native_hooks(evidence)
+
+
+def test_refuse_native_hook_sequence_reordered(evidence):
+    _synthetic_hook_evidence(evidence)
+
+    def move_hook(settings):
+        jobs = settings["sequence"][1]["exec"]
+        jobs.remove("q4oshook5")
+        jobs.insert(jobs.index("bootloader"), "q4oshook5")
+
+    _change_yaml(evidence, "etc__calamares__settings.conf", move_hook)
+    with pytest.raises(CalamaresRefusal, match="ordering"):
+        audit_q4os_native_hooks(evidence)
+
+
+def test_refuse_unsupported_q4os_release_for_native_hooks(evidence):
+    _synthetic_hook_evidence(evidence)
+    (evidence / "etc__q4os_version").write_text("6.11-deb13u1\n")
+    with pytest.raises(CalamaresRefusal, match="identity"):
+        audit_q4os_native_hooks(evidence)
