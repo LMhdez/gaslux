@@ -1,0 +1,288 @@
+diff --git a/assets/live/libertix-cachyos-preflight.py b/assets/live/libertix-cachyos-preflight.py
+new file mode 100755
+index 0000000..bcaf9aa
+--- /dev/null
++++ b/assets/live/libertix-cachyos-preflight.py
+@@ -0,0 +1,124 @@
++#!/usr/bin/env python3
++"""Read-only CachyOS Archiso payload preflight for a future Libertix backend.
++
++This tool does NOT install an OS or modify partitions. It does not assert that
++CachyOS is a supported Libertix distribution. Full installation must be gated
++until an Arch-specific target configurator, bootloader and rollback verifiers
++have been implemented and tested.
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import re
++import subprocess
++import sys
++from pathlib import Path
++from typing import Callable
++
++
++class PreflightError(Exception):
++    """An ISO did not satisfy the narrowly scoped CachyOS Archiso contract."""
++
++
++Runner = Callable[..., subprocess.CompletedProcess[str]]
++
++
++def parse_os_release(content: str) -> dict[str, str]:
++    """Parse os-release fields without executing untrusted text in a shell."""
++    values: dict[str, str] = {}
++    for line in content.splitlines():
++        if not line.strip() or line.lstrip().startswith("#"):
++            continue
++        if "=" not in line:
++            raise PreflightError("Malformed os-release line")
++        key, value = line.split("=", 1)
++        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
++            raise PreflightError("Invalid os-release field name")
++        value = value.strip()
++        if len(value) >= 2 and value[0] in ("'", '"'):
++            if value[-1] != value[0]:
++                raise PreflightError("Unterminated quoted os-release value")
++            value = value[1:-1]
++        elif re.search(r"\s", value):
++            raise PreflightError("Unquoted whitespace in os-release value")
++        if key in values:
++            raise PreflightError("Duplicate os-release key")
++        values[key] = value
++    return values
++
++
++def _run_unsquashfs(
++    runner: Runner, args: list[str], description: str
++) -> str:
++    try:
++        result = runner(
++            ["unsquashfs", *args],
++            capture_output=True,
++            text=True,
++            check=False,
++            timeout=120,
++        )
++    except (OSError, subprocess.TimeoutExpired) as error:
++        raise PreflightError(f"Cannot inspect squashfs ({description}): {error}") from error
++    if result.returncode != 0:
++        raise PreflightError(f"Cannot inspect squashfs ({description}); exit={result.returncode}")
++    if len(result.stdout) > 2_000_000:
++        raise PreflightError(f"Unreasonably large squashfs output ({description})")
++    return result.stdout
++
++
++def inspect_cachyos_iso_root(iso_root: Path, *, runner: Runner = subprocess.run) -> dict[str, object]:
++    """Inspect an already-mounted/extracted ISO directory without writing data."""
++    if not iso_root.is_dir():
++        raise PreflightError("ISO root must be a readable directory")
++
++    # archiso generates this image, unlike Ubuntu's casper/filesystem.squashfs.
++    squashfs = iso_root / "arch" / "x86_64" / "airootfs.sfs"
++    if squashfs.is_symlink() or not squashfs.is_file():
++        raise PreflightError("Expected regular Archiso image arch/x86_64/airootfs.sfs")
++
++    os_release = parse_os_release(
++        _run_unsquashfs(runner, ["-cat", str(squashfs), "etc/os-release"], "os-release")
++    )
++    # The official CachyOS *live ISO* currently sets ID=arch; never rely on
++    # ID=cachyos or ID_LIKE=arch to identify this particular payload.
++    if os_release.get("ID") != "arch" or os_release.get("NAME") != "CachyOS":
++        raise PreflightError("Not the expected CachyOS Archiso live image")
++
++    inventory = _run_unsquashfs(
++        runner, ["-ll", str(squashfs), "etc/pacman.conf", "usr/bin/pacman"], "capabilities"
++    )
++    observed = set(re.findall(r"(?:^|\s)squashfs-root/([^\s]+)", inventory, re.MULTILINE))
++    capabilities = ("etc/pacman.conf", "usr/bin/pacman")
++    missing = [path for path in capabilities if path not in observed]
++    if missing:
++        raise PreflightError("CachyOS live image lacks required pacman capabilities: " + ", ".join(missing))
++
++    return {
++        "distribution": "cachyos",
++        "live_os_release_id": "arch",
++        "iso_layout": "archiso",
++        "rootfs_relative_path": "arch/x86_64/airootfs.sfs",
++        "requires_separate_arch_installer_backend": True,
++        "online_installer_required": True,
++        "libertix_installation_supported": False,
++        "mutates_storage": False,
++    }
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("iso_root", type=Path, help="Mounted or extracted CachyOS ISO root directory")
++    options = parser.parse_args(argv)
++    try:
++        outcome = inspect_cachyos_iso_root(options.iso_root)
++    except PreflightError as error:
++        print(json.dumps({"ok": False, "error": str(error)}), file=sys.stdout)
++        return 1
++    print(json.dumps({"ok": True, **outcome}, sort_keys=True))
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/auto_tests/test_cachyos_preflight.py b/auto_tests/test_cachyos_preflight.py
+new file mode 100644
+index 0000000..9731869
+--- /dev/null
++++ b/auto_tests/test_cachyos_preflight.py
+@@ -0,0 +1,86 @@
++"""Tests for the read-only CachyOS Archiso identification stage."""
++import importlib.util
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++
++MODULE_PATH = Path(__file__).resolve().parents[1] / "assets/live/libertix-cachyos-preflight.py"
++spec = importlib.util.spec_from_file_location("libertix_cachyos_preflight", MODULE_PATH)
++assert spec and spec.loader
++preflight = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(preflight)
++
++
++class CachyosPreflightTests(unittest.TestCase):
++    def setUp(self):
++        self.temporary = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temporary.cleanup)
++        self.root = Path(self.temporary.name)
++        self.image = self.root / "arch/x86_64/airootfs.sfs"
++        self.image.parent.mkdir(parents=True)
++        self.image.touch()
++
++    @staticmethod
++    def runner(os_release='NAME="CachyOS"\nID=arch\n', inventory=None, *, returncode=0):
++        if inventory is None:
++            inventory = ('-rw-r--r-- root/root 123 2026-01-01 squashfs-root/etc/pacman.conf\n'
++                         '-rwxr-xr-x root/root 456 2026-01-01 squashfs-root/usr/bin/pacman\n')
++        def run(argv, **kwargs):
++            assert argv[0] == "unsquashfs"
++            assert kwargs["check"] is False
++            value = os_release if "-cat" in argv else inventory
++            return subprocess.CompletedProcess(argv, returncode, value, "")
++        return run
++
++    def test_good_image_recognized_but_not_installable(self):
++        value = preflight.inspect_cachyos_iso_root(self.root, runner=self.runner())
++        self.assertEqual(value["distribution"], "cachyos")
++        self.assertFalse(value["libertix_installation_supported"])
++        self.assertFalse(value["mutates_storage"])
++
++    def test_missing_archiso_image_rejected(self):
++        self.image.unlink()
++        with self.assertRaises(preflight.PreflightError):
++            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner())
++
++    def test_symlink_squashfs_rejected(self):
++        self.image.unlink()
++        original = self.root / "data"
++        original.touch()
++        self.image.symlink_to(original)
++        with self.assertRaises(preflight.PreflightError):
++            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner())
++
++    def test_different_arch_distro_rejected(self):
++        with self.assertRaises(preflight.PreflightError):
++            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('ID=arch\nNAME="EndeavourOS"\n'))
++
++    def test_cachyos_live_is_not_identified_by_id_cachyos(self):
++        with self.assertRaises(preflight.PreflightError):
++            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('NAME="CachyOS"\nID=cachyos\n'))
++
++    def test_pacman_required(self):
++        with self.assertRaises(preflight.PreflightError):
++            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner(inventory="squashfs-root/etc/pacman.conf\n"))
++
++    def test_unsquashfs_failure(self):
++        with self.assertRaises(preflight.PreflightError):
++            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner(returncode=2))
++
++    def test_os_release_parser_does_not_evaluate_shell(self):
++        parsed = preflight.parse_os_release('ID=arch\nNAME="CachyOS"\nURL="$(touch /tmp/unsafe)"\n')
++        self.assertEqual(parsed["URL"], "$(touch /tmp/unsafe)")
++
++    def test_invalid_os_release_duplicate(self):
++        with self.assertRaises(preflight.PreflightError):
++            preflight.parse_os_release("ID=arch\nID=ubuntu\n")
++
++    def test_missing_root(self):
++        with self.assertRaises(preflight.PreflightError):
++            preflight.inspect_cachyos_iso_root(self.root / "nope")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/docs/CACHYOS_BACKEND.md b/docs/CACHYOS_BACKEND.md
+new file mode 100644
+index 0000000..fe4faaa
+--- /dev/null
++++ b/docs/CACHYOS_BACKEND.md
+@@ -0,0 +1,60 @@
++# CachyOS support: initial, non-installing backend groundwork
++
++**Status: research/preflight only. Do not advertise CachyOS in release-config.json or the Windows wizard.**
++
++The existing Libertix installer is designed for Debian/Ubuntu derived operating systems. The
++CachyOS live ISO is an **Archiso environment**, not an installed root filesystem ready to copy
++into Libertix's `/mnt/target` and boot. Adding a URL and checksum to `release-config.json` would
++be unsafe. This preliminary work provides a **read-only** ISO format verifier and tests only.
++
++## Confirmed upstream differences
++
++- Libertix uses `casper/filesystem.squashfs` discovery and requires `dpkg`, `update-initramfs`,
++  `lsinitramfs`, and `update-grub` inside the target.
++- CachyOS's official `CachyOS-Live-ISO/archiso/profiledef.sh` configures `airootfs_image_type=squashfs`.
++  An Archiso image is normally `arch/x86_64/airootfs.sfs`.
++- The CachyOS live ISO **sets `ID=arch`, `NAME="CachyOS"`**, from
++  `CachyOS-Live-ISO/archiso/airootfs/etc/os-release`. It is not safe to rely on `ID=cachyos`.
++- Current CachyOS installation is managed through its own installer with online package setup;
++  directly extracting the live root is not a functional substitute for the official installer.
++- CachyOS's installation documentation requires Secure Boot **and CSM disabled** for initial UEFI
++  installation. This conflicts with Libertix's current signed Ubuntu shim boot architecture.
++
++## Inspect an ISO (read-only)
++
++With a CachyOS ISO **already mounted or extracted** at `/mnt/cachyos-iso`:
++
++```bash
++python3 assets/live/libertix-cachyos-preflight.py /mnt/cachyos-iso
++python3 -m unittest discover -s auto_tests -p test_cachyos_preflight.py -v
++```
++
++The JSON output intentionally sets `libertix_installation_supported=false`; success means
++"this looks like the expected CachyOS Archiso image", **not** "installable with Libertix".
++
++## Necessary changes before release support
++
++1. Define a separate `archiso-cachyos` installation backend in distribution metadata and
++   extend schema validation, Windows UI, PowerShell policy and release signing. Keep it disabled
++   until an immutable, SHA-256-verified supported ISO release is chosen.
++2. Design a CachyOS-specific installation source, matching the current online installation
++   repository and CachyOS package installation flow. Never copy the live Archiso image as though
++   it were the target system.
++3. Make the target configuration distro-aware (create user, locale, keyboard, time zone, sudo
++   `wheel`, pacman database/keyring, initramfs with mkinitcpio or dracut, package hooks).
++4. Implement a separate GRUB/EFI path and kernel filename verification, without
++   `shim-signed`, `grub-efi-amd64-signed` or `dpkg-divert` assumptions. Do not make changes to
++   Secure Boot firmware keys automatically.
++5. Preserve Libertix's transaction-owned disk geometry, rollback markers, boot state and
++   Windows recovery chain. New paths require matching static and runtime validations.
++6. Test UEFI/GPT dual boot with Windows 10 and Windows 11 in isolated snapshots, including power
++   loss, failed downloads, Secure Boot enabled (fail before any mutation), and installation abort.
++   Do not test an unverified build on the user's production Windows installation.
++
++## References
++
++- https://github.com/ekimiateam/libertix/blob/main/docs/ARCHITECTURE.md
++- https://github.com/ekimiateam/libertix/blob/main/assets/live/libertix-distribution-common.sh
++- https://github.com/CachyOS/CachyOS-Live-ISO/blob/master/archiso/profiledef.sh
++- https://github.com/CachyOS/CachyOS-Live-ISO/blob/master/archiso/airootfs/etc/os-release
++- https://wiki.cachyos.org/installation/installation_on_root/
