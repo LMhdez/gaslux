@@ -39,6 +39,21 @@ cleanup() {
     kill -KILL "$vm_pid" 2>/dev/null || true
     wait "$vm_pid" 2>/dev/null || true
   fi
+  # Failure is expected in fault-injection tests: preserve observed serial
+  # transcripts BEFORE the parent script removes its temporary guest files.
+  if [[ -d "$w" && ! -L "$w" && -d "$evidence" && ! -L "$evidence" ]]; then
+    for name in powercut update-transaction update-reboot recovered-baseline; do
+      source="$w/$name-serial.log"
+      if [[ -f "$source" && ! -L "$source" ]]; then
+        install -m 0600 "$source" "$evidence/cachyos-$name-serial.log" || true
+        (
+          cd "$evidence" || exit
+          sha256sum "cachyos-$name-serial.log" \
+            > "cachyos-$name-serial.sha256"
+        ) || true
+      fi
+    done
+  fi
 }
 trap cleanup EXIT
 
