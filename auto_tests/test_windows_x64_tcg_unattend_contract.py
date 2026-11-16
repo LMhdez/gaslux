@@ -45,7 +45,7 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
                     ["true"])
                 self.assertEqual(
                     [p.text for p in root.findall(".//u:CreatePartition/u:Type", NS)],
-                    ["EFI", "MSR", "Primary"])
+                    ["EFI", "MSR", "Primary", "Primary"])
                 self.assertEqual(
                     [i.text for i in root.findall(".//u:InstallTo/u:PartitionID", NS)],
                     ["3"])
@@ -62,6 +62,9 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
                 self.assertIn("ProductType -ne 1", module.witness_powershell(key, prefix))
                 self.assertIn("Get-Partition", module.witness_powershell(key, prefix))
                 self.assertIn("reagentc /info", module.witness_powershell(key, prefix))
+                self.assertIn("Windows RE status:", module.witness_powershell(key, prefix))
+                self.assertIn("GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+                              module.witness_powershell(key, prefix))
                 self.assertIn("bcdedit /enum", module.witness_powershell(key, prefix))
                 self.assertNotIn("bcdedit /set", module.witness_powershell(key, prefix))
 
@@ -147,6 +150,8 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
         self.assertIn("GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1", source)
         self.assertIn("GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1", source)
         self.assertIn("GASLUX_WINDOWS_X64_BCD_ENUMERATED=1", source)
+        self.assertIn("GASLUX_WINDOWS_X64_WINRE_ENABLED=1", source)
+        self.assertIn("GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1", source)
         self.assertIn("proc.kill()", source)
 
 
