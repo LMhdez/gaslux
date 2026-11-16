@@ -50,8 +50,10 @@ explicitly ordered phases without changing the Mint/Zorin operations:
 - `configure_legacy_grub_target`: Casper cleanup, initramfs rebuild, GRUB,
   boot-update guards and first-boot resize setup.
 
-`validate_legacy_target_backend_or_die` executes **before any target changes**
-and requires exactly `mint/linuxmint` or `zorin/zorin`. The only accepted
+`validate_legacy_target_backend_or_die` executes **before target configuration**
+and requires exactly `mint/linuxmint` or `zorin/zorin`. This check runs
+inside the installed target, **after live disk staging and extraction**;
+it is not a substitute for an earlier Windows/live pre-disk authorization gate. The only accepted
 backend remains `debian-squashfs` (the legacy default); `system76`, `popos/pop`
 and unknown identities all fail closed. The selection function is deliberately
 not wired to a Pop!_OS writer. This does not override Windows preflight or
