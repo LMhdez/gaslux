@@ -74,3 +74,48 @@ Official Q4OS sources:
 - https://q4os.org/blog.html
 - https://q4os.org/dqa007.html
 - https://www.q4os.org/forum/viewtopic.php?pid=35537
+
+## Exact native Calamares inspection and disposable installed-root experiment
+
+The official pinned Q4OS 6.10 r2 ISO actually contains the full native
+`/etc/calamares/settings.conf` and module configuration. The guest root
+reported `/etc/q4os_version = 6.10-deb13u1`. From the verified ISO:
+
+- `unpackfs.conf` selects
+  `/run/live/medium/live/filesystem.squashfs`, sourcefs `squashfs`,
+  destination `""`. This is the only install payload source used by
+  the disposable materialization experiment.
+- `settings.conf` sequences partition, mount, unpackfs, Q4OS hooks,
+  users, GRUB, package cleanup, initramfs and unmount. Those hooks must
+  be individually reviewed before real unattended installation.
+- `bootloader.conf` selects UEFI GRUB and sets
+  `installEFIFallback: true`: blindly reusing this would risk replacing
+  `EFI/BOOT/BOOTX64.EFI` on a Windows ESP. The Gaslux policy rejects
+  such unowned fallback writes.
+- `partition.conf` defaults to ext4 and has
+  `initialPartitioningChoice: none`; this is not automatic,
+  transaction-owned partitioning.
+
+[Calamares config verification run 43964771409](https://github.com/LMhdez/gaslux/actions/runs/43964771409)
+completed successfully, with hashes and native files retained as an artifact.
+The policy auditor parses the extracted YAML using a duplicate-key-rejecting
+loader; a pass **never** authorizes a production disk write.
+
+The separate `gaslux_q4os_installed_root_lab.sh` experiment is explicitly
+opted in **only on disposable GitHub Actions runners**. It creates a fresh
+12-GiB sparse GPT image under its private temporary directory and validates
+loop backing-file ownership before formatting its own EFI and ext4 partitions.
+It stages the native Calamares `unpackfs` SquashFS payload, writes a
+guest-only boot-proof systemd unit, and tries to boot with OVMF using a temporary
+runner-built GRUB EFI binary. The ISO is **not attached** during the target boot,
+and neither Windows disks nor a host physical disk are passed into QEMU.
+
+**Important limitation:** this tests a staged *installed root*, not Calamares'
+full installation: Q4OS-specific Calamares hooks, account provisioning,
+native package-owned GRUB, package removal/updates, Windows coexistence,
+transactional handoff and recovery are not run. A positive boot proof requires
+the new guest's own systemd unit to emit a serial marker; success must only
+be claimed after reviewing the exact-head GitHub Actions result.
+
+The production catalogue, WPF wizard and Windows/BCD/ESP writers remain
+untouched. Q4OS remains experimental; no stable dual-boot support is claimed.
