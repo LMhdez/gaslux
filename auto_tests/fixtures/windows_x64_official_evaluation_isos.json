@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "labOnly": true,
+  "windowsClientBootVerified": false,
+  "sourceAuthority": "Microsoft Evaluation Center",
+  "profiles": {
+    "win10_22h2_en_us_x64": {
+      "label": "Windows 10 Enterprise 22H2 Evaluation x64 en-US",
+      "expectedWindowsBuildPrefix": "19045",
+      "expectedProductType": 1,
+      "architecture": "x64",
+      "firmware": "uefi",
+      "partitionStyle": "gpt",
+      "issuer": "Microsoft",
+      "downloadUrl": "https://go.microsoft.com/fwlink/p/?LinkID=2208844&clcid=0x409&country=US&culture=en-us",
+      "sha256": "ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668",
+      "hashAuthorityUrl": "https://download.microsoft.com/download/c/1/1/c11d2ca5-967c-45c0-bc7d-2d9ca3f1fe07/Windows10Enterprise22H2HashValues.pdf",
+      "sourcePageUrl": "https://www.microsoft.com/en-us/evalcenter/download-windows-10-enterprise",
+      "supportStatus": "legacy_evaluation",
+      "releaseReady": false
+    },
+    "win11_26h2_en_us_x64": {
+      "label": "Windows 11 Enterprise 26H2 Evaluation x64 en-US",
+      "expectedWindowsBuildPrefix": "26300",
+      "expectedProductType": 1,
+      "architecture": "x64",
+      "firmware": "uefi",
+      "partitionStyle": "gpt",
+      "issuer": "Microsoft",
+      "downloadUrl": "https://go.microsoft.com/fwlink/?LinkId=2382600&clcid=0x409&country=us&culture=en-us",
+      "sha256": "bc3f24086ebadc94489066b5ad78089e2cf5c3491e90e790bb81a2b199c10e38",
+      "hashAuthorityUrl": "https://support.microsoft.com/en-us/servicing/os/windows/docs/2026/09/verify-the-authenticity-of-a-windows-11-enterprise-evaluation-iso-file",
+      "sourcePageUrl": "https://www.microsoft.com/en-us/evalcenter/download-windows-11-enterprise",
+      "supportStatus": "supported_evaluation",
+      "releaseReady": false
+    }
+  }
+}
