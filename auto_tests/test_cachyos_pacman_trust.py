@@ -124,9 +124,11 @@ class PacmanTrustTests(unittest.TestCase):
     def test_stage_must_refuse_weak_config_before_pacstrap(self):
         stage = (ROOT / "assets/live/cachyos-stage-target.sh").read_text()
         fn = stage.split("install_target() {", 1)[1]
-        self.assertLess(fn.index("check_identity "), fn.index("--config /etc/pacman.conf"))
-        self.assertLess(fn.index("--config /etc/pacman.conf"), fn.index("  pacstrap -K"))
+        self.assertLess(fn.index("check_identity "), fn.index("--prepare-vm --run-id"))
+        self.assertLess(fn.index("--prepare-vm --run-id"), fn.index("  pacstrap -K -C"))
+        self.assertIn("--config \"$strict_dir/pacman-install.conf\"", fn)
         self.assertIn("--config \"$TARGET/etc/pacman.conf\"", fn)
+        self.assertNotIn("install -m 0644 /etc/pacman.conf", fn)
 
     def test_no_trust_bypass_in_guard(self):
         raw = SOURCE.read_text()

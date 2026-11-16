@@ -82,30 +82,40 @@ install_target() {
   check_host
   check_target "$run_id" "$root_uuid"
   check_identity "$username" "$hostname" "$locale" "$timezone" "$secret"
-  # Refuse even laboratory package installation if pacman could accept unsigned
-  # or insufficiently trusted packages. Live ISO configuration is not trusted.
+  # The official pinned live ISO is known to allow weak CachyOS package
+  # signatures. Never use its pacman.conf for pacstrap or target updates.
+  # A separate strict config and HTTPS-only mirrorlists are generated solely
+  # on VM tmpfs and checked with the REAL pacman-conf parser.
   local trust_guard=/usr/local/lib/libertix/cachyos-pacman-trust.py
-  [ -f "$trust_guard" ] && [ ! -L "$trust_guard" ] &&
-    [ "$(stat -c %u "$trust_guard")" -eq 0 ] ||
-    die 'maintainer-provisioned signed-package trust guard missing'
-  python3 "$trust_guard" --config /etc/pacman.conf >/dev/null ||
-    die 'CachyOS pacman repository signature policy is not secure'
-  pacstrap -K "$TARGET" \
+  local strict_builder=/usr/local/lib/libertix/cachyos-strict-pacman.py
+  for trusted in "$trust_guard" "$strict_builder"; do
+    [ -f "$trusted" ] && [ ! -L "$trusted" ] &&
+      [ "$(stat -c %u "$trusted")" -eq 0 ] ||
+      die "maintainer-provisioned trust asset missing: $trusted"
+  done
+  local strict_dir="/run/gaslux-pacman-$run_id"
+  python3 "$strict_builder" --prepare-vm --run-id "$run_id" >/dev/null ||
+    die 'cannot prepare strict signed-only pacman configuration in VM tmpfs'
+  [ -f "$strict_dir/pacman-install.conf" ] &&
+    [ -f "$strict_dir/pacman-target.conf" ] || die 'strict config incomplete'
+  python3 "$trust_guard" --config "$strict_dir/pacman-install.conf" >/dev/null ||
+    die 'strict CachyOS pacman package signing policy could not be verified'
+  pacstrap -K -C "$strict_dir/pacman-install.conf" "$TARGET" \
     base linux-cachyos linux-firmware mkinitcpio \
     cachyos-keyring cachyos-mirrorlist cachyos-settings \
     pacman sudo networkmanager grub efibootmgr os-prober \
     e2fsprogs dosfstools ntfs-3g \
     plasma-meta sddm konsole dolphin xorg-server xorg-xwayland python
   [ -f "$TARGET/etc/os-release" ] || die 'pacstrap did not create the target OS'
-  # Preserve signed CachyOS repositories and mirror configuration after pacstrap.
-  [ -f /etc/pacman.conf ] && [ ! -L /etc/pacman.conf ] || die 'trusted pacman configuration missing'
-  install -m 0644 /etc/pacman.conf "$TARGET/etc/pacman.conf"
+  # Install the verified strict target config; never copy the live ISO
+  # pacman.conf or unfiltered HTTP/FTP mirrors into the installed system.
   install -d -m 0755 "$TARGET/etc/pacman.d"
-  for mirror in mirrorlist cachyos-mirrorlist cachyos-v3-mirrorlist cachyos-v4-mirrorlist; do
-    if [ -f "/etc/pacman.d/$mirror" ] && [ ! -L "/etc/pacman.d/$mirror" ]; then
-      install -m 0644 "/etc/pacman.d/$mirror" "$TARGET/etc/pacman.d/$mirror"
-    fi
+  install -m 0644 "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf"
+  for mirror in mirrorlist cachyos-mirrorlist; do
+    install -m 0644 "$strict_dir/$mirror" "$TARGET/etc/pacman.d/$mirror"
   done
+  cmp -s "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf" ||
+    die 'installed pacman signature configuration differs from audited candidate'
   [ -s "$TARGET/etc/pacman.d/mirrorlist" ] || die 'Arch repository mirrorlist missing'
   [ -s "$TARGET/etc/pacman.d/cachyos-mirrorlist" ] || die 'CachyOS repository mirrorlist missing'
   grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*$' "$TARGET/etc/pacman.conf" || die 'CachyOS repository missing from target'
