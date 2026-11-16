@@ -246,7 +246,7 @@ if [[ "$lab_install" -eq 1 ]]; then
   graphic_args=()
   if [[ "$graphical" -eq 1 ]]; then
     monitor_args=(-monitor "unix:$w/graphics-monitor.sock,server=on,wait=off")
-    graphic_args=(-vga std)
+    graphic_args=(-device virtio-vga)
   fi
   timeout --kill-after=5s 600s qemu-system-x86_64 \
     -machine q35,accel=tcg,smm=on \
@@ -268,7 +268,7 @@ if [[ "$lab_install" -eq 1 ]]; then
       continue
     fi
     if [[ "$graphical" -eq 1 ]] &&
-       ! awk '{gsub(/\r/, ""); if($0=="GASLUX_VM_CACHYOS_PLASMA_X11_SESSION_PASS=1") pass=1}
+       ! awk '{gsub(/\r/, ""); if($0=="GASLUX_VM_CACHYOS_PLASMA_WAYLAND_SESSION_PASS=1") pass=1}
           END{exit !pass}' "$w/installed-serial.log"; then
       continue
     fi
@@ -303,7 +303,7 @@ if [[ "$lab_install" -eq 1 ]]; then
   fi
   echo 'PASS: independent installed CachyOS LTS kernel, ext4 root and GRUB EFI boot.'
   if [[ "$graphical" -eq 1 ]]; then
-    echo 'PASS: installed native KDE Plasma X11/KWin user session and QEMU framebuffer confirmed.'
+    echo 'PASS: installed native KDE Plasma Wayland/KWin user session and QEMU framebuffer confirmed.'
   fi
   echo 'NOT TESTED: production graphical installer, Windows dual boot, updates/rollback or hardware.'
 else
