@@ -145,7 +145,14 @@ def apply_vm_lab(plan: dict[str, Any]) -> dict[str, str]:
         ensure(safe_file(efi_dir, "grubx64.efi").read_bytes()[:2] == b"MZ",
                "GRUB EFI binary is absent/invalid")
         grub_text = safe_file(TARGET, "boot/grub/grub.cfg").read_text()
-        ensure("Windows Boot Manager" in grub_text and "Gaslux-CachyOS" in str(efi_dir),
+        ensure("Windows Boot Manager" in grub_text and
+               "gaslux-windows" in grub_text and
+               "vmlinuz-linux-cachyos" in grub_text,
+               "generated GRUB menu lacks required Windows/Linux entries")
+        verified_windows = safe_file(esp, "EFI/Microsoft/Boot/bootmgfw.efi")
+        ensure(hashlib.sha256(verified_windows.read_bytes()).hexdigest() ==
+               plan["windowsBootManagerSha256"],
+               "Windows Boot Manager changed during GRUB installation")
                "generated boot menu is incomplete")
     except Exception:
         # Fail closed: only remove files created by this transaction. Do NOT
