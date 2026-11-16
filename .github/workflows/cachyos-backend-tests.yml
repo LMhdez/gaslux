@@ -43,3 +43,21 @@ jobs:
             echo 'Installer accepted missing arguments' >&2
             exit 1
           fi
+
+  ovmf:
+    name: Actual OVMF / GRUB UEFI smoke (no Windows)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install UEFI smoke dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ovmf qemu-system-x86 grub-efi-amd64-bin mtools dosfstools
+      - name: Boot GRUB executable inside OVMF software-emulated guest
+        run: bash auto_tests/tools/cachyos_ovmf_smoke.sh
