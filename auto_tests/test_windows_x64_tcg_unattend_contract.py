@@ -53,7 +53,10 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
                                     NS)
                 self.assertIsNotNone(command)
                 self.assertIn("powershell.exe", command.text)
-                self.assertIn("-EncodedCommand", command.text)
+                self.assertIn("-File A:\\GASLUX.PS1", command.text)
+                self.assertNotIn("-EncodedCommand", command.text)
+                self.assertLess(len(command.text), 240,
+                                "first logon command must not hit setup length limit")
                 self.assertIn("GASLUX", module.witness_powershell(key, prefix))
                 self.assertIn(module.MARKER, module.witness_powershell(key, prefix))
                 self.assertIn("ProductType -ne 1", module.witness_powershell(key, prefix))
@@ -70,6 +73,18 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn('"windowsClientBootVerified": false', proc.stdout)
+
+    def test_firstlogon_script_is_floppy_only_and_has_valid_serial_constructor(self):
+        src = SRC.read_text()
+        self.assertIn('guest_ps1 = workspace / "GASLUX.PS1"', src)
+        self.assertIn('"::/GASLUX.PS1"', src)
+        self.assertIn("firstLogonScriptSha256", src)
+        self.assertIn("[System.IO.Ports.SerialPort]::new(", 
+                      module.witness_powershell("win10_22h2_en_us_x64", "19045"))
+        self.assertNotIn("New-Object System.IO.Ports.SerialPort(",
+                         module.witness_powershell("win10_22h2_en_us_x64", "19045"))
+        self.assertNotIn('bcdedit /set', module.witness_powershell(
+            "win11_26h2_en_us_x64", "26300"))
 
     def test_boot_is_tcg_nonphysical_only(self):
         code = SRC.read_text()
