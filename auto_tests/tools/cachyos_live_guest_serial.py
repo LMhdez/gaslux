@@ -147,6 +147,7 @@ def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,
         if not require_signed_entry:
             raise ProbeError("lab installation requires the signed boot")
         sock.sendall(
+            b"cd /run/gaslux-lab && sha256sum -c install.sha256 && "
             b"export GASLUX_DISPOSABLE_VM=I_ACCEPT_DISPOSABLE_VM_ONLY; "
             b"bash /run/gaslux-lab/install.sh\r"
         )
