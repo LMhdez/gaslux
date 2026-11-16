@@ -35,15 +35,9 @@ def entry(kind, part_guid, first, last, name="", attrs=0):
 
 def fixture_pair():
     entries = ["00" * 128 for _ in range(128)]
-    entries[0] = entry(
-        ESP_KIND, uuid.UUID(int=1), 2048, 1050623, "GASLUX-MOCK-WIN-ESP"
-    )
-    entries[1] = entry(
-        NTFS_KIND, uuid.UUID(int=2), 1050624, 2099199, "GASLUX-MOCK-WIN-NTFS"
-    )
-    entries[2] = entry(
-        ROOT_KIND, uuid.UUID(int=3), ROOT_FIRST, ROOT_LAST, "GASLUX-OWNED-ROOT"
-    )
+    entries[0] = entry(ESP_KIND, uuid.UUID(int=1), 2048, 1050623, "GASLUX-MOCK-WIN-ESP")
+    entries[1] = entry(NTFS_KIND, uuid.UUID(int=2), 1050624, 2099199, "GASLUX-MOCK-WIN-NTFS")
+    entries[2] = entry(ROOT_KIND, uuid.UUID(int=3), ROOT_FIRST, ROOT_LAST, "GASLUX-OWNED-ROOT")
     before = {
         "mbrSha256": "a" * 64,
         "primary": {"diskGuid": "bb" * 16, "current": 1, "entriesLba": 2},
@@ -51,9 +45,7 @@ def fixture_pair():
         "entries": entries,
     }
     after = copy.deepcopy(before)
-    after["entries"][2] = entry(
-        ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 1, ""
-    )
+    after["entries"][2] = entry(ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 1, "")
     return before, after
 
 
@@ -93,21 +85,13 @@ def test_foreign_changes_and_unexpected_root_mutations_are_refused(change):
     elif change == "mbr":
         after["mbrSha256"] = "b" * 64
     elif change == "root_start":
-        after["entries"][2] = entry(
-            ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST + 1, ROOT_LAST - 1
-        )
+        after["entries"][2] = entry(ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST + 1, ROOT_LAST - 1)
     elif change == "root_end":
-        after["entries"][2] = entry(
-            ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 2
-        )
+        after["entries"][2] = entry(ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 2)
     elif change == "root_type":
-        after["entries"][2] = entry(
-            ESP_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 1
-        )
+        after["entries"][2] = entry(ESP_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 1)
     elif change == "root_attrs":
-        after["entries"][2] = entry(
-            ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 1, attrs=1
-        )
+        after["entries"][2] = entry(ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 1, attrs=1)
     elif change == "root_name":
         after["entries"][2] = entry(
             ROOT_KIND, uuid.UUID(int=4), ROOT_FIRST, ROOT_LAST - 1, "FOREIGN"
