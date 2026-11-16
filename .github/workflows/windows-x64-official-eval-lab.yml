@@ -1,0 +1,88 @@
+name: Windows 10/11 x64 official-evaluation QEMU feasibility (not dual boot)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-x64-official-eval-github-actions-lab
+    paths:
+      - .github/workflows/windows-x64-official-eval-lab.yml
+      - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
+      - auto_tests/tools/windows_x64_qemu_host_gate.py
+      - auto_tests/test_windows_x64_qemu_host_gate.py
+      - docs/WINDOWS_X64_GITHUB_ACTIONS_LAB.md
+
+permissions:
+  contents: read
+
+jobs:
+  microsoft-iso-metadata:
+    name: Microsoft Windows 10+11 client x64 source/hash contracts (read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify immutable Microsoft hashes and negative regression guards
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_qemu_host_gate.py
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_qemu_host_gate.py'
+          python3 auto_tests/tools/windows_x64_qemu_host_gate.py --mode metadata
+          printf 'Official Windows 10/11 x64 Microsoft evaluation ISO hashes PINNED; Windows has NOT been booted.\n' >> "$GITHUB_STEP_SUMMARY"
+
+  hosted-windows-is-server:
+    name: Hosted x64 Windows identity — reject Server as Windows 10/11 client
+    runs-on: windows-2025
+    timeout-minutes: 7
+    steps:
+      - name: Inspect hosted OS without writing to disk or BCD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $os = Get-CimInstance Win32_OperatingSystem
+          $architecture = [Environment]::Is64BitOperatingSystem
+          if (-not $architecture) { throw 'Runner architecture not x64' }
+          if ($os.ProductType -eq 1) {
+            throw 'Unexpected Windows client on windows-2025 label; do not infer test from runner name'
+          }
+          if ($os.ProductType -notin 2,3) { throw 'Unrecognized Windows product type' }
+          Write-Host ("Hosted OS: {0}; Server ProductType={1}; 64bit={2}" -f $os.Caption, $os.ProductType, $architecture)
+          "Runner is Windows Server x64, NOT a Windows 10/11 client; no Windows installation/dual boot or recovery verified." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+  qemu-kvm-ovmf-host-gate:
+    name: QEMU/OVMF/vTPM/KVM/resource proof on GitHub-hosted Linux x64
+    needs: [microsoft-iso-metadata]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      GASLUX_VM_TEST_CONSENT: DISPOSABLE_GITHUB_ACTIONS_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install read-only inspection/QEMU binaries; no disks passed to VM
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ovmf qemu-system-x86 qemu-utils swtpm
+          mkdir -p windows-x64-evidence
+      - name: Fail closed when usable KVM, TPM, firmware or enough storage are unavailable
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_x64_qemu_host_gate.py \
+            --mode host --report windows-x64-evidence/host-readiness.json
+          echo 'Readiness only. NO Windows client VM has been installed or booted.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive Windows host blockers; do not upload ISO or disk images
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-x64-guest-host-readiness
+          path: windows-x64-evidence/host-readiness.json
+          retention-days: 7
+          if-no-files-found: warn
