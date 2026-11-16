@@ -36,9 +36,13 @@ jobs:
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
             --profile win11_26h2_en_us_x64 --fixture-only
 
-  windows10-real-evaluation-firstboot-tcg:
-    name: Attempt real Windows 10 x64 Enterprise Eval installed firstboot on TCG
+  windows-real-evaluation-firstboot-tcg:
+    name: Attempt actual ${{ matrix.profile }} client installation on TCG
     needs: [windows-client-source-and-unattend-contracts]
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [win10_22h2_en_us_x64, win11_26h2_en_us_x64]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -55,7 +59,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             ovmf qemu-system-x86 qemu-utils swtpm dosfstools mtools
           mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
-      - name: Download Microsoft SHA-256-pinned Windows 10 x64 Eval and install to disposable QCOW2
+      - name: Verify original Microsoft ISO SHA-256 and install client to disposable QCOW2
         shell: bash
         env:
           PYTHONUNBUFFERED: '1'
@@ -63,13 +67,13 @@ jobs:
           set -Eeuo pipefail
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
-            --profile win10_22h2_en_us_x64 --boot-timeout 6300
+            --profile ${{ matrix.profile }} --boot-timeout 6300
           printf 'Real installed Windows client serial witness verified. Linux dual boot, WinRE recovery and production stability NOT tested.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve ONLY bounded guest serial/evidence JSON, never ISOs/disks/credentials
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: windows10-x64-official-eval-tcg-firstboot-evidence
+          name: windows-${{ matrix.profile }}-official-eval-tcg-firstboot-evidence
           path: windows-x64-tcg-evidence/
           if-no-files-found: warn
           retention-days: 7
