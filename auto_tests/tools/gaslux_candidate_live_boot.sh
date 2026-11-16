@@ -133,8 +133,8 @@ echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
 echo "GASLUX_GUEST_INITRD=$initrd"
 # No host block devices are attached. Both guest disks are new temporary images;
-# the SHA-256 verified official ISO is mapped strictly read-only as USB optical
-# media so OVMF and GRUB use the same EFI-visible block-device path.
+# the SHA-256 verified official ISO is mapped strictly read-only using the
+# same virtio-blk interface that OVMF/GRUB visibly enumerates for the lab ESP.
 timeout --kill-after=5s 320s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
@@ -142,9 +142,8 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
-  -device qemu-xhci \
-  -drive if=none,id=officialiso,media=cdrom,readonly=on,format=raw,file="$iso" \
-  -device usb-storage,drive=officialiso \
+  -drive if=none,id=officialiso,readonly=on,format=raw,file="$iso" \
+  -device virtio-blk-pci,drive=officialiso \
   -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
 guest="$!"
