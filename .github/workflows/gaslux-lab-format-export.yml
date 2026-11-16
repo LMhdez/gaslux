@@ -1,0 +1,43 @@
+name: Candidate Python format export (read-only CI)
+
+on:
+  push:
+    branches:
+      - feature/multidistro-lab-media-probe
+    paths:
+      - '.github/workflows/gaslux-lab-format-export.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  format-diagnostics:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install formatter
+        run: python -m pip install ruff==0.17.5
+      - name: Format shared candidates in disposable checkout and emit diagnostic base64
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          files=(
+            assets/live/gaslux_candidate_handoff.py
+            auto_tests/tests/test_candidate_handoff.py
+            assets/live/gaslux_candidate_target_audit.py
+            auto_tests/tests/test_candidate_target_audit.py
+          )
+          python -m ruff format --config auto_tests/pyproject.toml "${files[@]}"
+          python - "${files[@]}" <<'PY'
+          import base64
+          import hashlib
+          import sys
+          from pathlib import Path
+          for raw in sys.argv[1:]:
+              path = Path(raw)
+              payload = path.read_bytes()
+              print("GASLUX_FORMAT_FILE|" + raw + "|" + hashlib.sha256(payload).hexdigest() + "|" + base64.b64encode(payload).decode("ascii"))
+          PY
