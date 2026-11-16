@@ -73,9 +73,11 @@ not execute installer or disk commands.
 ## OVMF live-boot block-device diagnostic (experimental)
 
 GitHub Actions can verify the official Pop!_OS ISO but older QEMU runs failed
-because GRUB could not find the live kernel on the emulated CD-ROM device.
+because GRUB could not find the live kernel on emulated CD-ROM or USB optical devices.
+The serial evidence listed only the lab EFI disk, so the test now uses a
+second explicitly read-only virtio-blk disk for the verified ISO.
 The dedicated disposable-VM experiment now attaches the signed/digest-checked
-ISO as **read-only USB optical media** (separate from the fresh temporary GPT
+ISO as a **read-only virtio block device** (separate from the fresh temporary GPT
 ESP disk) and requires a matching live kernel/initramfs and **serial login**.
 A missing GRUB device remains a failure, not a boot success. This is a live
 smoke test only; the Windows target disk, System76 distinst, and bootloader
