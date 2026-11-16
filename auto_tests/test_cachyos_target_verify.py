@@ -28,6 +28,9 @@ class CachyosTargetVerificationTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.write('.libertix-stage-owner', RUN + '\n')
         self.write('etc/os-release', 'NAME="CachyOS Linux"\nID=cachyos\nBUILD_ID=rolling\n')
+        self.write('etc/pacman.conf', '[options]\nSigLevel=Required DatabaseOptional\n[cachyos]\nServer=https://mirror.cachyos.org/repo/$arch/$repo\n')
+        self.write('etc/pacman.d/mirrorlist', 'Server = https://mirror.archlinux.org/$repo/os/$arch\n')
+        self.write('etc/pacman.d/cachyos-mirrorlist', 'Server = https://mirror.cachyos.org/repo/$arch/$repo\n')
         self.write('etc/passwd', 'root:x:0:0:root:/root:/bin/bash\ntestuser:x:1000:1000::/home/testuser:/bin/bash\n')
         self.write('etc/group', 'wheel:x:998:testuser\n')
         self.write('etc/shadow', 'testuser:$6$salt$' + 'a'*86 + ':12345:0:99999:7:::\n')
@@ -70,6 +73,16 @@ class CachyosTargetVerificationTests(unittest.TestCase):
     def test_live_os_rejected(self):
         self.write('etc/os-release', 'NAME=CachyOS\nID=arch\n')
         with self.assertRaisesRegex(verify.TargetError, 'not an installed'):
+            self.call()
+
+    def test_missing_cachyos_pacman_repository(self):
+        self.write('etc/pacman.conf', '[options]\n[core]\n')
+        with self.assertRaisesRegex(verify.TargetError, 'CachyOS repository'):
+            self.call()
+
+    def test_missing_mirrorlist(self):
+        (self.root / 'etc/pacman.d/cachyos-mirrorlist').unlink()
+        with self.assertRaisesRegex(verify.TargetError, 'missing required file'):
             self.call()
 
     def test_missing_package(self):
