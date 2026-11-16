@@ -23,7 +23,9 @@ def test_native_grub_installation_is_guest_owned_and_never_changes_nvram():
     assert "more-than-one-guest-disk" in script
     assert "guest-efi-fallback-was-replaced" in script
     assert "grub-install --target=x86_64-efi" in script
-    assert "--no-nvram --no-extra-removable --recheck" in script
+    assert "--no-nvram --recheck" in script
+    assert "--no-extra-removable" not in script
+    assert "native-grub-modified-fallback-without-ownership" in script
     assert "grub-mkconfig -o /boot/grub/grub.cfg" in script
     assert '"$native_loader" "$boot_fallback"' in script
     assert "GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=" in script
