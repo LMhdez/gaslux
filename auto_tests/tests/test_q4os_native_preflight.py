@@ -79,9 +79,7 @@ def test_q4os_wrong_source_layout_or_media_rejected(media, change):
         ("ID=debian\nVERSION_ID=13\n", "../6.10"),
     ],
 )
-def test_q4os_identity_requires_separate_native_version_marker(
-    media, os_release, version
-):
+def test_q4os_identity_requires_separate_native_version_marker(media, os_release, version):
     Path(media["os_release_path"]).write_text(os_release, encoding="utf-8")
     Path(media["q4os_version_path"]).write_text(version, encoding="utf-8")
     with pytest.raises(ProbeRefusal):

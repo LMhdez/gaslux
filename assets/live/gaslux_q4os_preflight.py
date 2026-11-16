@@ -35,11 +35,7 @@ def probe_q4os(
     if type(q4os_version_path) is not str or not Path(q4os_version_path).is_absolute():
         raise ProbeRefusal("Q4OS version evidence path must be absolute")
     version_file = Path(q4os_version_path)
-    if (
-        version_file.is_symlink()
-        or not version_file.is_file()
-        or version_file.stat().st_size > 128
-    ):
+    if version_file.is_symlink() or not version_file.is_file() or version_file.stat().st_size > 128:
         raise ProbeRefusal("Invalid Q4OS version evidence file")
     try:
         q4os_version = version_file.read_text(encoding="utf-8").strip()
