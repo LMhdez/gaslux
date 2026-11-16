@@ -61,13 +61,14 @@ for repo in "${repos[@]}"; do
   [[ "$repo" =~ ^[a-zA-Z0-9_-]+$ ]] || fail 'unsafe repository name'
   level="$(pacman-conf --repo "$repo" SigLevel)" ||
     fail "cannot inspect signature policy in $repo"
-  [[ "$level" == *Required* ]] || fail "package signatures not mandatory in $repo"
-  [[ "$level" != *Never* && "$level" != *TrustAll* &&
-     "$level" != *PackageOptional* ]] ||
+  # Parse complete effective SigLevel tokens. "DatabaseRequired" alone
+  # MUST NOT be misread as proof that package signatures are mandatory.
+  [[ "$level" =~ (^|[[:space:]])(Required|PackageRequired)($|[[:space:]]) ]] ||
+    fail "package signatures not mandatory in $repo"
+  if [[ "$level" =~ (^|[[:space:]])(Never|Optional|PackageNever|PackageOptional|TrustAll|PackageTrustAll|DatabaseNever)($|[[:space:]]) ]]; then
     fail "weak signing policy in $repo"
-  # DatabaseOptional is allowed by pacman; package files still require trust.
-  [[ "$level" != *" Optional"* || "$level" == *DatabaseOptional* ]] ||
-    fail "unsigned package policy in $repo"
+  fi
+  # DatabaseOptional is allowed by pacman; packages are still signed.
 done
 printf 'GASLUX_VM_UPDATE_TRUST_POLICY_VERIFIED=1\n' > /dev/ttyS0
 [[ -L /etc/resolv.conf || -s /etc/resolv.conf ]] || fail 'no DNS resolver'
