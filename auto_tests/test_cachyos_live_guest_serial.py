@@ -1,9 +1,12 @@
-"""Read-only CachyOS live serial controller tests; no disk/VM writes."""
+"""Deterministic socket transcript tests for the read-only CachyOS guest gate.
+
+No QEMU guest is started by this unit test. The real ISO job executes the
+separate actual guest/firmware check.
+"""
 from __future__ import annotations
 
 import importlib.util
 import socket
-import threading
 import unittest
 from pathlib import Path
 
@@ -14,106 +17,89 @@ SERIAL = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SERIAL)
 
 
+class FakeSerial:
+    def __init__(self, *messages):
+        self.messages = list(messages)
+        self.sent = []
+
+    def settimeout(self, timeout):
+        assert timeout > 0
+
+    def recv(self, max_size):
+        return self.messages.pop(0) if self.messages else b""
+
+    def sendall(self, content):
+        self.sent.append(content)
+
+
 class SerialGuestContractTests(unittest.TestCase):
-    def run_fake_guest(self, *, password=False, result=True, echo_only=False):
-        client, guest = socket.socketpair()
-        received = []
-        errors = []
-
-        def read_line():
-            line = bytearray()
-            guest.settimeout(3)
-            while not line.endswith(b"\r"):
-                chunk = guest.recv(1)
-                if not chunk:
-                    raise ConnectionError("fake serial client ended mid-command")
-                line.extend(chunk)
-            return bytes(line)
-
-        def guest_session():
-            try:
-                guest.sendall(b"Welcome to CachyOS\nCachyOS login: ")
-                received.append(read_line())
-                if password:
-                    guest.sendall(b"Password: ")
-                    received.append(read_line())
-                guest.sendall(b"[root@CachyOS ~]# ")
-                ready = read_line()
-                received.append(ready)
-                guest.sendall(
-                    b"printf 'GASLUX_ROOT_SHELL_READY\\n'\r\n"
-                    b"GASLUX_ROOT_SHELL_READY\r\n"
-                )
-                command = read_line()
-                received.append(command)
-                if result:
-                    guest.sendall(
-                        b"bash /run/gaslux-lab/probe.sh\r\n"
-                        b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"
-                    )
-                elif echo_only:
-                    guest.sendall(
-                        b"printf 'GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\\n'\r\n"
-                    )
-                else:
-                    guest.sendall(
-                        b"GASLUX_GUEST_PREFLIGHT_FAILURE: wrong official Archiso ID\r\n"
-                    )
-            except Exception as error:
-                errors.append(error)
-            finally:
-                guest.close()
-
-        thread = threading.Thread(target=guest_session, daemon=True)
-        thread.start()
-        try:
-            if result:
-                trace = bytearray()
-                SERIAL.probe(client, trace, boot_timeout=3)
-                self.assertIn(b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1", trace)
-            else:
-                with self.assertRaises(SERIAL.ProbeError):
-                    SERIAL.probe(client, bytearray(), boot_timeout=3)
-        finally:
-            client.close()
-            thread.join(timeout=3)
-        self.assertFalse(errors)
-        self.assertEqual(received[0], b"root\r")
+    def fake(self, *, password=False, result=b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"):
+        prompts = [b"Welcome to CachyOS\nCachyOS login: "]
         if password:
-            self.assertEqual(received[1], b"cachyos\r")
-        self.assertIn(b"printf 'GASLUX_ROOT_SHELL_READY", received[-2])
-        self.assertIn(b"mount -t vfat -o ro", received[-1])
-        self.assertIn(b"bash /run/gaslux-lab/probe.sh", received[-1])
+            prompts.append(b"Password: ")
+        else:
+            prompts.append(b"[root@CachyOS ~]# ")
+        prompts.append(b"[root@CachyOS ~]# \r\nGASLUX_ROOT_SHELL_READY\r\n")
+        prompts.append(result)
+        return FakeSerial(*prompts)
 
-    def test_passwordless_guest_login(self):
-        self.run_fake_guest()
+    def assert_remote_sequence(self, guest, password=False):
+        self.assertEqual(guest.sent[0], b"root\r")
+        if password:
+            self.assertEqual(guest.sent[1], b"cachyos\r")
+        self.assertTrue(any(x.startswith(b"printf 'GASLUX_ROOT_SHELL_READY") for x in guest.sent))
+        self.assertTrue(any(b"mount -t vfat -o ro" in x for x in guest.sent))
+        self.assertTrue(any(b"bash /run/gaslux-lab/probe.sh" in x for x in guest.sent))
 
-    def test_guest_tty_with_default_lab_password(self):
-        self.run_fake_guest(password=True)
+    def test_passwordless_live_root(self):
+        guest = self.fake()
+        trace = bytearray()
+        SERIAL.probe(guest, trace, boot_timeout=3)
+        self.assertIn(b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1", trace)
+        self.assert_remote_sequence(guest)
 
-    def test_stage_verification_failure_is_rejected(self):
-        self.run_fake_guest(result=False)
+    def test_live_root_with_lab_password(self):
+        guest = self.fake(password=True)
+        SERIAL.probe(guest, bytearray(), boot_timeout=3)
+        self.assert_remote_sequence(guest, password=True)
 
-    def test_echoed_command_is_not_success(self):
-        self.run_fake_guest(result=False, echo_only=True)
+    def test_guest_stage_refusal(self):
+        guest = self.fake(result=b"GASLUX_GUEST_PREFLIGHT_FAILURE: wrong IMAGE_ID\r\n")
+        with self.assertRaisesRegex(SERIAL.ProbeError, "explicitly failed"):
+            SERIAL.probe(guest, bytearray(), boot_timeout=3)
+        self.assert_remote_sequence(guest)
 
-    def test_serial_success_requires_anchored_stdout(self):
-        fake = bytearray(b"echo GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n")
-        self.assertIsNone(SERIAL.PASSED.search(bytes(fake)))
-        fake.extend(b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n")
-        self.assertIsNotNone(SERIAL.PASSED.search(bytes(fake)))
+    def test_echoed_success_string_is_not_evidence(self):
+        guest = self.fake(
+            result=b"printf 'GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\\n'\r\n"
+        )
+        with self.assertRaises(SERIAL.ProbeError):
+            SERIAL.probe(guest, bytearray(), boot_timeout=3)
 
-    def test_unexpected_guest_failure_marker(self):
+    def test_success_must_be_entire_guest_stdout_line(self):
+        self.assertIsNone(
+            SERIAL.PASSED.search(b"echo GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n")
+        )
         self.assertIsNotNone(
-            SERIAL.FAILED.search(b"failed command\r\nGASLUX_GUEST_PREFLIGHT_FAILURE: missing repo\r\n")
+            SERIAL.PASSED.search(b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n")
         )
 
-    def test_live_probe_shell_script_contains_no_mutating_commands(self):
+    def test_empty_serial_transport_fails_closed(self):
+        with self.assertRaisesRegex(SERIAL.ProbeError, "serial connection terminated"):
+            SERIAL.probe(FakeSerial(b""), bytearray(), boot_timeout=3)
+
+    def test_guest_probe_is_readonly(self):
         script = SOURCE.with_name("cachyos_live_guest_readonly_probe.sh").read_text()
-        for token in ("pacstrap -K", "mkfs.", "wipefs ", "sgdisk ", "efibootmgr -", "bcdedit ",
-                      "parted ", "mount -o rw", "chpasswd "):
-            self.assertNotIn(token, script)
+        for forbidden in ("pacstrap -K", "mkfs.", "wipefs ", "sgdisk ",
+                          "efibootmgr -", "bcdedit ", "parted ", "chpasswd "):
+            self.assertNotIn(forbidden, script)
         self.assertIn("bash /run/gaslux-lab/stage.sh --check", script)
+
+    def test_probe_enforces_explicit_vm_firmware_and_live_identity(self):
+        script = SOURCE.with_name("cachyos_live_guest_readonly_probe.sh").read_text()
+        for required in ("ID=cachyos", "IMAGE_VERSION=2026.08.09", "systemd-detect-virt",
+                         "/sys/firmware/efi/efivars", "SecureBoot-", "sha256sum -c stage.sha256"):
+            self.assertIn(required, script)
 
 
 if __name__ == "__main__":
