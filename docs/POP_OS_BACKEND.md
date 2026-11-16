@@ -83,3 +83,20 @@ The shared Q4OS smoke harness retains its previous optical-media path.
 A missing GRUB device remains a failure, not a boot success. This is a live
 smoke test only; the Windows target disk, System76 distinst, and bootloader
 writers are never attached or invoked.
+
+## Verified native installer agent provenance (read-only)
+
+A separate experimental CI job verifies that `usr/bin/distinst` is extracted
+from the same SquashFS root that passed `ID=pop` and Pop 24.04 checks **inside
+the GPG-verified and SHA-256-pinned official ISO**. It checks the x86-64 ELF
+header and records the native agent's observed SHA-256 and byte length.
+This is static inspection only; `distinst` is never invoked.
+
+The upstream `pop-os/distinst` CLI supports options such as `--new-table`,
+`--delete`, `--move`, `--new`, `--use` and `--modify-boot`. None can be
+considered safe on a Windows-shared disk merely because its ISO is genuine.
+Production integration must first prove exact disk/partition ownership, prevent
+foreign ESP and Windows writes, authenticate the handoff, implement the
+System76 EFI/BIOS boot strategy, and test recovery in disposable Windows VMs.
+
+Source: https://github.com/pop-os/distinst/blob/master/cli/src/main.rs

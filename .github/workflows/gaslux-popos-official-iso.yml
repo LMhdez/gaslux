@@ -5,6 +5,7 @@ on:
     branches:
       - feature/popos-native-preflight
       - feature/popos-ovmf-optical-media-proof
+      - feature/popos-signed-distinst-agent-audit
     paths:
       - '.github/workflows/gaslux-popos-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
@@ -24,7 +25,7 @@ jobs:
       - name: Prepare isolated ISO lab tools
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso gnupg curl ca-certificates ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools gdisk
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools binutils xorriso gnupg curl ca-certificates ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools gdisk
       - name: Resolve official ISO API with exact release identity and versioned URL
         shell: bash
         run: |
@@ -122,9 +123,11 @@ jobs:
             echo "::error::No squashfs live root was found in verified Pop ISO"
             exit 1
           }
+          selected_squash=''
           while IFS= read -r squash; do
             unsquashfs -ll "$squash" > "$w/evidence/rootfs-listing.txt"
             if unsquashfs -cat "$squash" etc/os-release > "$w/evidence/os-release.txt" 2>/dev/null; then
+              selected_squash="$squash"
               break
             fi
           done < "$w/evidence/squashfs-paths.txt"
@@ -147,6 +150,41 @@ jobs:
             echo "::error::System76 native installation/boot components not discovered"
             exit 1
           }
+          # Analyze actual System76 native installer bytes from the SAME verified
+          # live root that yielded ID=pop. Read-only extraction, never execute
+          # distinst or invoke the installer with partition manipulation flags.
+          test -n "$selected_squash" || {
+            echo "::error::No verified native live root selected"; exit 1;
+          }
+          grep -Fq 'squashfs-root/usr/bin/distinst' "$w/evidence/rootfs-listing.txt" || {
+            echo "::error::Official Pop live root contains no usr/bin/distinst"; exit 1;
+          }
+          agent="$w/distinst.elf"
+          unsquashfs -cat "$selected_squash" usr/bin/distinst > "$agent" || {
+            echo "::error::Could not extract native distinst from verified ISO"; exit 1;
+          }
+          test "$(stat -c '%s' "$agent")" -ge 65536 || {
+            echo "::error::Native System76 agent too small"; exit 1;
+          }
+          test "$(stat -c '%s' "$agent")" -le 104857600 || {
+            echo "::error::Native System76 agent implausibly large"; exit 1;
+          }
+          readelf -h "$agent" > "$w/evidence/distinst-elf.txt"
+          grep -Eq 'Class:[[:space:]]+ELF64' "$w/evidence/distinst-elf.txt" || {
+            echo "::error::Native distinst must be ELF64"; exit 1;
+          }
+          grep -Eq 'Machine:.*Advanced Micro Devices X86-64' "$w/evidence/distinst-elf.txt" || {
+            echo "::error::Native distinst architecture mismatch"; exit 1;
+          }
+          {
+            printf 'isoSha256=%s\n' "$GASLUX_POP_ISO_SHA256"
+            printf 'distinstSha256=%s\n' "$(sha256sum "$agent" | awk '{print $1}')"
+            printf 'distinstSizeBytes=%s\n' "$(stat -c '%s' "$agent")"
+            echo 'executed=false'
+          } > "$w/evidence/native-installer-provenance.txt"
+          rm -f -- "$agent"
+          echo 'PASS: real native distinst bytes bound to authenticated Pop live squashfs.'
+          echo 'NOT AUTHORIZED: distinst partition, target or EFI writes.'
           cp "$w/pinned-release.json" "$w/evidence/pinned-release.json"
           (cd "$w/evidence" && sha256sum *.txt *.json > manifest.sha256)
           echo "PASS: real SHA-pinned Pop!_OS ISO and matching live root inspected."
