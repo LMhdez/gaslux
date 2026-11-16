@@ -29,7 +29,9 @@ from windows_x64_qemu_host_gate import load_catalog, EXPECTED, OVMF_CODE, OVMF_V
 
 MAX_ISO_SIZE = 9 * 1024**3
 MIN_ISO_SIZE = 3 * 1024**3
-VM_SIZE = "80G"
+VM_SIZE = "128G"
+WINDOWS_PRIMARY_MB = 73728  # 72 GiB; leave 50+ GiB spare for future Linux VM-only lab
+WINRE_PARTITION_MB = 1536  # Microsoft recommends at least 990 MB plus servicing space
 EXPECTED_FINAL_HOSTS = {
     "software-static.download.prss.microsoft.com",
     "software.download.prss.microsoft.com",
@@ -143,17 +145,26 @@ try {
   $parts = @(Get-Partition -DiskNumber 0)
   $esp = @($parts | Where-Object { $_.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' })
   if ($esp.Count -ne 1) { throw 'missing or multiple Windows ESP' }
+  $recovery = @($parts | Where-Object { $_.GptType -eq '{de94bba4-06d1-4d40-a16a-bfd50179d6ac}' })
+  if ($recovery.Count -ne 1) { throw 'missing or multiple Windows Recovery GPT partitions' }
+  $windowsPart = Get-Partition -DriveLetter C
+  if ($windowsPart.DiskNumber -ne 0 -or $windowsPart.Offset -le $esp[0].Offset -or
+      $recovery[0].Offset -lt ($windowsPart.Offset + $windowsPart.Size)) {
+    throw 'unexpected Windows/ESP/WinRE partition order'
+  }
   if (-not (Test-Path 'C:\Windows\System32\winload.efi')) { throw 'Windows EFI loader missing' }
   $bcd = & bcdedit /enum '{bootmgr}' 2>&1
   if ($LASTEXITCODE -ne 0) { throw 'BCD boot manager enumeration failed' }
   $winre = & reagentc /info 2>&1
-  $winreOk = ($LASTEXITCODE -eq 0)
+  $winreOk = ($LASTEXITCODE -eq 0 -and (($winre -join "`n") -match 'Windows RE status:\s+Enabled'))
+  if (-not $winreOk) { throw 'WinRE is missing, disabled or unverifiable' }
   $serialProof = @(
     'GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber,
     'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1',
     'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1',
+    'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1',
     'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1',
-    'GASLUX_WINDOWS_X64_WINRE_COMMAND_SUCCEEDED=' + [int]$winreOk,
+    'GASLUX_WINDOWS_X64_WINRE_ENABLED=1',
     '__MARKER__=__PROFILE__'
   )
   foreach ($line in $serialProof) { $ser.WriteLine($line); Start-Sleep -Milliseconds 100 }
@@ -206,8 +217,12 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     child(disk, "DiskID", "0")
     child(disk, "WillWipeDisk", "true")
     create = child(disk, "CreatePartitions")
+    # Microsoft GPT layout: ESP, MSR, Windows NTFS, dedicated NTFS WinRE.
+    # The remaining unallocated space is reserved for a later *independent*
+    # Linux-only VM validation; no Windows partition must be shrunk here.
     for n, typ, size in ((1, "EFI", "260"), (2, "MSR", "16"),
-                         (3, "Primary", None)):
+                         (3, "Primary", str(WINDOWS_PRIMARY_MB)),
+                         (4, "Primary", str(WINRE_PARTITION_MB))):
         part = child(create, "CreatePartition", attrs={f"{{{wcm}}}action": "add"})
         child(part, "Order", str(n))
         child(part, "Type", typ)
@@ -217,12 +232,19 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
             child(part, "Extend", "true")
     modify = child(disk, "ModifyPartitions")
     for n, fs, label in ((1, "FAT32", "GASLUXCIESP"),
-                         (3, "NTFS", "GASLUXWIN")):
+                         (3, "NTFS", "GASLUXWIN"),
+                         (4, "NTFS", "GASLUXWINRE")):
         part = child(modify, "ModifyPartition", attrs={f"{{{wcm}}}action": "add"})
         child(part, "Order", str(n))
         child(part, "PartitionID", str(n))
         child(part, "Format", fs)
         child(part, "Label", label)
+        if n == 4:
+            # Microsoft's mandatory Windows Recovery Tools GPT partition ID.
+            # Do not invent unsupported unattend GPT attributes; only
+            # Windows Setup may populate this disposable recovery volume.
+            child(part, "TypeID",
+                  "DE94BBA4-06D1-4D40-A16A-BFD50179D6AC")
     child(disk_cfg, "WillShowUI", "OnError")
     install = child(setup, "ImageInstall")
     osimage = child(install, "OSImage")
@@ -293,6 +315,8 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                         f"{MARKER}={profile_key}".encode(),
                         b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
                         b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+                        b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+                        b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
                         b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
                     )
                     if all(e in data for e in required):
