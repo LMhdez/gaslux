@@ -52,6 +52,13 @@ class OvmfSecureBootLabContractTests(unittest.TestCase):
         self.assertIn('[[ "$guest_proven" -eq 1 ]]', self.smoke)
         self.assertIn('"$w/guest-console.log"', self.smoke)
 
+    def test_real_guest_pass_does_not_depend_on_systemd_timing_format(self):
+        self.assertIn("CachyOS login:", self.smoke)
+        self.assertIn("GASLUX_LIVE_GUEST_PROBE:-0", self.smoke)
+        self.assertIn("non-interactive live boot has no systemd startup timing evidence", self.smoke)
+        self.assertIn('[[ "$guest_proven" -eq 1 ]]', self.smoke)
+        self.assertIn("SECURE_BOOT_DISABLED", self.serial)
+
     def test_does_not_change_production_secure_boot_state(self):
         for forbidden in ("mokutil --disable-validation", "mokutil --import", "efi-updatevar",
                           "sbctl enroll-keys", "efibootmgr --bootorder",
