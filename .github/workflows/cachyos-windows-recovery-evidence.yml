@@ -39,9 +39,13 @@ jobs:
         shell: powershell
         run: |
           $runner = Join-Path (Get-Location) 'Scripts/libertix-cachyos-windows-evidence.ps1'
-          $stdout = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner -Mode Compare -RunId 'cachyos-windows-lab-123' -EspRoot 'S:\')
-          if ($LASTEXITCODE -eq 0) { throw 'Compare accepted missing recovery baseline' }
-          $result = $stdout -join [Environment]::NewLine | ConvertFrom-Json
+          $stdout = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner -Mode Compare -RunId 'cachyos-windows-lab-123' -EspRoot 'S:\' 2>&1)
+          $childExit = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          Write-Host ('Negative test exit=' + $childExit)
+          Write-Host ('Negative test output=' + ($stdout -join [Environment]::NewLine))
+          if ($childExit -eq 0) { throw 'Compare accepted missing recovery baseline' }
+          $result = ($stdout -join [Environment]::NewLine) | ConvertFrom-Json
           if ($result.ok -ne $false -or $result.physicalInstallerReady -ne $false) {
             throw 'Fail-closed Windows recovery CLI contract violated'
           }
