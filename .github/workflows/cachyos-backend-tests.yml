@@ -6,6 +6,7 @@ on:
       - feature/cachyos-uefi-lab
       - feature/cachyos-efi-hardening
       - feature/cachyos-archiso-handoff
+      - feature/cachyos-e2e-release-gate
   pull_request:
     branches:
       - main
@@ -32,6 +33,7 @@ jobs:
             assets/live/cachyos-target-verify.py \
             assets/live/cachyos-uefi-config.py \
             assets/live/cachyos-archiso-handoff.py \
+            auto_tests/tools/cachyos_release_gate.py \
             assets/live/cachyos-uefi-lab.py \
             assets/live/libertix-cachyos-preflight.py
       - name: CachyOS regression suite
