@@ -130,3 +130,15 @@ both mock Windows partitions and compares the GPT before and after execution.
 A mismatch is a test failure. A mock Windows loader is **not** a working
 Windows Boot Manager; BCD, WinRE and actual dual boot are not proved.
 This is not a production plan or installation authorization.
+
+### GPT mutation observed in the disposable System76 test
+
+Real `distinst --test` invokes `disk.commit()`: it changed the *owned Linux
+root* GPT entry (PARTUUID, name and a one-sector reduction of its last LBA)
+while the synthetic Windows ESP and NTFS data remained byte-identical. The
+laboratory verifier now validates both GPT header and entry-table CRCs,
+requires identical disk GUID, MBR, every non-owned GPT entry and both mock
+Windows partition payloads, and permits **only** the measured root change.
+It outputs the root's final PARTUUID/LBA for future plan reconciliation.
+These allowances are lab-only; the production transaction writer remains
+blocked pending durable root identity, recovery and genuine Windows tests.

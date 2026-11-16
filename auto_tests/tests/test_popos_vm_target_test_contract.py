@@ -23,6 +23,8 @@ def test_vm_disk_is_ephemeral_and_protected_windows_regions_are_hashed():
     assert "target-protected.after.sha256" in content
     assert "target.gpt.before" in content
     assert "target.gpt.after" in content
+    assert "gaslux_popos_gpt_ownership.py" in content
+    assert "GASLUX_POP_MOCK_WINDOWS_PARTITIONS_UNCHANGED=1" in content
     assert "GASLUX_POP_MOCK_WINDOWS_PARTITIONS_UNCHANGED=1" in content
 
 

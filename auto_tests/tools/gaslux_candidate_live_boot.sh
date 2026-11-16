@@ -31,7 +31,8 @@ cleanup() {
     mkdir -p "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"
     for path in "$work"/serial.log "$work"/pop-guest-console.log "$work"/grub.cfg "$work"/qemu.rc \
       "$work"/target-protected.before.sha256 "$work"/target-protected.after.sha256 \
-      "$work"/target-gpt.before.txt "$work"/target-gpt.after.txt; do
+      "$work"/target-gpt.before.txt "$work"/target-gpt.after.txt \
+      "$work"/target-gpt.before.json "$work"/target-gpt.after.json; do
       [[ -f "$path" ]] && cp "$path" "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/" || true
     done
     (cd "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR" &&
@@ -193,6 +194,8 @@ if [[ "$target_probe" -eq 1 ]]; then
     bs=1M seek=513 conv=notrunc status=none
   rm -f -- "$work/mock-esp.part" "$work/mock-ntfs.part"
   sgdisk --backup="$work/target.gpt.before" "$work/pop-target.raw" >/dev/null
+  python3 auto_tests/tools/gaslux_popos_gpt_ownership.py capture \
+    "$work/pop-target.raw" "$work/target-gpt.before.json"
   {
     sgdisk --print "$work/pop-target.raw"
     for index in 1 2 3; do
@@ -274,6 +277,8 @@ set -e
 printf '%s\n' "$rc" > "$work/qemu.rc"
 if [[ "$target_probe" -eq 1 ]]; then
   sgdisk --backup="$work/target.gpt.after" "$work/pop-target.raw" >/dev/null
+  python3 auto_tests/tools/gaslux_popos_gpt_ownership.py capture \
+    "$work/pop-target.raw" "$work/target-gpt.after.json"
   {
     sgdisk --print "$work/pop-target.raw"
     for index in 1 2 3; do
@@ -287,16 +292,17 @@ if [[ "$target_probe" -eq 1 ]]; then
   } > "$work/target-protected.after.sha256"
   cmp -s "$work/target-protected.before.sha256" "$work/target-protected.after.sha256" ||
     die 'VM mock Windows ESP or NTFS changed: do not authorize installation'
-  if ! cmp -s "$work/target.gpt.before" "$work/target.gpt.after"; then
+  if ! python3 auto_tests/tools/gaslux_popos_gpt_ownership.py verify \
+      "$work/target-gpt.before.json" "$work/target-gpt.after.json"; then
     diff -u "$work/target-gpt.before.txt" "$work/target-gpt.after.txt" >&2 || true
-    die 'VM GPT changed: native test is not safe for Windows'
+    die 'GPT changed outside transaction-owned Linux root or metadata invalid'
   fi
   echo 'GASLUX_POP_MOCK_WINDOWS_PARTITIONS_UNCHANGED=1'
 fi
 if [[ "$guest_verified" -eq 1 ]]; then
   if [[ "$guest_probe" -eq 1 ]]; then
     if [[ "$target_probe" -eq 1 ]]; then
-      echo 'PASS: native distinst --test completed; mock Windows ESP, NTFS and GPT unchanged.'
+      echo 'PASS: native distinst --test completed; mock Windows bytes and all foreign GPT entries unchanged.'
     else
       echo "PASS: native System76 distinst --help executed in verified disposable live QEMU guest."
     fi
