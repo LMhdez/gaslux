@@ -34,9 +34,16 @@ _NTFS_UUID = re.compile(r"[0-9A-F]{16}")
 _EXT4_UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}")
 _ISO_PATH = re.compile(r"/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*[.]iso")
 _HASH = re.compile(r"[0-9a-f]{64}")
-_KERNEL = "arch/boot/x86_64/vmlinuz-linux-cachyos"
-_INITRD = "arch/boot/x86_64/initramfs-linux-cachyos.img"
 _ROOTFS = "arch/x86_64/airootfs.sfs"
+# Official CachyOS Archiso GRUB loopback.cfg uses linux-cachyos-lts.
+# Keep the non-LTS variant for independently verified builds. Prefer the
+# official LTS pair when both complete pairs are present.
+_BOOT_PAIRS = (
+    ("arch/boot/x86_64/vmlinuz-linux-cachyos-lts",
+     "arch/boot/x86_64/initramfs-linux-cachyos-lts.img"),
+    ("arch/boot/x86_64/vmlinuz-linux-cachyos",
+     "arch/boot/x86_64/initramfs-linux-cachyos.img"),
+)
 
 
 class HandoffError(ValueError):
@@ -139,6 +146,28 @@ def verify_live_iso_mount(
              "loop-mounted ISO is different from the hashed source file")
 
 
+def _select_archiso_boot_pair(iso_root: Path) -> tuple[str, str]:
+    """Select a complete official Archiso kernel/initramfs pair; never mix versions."""
+    options: list[tuple[str, str]] = []
+    for kernel, initramfs in _BOOT_PAIRS:
+        kernel_path = iso_root / kernel
+        initrd_path = iso_root / initramfs
+        kernel_exists = kernel_path.exists() or kernel_path.is_symlink()
+        initrd_exists = initrd_path.exists() or initrd_path.is_symlink()
+        _require(kernel_exists == initrd_exists,
+                 "CachyOS kernel/initramfs pairing mismatch")
+        if not kernel_exists:
+            continue
+        for relative_path in (kernel, initramfs):
+            observed = _regular_file(iso_root / relative_path, iso_root)
+            _require(observed.stat().st_size > 0,
+                     "empty ISO component: " + relative_path)
+        options.append((kernel, initramfs))
+    _require(bool(options),
+             "CachyOS live kernel and matching initramfs are missing")
+    return options[0]
+
+
 def prepare(
     plan: dict[str, Any],
     *,
@@ -167,9 +196,9 @@ def prepare(
 
     # The caller must establish that iso_root is a read-only loop mount of the
     # *same* file; a directory fixture alone is not such evidence.
-    for relative_path in (_ROOTFS, _KERNEL, _INITRD):
-        observed = _regular_file(iso_root / relative_path, iso_root)
-        _require(observed.stat().st_size > 0, "empty ISO component: " + relative_path)
+    rootfs = _regular_file(iso_root / _ROOTFS, iso_root)
+    _require(rootfs.stat().st_size > 0, "empty ISO component: " + _ROOTFS)
+    kernel_path, initrd_path = _select_archiso_boot_pair(iso_root)
     try:
         identity = _PREFLIGHT_MODULE.inspect_cachyos_iso_root(iso_root, runner=runner)
     except _PREFLIGHT_MODULE.PreflightError as error:
@@ -193,16 +222,16 @@ def prepare(
         + "        reboot\n"
         + "    fi\n"
         + "    loopback gaslux_iso ($gaslux_iso_dev)$gaslux_iso_path\n"
-        + "    if [ ! -f (gaslux_iso)/" + _KERNEL + " ]; then\n"
+        + "    if [ ! -f (gaslux_iso)/" + kernel_path + " ]; then\n"
         + "        echo 'CachyOS ISO kernel is missing'\n"
         + "        sleep 10\n"
         + "        reboot\n"
         + "    fi\n"
-        + "    linux (gaslux_iso)/" + _KERNEL
+        + "    linux (gaslux_iso)/" + kernel_path
         + " archisobasedir=arch img_dev=UUID=" + uuid
         + " img_loop=" + relative
         + " cow_spacesize=10G copytoram=auto\n"
-        + "    initrd (gaslux_iso)/" + _INITRD + "\n"
+        + "    initrd (gaslux_iso)/" + initrd_path + "\n"
         + "}\n"
     )
     return {
@@ -211,6 +240,8 @@ def prepare(
         "runId": plan["runId"],
         "isoSha256Verified": True,
         "isoLayoutVerified": True,
+        "liveKernelPath": kernel_path,
+        "liveInitramfsPath": initrd_path,
         "expectedHostFilesystem": fs,
         "expectedHostFilesystemUuid": uuid,
         "grubEntry": script,
