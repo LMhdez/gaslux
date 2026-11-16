@@ -151,9 +151,10 @@ def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,
             b"export GASLUX_DISPOSABLE_VM=I_ACCEPT_DISPOSABLE_VM_ONLY && "
             b"bash /run/gaslux-lab/install.sh\r"
         )
+        start_pos = len(trace)  # reject any success line printed before install command
         deadline = time.monotonic() + 2700
         while time.monotonic() < deadline:
-            tail = normalized_tty(bytes(trace[-200000:]))
+            tail = normalized_tty(bytes(trace[max(start_pos, len(trace)-200000):]))
             if LAB_INSTALL_FAILED.search(tail) or FAILED.search(tail):
                 raise ProbeError("VM pacstrap / GRUB staging failed")
             if LAB_INSTALL_DONE.search(tail):
