@@ -71,10 +71,32 @@ check_disposable_vm() {
   esac
 }
 
+check_authenticated_handoff() {
+  local run_id="$1" root_uuid="$2"
+  local auth_tool=/usr/local/lib/libertix/cachyos-handoff-auth.py
+  local envelope="${GASLUX_HANDOFF_ENVELOPE:-}"
+  local signature="${GASLUX_HANDOFF_SIGNATURE:-}"
+  local public_key="${GASLUX_HANDOFF_PUBLIC_KEY:-}"
+  [ -f "$auth_tool" ] && [ ! -L "$auth_tool" ] ||
+    die 'authenticated Archiso handoff verifier has not been provisioned'
+  [ -n "$envelope" ] && [ -n "$signature" ] && [ -n "$public_key" ] ||
+    die 'missing signed transaction envelope, signature or public key'
+  command -v openssl >/dev/null ||
+    die 'OpenSSL signature verifier is missing'
+  # Bind the signed envelope to the caller's expected run/root and /proc/cmdline.
+  # The public key is pinned by the boot arguments, not trusted by file path.
+  python3 "$auth_tool" \
+    --envelope "$envelope" --signature "$signature" \
+    --public-key "$public_key" \
+    --run-id "$run_id" --root-uuid "$root_uuid" >/dev/null ||
+    die 'signed Windows-to-Archiso transaction authentication failed'
+}
+
 install_target() {
   local username="$1" hostname="$2" locale="$3" timezone="$4" secret="$5" run_id="$6" root_uuid="$7" hash
   check_disposable_vm
   check_host
+  check_authenticated_handoff "$run_id" "$root_uuid"
   check_target "$run_id" "$root_uuid"
   check_identity "$username" "$hostname" "$locale" "$timezone" "$secret"
   pacstrap -K "$TARGET" \
