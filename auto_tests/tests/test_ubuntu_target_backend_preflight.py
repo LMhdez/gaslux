@@ -11,7 +11,7 @@ TARGET = ROOT / "assets/live/configure-target-main.sh"
 
 
 def _validate_target(
-    *, distro: str, os_id: str, backend: str | None
+    *, distro: str, os_id: str, backend: str | None, firmware: str = "uefi"
 ) -> subprocess.CompletedProcess:
     # Execute only function definitions and the pure routing guard; never main().
     # The installed-system /tmp helper is omitted because no real devices are used.
@@ -23,7 +23,7 @@ def _validate_target(
     script = source.replace(helper, "", 1).removesuffix(invocation)
     env = os.environ.copy()
     env.update(
-        LIBERTIX_FIRMWARE_MODE="uefi",
+        LIBERTIX_FIRMWARE_MODE=firmware,
         DISTRIBUTION_ID=distro,
         DISTRIBUTION_OS_RELEASE_ID=os_id,
     )
@@ -49,8 +49,11 @@ def _validate_target(
         ("zorin", "zorin", "debian-squashfs"),
     ],
 )
-def test_original_mint_zorin_targets_remain_eligible(distro, os_id, backend):
-    result = _validate_target(distro=distro, os_id=os_id, backend=backend)
+@pytest.mark.parametrize("firmware", ["bios", "uefi"])
+def test_original_mint_zorin_targets_remain_eligible(distro, os_id, backend, firmware):
+    result = _validate_target(
+        distro=distro, os_id=os_id, backend=backend, firmware=firmware
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -116,3 +119,11 @@ def test_legacy_guard_is_not_a_popos_install_entrypoint():
     assert "mint:linuxmint|zorin:zorin" in guard
     assert "system76)" not in guard
     assert "popos:pop)" not in guard
+
+
+def test_unsupported_firmware_is_rejected_without_target_mutation():
+    result = _validate_target(
+        distro="mint", os_id="linuxmint", backend=None, firmware="invalid"
+    )
+    assert result.returncode == 2
+    assert "Unsupported firmware mode" in result.stderr
