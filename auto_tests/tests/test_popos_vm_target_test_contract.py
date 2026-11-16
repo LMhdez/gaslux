@@ -33,6 +33,11 @@ def test_guest_native_agent_and_target_identity_are_fail_closed():
     assert "virtio-GASLUXPOPTARGET" in content
     assert "blockdev --getsize64" in content
     assert "34359738368" in content
+    assert 'canonical="$(readlink -e "$target")"' in content
+    assert "virtio target serial mismatch" in content
+    assert 'lsblk -dn -o SERIAL "$canonical"' in content
+    assert '--block "$canonical"' in content
+    assert '--use "$canonical:1:reuse:mount=/boot/efi"' in content
     assert "filesystem.manifest-remove" in content
     assert "--test --no-efi-vars" in content
     assert ":1:reuse:mount=/boot/efi" in content
