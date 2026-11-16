@@ -6,6 +6,10 @@ exec >/dev/ttyS0 2>&1
 trap 'rc=$?; if (( rc != 0 )); then echo "GASLUX_VM_INSTALL_FAILED:exit=$rc:line=$LINENO"; fi; sync' EXIT
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 echo 'GASLUX_VM_INSTALL_BEGIN'
+# Lab-only preflight tracing. No passwords are ever passed to this script;
+# disable tracing before pacstrap to avoid leaking package manager state.
+PS4='+GASLUX_VM_PREFLIGHT_LINE:${LINENO}: '
+set -x
 [[ "$(id -u)" == 0 ]] || { echo 'Refusing unprivileged guest'; exit 11; }
 case "$(systemd-detect-virt --vm)" in
   qemu|kvm) ;;
@@ -23,7 +27,20 @@ source /run/gaslux-control/lab.env
 printf '%s  /run/gaslux-control/stage.sh\n' "$STAGE_SHA256" | sha256sum --check --status || {
   echo 'Stage script hash differs from pinned lab content'; exit 16;
 }
-[[ -b /dev/vdb1 && -b /dev/vdc ]] || exit 17
+# systemd-run's generated service can race with udev on live Archiso.
+# Wait for all guest-owned virtio block devices before checking ownership.
+echo 'GASLUX_VM_WAIT_DISK_DEVICE_DISCOVERY'
+command -v udevadm >/dev/null || { echo 'udevadm missing'; exit 17; }
+udevadm settle --timeout=90 || { echo 'udev did not settle'; exit 17; }
+for _ in $(seq 1 60); do
+  [[ -b /dev/vdb1 && -b /dev/vdc ]] && break
+  sleep 1
+done
+[[ -b /dev/vdb1 && -b /dev/vdc ]] || {
+  echo 'GASLUX_VM_DISKS_MISSING_AFTER_UDEV'
+  lsblk -o NAME,TYPE,FSTYPE,LABEL || true
+  exit 17
+}
 [[ "$(blkid -s LABEL -o value /dev/vdc)" == GASLUXESP ]] || exit 18
 [[ "$(lsblk -dn -o TYPE /dev/vdc)" == disk ]] || exit 19
 [[ ",$(findmnt -rn -M /run/gaslux-control -o OPTIONS)," == *,ro,* ]] || exit 20
@@ -33,9 +50,21 @@ mount -t ext4 -o rw /dev/vdb1 /mnt/target
 # Reuse production-safe experimental ownership and Secure Boot preflight.
 bash /run/gaslux-control/stage.sh --validate-target "$RUN_ID" "$ROOT_UUID"
 echo 'GASLUX_VM_TARGET_ISOLATED'
-if command -v nm-online >/dev/null; then
-  nm-online -q --timeout=90 || echo 'WARN: network-online check timed out'
-fi
+# The official CachyOS/Archiso installer relies on live pacman keyring
+# initialization and network availability. Running pacstrap concurrently
+# with the live keyring service is unsafe and causes signature failures.
+echo 'GASLUX_VM_WAIT_NETWORK'
+command -v nm-online >/dev/null || { echo 'NetworkManager online probe missing'; exit 41; }
+timeout 120s nm-online -q --timeout=90 || {
+  echo 'GASLUX_VM_NETWORK_NOT_READY'; exit 42;
+}
+echo 'GASLUX_VM_WAIT_KEYRING'
+timeout 240s systemctl start pacman-init.service || {
+  echo 'GASLUX_VM_LIVE_KEYRING_NOT_READY'; exit 43;
+}
+echo 'GASLUX_VM_NETWORK_KEYRING_READY'
+set +x
+echo 'GASLUX_VM_PACSTRAP_BEGIN'
 # Genuine package installation. Do not copy the live squashfs filesystem.
 # Minimal kernel/userspace only: this is NOT the full desktop product.
 pacstrap -K /mnt/target \
