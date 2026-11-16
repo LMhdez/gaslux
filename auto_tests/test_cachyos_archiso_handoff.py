@@ -147,6 +147,59 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(handoff.HandoffError, "UUID"):
             self.call(isoStorageUuid="../../etc/passwd")
 
+    def test_exact_loop_mount_source_verification(self):
+        mock_loop = "/dev/loop2"
+        expected = {
+            ("findmnt", "-rn", "-M", str(self.disk), "-o", "SOURCE,FSTYPE"): "/dev/vda3 ntfs3",
+            ("blkid", "-s", "UUID", "-o", "value", "/dev/vda3"): GOOD["isoStorageUuid"],
+            ("findmnt", "-rn", "-M", str(self.iso), "-o", "SOURCE,FSTYPE,OPTIONS"): "/dev/loop2 iso9660 ro,nosuid",
+            ("losetup", "--noheadings", "--output", "BACK-FILE", mock_loop): str(self.source.resolve()),
+        }
+        def cmd(argv, **kwargs):
+            value = expected.get(tuple(argv))
+            return subprocess.CompletedProcess(argv, 0 if value else 1, (value or "") + "\n", "")
+        result = handoff.prepare(
+            self.plan, storage_root=self.disk, iso_root=self.iso,
+            require_mounted_iso=True, mount_runner=cmd
+        )
+        self.assertTrue(result["isoMountedFromVerifiedSource"])
+
+    def test_loop_mount_from_different_iso_is_rejected(self):
+        def cmd(argv, **kwargs):
+            if argv[0] == "findmnt" and str(self.disk) in argv:
+                output = "/dev/vda3 ntfs3"
+            elif argv[0] == "findmnt":
+                output = "/dev/loop2 iso9660 ro"
+            elif argv[0] == "blkid":
+                output = GOOD["isoStorageUuid"]
+            else:
+                output = "/mnt/another.iso"
+            return subprocess.CompletedProcess(argv, 0, output + "\n", "")
+        with self.assertRaisesRegex(handoff.HandoffError, "different"):
+            handoff.prepare(self.plan, storage_root=self.disk, iso_root=self.iso,
+                            require_mounted_iso=True, mount_runner=cmd)
+
+    def test_writable_iso_mount_is_rejected(self):
+        def cmd(argv, **kwargs):
+            if argv[0] == "findmnt" and str(self.disk) in argv:
+                output = "/dev/vda3 ntfs3"
+            elif argv[0] == "findmnt":
+                output = "/dev/loop2 iso9660 rw,nosuid"
+            else:
+                output = GOOD["isoStorageUuid"]
+            return subprocess.CompletedProcess(argv, 0, output + "\n", "")
+        with self.assertRaisesRegex(handoff.HandoffError, "read-only"):
+            handoff.prepare(self.plan, storage_root=self.disk, iso_root=self.iso,
+                            require_mounted_iso=True, mount_runner=cmd)
+
+    def test_mismatched_disk_uuid_rejected_before_loopback(self):
+        def cmd(argv, **kwargs):
+            output = "/dev/vda3 ntfs3" if argv[0] == "findmnt" else "FFFFFFFFFFFFFFFF"
+            return subprocess.CompletedProcess(argv, 0, output + "\n", "")
+        with self.assertRaisesRegex(handoff.HandoffError, "UUID mismatch"):
+            handoff.prepare(self.plan, storage_root=self.disk, iso_root=self.iso,
+                            require_mounted_iso=True, mount_runner=cmd)
+
     def test_ext4_iso_storage(self):
         result = self.call(
             isoStorageFilesystem="ext4",
