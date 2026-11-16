@@ -85,6 +85,8 @@ class CachyosFirstBootContracts(unittest.TestCase):
             "signed boot or Secure Boot proof rejected", "SecureBoot", "SetupMode",
             "sgdisk --clear", "mkfs.ext4", "mkfs.vfat",
             "pacstrap -K", "linux-cachyos-lts",
+            "pacman-key --gpgdir", "--populate archlinux cachyos",
+            "GASLUX_LAB_OFFICIAL_KEYRING_POPULATED=1",
             "grub-install --target=x86_64-efi",
             "--no-nvram --removable", "grub-mkconfig",
             "GASLUX_LAB_PACSTRAP_FINISHED=1",
@@ -92,6 +94,7 @@ class CachyosFirstBootContracts(unittest.TestCase):
         ):
             self.assertIn(required, script)
         for unsafe in ("/dev/sda", "/dev/nvme0n1", "efibootmgr -c",
+                       "SigLevel = Never", "--skippgpcheck", "--assume-installed",
                        "wipefs", "Set-Partition", "bcdedit"):
             self.assertNotIn(unsafe, script)
 
