@@ -23,7 +23,7 @@ class CachyosPreflightTests(unittest.TestCase):
         self.image.touch()
 
     @staticmethod
-    def runner(os_release='NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\nIMAGE_ID=cachyos\n', inventory=None, *, returncode=0):
+    def runner(os_release='NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\nIMAGE_ID=cachyos\nIMAGE_VERSION=2026.08.09\n', inventory=None, *, returncode=0):
         if inventory is None:
             inventory = ('-rw-r--r-- root/root 123 2026-01-01 squashfs-root/etc/pacman.conf\n'
                          '-rwxr-xr-x root/root 456 2026-01-01 squashfs-root/usr/bin/pacman\n')
