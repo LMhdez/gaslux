@@ -49,12 +49,12 @@ jobs:
           dotnet-version: '8.0.x'
       - name: C# contract tests
         shell: pwsh
-        run: dotnet test .\\Libertix.Tests\\Libertix.Tests.csproj --configuration Release
+        run: dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release
       - name: Install Pester
         shell: pwsh
         run: Install-Module Pester -Scope CurrentUser -MinimumVersion 5.0.0 -Force -SkipPublisherCheck
       - name: PowerShell plan validation tests
         shell: pwsh
         run: |
-          $result = Invoke-Pester -Path .\\PowerShell.Tests\\InstallationContracts.Tests.ps1 -PassThru
+          $result = Invoke-Pester -Path PowerShell.Tests/InstallationContracts.Tests.ps1 -PassThru
           if ($result.FailedCount -gt 0 -or $result.PassedCount -eq 0) { exit 1 }
