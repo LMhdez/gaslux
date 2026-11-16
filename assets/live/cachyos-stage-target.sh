@@ -6,6 +6,7 @@ set -Eeuo pipefail
 
 usage() {
   echo 'Usage: cachyos-stage-target.sh --check'
+  echo '       cachyos-stage-target.sh --validate-target RUN_ID ROOT_UUID'
   echo '       cachyos-stage-target.sh --install USER HOST LOCALE TIMEZONE HASH_FILE RUN_ID ROOT_UUID'
   echo 'Experimental laboratory staging only. --install installs packages but no bootloader.'
 }
@@ -18,12 +19,7 @@ check_host() {
   local host_id host_name
   host_id="$(sed -n 's/^ID=//p' /etc/os-release | head -n 1 | tr -d '"')"
   host_name="$(sed -n 's/^NAME=//p' /etc/os-release | head -n 1 | tr -d '"')"
-  [ "$host_id" = cachyos ] && [ "$host_name" = 'CachyOS Linux' ] ||
-    die 'CachyOS Archiso identity does not match the verified ISO'
-  grep -qx 'ID_LIKE=arch' /etc/os-release ||
-    die 'CachyOS Archiso has no matching Arch compatibility identity'
-  grep -qx 'IMAGE_ID=cachyos' /etc/os-release ||
-    die 'CachyOS Archiso image identifier mismatch'
+  [ "$host_id" = arch ] && [ "$host_name" = CachyOS ] || die 'not official CachyOS Archiso'
   [ -d /sys/firmware/efi/efivars ] || die 'UEFI-only staging'
   python3 - <<'PY' || die 'Secure Boot not provably disabled'
 from pathlib import Path
@@ -37,6 +33,37 @@ PY
   grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*$' /etc/pacman.conf || die 'CachyOS pacman repo missing'
 }
 
+# Transaction markers alone do not prove ownership. Restrict pacstrap to
+# a dedicated secondary virtio partition of a disposable QEMU/KVM guest.
+check_target_isolated_disk() {
+  local source="$1" parent_name live_source live_parent mounts disk_type options
+  for cmd in lsblk readlink; do
+    command -v "$cmd" >/dev/null || die "missing disk identity tool: $cmd"
+  done
+  source="$(readlink -f -- "$source")" || die 'cannot canonicalize target'
+  [ -b "$source" ] || die 'target is not a block device'
+  [[ "$source" =~ ^/dev/vd[b-z][1-9][0-9]*$ ]] ||
+    die 'target must be a secondary virtio disk partition'
+  disk_type="$(lsblk -dn -o TYPE "$source")" || die 'cannot read disk type'
+  [ "$disk_type" = part ] || die 'target must be a partition'
+  parent_name="$(lsblk -dn -o PKNAME "$source")" || die 'cannot identify parent disk'
+  [[ "$parent_name" =~ ^vd[b-z]$ ]] || die 'unexpected parent disk'
+  [ -b "/dev/$parent_name" ] || die 'parent disk missing'
+  [ "$(lsblk -nr -o TYPE "/dev/$parent_name" | grep -cx part)" -eq 1 ] ||
+    die 'target disk contains additional partitions'
+  live_source="$(findmnt -rn -M / -o SOURCE)" || die 'live root unavailable'
+  live_source="$(readlink -f -- "$live_source")" || die 'cannot identify live root'
+  [ "$live_source" != "$source" ] || die 'target is the live root'
+  if [ -b "$live_source" ]; then
+    live_parent="$(lsblk -dn -o PKNAME "$live_source" 2>/dev/null || true)"
+    [ "$live_parent" != "$parent_name" ] || die 'target shares live root disk'
+  fi
+  mounts="$(findmnt -rn -S "$source" -o TARGET)" || die 'mount list unavailable'
+  [ "$mounts" = "$TARGET" ] || die 'target has foreign or multiple mountpoints'
+  options="$(findmnt -rn -M "$TARGET" -o OPTIONS)" || die 'mount options unavailable'
+  [[ ",$options," == *,rw,* ]] || die 'target must be mounted read-write'
+}
+
 check_target() {
   local run_id="$1" root_uuid="$2" source observed
   [[ "$run_id" =~ ^[A-Za-z0-9_-]{12,100}$ ]] || die 'invalid transaction id'
@@ -48,6 +75,7 @@ check_target() {
   [[ "$source" == /dev/* ]] && [ -b "$source" ] || die 'target is not a block device'
   observed="$(blkid -s UUID -o value "$source")"
   [ "${observed,,}" = "${root_uuid,,}" ] || die 'target UUID does not match transaction'
+  check_target_isolated_disk "$source"
   [ -f "$TARGET/.libertix-stage-owner" ] && [ ! -L "$TARGET/.libertix-stage-owner" ] || die 'missing transaction ownership marker'
   [ "$(cat "$TARGET/.libertix-stage-owner")" = "$run_id" ] || die 'transaction ownership mismatch'
   [ ! -e "$TARGET/etc/os-release" ] || die 'refusing to overwrite an installed OS'
@@ -76,10 +104,32 @@ check_disposable_vm() {
   esac
 }
 
+check_authenticated_handoff() {
+  local run_id="$1" root_uuid="$2"
+  local auth_tool=/usr/local/lib/libertix/cachyos-handoff-auth.py
+  local envelope="${GASLUX_HANDOFF_ENVELOPE:-}"
+  local signature="${GASLUX_HANDOFF_SIGNATURE:-}"
+  local public_key="${GASLUX_HANDOFF_PUBLIC_KEY:-}"
+  [ -f "$auth_tool" ] && [ ! -L "$auth_tool" ] ||
+    die 'authenticated Archiso handoff verifier has not been provisioned'
+  [ -n "$envelope" ] && [ -n "$signature" ] && [ -n "$public_key" ] ||
+    die 'missing signed transaction envelope, signature or public key'
+  command -v openssl >/dev/null ||
+    die 'OpenSSL signature verifier is missing'
+  # Bind the signed envelope to the caller's expected run/root and /proc/cmdline.
+  # The public key is pinned by the boot arguments, not trusted by file path.
+  python3 "$auth_tool" \
+    --envelope "$envelope" --signature "$signature" \
+    --public-key "$public_key" \
+    --run-id "$run_id" --root-uuid "$root_uuid" >/dev/null ||
+    die 'signed Windows-to-Archiso transaction authentication failed'
+}
+
 install_target() {
   local username="$1" hostname="$2" locale="$3" timezone="$4" secret="$5" run_id="$6" root_uuid="$7" hash
   check_disposable_vm
   check_host
+  check_authenticated_handoff "$run_id" "$root_uuid"
   check_target "$run_id" "$root_uuid"
   check_identity "$username" "$hostname" "$locale" "$timezone" "$secret"
   pacstrap -K "$TARGET" \
@@ -123,6 +173,13 @@ install_target() {
 
 case "${1:---help}" in
   --check) [ "$#" -eq 1 ] || { usage; exit 2; }; check_host ;;
+  --validate-target)
+    [ "$#" -eq 3 ] || { usage; exit 2; }
+    check_disposable_vm
+    check_host
+    check_target "$2" "$3"
+    echo 'PASS: disposable VM target isolation verified (read-only).'
+    ;;
   --install) [ "$#" -eq 8 ] || { usage; exit 2; }; install_target "$2" "$3" "$4" "$5" "$6" "$7" "$8" ;;
   -h|--help) usage ;;
   *) usage >&2; exit 2 ;;
