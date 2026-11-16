@@ -18,6 +18,7 @@ from pathlib import Path
 LOGIN = re.compile(rb"CachyOS login:\s*$", re.M)
 PASSWORD = re.compile(rb"Password:\s*$", re.M)
 READY = re.compile(rb"(?m)^GASLUX_ROOT_SHELL_READY\r?$")
+SECURE_BOOT_DISABLED = re.compile(rb"(?m)^GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r?$")
 PASSED = re.compile(rb"(?m)^GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r?$")
 FAILED = re.compile(rb"(?m)^GASLUX_GUEST_PREFLIGHT_FAILURE(?::[^\r\n]*)?\r?$")
 
@@ -132,6 +133,9 @@ def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345) -
         b"mount -t vfat -o ro /dev/disk/by-label/GASLUXLAB /run/gaslux-lab && "
         b"bash /run/gaslux-lab/probe.sh\r"
     )
+    # Require an exact live-guest SecureBoot=0 proof, not only a stage-script
+    # success marker. Both outputs must come from the executed guest script.
+    wait_for(sock, trace, (SECURE_BOOT_DISABLED,), timeout_seconds=45)
     wait_for(sock, trace, (PASSED,), timeout_seconds=45)
 
 
