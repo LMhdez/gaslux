@@ -52,7 +52,7 @@ launch() {
     [[ "$mode" == GASLUX_CI_POWERCUT || "$mode" == GASLUX_CI_UPDATE ]] ||
       die 'unknown firmware test phase'
     fw=(-fw_cfg "name=opt/gaslux/ci-mode,string=$mode")
-    net=(-netdev user,id=net0 -device virtio-net-pci,netdev=net0)
+    net=(-netdev "user,id=net0" -device "virtio-net-pci,netdev=net0")
   fi
   qemu-system-x86_64 \
     -machine q35,accel=tcg,smm=on \
@@ -70,8 +70,9 @@ require_marker() {
   local file="$1" marker="$2" count="$3" seen=0
   for ((i=0;i<count;i++)); do
     sleep 3
-    if [[ -f "$file" ]] && tr -d '\r' < "$file" |
-       grep -Fxq "$marker"; then
+    if [[ -f "$file" ]] && awk -v marker="$marker" \
+      '{gsub(/\r/, ""); if ($0 == marker) found = 1} END {exit !found}' \
+      "$file"; then
       seen=1; break
     fi
     kill -0 "$vm_pid" 2>/dev/null || break
