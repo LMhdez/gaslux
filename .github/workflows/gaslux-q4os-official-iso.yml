@@ -104,7 +104,7 @@ jobs:
             printf '::error::Expected one unambiguous live SquashFS; found %d\n' "${#squashfs[@]}"
             exit 1
           fi
-          python3 auto_tests/tools/gaslux_q4os_calamares_inventory.py --iso "$GASLUX_Q4OS_FILE" --squashfs "${squashfs[0]}" --out "$w/evidence/calamares"
+          python3 auto_tests/tools/gaslux_q4os_calamares_inventory.py --iso "$GASLUX_Q4OS_FILE" --squashfs "${squashfs[0]}" --out "$w/evidence/calamares" --mount-root "$w/iso-root"
           echo 'PASS: official ISO native Calamares inventory captured (NO installation performed).'
       - name: Boot actual verified Q4OS live ISO in disposable OVMF/QEMU
         shell: bash
