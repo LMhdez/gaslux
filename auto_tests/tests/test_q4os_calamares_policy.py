@@ -285,3 +285,10 @@ def test_refuse_changed_calamares_command_even_if_manifest_is_recomputed(evidenc
     (folder / "q4os-hooks-files.sha256").write_text("\n".join(rows) + "\n")
     with pytest.raises(CalamaresRefusal, match="Unexpected native Q4OS process command"):
         audit_q4os_native_hooks(evidence)
+
+
+def test_refuse_unlisted_native_q4os_hook_evidence_file(evidence):
+    folder = _synthetic_hook_evidence(evidence)
+    (folder / "injected.sh").write_text("unexpected source\n")
+    with pytest.raises(CalamaresRefusal, match="Unexpected or missing Q4OS hook evidence"):
+        audit_q4os_native_hooks(evidence)
