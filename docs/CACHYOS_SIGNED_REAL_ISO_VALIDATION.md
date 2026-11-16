@@ -40,6 +40,22 @@ Windows/NTFS or ext4 source partition. It mounts the official ISO read-only
 in the same preceding job, but cannot claim the complete production
 disk-and-firmware trust chain.
 
+## Last CI result and blocked guest check
+
+The verified real-ISO signed contract passed in GitHub Actions run
+https://github.com/LMhdez/gaslux/actions/runs/43934914445 and uploaded
+test-only signed evidence artifact `14260412056`.
+
+**The overall workflow failed** in the following, independent live-guest
+probe. Its captured serial transcript reported:
+`GASLUX_GUEST_PREFLIGHT_FAILURE: Secure Boot is enabled or unverifiable`.
+This is a correct fail-closed refusal of an OVMF VM whose Secure Boot EFI
+variable was not proven disabled; it is **not** permission to skip the
+Secure Boot check or to infer that a physical Windows device is safe.
+That live-guest check must be repeated with an explicitly verified
+Secure Boot-disabled OVMF variable store and retained proof before it can
+be counted as passed.
+
 ## Explicit limits
 
 The Ed25519 public key digest is accepted only as an independent laboratory
