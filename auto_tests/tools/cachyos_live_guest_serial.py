@@ -23,11 +23,11 @@ FAILED = re.compile(rb"(?m)^GASLUX_GUEST_PREFLIGHT_FAILURE(?::[^\r\n]*)?\r?$")
 
 # The official 260809 Archiso console wraps commands in systemd OSC 3008
 # command-lifecycle markers, and uses CSI bracketed-paste sequences. Strip
-# terminal control codes for matching ONLY; the original raw transcript is
+# only recognized terminal control codes for matching; the original raw transcript is
 # always preserved and SHA-256 hashed separately.
 _TERMINAL_CONTROL = re.compile(
     rb"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
-    rb"|\x1b\[[0-9;?]*[ -/]*[@-~]"
+    rb"|\x1b\[(?:[0-9;?]*[GHJKmnhl]|!p)"
     rb"|\x1bP[^\x1b]*\x1b\\"
 )
 
