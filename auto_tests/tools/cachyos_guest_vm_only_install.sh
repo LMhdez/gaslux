@@ -94,10 +94,22 @@ echo 'GASLUX_LAB_OFFICIAL_KEYRING_POPULATED=1'
 # pacman's signature verification unchanged. NOT a finished desktop installer.
 pacstrap -K "$TARGET" \
   base linux-cachyos-lts mkinitcpio grub efibootmgr \
-  cachyos-keyring cachyos-mirrorlist cachyos-settings \
+  cachyos-keyring cachyos-mirrorlist cachyos-settings cachyos-hooks \
   sudo e2fsprogs dosfstools python
 echo 'GASLUX_LAB_PACSTRAP_FINISHED=1'
-grep -qx 'ID=cachyos' "$TARGET/etc/os-release" || die 'installed distro identity wrong'
+# An Arch-derived base package initially declares ID=arch. This is NOT
+# a CachyOS install until its official native branding package is installed
+# and its own script has updated the installed os-release.
+[[ -s "$TARGET/usr/share/libalpm/scripts/cachyos-branding" ]] ||
+  die 'signed CachyOS branding hook not installed'
+arch-chroot "$TARGET" /usr/share/libalpm/scripts/cachyos-branding os-release
+grep -qx 'ID=cachyos' "$TARGET/etc/os-release" ||
+  die 'official CachyOS branding failed to identify installed target'
+grep -qx 'ID_LIKE=arch' "$TARGET/etc/os-release" ||
+  die 'installed CachyOS base lineage not declared'
+arch-chroot "$TARGET" pacman -Q cachyos-hooks linux-cachyos-lts >/dev/null ||
+  die 'native CachyOS branding/kernel packages not installed'
+echo 'GASLUX_LAB_OFFICIAL_BRANDING_VERIFIED=1'
 [[ -s "$TARGET/boot/vmlinuz-linux-cachyos-lts" ]] || die 'kernel missing'
 mkdir -p "$TARGET/boot/efi"
 mount "$esp" "$TARGET/boot/efi"
