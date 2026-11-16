@@ -284,7 +284,9 @@ if [[ "$verified" -eq 1 ]]; then
           break
         fi
         if grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=6.10-deb13u1' "$work/serial-native-grub.log" &&
-           grep -Eiq 'Linux version|Freeing unused kernel|systemd\[1\]' "$work/serial-native-grub.log"; then
+           grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_KERNEL=6.12.111+deb13-amd64' "$work/serial-native-grub.log" &&
+           grep -Fq 'GASLUX_Q4OS_INSTALLED_ROOT_PROOF=6.10-deb13u1' "$work/serial-native-grub.log" &&
+           grep -Fq 'Loading Q4OS operating system' "$work/serial-native-grub.log"; then
           second_verified=1
           break
         fi
