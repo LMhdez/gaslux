@@ -27,10 +27,28 @@ grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*$' /etc/pacman.conf ||
 [ -f /usr/share/zoneinfo/Europe/Lisbon ] || fail 'missing timezone database'
 python3 - <<'PY' || fail 'Secure Boot is enabled or unverifiable'
 from pathlib import Path
-p = list(Path('/sys/firmware/efi/efivars').glob(
-    'SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c'))
-if len(p) != 1 or len(p[0].read_bytes()) != 5 or p[0].read_bytes()[4] != 0:
-    raise SystemExit(1)
+root = Path('/sys/firmware/efi/efivars')
+guid = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
+def read_flag(name):
+    path = root / f'{name}-{guid}'
+    if not path.is_file() or path.is_symlink():
+        raise SystemExit(f'GASLUX_SECUREBOOT_EFIVAR: {name} missing or linked')
+    data = path.read_bytes()
+    # efivarfs exposes 4 bytes of variable attributes, then 1 byte of value.
+    if len(data) != 5:
+        raise SystemExit(f'GASLUX_SECUREBOOT_EFIVAR: {name} invalid length')
+    return data[4]
+secure = read_flag('SecureBoot')
+setup = read_flag('SetupMode')
+print(f'GASLUX_SECUREBOOT_EFIVAR: SecureBoot={secure} SetupMode={setup}')
+if secure != 0:
+    raise SystemExit('GASLUX_SECUREBOOT_EFIVAR: active Secure Boot refused')
+if setup != 1:
+    # This *specific* ephemeral OVMF VM must have no enrolled platform keys.
+    # The reusable stage --check still supports genuine disabled Secure Boot
+    # even on a machine with keys, but the lab fixture promises no key store.
+    raise SystemExit('GASLUX_SECUREBOOT_EFIVAR: unexpected key enrollment in lab')
+print('GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1')
 PY
 [ -f /run/gaslux-lab/stage.sh ] && [ ! -L /run/gaslux-lab/stage.sh ] ||
   fail 'guarded backend script missing'
