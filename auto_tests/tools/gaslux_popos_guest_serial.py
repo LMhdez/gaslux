@@ -99,6 +99,12 @@ def main() -> int:
         run(args.socket, data, args.distinst_sha256)
     except (GuestProbeError, OSError) as error:
         print(f"GASLUX_POP_GUEST_NATIVE_PROBE_FAILED: {error}", file=sys.stderr)
+        # Diagnostic data is from a disposable ISO guest only, never user media.
+        # Strip terminal color codes; retain the raw transcript in evidence.
+        tail = normalized(bytes(data[-1800:])).decode("utf-8", errors="replace")
+        print("GASLUX_POP_GUEST_SERIAL_TAIL_START", file=sys.stderr)
+        print(tail, file=sys.stderr)
+        print("GASLUX_POP_GUEST_SERIAL_TAIL_END", file=sys.stderr)
         code = 1
     else:
         print("GASLUX_POP_NATIVE_DISTINST_GUEST_PROVEN=1")
