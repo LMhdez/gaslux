@@ -12,10 +12,12 @@ on:
       - feature/cachyos-ovmf-secureboot-lab-proof
       - feature/cachyos-signed-grub-qemu-execution
       - feature/cachyos-qemu-pacstrap-firstboot
+      - feature/cachyos-qemu-plasma-graphical-session
     paths:
       - .github/workflows/cachyos-official-iso.yml
       - auto_tests/tools/cachyos_real_live_kernel_smoke.sh
       - auto_tests/tools/cachyos_guest_vm_only_install.sh
+      - auto_tests/tools/cachyos_qemu_graphics_evidence.py
       - auto_tests/tools/cachyos_signed_grub_vm_config.py
       - auto_tests/tools/cachyos_live_guest_serial.py
       - auto_tests/tools/cachyos_live_guest_readonly_probe.sh
@@ -163,7 +165,8 @@ jobs:
           GASLUX_BOOT_EVIDENCE_DIR: 'gaslux-boot-evidence'
           GASLUX_LIVE_GUEST_PROBE: '1'
           GASLUX_SIGNED_EVIDENCE_DIR: 'gaslux-signed-evidence'
-          GASLUX_LAB_FIRSTBOOT: ${{ github.ref_name == 'feature/cachyos-qemu-pacstrap-firstboot' && '1' || '0' }}
+          GASLUX_LAB_FIRSTBOOT: ${{ (github.ref_name == 'feature/cachyos-qemu-pacstrap-firstboot' || github.ref_name == 'feature/cachyos-qemu-plasma-graphical-session') && '1' || '0' }}
+          GASLUX_LAB_GRAPHICAL: ${{ github.ref_name == 'feature/cachyos-qemu-plasma-graphical-session' && '1' || '0' }}
         run: |
           set -Eeuo pipefail
           bash auto_tests/tools/cachyos_real_live_kernel_smoke.sh \
@@ -173,7 +176,12 @@ jobs:
           printf 'Ephemeral Ed25519 GRUB entry executed in QEMU; guest cmdline proof: PASS\\n' >> "$GITHUB_STEP_SUMMARY"
           if [[ "$GASLUX_LAB_FIRSTBOOT" == 1 ]]; then
             printf 'Separate QEMU virtual disk: actual CachyOS pacstrap + installed EFI GRUB first boot PASS\n' >> "$GITHUB_STEP_SUMMARY"
-            printf 'No Windows, production desktop, updates or rollback was tested.\n' >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$GASLUX_LAB_GRAPHICAL" == 1 ]]; then
+              printf 'Installed native Plasma X11/KWin session and verified real QEMU VGA screenshot: PASS\n' >> "$GITHUB_STEP_SUMMARY"
+              printf 'No Windows/production wizard, update or rollback was tested.\n' >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf 'No Windows, production desktop, updates or rollback was tested.\n' >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             printf 'No Windows, installed root or rollback was tested.\n' >> "$GITHUB_STEP_SUMMARY"
           fi
