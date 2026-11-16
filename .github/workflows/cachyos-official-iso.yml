@@ -106,6 +106,10 @@ jobs:
           spec.loader.exec_module(handoff)
           result = handoff.prepare(plan, storage_root=w, iso_root=w / 'mounted')
           assert result['ok'] and result['isoSha256Verified'] and result['isoLayoutVerified']
+          assert result['identity']['live_os_release_id'] == 'cachyos'
+          assert result['identity']['live_os_release_id_like'] == 'arch'
+          assert result['liveKernelPath'] == 'arch/boot/x86_64/vmlinuz-linux-cachyos-lts'
+          assert result['liveInitramfsPath'] == 'arch/boot/x86_64/initramfs-linux-cachyos-lts.img'
           assert result['productionInstallSupported'] is False
           assert result['isoMountedFromVerifiedSource'] is False  # not a dedicated storage volume
           (w / 'grub.cfg').write_text(result['grubEntry'])
@@ -114,5 +118,6 @@ jobs:
           PY
           grub-script-check "$w/grub.cfg"
           echo "Generated GRUB loopback entry syntax: PASS"
+          printf 'Real CachyOS LTS boot pair and live distribution identity verified\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Real CachyOS ISO verification passed\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'This job did not install Linux or touch Windows boot files.\n' >> "$GITHUB_STEP_SUMMARY"
