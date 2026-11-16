@@ -16,7 +16,24 @@ for tool in grub-mkstandalone qemu-system-x86_64 mkfs.ext4 debugfs \
 done
 w="$(mktemp -d -t cachyos-real-boot-XXXXXX)"
 trap 'rm -rf "$w"' EXIT
-uuid="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+# The signed integration CI supplies a pre-verified Ed25519 lab artifact.
+# Fail closed on any missing/tampered artifact; do not fall back to the manually
+# constructed smoke entry when signed mode was requested.
+signed_mode=0
+if [[ -n "${GASLUX_SIGNED_EVIDENCE_DIR:-}" ]]; then
+  [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]] || {
+    echo 'Signed VM boot requires an observed in-guest kernel cmdline proof' >&2
+    exit 2
+  }
+  uuid="$(python3 auto_tests/tools/cachyos_signed_grub_vm_config.py \
+    --evidence-dir "$GASLUX_SIGNED_EVIDENCE_DIR" \
+    --iso-sha256 "$hash" \
+    --output-grub "$w/grub.cfg" \
+    --output-boot-proof "$w/boot-args.json")"
+  signed_mode=1
+else
+  uuid="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+fi
 disk="$w/ext4.img"
 truncate -s 5G "$disk"
 mkfs.ext4 -q -F -U "$uuid" "$disk"
@@ -25,6 +42,7 @@ debugfs -R "stat /cachyos.iso" "$disk" > "$w/stat.log" 2>&1
 grep -Eq 'Size: [1-9][0-9]+' "$w/stat.log" || {
   echo 'No ISO in disposable virtual ext4 volume' >&2; exit 1;
 }
+if [[ "$signed_mode" -eq 0 ]]; then
 cat > "$w/grub.cfg" <<GRUB
 serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
 terminal_input serial
@@ -40,6 +58,9 @@ menuentry 'CachyOS real Archiso kernel validation' {
   initrd (iso)/arch/boot/x86_64/initramfs-linux-cachyos-lts.img
 }
 GRUB
+fi
+# The signed handoff must be the input to the actual EFI executable.
+grub-script-check "$w/grub.cfg"
 grub-mkstandalone --format=x86_64-efi --output="$w/BOOTX64.EFI" \
   "boot/grub/grub.cfg=$w/grub.cfg"
 fat="$w/boot.img"
@@ -61,6 +82,9 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
   mcopy -i "$fat" "$stage" ::/stage.sh
   mcopy -i "$fat" "$guest_probe" ::/probe.sh
   mcopy -i "$fat" "$w/stage.sha256" ::/stage.sha256
+  if [[ "$signed_mode" -eq 1 ]]; then
+    mcopy -i "$fat" "$w/boot-args.json" ::/boot-args.json
+  fi
 fi
 # The live preflight requires explicit SecureBoot=0 firmware evidence.
 # The plain OVMF_CODE_4M.fd variant can omit the SecureBoot EFI variable
@@ -97,9 +121,11 @@ vm_pid=$!
 guest_proven=0
 if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
   set +e
+  guest_flags=()
+  if [[ "$signed_mode" -eq 1 ]]; then guest_flags+=(--require-signed-entry); fi
   python3 auto_tests/tools/cachyos_live_guest_serial.py \
     --socket "$w/guest-serial.sock" --transcript "$w/guest-console.log" \
-    --boot-timeout 345
+    --boot-timeout 345 "${guest_flags[@]}"
   guest_rc=$?
   set -e
   if [[ "$guest_rc" -eq 0 ]]; then guest_proven=1; fi
@@ -129,12 +155,19 @@ set -e
 if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" && -f "$w/serial.log" ]]; then
   mkdir -p "$GASLUX_BOOT_EVIDENCE_DIR"
   install -m 0600 "$w/serial.log" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-live-serial.log"
+  if [[ "$signed_mode" -eq 1 ]]; then
+    install -m 0600 "$w/grub.cfg" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-booted-signed-derived-grub.cfg"
+    install -m 0600 "$w/boot-args.json" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-expected-boot-args.json"
+  fi
   if [[ -s "$w/guest-console.log" ]]; then
     install -m 0600 "$w/guest-console.log" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-guest-probe-serial.log"
   fi
   (
     cd "$GASLUX_BOOT_EVIDENCE_DIR"
     sha256sum *.log > cachyos-live-serial.sha256
+    if [[ "$signed_mode" -eq 1 ]]; then
+      sha256sum *.cfg *.json > cachyos-signed-boot.sha256
+    fi
   )
 fi
 if ! grep -Eq 'CachyOS [0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cachyos-lts \(ttyS0\)' "$w/serial.log"; then
@@ -171,5 +204,8 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
     exit 1
   }
   echo 'PASS: guarded CachyOS live --check, pacstrap dependencies and SecureBoot=0 efivar evidence.'
+  if [[ "$signed_mode" -eq 1 ]]; then
+    echo 'PASS: guest /proc/cmdline matched the host-verified ephemeral Ed25519 GRUB handoff.'
+  fi
 fi
 echo 'NOT TESTED: installed CachyOS, Windows dual boot, or Windows recovery.'
