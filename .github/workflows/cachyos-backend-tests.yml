@@ -13,6 +13,7 @@ on:
       - feature/cachyos-ovmf-secureboot-lab-proof
       - feature/cachyos-signed-grub-qemu-execution
       - feature/cachyos-qemu-pacstrap-firstboot
+      - feature/cachyos-windows-transaction-readonly-bridge
   pull_request:
     branches:
       - main
@@ -53,6 +54,7 @@ jobs:
             assets/live/cachyos-uefi-config.py \
             assets/live/cachyos-archiso-handoff.py \
             auto_tests/tools/cachyos_release_gate.py \
+            auto_tests/tools/cachyos_windows_transaction_bridge.py \
             auto_tests/tools/cachyos_lab_readiness.py \
             auto_tests/tools/cachyos_live_guest_serial.py \
             assets/live/cachyos-uefi-lab.py \
