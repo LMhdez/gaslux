@@ -1,0 +1,85 @@
+name: Official CachyOS pinned ISO HTTPS strict pacman source probe (read-only)
+on:
+  push:
+    branches:
+      - feature/cachyos-signed-pacman-lab-config
+    paths:
+      - .github/workflows/cachyos-strict-official-iso.yml
+      - assets/live/cachyos-strict-pacman.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  strict-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install read-only Archiso inspection dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             aria2 squashfs-tools
+      - name: Verify actual pinned CachyOS ISO and render strict config from its mirrorlists
+        shell: bash
+        env:
+          ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+        run: |
+          set -Eeuo pipefail
+          w="$(mktemp -d -t gaslux-cachyos-strict-source-XXXXXX)"
+          mkdir -p "$w/mounted" "$w/live" gaslux-strict-source-evidence
+          mounted_iso=0
+          mounted_root=0
+          cleanup() {
+            if (( mounted_root )); then sudo umount "$w/live" || true; fi
+            if (( mounted_iso )); then sudo umount "$w/mounted" || true; fi
+            rm -rf "$w"
+          }
+          trap cleanup EXIT
+          {
+            printf '%s\t%s\n' 'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' 'https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
+            printf '  dir=%s\n' "$w"
+            printf '  out=cachyos.iso\n'
+          } > "$w/iso-mirrors.txt"
+          aria2c --input-file="$w/iso-mirrors.txt"             --split=8 --min-split-size=32M --max-connection-per-server=8             --max-concurrent-downloads=1 --continue=true --file-allocation=none             --retry-wait=8 --max-tries=8 --timeout=45 --connect-timeout=25             --check-integrity=true --checksum="sha-256=$ISO_SHA256"
+          printf '%s  %s\n' "$ISO_SHA256" "$w/cachyos.iso" | sha256sum --check --status
+          sudo mount -o loop,ro "$w/cachyos.iso" "$w/mounted"
+          mounted_iso=1
+          sudo mount -t squashfs -o loop,ro             "$w/mounted/arch/x86_64/airootfs.sfs" "$w/live"
+          mounted_root=1
+          sudo python3 assets/live/cachyos-strict-pacman.py             --root "$w/live" --run-id 'pinned-cachyos-260809'             > gaslux-strict-source-evidence/strict-pacman-source-report.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path(
+              'gaslux-strict-source-evidence/strict-pacman-source-report.json'
+          ).read_text())
+          assert report['ok'] is True
+          assert report['packageSignaturesMandatory'] is True
+          assert report['sourceLivePolicyTrusted'] is False
+          assert report['trustedPackageDownloadTested'] is False
+          assert report['readyForProduction'] is False
+          assert report['preparedVmTmpfsDirectory'] is None
+          assert report['generatedFromPinnedProfile'] == 'cachyos-260809'
+          print('PASS: strict signed-only configs render from authentic pinned ISO mirrors.')
+          print('NOT TESTED: actual pacman-conf on alternate config, pacstrap, boot, Windows.')
+          PY
+          (
+            cd gaslux-strict-source-evidence
+            sha256sum strict-pacman-source-report.json > strict-pacman-source-report.sha256
+          )
+          printf 'Read-only pinned ISO mirror-source strict config rendering: PASS\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'No package download, pacstrap, installed Linux boot or Windows recovery was tested.\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve signed-only source rendering evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cachyos-pinned-iso-strict-source-readonly
+          path: gaslux-strict-source-evidence/
+          if-no-files-found: warn
+          retention-days: 14
