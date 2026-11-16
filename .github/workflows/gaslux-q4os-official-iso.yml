@@ -142,15 +142,18 @@ jobs:
               apt-get -qq update
               mkdir -p /tmp/grub-pkg
               cd /tmp/grub-pkg
-              apt-get download grub-efi-amd64-bin
-              packages=(grub-efi-amd64-bin_*.deb)
-              test "${#packages[@]}" -eq 1
-              dpkg-deb -f "${packages[0]}" Package Version
-              cp -- "${packages[0]}" /out/
+              apt-get download grub-efi-amd64-bin grub-efi-amd64-unsigned
+              packages=(grub-efi-amd64-unsigned_*.deb grub-efi-amd64-bin_*.deb)
+              test "${#packages[@]}" -eq 2
+              unsigned_version="$(dpkg-deb -f "${packages[0]}" Version)"
+              bin_version="$(dpkg-deb -f "${packages[1]}" Version)"
+              test "$unsigned_version" = "$bin_version"
+              printf "Signed APT GRUB EFI package versions: %s\n" "$bin_version"
+              cp -- "${packages[@]}" /out/
               cd /out
-              sha256sum grub-efi-amd64-bin_*.deb > grub-efi-amd64-bin.sha256
+              sha256sum grub-efi-amd64-*.deb > grub-efi-amd64-bundle.sha256
             '
-          (cd "$packages" && sha256sum -c grub-efi-amd64-bin.sha256)
+          (cd "$packages" && sha256sum -c grub-efi-amd64-bundle.sha256)
           echo 'Debian repository Release metadata was authenticated by container apt.'
           echo 'No guest network or host hardware disk is exposed.'
       - name: Install Q4OS native GRUB inside owned guest and prove two installed disk boots
