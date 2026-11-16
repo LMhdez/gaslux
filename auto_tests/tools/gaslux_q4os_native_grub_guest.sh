@@ -56,6 +56,25 @@ fi
 sha256sum --status -c /etc/gaslux-q4os-lab-temp-efi.sha256 ||
   fatal 'guest-efi-fallback-was-replaced'
 [[ ! -e "$native_loader" && ! -e "$state" ]] || fatal 'native-target-already-present'
+offline_dir='/var/cache/gaslux-q4os-lab'
+[[ -d "$offline_dir" && -s "$offline_dir/grub-efi-amd64-bin.sha256" ]] ||
+  fatal 'missing-signed-apt-grub-package-manifest'
+shopt -s nullglob
+grub_debs=("$offline_dir"/grub-efi-amd64-bin_*_amd64.deb)
+shopt -u nullglob
+[[ "${#grub_debs[@]}" -eq 1 && -f "${grub_debs[0]}" ]] ||
+  fatal 'ambiguous-or-missing-grub-efi-package'
+(cd "$offline_dir" && sha256sum --status -c grub-efi-amd64-bin.sha256) ||
+  fatal 'guest-efi-package-sha256-mismatch'
+command -v dpkg >/dev/null || fatal 'missing-dpkg'
+# The package was fetched using Debian 13's signed APT index on the runner.
+# Offline dpkg runs solely on this disposable guest's installed Q4OS root.
+dpkg -i "${grub_debs[0]}" > /dev/ttyS0 2>&1 ||
+  fatal 'offline-native-grub-package-install-failed'
+[[ "$(dpkg-query -W -f='${Status}' grub-efi-amd64-bin)" == 'install ok installed' ]] ||
+  fatal 'efi-grub-package-not-installed'
+dpkg -S /usr/lib/grub/x86_64-efi/normal.mod >/dev/null ||
+  fatal 'EFI-GRUB-modules-not-package-owned'
 for tool in grub-install grub-mkconfig sha256sum sync; do
   command -v "$tool" >/dev/null || fatal "missing-native-package-$tool"
 done
@@ -71,9 +90,9 @@ CFG
 # No NVRAM modification and NO --removable. Native Q4OS package writes
 # only into the guest-owned ESP. Do not copy this procedure to a Windows ESP.
 grub-install --target=x86_64-efi --efi-directory=/boot/efi \
-  --bootloader-id=GasluxQ4OSLab --no-nvram --no-extra-removable --recheck ||
+  --bootloader-id=GasluxQ4OSLab --no-nvram --no-extra-removable --recheck > /dev/ttyS0 2>&1 ||
   fatal 'native-grub-install-failed'
-grub-mkconfig -o /boot/grub/grub.cfg || fatal 'native-grub-config-failed'
+grub-mkconfig -o /boot/grub/grub.cfg > /dev/ttyS0 2>&1 || fatal 'native-grub-config-failed'
 [[ -s "$native_loader" && -s /boot/grub/grub.cfg ]] || fatal 'native-grub-file-missing'
 # Only the VM-created fallback from this one guest is allowed to be replaced.
 cp -- "$native_loader" "${boot_fallback}.gaslux-next"
