@@ -70,6 +70,14 @@ class StageTargetSafetyTests(unittest.TestCase):
                 result = invoke(*args)
                 self.assertEqual(result.returncode, 2)
 
+    def test_live_iso_identity_is_pinned_to_official_cachyos_260809(self):
+        source = SCRIPT.read_text()
+        self.assertIn("[ \"$host_id\" = cachyos ]", source)
+        self.assertIn("[ \"$host_like\" = arch ]", source)
+        self.assertIn("[ \"$host_name\" = 'CachyOS Linux' ]", source)
+        self.assertIn("grep -qx 'IMAGE_ID=cachyos' /etc/os-release", source)
+        self.assertIn("grep -qx 'IMAGE_VERSION=2026.08.09' /etc/os-release", source)
+
     def test_no_unknown_mode_is_accepted(self):
         result = invoke("--erase-disk", RUN_ID, ROOT_UUID)
         self.assertEqual(result.returncode, 2)
