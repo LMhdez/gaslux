@@ -2,6 +2,7 @@
 
 Fake Proxmox responses cannot prove a real VM, Windows boot or snapshot.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -19,8 +20,14 @@ spec.loader.exec_module(lab)
 
 class FakeProxmox:
     def __init__(
-        self, snapshot_ok=True, bios="ovmf", tpm=True, *,
-        config_patch=None, current_patch=None, snapshot_patch=None,
+        self,
+        snapshot_ok=True,
+        bios="ovmf",
+        tpm=True,
+        *,
+        config_patch=None,
+        current_patch=None,
+        snapshot_patch=None,
     ):
         self.requests = []
         self.snapshot_ok = snapshot_ok
@@ -97,9 +104,7 @@ def patch_setting(key, value, *, only_vmid=None):
 
 class ProxmoxReadinessTests(unittest.TestCase):
     def assert_refused(self, patch=None, *, reason=None, current=None, snapshot=None):
-        client = FakeProxmox(
-            config_patch=patch, current_patch=current, snapshot_patch=snapshot
-        )
+        client = FakeProxmox(config_patch=patch, current_patch=current, snapshot_patch=snapshot)
         with self.assertRaises(lab.LabReadinessError) as raised:
             lab.probe(settings(), client)
         if reason:
@@ -236,9 +241,7 @@ class ProxmoxReadinessTests(unittest.TestCase):
         self.assert_refused(patch_setting("hostpci0", "host=01:00.0"), reason="passthrough")
 
     def test_custom_qemu_args_refused(self):
-        self.assert_refused(
-            patch_setting("args", "-drive file=/dev/sda"), reason="passthrough"
-        )
+        self.assert_refused(patch_setting("args", "-drive file=/dev/sda"), reason="passthrough")
 
     def test_hookscript_refused(self):
         self.assert_refused(
@@ -265,30 +268,25 @@ class ProxmoxReadinessTests(unittest.TestCase):
         )
 
     def test_non_vm_owned_efi_vars_refused(self):
-        self.assert_refused(patch_setting("efidisk0", "local-lvm:vm-999-disk-1"),
-                            reason="not an exclusive")
+        self.assert_refused(
+            patch_setting("efidisk0", "local-lvm:vm-999-disk-1"), reason="not an exclusive"
+        )
 
     def test_wrong_snapshot_efi_volume_refused(self):
         self.assert_refused(
-            snapshot=lambda vmid, cfg: {
-                **cfg, "efidisk0": f"local-lvm:vm-{vmid}-disk-9"
-            },
+            snapshot=lambda vmid, cfg: {**cfg, "efidisk0": f"local-lvm:vm-{vmid}-disk-9"},
             reason="snapshot volume bindings",
         )
 
     def test_wrong_snapshot_partition_disk_refused(self):
         self.assert_refused(
-            snapshot=lambda vmid, cfg: {
-                **cfg, "scsi0": f"local-lvm:vm-{vmid}-disk-8"
-            },
+            snapshot=lambda vmid, cfg: {**cfg, "scsi0": f"local-lvm:vm-{vmid}-disk-8"},
             reason="snapshot volume bindings",
         )
 
     def test_wrong_running_disk_mapping_refused(self):
         self.assert_refused(
-            current=lambda vmid, cfg: {
-                **cfg, "scsi0": f"local-lvm:vm-{vmid}-disk-8"
-            },
+            current=lambda vmid, cfg: {**cfg, "scsi0": f"local-lvm:vm-{vmid}-disk-8"},
             reason="current volume bindings",
         )
 
@@ -312,9 +310,7 @@ class ProxmoxReadinessTests(unittest.TestCase):
 
     def test_no_writable_installation_disk_refused(self):
         self.assert_refused(
-            lambda vmid, cfg: {
-                **cfg, "scsi0": "none,media=cdrom"
-            },
+            lambda vmid, cfg: {**cfg, "scsi0": "none,media=cdrom"},
             reason="installation disk",
         )
 

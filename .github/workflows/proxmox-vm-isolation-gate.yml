@@ -23,10 +23,6 @@ jobs:
         run: python3 -m unittest auto_tests.test_cachyos_lab_readiness -v
       - name: Install lint tools
         run: python3 -m pip install --break-system-packages ruff==0.13.3
-      - name: Export Ruff formatting for review
-        run: |
-          python3 -m ruff format --config auto_tests/pyproject.toml auto_tests/tools/cachyos_lab_readiness.py auto_tests/test_cachyos_lab_readiness.py
-          python3 -c "import base64,pathlib; p=['auto_tests/tools/cachyos_lab_readiness.py','auto_tests/test_cachyos_lab_readiness.py']; [print('FORMAT64:'+f+':'+base64.b64encode(pathlib.Path(f).read_bytes()).decode()) for f in p]"
       - name: Static analysis
         run: |
           python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/cachyos_lab_readiness.py auto_tests/test_cachyos_lab_readiness.py
