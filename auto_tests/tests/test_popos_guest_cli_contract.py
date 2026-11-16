@@ -12,6 +12,7 @@ from gaslux_popos_guest_serial import (  # noqa: E402
     PASSED,
     PASSWORD,
     READY,
+    ROOT_DEBUG_SHELL,
     SHA,
     normalized,
 )
@@ -24,6 +25,8 @@ WORKFLOW = ROOT / ".github/workflows/gaslux-popos-official-iso.yml"
 def test_serial_proof_rejects_echoes_and_wrong_hash():
     assert LOGIN.search(b"\r\npop-os login: ")
     assert PASSWORD.search(b"\nPassword: ")
+    assert ROOT_DEBUG_SHELL.search(b"\nroot@popos:~# ")
+    assert not ROOT_DEBUG_SHELL.search(b"\npopos login: ")
     assert not PASSWORD.search(b"printf 'Password:'")
     assert READY.search(b"\nGASLUX_POP_LIVE_SHELL_READY\n")
     assert not READY.search(b"printf 'GASLUX_POP_LIVE_SHELL_READY\\n'")
@@ -53,6 +56,8 @@ def test_guest_script_source_is_pinned_and_no_physical_target_attached():
     runner = RUNNER.read_text(encoding="utf-8")
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "GASLUX_POP_GUEST_DISTINST_PROBE" in runner
+    assert "systemd.debug_shell=ttyS0" in runner
+    assert "systemd.wants=serial-getty@ttyS0.service" in runner
     assert 'mcopy -i "$work/efi-part.img"' in runner
     assert "gaslux_popos_guest_serial.py" in runner
     assert "GASLUX_POP_NATIVE_DISTINST_SHA256" in workflow
