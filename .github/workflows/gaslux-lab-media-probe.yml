@@ -21,6 +21,9 @@ permissions:
 jobs:
   read-only-contracts:
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,11 +31,12 @@ jobs:
           python-version: '3.11'
       - name: Install test and lint dependencies
         run: python -m pip install pytest ruff
-      - name: Python syntax
-        run: python -m compileall -q assets/live/gaslux_*probe.py assets/live/gaslux_*preflight.py auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_*preflight.py
-      - name: Lint
+      - name: Read-only probe syntax, lint and negative tests
         run: |
-          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_lab_media_probe.py assets/live/gaslux_*preflight.py auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_*preflight.py
-          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_lab_media_probe.py assets/live/gaslux_*preflight.py auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_*preflight.py
-      - name: Purely synthetic safety tests
-        run: python -m pytest -q auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_*preflight.py
+          shopt -s nullglob
+          sources=(assets/live/gaslux_lab_media_probe.py assets/live/gaslux_*preflight.py)
+          tests=(auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_*preflight.py)
+          python -m compileall -q "${sources[@]}" "${tests[@]}"
+          python -m ruff check --config auto_tests/pyproject.toml "${sources[@]}" "${tests[@]}"
+          python -m ruff format --check --config auto_tests/pyproject.toml "${sources[@]}" "${tests[@]}"
+          python -m pytest -q "${tests[@]}"
