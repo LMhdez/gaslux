@@ -157,3 +157,75 @@ def test_generator_v2_rejects_wrong_backend_identity(tmp_path):
     config_path.write_text(json.dumps(cfg), encoding="utf-8")
     with pytest.raises(ValueError, match="backend"):
         gen.load_config(config_path)
+
+
+def test_v2_generator_excludes_unreleased_entries_from_main(tmp_path):
+    path = ROOT / "iso-tools/generate-release-metadata.py"
+    spec = importlib.util.spec_from_file_location("gen_v2_filter_test", path)
+    assert spec is not None and spec.loader is not None
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+
+    cfg = json.loads((ROOT / "release-config.json").read_text())
+    cfg["schemaVersion"] = 2
+    for d in cfg["distributions"]:
+        d["capabilities"] = capability(
+            "debian-squashfs",
+            "casper-squashfs",
+            "ms-shim",
+            "grub",
+            "grub",
+            "released",
+            ["bios/mbr", "uefi/gpt"],
+        )
+    cfg["distributions"][0]["capabilities"]["status"] = "lab-only"
+    cfg_file = tmp_path / "v2-config.json"
+    cfg_file.write_text(json.dumps(cfg), encoding="utf-8")
+    signed_config = gen.load_config(cfg_file)
+
+    artifacts = {
+        name: tmp_path / name
+        for name in (
+            "libertix-installer-bios.iso",
+            "libertix-installer-uefi.iso",
+            "aria2-64.zip",
+            "ext4-win-driver.exe",
+            "grldr",
+            "grldr.mbr",
+        )
+    }
+    for name, path in artifacts.items():
+        path.write_bytes(name.encode("utf-8"))
+    main_zip = tmp_path / f"Libertix-{cfg['mainRelease']['version']}.zip"
+    dev_zip = tmp_path / "Libertix-abcdef0.zip"
+    main_zip.write_bytes(b"main")
+    dev_zip.write_bytes(b"dev")
+    kwargs = {
+        "bios_iso": artifacts["libertix-installer-bios.iso"],
+        "uefi_iso": artifacts["libertix-installer-uefi.iso"],
+        "aria2_archive": artifacts["aria2-64.zip"],
+        "ext4_driver": artifacts["ext4-win-driver.exe"],
+        "grub4dos_loader": artifacts["grldr"],
+        "grub4dos_mbr": artifacts["grldr.mbr"],
+        "published_at": "2026-11-16T17:00:00Z",
+    }
+    main, _ = gen.generate_metadata(
+        signed_config,
+        channel="main",
+        tag=cfg["mainRelease"]["version"],
+        commit="abcdef0" + "0" * 33,
+        wpf_zip=main_zip,
+        **kwargs,
+    )
+    dev, _ = gen.generate_metadata(
+        signed_config,
+        channel="dev",
+        tag="abcdef0",
+        commit="abcdef0" + "0" * 33,
+        wpf_zip=dev_zip,
+        **kwargs,
+    )
+    assert main["schemaVersion"] == dev["schemaVersion"] == 2
+    assert [d["id"] for d in main["distributions"]] == ["zorin"]
+    assert [d["id"] for d in dev["distributions"]] == ["mint", "zorin"]
+    assert all(d["capabilities"]["status"] == "released" for d in main["distributions"])
