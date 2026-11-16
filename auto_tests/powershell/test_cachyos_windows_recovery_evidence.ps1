@@ -103,7 +103,9 @@ Run-Case 'same baseline capture time rejected' {
     Require-Failure { Compare-GasluxWindowsRecoveryEvidence (New-TestEvidence) $after } 'not captured after the baseline'
 }
 Run-Case 'same Windows boot is not a reboot' {
-    Require-Failure { Compare-GasluxWindowsRecoveryEvidence (New-TestEvidence) (New-TestEvidence) -RequireWindowsReboot } 'No later Windows boot'
+    $after=New-TestEvidence -Rebooted
+    $after.windowsBootUtc='2026-11-16T15:10:00.0000000+00:00'
+    Require-Failure { Compare-GasluxWindowsRecoveryEvidence (New-TestEvidence) $after -RequireWindowsReboot } 'Windows did not reboot after'
 }
 Run-Case 'Windows EFI loader mutation' {
     $other=New-TestEvidence -Rebooted
