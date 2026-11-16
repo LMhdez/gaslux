@@ -113,7 +113,11 @@ class SignedRealIsoLabBridgeTests(unittest.TestCase):
     def test_authentic_lab_entry_becomes_observable_vm_boot_config(self):
         uuid, grub, proof = LAB.prepare(self.evidence, PINNED)
         self.assertEqual(uuid, LAB.LAB_ISO_UUID)
-        self.assertIn(self.entry, grub)
+        self.assertIn(self.entry.replace(
+            self.bootargs + "\
+", self.bootargs + LAB.LAB_CONSOLE_FLAGS + "\
+"
+        ), grub)
         self.assertIn(LAB.LAB_CONSOLE_FLAGS, grub)
         self.assertEqual(json.loads(proof)["gaslux.run"], LAB.LAB_RUN_ID)
         self.assertEqual(json.loads(proof)["gaslux.plan_sha256"],
