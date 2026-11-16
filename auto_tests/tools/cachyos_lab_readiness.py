@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 import sys
-from typing import Any, Callable
+from typing import Any
 
 
 class LabReadinessError(ValueError):
@@ -189,8 +189,8 @@ def probe(settings: Any, client: Any) -> dict[str, object]:
 def main() -> int:
     try:
         # Deferred imports allow isolated CI tests without live VM credentials.
-        from app.config import Settings
         from app.clients.proxmox import ProxmoxClient
+        from app.config import Settings
 
         settings = Settings()
         with ProxmoxClient(
