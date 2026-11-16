@@ -72,3 +72,49 @@ jobs:
             echo 'GASLUX_QEMU_KVM_VCPU_EXECUTES=false' >> "$GITHUB_STEP_SUMMARY"
             tail -c 2000 "$RUNNER_TEMP/kvm-only-probe.log"
           fi
+      - name: Probe exact OVMF Secure Boot firmware as runner and root (diskless)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 ovmf acl
+          code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
+          vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          [[ -f "$code" && -f "$vars" ]] || exit 2
+          if [[ ! -c /dev/kvm ]]; then
+            echo 'GASLUX_OVMF_KVM_RUNNER=false (no KVM device)'
+            echo 'GASLUX_OVMF_KVM_ROOT=false (no KVM device)'
+            exit 0
+          fi
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          for mode in runner root; do
+            cp "$vars" "$RUNNER_TEMP/nvram-$mode.fd"
+            args=(
+              qemu-system-x86_64
+              -machine q35,accel=kvm,smm=on -cpu host
+              -global driver=cfi.pflash01,property=secure,value=on
+              -smp 2 -m 6144 -nodefaults -display none -monitor none -serial none -no-reboot
+              -drive "if=pflash,format=raw,readonly=on,file=$code"
+              -drive "if=pflash,format=raw,file=$RUNNER_TEMP/nvram-$mode.fd"
+            )
+            set +e
+            if [[ "$mode" == root ]]; then
+              sudo timeout --kill-after=2s 5s ${args[@]} > "$RUNNER_TEMP/ovmf-$mode.log" 2>&1
+            else
+              timeout --kill-after=2s 5s ${args[@]} > "$RUNNER_TEMP/ovmf-$mode.log" 2>&1
+            fi
+            rc=$?
+            set -e
+            result=false
+            if (( rc == 124 )) &&
+               ! grep -Eiq 'permission denied|failed to initialize kvm|could not access kvm' "$RUNNER_TEMP/ovmf-$mode.log"; then
+              result=true
+            fi
+            mode_upper="$(printf %s "$mode" | tr '[:lower:]' '[:upper:]')"
+            echo "GASLUX_OVMF_KVM_$mode_upper=$result (status $rc)"
+            echo "GASLUX_OVMF_KVM_$mode_upper=$result" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$result" == false ]]; then
+              tail -c 1000 "$RUNNER_TEMP/ovmf-$mode.log" || true
+            fi
+          done
+          echo 'Diskless VM probing only. This does not prove pacstrap or installed Linux.'
