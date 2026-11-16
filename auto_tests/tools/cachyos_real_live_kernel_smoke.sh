@@ -295,8 +295,8 @@ if [[ "$lab_install" -eq 1 ]]; then
       sha256sum cachyos-installed-firstboot-serial.log > cachyos-firstboot.sha256 )
   fi
   if [[ "$installed_success" -ne 1 ]] ||
-     tr -d '\r' < "$w/installed-serial.log" |
-       grep -Fq 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_FAIL:'; then
+     grep -Fq 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_FAIL:' "$w/installed-serial.log" ||
+     grep -Fq 'GASLUX_VM_GRAPHICAL_FAILURE:' "$w/installed-serial.log"; then
     echo 'FAIL: installed CachyOS did not prove first boot from virtual disk' >&2
     tail -c 6000 "$w/installed-serial.log" >&2 || true
     exit 1
