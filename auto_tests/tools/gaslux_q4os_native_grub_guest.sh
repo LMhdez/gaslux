@@ -90,12 +90,14 @@ GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200"
 GRUB_CMDLINE_LINUX="console=ttyS0,115200n8 console=tty0 systemd.unit=multi-user.target"
 GRUB_DISABLE_OS_PROBER=true
 CFG
-# No NVRAM modification and NO --removable. Native Q4OS package writes
+# No NVRAM modification and no --removable. Native Q4OS package writes
 # only into the guest-owned ESP. Do not copy this procedure to a Windows ESP.
 grub-install --target=x86_64-efi --efi-directory=/boot/efi \
-  --bootloader-id=GasluxQ4OSLab --no-nvram --no-extra-removable --recheck > /dev/ttyS0 2>&1 ||
+  --bootloader-id=GasluxQ4OSLab --no-nvram --recheck > /dev/ttyS0 2>&1 ||
   fatal 'native-grub-install-failed'
 grub-mkconfig -o /boot/grub/grub.cfg > /dev/ttyS0 2>&1 || fatal 'native-grub-config-failed'
+sha256sum --status -c /etc/gaslux-q4os-lab-temp-efi.sha256 ||
+  fatal 'native-grub-modified-fallback-without-ownership'
 [[ -s "$native_loader" && -s /boot/grub/grub.cfg ]] || fatal 'native-grub-file-missing'
 # Only the VM-created fallback from this one guest is allowed to be replaced.
 cp -- "$native_loader" "${boot_fallback}.gaslux-next"
