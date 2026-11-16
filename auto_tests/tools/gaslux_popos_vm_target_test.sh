@@ -22,6 +22,14 @@ target=/dev/disk/by-id/virtio-GASLUXPOPTARGET
   die 'wrong virtual target size'
 [[ "$(lsblk -dn -o RO "$target" | tr -d '[:space:]')" == 0 ]] ||
   die 'target disk cannot be written'
+# Upstream distinst canonicalizes --block to /dev/vdX. All --use references
+# must use the same resolved kernel device name, but the initial identity must
+# come from the uniquely pinned virtio by-id link and its device serial.
+canonical="$(readlink -e "$target")"
+[[ "$canonical" =~ ^/dev/vd[a-z]+$ ]] ||
+  die 'unexpected canonical target device'
+[[ "$(lsblk -dn -o SERIAL "$canonical" | tr -d '[:space:]')" == GASLUXPOPTARGET ]] ||
+  die 'virtio target serial mismatch'
 for part in 1 2 3; do
   [[ -b "$target-part$part" ]] || die "missing virtual partition $part"
 done
@@ -44,9 +52,9 @@ trap 'rm -f -- "$output"' EXIT
 if ! timeout --kill-after=5s 240s /usr/bin/distinst \
   --test --no-efi-vars --squashfs "$squashfs" --remove "$remove" \
   --hostname gaslux-pop-vm --keyboard us --lang en_US.UTF-8 \
-  --block "$target" \
-  --use "$target:1:reuse:mount=/boot/efi" \
-  --use "$target:3:ext4:mount=/" \
+  --block "$canonical" \
+  --use "$canonical:1:reuse:mount=/boot/efi" \
+  --use "$canonical:3:ext4:mount=/" \
   > "$output" 2>&1; then
   tail -n 25 "$output" > /dev/ttyS0
   die 'distinst --test did not accept the isolated native target'
