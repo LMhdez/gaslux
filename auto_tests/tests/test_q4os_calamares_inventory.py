@@ -97,6 +97,7 @@ def test_invalid_and_empty_modules_are_not_reported_as_exec():
         "exec": [],
     }
 
+
 def test_iso_mount_must_actually_contain_the_squashfs(tmp_path, monkeypatch):
     iso = tmp_path / "official.iso"
     iso.write_bytes(b"mock")
