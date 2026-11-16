@@ -36,23 +36,17 @@ class PinnedIsoRepoAuditTests(unittest.TestCase):
         (self.live / "etc/pacman.conf").write_text(
             "[options]\nSigLevel = Required DatabaseOptional\n[core]\n", encoding="utf-8"
         )
-        (self.live / "etc/os-release").write_text(
-            "ID=cachyos\nID_LIKE=arch\n", encoding="utf-8"
-        )
+        (self.live / "etc/os-release").write_text("ID=cachyos\nID_LIKE=arch\n", encoding="utf-8")
         self.commands = []
 
     def runner(self, argv, **kwargs):
         self.commands.append(tuple(argv))
         if argv[0] == "findmnt":
             is_iso = argv[3] == str(self.iso_root)
-            mount = "/dev/loop1 iso9660 ro,nosuid" if is_iso else (
-                "/dev/loop2 squashfs ro,nosuid"
-            )
+            mount = "/dev/loop1 iso9660 ro,nosuid" if is_iso else ("/dev/loop2 squashfs ro,nosuid")
             return subprocess.CompletedProcess(argv, 0, mount + "\n", "")
         if argv[0] == "losetup":
-            backing = str(self.iso) if argv[-1] == "/dev/loop1" else str(
-                self.rootfs_image
-            )
+            backing = str(self.iso) if argv[-1] == "/dev/loop1" else str(self.rootfs_image)
             return subprocess.CompletedProcess(argv, 0, backing + "\n", "")
         if argv[0] == "chroot":
             return subprocess.CompletedProcess(argv, 0, "Required DatabaseOptional\n", "")
@@ -80,19 +74,21 @@ class PinnedIsoRepoAuditTests(unittest.TestCase):
         self.assertFalse(report["installedCachyosBootVerified"])
         self.assertFalse(report["windowsDualBootVerified"])
         self.assertFalse(report["productionReady"])
-        self.assertTrue(all(
-            cmd[0] in {"findmnt", "losetup", "chroot"} for cmd in self.commands
-        ))
+        self.assertTrue(all(cmd[0] in {"findmnt", "losetup", "chroot"} for cmd in self.commands))
         self.assertTrue(any(cmd[0] == "chroot" for cmd in self.commands))
 
     def fake_guard(self, config, *, run):
         self.assertEqual(config, self.live / "etc/pacman.conf")
-        response = run(["pacman-conf", "--config", str(config), "SigLevel"],
-                       capture_output=True, text=True, timeout=12, check=False)
+        response = run(
+            ["pacman-conf", "--config", str(config), "SigLevel"],
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
         self.assertEqual(response.stdout.strip(), "Required DatabaseOptional")
         self.assertEqual(
-            self.commands[-1][:4],
-            ("chroot", str(self.live), "/usr/bin/pacman-conf", "--config")
+            self.commands[-1][:4], ("chroot", str(self.live), "/usr/bin/pacman-conf", "--config")
         )
         return {"ok": True, "packageSignaturesMandatory": True}
 
@@ -137,6 +133,7 @@ class PinnedIsoRepoAuditTests(unittest.TestCase):
     def test_weak_repo_policy_rejected(self):
         def weak(_config, *, run):
             raise AUDIT._POLICY.PolicyError("repository cachyos: weak SigLevel")
+
         with (
             patch.object(AUDIT._POLICY, "assess", side_effect=weak),
             self.assertRaisesRegex(AUDIT.AuditError, "signature policy refused"),
@@ -147,9 +144,9 @@ class PinnedIsoRepoAuditTests(unittest.TestCase):
         def writable(argv, **kwargs):
             result = self.runner(argv, **kwargs)
             if argv[0] == "findmnt" and argv[3] == str(self.live):
-                return subprocess.CompletedProcess(argv, 0,
-                    "/dev/loop2 squashfs rw,nosuid\n", "")
+                return subprocess.CompletedProcess(argv, 0, "/dev/loop2 squashfs rw,nosuid\n", "")
             return result
+
         with self.assertRaisesRegex(AUDIT.AuditError, "read-only loop mount"):
             self.inspect(run=writable)
 
@@ -158,6 +155,7 @@ class PinnedIsoRepoAuditTests(unittest.TestCase):
             if argv[0] == "losetup" and argv[-1] == "/dev/loop1":
                 return subprocess.CompletedProcess(argv, 0, "/tmp/another.iso\n", "")
             return self.runner(argv, **kwargs)
+
         with self.assertRaisesRegex(AUDIT.AuditError, "loop backing"):
             self.inspect(run=attacker)
 
@@ -166,14 +164,22 @@ class PinnedIsoRepoAuditTests(unittest.TestCase):
             if argv[0] == "losetup" and argv[-1] == "/dev/loop2":
                 return subprocess.CompletedProcess(argv, 0, "/tmp/another.sfs\n", "")
             return self.runner(argv, **kwargs)
+
         with self.assertRaisesRegex(AUDIT.AuditError, "loop backing"):
             self.inspect(run=attacker)
 
     def test_no_file_write_or_network_setup_in_audit_source(self):
         text = FILE.read_text(encoding="utf-8")
-        for forbidden in ("pacstrap(", "mkfs.", "parted ", "wipefs ",
-                          "--skippgpcheck", "SigLevel = Optional TrustAll",
-                          "efibootmgr ", "subprocess.Popen"):
+        for forbidden in (
+            "pacstrap(",
+            "mkfs.",
+            "parted ",
+            "wipefs ",
+            "--skippgpcheck",
+            "SigLevel = Optional TrustAll",
+            "efibootmgr ",
+            "subprocess.Popen",
+        ):
             self.assertNotIn(forbidden, text)
 
 

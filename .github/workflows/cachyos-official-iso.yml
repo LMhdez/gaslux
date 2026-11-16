@@ -151,11 +151,16 @@ jobs:
           mounted_iso=1
           sudo mount -t squashfs -o loop,ro             "$w/mounted/arch/x86_64/airootfs.sfs" "$w/live"
           mounted_root=1
-          sudo python3 auto_tests/tools/cachyos_pinned_iso_repo_audit.py             "$w/cachyos.iso" "$w/mounted" "$w/live" "$ISO_SHA256"             "$PWD/gaslux-boot-evidence/cachyos-pinned-repository-policy.json"
+          audit_rc=0
+          sudo python3 auto_tests/tools/cachyos_pinned_iso_repo_audit.py             "$w/cachyos.iso" "$w/mounted" "$w/live" "$ISO_SHA256"             "$PWD/gaslux-boot-evidence/cachyos-pinned-repository-policy.json" || audit_rc=$?
           (
             cd gaslux-boot-evidence
             sha256sum cachyos-pinned-repository-policy.json               > cachyos-pinned-repository-policy.sha256
           )
+          if (( audit_rc )); then
+            echo "::error::Pinned CachyOS ISO pacman signature policy unsafe/unverified: pacstrap is blocked."
+            exit "$audit_rc"
+          fi
           echo 'Pinned CachyOS ISO mandatory package signatures: verified' >> "$GITHUB_STEP_SUMMARY"
       - name: Boot real CachyOS live kernel and init in disposable OVMF/QEMU
         shell: bash

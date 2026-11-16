@@ -27,3 +27,22 @@ References:
 - https://github.com/CachyOS/CachyOS-Live-ISO/blob/master/archiso/airootfs/etc/pacman.conf
 - https://man.archlinux.org/man/pacman.conf.5
 - https://github.com/LMhdez/gaslux/issues/3
+
+## Measured 260809 official ISO — 16 Nov 2026
+
+The **real ISO with pinned SHA-256**
+`959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c`
+was downloaded and verified in
+[Actions #43934974693](https://github.com/LMhdez/gaslux/actions/runs/43934974693).
+Its SquashFS `/etc/pacman.conf` was evaluated using the **actual ISO
+`pacman-conf`** and the shared trust guard:
+
+`pinned CachyOS ISO package signature policy refused: repository cachyos: weak or unknown SigLevel token`
+
+This is now a **measured finding about the exact pinned ISO** rather than
+an extrapolation from current upstream source. The test correctly blocks
+package installation. It has not attempted `pacstrap` or demonstrated
+the installed CachyOS boot. Future packaging must create and independently
+verify a strictly signed, source-validated alternate pacman configuration,
+ensure the installed target retains it, and prove real trusted package
+downloads before restarting VM-only installation trials.

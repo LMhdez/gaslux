@@ -17,8 +17,8 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 _HERE = Path(__file__).resolve().parents[2]
@@ -56,28 +56,35 @@ def command(runner: Runner, argv: list[str]) -> str:
         output = runner(argv, capture_output=True, text=True, check=False, timeout=20)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise AuditError("cannot inspect read-only source mount") from error
-    require(output.returncode == 0 and isinstance(output.stdout, str)
-            and len(output.stdout) < 16_384,
-            "read-only mount inspection failed")
+    require(
+        output.returncode == 0 and isinstance(output.stdout, str) and len(output.stdout) < 16_384,
+        "read-only mount inspection failed",
+    )
     return output.stdout.strip()
 
 
 def verify_source_mount(
     path: Path, *, filesystem: str, expected_backing: Path, run: Runner
 ) -> None:
-    require(path.is_dir() and not path.is_symlink() and path.resolve() == path,
-            "source mount must be a canonical directory")
+    require(
+        path.is_dir() and not path.is_symlink() and path.resolve() == path,
+        "source mount must be a canonical directory",
+    )
     observed = command(
         run, ["findmnt", "-rn", "-M", str(path), "-o", "SOURCE,FSTYPE,OPTIONS"]
     ).split()
-    require(len(observed) == 3 and _LOOP.fullmatch(observed[0]) is not None
-            and observed[1] == filesystem and "ro" in observed[2].split(","),
-            "source must be a read-only loop mount of the expected filesystem")
-    backing = command(run, [
-        "losetup", "--noheadings", "--output", "BACK-FILE", observed[0]
-    ])
-    require(backing == str(expected_backing),
-            "loop backing is not the original hashed ISO/Archiso image")
+    require(
+        len(observed) == 3
+        and _LOOP.fullmatch(observed[0]) is not None
+        and observed[1] == filesystem
+        and "ro" in observed[2].split(","),
+        "source must be a read-only loop mount of the expected filesystem",
+    )
+    backing = command(run, ["losetup", "--noheadings", "--output", "BACK-FILE", observed[0]])
+    require(
+        backing == str(expected_backing),
+        "loop backing is not the original hashed ISO/Archiso image",
+    )
 
 
 def audit(
@@ -89,39 +96,52 @@ def audit(
     run: Runner = subprocess.run,
 ) -> dict[str, Any]:
     """Do not allow any package installation unless this entire audit passes."""
-    require(isinstance(pinned_sha256, str) and _PIN.fullmatch(pinned_sha256) is not None,
-            "expected ISO SHA-256 pin is invalid")
-    require(iso.is_absolute() and iso.is_file() and not iso.is_symlink()
-            and iso.resolve() == iso,
-            "ISO must be an explicit canonical regular file")
+    require(
+        isinstance(pinned_sha256, str) and _PIN.fullmatch(pinned_sha256) is not None,
+        "expected ISO SHA-256 pin is invalid",
+    )
+    require(
+        iso.is_absolute() and iso.is_file() and not iso.is_symlink() and iso.resolve() == iso,
+        "ISO must be an explicit canonical regular file",
+    )
     require(digest(iso) == pinned_sha256, "official CachyOS ISO SHA-256 mismatch")
 
     verify_source_mount(iso_root, filesystem="iso9660", expected_backing=iso, run=run)
     rootfs_path = iso_root / _ROOTFS
-    require(rootfs_path.is_file() and not rootfs_path.is_symlink()
-            and rootfs_path.resolve().is_relative_to(iso_root),
-            "official ISO rootfs is missing or redirected")
-    verify_source_mount(
-        live_root, filesystem="squashfs", expected_backing=rootfs_path, run=run
+    require(
+        rootfs_path.is_file()
+        and not rootfs_path.is_symlink()
+        and rootfs_path.resolve().is_relative_to(iso_root),
+        "official ISO rootfs is missing or redirected",
     )
+    verify_source_mount(live_root, filesystem="squashfs", expected_backing=rootfs_path, run=run)
     config = live_root / "etc/pacman.conf"
-    require(config.is_file() and not config.is_symlink(),
-            "official rootfs pacman.conf is missing or redirected")
+    require(
+        config.is_file() and not config.is_symlink(),
+        "official rootfs pacman.conf is missing or redirected",
+    )
     os_release = live_root / "etc/os-release"
-    require(os_release.is_file() and not os_release.is_symlink()
-            and "ID=cachyos" in os_release.read_text(encoding="utf-8").splitlines(),
-            "official rootfs identity is not CachyOS")
+    require(
+        os_release.is_file()
+        and not os_release.is_symlink()
+        and "ID=cachyos" in os_release.read_text(encoding="utf-8").splitlines(),
+        "official rootfs identity is not CachyOS",
+    )
 
     # The shared guard is not a parser: it invokes pacman-conf. Here we
     # use the *actual binary and included mirror files* of this hashed ISO.
-    def guest_pacman_conf(
-        argv: list[str], **kwargs: Any
-    ) -> subprocess.CompletedProcess[str]:
-        require(argv[:3] == ["pacman-conf", "--config", str(config)],
-                "signature guard attempted an unexpected command")
+    def guest_pacman_conf(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        require(
+            argv[:3] == ["pacman-conf", "--config", str(config)],
+            "signature guard attempted an unexpected command",
+        )
         real = [
-            "chroot", str(live_root), "/usr/bin/pacman-conf",
-            "--config", "/etc/pacman.conf", *argv[3:]
+            "chroot",
+            str(live_root),
+            "/usr/bin/pacman-conf",
+            "--config",
+            "/etc/pacman.conf",
+            *argv[3:],
         ]
         return run(real, **kwargs)
 
@@ -160,12 +180,13 @@ def main(argv: list[str] | None = None) -> int:
     status = 1
     try:
         require(os.geteuid() == 0, "read-only chroot audit requires root in ephemeral CI")
-        require(not args.output_json.exists() and not args.output_json.is_symlink()
-                and args.output_json.parent.is_dir(),
-                "refusing to overwrite report or use an absent report directory")
-        outcome = audit(
-            args.iso, args.iso_root, args.live_root, args.pinned_sha256
+        require(
+            not args.output_json.exists()
+            and not args.output_json.is_symlink()
+            and args.output_json.parent.is_dir(),
+            "refusing to overwrite report or use an absent report directory",
         )
+        outcome = audit(args.iso, args.iso_root, args.live_root, args.pinned_sha256)
         status = 0
     except (AuditError, OSError, UnicodeError, TypeError, ValueError) as error:
         outcome = {
