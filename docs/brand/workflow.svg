@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="365" viewBox="0 0 1600 365" role="img" aria-labelledby="title desc">
+<title id="title">Gaslux intended installation workflow</title>
+<desc id="desc">Five development goals: choose, preflight, verify media, install via native backend, and prove Windows and Linux boots and rollback. This diagram is a roadmap, not a finished product claim.</desc>
+<rect width="1600" height="365" rx="24" fill="#0B1830"/>
+<text x="49" y="57" fill="#EFF9FF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="28" font-weight="750">One workflow. Verifiable stages.</text>
+<text x="1550" y="54" text-anchor="end" fill="#FFCA8A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" font-weight="650" letter-spacing="1.7">TARGET EXPERIENCE  •  NOT YET COMPLETE</text>
+<g transform="translate(48 108)">
+  <rect width="276" height="195" rx="22" fill="#12283E" stroke="#32546B" stroke-width="2"/>
+  <rect x="21" y="20" width="58" height="43" rx="14" fill="#203F55"/>
+  <text x="50" y="48" text-anchor="middle" fill="#48C7FF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="21" font-weight="800">01</text>
+  <text x="22" y="108" fill="#F1F8FC" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="750">Choose</text>
+  <text x="22" y="143" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">Distro, storage,</text>
+  <text x="22" y="170" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">account &amp; locale</text>
+ </g><path d="M329 205h15" stroke="#59BCCA" stroke-width="3" stroke-linecap="round"/><path d="M339 198l8 7-8 7" stroke="#59BCCA" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(348 108)">
+  <rect width="276" height="195" rx="22" fill="#12283E" stroke="#32546B" stroke-width="2"/>
+  <rect x="21" y="20" width="58" height="43" rx="14" fill="#203F55"/>
+  <text x="50" y="48" text-anchor="middle" fill="#48C7FF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="21" font-weight="800">02</text>
+  <text x="22" y="108" fill="#F1F8FC" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="750">Preflight</text>
+  <text x="22" y="143" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">Verify disks,</text>
+  <text x="22" y="170" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">firmware &amp; recovery</text>
+ </g><path d="M629 205h15" stroke="#59BCCA" stroke-width="3" stroke-linecap="round"/><path d="M639 198l8 7-8 7" stroke="#59BCCA" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(648 108)">
+  <rect width="276" height="195" rx="22" fill="#12283E" stroke="#32546B" stroke-width="2"/>
+  <rect x="21" y="20" width="58" height="43" rx="14" fill="#203F55"/>
+  <text x="50" y="48" text-anchor="middle" fill="#57E7C7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="21" font-weight="800">03</text>
+  <text x="22" y="108" fill="#F1F8FC" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="750">Verify media</text>
+  <text x="22" y="143" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">Signed manifest,</text>
+  <text x="22" y="170" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">ISO hash &amp; identity</text>
+ </g><path d="M929 205h15" stroke="#59BCCA" stroke-width="3" stroke-linecap="round"/><path d="M939 198l8 7-8 7" stroke="#59BCCA" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(948 108)">
+  <rect width="276" height="195" rx="22" fill="#12283E" stroke="#32546B" stroke-width="2"/>
+  <rect x="21" y="20" width="58" height="43" rx="14" fill="#203F55"/>
+  <text x="50" y="48" text-anchor="middle" fill="#57E7C7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="21" font-weight="800">04</text>
+  <text x="22" y="108" fill="#F1F8FC" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="750">Install</text>
+  <text x="22" y="143" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">Native backend,</text>
+  <text x="22" y="170" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">automated boot</text>
+ </g><path d="M1229 205h15" stroke="#59BCCA" stroke-width="3" stroke-linecap="round"/><path d="M1239 198l8 7-8 7" stroke="#59BCCA" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(1248 108)">
+  <rect width="276" height="195" rx="22" fill="#12283E" stroke="#32546B" stroke-width="2"/>
+  <rect x="21" y="20" width="58" height="43" rx="14" fill="#203F55"/>
+  <text x="50" y="48" text-anchor="middle" fill="#FFB45A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="21" font-weight="800">05</text>
+  <text x="22" y="108" fill="#F1F8FC" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="750">Prove</text>
+  <text x="22" y="143" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">Linux + Windows,</text>
+  <text x="22" y="170" fill="#A9C6D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19">updates &amp; rollback</text>
+ </g>
+</svg>

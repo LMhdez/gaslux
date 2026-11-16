@@ -1,0 +1,48 @@
+{
+  "project": "Gaslux",
+  "kind": "project-branding",
+  "schemaVersion": 1,
+  "websiteTitle": "Gaslux — Linux alongside Windows, without a USB stick",
+  "tagline": "Linux alongside Windows. No USB stick. No manual Linux installer.",
+  "githubDescription": "USB-free Linux dual-boot installer for Windows 10/11, with native distro backends and a recovery-first design. In development.",
+  "githubTopics": [
+    "dual-boot",
+    "linux",
+    "windows",
+    "windows-11",
+    "windows-10",
+    "linux-installer",
+    "uefi",
+    "bios",
+    "open-source",
+    "wpf",
+    "linux-mint",
+    "zorin-os"
+  ],
+  "status": "development",
+  "assetPaths": {
+    "icon": "docs/brand/icon.svg",
+    "wordmark": "docs/brand/logo.svg",
+    "readmeHero": "docs/brand/hero.svg",
+    "socialPreviewSource": "docs/brand/hero.svg",
+    "workflow": "docs/brand/workflow.svg",
+    "distributionRoadmap": "docs/brand/distributions.svg"
+  },
+  "colors": {
+    "background": "#0B1830",
+    "cyan": "#48C7FF",
+    "mint": "#57E7C7",
+    "amber": "#FFB45A",
+    "text": "#F1F9FE"
+  },
+  "origin": {
+    "project": "Libertix",
+    "url": "https://github.com/ekimiateam/libertix",
+    "originalDevelopers": [
+      "Félix (felix068)",
+      "Ekimia"
+    ],
+    "license": "GPL-3.0"
+  },
+  "notes": "Brand metadata only, not an Open Graph manifest or JSON Schema. GitHub independently controls repository sharing title, description, topics and Social Preview in repository settings. This file does not configure or prove those settings."
+}
