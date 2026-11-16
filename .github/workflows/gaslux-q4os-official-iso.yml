@@ -6,6 +6,7 @@ on:
       - feature/q4os-native-preflight
       - feature/q4os-ovmf-verified-virtio-live
       - feature/q4os-verified-calamares-target-lab
+      - feature/q4os-native-grub-reboot-lab
     paths:
       - '.github/workflows/gaslux-q4os-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
@@ -15,6 +16,8 @@ on:
       - 'auto_tests/tests/test_q4os_calamares_policy.py'
       - 'auto_tests/tools/gaslux_q4os_installed_root_lab.sh'
       - 'auto_tests/tests/test_q4os_installed_root_lab.py'
+      - 'auto_tests/tests/test_q4os_native_grub_guest.py'
+      - 'auto_tests/tools/gaslux_q4os_native_grub_guest.sh'
       - 'auto_tests/tests/test_candidate_live_boot_transport.py'
   workflow_dispatch:
 
@@ -126,18 +129,20 @@ jobs:
           if result['installationAuthorized'] or result['windowsEspFallbackWriteAuthorized']:
               raise SystemExit('Q4OS native Calamares must remain lab-only')
           PY
-      - name: Attempt Q4OS installed-root first boot from owned disposable GPT disk
+      - name: Install Q4OS native GRUB inside owned guest and prove two installed disk boots
         shell: bash
         env:
           GASLUX_Q4OS_ALLOW_DISPOSABLE_INSTALL: yes
+          GASLUX_Q4OS_NATIVE_GRUB_LAB: yes
           Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
         run: |
           set -Eeuo pipefail
           bash -n auto_tests/tools/gaslux_q4os_installed_root_lab.sh
+          bash -n auto_tests/tools/gaslux_q4os_native_grub_guest.sh
           bash auto_tests/tools/gaslux_q4os_installed_root_lab.sh \
             "$GASLUX_Q4OS_FILE" "$Q4OS_SHA256" \
             "$RUNNER_TEMP/gaslux-q4os/evidence"
-          echo 'Only disposable guest GPT, not Windows or host storage, was formatted.'
+          echo 'Only disposable guest GPT was formatted; native GRUB installed in guest and second boot verified.'
       - name: Boot actual verified Q4OS live ISO in disposable OVMF/QEMU
         shell: bash
         env:
