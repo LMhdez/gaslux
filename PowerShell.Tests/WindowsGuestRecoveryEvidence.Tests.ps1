@@ -16,6 +16,15 @@ Describe 'Windows guest read-only evidence parser' {
     It 'rejects unknown recovery locale' {
         Test-GasluxWinReEnabled -Output 'Stato Windows RE: Attivo' | Should -BeFalse
     }
+    It 'accepts WinRE WIM on the selected Windows disk without mounting' {
+        $info = 'Windows RE location: \\?\GLOBALROOT\device\harddisk0\partition4\Recovery\WindowsRE'
+        Get-GasluxWinReImagePath -Info $info -SystemDiskNumber 0 |
+            Should -Be '\\?\GLOBALROOT\device\harddisk0\partition4\Recovery\WindowsRE\winre.wim'
+    }
+    It 'refuses WinRE image from an unrelated disk' {
+        $info = 'Windows RE location: \\?\GLOBALROOT\device\harddisk1\partition4\Recovery\WindowsRE'
+        { Get-GasluxWinReImagePath -Info $info -SystemDiskNumber 0 } | Should -Throw
+    }
     It 'contains no disk or boot mutation command' {
         $source = Get-Content -LiteralPath "$PSScriptRoot/../auto_tests/app/scripts/windows-guest-recovery-evidence.ps1" -Raw
         foreach ($name in @(

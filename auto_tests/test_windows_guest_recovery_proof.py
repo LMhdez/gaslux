@@ -68,6 +68,7 @@ def baseline():
         "windowsPartitionGuid": WIN,
         "espPartitionGuid": ESP,
         "windowsEfiSha256": "a" * 64,
+        "winreWimSha256": "c" * 64,
         "secureBootEnabled": False,
         "winreEnabled": True,
         "winreRaw": "Windows RE status: Enabled",
@@ -128,6 +129,27 @@ class WindowsRecoveryFixtureTests(unittest.TestCase):
 
     def test_windows_efi_loader_hash_changed(self):
         self.rejected(lambda a, b: b.update(windowsEfiSha256="b" * 64), message="windowsEfiSha256")
+
+    def test_winre_wim_sha_changed(self):
+        self.rejected(
+            lambda a, b: b.update(winreWimSha256="d" * 64),
+            message="winreWimSha256",
+        )
+
+    def test_recovery_status_does_not_override_raw_evidence(self):
+        self.rejected(
+            lambda a, b: b.update(winreRaw="Windows RE status: Disabled"),
+            message="winreRaw",
+        )
+
+    def test_encrypted_windows_cannot_be_cachyos_installation_source(self):
+        def enabled(a, b):
+            for doc in (a, b):
+                doc["bitlocker"]["protectionStatus"] = "On"
+                doc["bitlocker"]["volumeStatus"] = "FullyEncrypted"
+                doc["bitlocker"]["encryptionPercentage"] = 100
+
+        self.rejected(enabled, message="encrypted or protected")
 
     def test_winre_disabled(self):
         self.rejected(lambda a, b: b.update(winreEnabled=False), message="WinRE")

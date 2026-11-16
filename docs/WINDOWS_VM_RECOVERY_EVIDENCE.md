@@ -30,7 +30,7 @@ causes refusal. The EFI volume is never assigned a letter or mounted.
 
 A successful result checks the exact Windows disk identities, GPT
 offsets and lengths, original ESP/OEM/Recovery partitions, unrelated
-disks, Windows EFI loader hash, BCD, WinRE, BitLocker status and a
+disks, Windows EFI loader SHA-256, WinRE WIM SHA-256, BCD, WinRE, BitLocker and a
 second observed Windows boot. For postinstall, Linux partitions must
 fit entirely inside the byte range freed by the intended NTFS shrink.
 For rollback, **every** disk partition map must match byte-for-byte.
