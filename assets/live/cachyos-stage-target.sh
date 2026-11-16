@@ -60,8 +60,20 @@ check_identity() {
   [[ "$hash" =~ ^\$6\$[A-Za-z0-9./]{1,16}\$[A-Za-z0-9./]{40,120}$ ]] || die 'invalid SHA512-crypt password hash'
 }
 
+check_disposable_vm() {
+  [ "${GASLUX_DISPOSABLE_VM:-}" = I_ACCEPT_DISPOSABLE_VM_ONLY ] ||
+    die 'CachyOS installation is restricted to an explicitly consented disposable VM'
+  command -v systemd-detect-virt >/dev/null ||
+    die 'cannot verify the virtualization environment'
+  case "$(systemd-detect-virt --vm 2>/dev/null)" in
+    kvm|qemu) ;;
+    *) die 'refusing CachyOS target provisioning outside QEMU/KVM' ;;
+  esac
+}
+
 install_target() {
   local username="$1" hostname="$2" locale="$3" timezone="$4" secret="$5" run_id="$6" root_uuid="$7" hash
+  check_disposable_vm
   check_host
   check_target "$run_id" "$root_uuid"
   check_identity "$username" "$hostname" "$locale" "$timezone" "$secret"
