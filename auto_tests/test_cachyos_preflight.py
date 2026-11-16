@@ -75,6 +75,12 @@ class CachyosPreflightTests(unittest.TestCase):
         with self.assertRaises(preflight.PreflightError):
             preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\nIMAGE_ID=other\n'))
 
+    def test_wrong_live_image_version_rejected(self):
+        identity = ('NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\n'
+                    'IMAGE_ID=cachyos\nIMAGE_VERSION=2025.01.01\n')
+        with self.assertRaisesRegex(preflight.PreflightError, '260809'):
+            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner(identity))
+
     def test_pacman_required(self):
         with self.assertRaises(preflight.PreflightError):
             preflight.inspect_cachyos_iso_root(self.root, runner=self.runner(inventory="squashfs-root/etc/pacman.conf\n"))
