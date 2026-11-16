@@ -63,9 +63,12 @@ replacement for a production KVM validation or for dual boot.
 
 - Run unit/negative tests and XML fixture generation for **both**
   Windows 10 and Windows 11 x64 before downloading media.
-- Trigger the real **Windows 10 x64** TCG first-boot attempt on the
-  GitHub Ubuntu runner. Windows 11 x64 will require a *separate*
-  real firstboot execution; merely generating its XML is not proof.
+- Trigger **two independent** QEMU TCG installations in a GitHub Actions
+  matrix: Windows 10 x64 and Windows 11 x64, using separate official ISO
+  downloads, file-backed QCOW2 targets, OVMF variables and test-only
+  control images. Windows 11 receives a *new disposable swtpm TPM 2.0*.
+  Both need separate in-guest firstboot serial witnesses to pass.
+  The matrix is experimental; queued/running jobs are not proof.
 - QEMU TCG is much slower than KVM; a timeout or resource failure
   is a **failed test**, not a reason to fabricate evidence.
 - Passing a guest firstboot check will prove only an installed
