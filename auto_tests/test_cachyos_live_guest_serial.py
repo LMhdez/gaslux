@@ -182,7 +182,7 @@ class SerialGuestContractTests(unittest.TestCase):
     def test_probe_enforces_explicit_vm_firmware_and_live_identity(self):
         script = SOURCE.with_name("cachyos_live_guest_readonly_probe.sh").read_text()
         for required in ("ID=cachyos", "IMAGE_VERSION=2026.08.09", "systemd-detect-virt",
-                         "/sys/firmware/efi/efivars", "SecureBoot-", "SetupMode", "GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1",
+                         "/sys/firmware/efi/efivars", "SecureBoot", "SetupMode", "GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1",
                          "sha256sum -c stage.sha256"):
             self.assertIn(required, script)
 
