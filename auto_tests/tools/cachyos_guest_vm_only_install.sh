@@ -103,10 +103,14 @@ echo 'GASLUX_LAB_PACSTRAP_FINISHED=1'
 [[ -s "$TARGET/usr/share/libalpm/scripts/cachyos-branding" ]] ||
   die 'signed CachyOS branding hook not installed'
 arch-chroot "$TARGET" /usr/share/libalpm/scripts/cachyos-branding os-release
-grep -qx 'ID=cachyos' "$TARGET/etc/os-release" ||
-  die 'official CachyOS branding failed to identify installed target'
-grep -qx 'ID_LIKE=arch' "$TARGET/etc/os-release" ||
-  die 'installed CachyOS base lineage not declared'
+# Report authoritative installed metadata on rejection, never accept Arch's
+# generic identity as a substitute for the native CachyOS branding hook.
+if ! grep -qx 'ID=cachyos' "$TARGET/etc/os-release" ||
+   ! grep -qx 'ID_LIKE=arch' "$TARGET/etc/os-release"; then
+  echo 'Installed os-release identity after native CachyOS branding:' >&2
+  grep -E '^(ID|ID_LIKE|NAME|PRETTY_NAME)=' "$TARGET/etc/os-release" >&2 || true
+  die 'native CachyOS branding did not establish ID=cachyos and ID_LIKE=arch'
+fi
 arch-chroot "$TARGET" pacman -Q cachyos-hooks linux-cachyos-lts >/dev/null ||
   die 'native CachyOS branding/kernel packages not installed'
 echo 'GASLUX_LAB_OFFICIAL_BRANDING_VERIFIED=1'
