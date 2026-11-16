@@ -90,12 +90,63 @@ def _digest(path: Path) -> str:
     return h.hexdigest()
 
 
+def _command(runner: Any, argv: list[str]) -> str:
+    try:
+        response = runner(argv, capture_output=True, text=True, check=False, timeout=20)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise HandoffError("mount verification cannot execute: " + argv[0]) from error
+    _require(response.returncode == 0, "mount verification failed: " + argv[0])
+    _require(len(response.stdout) < 16_384, "excessive mount verification output")
+    return response.stdout.strip()
+
+
+def verify_live_iso_mount(
+    *,
+    iso_path: Path,
+    storage_root: Path,
+    iso_root: Path,
+    storage_fs: str,
+    storage_uuid: str,
+    runner: Any = subprocess.run,
+) -> None:
+    """Reject a mount that is not a read-only loop of the hashed source ISO."""
+    store = _command(runner, [
+        "findmnt", "-rn", "-M", str(storage_root), "-o", "SOURCE,FSTYPE"
+    ]).split()
+    _require(len(store) == 2 and store[0].startswith("/dev/"),
+             "ISO storage is not an exact block-device mountpoint")
+    observed_fs = store[1]
+    valid_fs = ("ntfs", "ntfs3", "fuseblk") if storage_fs == "ntfs" else ("ext4",)
+    _require(observed_fs in valid_fs, "unexpected ISO storage filesystem")
+    observed_uuid = _command(runner, [
+        "blkid", "-s", "UUID", "-o", "value", store[0]
+    ])
+    _require(observed_uuid.upper() == storage_uuid.upper(), "ISO storage UUID mismatch")
+
+    mounted = _command(runner, [
+        "findmnt", "-rn", "-M", str(iso_root), "-o", "SOURCE,FSTYPE,OPTIONS"
+    ]).split()
+    _require(len(mounted) == 3 and mounted[1] == "iso9660",
+             "ISO root is not an exact ISO9660 mountpoint")
+    _require("ro" in mounted[2].split(","), "ISO must be mounted read-only")
+    loop_device = mounted[0]
+    _require(re.fullmatch(r"/dev/loop[0-9]+", loop_device) is not None,
+             "mounted ISO is not backed by a loop device")
+    backing = _command(runner, [
+        "losetup", "--noheadings", "--output", "BACK-FILE", loop_device
+    ])
+    _require(backing == str(iso_path.resolve()),
+             "loop-mounted ISO is different from the hashed source file")
+
+
 def prepare(
     plan: dict[str, Any],
     *,
     storage_root: Path,
     iso_root: Path,
     runner: Any = subprocess.run,
+    require_mounted_iso: bool = False,
+    mount_runner: Any = subprocess.run,
 ) -> dict[str, object]:
     """Verify a detached ISO source and the mounted ISO tree, render only."""
     fs, uuid, relative = _validate(plan)
@@ -108,6 +159,11 @@ def prepare(
     iso_path = _regular_file(storage_root / relative.lstrip("/"), storage_root)
     _require(iso_path.stat().st_size == plan["isoSizeBytes"], "ISO file size mismatch")
     _require(_digest(iso_path) == plan["isoSha256"], "ISO SHA-256 mismatch")
+    if require_mounted_iso:
+        verify_live_iso_mount(
+            iso_path=iso_path, storage_root=storage_root, iso_root=iso_root,
+            storage_fs=fs, storage_uuid=uuid, runner=mount_runner
+        )
 
     # The caller must establish that iso_root is a read-only loop mount of the
     # *same* file; a directory fixture alone is not such evidence.
@@ -158,7 +214,7 @@ def prepare(
         "expectedHostFilesystem": fs,
         "expectedHostFilesystemUuid": uuid,
         "grubEntry": script,
-        "isoMountedFromVerifiedSource": False,
+        "isoMountedFromVerifiedSource": require_mounted_iso,
         "productionInstallSupported": False,
         "writesStorage": False,
         "writesFirmware": False,
@@ -172,11 +228,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("plan", type=Path, help="pre-verified laboratory JSON plan")
     parser.add_argument("--storage-root", type=Path, required=True)
     parser.add_argument("--iso-root", type=Path, required=True)
+    parser.add_argument("--require-mounted-iso", action="store_true",
+                        help="validate exact block-device UUID and read-only ISO loop mount")
     args = parser.parse_args(argv)
     try:
         with args.plan.open(encoding="utf-8") as file:
             plan = json.load(file)
-        result = prepare(plan, storage_root=args.storage_root, iso_root=args.iso_root)
+        result = prepare(plan, storage_root=args.storage_root, iso_root=args.iso_root,
+                         require_mounted_iso=args.require_mounted_iso)
     except (OSError, UnicodeError, ValueError, TypeError, KeyError) as error:
         print(json.dumps({"ok": False, "error": str(error)}))
         return 1
