@@ -150,12 +150,17 @@ if ! grep -Fq 'CachyOS login:' "$w/serial.log" ||
 fi
 echo 'PASS: official CachyOS LTS kernel and systemd reached real serial login in QEMU/OVMF.'
 if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
-  [[ "$guest_proven" -eq 1 ]] &&
-    tr -d '\r' < "$w/guest-console.log" |
-      grep -Fxq 'GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1' || {
-        echo 'FAIL: guarded live --check did not pass inside the QEMU guest' >&2
-        exit 1
-      }
-  echo 'PASS: guarded CachyOS live --check, pacstrap dependencies and Secure Boot guard.'
+  # The Python serial controller has already independently matched BOTH
+  # exact guest stdout lines after normalizing Archiso OSC terminal escapes.
+  # A second unnormalized grep -Fx here falsely rejects genuine output.
+  [[ "$guest_proven" -eq 1 ]] || {
+    echo 'FAIL: guarded live --check OR explicit EFI SecureBoot=0 evidence missing' >&2
+    exit 1
+  }
+  [[ -s "$w/guest-console.log" ]] || {
+    echo 'FAIL: missing actual guest serial transcript' >&2
+    exit 1
+  }
+  echo 'PASS: guarded CachyOS live --check, pacstrap dependencies and SecureBoot=0 efivar evidence.'
 fi
 echo 'NOT TESTED: installed CachyOS, Windows dual boot, or Windows recovery.'
