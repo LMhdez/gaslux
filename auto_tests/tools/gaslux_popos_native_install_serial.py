@@ -43,10 +43,29 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
     if not SHA.fullmatch(digest):
         raise GuestProbeError("native installer SHA-256 not verified")
     with connect(path) as conn:
+        # OVMF/GRUB can print prompt-shaped '#' text BEFORE Linux systemd has
+        # completed startup. Never send commands without actual kernel proof.
+        wait_for(
+            conn,
+            transcript,
+            re.compile(rb"Linux version|systemd\\[1\\]"),
+            timeout_seconds=180,
+        )
         wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=240)
-        ready_start = len(transcript)
-        conn.sendall(b"printf 'GASLUX_POP_LIVE_SHELL_READY\\n'\r")
-        wait_for(conn, transcript, READY, timeout_seconds=20, start=ready_start)
+        # Serial debug shells may temporarily lose characters during the noisy
+        # live startup. Repeat a nonce-like challenge, never trust a prompt.
+        for attempt in range(10):
+            ready_start = len(transcript)
+            conn.sendall(b"printf 'GASLUX_POP_LIVE_SHELL_READY\\n'\r")
+            try:
+                wait_for(
+                    conn, transcript, READY, timeout_seconds=25, start=ready_start
+                )
+            except GuestProbeError as error:
+                if "timed out" not in str(error) or attempt == 9:
+                    raise
+                continue
+            break
         command = (
             "mkdir -p /run/gaslux-pop-lab && "
             "mount -t vfat -o ro /dev/disk/by-label/GASLUXLAB "
