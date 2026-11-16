@@ -100,3 +100,21 @@ foreign ESP and Windows writes, authenticate the handoff, implement the
 System76 EFI/BIOS boot strategy, and test recovery in disposable Windows VMs.
 
 Source: https://github.com/pop-os/distinst/blob/master/cli/src/main.rs
+
+## System76 shared-ESP preservation — unexecutable lab plan preview
+
+The upstream distinst `--use DISK:INDEX:fat32:mount=/boot/efi` option
+requests **formatting** of that partition. Its `--use DISK:INDEX:reuse:
+mount=/boot/efi` variant does **not** request formatting in the current
+System76 `cli/src/configure/reuse.rs` implementation. Passing `fat32` for
+the Windows ESP would be unsafe.
+
+The new VM-only `gaslux_popos_distinst_preview.py` rejects unknown devices,
+wrong firmware/layout, absent root ownership and any new installation
+operation. It generates an inert argv preview with `reuse` for the preserved
+ESP and `ext4` only for the transaction-owned root. **No command is executed**.
+Syntactic proof fields are not a trustworthy Windows disk/BCD/WinRE snapshot:
+production installation still requires independent device/geometry and
+Windows boot proof, plus a dedicated VM transaction and rollback test.
+
+Source: https://github.com/pop-os/distinst/blob/master/cli/src/configure/reuse.rs
