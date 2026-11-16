@@ -70,3 +70,41 @@ def test_refuse_symlinked_evidence_location_before_mount(tmp_path):
     )
     assert result.returncode != 0
     assert "Evidence directory must exist and not be a symlink" in result.stderr
+
+
+def test_q4os_native_process_hook_sources_are_pinned_inert_evidence():
+    source = SCRIPT.read_text(encoding="utf-8")
+    for name in (
+        "usr/lib/calamares/modules/q4oshook2/module.desc",
+        "usr/lib/calamares/modules/q4oshook3/module.desc",
+        "usr/lib/calamares/modules/q4oshook5/module.desc",
+        "usr/sbin/q4os-hook2a.sh",
+        "usr/sbin/q4os-hook3a.sh",
+        "usr/sbin/q4os-hook3b.sh",
+        "usr/sbin/q4oshook1.sh",
+        "usr/sbin/q4oshook4.sh",
+        "usr/share/apps/q4os_system/bhooks/bhook1_50_live1.sh",
+    ):
+        assert name in source
+    assert 'unsquashfs -ll "$squash" "$file"' in source
+    assert 'unsquashfs -cat "$squash" "$file"' in source
+    assert "q4os-hooks-files.sha256" in source
+    assert "Q4OS_HOOK_EXECUTION_AUTHORIZED=false" in source
+    assert 'bash "$dest"' not in source
+    assert 'sh "$dest"' not in source
+    assert "chroot " not in source
+    assert "grub-install" not in source
+    assert "mkfs." not in source
+
+
+def test_corrupted_iso_fails_before_reading_any_native_hooks(tmp_path):
+    fake = tmp_path / "q4os.iso"
+    fake.write_bytes(b"corrupted")
+    result = subprocess.run(
+        ["bash", str(SCRIPT), str(fake), "0" * 64, str(tmp_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Full official ISO SHA-256 mismatch" in result.stderr
