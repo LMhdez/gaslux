@@ -74,3 +74,24 @@ Official Q4OS sources:
 - https://q4os.org/blog.html
 - https://q4os.org/dqa007.html
 - https://www.q4os.org/forum/viewtopic.php?pid=35537
+
+## Calamares source-of-truth inventory (experimental branch)
+
+The follow-on disposable CI workstream enumerates `etc/calamares` and
+`usr/share/calamares` from the **same exact ISO-mounted SquashFS** whose
+Q4OS 6.10 r2 full ISO SHA-256 is checked again before inspection. It
+records the actual settings path, ordered Calamares `show` / `exec`
+modules, `dont-chroot`, candidate Q4OS version evidence and per-file
+SHA-256s. The evidence is archived for human review.
+
+This step **does not execute Calamares, provision a target partition, launch
+an unattended installer or authorize any disk writes**. It deliberately
+reports `installationAuthorized: false` in every possible result. A
+Calamares executable and configuration are not sufficient to assert an
+unattended installer exists. Only after confirming these exact official
+modules and their expected target/boot behavior can an isolated virtual
+target-disk experiment be constructed.
+
+The GitHub Actions run link and observed settings/module values must be
+added after the corresponding run finishes; this document does not
+anticipate their results.
