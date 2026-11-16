@@ -29,6 +29,22 @@ jobs:
             [ref]$null, [ref]$errors
           ) | Out-Null
           if (@($errors).Count -gt 0) { throw ($errors | Out-String) }
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'Scripts/libertix-cachyos-windows-evidence.ps1'),
+            [ref]$null, [ref]$errors
+          ) | Out-Null
+          if (@($errors).Count -gt 0) { throw ($errors | Out-String) }
+      - name: Reject missing baseline without inspecting disks
+        shell: powershell
+        run: |
+          $runner = Join-Path (Get-Location) 'Scripts/libertix-cachyos-windows-evidence.ps1'
+          $stdout = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner -Mode Compare -RunId 'cachyos-windows-lab-123' -EspRoot 'S:\')
+          if ($LASTEXITCODE -eq 0) { throw 'Compare accepted missing recovery baseline' }
+          $result = $stdout -join [Environment]::NewLine | ConvertFrom-Json
+          if ($result.ok -ne $false -or $result.physicalInstallerReady -ne $false) {
+            throw 'Fail-closed Windows recovery CLI contract violated'
+          }
       - name: Execute Windows PowerShell 5.1 fixture tests
         shell: powershell
         run: |
