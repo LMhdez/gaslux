@@ -115,6 +115,16 @@ def validate(doc: Any, phase: str) -> None:
     )
     require(type(doc["secureBootEnabled"]) is bool, "Secure Boot status is unknown")
     require(doc["winreEnabled"] is True, "WinRE must be enabled and observable")
+    require(
+        isinstance(doc["winreRaw"], str)
+        and re.search(
+            r"(?im)(Windows\s+RE\s+status|Estado\s+(?:do|de)\s+Windows\s+RE)"
+            r"\s*:\s*(Enabled|Ativado|Activado)\b",
+            doc["winreRaw"],
+        )
+        is not None,
+        "Windows WinRE raw status is not enabled",
+    )
     for k, needle in (
         ("winreRaw", None),
         ("bcdCurrentRaw", "winload.efi"),
