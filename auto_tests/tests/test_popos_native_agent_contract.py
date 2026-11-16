@@ -23,8 +23,7 @@ def test_native_installer_is_read_not_executed_or_installed():
 def test_provenance_requires_the_same_iso_identity_as_live_os():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert 'selected_squash="$squash"' in workflow
-    assert "grep -Eq '^ID=\"?pop\"?
-" in workflow
-    assert "grep -Eq '^VERSION_ID=\"?24.04\"?
-" in workflow
-    assert "printf 'isoSha256=%s\\n'" in workflow
+    assert 'unsquashfs -cat "$squash" etc/os-release' in workflow
+    assert 'unsquashfs -cat "$selected_squash" usr/bin/distinst' in workflow
+    assert "isoSha256=%s" in workflow
+    assert "GASLUX_POP_ISO_SHA256" in workflow
