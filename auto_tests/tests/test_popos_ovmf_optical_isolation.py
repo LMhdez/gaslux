@@ -14,8 +14,8 @@ def test_iso_is_emulated_as_read_only_optical_and_never_host_block_device():
     assert "-device usb-storage,drive=officialiso" in source
     assert '  -cdrom "$iso"' not in source
     assert '  -device virtio-blk-pci,drive=labefi,bootindex=1' in source
-    assert '  -net none' in source
-    assert '  -no-reboot' in source
+    assert ' -net none' in source
+    assert ' -no-reboot' in source
 
 
 def test_kernel_lookup_fails_closed_and_guest_login_is_required():
