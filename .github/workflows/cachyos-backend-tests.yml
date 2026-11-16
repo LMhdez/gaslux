@@ -83,3 +83,23 @@ jobs:
       - name: GRUB loopback-boot synthetic CachyOS ISO payload
         shell: bash
         run: bash auto_tests/tools/cachyos_archiso_loopback_smoke.sh
+
+  archiso-ntfs-loopback:
+    name: Synthetic Archiso ISO loopback from NTFS on OVMF/GRUB
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install QEMU, GRUB and NTFS/SquashFS tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ovmf qemu-system-x86 grub-efi-amd64-bin mtools dosfstools \
+            xorriso squashfs-tools ntfs-3g
+      - name: Test CachyOS ISO loopback on virtual NTFS disk
+        shell: bash
+        run: bash auto_tests/tools/cachyos_archiso_ntfs_loopback_smoke.sh
