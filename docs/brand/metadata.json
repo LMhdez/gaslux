@@ -1,11 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "project": "Gaslux",
   "kind": "project-branding",
   "schemaVersion": 1,
   "websiteTitle": "Gaslux — Linux alongside Windows, without a USB stick",
   "tagline": "Linux alongside Windows. No USB stick. No manual Linux installer.",
-  "githubDescription": "Windows-first, USB-free native Linux dual-boot installer. Built on Libertix; expanding to independently verified distribution backends.",
+  "githubDescription": "USB-free Linux dual-boot installer for Windows 10/11, with native distro backends and a recovery-first design. In development.",
   "githubTopics": [
     "dual-boot",
     "linux",
@@ -45,5 +44,5 @@
     ],
     "license": "GPL-3.0"
   },
-  "notes": "Documentation/design metadata only. GitHub repository About, topics and Social Preview settings are not automatically changed by this file. Status is a project-level description, not installer certification."
+  "notes": "Brand metadata only, not an Open Graph manifest or JSON Schema. GitHub independently controls repository sharing title, description, topics and Social Preview in repository settings. This file does not configure or prove those settings."
 }
