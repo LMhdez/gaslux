@@ -5,9 +5,11 @@ on:
     branches:
       - feature/q4os-native-preflight
       - feature/q4os-ovmf-verified-virtio-live
+      - feature/q4os-verified-calamares-target-lab
     paths:
       - '.github/workflows/gaslux-q4os-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
+      - 'auto_tests/tools/gaslux_q4os_calamares_probe.sh'
       - 'auto_tests/tests/test_candidate_live_boot_transport.py'
   workflow_dispatch:
 
@@ -87,6 +89,17 @@ jobs:
           (cd "$w/evidence" && sha256sum *.txt > manifest.sha256)
           echo "PASS: verified official Q4OS ISO, real squashfs and live Debian 13 identity."
           echo "NOT TESTED: Q4OS installed root, Windows 10/11 dual boot or recovery."
+      - name: Extract effective Q4OS Calamares settings from the same pinned ISO (read-only)
+        shell: bash
+        env:
+          Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_q4os_calamares_probe.sh
+          bash auto_tests/tools/gaslux_q4os_calamares_probe.sh \
+            "$GASLUX_Q4OS_FILE" "$Q4OS_SHA256" \
+            "$RUNNER_TEMP/gaslux-q4os/evidence"
+          echo 'Read-only effective Calamares configurations saved for independent audit.'
       - name: Boot actual verified Q4OS live ISO in disposable OVMF/QEMU
         shell: bash
         env:
