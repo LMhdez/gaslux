@@ -95,3 +95,31 @@ target-disk experiment be constructed.
 The GitHub Actions run link and observed settings/module values must be
 added after the corresponding run finishes; this document does not
 anticipate their results.
+
+## Recorded native Calamares contract from the official Q4OS 6.10 r2 ISO
+
+The [real ISO evidence run #43956145614](https://github.com/LMhdez/gaslux/actions/runs/43956145614)
+establishes these byte-for-byte configuration facts:
+
+- `/etc/q4os_version`: `6.10-deb13u1`.
+- `/etc/calamares/settings.conf`: `dont-chroot: false`; native
+  `partition`, `mount`, `unpackfs`, `users`, Q4OS-specific hooks,
+  `grubcfg`, `bootloader` and initramfs stages.
+- `/etc/calamares/modules/unpackfs.conf` selects
+  `/run/live/medium/live/filesystem.squashfs` as its installed-system
+  source. Unlike CachyOS, unpacking the live filesystem is the normal
+  upstream Calamares native installation stage here.
+- `/etc/calamares/modules/bootloader.conf` specifies
+  `efiBootLoader: "grub"` and **`installEFIFallback: true`**.
+
+That default **must not** be executed against an existing Windows ESP:
+Calamares may update `EFI/BOOT/BOOTX64.EFI`, and Gaslux has not proven
+ownership or rollback of that path. The future Windows backend must either
+disable fallback writes through a verified owned configuration or reject the
+installation. Disabling fallback alone is *not* enough: the preflight must
+also prove target partition ownership, bootloader ID isolation, Windows
+Boot Manager preservation and BCD/WinRE/EFI recovery.
+
+The current branch remains read-only and `installationAuthorized: false`.
+No Calamares unattended run, disposable native target installation,
+first installed Linux boot, Windows dual boot or rollback is yet proven.
