@@ -14,9 +14,9 @@ GUEST = ROOT / "gaslux_q4os_native_grub_guest.sh"
 
 def test_native_grub_installation_is_guest_owned_and_never_changes_nvram():
     script = GUEST.read_text(encoding="utf-8")
-    assert '[[ -d /sys/firmware/efi ]]' in script
-    assert 'GASLUX-Q4OS-ROOT' in script
-    assert 'GASLUX-Q4OS-ESP' in script
+    assert "[[ -d /sys/firmware/efi ]]" in script
+    assert "GASLUX-Q4OS-ROOT" in script
+    assert "GASLUX-Q4OS-ESP" in script
     assert '[[ "$root_device" == /dev/vda2 && "$esp_device" == /dev/vda1 ]]' in script
     assert "windows-efi-tree-not-allowed" in script
     assert "windows-loader-not-allowed" in script
@@ -69,7 +69,7 @@ def test_host_uses_exactly_its_temporary_gpt_and_two_vm_reboots():
     assert "No second installed Q4OS boot proof from package-owned GRUB" in script
     assert "-net none" in script
     assert "-cdrom" not in script
-    assert "file=\"$disk\"" in script
+    assert 'file="$disk"' in script
 
 
 def test_native_mode_requires_disposable_ci_even_when_source_is_present(tmp_path):
