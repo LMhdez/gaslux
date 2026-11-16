@@ -14,11 +14,11 @@ echo 'GASLUX_VM_INSTALL_BEGIN'
 }
 # This control medium is generated from the workflow checkout, not network.
 # shellcheck source=/dev/null
-source /mnt/lab.env
+source /run/gaslux-control/lab.env
 [[ "$RUN_ID" =~ ^gaslux-vm-[a-f0-9]{16}$ ]] || exit 13
 [[ "$ROOT_UUID" =~ ^[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}$ ]] || exit 14
 [[ "$STAGE_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 15
-printf '%s  /mnt/stage.sh\n' "$STAGE_SHA256" | sha256sum --check --status || {
+printf '%s  /run/gaslux-control/stage.sh\n' "$STAGE_SHA256" | sha256sum --check --status || {
   echo 'Stage script hash differs from pinned lab content'; exit 16;
 }
 [[ -b /dev/vdb1 && -b /dev/vdc ]] || exit 17
@@ -29,7 +29,7 @@ export GASLUX_DISPOSABLE_VM=I_ACCEPT_DISPOSABLE_VM_ONLY
 mkdir -p /mnt/target
 mount -t ext4 -o rw /dev/vdb1 /mnt/target
 # Reuse production-safe experimental ownership and Secure Boot preflight.
-bash /mnt/stage.sh --validate-target "$RUN_ID" "$ROOT_UUID"
+bash /run/gaslux-control/stage.sh --validate-target "$RUN_ID" "$ROOT_UUID"
 echo 'GASLUX_VM_TARGET_ISOLATED'
 if command -v nm-online >/dev/null; then
   nm-online -q --timeout=90 || echo 'WARN: network-online check timed out'
