@@ -97,7 +97,8 @@ def connect_serial(path: Path, *, timeout_seconds: float = 40) -> socket.socket:
     raise ProbeError("QEMU guest serial socket was not created")
 
 
-def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,\n          require_signed_entry: bool = False) -> None:
+def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,
+          require_signed_entry: bool = False) -> None:
     # A ttyS0 login is produced only by executing CachyOS's live kernel/init.
     wait_for(sock, trace, (LOGIN,), timeout_seconds=boot_timeout, failure=None)
     sock.sendall(b"root\r")
@@ -153,7 +154,8 @@ def main(argv: list[str] | None = None) -> int:
     transcript = bytearray()
     try:
         with connect_serial(args.socket) as sock:
-            probe(sock, transcript, boot_timeout=args.boot_timeout,\n                  require_signed_entry=args.require_signed_entry)
+            probe(sock, transcript, boot_timeout=args.boot_timeout,
+                  require_signed_entry=args.require_signed_entry)
     except (ProbeError, OSError, UnicodeError) as error:
         print(f"GASLUX_GUEST_PROBE_FAILED: {error}", file=sys.stderr)
         returncode = 1
