@@ -98,11 +98,7 @@ def verify_iso_mount_binding(iso: Path, squashfs: Path, mount_root: Path) -> Non
         timeout=15,
     )
     parts = result.stdout.strip().split()
-    if (
-        len(parts) != 2
-        or parts[1] != "iso9660"
-        or not re.fullmatch(r"/dev/loop[0-9]+", parts[0])
-    ):
+    if len(parts) != 2 or parts[1] != "iso9660" or not re.fullmatch(r"/dev/loop[0-9]+", parts[0]):
         raise ValueError("Expected a dedicated loop-backed ISO9660 mount")
     result = subprocess.run(
         ["losetup", "-n", "-O", "BACK-FILE", parts[0]],
