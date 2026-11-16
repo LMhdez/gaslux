@@ -54,7 +54,7 @@ namespace Libertix.Installation
             }
 
             foreach (DistroInfoJson distribution in catalog.Distributions)
-                ValidateDistribution(distribution);
+                ValidateDistribution(distribution, catalog.SchemaVersion);
             var artifacts = CatalogFiles.GetAll(catalog);
             // Missing distribution ISOs are downloaded only if selected.
             var optionalFileNames = new HashSet<string>(
@@ -179,7 +179,7 @@ namespace Libertix.Installation
         private static void ValidateCatalog(DistributionCatalogJson catalog)
         {
             if (catalog == null ||
-                catalog.SchemaVersion != 1 ||
+                (catalog.SchemaVersion != 1 && catalog.SchemaVersion != 2) ||
                 catalog.Artifacts?.MiniIso == null ||
                 catalog.Artifacts.Support == null ||
                 catalog.Distributions == null ||
@@ -215,12 +215,19 @@ namespace Libertix.Installation
 
             foreach (DistroInfoJson source in catalog.Distributions)
             {
-                ValidateDistribution(source);
+                ValidateDistribution(source, catalog.SchemaVersion);
                 if (!seenIds.Add(source.Id))
                 {
                     throw new InvalidOperationException(
                         "Distribution manifest contains a duplicate id.");
                 }
+
+                // Signed experimental records can be analysed but never shown in
+                // the production selection wizard or passed to the legacy backend.
+                if (catalog.SchemaVersion == 2 &&
+                    !DistributionCapabilityPolicy.IsReleased(
+                        source.Id, source.OsReleaseId, source.Capabilities))
+                    continue;
 
                 distributions.Add(new DistroInfo
                 {
@@ -248,21 +255,26 @@ namespace Libertix.Installation
                 });
             }
 
+            if (distributions.Count == 0)
+                throw new InvalidOperationException(
+                    "No released installation backend is available in this signed catalog.");
             return distributions;
         }
 
-        private static void ValidateDistribution(DistroInfoJson distribution)
+        private static void ValidateDistribution(DistroInfoJson distribution, int catalogVersion)
         {
-            // Schema v1 has no authenticated backend capability field.
-            // Never dispatch an arbitrary signed catalogue entry into the
-            // existing Debian/Ubuntu extractor.
             if (distribution == null ||
-                !DistributionBackendPolicy.CanUseLegacyDebianBackend(
-                    distribution.Id, distribution.OsReleaseId))
+                (catalogVersion == 1 &&
+                    (distribution.Capabilities != null ||
+                     !DistributionBackendPolicy.CanUseLegacyDebianBackend(
+                         distribution.Id, distribution.OsReleaseId))))
             {
                 throw new InvalidOperationException(
                     "This distribution has no authorized installation backend.");
             }
+            if (catalogVersion == 2)
+                DistributionCapabilityPolicy.Validate(
+                    distribution.Id, distribution.OsReleaseId, distribution.Capabilities);
 
             if (!Regex.IsMatch(
                     distribution.Id ?? string.Empty,

@@ -66,6 +66,45 @@ namespace Libertix.Models
         public List<DistroInfoJson> Distributions { get; set; }
     }
 
+    public sealed class DistributionBootloaderCapabilityJson
+    {
+        [JsonPropertyName("bios")]
+        public string Bios { get; set; }
+
+        [JsonPropertyName("uefi")]
+        public string Uefi { get; set; }
+    }
+
+    public sealed class DistributionCapabilityJson
+    {
+        [JsonPropertyName("version")]
+        public int Version { get; set; }
+
+        [JsonPropertyName("backend")]
+        public string Backend { get; set; }
+
+        [JsonPropertyName("source")]
+        public string Source { get; set; }
+
+        [JsonPropertyName("firmwareLayouts")]
+        public List<string> FirmwareLayouts { get; set; }
+
+        [JsonPropertyName("secureBoot")]
+        public string SecureBoot { get; set; }
+
+        [JsonPropertyName("bootloader")]
+        public DistributionBootloaderCapabilityJson Bootloader { get; set; }
+
+        [JsonPropertyName("status")]
+        public string Status { get; set; }
+
+        [JsonPropertyName("minimumRamMiB")]
+        public int MinimumRamMiB { get; set; }
+
+        [JsonPropertyName("minimumDiskGiB")]
+        public int MinimumDiskGiB { get; set; }
+    }
+
     public class DistroInfoJson
     {
         [JsonPropertyName("id")]
@@ -106,5 +145,9 @@ namespace Libertix.Models
 
         [JsonPropertyName("sizeInGB")]
         public double SizeInGB { get; set; }
+
+        // Signed only as part of a schemaVersion 2 catalogue.
+        [JsonPropertyName("capabilities")]
+        public DistributionCapabilityJson Capabilities { get; set; }
     }
 }
