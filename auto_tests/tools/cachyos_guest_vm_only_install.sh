@@ -98,12 +98,12 @@ packages=(base linux-cachyos-lts mkinitcpio grub efibootmgr
 graphical=0
 if [[ "${GASLUX_LAB_GRAPHICAL:-0}" == 1 ]]; then
   graphical=1
-  # Complete native KDE Plasma X11 desktop and SDDM, not the Archiso rootfs.
-  # Official CachyOS documentation requires separate X11, KWin and Xorg
-  # packages for a functional Plasma X11 session.
-  packages+=(plasma-meta plasma-x11-session kwin-x11 xorg-server sddm
-            mesa xf86-video-vesa ttf-dejavu dolphin konsole plasma-nm
-            networkmanager)
+  # Plasma >= 6.8 removed the X11 session in Oct 2026. The pinned ISO
+  # reads current signed repositories; DO NOT request retired X11 packages.
+  # Use the native Wayland desktop and a simulated virtio DRM device only.
+  packages+=(plasma-meta plasma-workspace kwin sddm
+            mesa vulkan-swrast qt6-wayland ttf-dejavu dolphin konsole
+            plasma-nm networkmanager)
 fi
 pacstrap -K "$TARGET" "${packages[@]}"
 echo 'GASLUX_LAB_PACSTRAP_FINISHED=1'
@@ -204,22 +204,29 @@ WantedBy=multi-user.target
 UNIT
 arch-chroot "$TARGET" systemctl enable gaslux-ci-firstboot.service
 if [[ "$graphical" == 1 ]]; then
-  [[ -s "$TARGET/usr/share/xsessions/plasmax11.desktop" ]] ||
-    die 'official Plasma X11 desktop session absent'
-  arch-chroot "$TARGET" pacman -Q plasma-meta plasma-x11-session \
-    kwin-x11 xorg-server sddm >/dev/null ||
+  [[ -s "$TARGET/usr/share/wayland-sessions/plasma.desktop" ]] ||
+    die 'official Plasma Wayland desktop session absent'
+  arch-chroot "$TARGET" pacman -Q plasma-meta plasma-workspace \
+    kwin sddm >/dev/null ||
     die 'native signed Plasma/SDDM packages missing'
   mkdir -p "$TARGET/etc/sddm.conf.d"
   cat > "$TARGET/etc/sddm.conf.d/95-gaslux-qemu-only.conf" <<'SDDM'
 # CI ONLY: auto login an isolated throwaway account. NEVER production.
 [General]
-DisplayServer=x11
+DisplayServer=wayland
 
 [Autologin]
 User=gasluxtest
-Session=plasmax11.desktop
+Session=plasma.desktop
 Relogin=false
 SDDM
+  # KWin/Wayland is also the disposable SDDM greeter compositor; no need
+  # for unsupported external X11 session packages or a production login.
+  cat >> "$TARGET/etc/sddm.conf.d/95-gaslux-qemu-only.conf" <<'SDDM_WAYLAND'
+
+[Wayland]
+CompositorCommand=kwin_wayland --drm --no-lockscreen --no-global-shortcuts
+SDDM_WAYLAND
   # No remote credentials or host/user password are created. This autologin
   # is allowed ONLY on the disposable QEMU guest, not in Gaslux production.
   arch-chroot "$TARGET" systemctl enable sddm.service
@@ -232,14 +239,14 @@ case "$(systemd-detect-virt --vm)" in qemu|kvm) ;; *) fail 'not QEMU' ;; esac
 grep -qx 'ID=cachyos' /etc/os-release || fail 'wrong installed distribution'
 [[ "$(cat /.libertix-stage-owner)" == lab-real-iso-signed-20261116 ]] ||
   fail 'wrong installed owner'
-[[ -s /usr/share/xsessions/plasmax11.desktop ]] || fail 'Plasma X11 session missing'
-pacman -Q plasma-meta plasma-x11-session kwin-x11 xorg-server sddm >/dev/null ||
+[[ -s /usr/share/wayland-sessions/plasma.desktop ]] || fail 'Plasma Wayland session missing'
+pacman -Q plasma-meta plasma-workspace kwin sddm >/dev/null ||
   fail 'Plasma package DB incomplete'
 for _ in $(seq 1 100); do
   if systemctl is-active --quiet sddm.service &&
      pgrep -u gasluxtest -x plasmashell >/dev/null &&
-     pgrep -u gasluxtest -x kwin_x11 >/dev/null; then
-    printf 'GASLUX_VM_CACHYOS_PLASMA_X11_SESSION_PASS=1\n' >/dev/ttyS0
+     pgrep -u gasluxtest -x kwin_wayland >/dev/null; then
+    printf 'GASLUX_VM_CACHYOS_PLASMA_WAYLAND_SESSION_PASS=1\n' >/dev/ttyS0
     exit 0
   fi
   sleep 4
@@ -249,7 +256,7 @@ AUDIT
   chmod 0755 "$TARGET/usr/local/sbin/gaslux-ci-plasma-audit"
   cat > "$TARGET/etc/systemd/system/gaslux-ci-plasma-audit.service" <<'UNIT'
 [Unit]
-Description=Gaslux VM-only real native Plasma X11 session audit
+Description=Gaslux VM-only real native Plasma Wayland session audit
 After=gaslux-ci-firstboot.service sddm.service
 Wants=sddm.service
 
