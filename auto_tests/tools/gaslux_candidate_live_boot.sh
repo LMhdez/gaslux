@@ -44,28 +44,31 @@ mounted=1
 mount_type="$(findmnt -rn -M "$work/iso-root" -o FSTYPE)"
 [[ "$mount_type" == iso9660 ]] || die 'Guest source is not an ISO9660 mount'
 
-if [[ "$distro" == popos ]]; then
-  boot='boot=casper'
-  prefix=casper
-  pairs=('casper/vmlinuz:casper/initrd' 'casper/vmlinuz:casper/initrd.gz')
-else
-  boot='boot=live components'
-  prefix=live
-  pairs=('live/vmlinuz:live/initrd.img' 'live/vmlinuz:live/initrd')
-fi
-
 kernel=''
 initrd=''
-for candidate in "${pairs[@]}"; do
-  k="${candidate%%:*}"
-  i="${candidate#*:}"
-  if [[ -f "$work/iso-root/$k" && ! -L "$work/iso-root/$k" &&
-        -f "$work/iso-root/$i" && ! -L "$work/iso-root/$i" ]]; then
-    if [[ -n "$kernel" ]]; then die 'Multiple kernel/initramfs candidates'; fi
-    kernel="$k"
-    initrd="$i"
-  fi
-done
+if [[ "$distro" == popos ]]; then
+  # Official signed Pop!_OS 24.04 media has a per-build casper directory.
+  mapfile -t roots < <(find "$work/iso-root" -mindepth 1 -maxdepth 1 -type d \
+    -name 'casper_pop-os_24.04_amd64_intel_*' -printf '%f\n' | sort)
+  [[ ${#roots[@]} -eq 1 ]] || die 'Pop ISO has missing or ambiguous live-root directories'
+  prefix="${roots[0]}"
+  [[ "$prefix" =~ ^casper_pop-os_24[.]04_amd64_intel_[A-Za-z0-9_.-]+$ ]] ||
+    die 'Unexpected System76 casper directory name'
+  kernel="$prefix/vmlinuz.efi"
+  initrd="$prefix/initrd.gz"
+  boot="boot=casper live-media-path=/$prefix"
+else
+  # Debian/Q4OS native live media uses release-versioned vmlinuz/initrd pairs.
+  mapfile -t kernels < <(find "$work/iso-root/live" -mindepth 1 -maxdepth 1 \
+    -type f -name 'vmlinuz-*' -printf '%f\n' | sort)
+  [[ ${#kernels[@]} -eq 1 ]] || die 'Q4OS ISO has missing or ambiguous kernel versions'
+  suffix="${kernels[0]#vmlinuz}"
+  [[ "$suffix" =~ ^-[0-9a-zA-Z.+_-]+$ ]] || die 'Unsafe Q4OS kernel version'
+  kernel="live/${kernels[0]}"
+  initrd="live/initrd.img$suffix"
+  boot='boot=live components'
+fi
+
 if [[ -z "$kernel" || -z "$initrd" ]]; then
   echo "Found ISO boot files:" >&2
   find "$work/iso-root" -maxdepth 6 -type f \
@@ -73,7 +76,7 @@ if [[ -z "$kernel" || -z "$initrd" ]]; then
     2>/dev/null | sed "s|$work/iso-root/||" | head -80 >&2 || true
   die 'Verified ISO boot kernel/initramfs pair not recognized'
 fi
-[[ "$kernel" =~ ^[A-Za-z0-9._/-]+$ && "$initrd" =~ ^[A-Za-z0-9._/-]+$ ]] ||
+[[ "$kernel" =~ ^[A-Za-z0-9._/+\-]+$ && "$initrd" =~ ^[A-Za-z0-9._/+\-]+$ ]] ||
   die 'Unsafe kernel/initramfs path'
 [[ -s "$work/iso-root/$kernel" && -s "$work/iso-root/$initrd" ]] ||
   die 'Kernel/initramfs is empty'
