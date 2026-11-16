@@ -161,14 +161,21 @@ timeout --kill-after=5s 720s qemu-system-x86_64 \
 guest="$!"
 guest_verified=0
 frame_count=0
+max_ticks=90
+capture_every=18
+# KVM guests boot faster than TCG; collect comparable GUI evidence sooner.
+if [[ "$qemu_accel" == kvm ]]; then
+  max_ticks=42
+  capture_every=7
+fi
 # Record VNC frames for human inspection; no GUI actions or installer commands.
-for tick in $(seq 1 90); do
+for tick in $(seq 1 "$max_ticks"); do
   sleep 5
   if [[ -s "$work/serial.log" ]] &&
      grep -Eiq 'Linux version|Freeing unused kernel|systemd' "$work/serial.log"; then
     guest_verified=1
   fi
-  if (( tick % 18 == 0 )); then
+  if (( tick % capture_every == 0 )); then
     if timeout 20s vncdo -s 127.0.0.1:1 capture "$work/vnc-$tick.png"; then
       [[ -s "$work/vnc-$tick.png" ]] && frame_count=$((frame_count + 1))
     fi
