@@ -68,8 +68,9 @@ for candidate in "${pairs[@]}"; do
 done
 if [[ -z "$kernel" || -z "$initrd" ]]; then
   echo "Found ISO boot files:" >&2
-  find "$work/iso-root/$prefix" -maxdepth 2 -type f 2>/dev/null |
-    sed "s|$work/iso-root/||" | head -50 >&2 || true
+  find "$work/iso-root" -maxdepth 6 -type f \
+    \( -iname '*vmlinuz*' -o -iname '*initrd*' -o -iname '*kernel*' -o -iname '*linux*' -o -iname '*.squashfs' \) \
+    2>/dev/null | sed "s|$work/iso-root/||" | head -80 >&2 || true
   die 'Verified ISO boot kernel/initramfs pair not recognized'
 fi
 [[ "$kernel" =~ ^[A-Za-z0-9._/-]+$ && "$initrd" =~ ^[A-Za-z0-9._/-]+$ ]] ||
