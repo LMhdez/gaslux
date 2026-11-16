@@ -1,4 +1,4 @@
-name: Q4OS 6.10 official ISO integrity and native live inspect (lab only)
+name: Q4OS 6.10 official ISO and disposable native GRUB test (lab only)
 
 on:
   push:
@@ -25,7 +25,7 @@ permissions:
   contents: read
 
 jobs:
-  q4os-native-iso-readonly:
+  q4os-native-installed-grub-lab:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -129,6 +129,30 @@ jobs:
           if result['installationAuthorized'] or result['windowsEspFallbackWriteAuthorized']:
               raise SystemExit('Q4OS native Calamares must remain lab-only')
           PY
+      - name: Fetch native Debian 13 EFI GRUB package through signed APT metadata (lab only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          packages="$RUNNER_TEMP/gaslux-q4os/packages"
+          mkdir -p "$packages"
+          docker run --rm --network bridge \
+            --security-opt=no-new-privileges \
+            -v "$packages:/out" debian:trixie-slim \
+            bash -Eeuo pipefail -c '
+              apt-get -qq update
+              mkdir -p /tmp/grub-pkg
+              cd /tmp/grub-pkg
+              apt-get download grub-efi-amd64-bin
+              packages=(grub-efi-amd64-bin_*.deb)
+              test "${#packages[@]}" -eq 1
+              dpkg-deb -f "${packages[0]}" Package Version
+              cp -- "${packages[0]}" /out/
+              cd /out
+              sha256sum grub-efi-amd64-bin_*.deb > grub-efi-amd64-bin.sha256
+            '
+          (cd "$packages" && sha256sum -c grub-efi-amd64-bin.sha256)
+          echo 'Debian repository Release metadata was authenticated by container apt.'
+          echo 'No guest network or host hardware disk is exposed.'
       - name: Install Q4OS native GRUB inside owned guest and prove two installed disk boots
         shell: bash
         env:
