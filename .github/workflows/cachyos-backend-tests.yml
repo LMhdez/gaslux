@@ -9,6 +9,7 @@ on:
       - feature/cachyos-e2e-release-gate
       - feature/cachyos-real-iso-contract
       - feature/cachyos-live-guest-preflight-smoke
+      - feature/cachyos-pacman-trust-guard
   pull_request:
     branches:
       - main
@@ -41,6 +42,7 @@ jobs:
             auto_tests/tools/cachyos_release_gate.py \
             auto_tests/tools/cachyos_lab_readiness.py \
             auto_tests/tools/cachyos_live_guest_serial.py \
+            assets/live/cachyos-pacman-trust.py \
             assets/live/cachyos-uefi-lab.py \
             assets/live/libertix-cachyos-preflight.py
       - name: CachyOS regression suite
