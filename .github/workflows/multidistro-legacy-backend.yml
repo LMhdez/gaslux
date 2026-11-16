@@ -1,0 +1,60 @@
+name: Multidistro legacy backend contract tests
+
+on:
+  push:
+    branches:
+      - feature/multidistro-legacy-backend-gate
+  pull_request:
+    paths:
+      - 'Installation/**'
+      - 'Libertix.Tests/**'
+      - 'Libertix.csproj'
+      - 'Scripts/modules/Libertix.InstallationPlan.psm1'
+      - 'PowerShell.Tests/InstallationContracts.Tests.ps1'
+      - 'assets/live/libertix-installation-plan.py'
+      - 'auto_tests/app/distributions.py'
+      - 'auto_tests/tests/test_installation_contracts.py'
+      - 'schemas/**'
+      - '.github/workflows/multidistro-legacy-backend.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  python-contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install -r auto_tests/requirements-dev.txt
+      - name: Python syntax and lint
+        run: |
+          python -m compileall -q assets/live/libertix-installation-plan.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py
+          python -m ruff check assets/live/libertix-installation-plan.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py
+          python -m ruff format --check assets/live/libertix-installation-plan.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py
+      - name: Validate live plan and signed catalog schemas
+        env:
+          PYTHONPATH: auto_tests
+        run: python -m pytest -q auto_tests/tests/test_installation_contracts.py
+
+  windows-contracts:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: C# contract tests
+        shell: pwsh
+        run: dotnet test .\\Libertix.Tests\\Libertix.Tests.csproj --configuration Release
+      - name: Install Pester
+        shell: pwsh
+        run: Install-Module Pester -Scope CurrentUser -MinimumVersion 5.0.0 -Force -SkipPublisherCheck
+      - name: PowerShell plan validation tests
+        shell: pwsh
+        run: |
+          $result = Invoke-Pester -Path .\\PowerShell.Tests\\InstallationContracts.Tests.ps1 -PassThru
+          if ($result.FailedCount -gt 0 -or $result.PassedCount -eq 0) { exit 1 }
