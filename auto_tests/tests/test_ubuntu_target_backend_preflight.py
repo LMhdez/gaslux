@@ -74,16 +74,14 @@ def test_unknown_or_system76_backend_fails_closed(distro, os_id, backend):
     assert "legacy" in result.stderr.lower()
 
 
-def _body(source: str, function: str, next_function: str) -> str:
-    return source.split(function + "() {", 1)[1].split(
-        "\n}\n\n" + next_function + "() {", 1
-    )[0]
+def _body(source: str, function: str) -> str:
+    return source.split(function + "() {", 1)[1].split("\n}", 1)[0]
 
 
 def test_target_legacy_order_preserved_and_gate_precedes_mutations():
     source = TARGET.read_text(encoding="utf-8")
-    common = _body(source, "configure_common_ubuntu_target", "configure_legacy_grub_target")
-    legacy = _body(source, "configure_legacy_grub_target", "configure_target_backend")
+    common = _body(source, "configure_common_ubuntu_target")
+    legacy = _body(source, "configure_legacy_grub_target")
     main = source.split("main() {", 1)[1].split("\n}\n\nmain", 1)[0]
     common_ops = [
         "configure_user",
@@ -114,7 +112,7 @@ def test_target_legacy_order_preserved_and_gate_precedes_mutations():
 
 def test_legacy_guard_is_not_a_popos_install_entrypoint():
     source = TARGET.read_text(encoding="utf-8")
-    guard = _body(source, "validate_legacy_target_backend_or_die", "configure_common_ubuntu_target")
+    guard = _body(source, "validate_legacy_target_backend_or_die")
     assert "mint:linuxmint|zorin:zorin" in guard
     assert "system76)" not in guard
     assert "popos:pop)" not in guard
