@@ -4,6 +4,7 @@ on:
     branches:
       - feature/cachyos-target-backend
       - feature/cachyos-uefi-lab
+      - feature/cachyos-efi-hardening
   pull_request:
     branches:
       - main
@@ -28,6 +29,8 @@ jobs:
         run: |
           python3 -m py_compile \
             assets/live/cachyos-target-verify.py \
+            assets/live/cachyos-uefi-config.py \
+            assets/live/cachyos-uefi-lab.py \
             assets/live/libertix-cachyos-preflight.py
       - name: CachyOS regression suite
         run: python3 -m unittest discover -s auto_tests -p 'test_cachyos_*.py' -v
