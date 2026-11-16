@@ -30,7 +30,8 @@ cleanup() {
   if [[ -n "${GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR:-}" ]]; then
     mkdir -p "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"
     for path in "$work"/serial.log "$work"/pop-guest-console.log "$work"/grub.cfg "$work"/qemu.rc \
-      "$work"/target-protected.before.sha256 "$work"/target-protected.after.sha256; do
+      "$work"/target-protected.before.sha256 "$work"/target-protected.after.sha256 \
+      "$work"/target-gpt.before.txt "$work"/target-gpt.after.txt; do
       [[ -f "$path" ]] && cp "$path" "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/" || true
     done
     (cd "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR" &&
@@ -193,6 +194,13 @@ if [[ "$target_probe" -eq 1 ]]; then
   rm -f -- "$work/mock-esp.part" "$work/mock-ntfs.part"
   sgdisk --backup="$work/target.gpt.before" "$work/pop-target.raw" >/dev/null
   {
+    sgdisk --print "$work/pop-target.raw"
+    for index in 1 2 3; do
+      printf '\n==== Partition %s ====\n' "$index"
+      sgdisk --info="$index" "$work/pop-target.raw"
+    done
+  } > "$work/target-gpt.before.txt"
+  {
     dd if="$work/pop-target.raw" bs=1M skip=1 count=512 status=none | sha256sum
     dd if="$work/pop-target.raw" bs=1M skip=513 count=512 status=none | sha256sum
   } > "$work/target-protected.before.sha256"
@@ -267,13 +275,22 @@ printf '%s\n' "$rc" > "$work/qemu.rc"
 if [[ "$target_probe" -eq 1 ]]; then
   sgdisk --backup="$work/target.gpt.after" "$work/pop-target.raw" >/dev/null
   {
+    sgdisk --print "$work/pop-target.raw"
+    for index in 1 2 3; do
+      printf '\n==== Partition %s ====\n' "$index"
+      sgdisk --info="$index" "$work/pop-target.raw"
+    done
+  } > "$work/target-gpt.after.txt"
+  {
     dd if="$work/pop-target.raw" bs=1M skip=1 count=512 status=none | sha256sum
     dd if="$work/pop-target.raw" bs=1M skip=513 count=512 status=none | sha256sum
   } > "$work/target-protected.after.sha256"
   cmp -s "$work/target-protected.before.sha256" "$work/target-protected.after.sha256" ||
     die 'VM mock Windows ESP or NTFS changed: do not authorize installation'
-  cmp -s "$work/target.gpt.before" "$work/target.gpt.after" ||
+  if ! cmp -s "$work/target.gpt.before" "$work/target.gpt.after"; then
+    diff -u "$work/target-gpt.before.txt" "$work/target-gpt.after.txt" >&2 || true
     die 'VM GPT changed: native test is not safe for Windows'
+  fi
   echo 'GASLUX_POP_MOCK_WINDOWS_PARTITIONS_UNCHANGED=1'
 fi
 if [[ "$guest_verified" -eq 1 ]]; then
