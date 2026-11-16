@@ -66,12 +66,15 @@ truncate -s 64M "$w/control.raw"
 mkfs.vfat -F 32 -n GASLUXCTL "$w/control.raw" >/dev/null
 stage=assets/live/cachyos-stage-target.sh
 guest=auto_tests/tools/cachyos_vm_guest_install.sh
+launch=auto_tests/tools/cachyos_vm_install_launch.sh
+[[ -f "$launch" ]] || { echo 'VM-only systemd launch helper missing'; exit 2; }
 stage_hash="$(sha256sum "$stage" | awk '{print $1}')"
 printf 'RUN_ID=%q\nROOT_UUID=%q\nSTAGE_SHA256=%q\n' \
   "$run_id" "$root_uuid" "$stage_hash" > "$w/lab.env"
 mcopy -i "$w/control.raw" "$w/lab.env" ::/lab.env
 mcopy -i "$w/control.raw" "$stage" ::/stage.sh
 mcopy -i "$w/control.raw" "$guest" ::/gaslux-run.sh
+mcopy -i "$w/control.raw" "$launch" ::/gaslux-launch.sh
 sudo mount -o ro,loop "$iso" "$w/iso-mounted"
 mounted_iso=1
 python3 auto_tests/tools/cachyos_generated_boot_config.py \
@@ -98,7 +101,7 @@ if not lines[i].endswith('\n'): raise SystemExit('Kernel line lacks newline')
 # No raw shell commands or physical disk identifiers enter this GRUB entry.
 flags=(
     ' systemd.mount-extra=LABEL=GASLUXCTL:/run/gaslux-control:vfat:ro,exec'
-    ' systemd.run=/run/gaslux-control/gaslux-run.sh'
+    ' systemd.run=/run/gaslux-control/gaslux-launch.sh'
     ' systemd.wants=kernel-command-line.service'
     ' systemd.run_success_action=none systemd.run_failure_action=none'
 )
@@ -199,7 +202,8 @@ run_live_guest() {
     fi
     # Old TCG run 43959640657 had no Bash EXIT marker but systemd itself
   # reported a failed installation service; do not waste 55 minutes waiting.
-  if grep -Fq 'kernel-command-line.service: Failed with result' "$w/live-serial.log" 2>/dev/null; then
+  if grep -Fq 'kernel-command-line.service: Failed with result' "$w/live-serial.log" 2>/dev/null ||
+     grep -Fq 'gaslux-vm-install.service: Failed with result' "$w/live-serial.log" 2>/dev/null; then
     echo 'GASLUX_VM_EARLY_SERVICE_FAILURE_DETECTED'
     kill "$vm_pid" 2>/dev/null || true
     break

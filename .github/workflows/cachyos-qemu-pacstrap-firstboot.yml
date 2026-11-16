@@ -9,6 +9,7 @@ on:
       - .github/workflows/cachyos-qemu-pacstrap-firstboot.yml
       - auto_tests/tools/cachyos_qemu_install_firstboot.sh
       - auto_tests/tools/cachyos_vm_guest_install.sh
+      - auto_tests/tools/cachyos_vm_install_launch.sh
       - auto_tests/tools/cachyos_generated_boot_config.py
       - assets/live/cachyos-stage-target.sh
       - auto_tests/test_cachyos_stage_target_safety.py
@@ -29,6 +30,7 @@ jobs:
           set -Eeuo pipefail
           bash -n assets/live/cachyos-stage-target.sh
           bash -n auto_tests/tools/cachyos_vm_guest_install.sh
+          bash -n auto_tests/tools/cachyos_vm_install_launch.sh
           bash -n auto_tests/tools/cachyos_qemu_install_firstboot.sh
           python3 -m unittest auto_tests.test_cachyos_stage_target_safety auto_tests.test_cachyos_generated_boot -v
       - name: Guard that the lab does not target any physical disk
@@ -38,6 +40,7 @@ jobs:
           from pathlib import Path
           host=Path('auto_tests/tools/cachyos_qemu_install_firstboot.sh').read_text()
           guest=Path('auto_tests/tools/cachyos_vm_guest_install.sh').read_text()
+          launcher=Path('auto_tests/tools/cachyos_vm_install_launch.sh').read_text()
           assert 'GITHUB_ACTIONS' in host and 'RUNNER_OS' in host
           assert 'losetup --find --show --partscan "$w/root.raw"' in host
           assert 'readonly=on' in host and 'accel=tcg' in host
@@ -69,7 +72,13 @@ jobs:
           assert 'systemd.run=' in host
           assert 'systemd.wants=kernel-command-line.service' in host
           assert 'systemd.mount-extra=LABEL=GASLUXCTL:/run/gaslux-control:vfat:ro,exec' in host
-          assert 'systemd.run=/run/gaslux-control/gaslux-run.sh' in host
+          assert 'systemd.run=/run/gaslux-control/gaslux-launch.sh' in host
+          assert 'mcopy -i "$w/control.raw" "$launch" ::/gaslux-launch.sh' in host
+          assert 'systemd-run --no-block --unit=gaslux-vm-install' in launcher
+          assert '--property=TimeoutStartSec=0' in launcher
+          assert '--property=RuntimeMaxSec=1800' in launcher
+          assert 'systemd-detect-virt --vm' in launcher
+          assert 'gaslux-vm-install.service: Failed with result' in host
           assert 'cachyos-hooks' in guest
           assert 'udevadm settle --timeout=90' in guest
           assert 'systemctl is-active --quiet pacman-init.service' in guest
