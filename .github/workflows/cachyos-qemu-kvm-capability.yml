@@ -1,0 +1,43 @@
+name: QEMU hardware acceleration availability (read-only probe)
+
+on:
+  push:
+    branches:
+      - feature/cachyos-gh-actions-real-pacstrap-firstboot
+    paths:
+      - .github/workflows/cachyos-qemu-kvm-capability.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-runner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Inspect hosted x64 runner virtualization capabilities
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'Read-only inspection; no partition writes or guest launch.'
+          uname -m
+          if [[ -c /dev/kvm ]]; then
+            stat -c 'KVM_CHARACTER_DEVICE=%F; permissions=%a; group=%G' /dev/kvm
+            if sudo test -r /dev/kvm && sudo test -w /dev/kvm; then
+              echo 'GASLUX_HOSTED_KVM_ACCESSIBLE=true'
+              echo 'GASLUX_HOSTED_KVM_ACCESSIBLE=true' >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo 'GASLUX_HOSTED_KVM_ACCESSIBLE=false (permissions)'
+              echo 'GASLUX_HOSTED_KVM_ACCESSIBLE=false' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo 'GASLUX_HOSTED_KVM_ACCESSIBLE=false (missing /dev/kvm)'
+            echo 'GASLUX_HOSTED_KVM_ACCESSIBLE=false' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if grep -Eq '(vmx|svm)' /proc/cpuinfo; then
+            echo 'GASLUX_NESTED_CPU_VIRTUALIZATION_FEATURE=true'
+          else
+            echo 'GASLUX_NESTED_CPU_VIRTUALIZATION_FEATURE=false'
+          fi
+          echo 'No claim of actual guest KVM boot or Linux installation.'
