@@ -100,6 +100,7 @@ Run-Case 'evidence timestamp from future boot rejected' {
 Run-Case 'same baseline capture time rejected' {
     $after=New-TestEvidence -Rebooted
     $after.capturedUtc='2026-11-16T15:30:00.0000000+00:00'
+    $after.windowsBootUtc='2026-11-16T15:10:00.0000000+00:00'
     Require-Failure { Compare-GasluxWindowsRecoveryEvidence (New-TestEvidence) $after } 'not captured after the baseline'
 }
 Run-Case 'same Windows boot is not a reboot' {
