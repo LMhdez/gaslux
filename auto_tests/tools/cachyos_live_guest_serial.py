@@ -20,6 +20,8 @@ PASSWORD = re.compile(rb"Password:\s*$", re.M)
 READY = re.compile(rb"(?m)^GASLUX_ROOT_SHELL_READY\r?$")
 SECURE_BOOT_DISABLED = re.compile(rb"(?m)^GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r?$")
 SIGNED_GRUB_CMDLINE = re.compile(rb"(?m)^GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\r?$")
+LAB_INSTALL_DONE = re.compile(rb"(?m)^GASLUX_LAB_TARGET_INSTALLED=1\r?$")
+LAB_INSTALL_FAILED = re.compile(rb"(?m)^GASLUX_LAB_INSTALL_FAILURE(?::[^\r\n]*)?\r?$")
 PASSED = re.compile(rb"(?m)^GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r?$")
 FAILED = re.compile(rb"(?m)^GASLUX_GUEST_PREFLIGHT_FAILURE(?::[^\r\n]*)?\r?$")
 
@@ -98,7 +100,7 @@ def connect_serial(path: Path, *, timeout_seconds: float = 40) -> socket.socket:
 
 
 def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,
-          require_signed_entry: bool = False) -> None:
+          require_signed_entry: bool = False, run_lab_install: bool = False) -> None:
     # A ttyS0 login is produced only by executing CachyOS's live kernel/init.
     wait_for(sock, trace, (LOGIN,), timeout_seconds=boot_timeout, failure=None)
     sock.sendall(b"root\r")
@@ -141,6 +143,31 @@ def probe(sock: socket.socket, trace: bytearray, *, boot_timeout: float = 345,
     if require_signed_entry:
         wait_for(sock, trace, (SIGNED_GRUB_CMDLINE,), timeout_seconds=45)
     wait_for(sock, trace, (PASSED,), timeout_seconds=45)
+    if run_lab_install:
+        if not require_signed_entry:
+            raise ProbeError("lab installation requires the signed boot")
+        sock.sendall(
+            b"export GASLUX_DISPOSABLE_VM=I_ACCEPT_DISPOSABLE_VM_ONLY; "
+            b"bash /run/gaslux-lab/install.sh\r"
+        )
+        deadline = time.monotonic() + 2700
+        while time.monotonic() < deadline:
+            tail = normalized_tty(bytes(trace[-200000:]))
+            if LAB_INSTALL_FAILED.search(tail) or FAILED.search(tail):
+                raise ProbeError("VM pacstrap / GRUB staging failed")
+            if LAB_INSTALL_DONE.search(tail):
+                return
+            sock.settimeout(2)
+            try:
+                chunk = sock.recv(65536)
+            except socket.timeout:
+                continue
+            if not chunk:
+                raise ProbeError("VM disconnected during pacstrap")
+            trace.extend(chunk)
+            if len(trace) > 50_000_000:
+                raise ProbeError("installation serial transcript exceeded safety limit")
+        raise ProbeError("VM pacstrap / GRUB staging timed out")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,12 +177,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--boot-timeout", type=float, default=345)
     parser.add_argument("--require-signed-entry", action="store_true",
                         help="demand real guest /proc/cmdline signed-handoff proof")
+    parser.add_argument("--run-lab-install", action="store_true",
+                        help="MUTATES only a separately identified disposable QEMU disk")
     args = parser.parse_args(argv)
     transcript = bytearray()
     try:
         with connect_serial(args.socket) as sock:
             probe(sock, transcript, boot_timeout=args.boot_timeout,
-                  require_signed_entry=args.require_signed_entry)
+                  require_signed_entry=args.require_signed_entry,
+                  run_lab_install=args.run_lab_install)
     except (ProbeError, OSError, UnicodeError) as error:
         print(f"GASLUX_GUEST_PROBE_FAILED: {error}", file=sys.stderr)
         returncode = 1
@@ -169,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
     print("GASLUX_GUEST_PROBE_VERIFIED: live root and guarded --check succeeded")
     if args.require_signed_entry:
         print("GASLUX_GUEST_SIGNED_GRUB_BOOT_VERIFIED: authenticated lab args reached the kernel")
+    if args.run_lab_install:
+        print("GASLUX_GUEST_LAB_PACSTRAP_VERIFIED: virtual target and EFI GRUB staged")
     return 0
 
 
