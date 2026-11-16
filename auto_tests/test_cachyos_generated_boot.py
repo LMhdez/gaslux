@@ -86,7 +86,11 @@ class GeneratedBootTests(unittest.TestCase):
         unchanged = fake_handoff({"isoStorageUuid": UUID})["grubEntry"].splitlines()
         new = cfg.splitlines()[5:]
         self.assertEqual(len(unchanged), len(new))
-        changed = [(old, actual) for old, actual in zip(unchanged, new, strict=True) if old != actual]
+        changed = [
+            (old, actual)
+            for old, actual in zip(unchanged, new, strict=True)
+            if old != actual
+        ]
         self.assertEqual(len(changed), 1)
         self.assertTrue(changed[0][0].startswith("    linux (gaslux_iso)/"))
         self.assertEqual(changed[0][1], changed[0][0] + boot._DIAGNOSTIC_FLAGS)
