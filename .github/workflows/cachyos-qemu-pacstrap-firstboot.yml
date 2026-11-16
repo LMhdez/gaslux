@@ -43,6 +43,10 @@ jobs:
           assert 'readonly=on' in host and 'accel=tcg' in host
           assert 'accel=kvm' in host and 'GASLUX_QEMU_ACCELERATOR=' in host
           assert 'sudo setfacl -m' in host and 'kvm_probe_rc == 124' in host
+          assert '    -S -nodefaults ' not in host
+          assert '    -nodefaults -display none -monitor none -serial none' in host
+          assert 'GASLUX_KVM_VCPU_EXECUTION_PROVEN=true' in host
+          assert 'permission denied|failed to initialize kvm|could not access kvm' in host
           assert 'qemu|kvm' in guest
           assert 'GASLUX_VM_FIRSTBOOT_PASS:' in host and guest
           assert 'systemd-detect-virt --vm' in guest
