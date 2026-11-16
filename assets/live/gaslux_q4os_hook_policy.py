@@ -19,6 +19,9 @@ _HOOK_SOURCES = (
     "usr/lib/calamares/modules/q4oshook2/module.desc",
     "usr/lib/calamares/modules/q4oshook3/module.desc",
     "usr/lib/calamares/modules/q4oshook5/module.desc",
+    "usr/sbin/debian_adjust2.sh",
+    "usr/sbin/debian_adjust3.sh",
+    "usr/sbin/debian_adjust5.sh",
     "usr/sbin/q4os-hook2a.sh",
     "usr/sbin/q4os-hook3a.sh",
     "usr/sbin/q4os-hook3b.sh",
@@ -78,7 +81,7 @@ def audit_q4os_native_hooks(root: Path) -> dict:
         raise CalamaresRefusal("Missing required Q4OS hook source")
     scripts = [name for name in source_hashes if name.endswith(".sh")]
     descriptors = [name for name in source_hashes if name.endswith("__module.desc")]
-    if len(scripts) != 6 or len(descriptors) != 3:
+    if len(scripts) != 9 or len(descriptors) != 3:
         raise CalamaresRefusal("Q4OS native module/script inventory incomplete")
     cfg = _yaml(root, "etc__calamares__settings.conf")
     jobs = cfg["sequence"][1]["exec"]
