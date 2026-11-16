@@ -8,9 +8,6 @@ die() { echo "GASLUX_UPDATE_ROLLBACK_FAILED: $*" >&2; exit 1; }
    "${GASLUX_LAB_UPDATE_ROLLBACK:-0}" == 1 &&
    -n "${GASLUX_SIGNED_EVIDENCE_DIR:-}" ]] ||
   die 'explicit signed-ISO disposable VM mode absent'
-for bin in qemu-system-x86_64 qemu-img python3 sha256sum timeout; do
-  command -v "$bin" >/dev/null || die "missing $bin"
-done
 base="$1"; code="$2"; template="$3"; evidence="$4"
 [[ "$base" == /tmp/cachyos-real-boot-*/target.qcow2 ]] ||
   die 'not the dedicated newly created CI target'
@@ -19,6 +16,9 @@ w="$(dirname -- "$base")"
 [[ -d "$w" && ! -L "$w" &&
    "$(stat -c %u "$base")" == "$(id -u)" ]] ||
   die 'disposable target path is not owned by runner'
+for bin in qemu-system-x86_64 qemu-img python3 sha256sum timeout; do
+  command -v "$bin" >/dev/null || die "missing $bin"
+done
 [[ "$code" == /usr/share/OVMF/OVMF_CODE_4M.secboot.fd &&
    "$template" == /usr/share/OVMF/OVMF_VARS_4M.fd &&
    -f "$code" && -f "$template" ]] ||
