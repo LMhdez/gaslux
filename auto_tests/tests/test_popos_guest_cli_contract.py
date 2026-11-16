@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "auto_tests/tools"))
 from gaslux_popos_guest_serial import (  # noqa: E402
     FAILED,
     LOGIN,
+    PASSWORD,
     PASSED,
     READY,
     SHA,
@@ -22,6 +23,8 @@ WORKFLOW = ROOT / ".github/workflows/gaslux-popos-official-iso.yml"
 
 def test_serial_proof_rejects_echoes_and_wrong_hash():
     assert LOGIN.search(b"\r\npop-os login: ")
+    assert PASSWORD.search(b"\nPassword: ")
+    assert not PASSWORD.search(b"printf 'Password:'")
     assert READY.search(b"\nGASLUX_POP_LIVE_SHELL_READY\n")
     assert not READY.search(b"printf 'GASLUX_POP_LIVE_SHELL_READY\\n'")
     assert PASSED.search(b"\nGASLUX_POP_DISTINST_GUEST_READONLY_PASS=1\r\n")
