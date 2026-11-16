@@ -37,7 +37,7 @@ def test_guest_target_is_created_from_scratch_in_temporary_workspace():
     assert 'file="$work/efi-disk.img"' in source
     assert 'file="$work/nvram.fd"' in source
     assert "bootindex=1" in source
-    assert "rm -rf -- \"$work\"" in source
+    assert 'rm -rf -- "$work"' in source
     assert "-drive file=/dev/" not in source
 
 
