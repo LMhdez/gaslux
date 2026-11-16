@@ -102,7 +102,11 @@ set default=0
 menuentry 'Gaslux $distro real live-kernel lab boot' {
   insmod iso9660
   insmod part_gpt
-  search --no-floppy --file --set=source /$kernel
+  if ! search --no-floppy --file --set=source /$kernel; then
+    echo 'Verified live kernel is not visible on any guest block device'
+    ls
+    halt
+  fi
   if [ ! -f (\$source)/$initrd ]; then
     echo 'Pinned guest live initramfs not found'
     halt
@@ -128,7 +132,9 @@ dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
 echo "GASLUX_GUEST_INITRD=$initrd"
-# No host block devices are attached. ISO is emulated read-only CD-ROM.
+# No host block devices are attached. Both guest disks are new temporary images;
+# the SHA-256 verified official ISO is mapped strictly read-only as USB optical
+# media so OVMF and GRUB use the same EFI-visible block-device path.
 timeout --kill-after=5s 320s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
@@ -136,7 +142,9 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
-  -cdrom "$iso" \
+  -device qemu-xhci \
+  -drive if=none,id=officialiso,media=cdrom,readonly=on,format=raw,file="$iso" \
+  -device usb-storage,drive=officialiso \
   -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
 guest="$!"

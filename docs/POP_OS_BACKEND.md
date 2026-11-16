@@ -69,3 +69,14 @@ and disposable Windows VM installation/dual-boot/rollback evidence.
 Bash validation function with synthetic environment inputs, confirms negative
 and positive policy cases and guards the historical operation order. It does
 not execute installer or disk commands.
+
+## OVMF live-boot block-device diagnostic (experimental)
+
+GitHub Actions can verify the official Pop!_OS ISO but older QEMU runs failed
+because GRUB could not find the live kernel on the emulated CD-ROM device.
+The dedicated disposable-VM experiment now attaches the signed/digest-checked
+ISO as **read-only USB optical media** (separate from the fresh temporary GPT
+ESP disk) and requires a matching live kernel/initramfs and **serial login**.
+A missing GRUB device remains a failure, not a boot success. This is a live
+smoke test only; the Windows target disk, System76 distinst, and bootloader
+writers are never attached or invoked.

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/popos-native-preflight
+      - feature/popos-ovmf-optical-media-proof
     paths:
       - '.github/workflows/gaslux-popos-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
