@@ -13,8 +13,7 @@ be unsafe. This preliminary work provides a **read-only** ISO format verifier an
   `lsinitramfs`, and `update-grub` inside the target.
 - CachyOS's official `CachyOS-Live-ISO/archiso/profiledef.sh` configures `airootfs_image_type=squashfs`.
   An Archiso image is normally `arch/x86_64/airootfs.sfs`.
-- The CachyOS live ISO **sets `ID=arch`, `NAME="CachyOS"`**, from
-  `CachyOS-Live-ISO/archiso/airootfs/etc/os-release`. It is not safe to rely on `ID=cachyos`.
+- The SHA-256-verified official desktop ISO 260809 has **`ID=cachyos`, `ID_LIKE=arch`, `NAME="CachyOS Linux"`, `IMAGE_ID=cachyos`, `IMAGE_VERSION=2026.08.09`** inside `arch/x86_64/airootfs.sfs/etc/os-release`. Earlier synthetic assumptions (`ID=arch`) were wrong; the preflight and VM host checks now require the measured official identity.
 - Current CachyOS installation is managed through its own installer with online package setup;
   directly extracting the live root is not a functional substitute for the official installer.
 - CachyOS's installation documentation requires Secure Boot **and CSM disabled** for initial UEFI
@@ -116,10 +115,11 @@ has never been tested with real CachyOS package repositories by this workflow.
 
 ### Notes
 
-The official CachyOS ISO's `os-release` uses `ID=arch`, whereas an installed
-CachyOS root is expected to use `ID=cachyos`. The verifier deliberately
-rejects an Archiso live system as an installed target. This distinction must
-remain explicit in any final installer pipeline.
+Both the official 260809 live ISO and installed CachyOS identify with
+`ID=cachyos`. A live-versus-installed distinction must therefore rely on
+the trusted boot source, transaction owner, pacman package inventory and
+target boot/EFI evidence, not merely the distribution ID. The verification
+code still does not prove an actual installed Linux boot or Windows rollback.
 
 
 ## QEMU/KVM UEFI laboratory boot stage (still NOT stable)
