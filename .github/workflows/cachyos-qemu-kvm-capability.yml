@@ -41,3 +41,31 @@ jobs:
             echo 'GASLUX_NESTED_CPU_VIRTUALIZATION_FEATURE=false'
           fi
           echo 'No claim of actual guest KVM boot or Linux installation.'
+      - name: Verify QEMU can actually initialize KVM acceleration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ ! -c /dev/kvm ]]; then
+            echo 'GASLUX_QEMU_KVM_BOOTSTRAP=false: unavailable device'
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 acl
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          # Start an empty machine with CPUs paused (-S). No drive argument,
+          # no network and no operating-system image: cannot modify disks.
+          set +e
+          timeout --kill-after=2s 3s qemu-system-x86_64 \
+            -machine q35,accel=kvm,smm=on -cpu host -smp 2 -m 256 \
+            -S -nodefaults -display none -monitor none -serial none \
+            > "$RUNNER_TEMP/kvm-only-probe.log" 2>&1
+          rc=$?
+          set -e
+          if [[ "$rc" == 124 ]]; then
+            echo 'GASLUX_QEMU_KVM_BOOTSTRAP=true'
+            echo 'GASLUX_QEMU_KVM_BOOTSTRAP=true' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "GASLUX_QEMU_KVM_BOOTSTRAP=false (QEMU=$rc)"
+            echo 'GASLUX_QEMU_KVM_BOOTSTRAP=false' >> "$GITHUB_STEP_SUMMARY"
+            tail -c 2000 "$RUNNER_TEMP/kvm-only-probe.log"
+          fi
