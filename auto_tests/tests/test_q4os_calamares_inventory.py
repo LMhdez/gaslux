@@ -69,7 +69,7 @@ def test_wrong_digest_refused_before_squashfs_reads(tmp_path, monkeypatch):
     iso, squashfs, _, _ = _fixture(tmp_path, monkeypatch)
     monkeypatch.setattr(probe, "sha256_file", lambda _: "f" * 64)
     with pytest.raises(ValueError, match="does not match pinned"):
-        probe.inventory(iso, squashfs, tmp_path / "out")
+        probe.inventory(iso, squashfs, tmp_path / "out", tmp_path)
     assert not (tmp_path / "out").exists()
 
 
@@ -124,8 +124,8 @@ def test_loop_backing_must_match_verified_iso(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "is_mount", lambda _: True)
     responses = iter(
         [
-            SimpleNamespace(stdout="/dev/loop3 iso9660\\n"),
-            SimpleNamespace(stdout=str(wrong) + "\\n"),
+            SimpleNamespace(stdout="/dev/loop3 iso9660\n"),
+            SimpleNamespace(stdout=str(wrong) + "\n"),
         ]
     )
     monkeypatch.setattr(probe.subprocess, "run", lambda *_, **__: next(responses))
