@@ -11,6 +11,7 @@ on:
       - feature/cachyos-live-guest-preflight-smoke
       - feature/cachyos-signed-real-iso-contract
       - feature/cachyos-ovmf-secureboot-lab-proof
+      - feature/cachyos-signed-grub-qemu-execution
   pull_request:
     branches:
       - main
@@ -47,6 +48,7 @@ jobs:
             assets/live/cachyos-handoff-auth.py \
             assets/live/cachyos-signed-grub-handoff.py \
             auto_tests/tools/cachyos_real_iso_signed_contract.py \
+            auto_tests/tools/cachyos_signed_grub_vm_config.py \
             assets/live/libertix-cachyos-preflight.py
       - name: CachyOS regression suite
         run: python3 -m unittest discover -s auto_tests -p 'test_cachyos_*.py' -v
