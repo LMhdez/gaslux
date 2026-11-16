@@ -1,0 +1,75 @@
+name: Windows 10/11 official x64 evaluation TCG disposable guest (not dual boot)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-x64-tcg-disposable-firstboot-lab
+    paths:
+      - .github/workflows/windows-x64-tcg-firstboot.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_tcg_unattend_contract.py
+      - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
+      - auto_tests/tools/windows_x64_qemu_host_gate.py
+
+permissions:
+  contents: read
+
+jobs:
+  windows-client-source-and-unattend-contracts:
+    name: Microsoft hashes, signed-source and unattended guest safety tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Ensure Python syntax and negative fail-closed tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_qemu_host_gate.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py'
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile win10_22h2_en_us_x64 --fixture-only
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile win11_26h2_en_us_x64 --fixture-only
+
+  windows10-real-evaluation-firstboot-tcg:
+    name: Attempt real Windows 10 x64 Enterprise Eval installed firstboot on TCG
+    needs: [windows-client-source-and-unattend-contracts]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GASLUX_WINDOWS_TCG_CONSENT: I_ACCEPT_FILE_BACKED_WINDOWS_EVAL_TCG_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install isolated QEMU/OVMF/TPM/FAT tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ovmf qemu-system-x86 qemu-utils swtpm dosfstools mtools
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Download Microsoft SHA-256-pinned Windows 10 x64 Eval and install to disposable QCOW2
+        shell: bash
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: |
+          set -Eeuo pipefail
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile win10_22h2_en_us_x64 --boot-timeout 6300
+          printf 'Real installed Windows client serial witness verified. Linux dual boot, WinRE recovery and production stability NOT tested.\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve ONLY bounded guest serial/evidence JSON, never ISOs/disks/credentials
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows10-x64-official-eval-tcg-firstboot-evidence
+          path: windows-x64-tcg-evidence/
+          if-no-files-found: warn
+          retention-days: 7
