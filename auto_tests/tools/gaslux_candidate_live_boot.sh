@@ -96,7 +96,7 @@ cp "$vars" "$work/nvram.fd"
 serial_boot_args='systemd.wants=serial-getty@ttyS0.service'
 if [[ "${GASLUX_POP_GUEST_DISTINST_PROBE:-0}" == 1 ]]; then
   [[ "$distro" == popos ]] || die 'Debug shell confined to Pop disposable lab'
-  serial_boot_args='systemd.debug_shell=ttyS0'
+  serial_boot_args='systemd.debug_shell=ttyS0 systemd.mask=serial-getty@ttyS0.service'
 fi
 
 cat > "$work/grub.cfg" <<EOF
