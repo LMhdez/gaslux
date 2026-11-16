@@ -50,6 +50,13 @@ pre-install snapshot, with a separate SHA-256 and reviewer signature. Do
 not create the baseline retrospectively after rollback. A script-readable
 ESP path does not authorize modifying the ESP, its filesystem or firmware.
 
+The collector rejects a claimed reboot unless the post-install Windows boot
+timestamp is **later than the baseline capture timestamp**, and also rejects
+post-install evidence captured before or at the baseline time. A boot
+timestamp that is merely newer than the baseline's *old* boot time is
+insufficient. These are guest-reported timestamps, not independent
+hypervisor attestation; VM snapshot/boot evidence is still required.
+
 Successful `Compare` proves only the stated Windows-side identities and
 a later Windows boot timestamp; it does not prove a real boot of installed
 CachyOS, Linux updates, integrity of unrelated disks, availability of
