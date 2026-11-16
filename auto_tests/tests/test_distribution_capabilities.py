@@ -41,8 +41,13 @@ def test_mint_zorin_v2_capability_is_released_and_schema_valid():
     )
     for distribution_id, os_release_id in [("mint", "linuxmint"), ("zorin", "zorin")]:
         cap = capability(
-            "debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub",
-            "released", ["bios/mbr", "uefi/gpt"],
+            "debian-squashfs",
+            "casper-squashfs",
+            "ms-shim",
+            "grub",
+            "grub",
+            "released",
+            ["bios/mbr", "uefi/gpt"],
         )
         Draft202012Validator(schema).validate(cap)
         assert module.validate_capabilities(distribution_id, os_release_id, cap)
@@ -55,8 +60,13 @@ def test_mint_zorin_v2_capability_is_released_and_schema_valid():
         ("popos", "pop", "system76", "pop-live", "unsupported", "grub", "systemd-boot"),
         ("q4os", "q4os", "q4os-native", "q4os-native-iso", "unsupported", "grub", "grub"),
         (
-            "bazzite", "bazzite", "fedora-atomic", "fedora-atomic-iso",
-            "manual-enrollment", "none", "grub",
+            "bazzite",
+            "bazzite",
+            "fedora-atomic",
+            "fedora-atomic-iso",
+            "manual-enrollment",
+            "none",
+            "grub",
         ),
     ],
 )
@@ -74,8 +84,13 @@ def test_candidate_validates_but_cannot_be_released(
 def test_bazzite_rejects_bios_mbr_and_wrong_storage():
     module = load_helper()
     cap = capability(
-        "fedora-atomic", "fedora-atomic-iso", "manual-enrollment", "none",
-        "grub", "lab-only", ["uefi/gpt"],
+        "fedora-atomic",
+        "fedora-atomic-iso",
+        "manual-enrollment",
+        "none",
+        "grub",
+        "lab-only",
+        ["uefi/gpt"],
     )
     cap["firmwareLayouts"] = ["bios/mbr", "uefi/gpt"]
     with pytest.raises(module.CapabilityError, match="firmware"):
@@ -104,8 +119,13 @@ def test_v2_release_schema_requires_capabilities_and_rejects_forged_upgrades():
     assert not validator.is_valid(v2)
     for d in v2["distributions"]:
         d["capabilities"] = capability(
-            "debian-squashfs", "casper-squashfs", "ms-shim", "grub",
-            "grub", "released", ["bios/mbr", "uefi/gpt"],
+            "debian-squashfs",
+            "casper-squashfs",
+            "ms-shim",
+            "grub",
+            "grub",
+            "released",
+            ["bios/mbr", "uefi/gpt"],
         )
     assert validator.is_valid(v2)
     v2["distributions"][0]["capabilities"]["extra"] = "untrusted"
@@ -122,8 +142,13 @@ def test_generator_v2_rejects_wrong_backend_identity(tmp_path):
     cfg["schemaVersion"] = 2
     for d in cfg["distributions"]:
         d["capabilities"] = capability(
-            "debian-squashfs", "casper-squashfs", "ms-shim", "grub",
-            "grub", "released", ["bios/mbr", "uefi/gpt"],
+            "debian-squashfs",
+            "casper-squashfs",
+            "ms-shim",
+            "grub",
+            "grub",
+            "released",
+            ["bios/mbr", "uefi/gpt"],
         )
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(cfg), encoding="utf-8")

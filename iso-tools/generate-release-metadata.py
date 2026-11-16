@@ -34,28 +34,35 @@ def _require_string(value: object, name: str, *, maximum: int) -> str:
     return value
 
 
-def validate_distribution_capability(
-    distribution_id: str, os_release_id: str, cap: object
-) -> None:
+def validate_distribution_capability(distribution_id: str, os_release_id: str, cap: object) -> None:
     """Validate capability semantics before signed release metadata is emitted."""
     expected_keys = {
-        "version", "backend", "source", "firmwareLayouts", "secureBoot",
-        "bootloader", "status", "minimumRamMiB", "minimumDiskGiB",
+        "version",
+        "backend",
+        "source",
+        "firmwareLayouts",
+        "secureBoot",
+        "bootloader",
+        "status",
+        "minimumRamMiB",
+        "minimumDiskGiB",
     }
     if not isinstance(cap, dict) or set(cap) != expected_keys or cap["version"] != 1:
         raise ValueError("invalid distribution capabilities shape/version")
     profiles = {
-        "mint": ("linuxmint", "debian-squashfs", "casper-squashfs",
-                 "ms-shim", "grub", "grub"),
-        "zorin": ("zorin", "debian-squashfs", "casper-squashfs",
-                  "ms-shim", "grub", "grub"),
-        "cachyos": ("cachyos", "archiso-cachyos", "archiso",
-                    "unsupported", "grub", "grub"),
+        "mint": ("linuxmint", "debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub"),
+        "zorin": ("zorin", "debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub"),
+        "cachyos": ("cachyos", "archiso-cachyos", "archiso", "unsupported", "grub", "grub"),
         "popos": ("pop", "system76", "pop-live", "unsupported", "grub", "systemd-boot"),
-        "q4os": ("q4os", "q4os-native", "q4os-native-iso",
-                 "unsupported", "grub", "grub"),
-        "bazzite": ("bazzite", "fedora-atomic", "fedora-atomic-iso",
-                    "manual-enrollment", "none", "grub"),
+        "q4os": ("q4os", "q4os-native", "q4os-native-iso", "unsupported", "grub", "grub"),
+        "bazzite": (
+            "bazzite",
+            "fedora-atomic",
+            "fedora-atomic-iso",
+            "manual-enrollment",
+            "none",
+            "grub",
+        ),
     }
     profile = profiles.get(distribution_id)
     if profile is None or profile[0] != os_release_id:
@@ -76,13 +83,13 @@ def validate_distribution_capability(
         or ("bios/mbr" in layouts and boot["bios"] == "none")
         or ("uefi/gpt" in layouts and boot["uefi"] == "none")
         or (distribution_id == "bazzite" and layouts != ["uefi/gpt"])
-        or (distribution_id in {"mint", "zorin"}
-            and layouts != ["bios/mbr", "uefi/gpt"])
+        or (distribution_id in {"mint", "zorin"} and layouts != ["bios/mbr", "uefi/gpt"])
     ):
         raise ValueError("unsupported firmware/partition capability")
     if (
         cap["status"] not in {"released", "lab-only", "unavailable"}
-        or cap["status"] == "released" and distribution_id not in {"mint", "zorin"}
+        or cap["status"] == "released"
+        and distribution_id not in {"mint", "zorin"}
     ):
         raise ValueError("experimental backend cannot be released")
     for key, minimum in (("minimumRamMiB", 1024), ("minimumDiskGiB", 20)):
@@ -150,7 +157,8 @@ def load_config(path: Path) -> dict[str, object]:
         seen_ids.add(distro_id)
         if data["schemaVersion"] == 1:
             if (distro_id, distribution["osReleaseId"]) not in {
-                ("mint", "linuxmint"), ("zorin", "zorin")
+                ("mint", "linuxmint"),
+                ("zorin", "zorin"),
             }:
                 raise ValueError(f"{prefix} is not an authorized legacy backend")
         else:

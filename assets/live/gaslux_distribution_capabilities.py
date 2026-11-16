@@ -15,8 +15,15 @@ class CapabilityError(ValueError):
 def validate_capabilities(distribution_id: str, os_release_id: str, cap: object) -> bool:
     """Validate v1 capability semantics, returning whether dispatch is released."""
     expected_keys = {
-        "version", "backend", "source", "firmwareLayouts", "secureBoot",
-        "bootloader", "status", "minimumRamMiB", "minimumDiskGiB",
+        "version",
+        "backend",
+        "source",
+        "firmwareLayouts",
+        "secureBoot",
+        "bootloader",
+        "status",
+        "minimumRamMiB",
+        "minimumDiskGiB",
     }
     profiles = {
         ("mint", "linuxmint"): ("debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub"),
@@ -25,7 +32,11 @@ def validate_capabilities(distribution_id: str, os_release_id: str, cap: object)
         ("popos", "pop"): ("system76", "pop-live", "unsupported", "grub", "systemd-boot"),
         ("q4os", "q4os"): ("q4os-native", "q4os-native-iso", "unsupported", "grub", "grub"),
         ("bazzite", "bazzite"): (
-            "fedora-atomic", "fedora-atomic-iso", "manual-enrollment", "none", "grub"
+            "fedora-atomic",
+            "fedora-atomic-iso",
+            "manual-enrollment",
+            "none",
+            "grub",
         ),
     }
     expected = profiles.get((distribution_id, os_release_id))
@@ -50,8 +61,7 @@ def validate_capabilities(distribution_id: str, os_release_id: str, cap: object)
         or ("bios/mbr" in layouts and boot["bios"] == "none")
         or ("uefi/gpt" in layouts and boot["uefi"] == "none")
         or (distribution_id == "bazzite" and layouts != ["uefi/gpt"])
-        or (distribution_id in {"mint", "zorin"}
-            and layouts != ["bios/mbr", "uefi/gpt"])
+        or (distribution_id in {"mint", "zorin"} and layouts != ["bios/mbr", "uefi/gpt"])
     ):
         raise CapabilityError("unsupported firmware/partition combination")
     if cap["status"] not in {"released", "lab-only", "unavailable"}:
