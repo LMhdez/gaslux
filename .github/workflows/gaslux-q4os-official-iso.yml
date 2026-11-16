@@ -14,7 +14,7 @@ permissions:
 jobs:
   q4os-native-iso-readonly:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,7 +22,7 @@ jobs:
       - name: Prepare isolated ISO lab tools
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools
       - name: Download Q4OS 6.10 r2 from project mirror, independently verify public SHA-256
         shell: bash
         env:
@@ -84,6 +84,16 @@ jobs:
           (cd "$w/evidence" && sha256sum *.txt > manifest.sha256)
           echo "PASS: verified official Q4OS ISO, real squashfs and live Debian 13 identity."
           echo "NOT TESTED: Q4OS installed root, Windows 10/11 dual boot or recovery."
+      - name: Boot actual verified Q4OS live ISO in disposable OVMF/QEMU
+        shell: bash
+        env:
+          Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-q4os/evidence/guest
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            q4os "$GASLUX_Q4OS_FILE" "$Q4OS_SHA256"
       - name: Retain SHA-linked read-only evidence
         if: always()
         uses: actions/upload-artifact@v4
