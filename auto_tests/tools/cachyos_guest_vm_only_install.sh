@@ -74,6 +74,22 @@ mount "$root" "$TARGET"
 printf '%s\n' "$TX" > "$TARGET/.libertix-stage-owner"
 chmod 0600 "$TARGET/.libertix-stage-owner"
 echo 'GASLUX_LAB_TARGET_PARTITIONED=1'
+# pacstrap -K creates a new empty keyring. Populate it ONLY with the
+# authoritative Arch/CachyOS keys bundled in this SHA-256-verified ISO.
+# Do not import keys from a remote keyserver or weaken SigLevel.
+for name in archlinux cachyos; do
+  [[ -s "/usr/share/pacman/keyrings/$name.gpg" ]] ||
+    die "official $name keyring missing from pinned ISO"
+done
+command -v pacman-key >/dev/null || die 'pacman-key missing'
+mkdir -p "$TARGET/etc/pacman.d"
+pacman-key --gpgdir "$TARGET/etc/pacman.d/gnupg" --init
+pacman-key --gpgdir "$TARGET/etc/pacman.d/gnupg" --populate archlinux cachyos
+# Actual repository signing fingerprint from failed pinned-ISO CI attempt.
+pacman-key --gpgdir "$TARGET/etc/pacman.d/gnupg" --list-keys \
+  882DCFE48E2051D48E2562ABF3B607488DB35A47 >/dev/null ||
+  die 'CachyOS repository signing key absent from trusted ISO keyring'
+echo 'GASLUX_LAB_OFFICIAL_KEYRING_POPULATED=1'
 # Minimal, REAL CachyOS packages from official live pacman repos, with
 # pacman's signature verification unchanged. NOT a finished desktop installer.
 pacstrap -K "$TARGET" \
