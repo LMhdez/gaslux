@@ -48,9 +48,7 @@ class OvmfSecureBootLabContractTests(unittest.TestCase):
 
     def test_final_guest_pass_depends_on_secureboot_marker(self):
         self.assertIn("GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1", self.probe)
-        self.assertIn("SECURE_BOOT_DISABLED.search", self.serial) if "SECURE_BOOT_DISABLED.search" in self.serial else self.assertIn(
-            "wait_for(sock, trace, (SECURE_BOOT_DISABLED,)", self.serial
-        )
+        self.assertIn("wait_for(sock, trace, (SECURE_BOOT_DISABLED,)", self.serial)
         self.assertIn('[[ "$guest_proven" -eq 1 ]]', self.smoke)
         self.assertIn('"$w/guest-console.log"', self.smoke)
 
