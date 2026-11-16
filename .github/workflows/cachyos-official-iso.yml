@@ -8,12 +8,16 @@ on:
       - feature/cachyos-e2e-release-gate
       - feature/cachyos-real-iso-contract
       - feature/cachyos-live-guest-preflight-smoke
+      - feature/cachyos-pinned-iso-repo-audit
     paths:
       - .github/workflows/cachyos-official-iso.yml
       - auto_tests/tools/cachyos_real_live_kernel_smoke.sh
       - auto_tests/tools/cachyos_live_guest_serial.py
       - auto_tests/tools/cachyos_live_guest_readonly_probe.sh
       - assets/live/cachyos-stage-target.sh
+      - assets/live/cachyos-pacman-trust.py
+      - auto_tests/tools/cachyos_pinned_iso_repo_audit.py
+      - auto_tests/test_cachyos_pinned_iso_repo_audit.py
 
 permissions:
   contents: read
@@ -128,6 +132,31 @@ jobs:
           printf 'Real CachyOS ISO verification passed\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'This job did not install Linux or touch Windows boot files.\n' >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Audit exact pinned ISO effective pacman signature policy (NO disk writes)
+        shell: bash
+        env:
+          ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+        run: |
+          set -Eeuo pipefail
+          w="$GASLUX_ISO_WORKSPACE"
+          mkdir -p "$w/mounted" "$w/live" gaslux-boot-evidence
+          mounted_iso=0
+          mounted_root=0
+          cleanup() {
+            if (( mounted_root )); then sudo umount "$w/live" || true; fi
+            if (( mounted_iso )); then sudo umount "$w/mounted" || true; fi
+          }
+          trap cleanup EXIT
+          sudo mount -o loop,ro "$w/cachyos.iso" "$w/mounted"
+          mounted_iso=1
+          sudo mount -t squashfs -o loop,ro             "$w/mounted/arch/x86_64/airootfs.sfs" "$w/live"
+          mounted_root=1
+          sudo python3 auto_tests/tools/cachyos_pinned_iso_repo_audit.py             "$w/cachyos.iso" "$w/mounted" "$w/live" "$ISO_SHA256"             "$PWD/gaslux-boot-evidence/cachyos-pinned-repository-policy.json"
+          (
+            cd gaslux-boot-evidence
+            sha256sum cachyos-pinned-repository-policy.json               > cachyos-pinned-repository-policy.sha256
+          )
+          echo 'Pinned CachyOS ISO mandatory package signatures: verified' >> "$GITHUB_STEP_SUMMARY"
       - name: Boot real CachyOS live kernel and init in disposable OVMF/QEMU
         shell: bash
         env:
