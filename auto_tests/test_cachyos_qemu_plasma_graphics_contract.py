@@ -1,4 +1,4 @@
-"""CachyOS native Plasma X11 QEMU proof and fail-closed framebuffer tests."""
+"""CachyOS native Plasma Wayland QEMU proof and fail-closed framebuffer tests."""
 from __future__ import annotations
 
 import importlib.util
@@ -24,15 +24,15 @@ class CachyosQemuPlasmaProof(unittest.TestCase):
     def test_real_signed_x11_desktop_packages_and_session_guard(self):
         script = INSTALL.read_text()
         for piece in (
-            "GASLUX_LAB_GRAPHICAL", "plasma-meta", "plasma-x11-session",
-            "kwin-x11", "xorg-server", "sddm", "mesa",
+            "GASLUX_LAB_GRAPHICAL", "plasma-meta", "plasma-workspace",
+            "kwin", "qt6-wayland", "sddm", "mesa",
             "pacstrap -K", "arch-chroot",
-            "usr/share/xsessions/plasmax11.desktop",
-            "User=gasluxtest", "Session=plasmax11.desktop",
+            "usr/share/wayland-sessions/plasma.desktop",
+            "User=gasluxtest", "Session=plasma.desktop",
             "systemctl enable sddm.service", "graphical.target",
             "pgrep -u gasluxtest -x plasmashell",
-            "pgrep -u gasluxtest -x kwin_x11",
-            "GASLUX_VM_CACHYOS_PLASMA_X11_SESSION_PASS=1",
+            "pgrep -u gasluxtest -x kwin_wayland",
+            "GASLUX_VM_CACHYOS_PLASMA_WAYLAND_SESSION_PASS=1",
         ):
             self.assertIn(piece, script)
         self.assertNotIn("cp -a /run/archiso", script)
@@ -41,7 +41,7 @@ class CachyosQemuPlasmaProof(unittest.TestCase):
     def test_runner_requires_native_processes_and_real_fb(self):
         script = RUNNER.read_text()
         self.assertIn("--run-lab-graphical", script)
-        self.assertIn("GASLUX_VM_CACHYOS_PLASMA_X11_SESSION_PASS=1", script)
+        self.assertIn("GASLUX_VM_CACHYOS_PLASMA_WAYLAND_SESSION_PASS=1", script)
         self.assertIn("cachyos_qemu_graphics_evidence.py", script)
         self.assertIn("cachyos-installed-plasma-session.ppm", script)
         # A separate target disk, no ISO/FAT, remains mandatory on second boot.
