@@ -160,7 +160,7 @@ frame_count=0
 for tick in $(seq 1 90); do
   sleep 5
   if [[ -s "$work/serial.log" ]] &&
-     grep -Eiq 'Linux version|Freeing unused kernel|systemd\\[1\\]' "$work/serial.log"; then
+     grep -Eiq 'Linux version|Freeing unused kernel|systemd' "$work/serial.log"; then
     guest_verified=1
   fi
   if (( tick % 18 == 0 )); then

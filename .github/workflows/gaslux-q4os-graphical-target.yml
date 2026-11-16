@@ -20,12 +20,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Install disposable QEMU, OVMF, GRUB and screenshot tools
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools gdisk
-          python3 -m pip install --user vncdotool Pillow
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          python -m pip install vncdotool Pillow
       - name: Download and re-verify pinned Q4OS 6.10 r2 native ISO
         shell: bash
         env:
@@ -36,7 +38,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/q4os-native-target"
           cd "$RUNNER_TEMP/q4os-native-target"
           aria2c --continue=true --split=4 --max-connection-per-server=4 --max-tries=5 --retry-wait=8 --timeout=60 --connect-timeout=30 --file-allocation=none --check-integrity=true --checksum="sha-256=$Q4OS_SHA256" -o q4os.iso "$Q4OS_SOURCE"
-          printf '%s  %s\\n' "$Q4OS_SHA256" q4os.iso | sha256sum --check --status
+          printf '%s  %s\n' "$Q4OS_SHA256" q4os.iso | sha256sum --check --status
           echo "GASLUX_Q4OS_ISO=$RUNNER_TEMP/q4os-native-target/q4os.iso" >> "$GITHUB_ENV"
       - name: Boot graphical Q4OS with ONE isolated writable virtual target and screenshot VNC
         shell: bash
