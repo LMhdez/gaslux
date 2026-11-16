@@ -177,6 +177,7 @@ class SignedHandoffTests(unittest.TestCase):
             self.verify()
 
     def test_duplicate_target_uuid_rejected(self):
+        self.plan["isoStorageFilesystem"] = "ext4"
         self.plan["isoStorageUuid"] = ROOT_ID
         self.sign()
         with self.assertRaisesRegex(AUTH.AuthError, "must not share"):
