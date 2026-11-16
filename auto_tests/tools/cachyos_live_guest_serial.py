@@ -18,8 +18,8 @@ from pathlib import Path
 LOGIN = re.compile(rb"CachyOS login:\s*$", re.M)
 PASSWORD = re.compile(rb"Password:\s*$", re.M)
 READY = re.compile(rb"(?m)^GASLUX_ROOT_SHELL_READY\r?$")
-SECURE_BOOT_DISABLED = re.compile(rb"(?m)^GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\\r?$")
-SIGNED_GRUB_CMDLINE = re.compile(rb"(?m)^GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\\r?$")
+SECURE_BOOT_DISABLED = re.compile(rb"(?m)^GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r?$")
+SIGNED_GRUB_CMDLINE = re.compile(rb"(?m)^GASLUX_SIGNED_GRUB_CMDLINE_VERIFIED=1\r?$")
 PASSED = re.compile(rb"(?m)^GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r?$")
 FAILED = re.compile(rb"(?m)^GASLUX_GUEST_PREFLIGHT_FAILURE(?::[^\r\n]*)?\r?$")
 
