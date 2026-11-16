@@ -118,26 +118,31 @@ code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
 vars=/usr/share/OVMF/OVMF_VARS_4M.fd
 [[ -f "$code" && -f "$vars" ]] || exit 2
 cp "$vars" "$w/nvram-live.fd"
-# GitHub-hosted Ubuntu x64 confirmed a real diskless QEMU KVM bootstrap in
-# Actions 43966109996. Grant only this ephemeral runner user access and
-# dynamically test KVM initialization. Preserve TCG as an explicit fallback.
+# Actions 43966550937 proved that a *paused* QEMU (-S) falsely reported
+# KVM availability: real guest execution failed with KVM Permission denied.
+# Probe actual vCPU execution instead; fallback to TCG unless verified.
+# Only grant this ephemeral runner user /dev/kvm ACLs, never host disks.
 accel=tcg
 cpu=qemu64
 if [[ -c /dev/kvm ]] && command -v setfacl >/dev/null 2>&1 &&
    sudo test -r /dev/kvm && sudo test -w /dev/kvm; then
   sudo setfacl -m "u:$(id -un):rw" /dev/kvm
   set +e
-  timeout --kill-after=2s 3s qemu-system-x86_64 \
+  # No -S: QEMU must initialize KVM and run the vCPU. A paused
+  # machine can survive 3s even if KVM subsequently rejects execution.
+  timeout --kill-after=2s 5s qemu-system-x86_64 \
     -machine q35,accel=kvm,smm=on -cpu host -smp 2 -m 256 \
-    -S -nodefaults -display none -monitor none -serial none \
+    -nodefaults -display none -monitor none -serial none \
     > "$w/kvm-probe.log" 2>&1
   kvm_probe_rc=$?
   set -e
-  if (( kvm_probe_rc == 124 )); then
+  if (( kvm_probe_rc == 124 )) &&
+     ! grep -Eiq 'permission denied|failed to initialize kvm|could not access kvm' "$w/kvm-probe.log"; then
     accel=kvm
     cpu=host
+    echo 'GASLUX_KVM_VCPU_EXECUTION_PROVEN=true'
   else
-    echo "QEMU KVM unsupported in this runner ($kvm_probe_rc); fail-safe TCG fallback"
+    echo "GASLUX_KVM_VCPU_EXECUTION_PROVEN=false (QEMU=$kvm_probe_rc); using TCG"
     tail -c 1200 "$w/kvm-probe.log" || true
   fi
 fi
