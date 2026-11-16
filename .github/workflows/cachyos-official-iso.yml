@@ -42,7 +42,7 @@ jobs:
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             squashfs-tools grub-common aria2 ovmf qemu-system-x86 \
-            grub-efi-amd64-bin mtools dosfstools e2fsprogs
+            grub-efi-amd64-bin mtools dosfstools e2fsprogs qemu-utils
       - name: Fetch and verify pinned official CachyOS desktop ISO
         shell: bash
         env:
