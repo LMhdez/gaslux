@@ -40,7 +40,10 @@ jobs:
           guest=Path('auto_tests/tools/cachyos_vm_guest_install.sh').read_text()
           assert 'GITHUB_ACTIONS' in host and 'RUNNER_OS' in host
           assert 'losetup --find --show --partscan "$w/root.raw"' in host
-          assert 'readonly=on' in host and 'q35,accel=tcg' in host
+          assert 'readonly=on' in host and 'accel=tcg' in host
+          assert 'accel=kvm' in host and 'GASLUX_QEMU_ACCELERATOR=' in host
+          assert 'sudo setfacl -m' in host and 'kvm_probe_rc == 124' in host
+          assert 'qemu|kvm' in guest
           assert 'GASLUX_VM_FIRSTBOOT_PASS:' in host and guest
           assert 'systemd-detect-virt --vm' in guest
           assert 'bash /run/gaslux-control/stage.sh --validate-target' in guest
@@ -71,7 +74,7 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            aria2 gdisk util-linux ovmf qemu-system-x86 \
+            aria2 gdisk util-linux ovmf qemu-system-x86 acl \
             grub-efi-amd64-bin grub-common mtools dosfstools \
             e2fsprogs squashfs-tools
       - name: Fetch and verify pinned official CachyOS desktop ISO

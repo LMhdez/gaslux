@@ -6,9 +6,11 @@ exec >/dev/ttyS0 2>&1
 trap 'rc=$?; if (( rc != 0 )); then echo "GASLUX_VM_INSTALL_FAILED:exit=$rc:line=$LINENO"; fi; sync' EXIT
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 echo 'GASLUX_VM_INSTALL_BEGIN'
-[[ "$(id -u)" == 0 && "$(systemd-detect-virt --vm)" == qemu ]] || {
-  echo 'Refusing non-QEMU root'; exit 11;
-}
+[[ "$(id -u)" == 0 ]] || { echo 'Refusing unprivileged guest'; exit 11; }
+case "$(systemd-detect-virt --vm)" in
+  qemu|kvm) ;;
+  *) echo 'Refusing non-QEMU/KVM guest'; exit 11 ;;
+esac
 [[ -r /run/gaslux-control/lab.env && -r /run/gaslux-control/stage.sh ]] || {
   echo 'Missing read-only laboratory control medium'; exit 12;
 }

@@ -118,9 +118,34 @@ code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
 vars=/usr/share/OVMF/OVMF_VARS_4M.fd
 [[ -f "$code" && -f "$vars" ]] || exit 2
 cp "$vars" "$w/nvram-live.fd"
+# GitHub-hosted Ubuntu x64 confirmed a real diskless QEMU KVM bootstrap in
+# Actions 43966109996. Grant only this ephemeral runner user access and
+# dynamically test KVM initialization. Preserve TCG as an explicit fallback.
+accel=tcg
+cpu=qemu64
+if [[ -c /dev/kvm ]] && command -v setfacl >/dev/null 2>&1 &&
+   sudo test -r /dev/kvm && sudo test -w /dev/kvm; then
+  sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+  set +e
+  timeout --kill-after=2s 3s qemu-system-x86_64 \
+    -machine q35,accel=kvm,smm=on -cpu host -smp 2 -m 256 \
+    -S -nodefaults -display none -monitor none -serial none \
+    > "$w/kvm-probe.log" 2>&1
+  kvm_probe_rc=$?
+  set -e
+  if (( kvm_probe_rc == 124 )); then
+    accel=kvm
+    cpu=host
+  else
+    echo "QEMU KVM unsupported in this runner ($kvm_probe_rc); fail-safe TCG fallback"
+    tail -c 1200 "$w/kvm-probe.log" || true
+  fi
+fi
+echo "GASLUX_QEMU_ACCELERATOR=$accel"
+
 echo 'GASLUX_VM_LIVE_QEMU_START'
 timeout --kill-after=5s 3300s qemu-system-x86_64 \
-  -machine q35,accel=tcg,smm=on \
+  -machine "q35,accel=$accel,smm=on" -cpu "$cpu" \
   -global driver=cfi.pflash01,property=secure,value=on \
   -smp 2 -m 6144 -display none -monitor none -no-reboot -boot order=c \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
@@ -148,6 +173,12 @@ for attempt in $(seq 1 655); do
     kill "$vm_pid" 2>/dev/null || true
     break
   fi
+  # Human-reviewable milestones in Actions logs; a silent QEMU never counts
+  # as a passed installation. Never interpret these logs as boot proof.
+  if (( attempt % 12 == 0 )); then
+    echo "GASLUX_VM_PROGRESS_SECONDS=$((attempt * 5))"
+    grep -aE 'GASLUX_VM_|CACHYOS_STAGE_ERROR|pacstrap|error:|failed' "$w/live-serial.log" 2>/dev/null | tail -n 14 || true
+  fi
   if grep -q 'GASLUX_VM_INSTALL_FAILED:' "$w/live-serial.log" 2>/dev/null; then
     kill "$vm_pid" 2>/dev/null || true
     break
@@ -171,7 +202,7 @@ echo 'GASLUX_VM_PACSTRAP_PROVEN'
 cp "$vars" "$w/nvram-installed.fd"
 echo 'GASLUX_VM_INSTALLED_QEMU_START'
 timeout --kill-after=5s 900s qemu-system-x86_64 \
-  -machine q35,accel=tcg,smm=on \
+  -machine "q35,accel=$accel,smm=on" -cpu "$cpu" \
   -global driver=cfi.pflash01,property=secure,value=on \
   -smp 2 -m 4096 -display none -monitor none -no-reboot -boot order=c \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
