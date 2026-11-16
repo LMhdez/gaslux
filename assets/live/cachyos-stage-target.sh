@@ -18,7 +18,12 @@ check_host() {
   local host_id host_name
   host_id="$(sed -n 's/^ID=//p' /etc/os-release | head -n 1 | tr -d '"')"
   host_name="$(sed -n 's/^NAME=//p' /etc/os-release | head -n 1 | tr -d '"')"
-  [ "$host_id" = arch ] && [ "$host_name" = CachyOS ] || die 'not official CachyOS Archiso'
+  [ "$host_id" = cachyos ] && [ "$host_name" = 'CachyOS Linux' ] ||
+    die 'CachyOS Archiso identity does not match the verified ISO'
+  grep -qx 'ID_LIKE=arch' /etc/os-release ||
+    die 'CachyOS Archiso has no matching Arch compatibility identity'
+  grep -qx 'IMAGE_ID=cachyos' /etc/os-release ||
+    die 'CachyOS Archiso image identifier mismatch'
   [ -d /sys/firmware/efi/efivars ] || die 'UEFI-only staging'
   python3 - <<'PY' || die 'Secure Boot not provably disabled'
 from pathlib import Path
