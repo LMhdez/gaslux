@@ -143,7 +143,7 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
   -drive if=none,id=officialiso,readonly=on,format=raw,file="$iso" \
-  -device virtio-blk-pci,drive=officialiso \
+  -device virtio-blk-pci,drive=officialiso,bootindex=2 \
   -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
 guest="$!"
