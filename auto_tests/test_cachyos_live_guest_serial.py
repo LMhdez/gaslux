@@ -33,7 +33,8 @@ class FakeSerial:
 
 
 class SerialGuestContractTests(unittest.TestCase):
-    def fake(self, *, password=False, result=b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"):
+    def fake(self, *, password=False, result=(b"GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r\n"
+                                              b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n")):
         prompts = [b"Welcome to CachyOS\nCachyOS login: "]
         if password:
             prompts.append(b"Password: ")
@@ -62,6 +63,31 @@ class SerialGuestContractTests(unittest.TestCase):
         guest = self.fake(password=True)
         SERIAL.probe(guest, bytearray(), boot_timeout=3)
         self.assert_remote_sequence(guest, password=True)
+
+    def test_success_without_verified_secure_boot_var_is_rejected(self):
+        guest = self.fake(result=b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n")
+        with self.assertRaises(SERIAL.ProbeError):
+            SERIAL.probe(guest, bytearray(), boot_timeout=3)
+
+    def test_exact_disabled_secure_boot_marker_required(self):
+        self.assertIsNone(
+            SERIAL.SECURE_BOOT_DISABLED.search(
+                b"echo GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r\n"
+            )
+        )
+        self.assertIsNotNone(
+            SERIAL.SECURE_BOOT_DISABLED.search(
+                b"GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1\r\n"
+            )
+        )
+
+    def test_bad_secure_boot_mode_does_not_satisfy_success(self):
+        guest = self.fake(result=(
+            b"GASLUX_SECUREBOOT_EFIVAR: SecureBoot=1 SetupMode=0\r\n"
+            b"GASLUX_GUEST_READONLY_PREFLIGHT_PASS=1\r\n"
+        ))
+        with self.assertRaises(SERIAL.ProbeError):
+            SERIAL.probe(guest, bytearray(), boot_timeout=3)
 
     def test_guest_stage_refusal(self):
         guest = self.fake(result=b"GASLUX_GUEST_PREFLIGHT_FAILURE: wrong IMAGE_ID\r\n")
@@ -156,7 +182,8 @@ class SerialGuestContractTests(unittest.TestCase):
     def test_probe_enforces_explicit_vm_firmware_and_live_identity(self):
         script = SOURCE.with_name("cachyos_live_guest_readonly_probe.sh").read_text()
         for required in ("ID=cachyos", "IMAGE_VERSION=2026.08.09", "systemd-detect-virt",
-                         "/sys/firmware/efi/efivars", "SecureBoot-", "sha256sum -c stage.sha256"):
+                         "/sys/firmware/efi/efivars", "SecureBoot-", "SetupMode", "GASLUX_OVMF_SECUREBOOT_DISABLED_VERIFIED=1",
+                         "sha256sum -c stage.sha256"):
             self.assertIn(required, script)
 
 
