@@ -73,6 +73,9 @@ def audit_q4os_native_hooks(root: Path) -> dict:
     if hooks_dir.is_symlink() or not hooks_dir.is_dir():
         raise CalamaresRefusal("Native hooks evidence directory invalid")
     expected = {p.replace("/", "__") for p in _HOOK_SOURCES}
+    observed = {item.name for item in hooks_dir.iterdir()}
+    if observed != expected | {_MANIFEST}:
+        raise CalamaresRefusal("Unexpected or missing Q4OS hook evidence file")
     try:
         manifest = _read_regular(hooks_dir / _MANIFEST, 4096).decode("ascii")
     except UnicodeError as exc:
