@@ -95,7 +95,16 @@ CFG
 grub-install --target=x86_64-efi --efi-directory=/boot/efi \
   --bootloader-id=GasluxQ4OSLab --no-nvram --recheck > /dev/ttyS0 2>&1 ||
   fatal 'native-grub-install-failed'
-grub-mkconfig -o /boot/grub/grub.cfg > /dev/ttyS0 2>&1 || fatal 'native-grub-config-failed'
+if ! grub-mkconfig -o /boot/grub/grub.cfg > /var/log/gaslux-q4os-grubcfg.log 2>&1; then
+  printf 'GASLUX_Q4OS_NATIVE_GRUB_CONFIG_DIAGNOSTICS_BEGIN\n' > /dev/ttyS0
+  tail -n 100 /var/log/gaslux-q4os-grubcfg.log > /dev/ttyS0 || true
+  # Run a second, TRACE-ONLY investigation *inside this disposable guest*.
+  # Never treat its result as a successful install or alter fallback/NVRAM.
+  /bin/sh -x /usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg \
+    > /var/log/gaslux-q4os-grubcfg-trace.log 2>&1 || true
+  tail -n 90 /var/log/gaslux-q4os-grubcfg-trace.log > /dev/ttyS0 || true
+  fatal 'native-grub-config-failed'
+fi
 sha256sum --status -c /etc/gaslux-q4os-lab-temp-efi.sha256 ||
   fatal 'native-grub-modified-fallback-without-ownership'
 [[ -s "$native_loader" && -s /boot/grub/grub.cfg ]] || fatal 'native-grub-file-missing'
