@@ -18,7 +18,7 @@ _RUN_ID = re.compile(r"^[A-Za-z0-9_-]{12,100}$")
 _GFX = re.compile(r"^[0-9]{3,5}x[0-9]{3,5}$")
 _REQUIRED = frozenset({
     "version", "firmware", "secureBootEnabled", "runId", "rootUuid",
-    "espUuid", "windowsBootUuid", "linuxLabel", "grubResolution",
+    "espUuid", "windowsBootUuid", "windowsBootManagerSha256", "linuxLabel", "grubResolution",
 })
 
 
@@ -46,6 +46,9 @@ def render(plan: dict[str, Any]) -> dict[str, str]:
     root_uuid = _strict_string(plan, "rootUuid", _UUID)
     esp_uuid = _strict_string(plan, "espUuid", _VFAT_UUID)
     windows_boot_uuid = _strict_string(plan, "windowsBootUuid", _VFAT_UUID)
+    windows_manager_hash = _strict_string(
+        plan, "windowsBootManagerSha256", re.compile(r"^[0-9a-f]{64}$")
+    )
     label = _strict_string(
         plan, "linuxLabel", re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._+-]{0,64}$")
     )
@@ -81,6 +84,7 @@ def render(plan: dict[str, Any]) -> dict[str, str]:
         "fstab": fstab,
         "grubDefaults": defaults,
         "windowsGrubEntry": windows_entry,
+        "windowsBootManagerSha256": windows_manager_hash,
         "bootloaderId": "Gaslux-CachyOS",
         "linuxDisplayName": label,
         "releaseSafe": "false",
