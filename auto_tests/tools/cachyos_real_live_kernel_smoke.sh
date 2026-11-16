@@ -36,6 +36,7 @@ else
 fi
 # Guest installation requires a separate newly created QEMU target.
 lab_install=0
+graphical=0
 lab_disks=()
 lab_network=()
 lab_timeout=380
@@ -47,6 +48,7 @@ if [[ "${GASLUX_LAB_FIRSTBOOT:-0}" == 1 ]]; then
   command -v qemu-img >/dev/null || exit 2
   lab_install=1
   lab_timeout=2900
+  if [[ "${GASLUX_LAB_GRAPHICAL:-0}" == 1 ]]; then graphical=1; fi
   qemu-img create -f qcow2 "$w/target.qcow2" 12G
   lab_disks=(-drive "if=none,id=gaslux_target,format=qcow2,file=$w/target.qcow2"
              -device "virtio-blk-pci,drive=gaslux_target,serial=GASLUXLABTARGET")
@@ -151,6 +153,7 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
   guest_flags=()
   if [[ "$signed_mode" -eq 1 ]]; then guest_flags+=(--require-signed-entry); fi
   if [[ "$lab_install" -eq 1 ]]; then guest_flags+=(--run-lab-install); fi
+  if [[ "$graphical" -eq 1 ]]; then guest_flags+=(--run-lab-graphical); fi
   python3 auto_tests/tools/cachyos_live_guest_serial.py \
     --socket "$w/guest-serial.sock" --transcript "$w/guest-console.log" \
     --boot-timeout 345 "${guest_flags[@]}"
@@ -239,10 +242,17 @@ fi
 if [[ "$lab_install" -eq 1 ]]; then
   echo 'GASLUX_LAB_STAGE_COMPLETE: now BOOT ONLY target qcow2; no live ISO and no boot FAT.'
   cp "$vars" "$w/installed-nvram.fd"
-  timeout --kill-after=5s 430s qemu-system-x86_64 \
+  monitor_args=(-monitor none)
+  graphic_args=()
+  if [[ "$graphical" -eq 1 ]]; then
+    monitor_args=(-monitor "unix:$w/graphics-monitor.sock,server=on,wait=off")
+    graphic_args=(-vga std)
+  fi
+  timeout --kill-after=5s 600s qemu-system-x86_64 \
     -machine q35,accel=tcg,smm=on \
     -global driver=cfi.pflash01,property=secure,value=on \
-    -smp 2 -m 4096 -display none -monitor none -no-reboot \
+    -smp 2 -m 4096 -display none "${monitor_args[@]}" \
+    "${graphic_args[@]}" -no-reboot \
     -drive if=pflash,format=raw,readonly=on,file="$code" \
     -drive if=pflash,format=raw,file="$w/installed-nvram.fd" \
     -drive if=none,id=only_target,format=qcow2,file="$w/target.qcow2" \
@@ -250,16 +260,32 @@ if [[ "$lab_install" -eq 1 ]]; then
     -serial "file:$w/installed-serial.log" &
   installed_pid=$!
   installed_success=0
-  for _ in $(seq 1 84); do
+  for _ in $(seq 1 112); do
     sleep 5
-    if [[ -f "$w/installed-serial.log" ]] &&
-       tr -d '\r' < "$w/installed-serial.log" |
-         grep -Fxq 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1'; then
-      installed_success=1
-      break
+    [[ -f "$w/installed-serial.log" ]] || continue
+    if ! awk '{gsub(/\r/, ""); if($0=="GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1") pass=1}
+        END{exit !pass}' "$w/installed-serial.log"; then
+      continue
     fi
-    kill -0 "$installed_pid" 2>/dev/null || break
+    if [[ "$graphical" -eq 1 ]] &&
+       ! awk '{gsub(/\r/, ""); if($0=="GASLUX_VM_CACHYOS_PLASMA_X11_SESSION_PASS=1") pass=1}
+          END{exit !pass}' "$w/installed-serial.log"; then
+      continue
+    fi
+    installed_success=1
+    break
   done
+  if [[ "$installed_success" -eq 1 && "$graphical" -eq 1 ]]; then
+    python3 auto_tests/tools/cachyos_qemu_graphics_evidence.py \
+      --socket "$w/graphics-monitor.sock" --output "$w/plasma-session.ppm"
+    if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" ]]; then
+      mkdir -p "$GASLUX_BOOT_EVIDENCE_DIR"
+      install -m 0600 "$w/plasma-session.ppm" \
+        "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-installed-plasma-session.ppm"
+      ( cd "$GASLUX_BOOT_EVIDENCE_DIR"
+        sha256sum cachyos-installed-plasma-session.ppm > cachyos-plasma-screen.sha256 )
+    fi
+  fi
   kill "$installed_pid" 2>/dev/null || true
   wait "$installed_pid" || true
   if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" && -f "$w/installed-serial.log" ]]; then
@@ -276,7 +302,10 @@ if [[ "$lab_install" -eq 1 ]]; then
     exit 1
   fi
   echo 'PASS: independent installed CachyOS LTS kernel, ext4 root and GRUB EFI boot.'
-  echo 'NOT TESTED: full desktop, Windows dual boot, update/rollback or hardware.'
+  if [[ "$graphical" -eq 1 ]]; then
+    echo 'PASS: installed native KDE Plasma X11/KWin user session and QEMU framebuffer confirmed.'
+  fi
+  echo 'NOT TESTED: production graphical installer, Windows dual boot, updates/rollback or hardware.'
 else
   echo 'NOT TESTED: installed CachyOS, Windows dual boot, or Windows recovery.'
 fi
