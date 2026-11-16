@@ -18,8 +18,8 @@ def test_native_install_is_isolated_to_explicit_hosted_kvm_lab():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     run = RUNNER.read_text(encoding="utf-8")
     assert "GASLUX_POP_NATIVE_FULL_VM: '1'" in workflow
-    assert 'GITHUB_ACTIONS:-' in run
-    assert 'CI:-' in run
+    assert "GITHUB_ACTIONS:-" in run
+    assert "CI:-" in run
     assert "/dev/kvm" in run
     assert "accel=kvm" in run
     assert "-net none" in run
@@ -38,9 +38,9 @@ def test_second_vm_has_only_native_installed_disk():
     run = RUNNER.read_text(encoding="utf-8")
     first, second = run.split("# The SECOND QEMU has NO lab EFI disk and NO live ISO.")
     assert "grub-mkstandalone" in first
-    assert 'drive=labefi' in first
-    assert 'drive=verifiediso' in first
-    assert 'drive=ownedtarget' in first
+    assert "drive=labefi" in first
+    assert "drive=verifiediso" in first
+    assert "drive=ownedtarget" in first
     assert "-device virtio-blk-pci,drive=popinstalled" in second
     assert "-device virtio-blk-pci,drive=verifiediso" not in second
     assert "-device virtio-blk-pci,drive=labefi" not in second
