@@ -22,25 +22,32 @@ WINDOWS_BYTES = b"MZ" + b"WindowsLoaderFixture"
 def make_fixture(tmp_path, distro):
     root = tmp_path / distro
     root.mkdir()
+
     def file(path, data):
         dst = root / path
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text(data, encoding="utf-8")
+
     file(".gaslux-stage-owner", RUN_ID + "\n")
     root_fs = "btrfs" if distro == "bazzite" else "ext4"
-    file("etc/fstab", f"UUID={ROOT_UUID} / {root_fs} defaults 0 1\n"
-                      f"UUID={ESP_UUID} /boot/efi vfat umask=0077 0 2\n")
+    file(
+        "etc/fstab",
+        f"UUID={ROOT_UUID} / {root_fs} defaults 0 1\n"
+        f"UUID={ESP_UUID} /boot/efi vfat umask=0077 0 2\n",
+    )
     loader = root / "boot/efi/EFI/Microsoft/Boot/bootmgfw.efi"
     loader.parent.mkdir(parents=True)
     loader.write_bytes(WINDOWS_BYTES)
     if distro == "popos":
         file("etc/os-release", "ID=pop\n")
-        file("var/lib/dpkg/status", "".join(
-            f"Package: {name}\nStatus: install ok installed\n\n"
-            for name in ("pop-desktop", "linux-system76", "systemd-boot")
-        ))
-        file("boot/efi/loader/entries/pop.conf",
-             "title Pop_OS\nlinux /EFI/Pop_OS/vmlinuz.efi\n")
+        file(
+            "var/lib/dpkg/status",
+            "".join(
+                f"Package: {name}\nStatus: install ok installed\n\n"
+                for name in ("pop-desktop", "linux-system76", "systemd-boot")
+            ),
+        )
+        file("boot/efi/loader/entries/pop.conf", "title Pop_OS\nlinux /EFI/Pop_OS/vmlinuz.efi\n")
     elif distro == "q4os":
         file("etc/os-release", 'ID=debian\nVERSION_ID="13"\n')
         file("etc/q4os_version", "6.10-deb13u1\n")
@@ -49,12 +56,15 @@ def make_fixture(tmp_path, distro):
         file("etc/os-release", 'ID=fedora\nPRETTY_NAME="Fedora Linux (Bazzite)"\n')
         (root / "ostree/deploy").mkdir(parents=True)
         file("boot/loader/entries/ostree.conf", "title Bazzite\noptions ostree=/ostree\n")
-    backend = {"popos": "system76", "q4os": "q4os-native",
-               "bazzite": "fedora-atomic"}[distro]
+    backend = {"popos": "system76", "q4os": "q4os-native", "bazzite": "fedora-atomic"}[distro]
     args = {
-        "root": root, "distribution_id": distro, "backend": backend,
-        "run_id": RUN_ID, "expected_root_uuid": ROOT_UUID,
-        "firmware_layout": "uefi/gpt", "esp_uuid": ESP_UUID,
+        "root": root,
+        "distribution_id": distro,
+        "backend": backend,
+        "run_id": RUN_ID,
+        "expected_root_uuid": ROOT_UUID,
+        "firmware_layout": "uefi/gpt",
+        "esp_uuid": ESP_UUID,
         "windows_loader_sha256": hashlib.sha256(WINDOWS_BYTES).hexdigest(),
     }
     return args
@@ -73,14 +83,17 @@ def test_target_evidence_never_claims_boot_or_rollback(tmp_path, distro):
     assert result["installationAuthorized"] is False
 
 
-@pytest.mark.parametrize("change", [
-    {"run_id": "foreign-run-123456"},
-    {"expected_root_uuid": "11111111-1111-1111-1111-111111111111"},
-    {"esp_uuid": "0000-0000"},
-    {"windows_loader_sha256": "f" * 64},
-    {"firmware_layout": "bios/mbr"},
-    {"backend": "fedora-atomic"},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"run_id": "foreign-run-123456"},
+        {"expected_root_uuid": "11111111-1111-1111-1111-111111111111"},
+        {"esp_uuid": "0000-0000"},
+        {"windows_loader_sha256": "f" * 64},
+        {"firmware_layout": "bios/mbr"},
+        {"backend": "fedora-atomic"},
+    ],
+)
 def test_foreign_or_changed_target_rejected(tmp_path, change):
     args = make_fixture(tmp_path, "popos")
     args.update(change)
