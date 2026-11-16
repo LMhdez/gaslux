@@ -57,22 +57,25 @@ sha256sum --status -c /etc/gaslux-q4os-lab-temp-efi.sha256 ||
   fatal 'guest-efi-fallback-was-replaced'
 [[ ! -e "$native_loader" && ! -e "$state" ]] || fatal 'native-target-already-present'
 offline_dir='/var/cache/gaslux-q4os-lab'
-[[ -d "$offline_dir" && -s "$offline_dir/grub-efi-amd64-bin.sha256" ]] ||
-  fatal 'missing-signed-apt-grub-package-manifest'
+[[ -d "$offline_dir" && -s "$offline_dir/grub-efi-amd64-bundle.sha256" ]] ||
+  fatal 'missing-signed-apt-grub-bundle-manifest'
 shopt -s nullglob
-grub_debs=("$offline_dir"/grub-efi-amd64-bin_*_amd64.deb)
+grub_debs=("$offline_dir"/grub-efi-amd64-unsigned_*_amd64.deb
+           "$offline_dir"/grub-efi-amd64-bin_*_amd64.deb)
 shopt -u nullglob
-[[ "${#grub_debs[@]}" -eq 1 && -f "${grub_debs[0]}" ]] ||
-  fatal 'ambiguous-or-missing-grub-efi-package'
-(cd "$offline_dir" && sha256sum --status -c grub-efi-amd64-bin.sha256) ||
-  fatal 'guest-efi-package-sha256-mismatch'
+[[ "${#grub_debs[@]}" -eq 2 && -f "${grub_debs[0]}" && -f "${grub_debs[1]}" ]] ||
+  fatal 'ambiguous-or-missing-grub-efi-package-bundle'
+(cd "$offline_dir" && sha256sum --status -c grub-efi-amd64-bundle.sha256) ||
+  fatal 'guest-efi-package-bundle-sha256-mismatch'
 command -v dpkg >/dev/null || fatal 'missing-dpkg'
-# The package was fetched using Debian 13's signed APT index on the runner.
-# Offline dpkg runs solely on this disposable guest's installed Q4OS root.
-dpkg -i "${grub_debs[0]}" > /dev/ttyS0 2>&1 ||
+# Both packages were downloaded from a Debian 13 APT index authenticated by
+# Debian's archive keyring on the runner. No network is attached to this VM.
+dpkg -i "${grub_debs[@]}" > /dev/ttyS0 2>&1 ||
   fatal 'offline-native-grub-package-install-failed'
-[[ "$(dpkg-query -W -f='${Status}' grub-efi-amd64-bin)" == 'install ok installed' ]] ||
-  fatal 'efi-grub-package-not-installed'
+for package in grub-efi-amd64-unsigned grub-efi-amd64-bin; do
+  [[ "$(dpkg-query -W -f='${Status}' "$package")" == 'install ok installed' ]] ||
+    fatal "EFI-GRUB-package-not-installed-$package"
+done
 dpkg -S /usr/lib/grub/x86_64-efi/normal.mod >/dev/null ||
   fatal 'EFI-GRUB-modules-not-package-owned'
 for tool in grub-install grub-mkconfig sha256sum sync; do
