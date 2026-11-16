@@ -14,7 +14,7 @@ permissions:
 jobs:
   popos-native-iso-readonly:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,7 +22,7 @@ jobs:
       - name: Prepare isolated ISO lab tools
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso gnupg curl ca-certificates
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso gnupg curl ca-certificates ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools
       - name: Resolve official ISO API with exact release identity and versioned URL
         shell: bash
         run: |
@@ -149,6 +149,15 @@ jobs:
           (cd "$w/evidence" && sha256sum *.txt *.json > manifest.sha256)
           echo "PASS: real SHA-pinned Pop!_OS ISO and matching live root inspected."
           echo "NOT TESTED: installed Pop OS, EFI boot, Windows dual boot or rollback."
+      - name: Boot real Pop!_OS live ISO in disposable OVMF/QEMU
+        shell: bash
+        env:
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-popos/evidence/guest
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            popos "$GASLUX_POP_ISO_FILE" "$GASLUX_POP_ISO_SHA256"
       - name: Retain hash-linked live-media evidence
         if: always()
         uses: actions/upload-artifact@v4
