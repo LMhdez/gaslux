@@ -143,8 +143,13 @@ echo 'GASLUX_GUEST_MEDIA=isolated-virtio-readonly-iso'
 [[ "$iso" != *,* ]] || die 'Unsafe ISO path delimiter for QEMU drive options'
 iso_args=(-drive "if=none,id=officialiso,readonly=on,format=raw,file=$iso"
           -device virtio-blk-pci,drive=officialiso,bootindex=2)
+qemu_accel=tcg
+if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
+  qemu_accel=kvm
+fi
+echo "GASLUX_Q4OS_ACCEL=$qemu_accel"
 timeout --kill-after=5s 720s qemu-system-x86_64 \
-  -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
+  -machine "q35,accel=$qemu_accel" -cpu max -smp 2 -m 4096 \
   -display none -vnc 127.0.0.1:1 -vga virtio -monitor none -no-reboot -net none \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \

@@ -46,6 +46,9 @@ def test_guest_graphics_requires_real_kernel_and_vnc_frames_not_bootloader_only(
     assert "systemd.unit=graphical.target" in source
     assert "-vnc 127.0.0.1:1" in source
     assert "-vga virtio" in source
+    assert "qemu_accel=tcg" in source
+    assert "qemu_accel=kvm" in source
+    assert "if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]" in source
     assert "vncdo -s 127.0.0.1:1 capture" in source
     assert '"$guest_verified" -eq 1 && "$frame_count" -gt 0' in source
     assert "NOT PROVEN: graphical desktop state" in source
