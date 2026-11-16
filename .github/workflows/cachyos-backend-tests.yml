@@ -1,0 +1,41 @@
+name: CachyOS backend safety tests
+on:
+  push:
+    branches:
+      - feature/cachyos-target-backend
+  pull_request:
+    branches:
+      - main
+      - feature/cachyos-preflight
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cachyos:
+    name: Read-only preflight and target verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Shell syntax check
+        run: bash -n assets/live/cachyos-stage-target.sh
+      - name: Python syntax check
+        run: |
+          python3 -m py_compile \
+            assets/live/cachyos-target-verify.py \
+            assets/live/libertix-cachyos-preflight.py
+      - name: CachyOS regression suite
+        run: python3 -m unittest discover -s auto_tests -p 'test_cachyos_*.py' -v
+      - name: Verify dry-run interface does not install
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash assets/live/cachyos-stage-target.sh --help | grep -F -- '--install'
+          if bash assets/live/cachyos-stage-target.sh --install 2>/dev/null; then
+            echo 'Installer accepted missing arguments' >&2
+            exit 1
+          fi
