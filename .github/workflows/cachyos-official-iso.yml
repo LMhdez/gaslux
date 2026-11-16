@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/cachyos-archiso-handoff
+      - feature/cachyos-e2e-release-gate
     paths:
       - .github/workflows/cachyos-official-iso.yml
 
