@@ -50,6 +50,26 @@ The synthetic test suite:
 CI does not contain, emulate or validate an actual Windows 10/11 installed
 system. A successful guest preflight cannot close stability issue #3.
 
+## Guard against destructive upstream installer assumptions
+
+CachyOS's own `cachyos-installer --config` supports headless operation,
+but its documented `device` option is an **entire disk which can be
+wiped**. This upstream interface cannot be invoked on a selected Windows
+system disk in Gaslux without an independently verified partition-preserving
+integration. A disposable-QEMU-only test must never become a production
+dispatch simply because it succeeds in a VM.
+
+- Official CLI configuration reference:
+  https://github.com/CachyOS/New-Cli-Installer/blob/master/docs/config.md
+- CachyOS's optimized repository configuration is CPU-specific; preserve the
+  effective pacstrap repo selection in the target system, including x86-64-v3
+  or x86-64-v4 where applicable, and verify signed package origins.
+  Upstream recorded a mismatch where pacstrap used an optimized repo and
+  the installed pacman.conf omitted it:
+  https://github.com/CachyOS/New-Cli-Installer/issues/50
+
+These checks are still **unimplemented for a real target installation**.
+
 ## Next required implementation
 
 A trusted, versioned Windows-to-Archiso boot transaction must supply
