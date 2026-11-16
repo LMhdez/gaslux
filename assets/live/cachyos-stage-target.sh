@@ -16,10 +16,14 @@ readonly TARGET=/mnt/target
 check_host() {
   [ "$(id -u)" -eq 0 ] || die 'root privileges required'
   [ -r /etc/os-release ] || die 'os-release missing'
-  local host_id host_name
+  local host_id host_name host_like
   host_id="$(sed -n 's/^ID=//p' /etc/os-release | head -n 1 | tr -d '"')"
   host_name="$(sed -n 's/^NAME=//p' /etc/os-release | head -n 1 | tr -d '"')"
-  [ "$host_id" = arch ] && [ "$host_name" = CachyOS ] || die 'not official CachyOS Archiso'
+  host_like="$(sed -n 's/^ID_LIKE=//p' /etc/os-release | head -n 1 | tr -d '"')"
+  # Verified CachyOS 260809 Archiso identifies itself as ID=cachyos,
+  # ID_LIKE=arch and NAME=CachyOS. Reject generic Arch as CachyOS.
+  [ "$host_id" = cachyos ] && [ "$host_like" = arch ] &&
+    [ "$host_name" = CachyOS ] || die 'not official CachyOS Archiso'
   [ -d /sys/firmware/efi/efivars ] || die 'UEFI-only staging'
   python3 - <<'PY' || die 'Secure Boot not provably disabled'
 from pathlib import Path
