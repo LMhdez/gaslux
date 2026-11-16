@@ -1,0 +1,128 @@
+name: Pop OS official 24.04 Intel ISO integrity and live inspect (lab only)
+
+on:
+  push:
+    branches:
+      - feature/popos-native-preflight
+    paths:
+      - '.github/workflows/gaslux-popos-official-iso.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  popos-native-iso-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare isolated ISO lab tools
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso
+      - name: Resolve official release API against separately pinned System76 SHA-256
+        shell: bash
+        env:
+          POP_OFFICIAL_SHA256: 49567ae95aedbfc0fd238893447df9b2dde3bc6eb7f28653257785a4a067d0b7
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/gaslux-popos"
+          python3 - "$RUNNER_TEMP/gaslux-popos" "$POP_OFFICIAL_SHA256" <<'PY'
+          import json, pathlib, re, sys, urllib.request
+          out = pathlib.Path(sys.argv[1])
+          expected = sys.argv[2]
+          with urllib.request.urlopen(
+              "https://api.pop-os.org/builds/24.04/intel", timeout=40
+          ) as response:
+              data = json.load(response)
+          if data.get("version") != "24.04" or data.get("channel") != "intel":
+              raise SystemExit("Unexpected System76 release API identity")
+          url = data.get("url")
+          if not isinstance(url, str) or re.fullmatch(
+              r"https://iso[.]pop-os[.]org/24[.]04/amd64/intel/([0-9]{1,4})/pop-os_24[.]04_amd64_intel_\1[.]iso",
+              url
+          ) is None:
+              raise SystemExit("Unexpected official Pop!_OS ISO URL")
+          if data.get("sha_sum") != expected:
+              raise SystemExit("Public System76 download checksum differs from API")
+          size = data.get("size")
+          if type(size) is not int or size < 2000000000 or size > 6000000000:
+              raise SystemExit("Unreasonable or missing official ISO size")
+          (out / "pinned-release.json").write_text(json.dumps(data, indent=2))
+          with open(pathlib.Path(sys.argv[1]) / "download.sh", "w") as stream:
+              stream.write('POP_ISO_URL=' + url + '\n')
+              stream.write('POP_ISO_SIZE=' + str(size) + '\n')
+          print("Verified official System76 ISO SHA and size metadata, pinned by release URL")
+          PY
+          source "$RUNNER_TEMP/gaslux-popos/download.sh"
+          echo "GASLUX_POP_ISO_URL=$POP_ISO_URL" >> "$GITHUB_ENV"
+          echo "GASLUX_POP_ISO_SIZE=$POP_ISO_SIZE" >> "$GITHUB_ENV"
+      - name: Download pinned official ISO and verify bytes
+        shell: bash
+        env:
+          POP_OFFICIAL_SHA256: 49567ae95aedbfc0fd238893447df9b2dde3bc6eb7f28653257785a4a067d0b7
+        run: |
+          set -Eeuo pipefail
+          cd "$RUNNER_TEMP/gaslux-popos"
+          aria2c --continue=true --split=8 --max-connection-per-server=8 \
+            --max-tries=6 --retry-wait=8 --timeout=60 --connect-timeout=30 \
+            --file-allocation=none --check-integrity=true \
+            --checksum="sha-256=$POP_OFFICIAL_SHA256" -o popos.iso "$GASLUX_POP_ISO_URL"
+          printf '%s  %s\n' "$POP_OFFICIAL_SHA256" popos.iso | sha256sum --check --status
+          test "$(stat -c '%s' popos.iso)" -eq "$GASLUX_POP_ISO_SIZE"
+          echo "GASLUX_POP_ISO_FILE=$RUNNER_TEMP/gaslux-popos/popos.iso" >> "$GITHUB_ENV"
+      - name: Inspect System76 native live runtime from verified ISO read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          w="$RUNNER_TEMP/gaslux-popos"
+          mkdir -p "$w/iso-root" "$w/evidence"
+          sudo mount -o loop,ro,nosuid,nodev,noexec "$GASLUX_POP_ISO_FILE" "$w/iso-root"
+          trap 'sudo umount "$w/iso-root" || true' EXIT
+          find "$w/iso-root" -maxdepth 4 -type f | sed "s|$w/iso-root/||" |
+            sort > "$w/evidence/iso-files.txt"
+          find "$w/iso-root" -maxdepth 4 -type f -name '*squashfs' > "$w/evidence/squashfs-paths.txt"
+          test -s "$w/evidence/squashfs-paths.txt" || {
+            echo "::error::No squashfs live root was found in verified Pop ISO"
+            exit 1
+          }
+          while IFS= read -r squash; do
+            unsquashfs -ll "$squash" > "$w/evidence/rootfs-listing.txt"
+            if unsquashfs -cat "$squash" etc/os-release > "$w/evidence/os-release.txt" 2>/dev/null; then
+              break
+            fi
+          done < "$w/evidence/squashfs-paths.txt"
+          test -s "$w/evidence/os-release.txt" || {
+            echo "::error::Pop live identity absent in verified ISO"
+            exit 1
+          }
+          cat "$w/evidence/os-release.txt"
+          grep -Eq '^ID="?pop"?$' "$w/evidence/os-release.txt" || {
+            echo "::error::Pop live os-release ID mismatch"
+            exit 1
+          }
+          grep -Eq '^VERSION_ID="?24.04"?$' "$w/evidence/os-release.txt" || {
+            echo "::error::Pop 24.04 live os-release version mismatch"
+            exit 1
+          }
+          grep -E 'usr/(bin|sbin)/(distinst|pop-installer)|systemd-boot|kernelstub' \
+            "$w/evidence/rootfs-listing.txt" > "$w/evidence/system76-install-components.txt" || true
+          test -s "$w/evidence/system76-install-components.txt" || {
+            echo "::error::System76 native installation/boot components not discovered"
+            exit 1
+          }
+          cp "$w/pinned-release.json" "$w/evidence/pinned-release.json"
+          (cd "$w/evidence" && sha256sum *.txt *.json > manifest.sha256)
+          echo "PASS: real SHA-pinned Pop!_OS ISO and matching live root inspected."
+          echo "NOT TESTED: installed Pop OS, EFI boot, Windows dual boot or rollback."
+      - name: Retain hash-linked live-media evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: popos-official-2404-intel-iso-evidence
+          path: ${{ runner.temp }}/gaslux-popos/evidence/
+          if-no-files-found: warn
+          retention-days: 14
