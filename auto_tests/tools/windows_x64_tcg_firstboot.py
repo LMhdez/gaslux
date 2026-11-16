@@ -10,7 +10,6 @@ No Windows+Linux dual boot/rollback is attempted here.
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import os
@@ -132,7 +131,7 @@ def witness_powershell(profile_key: str, build: str) -> str:
 $ErrorActionPreference = 'Stop'
 $ser = $null
 try {
-  $ser = New-Object System.IO.Ports.SerialPort('COM1',115200,'None',8,'One')
+  $ser = [System.IO.Ports.SerialPort]::new('COM1',115200,[System.IO.Ports.Parity]::None,8,[System.IO.Ports.StopBits]::One)
   $ser.NewLine = "\n"
   $ser.Open()
   $os = Get-CimInstance -ClassName Win32_OperatingSystem
@@ -268,10 +267,11 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     command = child(commands, "SynchronousCommand", attrs={f"{{{wcm}}}action": "add"})
     child(command, "Order", "1")
     child(command, "Description", "Gaslux first boot serial verification")
-    script = witness_powershell(profile_key, build)
-    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    # FirstLogonCommands must remain short. Base64-encoding a full witness
+    # makes the setup XML command longer than Windows command-line limits.
+    # Only a hash-checked, VM-exclusive floppy is available to Windows.
     child(command, "CommandLine", "powershell.exe -NoProfile -NonInteractive "
-          "-ExecutionPolicy Bypass -EncodedCommand " + encoded)
+          "-ExecutionPolicy Bypass -File A:\\GASLUX.PS1")
     child(command, "RequiresUserInput", "false")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -343,12 +343,21 @@ def main(argv: list[str] | None = None) -> int:
             print("GASLUX_WINDOWS_EVAL_ISO_MICROSOFT_SHA256_VERIFIED=1", flush=True)
             xmlfile = workspace / "Autounattend.xml"
             xmlfile.write_bytes(xml)
+            guest_ps1 = workspace / "GASLUX.PS1"
+            guest_ps1.write_text(
+                witness_powershell(args.profile,
+                                   profile["expectedWindowsBuildPrefix"]) + "\n",
+                encoding="utf-8")
+            report["firstLogonScriptSha256"] = hashlib.sha256(
+                guest_ps1.read_bytes()).hexdigest()
             floppy = workspace / "unattend-floppy.img"
             subprocess.run(["truncate", "-s", "1440K", str(floppy)], check=True)
             subprocess.run(["mkfs.vfat", "-F", "12", "-n", "GASLUXCI", str(floppy)],
                            check=True, stdout=subprocess.DEVNULL)
             subprocess.run(["mcopy", "-i", str(floppy), str(xmlfile),
                             "::/Autounattend.xml"], check=True)
+            subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps1),
+                            "::/GASLUX.PS1"], check=True)
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
             subprocess.run(["qemu-img", "create", "-f", "qcow2", str(disk), VM_SIZE],
