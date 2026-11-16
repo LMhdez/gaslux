@@ -11,8 +11,11 @@ img_loop to boot a verified ISO file from another filesystem.
 
 - assets/live/cachyos-archiso-handoff.py renders a read-only GRUB loopback
   entry only after checking an explicit transaction identity, UEFI mode,
-  Secure Boot disabled, strict ISO path, size, SHA-256, a matched live\n  kernel/initramfs pair (preferring the official LTS variant),
-  initramfs and the SHA-pinned 260809 squashfs identity (ID=cachyos,\n  ID_LIKE=arch, NAME=CachyOS Linux, IMAGE_ID=cachyos and\n  IMAGE_VERSION=2026.08.09; pacman present).
+  Secure Boot disabled, strict ISO path, size, SHA-256, a matched live
+  kernel/initramfs pair (preferring the official LTS variant),
+  and the SHA-pinned 260809 squashfs identity (ID=cachyos,
+  ID_LIKE=arch, NAME=CachyOS Linux, IMAGE_ID=cachyos and
+  IMAGE_VERSION=2026.08.09; pacman present).
 - The optional --require-mounted-iso mode additionally checks that the
   ISO source is on an exact filesystem/UUID mount and that the read-only
   ISO9660 mount really comes from the hashed loop-backed source.
