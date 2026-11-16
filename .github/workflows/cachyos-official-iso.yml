@@ -9,6 +9,7 @@ on:
       - feature/cachyos-real-iso-contract
       - feature/cachyos-live-guest-preflight-smoke
       - feature/cachyos-signed-real-iso-contract
+      - feature/cachyos-ovmf-secureboot-lab-proof
     paths:
       - .github/workflows/cachyos-official-iso.yml
       - auto_tests/tools/cachyos_real_live_kernel_smoke.sh
