@@ -100,3 +100,17 @@ foreign ESP and Windows writes, authenticate the handoff, implement the
 System76 EFI/BIOS boot strategy, and test recovery in disposable Windows VMs.
 
 Source: https://github.com/pop-os/distinst/blob/master/cli/src/main.rs
+
+## Executed native CLI in disposable live guest (not an install)
+
+The next experimental stage uses a QEMU/OVMF serial socket to log in to the
+real verified Pop!_OS live ISO, mounts the temporary **VM-created** Gaslux FAT
+ESP read-only, hash-checks a tracked probe script, and runs only
+`/usr/bin/distinst --help`. The guest independently verifies the real
+`ID=pop`, QEMU/KVM environment and installed `distinst` SHA-256 against
+the digest taken from the GPG-verified signed official ISO. No target disk is
+attached, no disk-writer flag is used and no Windows/EFI bootloader operation
+is performed. The QEMU serial transcript is retained on success and failure.
+
+The separate first-boot, native installation, systemd-boot/GRUB update
+persistence and Windows recovery tests remain mandatory for production.

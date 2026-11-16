@@ -6,6 +6,7 @@ on:
       - feature/popos-native-preflight
       - feature/popos-ovmf-optical-media-proof
       - feature/popos-signed-distinst-agent-audit
+      - feature/popos-native-distinst-guest-cli-proof
     paths:
       - '.github/workflows/gaslux-popos-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
@@ -182,6 +183,7 @@ jobs:
             printf 'distinstSizeBytes=%s\n' "$(stat -c '%s' "$agent")"
             echo 'executed=false'
           } > "$w/evidence/native-installer-provenance.txt"
+          echo "GASLUX_POP_NATIVE_DISTINST_SHA256=$(sha256sum "$agent" | awk '{print $1}')" >> "$GITHUB_ENV"
           rm -f -- "$agent"
           echo 'PASS: real native distinst bytes bound to authenticated Pop live squashfs.'
           echo 'NOT AUTHORIZED: distinst partition, target or EFI writes.'
@@ -193,9 +195,11 @@ jobs:
         shell: bash
         env:
           GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-popos/evidence/guest
+          GASLUX_POP_GUEST_DISTINST_PROBE: '1'
         run: |
           set -Eeuo pipefail
           bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash -n auto_tests/tools/gaslux_popos_vm_guest_probe.sh
           bash auto_tests/tools/gaslux_candidate_live_boot.sh \
             popos "$GASLUX_POP_ISO_FILE" "$GASLUX_POP_ISO_SHA256"
       - name: Retain hash-linked live-media evidence

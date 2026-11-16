@@ -29,7 +29,7 @@ cleanup() {
   if [[ "$mounted" -eq 1 ]]; then sudo umount "$work/iso-root" >/dev/null 2>&1 || true; fi
   if [[ -n "${GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR:-}" ]]; then
     mkdir -p "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"
-    for path in "$work"/serial.log "$work"/grub.cfg "$work"/qemu.rc; do
+    for path in "$work"/serial.log "$work"/pop-guest-console.log "$work"/grub.cfg "$work"/qemu.rc; do
       [[ -f "$path" ]] && cp "$path" "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/" || true
     done
     (cd "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR" &&
@@ -127,6 +127,18 @@ mkfs.vfat -F 32 -n GASLUXLAB "$work/efi-part.img" >/dev/null
 mmd -i "$work/efi-part.img" ::/EFI
 mmd -i "$work/efi-part.img" ::/EFI/BOOT
 mcopy -i "$work/efi-part.img" "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+guest_probe=0
+if [[ "${GASLUX_POP_GUEST_DISTINST_PROBE:-0}" == 1 ]]; then
+  [[ "$distro" == popos ]] || die 'Native guest probe requires official Pop ISO'
+  [[ "${GASLUX_POP_NATIVE_DISTINST_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] ||
+    die 'Official native distinst hash missing'
+  guest_probe=1
+  script="$PWD/auto_tests/tools/gaslux_popos_vm_guest_probe.sh"
+  [[ -f "$script" && ! -L "$script" ]] || die 'Missing tracked read-only guest probe'
+  sha256sum "$script" | awk '{print $1 "  probe.sh"}' > "$work/probe.sha256"
+  mcopy -i "$work/efi-part.img" "$script" ::/probe.sh
+  mcopy -i "$work/efi-part.img" "$work/probe.sha256" ::/probe.sha256
+fi
 dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc status=none
 
 echo "GASLUX_GUEST_DISTRO=$distro"
@@ -142,7 +154,11 @@ if [[ "$distro" == popos ]]; then
 else
   iso_args=(-cdrom "$iso")
 fi
-timeout --kill-after=5s 320s qemu-system-x86_64 \
+serial_args=(-serial "file:$work/serial.log")
+if [[ "$guest_probe" -eq 1 ]]; then
+  serial_args=(-chardev "socket,id=pop_serial,path=$work/pop-serial.sock,server=on,wait=off,logfile=$work/serial.log" -serial chardev:pop_serial)
+fi
+timeout --kill-after=5s 375s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
@@ -151,9 +167,19 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
   "${iso_args[@]}" \
   -boot order=c,menu=off \
-  -serial "file:$work/serial.log" &
+  "${serial_args[@]}" &
 guest="$!"
 guest_verified=0
+if [[ "$guest_probe" -eq 1 ]]; then
+  set +e
+  python3 auto_tests/tools/gaslux_popos_guest_serial.py \
+    --socket "$work/pop-serial.sock" \
+    --trace "$work/pop-guest-console.log" \
+    --distinst-sha256 "$GASLUX_POP_NATIVE_DISTINST_SHA256"
+  probe_rc=$?
+  set -e
+  if [[ "$probe_rc" -eq 0 ]]; then guest_verified=1; fi
+else
 for _ in $(seq 1 62); do
   sleep 5
   if [[ -s "$work/serial.log" ]]; then
@@ -165,6 +191,7 @@ for _ in $(seq 1 62); do
   fi
   kill -0 "$guest" >/dev/null 2>&1 || break
 done
+fi
 kill "$guest" >/dev/null 2>&1 || true
 set +e
 wait "$guest"
@@ -172,7 +199,11 @@ rc="$?"
 set -e
 printf '%s\n' "$rc" > "$work/qemu.rc"
 if [[ "$guest_verified" -eq 1 ]]; then
-  echo "PASS: real $distro live kernel and userspace reached QEMU serial login."
+  if [[ "$guest_probe" -eq 1 ]]; then
+    echo "PASS: native System76 distinst --help executed in verified disposable live QEMU guest."
+  else
+    echo "PASS: real $distro live kernel and userspace reached QEMU serial login."
+  fi
   echo 'NOT TESTED: installed target, Windows boot, updates, uninstall or rollback.'
 else
   tail -c 5000 "$work/serial.log" >&2 || true
