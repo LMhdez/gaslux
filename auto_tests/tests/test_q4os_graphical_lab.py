@@ -44,6 +44,7 @@ def test_guest_target_is_created_from_scratch_in_temporary_workspace():
 def test_guest_graphics_requires_real_kernel_and_vnc_frames_not_bootloader_only():
     source = SCRIPT.read_text()
     assert "systemd.unit=graphical.target" in source
+    assert "systemd.setenv=KWIN_COMPOSE=N" in source
     assert "-vnc 127.0.0.1:1" in source
     assert "-vga virtio" in source
     assert "qemu_accel=tcg" in source

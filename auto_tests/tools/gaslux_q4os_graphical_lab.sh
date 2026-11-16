@@ -114,7 +114,7 @@ menuentry 'Gaslux $distro real live-kernel lab boot' {
     echo 'Pinned guest live initramfs not found'
     halt
   fi
-  linux (\$source)/$kernel $boot console=tty0 console=ttyS0,115200n8 systemd.log_target=console systemd.log_level=info systemd.unit=graphical.target systemd.wants=serial-getty@ttyS0.service
+  linux (\$source)/$kernel $boot console=tty0 console=ttyS0,115200n8 systemd.log_target=console systemd.log_level=info systemd.unit=graphical.target systemd.setenv=KWIN_COMPOSE=N systemd.wants=serial-getty@ttyS0.service
   initrd (\$source)/$initrd
 }
 EOF
