@@ -7,11 +7,13 @@ on:
       - feature/popos-native-preflight
       - feature/bazzite-atomic-preflight
       - feature/q4os-native-preflight
+      - feature/q4os-ovmf-verified-virtio-live
   pull_request:
     paths:
       - 'assets/live/gaslux_*probe.py'
       - 'assets/live/gaslux_*preflight.py'
       - 'auto_tests/tests/test_*preflight.py'
+      - 'auto_tests/tests/test_candidate_live_boot_transport.py'
       - 'auto_tests/tests/test_lab_media_probe.py'
       - '.github/workflows/gaslux-lab-media-probe.yml'
 
@@ -35,7 +37,7 @@ jobs:
         run: |
           shopt -s nullglob
           sources=(assets/live/gaslux_lab_media_probe.py assets/live/gaslux_candidate_handoff.py assets/live/gaslux_candidate_target_audit.py assets/live/gaslux_*preflight.py)
-          tests=(auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_candidate_handoff.py auto_tests/tests/test_candidate_target_audit.py auto_tests/tests/test_*preflight.py)
+          tests=(auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_candidate_handoff.py auto_tests/tests/test_candidate_target_audit.py auto_tests/tests/test_*preflight.py auto_tests/tests/test_candidate_live_boot_transport.py)
           python -m compileall -q "${sources[@]}" "${tests[@]}"
           python -m ruff check --config auto_tests/pyproject.toml "${sources[@]}" "${tests[@]}"
           python -m ruff format --check --config auto_tests/pyproject.toml "${sources[@]}" "${tests[@]}"

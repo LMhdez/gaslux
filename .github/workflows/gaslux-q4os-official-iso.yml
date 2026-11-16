@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feature/q4os-native-preflight
+      - feature/q4os-ovmf-verified-virtio-live
     paths:
       - '.github/workflows/gaslux-q4os-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
+      - 'auto_tests/tests/test_candidate_live_boot_transport.py'
   workflow_dispatch:
 
 permissions:

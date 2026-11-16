@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Disposable QEMU/OVMF real live-kernel smoke for Pop!_OS and Q4OS.
-# Real ISO stays read-only on an emulated optical drive. This neither
-# installs a target OS nor starts a Windows VM.
+# Official ISO is attached read-only through a disposable guest virtio block bus.
+# Never exposes a host disk, installs a target OS or starts a Windows VM.
 set -Eeuo pipefail
 
 die() { printf '%s\n' "GASLUX_LIVE_BOOT_ERROR: $*" >&2; exit 1; }
 [[ $# -eq 3 ]] || die 'Usage: gaslux_candidate_live_boot.sh popos|q4os ISO PINNED_SHA256'
 distro="$1"
-iso="$(realpath -e "$2")"
+# Reject symlink inputs *before* canonicalization; realpath otherwise hides them.
+[[ -f "$2" && ! -L "$2" ]] || die 'Refuse symlink/non-regular ISO'
+iso="$(realpath -e -- "$2")"
 digest="$3"
 [[ "$distro" == popos || "$distro" == q4os ]] || die 'Unknown backend'
 [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || die 'Missing pinned sha256'
-[[ -f "$iso" && ! -L "$iso" ]] || die 'Refuse symlink/non-regular ISO'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
   die 'Actual ISO bytes differ from independently pinned SHA-256'
 for tool in qemu-system-x86_64 grub-mkstandalone mkfs.vfat mcopy mmd sgdisk dd timeout sudo; do
@@ -102,7 +103,11 @@ set default=0
 menuentry 'Gaslux $distro real live-kernel lab boot' {
   insmod iso9660
   insmod part_gpt
-  search --no-floppy --file --set=source /$kernel
+  if ! search --no-floppy --file --set=source /$kernel; then
+    echo 'Verified live kernel is not visible on any guest block device'
+    ls
+    halt
+  fi
   if [ ! -f (\$source)/$initrd ]; then
     echo 'Pinned guest live initramfs not found'
     halt
@@ -128,7 +133,14 @@ dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
 echo "GASLUX_GUEST_INITRD=$initrd"
-# No host block devices are attached. ISO is emulated read-only CD-ROM.
+echo 'GASLUX_GUEST_MEDIA=isolated-virtio-readonly-iso'
+# QEMU/OVMF GRUB does not consistently enumerate the emulated CD-ROM on the
+# hosted runner. Attach the independently SHA-256-verified hybrid ISO as a
+# second, explicit read-only virtio-blk device instead (same as Pop!_OS lab).
+# The first virtio image remains the temporary, guest-only ESP. No host devices.
+[[ "$iso" != *,* ]] || die 'Unsafe ISO path delimiter for QEMU drive options'
+iso_args=(-drive "if=none,id=officialiso,readonly=on,format=raw,file=$iso"
+          -device virtio-blk-pci,drive=officialiso,bootindex=2)
 timeout --kill-after=5s 320s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
@@ -136,7 +148,7 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
-  -cdrom "$iso" \
+  "${iso_args[@]}" \
   -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
 guest="$!"
