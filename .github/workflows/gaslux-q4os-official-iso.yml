@@ -10,6 +10,7 @@ on:
       - '.github/workflows/gaslux-q4os-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
       - 'auto_tests/tools/gaslux_q4os_calamares_probe.sh'
+      - 'auto_tests/tests/test_q4os_calamares_probe.py'
       - 'auto_tests/tests/test_candidate_live_boot_transport.py'
   workflow_dispatch:
 
