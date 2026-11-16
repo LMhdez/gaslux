@@ -1,0 +1,344 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using Libertix.Helpers;
+using Libertix.Installation;
+using Libertix.Models;
+
+namespace Libertix.Pages
+{
+    public partial class UefiBootFallback : Page
+    {
+        private sealed class ProcessTreeTerminationException : InvalidOperationException
+        {
+            public ProcessTreeTerminationException(string message)
+                : base(message)
+            {
+            }
+        }
+
+        private readonly InstallationState _installationState;
+        private UefiRecoveryState _state;
+        private string _statePath;
+        private bool _running;
+        private bool _preferredPathFlow;
+
+        public UefiBootFallback() : this(((App)Application.Current).InstallationState)
+        {
+        }
+
+        public UefiBootFallback(InstallationState installationState)
+        {
+            _installationState = installationState ?? throw new ArgumentNullException(nameof(installationState));
+            InitializeComponent();
+            LoadRecoveryState();
+        }
+
+        private void LoadRecoveryState()
+        {
+            _statePath = _installationState.UefiRecoveryStatePath;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_statePath) || !File.Exists(_statePath))
+                    throw new InvalidOperationException(Localization.GetString("UefiFallbackStateMissing"));
+                _state = JsonSerializer.Deserialize<UefiRecoveryState>(File.ReadAllText(_statePath));
+                if (_state == null || string.IsNullOrWhiteSpace(_state.PayloadRoot) || string.IsNullOrWhiteSpace(_state.ConfigPath))
+                    throw new InvalidOperationException(Localization.GetString("UefiFallbackStateIncomplete"));
+                if (_state.Phase == "FallbackProcessStateUnknown")
+                    throw new InvalidOperationException(Localization.GetString("UefiFallbackTerminationFailed"));
+                if (IsPreferredPathPhase(_state.Phase))
+                {
+                    ConfigurePreferredPathFlow();
+                }
+                else
+                {
+                    Log(Localization.GetString("UefiFallbackBootNextFailedLog"));
+                    CurrentStepText.Text = Localization.GetString("UefiFallbackReady");
+                }
+            }
+            catch (Exception ex)
+            {
+                CurrentStepText.Text = Localization.GetString("UefiFallbackLoadFailed");
+                Log(Localization.GetString("UefiFallbackErrorPrefix") + ex.Message);
+                FallbackButton.IsEnabled = false;
+                CancelButton.IsEnabled = false;
+            }
+        }
+
+        private static bool IsPreferredPathPhase(string phase)
+        {
+            return phase == "InstalledBootBypassed" ||
+                phase == "PreferredPathPrompted" ||
+                phase == "PreferredPathPreparationFailed" ||
+                phase == "AwaitingPreferredPathReboot";
+        }
+
+        private void ConfigurePreferredPathFlow()
+        {
+            _preferredPathFlow = true;
+            PageTitleText.Text = Localization.GetString("UefiPreferredPathTitle");
+            DescriptionText.Text = Localization.GetString("UefiPreferredPathDescription");
+            CurrentStepText.Text = Localization.GetString("UefiPreferredPathReady");
+            FallbackButton.Content = Localization.GetString("UefiPreferredPathUse");
+            Log(Localization.GetString("UefiPreferredPathDetectedLog"));
+        }
+
+        private async void FallbackButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_running || _state == null || _state.Phase == "FallbackProcessStateUnknown")
+                return;
+
+            _running = true;
+            _installationState.SetInstallationRunning(true);
+            FallbackButton.IsEnabled = false;
+            CancelButton.IsEnabled = false;
+            CurrentStepText.Text = Localization.GetString("UefiFallbackPreparingFirmware");
+            ProgressBar.Value = 20;
+
+            try
+            {
+                string script = Path.Combine(_state.PayloadRoot, "Scripts", "libertix-uefi-install.ps1");
+                string powershell = WindowsProcessRunner.ResolvePowerShell();
+                int exitCode;
+                if (_preferredPathFlow)
+                {
+                    _state.Phase = "PreferredPathRunning";
+                    SaveState();
+                    CurrentStepText.Text = Localization.GetString("UefiPreferredPathPreparing");
+                    string agent = Path.Combine(
+                        _state.PayloadRoot,
+                        "Scripts",
+                        "libertix-uefi-recovery-agent.ps1");
+                    exitCode = await RunProcessAsync(
+                        powershell,
+                        $"{WindowsProcessRunner.PowerShellFileArguments(agent)} " +
+                        $"-StatePath {QuoteArgument(_statePath)} -Action InstallPreferredPath");
+                }
+                else
+                {
+                    _state.Phase = "FallbackRunning";
+                    SaveState();
+                    exitCode = await RunProcessAsync(
+                        powershell,
+                        $"{WindowsProcessRunner.PowerShellFileArguments(script)} " +
+                        $"-ConfigPath {QuoteArgument(_state.ConfigPath)} -PreserveConfig " +
+                        "-BootStrategy FirmwareBootOrder -ReusePreparedInstaller");
+                }
+                if (exitCode != 0)
+                    throw new InvalidOperationException(string.Format(
+                        Localization.GetString(
+                            _preferredPathFlow
+                                ? "UefiPreferredPathFailedFormat"
+                                : "UefiFallbackFirmwareFailedFormat"),
+                        exitCode));
+
+                _state.Phase = _preferredPathFlow
+                    ? "AwaitingPreferredPathReboot"
+                    : "AwaitingFallbackReboot";
+                SaveState();
+                ProgressBar.Value = 100;
+                CurrentStepText.Text = Localization.GetString(
+                    _preferredPathFlow
+                        ? "UefiPreferredPathRebootReady"
+                        : "UefiFallbackFirmwareReady");
+                RebootButton.Visibility = Visibility.Visible;
+                FallbackButton.Visibility = Visibility.Collapsed;
+            }
+            catch (ProcessTreeTerminationException ex)
+            {
+                _state.Phase = "FallbackProcessStateUnknown";
+                try
+                {
+                    SaveState();
+                }
+                catch (Exception stateError)
+                {
+                    Log(Localization.GetString("UefiFallbackErrorPrefix") + stateError.Message);
+                }
+                CurrentStepText.Text = Localization.GetString("UefiFallbackTerminationFailed");
+                Log(Localization.GetString("UefiFallbackErrorPrefix") + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _state.Phase = _preferredPathFlow
+                    ? "PreferredPathPreparationFailed"
+                    : "FallbackPreparationFailed";
+                try
+                {
+                    SaveState();
+                }
+                catch (Exception stateError)
+                {
+                    Log(Localization.GetString("UefiFallbackErrorPrefix") + stateError.Message);
+                }
+                CurrentStepText.Text = Localization.GetString("UefiFallbackPreparationFailed");
+                Log(Localization.GetString("UefiFallbackErrorPrefix") + ex.Message);
+                FallbackButton.IsEnabled = true;
+                CancelButton.IsEnabled = true;
+            }
+            finally
+            {
+                _running = false;
+                _installationState.SetInstallationRunning(false);
+            }
+        }
+
+        private async void CancelButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_running || _state == null || _state.Phase == "FallbackProcessStateUnknown")
+                return;
+
+            _running = true;
+            _installationState.SetInstallationRunning(true);
+            FallbackButton.IsEnabled = false;
+            CancelButton.IsEnabled = false;
+            CurrentStepText.Text = Localization.GetString("UefiFallbackRestoring");
+            ProgressBar.Value = 35;
+            try
+            {
+                int exitCode = await RestoreWindowsAsync();
+                if (exitCode != 0)
+                    throw new InvalidOperationException(string.Format(
+                        Localization.GetString("UefiFallbackRestoreFailedFormat"), exitCode));
+                ProgressBar.Value = 100;
+                CurrentStepText.Text = Localization.GetString("UefiFallbackWindowsRestored");
+                Log(Localization.GetString("UefiFallbackCancelledLog"));
+                await Task.Delay(1200);
+                _installationState.SetInstallationRunning(false);
+                (Application.Current.MainWindow as MainWindow)?.PrepareForSystemRestart();
+                Application.Current.Shutdown(0);
+            }
+            catch (ProcessTreeTerminationException ex)
+            {
+                _state.Phase = "FallbackProcessStateUnknown";
+                try
+                {
+                    SaveState();
+                }
+                catch (Exception stateError)
+                {
+                    Log(Localization.GetString("UefiFallbackErrorPrefix") + stateError.Message);
+                }
+                CurrentStepText.Text = Localization.GetString("UefiFallbackTerminationFailed");
+                Log(Localization.GetString("UefiFallbackErrorPrefix") + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                CurrentStepText.Text = Localization.GetString("UefiFallbackRestoreFailed");
+                Log(Localization.GetString("UefiFallbackErrorPrefix") + ex.Message);
+                FallbackButton.IsEnabled = true;
+                CancelButton.IsEnabled = true;
+            }
+            finally
+            {
+                _running = false;
+                _installationState.SetInstallationRunning(false);
+            }
+        }
+
+        private async Task<int> RestoreWindowsAsync()
+        {
+            string agent = Path.Combine(
+                _state.PayloadRoot,
+                "Scripts",
+                "libertix-uefi-recovery-agent.ps1");
+            string powershell = WindowsProcessRunner.ResolvePowerShell();
+            return await RunProcessAsync(
+                powershell,
+                $"{WindowsProcessRunner.PowerShellFileArguments(agent)} " +
+                $"-StatePath {QuoteArgument(_statePath)} -Action Cancel");
+        }
+
+        private async void RebootButton_Click(object sender, RoutedEventArgs e)
+        {
+            RebootButton.IsEnabled = false;
+            MainWindow mainWindow = Application.Current.MainWindow as MainWindow;
+            mainWindow?.PrepareForSystemRestart();
+            try
+            {
+                WindowsProcessResult result = await Task.Run(() =>
+                    WindowsProcessRunner.Run(
+                        "shutdown.exe",
+                        "/r /t 0",
+                        WindowsProcessTimeouts.QuickCommand,
+                        Encoding.UTF8));
+                if (result.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        string.Format(
+                            Localization.GetString("UefiFallbackRebootFailedFormat"),
+                            result.ExitCode));
+                }
+            }
+            catch (Exception ex)
+            {
+                mainWindow?.CancelSystemRestartPreparation();
+                RebootButton.IsEnabled = true;
+                CurrentStepText.Text = Localization.GetString("UefiFallbackRebootFailed");
+                Log(Localization.GetString("UefiFallbackErrorPrefix") + ex.Message);
+            }
+        }
+
+        private async Task<int> RunProcessAsync(string fileName, string arguments)
+        {
+            return await Task.Run(() =>
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+                try
+                {
+                    WindowsProcessResult result = WindowsProcessRunner.RunStreaming(
+                        startInfo,
+                        WindowsProcessTimeouts.RecoveryOperation,
+                        output => Dispatcher.BeginInvoke(new Action(() => Log(output))),
+                        error => Dispatcher.BeginInvoke(new Action(() => Log("ERROR: " + error))));
+                    if (result.TimedOut)
+                    {
+                        Dispatcher.BeginInvoke(new Action(() =>
+                            Log(Localization.GetString("UefiFallbackTimeoutLog"))));
+                    }
+                    return result.ExitCode;
+                }
+                catch (UnterminatedProcessException)
+                {
+                    throw new ProcessTreeTerminationException(
+                        Localization.GetString("UefiFallbackTerminationFailed"));
+                }
+            });
+        }
+
+        private void SaveState()
+        {
+            _state.LastCheckedUtc = DateTime.UtcNow.ToString("o");
+            // The startup recovery agent derives its next action from this
+            // document alone. Publish each phase transition atomically so an
+            // interrupted fallback cannot leave recovery without a valid state.
+            AtomicJsonFile.Write(_statePath, JsonSerializer.Serialize(_state));
+        }
+
+        private static string QuoteArgument(string value)
+        {
+            return WindowsProcessRunner.QuoteArgument(value);
+        }
+
+        private void Log(string value)
+        {
+            LogOutput.AppendText("[" + DateTime.Now.ToString("HH:mm:ss") + "] " + value + Environment.NewLine);
+            LogOutput.ScrollToEnd();
+        }
+    }
+}

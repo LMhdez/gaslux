@@ -1,0 +1,16 @@
+menuentry "Install selected Linux distribution (Automatic)" --class linux --class gnu-linux --class os {
+    linux /live/vmlinuz @LIBERTIX_NORMAL_KERNEL_ARGUMENTS@
+    initrd /live/initrd.img
+}
+menuentry "Install (Verbose mode)" --class recovery --class gnu-linux --class os {
+    linux /live/vmlinuz @LIBERTIX_VERBOSE_KERNEL_ARGUMENTS@
+    initrd /live/initrd.img
+}
+menuentry "Diagnostics only (no installation)" --class recovery --class gnu-linux --class os {
+    linux /live/vmlinuz @LIBERTIX_VERBOSE_KERNEL_ARGUMENTS@ libertix.diagnostics=1
+    initrd /live/initrd.img
+}
+menuentry "Diagnostics only (safe graphics, no installation)" --class recovery --class gnu-linux --class os {
+    linux /live/vmlinuz @LIBERTIX_VERBOSE_KERNEL_ARGUMENTS@ libertix.diagnostics=1 nomodeset
+    initrd /live/initrd.img
+}

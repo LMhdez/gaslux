@@ -1,0 +1,500 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string]$StatePath,
+    [Parameter(Mandatory = $true)][string]$RecoveryScriptPath,
+    [Parameter(Mandatory = $true)][ValidateSet("bios", "uefi")][string]$Firmware,
+    [Parameter(Mandatory = $true)][string]$PromptTaskName
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+
+# The UEFI payload keeps modules under Scripts\modules; the BIOS recovery root is flat.
+# Each layout has exactly one module location, selected by the firmware the task passes.
+$atomicFileModulePath = if ($Firmware -eq "uefi") {
+    Join-Path $PSScriptRoot "modules\Libertix.AtomicFile.psm1"
+} else {
+    Join-Path $PSScriptRoot "Libertix.AtomicFile.psm1"
+}
+Import-Module -Name $atomicFileModulePath -Force -ErrorAction Stop
+
+function Read-JsonFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    return Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop |
+        ConvertFrom-Json -ErrorAction Stop
+}
+
+function Write-JsonFileAtomic {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Value
+    )
+
+    $directory = Split-Path -Parent $Path
+    $temporary = Join-Path $directory ".$([IO.Path]::GetFileName($Path)).$([Guid]::NewGuid().ToString('N')).tmp"
+    $backup = Join-Path $directory ".$([IO.Path]::GetFileName($Path)).$([Guid]::NewGuid().ToString('N')).bak"
+    try {
+        $encoding = New-Object Text.UTF8Encoding($false)
+        [IO.File]::WriteAllText(
+            $temporary,
+            (($Value | ConvertTo-Json -Depth 8) + "`n"),
+            $encoding
+        )
+        Publish-LibertixFileAtomic -TemporaryPath $temporary -DestinationPath $Path -BackupPath $backup
+    } finally {
+        if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+        if ([IO.File]::Exists($backup)) { [IO.File]::Delete($backup) }
+    }
+}
+
+function Remove-PromptTask {
+    Unregister-ScheduledTask `
+        -TaskName $PromptTaskName `
+        -Confirm:$false `
+        -ErrorAction SilentlyContinue
+}
+
+function Add-InteractiveShareCheck {
+    param(
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][bool]$Passed,
+        [Parameter(Mandatory = $true)][string]$Detail
+    )
+
+    $Result.checks = @($Result.checks | Where-Object { [string]$_.name -ne $Name }) + @(
+        [pscustomobject][ordered]@{
+            name = $Name
+            passed = $Passed
+            detail = $Detail
+            checkedAtUtc = [DateTime]::UtcNow.ToString("o")
+        }
+    )
+}
+
+function Complete-InteractiveWindowsShareVerification {
+    param(
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Plan
+    )
+
+    if (
+        [string]$Result.status -ne "succeeded" -or
+        -not [bool]$Plan.features.shareLinuxFilesInWindows
+    ) {
+        return
+    }
+    $shareRoot = Join-Path $env:ProgramData "Libertix\WindowsShare"
+    $configPath = Join-Path $shareRoot "config.json"
+    $shareScript = Join-Path $shareRoot "mount-linux-readonly.ps1"
+    $checkName = "explorer-integration"
+    try {
+        if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+            throw "Windows read-only Linux sharing configuration is missing."
+        }
+        if (-not (Test-Path -LiteralPath $shareScript -PathType Leaf)) {
+            throw "Windows read-only Linux sharing script is missing."
+        }
+        $shareArguments = (
+            '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ConfigPath "{1}" -Pin'
+        ) -f $shareScript, $configPath
+        $logPrefix = Join-Path (Split-Path -Parent $StatePath) ("explorer-integration-{0}" -f [Guid]::NewGuid().ToString("N"))
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $process = Start-Process `
+            -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+            -ArgumentList $shareArguments `
+            -PassThru `
+            -RedirectStandardOutput ($logPrefix + ".stdout.log") `
+            -RedirectStandardError ($logPrefix + ".stderr.log") `
+            -WindowStyle Hidden
+        try {
+            # Wait only for our helper, not Explorer or another long-lived descendant.
+            $null = $process.Handle
+            Add-Content -LiteralPath ($logPrefix + ".lifecycle.log") -Value (
+                "plan={0} parentPid={1} helperPid={2} session={3} phase=started" -f `
+                    $Plan.planId, $PID, $process.Id, $process.SessionId
+            )
+            if (-not $process.WaitForExit(120000)) {
+                $process.Kill()
+                $stopped = $process.WaitForExit(5000)
+                throw "Explorer integration helper timed out after 120 seconds; helperStopped=$stopped. Logs: $logPrefix.*.log"
+            }
+            Add-Content -LiteralPath ($logPrefix + ".lifecycle.log") -Value (
+                "phase=exited elapsedSeconds={0:F1} exitCode={1}" -f `
+                    $clock.Elapsed.TotalSeconds, $process.ExitCode
+            )
+            if ($process.ExitCode -ne 0) {
+                throw "Explorer integration verification failed with rc=$($process.ExitCode). Logs: $logPrefix.*.log"
+            }
+        } finally {
+            $process.Dispose()
+        }
+        Add-InteractiveShareCheck `
+            -Result $Result `
+            -Name "explorer-integration" `
+            -Passed $true `
+            -Detail "Linux read-only shortcut is accessible in Explorer Home/Quick Access."
+        $checkName = "result-persistence"
+        Write-JsonFileAtomic -Path $StatePath -Value $Result
+    } catch {
+        Add-InteractiveShareCheck `
+            -Result $Result `
+            -Name $checkName `
+            -Passed $false `
+            -Detail $_.Exception.Message
+        $Result.status = "failed"
+        $Result.error = $_.Exception.Message
+        $Result.rollbackAvailable = $true
+        try {
+            Write-JsonFileAtomic -Path $StatePath -Value $Result
+        } catch {
+            # Still display a failure when the persisted result cannot be updated.
+            $Result.error += " Result persistence failed: $($_.Exception.Message)"
+            [Console]::Error.WriteLine($Result.error)
+        }
+    }
+}
+
+$stateDeadline = [DateTime]::UtcNow.AddMinutes(2)
+while (
+    -not (Test-Path -LiteralPath $StatePath -PathType Leaf) -and
+    [DateTime]::UtcNow -lt $stateDeadline
+) {
+    Start-Sleep -Seconds 2
+}
+if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) { exit 0 }
+$result = Read-JsonFile -Path $StatePath
+$recoveryRoot = Split-Path -Parent $StatePath
+$plan = Read-JsonFile -Path (Join-Path $recoveryRoot "installation-plan.json")
+$isWaitingForLinux = $false
+if ([string]$result.status -notin @("succeeded", "failed", "rolled-back")) {
+    $linuxEvidencePath = Join-Path $recoveryRoot "installed-linux-boot.json"
+    if (-not (Test-Path -LiteralPath $linuxEvidencePath -PathType Leaf)) {
+        if ([string]$result.status -ne "waiting-linux-boot") { exit 0 }
+        if ($result.PSObject.Properties.Name -contains "waitingAdviceAcknowledgedAtUtc") {
+            exit 0
+        }
+        $isWaitingForLinux = $true
+    } else {
+        # At logon the interactive trigger can run a few seconds before the SYSTEM
+        # startup verifier. Once Linux evidence exists, keep this instance alive so
+        # the result cannot be lost merely because the two tasks raced each other.
+        $deadline = [DateTime]::UtcNow.AddMinutes(15)
+        do {
+            Start-Sleep -Seconds 2
+            if (Test-Path -LiteralPath $StatePath -PathType Leaf) {
+                $result = Read-JsonFile -Path $StatePath
+            }
+        } while (
+            [string]$result.status -notin @("succeeded", "failed", "rolled-back") -and
+            [DateTime]::UtcNow -lt $deadline
+        )
+        if ([string]$result.status -notin @("succeeded", "failed", "rolled-back")) {
+            exit 0
+        }
+    }
+}
+
+if (-not $isWaitingForLinux) {
+    Complete-InteractiveWindowsShareVerification `
+        -Result $result `
+        -Plan $plan
+}
+$language = [string]$plan.locale.languageCode
+$translationsPath = @(
+    (Join-Path $PSScriptRoot "config\Libertix.Translations.json"),
+    (Join-Path (Split-Path -Parent $PSScriptRoot) "Resources\Libertix.Translations.json")
+) | Where-Object {
+    Test-Path -LiteralPath $_ -PathType Leaf
+} | Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($translationsPath)) {
+    throw "Libertix translation catalogue is missing."
+}
+$translations = Read-JsonFile -Path $translationsPath
+if ($language -notin @("en", "fr", "es", "ko")) {
+    $language = "en"
+}
+$text = $translations.languages.$language.postInstall
+
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+
+function New-Brush {
+    param([Parameter(Mandatory = $true)][string]$Color)
+
+    return New-Object Windows.Media.SolidColorBrush(
+        [Windows.Media.ColorConverter]::ConvertFromString($Color)
+    )
+}
+
+$surfaceBrush = New-Brush "#232139"
+$panelBrush = New-Brush "#2D2A47"
+$textBrush = New-Brush "#F7F3FF"
+$accentBrush = if ($isWaitingForLinux) {
+    New-Brush "#F2B84B"
+} elseif ([string]$result.status -eq "succeeded") {
+    New-Brush "#38B9E8"
+} else {
+    New-Brush "#E96A91"
+}
+$resultTitle = if ($isWaitingForLinux) {
+    [string]$text.waitingTitle
+} elseif ([string]$result.status -eq "succeeded") {
+    [string]$text.successTitle
+} else {
+    [string]$text.failureTitle
+}
+$logoPath = @(
+    (Join-Path $PSScriptRoot "Images\icon.ico"),
+    (Join-Path (Split-Path -Parent $PSScriptRoot) "Resources\Images\icon.ico")
+) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+
+$window = New-Object Windows.Window
+$window.Title = "Libertix - $resultTitle"
+$window.Width = 820
+$window.Height = 610
+$window.MinWidth = 720
+$window.MinHeight = 520
+$window.WindowStartupLocation = "CenterScreen"
+$window.Background = $surfaceBrush
+$window.Foreground = $textBrush
+$window.Topmost = $true
+if (-not [string]::IsNullOrWhiteSpace([string]$logoPath)) {
+    $window.Icon = [Windows.Media.Imaging.BitmapFrame]::Create(
+        [Uri]::new($logoPath, [UriKind]::Absolute)
+    )
+}
+
+$root = New-Object Windows.Controls.Grid
+$root.Margin = New-Object Windows.Thickness(34)
+$root.RowDefinitions.Add((New-Object Windows.Controls.RowDefinition -Property @{ Height = "Auto" }))
+$root.RowDefinitions.Add((New-Object Windows.Controls.RowDefinition -Property @{ Height = "Auto" }))
+$root.RowDefinitions.Add((New-Object Windows.Controls.RowDefinition -Property @{ Height = "*" }))
+$root.RowDefinitions.Add((New-Object Windows.Controls.RowDefinition -Property @{ Height = "Auto" }))
+
+$header = New-Object Windows.Controls.Grid
+$header.Margin = New-Object Windows.Thickness(0, 0, 0, 22)
+$header.ColumnDefinitions.Add((New-Object Windows.Controls.ColumnDefinition -Property @{ Width = "*" }))
+$heading = New-Object Windows.Controls.StackPanel
+$brand = New-Object Windows.Controls.TextBlock
+$brand.Text = "Libertix"
+$brand.FontSize = 30
+$brand.FontWeight = "Bold"
+$brand.Foreground = $textBrush
+$heading.Children.Add($brand) | Out-Null
+$title = New-Object Windows.Controls.TextBlock
+$title.Text = $resultTitle
+$title.FontSize = 20
+$title.FontWeight = "SemiBold"
+$title.Foreground = $accentBrush
+$title.TextWrapping = "Wrap"
+$heading.Children.Add($title) | Out-Null
+[Windows.Controls.Grid]::SetColumn($heading, 0)
+$header.Children.Add($heading) | Out-Null
+[Windows.Controls.Grid]::SetRow($header, 0)
+$root.Children.Add($header) | Out-Null
+
+$messagePanel = New-Object Windows.Controls.StackPanel
+$messagePanel.Margin = New-Object Windows.Thickness(0, 0, 0, 18)
+$message = New-Object Windows.Controls.TextBlock
+$message.Text = if ($isWaitingForLinux) {
+    [string]$text.waitingMessage
+} elseif ([string]$result.status -eq "succeeded") {
+    [string]$text.successMessage
+} else {
+    [string]$text.failureMessage
+}
+$message.FontSize = 16
+$message.Foreground = $textBrush
+$message.TextWrapping = "Wrap"
+$messagePanel.Children.Add($message) | Out-Null
+if ($isWaitingForLinux) {
+    $advice = New-Object Windows.Controls.TextBlock
+    $advice.Text = [string]$text.waitingAdvice
+    $advice.FontSize = 15
+    $advice.Foreground = $accentBrush
+    $advice.TextWrapping = "Wrap"
+    $advice.Margin = New-Object Windows.Thickness(0, 10, 0, 0)
+    $messagePanel.Children.Add($advice) | Out-Null
+}
+[Windows.Controls.Grid]::SetRow($messagePanel, 1)
+$root.Children.Add($messagePanel) | Out-Null
+
+$details = New-Object Windows.Controls.TextBox
+$details.IsReadOnly = $true
+$details.AcceptsReturn = $true
+$details.TextWrapping = "Wrap"
+$details.VerticalScrollBarVisibility = "Auto"
+$details.FontFamily = New-Object Windows.Media.FontFamily("Consolas")
+$details.FontSize = 13
+$details.Background = $panelBrush
+$details.Foreground = $textBrush
+$details.BorderBrush = $accentBrush
+$details.BorderThickness = New-Object Windows.Thickness(1)
+$details.Padding = New-Object Windows.Thickness(14)
+$detailLines = @(
+    "$($text.details):",
+    "$($text.statusLabel): $($result.status)",
+    "$($text.planLabel): $($result.planId)",
+    "$($text.logLabel): $($result.logPath)"
+)
+foreach ($check in @($result.checks)) {
+    $checkLabel = if ($check.passed) {
+        [string]$text.checkPassedLabel
+    } else {
+        [string]$text.checkFailedLabel
+    }
+    $detailLines += "[$checkLabel] $($check.name): $($check.detail)"
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$result.error)) {
+    $detailLines += "$($text.errorLabel): $($result.error)"
+}
+$details.Text = $detailLines -join [Environment]::NewLine
+[Windows.Controls.Grid]::SetRow($details, 2)
+$root.Children.Add($details) | Out-Null
+
+$buttons = New-Object Windows.Controls.WrapPanel
+$buttons.Orientation = "Horizontal"
+$buttons.HorizontalAlignment = "Right"
+$buttons.Margin = New-Object Windows.Thickness(0, 18, 0, 0)
+[Windows.Controls.Grid]::SetRow($buttons, 3)
+
+$supportText = $translations.languages.$language.support
+$copyReportButton = New-Object Windows.Controls.Button
+$copyReportButton.Content = [string]$supportText.copy
+$copyReportButton.Padding = New-Object Windows.Thickness(12, 8, 12, 8)
+$copyReportButton.Margin = New-Object Windows.Thickness(0, 0, 10, 0)
+$copyReportButton.Add_Click({
+    try {
+        # The same protected host that launched this script supplies the report formatter.
+        $hostPath = if ($Firmware -eq "uefi") {
+            Join-Path (Split-Path -Parent $PSScriptRoot) "Libertix.BootGuardian.exe"
+        } else {
+            Join-Path $PSScriptRoot "Libertix.BootGuardian.exe"
+        }
+        [void][Reflection.Assembly]::Load([IO.File]::ReadAllBytes($hostPath))
+        $logRoot = Join-Path ([IO.Path]::GetPathRoot($env:SystemRoot)) "LibertixInstallLogs"
+        $report = [Libertix.Support.SupportReport]::Create(
+            $resultTitle, $details.Text, [string[]]@($logRoot, $recoveryRoot))
+        [Windows.Clipboard]::SetText($report)
+        $message.Text = "$originalMessage`n$($supportText.copied)"
+    } catch {
+        $message.Text = "$originalMessage`n$($supportText.failed) $($_.Exception.Message)"
+    }
+})
+$issueText = New-Object Windows.Controls.TextBlock
+$issueText.VerticalAlignment = "Center"
+$issueText.Margin = New-Object Windows.Thickness(0, 0, 10, 0)
+$issueLink = New-Object Windows.Documents.Hyperlink
+$issueLink.Inlines.Add([string]$supportText.issue)
+$issueLink.Foreground = $accentBrush
+$issueLink.Add_Click({
+    try {
+        Start-Process "https://github.com/ekimiateam/libertix/issues/new?template=bug_report.md"
+    } catch {
+        $message.Text = "$originalMessage`n$($supportText.failed) $($_.Exception.Message)"
+    }
+})
+$buttons.Children.Add($copyReportButton) | Out-Null
+$issueText.Inlines.Add($issueLink)
+$buttons.Children.Add($issueText) | Out-Null
+$originalMessage = $message.Text
+
+$closeButton = New-Object Windows.Controls.Button
+$closeButton.Content = [string]$text.close
+$closeButton.MinWidth = 150
+$closeButton.Height = 46
+$closeButton.Padding = New-Object Windows.Thickness(18, 8, 18, 8)
+$closeButton.Background = $accentBrush
+$closeButton.Foreground = $surfaceBrush
+$closeButton.BorderThickness = New-Object Windows.Thickness(0)
+$closeButton.FontWeight = "SemiBold"
+$closeButton.IsDefault = $true
+$closeButton.SetValue(
+    [Windows.Automation.AutomationProperties]::AutomationIdProperty,
+    "LibertixPostInstallCloseButton"
+)
+$script:ResultAcknowledged = $false
+$closeButton.Add_Click({
+    if ($isWaitingForLinux) {
+        $result | Add-Member `
+            -NotePropertyName waitingAdviceAcknowledgedAtUtc `
+            -NotePropertyValue ([DateTime]::UtcNow.ToString("o")) `
+            -Force
+        Write-JsonFileAtomic -Path $StatePath -Value $result
+    }
+    $script:ResultAcknowledged = $true
+    $window.Close()
+})
+
+if ([string]$result.status -eq "failed" -and [bool]$result.rollbackAvailable) {
+    $rollbackButton = New-Object Windows.Controls.Button
+    $rollbackButton.Content = [string]$text.rollback
+    $rollbackButton.MinWidth = 190
+    $rollbackButton.Height = 46
+    $rollbackButton.Margin = New-Object Windows.Thickness(0, 0, 12, 0)
+    $rollbackButton.Padding = New-Object Windows.Thickness(18, 8, 18, 8)
+    $rollbackButton.Background = $panelBrush
+    $rollbackButton.Foreground = $textBrush
+    $rollbackButton.BorderBrush = $accentBrush
+    $rollbackButton.BorderThickness = New-Object Windows.Thickness(1)
+    $rollbackButton.Add_Click({
+        $answer = [Windows.MessageBox]::Show(
+            [string]$text.rollbackConfirmMessage,
+            [string]$text.rollbackConfirmTitle,
+            [Windows.MessageBoxButton]::YesNo,
+            [Windows.MessageBoxImage]::Warning
+        )
+        if ($answer -ne [Windows.MessageBoxResult]::Yes) { return }
+        $rollbackButton.IsEnabled = $false
+        $closeButton.IsEnabled = $false
+        $message.Text = [string]$text.rollbackRunning
+        $arguments = if ($Firmware -eq "uefi") {
+            @(
+                "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $RecoveryScriptPath,
+                "-StatePath", (Join-Path $recoveryRoot "state.json"), "-Action", "Cancel"
+            )
+        } else {
+            @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $RecoveryScriptPath, "-Action", "Revert")
+        }
+        $process = Start-Process `
+            -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+            -ArgumentList $arguments `
+            -Wait `
+            -PassThru `
+            -WindowStyle Hidden
+        if ($process.ExitCode -eq 0) {
+            $result.status = "rolled-back"
+            $result.rollbackAvailable = $false
+            $result.updatedAtUtc = [DateTime]::UtcNow.ToString("o")
+            $result | Add-Member `
+                -NotePropertyName rolledBackAtUtc `
+                -NotePropertyValue ([DateTime]::UtcNow.ToString("o")) `
+                -Force
+            Write-JsonFileAtomic -Path $StatePath -Value $result
+            $message.Text = [string]$text.rollbackComplete
+            $rollbackButton.Visibility = "Collapsed"
+            $closeButton.IsEnabled = $true
+        } else {
+            $message.Text = "$($text.rollbackFailed) rc=$($process.ExitCode)"
+            $rollbackButton.IsEnabled = $true
+            $closeButton.IsEnabled = $true
+        }
+    })
+    $buttons.Children.Add($rollbackButton) | Out-Null
+}
+$buttons.Children.Add($closeButton) | Out-Null
+$root.Children.Add($buttons) | Out-Null
+$window.Content = $root
+$window.Add_ContentRendered({
+    $null = $window.Activate()
+    $null = $closeButton.Focus()
+})
+try {
+    $null = $window.ShowDialog()
+} finally {
+    if (-not $isWaitingForLinux -and $script:ResultAcknowledged) {
+        Remove-PromptTask
+    }
+}

@@ -1,0 +1,427 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{0E3A4663-C258-4180-B222-4FF7990D73F9}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Libertix</RootNamespace>
+    <AssemblyName>Libertix</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <WarningLevel>4</WarningLevel>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <BaseOutputPath>$(SolutionDir)bin\</BaseOutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)\</OutputPath>
+    <ApplicationIcon>Resources\Images\icon.ico</ApplicationIcon>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>2</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>app1.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Compile Include="Helpers\FilepoolConfig.cs" />
+    <Compile Include="Helpers\FilepoolProtocol.cs" />
+    <Compile Include="Helpers\LocalFilepoolDiscovery.cs" />
+    <Compile Include="Scripts\native\LocalFilepoolDownload.cs" />
+    <Content Include="Scripts\native\LocalFilepoolDownload.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Compile Include="Installation\CatalogFiles.cs" />
+    <Compile Include="Helpers\ApplicationBuild.cs" />
+    <Compile Include="Helpers\ApplicationFiles.cs" />
+    <Compile Include="Helpers\ProtectedFiles.cs" />
+    <Compile Include="Installation\IInstallationView.cs" />
+    <Compile Include="Installation\InstallationEngine.cs" />
+    <Compile Include="Installation\InstallationEngine.Bios.cs" />
+    <Compile Include="Installation\InstallationEngine.Cancellation.cs" />
+    <Compile Include="Installation\InstallationEngine.Downloads.cs" />
+    <Compile Include="Installation\InstallationEngine.Plan.cs" />
+    <Compile Include="Installation\InstallationEngine.Processes.cs" />
+    <Compile Include="Installation\InstallationEngine.System.cs" />
+    <Compile Include="Installation\InstallationEngine.Types.cs" />
+    <Compile Include="Installation\InstallationEngine.Uefi.cs" />
+    <Compile Include="Installation\InstallationEngine.Windows.cs" />
+    <Compile Include="Helpers\PowerShellJsonResult.cs" />
+    <Compile Include="Helpers\StartupOptions.cs" />
+    <Compile Include="Helpers\UnattendedWorkflow.cs" />
+    <Compile Include="Helpers\CompatibilityPreflightRunner.cs" />
+    <Compile Include="Helpers\SystemPowerProbe.cs" />
+    <Compile Include="Helpers\WindowsPreferenceCollector.cs" />
+    <Compile Include="Helpers\WindowsWifiProfileReader.cs" />
+    <Compile Include="Helpers\ApplicationLogger.cs" />
+    <Compile Include="Helpers\SupportReport.cs" />
+    <Compile Include="Helpers\SupportReportDialog.cs" />
+    <Compile Include="Controls\SupportActions.xaml.cs"><DependentUpon>SupportActions.xaml</DependentUpon></Compile>
+    <Page Include="Controls\SupportActions.xaml" />
+    <EmbeddedResource Include="Resources\Libertix.Translations.json"><LogicalName>Libertix.SupportTranslations.json</LogicalName></EmbeddedResource>
+    <Compile Include="Helpers\WindowsProcessRunner.cs" />
+    <Compile Include="Helpers\LinuxPasswordHasher.cs" />
+    <Compile Include="Helpers\BoundedHttpContent.cs" />
+    <Compile Include="Helpers\TrayIconController.cs" />
+    <Compile Include="Helpers\UefiRecoveryState.cs" />
+    <Compile Include="Helpers\InstalledLinuxRecovery.cs" />
+    <Compile Include="Helpers\RecoveryCodeUpgrade.cs" />
+    <Compile Include="Dialogs\LocalizedConfirmationDialog.xaml.cs">
+      <DependentUpon>LocalizedConfirmationDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Dialogs\UnattendedWarningDialog.xaml.cs">
+      <DependentUpon>UnattendedWarningDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Installation\AtomicJsonFile.cs" />
+    <Compile Include="Installation\ArtifactCatalog.cs" />
+    <Compile Include="Installation\DistributionCatalogTrust.cs" />
+    <Compile Include="Installation\DistributionCatalogLoader.cs" />
+    <Compile Include="Installation\ReleaseMetadata.cs" />
+    <Compile Include="Installation\InstallationExecutionState.cs" />
+    <Compile Include="Installation\InstallationExecutionLedger.cs" />
+    <Compile Include="Installation\InstallationPlan.cs" />
+    <Compile Include="Installation\InstallationPolicy.cs" />
+    <Compile Include="Installation\InstallationPlanFactory.cs" />
+    <Compile Include="Installation\InstallationTargetSelection.cs" />
+    <Compile Include="Installation\InstallationPlanSerializer.cs" />
+    <Compile Include="Installation\InstallationPlanValidator.cs" />
+    <Compile Include="Installation\Ipv4NetworkPolicy.cs" />
+    <Compile Include="Installation\InstallationSizePolicy.cs" />
+    <Compile Include="Installation\UnattendedInstallationConfigurator.cs" />
+    <Compile Include="Installation\InstallationTemporaryArtifacts.cs" />
+    <Compile Include="Installation\BiosBootPayload.cs" />
+    <Compile Include="Installation\InstallationStateMachine.cs" />
+    <Compile Include="Installation\InstallationStateStore.cs" />
+    <Compile Include="Installation\LiveBootArguments.cs" />
+    <Compile Include="Installation\RuntimeNames.cs" />
+    <Compile Include="Installation\WindowsKeyboardLayout.cs" />
+    <Compile Include="Installation\WindowsShareConfiguration.cs" />
+    <Compile Include="Installation\WindowsSharingPlan.cs" />
+    <Compile Include="Scripts\native\WindowsSharingPaths.cs" />
+    <Compile Include="Installation\WindowsPreferenceMigrationContract.cs" />
+    <Compile Include="Installation\StoragePreflightInfo.cs" />
+    <Compile Include="Installation\FirmwareInterop.cs" />
+    <Compile Include="Models\DistroInfo.cs" />
+    <Compile Include="Models\DistroInfoJson.cs" />
+    <Compile Include="Models\AccountInfo.cs" />
+    <Compile Include="Models\CompatibilityInfo.cs" />
+    <Compile Include="Models\InstallationTargetInfo.cs" />
+    <Compile Include="Models\SharingOptions.cs" />
+    <Compile Include="Models\InstallationState.cs" />
+    <Compile Include="Pages\AccountCreation.xaml.cs">
+      <DependentUpon>AccountCreation.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\About.xaml.cs">
+      <DependentUpon>About.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\Welcome.xaml.cs">
+      <DependentUpon>Welcome.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\UninstallLinux.xaml.cs">
+      <DependentUpon>UninstallLinux.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\ApplyChanges.xaml.cs">
+      <DependentUpon>ApplyChanges.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\UefiBootFallback.xaml.cs">
+      <DependentUpon>UefiBootFallback.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\ChooseDistro.xaml.cs">
+      <DependentUpon>ChooseDistro.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\CompatibilityCheck.xaml.cs">
+      <DependentUpon>CompatibilityCheck.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pages\SharingOptionsPage.xaml.cs">
+      <DependentUpon>SharingOptionsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Helpers\NavigationHelper.cs" />
+    <Compile Include="Localization.cs" />
+    <Page Include="MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Dialogs\LocalizedConfirmationDialog.xaml" />
+    <Compile Include="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="MainWindow.xaml.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Installation\AccountPolicy.cs" />
+    <Page Include="Pages\AccountCreation.xaml" />
+    <Page Include="Pages\About.xaml" />
+    <Page Include="Dialogs\UnattendedWarningDialog.xaml" />
+    <Page Include="Pages\Welcome.xaml" />
+    <Page Include="Pages\UninstallLinux.xaml" />
+    <Page Include="Pages\ApplyChanges.xaml" />
+    <Page Include="Pages\UefiBootFallback.xaml" />
+    <Page Include="Pages\WarningConfirmation.xaml" />
+    <Compile Include="Pages\WarningConfirmation.xaml.cs">
+      <DependentUpon>WarningConfirmation.xaml</DependentUpon>
+    </Compile>
+    <Page Include="Pages\ChooseDistro.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Pages\CompatibilityCheck.xaml" />
+    <Page Include="Pages\SharingOptionsPage.xaml" />
+    <Page Include="Pages\ResizeDisk.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Compile Include="Controls\ErrorPanel.xaml.cs">
+      <DependentUpon>ErrorPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Converters\StringToVisibilityConverter.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Pages\ResizeDisk.xaml.cs">
+      <DependentUpon>ResizeDisk.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+    </Compile>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\windowsZones.xml" />
+    <None Include="app1.manifest" />
+    <None Include="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+    <Content Include="Scripts\libertix-uefi-install.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\config\Libertix.BootArguments.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\config\Libertix.LiveGrubMenu.cfg.in">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\config\Libertix.Artifacts.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Scripts\config\Libertix.CatalogPublicKey.xml">
+      <LogicalName>Libertix.Resources.CatalogPublicKey.xml</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Resources\Libertix.Translations.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\config\Libertix.InstallationPolicy.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\uefi\Libertix.Uefi.Execution.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\uefi\Libertix.Uefi.Firmware.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\uefi\Libertix.Uefi.Storage.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\uefi\Libertix.Uefi.Downloads.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\uefi\Libertix.Uefi.Transaction.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\uefi\Libertix.Uefi.Staging.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-recovery-guard.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-register-bios-recovery-task.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-uefi-recovery-agent.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-register-uefi-recovery-tasks.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-post-install-result.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-storage-preflight.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-windows-sharing-inventory.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-compatibility-preflight.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-bios-storage.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-configure-windows-share.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-disk-image.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.AtomicFile.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.Process.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.WindowsProfiles.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.WindowsSharingInventory.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\native\WindowsSharingPaths.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.BiosMbr.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.Firmware.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.FirmwareVariables.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.SecondaryBootPreflight.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.PreferredBootPath.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.BootGuardian.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.Download.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.Transaction.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.Rollback.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.StorageBaseline.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\libertix-save-storage-baseline.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.InstallationPlan.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.InstallationPolicy.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.InstallationState.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.StorageGeometry.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.StorageTargets.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.TemporaryArtifacts.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Scripts\modules\Libertix.PostInstallVerification.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Tools\aria2\aria2c.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="Controls\ErrorPanel.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Resources\Images\icon.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="BootGuardian\Libertix.BootGuardian.csproj">
+      <Project>{A147B320-A380-4E00-B8FC-8DB44410C6F5}</Project>
+      <Name>Libertix.BootGuardian</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CryptSharpOfficial" Version="2.1.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+    <PackageReference Include="System.Text.Encodings.Web" Version="8.0.0" />
+    <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="CopyLibertixRuntimeIcon" AfterTargets="Build">
+    <MakeDir Directories="$(TargetDir)Resources\Images" />
+    <Copy
+      SourceFiles="Resources\Images\icon.ico"
+      DestinationFolder="$(TargetDir)Resources\Images"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>

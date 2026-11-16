@@ -1,0 +1,1017 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Libertix Auto Tests</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --border: #cfd5df;
+        --muted: #5b6472;
+        --ok: #096b2e;
+        --bad: #a01324;
+        --bg-soft: #f7f9fc;
+        --primary: #174ea6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 24px;
+        color: #111827;
+        background: #fff;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0 0 10px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      h2 {
+        font-size: 18px;
+      }
+
+      h3 {
+        font-size: 15px;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        min-height: 38px;
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        background: #fff;
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: #fff;
+      }
+
+      button.danger {
+        background: var(--bad);
+        border-color: var(--bad);
+        color: #fff;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.6;
+      }
+
+      input[type="password"],
+      input[type="text"],
+      input[type="number"],
+      select {
+        min-height: 38px;
+        padding: 8px;
+        border: 1px solid var(--border);
+      }
+
+      label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 16px;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--border);
+        padding: 8px;
+        vertical-align: top;
+        text-align: left;
+      }
+
+      th {
+        background: var(--bg-soft);
+      }
+
+      pre {
+        white-space: pre-wrap;
+        margin: 0;
+        max-height: 260px;
+        overflow: auto;
+      }
+
+      a {
+        color: var(--primary);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .panel {
+        border: 1px solid var(--border);
+        padding: 14px;
+        margin: 0 0 14px;
+        background: #fff;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 5px;
+      }
+
+      .check-field {
+        align-items: flex-start;
+      }
+
+      .request-preview {
+        background: var(--bg-soft);
+        border: 1px solid var(--border);
+        padding: 10px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .ok {
+        color: var(--ok);
+        font-weight: 700;
+      }
+
+      .bad {
+        color: var(--bad);
+        font-weight: 700;
+      }
+
+      .vm-row {
+        display: block;
+        padding: 8px 0;
+        border-bottom: 1px solid #edf0f5;
+      }
+
+      .vm-row:last-child {
+        border-bottom: 0;
+      }
+
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        margin-left: 6px;
+        border: 1px solid var(--border);
+        background: var(--bg-soft);
+        font-size: 12px;
+      }
+
+      .endpoint-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+      }
+
+      fieldset {
+        border: 1px solid var(--border);
+        padding: 12px;
+        min-width: 0;
+      }
+
+      fieldset:disabled {
+        opacity: 0.55;
+      }
+
+      summary {
+        cursor: pointer;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      @media (max-width: 900px) {
+        body {
+          margin: 14px;
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Libertix Auto Tests</h1>
+    <p class="muted">Laboratory tool: select the VMs, choose a scenario, then review the request before starting. Installations restore snapshots and replace test data.</p>
+
+    <div class="layout">
+      <aside>
+        <section class="panel stack">
+          <h2>Options</h2>
+          <label for="sourceMode">Build source</label>
+          <select id="sourceMode">
+            <option value="local">Local working tree</option>
+            <option value="remote">Remote dev</option>
+            <option value="published">Latest published GitHub dev build</option>
+          </select>
+          <div class="buttons">
+            <button id="saveOptions">Save</button>
+            <button id="health">Test /health</button>
+            <button id="loadVms">Load VMs</button>
+          </div>
+        </section>
+
+        <section class="panel stack">
+          <h2>VM</h2>
+          <div class="buttons">
+            <button id="selectAllVms">Select all</button>
+            <button id="clearVms">Clear all</button>
+          </div>
+          <div id="vmList" class="muted">Click Load VMs.</div>
+        </section>
+
+        <section class="panel stack">
+          <h2>Automated installation</h2>
+          <label class="field">
+            <span>Test scope</span>
+            <select id="automationMode">
+              <option value="single">One custom scenario</option>
+              <option value="full">Complete campaign — 4 scenarios × 3 VMs</option>
+            </select>
+          </label>
+          <p id="campaignHint" class="muted" hidden>Mint then Zorin, Windows-first then Linux-first: three VMs in parallel for each scenario. Usual snapshot, space taken from Windows, both shares enabled, monitoring enabled and no injected fault. Each scenario ends by uninstalling Linux through Libertix, then a Windows reboot without OS selection and a verification of the restored state. If the migration is checked, the campaign tests a custom image. The single-scenario options below are disabled.</p>
+          <label class="field">
+            <span>Linux user</span>
+            <input
+              id="linuxUsername"
+              type="text"
+              value="test"
+              minlength="1"
+              maxlength="32"
+              pattern="[a-z](?:[a-z0-9-]{0,30}[a-z0-9])?"
+              required
+              autocomplete="off"
+              title="Lowercase letters, digits and hyphens only; must start with a letter."
+            />
+          </label>
+          <label class="field">
+            <span>Linux password</span>
+            <input
+              id="linuxPassword"
+              type="password"
+              minlength="4"
+              maxlength="128"
+              required
+              autocomplete="new-password"
+            />
+          </label>
+          <label class="field">
+            <span>Final Linux size (GiB)</span>
+            <input id="linuxSizeGib" type="number" value="20" min="20" max="16384" step="1" required />
+          </label>
+          <label class="check-field">
+            <input id="migrateWindowsPreferences" type="checkbox" />
+            Test the Windows preference migration (including personal Wi-Fi)
+          </label>
+          <p class="muted">One-time, consented migration. Without this option, Linux keeps its original preferences.</p>
+          <label id="continueAfterFailureField" class="check-field" hidden>
+            <input id="continueAfterFailure" type="checkbox" />
+            Continue the campaign after a failure (the next restore erases the diagnostic state of the VMs)
+          </label>
+          <fieldset id="singleScenarioOptions" class="stack">
+          <legend>Single scenario</legend>
+          <label class="field">
+            <span>Distribution</span>
+            <select id="distribution">
+              <option value="mint">Linux Mint 22.3 Cinnamon</option>
+              <option value="zorin">Zorin OS 18.1 Core</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>First verified system</span>
+            <select id="firstBoot">
+              <option value="windows">Windows first, then Linux</option>
+              <option value="linux">Linux first, then Windows</option>
+            </select>
+          </label>
+          <label class="check-field">
+            <input id="shareWindowsFilesInLinux" type="checkbox" checked />
+            Show Windows files in Linux
+          </label>
+          <label class="check-field">
+            <input id="shareLinuxFilesInWindows" type="checkbox" checked />
+            Show Linux files in Windows (read-only)
+          </label>
+          <label class="check-field">
+            <input id="monitorIso" type="checkbox" checked disabled />
+            Monitoring required — vision only at the steps that need it
+          </label>
+          <label class="field">
+            <span>Test wallpaper for the migration</span>
+            <select id="preferenceWallpaper" disabled>
+              <option value="custom">Custom image — must be copied to Linux</option>
+              <option value="windows-default">Built-in Windows wallpaper / Spotlight — keep the Linux one</option>
+            </select>
+          </label>
+          <details>
+            <summary>Laboratory storage and partitions</summary>
+            <div class="stack">
+              <label class="field">
+                <span>Starting snapshot</span>
+                <select id="snapshotMode">
+                  <option value="default">Usual snapshot — default mode</option>
+                  <option value="secondary-disk">Snapshot with a second disk</option>
+                </select>
+              </label>
+              <p class="muted">Snapshot names are the ones configured on the server. No fixture is added by default.</p>
+              <label class="field">
+                <span>Take the Linux space from</span>
+                <select id="installationTarget">
+                  <option value="windows">Windows volume (usually C:) — recommended</option>
+                  <option value="secondary" disabled>Another physical disk — experimental</option>
+                </select>
+              </label>
+              <p id="secondaryTargetHint" class="bad" hidden>Less supported and potentially unstable: the firmware must be able to boot from this other disk. Existing partitions are not moved.</p>
+              <label class="field">
+                <span>Extra witness partition on the Windows disk</span>
+                <select id="extraSystemPartition">
+                  <option value="none">None</option>
+                  <option value="fat32">FAT32</option>
+                  <option value="ntfs">NTFS</option>
+                  <option value="recovery">Recovery (simulated OEM recovery)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Witness partition size (MiB)</span>
+                <input id="extraPartitionSizeMib" type="number" value="1024" min="256" max="4096" step="1" disabled required />
+              </label>
+              <label class="check-field"><input id="decryptSystemVolume" type="checkbox" disabled />Decrypt the Windows volume before creating the witness partition</label>
+              <fieldset id="secondaryDataOptions" class="stack" disabled>
+                <legend>Second disk (requires the matching snapshot)</legend>
+                <label class="check-field"><input id="secondaryData" type="checkbox" />Prepare and verify witness data on the second disk</label>
+                <label class="check-field"><input id="decryptSecondaryVolume" type="checkbox" disabled />Decrypt the test data volume</label>
+                <label class="check-field"><input id="redirectDocuments" type="checkbox" disabled />Move and link Documents to the second disk before installation</label>
+              </fieldset>
+              <p class="muted">Decryption only affects the selected laboratory volumes. A rollback does not automatically re-enable their original encryption.</p>
+            </div>
+          </details>
+          <details>
+          <summary>Simulated faults and recovery paths</summary>
+          <div class="stack">
+          <label class="check-field">
+            <input id="simulateStaleFirmwareEntries" type="checkbox" />
+            Simulate stale Libertix firmware entries before installation
+          </label>
+          <label class="check-field">
+            <input id="forceOfflineNtfsResize" type="checkbox" />
+            Force the offline NTFS resize in the mini-ISO
+          </label>
+          <label class="field">
+            <span>Fault or recovery scenario</span>
+            <select id="bootGuardianFault">
+              <option value="none">No test</option>
+              <option value="bios-rollback">Cancel after a BIOS mutation and verify the rollback</option>
+              <option value="bios-controller-disconnect">BIOS: simulate a lost controller, then verify the rollback</option>
+              <option value="bios-postinstall-rollback">BIOS: rollback after a complete installation</option>
+              <option value="uefi-postinstall-rollback">UEFI: rollback after a complete installation</option>
+              <option value="boot-order">Break, then repair BootOrder</option>
+              <option value="bootnext-fallback">BootNext failure, then accept BootOrder</option>
+              <option value="bootnext-rollback">BootNext failure, then restore Windows</option>
+              <option value="preferred-path">Break, then repair the fallback EFI path</option>
+              <option value="preferred-path-rollback">Decline the EFI path and restore Windows</option>
+            </select>
+          </label>
+          <p class="muted">Laboratory-only tests: exactly one VM with the matching firmware, with Windows verified first. For a nominal validation, leave these options disabled and the test set to "No test".</p>
+          </div>
+          </details>
+          </fieldset>
+          <p class="muted">
+            The password is sent only to the local API when starting. This page does not
+            keep it and the preview masks it.
+          </p>
+        </section>
+
+        <section class="panel stack">
+          <h2>Filepool</h2>
+          <div class="buttons">
+            <button id="checkFilepool">Check files</button>
+          </div>
+          <div>
+            <a href="/filepool/catalog.json" target="_blank" rel="noreferrer">catalog.json</a>
+            <span class="pill">JSON</span>
+          </div>
+          <div>
+            <a href="/filepool/libertix-installer-bios.iso" target="_blank" rel="noreferrer">libertix-installer-bios.iso</a>
+            <span class="pill">BIOS</span>
+          </div>
+          <div>
+            <a href="/filepool/libertix-installer-uefi.iso" target="_blank" rel="noreferrer">libertix-installer-uefi.iso</a>
+            <span class="pill">UEFI</span>
+          </div>
+          <div>
+            <a href="/filepool/aria2-64.zip" target="_blank" rel="noreferrer">aria2-64.zip</a>
+            <span class="pill">Download</span>
+          </div>
+        </section>
+      </aside>
+
+      <main>
+        <section class="panel">
+          <h2>API actions</h2>
+          <div class="endpoint-grid">
+            <div class="stack">
+              <h3>Validation</h3>
+              <p class="muted">Builds, tests, deploys and opens Libertix without starting an installation.</p>
+              <button id="validationStream" class="primary">Validate with live log</button>
+              <button id="validationJson">Validate — final JSON response</button>
+            </div>
+            <div class="stack">
+              <h3>Installation / campaign</h3>
+              <p class="muted">Restores the snapshots, then installs and verifies Windows and Linux.</p>
+              <button id="automationStream" class="danger">Start with live log</button>
+              <button id="automationJson" class="danger">Start — final JSON response</button>
+            </div>
+            <div class="stack">
+              <h3>Restore only</h3>
+              <p class="muted">Restores the usual configured snapshot without installing. Does not use the fixtures or the scenario's snapshot choice.</p>
+              <button id="resetStream" class="danger">Restore with live log</button>
+              <button id="resetJson" class="danger">Restore — final JSON response</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Status</h2>
+          <div id="status" role="status" aria-live="polite">Ready.</div>
+          <div id="summary" class="muted"></div>
+          <p><button id="stopOperation" class="danger">Stop the active operation on the server</button></p>
+          <p class="muted">Forced stop of the whole campaign, not of a single VM. Triggers no rollback or cleanup of operations already started in the VMs.</p>
+        </section>
+
+        <section id="campaignResults" class="panel" hidden>
+          <h2>Campaign summary</h2>
+          <p class="muted">"Not run" or "not verified" is never a success. The log paths below are local to the server.</p>
+          <div id="campaignSummary"></div>
+        </section>
+
+        <section class="panel stack">
+          <h2>Unattended request preview</h2>
+          <pre id="requestPreview" class="request-preview"></pre>
+        </section>
+
+        <section class="panel">
+          <h2>Raw result</h2>
+          <pre id="rawResult">{}</pre>
+        </section>
+
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Step</th>
+              <th>Status</th>
+              <th>Message</th>
+              <th>Context / logs</th>
+            </tr>
+          </thead>
+          <tbody id="steps"></tbody>
+        </table>
+      </main>
+    </div>
+
+    <script>
+      const sourceModeInput = document.getElementById("sourceMode");
+      const distributionInput = document.getElementById("distribution");
+      const linuxUsernameInput = document.getElementById("linuxUsername");
+      const linuxPasswordInput = document.getElementById("linuxPassword");
+      const linuxSizeGibInput = document.getElementById("linuxSizeGib");
+      const firstBootInput = document.getElementById("firstBoot");
+      const shareWindowsFilesInLinuxInput = document.getElementById("shareWindowsFilesInLinux");
+      const shareLinuxFilesInWindowsInput = document.getElementById("shareLinuxFilesInWindows");
+      const monitorIsoInput = document.getElementById("monitorIso");
+      const simulateStaleFirmwareEntriesInput = document.getElementById("simulateStaleFirmwareEntries");
+      const forceOfflineNtfsResizeInput = document.getElementById("forceOfflineNtfsResize");
+      const bootGuardianFaultInput = document.getElementById("bootGuardianFault");
+      const automationModeInput = document.getElementById("automationMode");
+      const migrateWindowsPreferencesInput = document.getElementById("migrateWindowsPreferences");
+      const preferenceWallpaperInput = document.getElementById("preferenceWallpaper");
+      const snapshotModeInput = document.getElementById("snapshotMode");
+      const installationTargetInput = document.getElementById("installationTarget");
+      const extraSystemPartitionInput = document.getElementById("extraSystemPartition");
+      const extraPartitionSizeMibInput = document.getElementById("extraPartitionSizeMib");
+      const decryptSystemVolumeInput = document.getElementById("decryptSystemVolume");
+      const secondaryDataInput = document.getElementById("secondaryData");
+      const decryptSecondaryVolumeInput = document.getElementById("decryptSecondaryVolume");
+      const redirectDocumentsInput = document.getElementById("redirectDocuments");
+      const continueAfterFailureInput = document.getElementById("continueAfterFailure");
+      const vmList = document.getElementById("vmList");
+      const statusBox = document.getElementById("status");
+      const summaryBox = document.getElementById("summary");
+      const rawResult = document.getElementById("rawResult");
+      const requestPreview = document.getElementById("requestPreview");
+      const stepsBody = document.getElementById("steps");
+      const buttons = [...document.querySelectorAll("button")];
+
+      sourceModeInput.value = sessionStorage.getItem("libertix_source_mode") || "local";
+      distributionInput.value = sessionStorage.getItem("libertix_distribution") || "mint";
+      linuxUsernameInput.value = sessionStorage.getItem("libertix_linux_username") || "test";
+
+      document.getElementById("saveOptions").addEventListener("click", () => {
+        sessionStorage.setItem("libertix_source_mode", sourceModeInput.value);
+        sessionStorage.setItem("libertix_distribution", distributionInput.value);
+        sessionStorage.setItem("libertix_linux_username", linuxUsernameInput.value);
+        setStatus("Options saved for this tab. The Linux password is not stored.", false);
+      });
+      document.getElementById("health").addEventListener("click", checkHealth);
+      document.getElementById("loadVms").addEventListener("click", loadVms);
+      document.getElementById("selectAllVms").addEventListener("click", () => setVmChecks(true));
+      document.getElementById("clearVms").addEventListener("click", () => setVmChecks(false));
+      document.getElementById("checkFilepool").addEventListener("click", checkFilepool);
+      document.getElementById("stopOperation").addEventListener("click", stopOperation);
+
+      document.getElementById("validationStream").addEventListener("click", () => runValidation(true));
+      document.getElementById("validationJson").addEventListener("click", () => runValidation(false));
+      document.getElementById("automationStream").addEventListener("click", () => runAutomation(true));
+      document.getElementById("automationJson").addEventListener("click", () => runAutomation(false));
+      document.getElementById("resetStream").addEventListener("click", () => confirmReset(() => runReset(true)));
+      document.getElementById("resetJson").addEventListener("click", () => confirmReset(() => runReset(false)));
+
+      document.querySelectorAll("aside input, aside select").forEach((input) => {
+        input.addEventListener("input", updateRequestPreview);
+        input.addEventListener("change", updateRequestPreview);
+      });
+      updateRequestPreview();
+
+      function requestHeaders(hasJsonBody = false) {
+        const headers = {};
+        if (hasJsonBody) {
+          headers["Content-Type"] = "application/json";
+        }
+        return headers;
+      }
+
+      function selectedVms() {
+        return [...document.querySelectorAll('input[name="vm"]:checked')].map((input) => input.value);
+      }
+
+      function requestBody() {
+        const vms = selectedVms();
+        if (!vms.length) {
+          setStatus("Select at least one VM.", true);
+          return null;
+        }
+        return {
+          vms,
+          source: sourceModeInput.value || "local",
+        };
+      }
+
+      function automationBody() {
+        const body = requestBody();
+        if (!body) return null;
+        if (!validateAutomationInputs()) return null;
+        if (automationModeInput.value === "full" && body.vms.length !== 3) {
+          setStatus("The complete campaign requires exactly three selected VMs.", true);
+          return null;
+        }
+        if (automationModeInput.value === "single" && bootGuardianFaultInput.value !== "none") {
+          if (body.vms.length !== 1 || firstBootInput.value !== "windows") {
+            setStatus("A simulated fault requires exactly one VM with the matching firmware and Windows verified first.", true);
+            return null;
+          }
+        }
+        return automationPayload();
+      }
+
+      function automationPayload(preview = false) {
+        const body = {
+          vms: selectedVms(),
+          source: sourceModeInput.value || "local",
+          apply: true,
+          linux_username: linuxUsernameInput.value || "test",
+          linux_password: preview ? "<masked>" : linuxPasswordInput.value,
+          linux_size_gib: Number(linuxSizeGibInput.value),
+          migrate_windows_preferences: migrateWindowsPreferencesInput.checked,
+        };
+        if (automationModeInput.value === "full") {
+          return { ...body, continue_after_failure: continueAfterFailureInput.checked };
+        }
+        const secondary = snapshotModeInput.value === "secondary-disk";
+        const secondaryData = secondary && secondaryDataInput.checked;
+        const extraPartition = extraSystemPartitionInput.value !== "none";
+        return {
+          ...body,
+          distribution: distributionInput.value || "mint",
+          first_boot: firstBootInput.value,
+          monitor_iso: monitorIsoInput.checked,
+          share_windows_files_in_linux: shareWindowsFilesInLinuxInput.checked,
+          share_linux_files_in_windows: shareLinuxFilesInWindowsInput.checked,
+          simulate_stale_firmware_entries: simulateStaleFirmwareEntriesInput.checked,
+          force_offline_ntfs_resize: forceOfflineNtfsResizeInput.checked,
+          boot_guardian_fault: bootGuardianFaultInput.value,
+          preference_wallpaper: preferenceWallpaperInput.value,
+          snapshot_mode: snapshotModeInput.value,
+          installation_target: installationTargetInput.value,
+          storage_fixture: {
+            extra_system_partition: extraSystemPartitionInput.value,
+            extra_partition_size_mib: extraPartition ? Number(extraPartitionSizeMibInput.value) : 1024,
+            decrypt_system_volume: extraPartition && decryptSystemVolumeInput.checked,
+            secondary_data: secondaryData,
+            decrypt_secondary_volume: secondaryData && decryptSecondaryVolumeInput.checked,
+            redirect_documents: secondaryData && redirectDocumentsInput.checked,
+          },
+        };
+      }
+
+      function validateAutomationInputs() {
+        const inputs = [linuxUsernameInput, linuxPasswordInput, linuxSizeGibInput, extraPartitionSizeMibInput];
+        const invalidInput = inputs.find((input) => !input.checkValidity());
+        if (!invalidInput) return true;
+        const details = invalidInput.closest("details");
+        if (details) details.open = true;
+        invalidInput.reportValidity();
+        setStatus("Fix the invalid unattended settings before starting the installation.", true);
+        return false;
+      }
+
+      function automationEndpoint() {
+        return automationModeInput.value === "full" ? "/api/v1/automation/full" : "/api/v1/automation";
+      }
+
+      function updateOptionAvailability() {
+        const full = automationModeInput.value === "full";
+        const secondary = snapshotModeInput.value === "secondary-disk";
+        const extraPartition = extraSystemPartitionInput.value !== "none";
+        document.getElementById("singleScenarioOptions").disabled = full;
+        document.getElementById("campaignHint").hidden = !full;
+        document.getElementById("continueAfterFailureField").hidden = !full;
+        preferenceWallpaperInput.disabled = !migrateWindowsPreferencesInput.checked;
+        installationTargetInput.querySelector('option[value="secondary"]').disabled = !secondary;
+        if (!secondary) installationTargetInput.value = "windows";
+        document.getElementById("secondaryTargetHint").hidden = full || installationTargetInput.value !== "secondary";
+        document.getElementById("secondaryDataOptions").disabled = !secondary;
+        extraPartitionSizeMibInput.disabled = !extraPartition;
+        decryptSystemVolumeInput.disabled = !extraPartition;
+        decryptSecondaryVolumeInput.disabled = !secondaryDataInput.checked;
+        redirectDocumentsInput.disabled = !secondaryDataInput.checked;
+      }
+
+      function updateRequestPreview() {
+        updateOptionAvailability();
+        const body = automationPayload(true);
+        const json = JSON.stringify(body, null, 2);
+        const compactJson = JSON.stringify(body);
+        requestPreview.textContent = [
+          json,
+          "",
+          "curl -N -H 'Content-Type: application/json' \\",
+          `  --data '${compactJson}' \\`,
+          `  ${window.location.origin}${automationEndpoint()}/stream?format=ndjson`,
+        ].join("\n");
+      }
+
+      function setVmChecks(value) {
+        document.querySelectorAll('input[name="vm"]').forEach((input) => {
+          input.checked = value;
+        });
+        updateRequestPreview();
+      }
+
+      function setBusy(value) {
+        buttons.forEach((button) => {
+          if (button.id !== "stopOperation") button.disabled = value;
+        });
+      }
+
+      function setStatus(text, isError) {
+        statusBox.textContent = text;
+        statusBox.className = isError ? "bad" : "";
+      }
+
+      function clearResults() {
+        stepsBody.innerHTML = "";
+        summaryBox.textContent = "";
+        rawResult.textContent = "{}";
+        document.getElementById("campaignResults").hidden = true;
+        document.getElementById("campaignSummary").replaceChildren();
+      }
+
+      function addStep(step) {
+        const row = document.createElement("tr");
+        const index = stepsBody.children.length + 1;
+        const statusClass = step.status === "ok" ? "ok" : "bad";
+        row.innerHTML = `
+          <td>${index}</td>
+          <td>${escapeHtml(step.step)}</td>
+          <td class="${statusClass}">${escapeHtml(step.status)}</td>
+          <td>${escapeHtml(step.message)}</td>
+          <td><pre>${escapeHtml(JSON.stringify(step.context || {}, null, 2))}</pre></td>
+        `;
+        stepsBody.appendChild(row);
+      }
+
+      function showResult(result) {
+        rawResult.textContent = JSON.stringify(result, null, 2);
+        if (result.steps) {
+          stepsBody.innerHTML = "";
+          result.steps.forEach(addStep);
+        }
+        if (result.operation && result.status) {
+          summaryBox.textContent = `${result.operation} finished with status: ${result.status}`;
+          setStatus(result.message || "Operation finished.", result.status !== "ok");
+        }
+        showCampaignSummary(result.campaign_summary || []);
+      }
+
+      function showCampaignSummary(scenarios) {
+        const container = document.getElementById("campaignSummary");
+        container.replaceChildren();
+        document.getElementById("campaignResults").hidden = scenarios.length === 0;
+        const labels = { ok: "Passed", error: "Failed", "not-run": "Not run", "not-verified": "Not verified", interrupted: "Interrupted", running: "Running" };
+        for (const scenario of scenarios) {
+          const section = document.createElement("section");
+          section.className = "panel stack";
+          const title = document.createElement("h3");
+          title.textContent = `${scenario.scenario} — ${labels[scenario.status] || scenario.status}`;
+          title.className = scenario.status === "ok" ? "ok" : scenario.status === "error" ? "bad" : "muted";
+          section.appendChild(title);
+          const vms = document.createElement("p");
+          vms.textContent = Object.entries(scenario.vms || {}).map(([vm, status]) => `${vm}: ${labels[status] || status}`).join(" · ");
+          section.appendChild(vms);
+          const details = document.createElement("pre");
+          details.textContent = [scenario.message, scenario.log && `Log: ${scenario.log}`, scenario.captures && `Captures: ${scenario.captures}`].filter(Boolean).join("\n");
+          section.appendChild(details);
+          for (const error of scenario.errors || []) {
+            const diagnostic = document.createElement("pre");
+            diagnostic.className = "bad";
+            diagnostic.textContent = `${error.step}: ${error.message}\n${JSON.stringify(error.context || {}, null, 2)}`;
+            section.appendChild(diagnostic);
+          }
+          container.appendChild(section);
+        }
+      }
+
+      async function checkHealth() {
+        await runJson("/health", { method: "GET" }, "health");
+      }
+
+      async function stopOperation() {
+        if (!confirm("Force-stop the operation currently active on this server, even if it was started from another tab? No automatic rollback will be performed in the VMs.")) return;
+        const button = document.getElementById("stopOperation");
+        button.disabled = true;
+        try {
+          const response = await fetch("/api/v1/operation/kill", { method: "POST" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+          setStatus("Stop requested from the controller. Operations already started in the VMs are not cancelled automatically.", true);
+        } catch (error) {
+          setStatus(`Stop not confirmed: ${error.message}`, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function loadVms() {
+        setBusy(true);
+        try {
+          const response = await fetch("/api/v1/vms");
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+          }
+          const data = await response.json();
+          rawResult.textContent = JSON.stringify(data, null, 2);
+          vmList.innerHTML = "";
+          data.vms.forEach((vm) => {
+            const label = document.createElement("label");
+            label.className = "vm-row";
+            label.innerHTML = `
+              <input type="checkbox" name="vm" value="${escapeHtml(vm.name)}" />
+              <span>${escapeHtml(vm.name)} — ${escapeHtml(vm.os)} — ${escapeHtml(vm.host)} — VNC ${escapeHtml(vm.vnc)}</span>
+            `;
+            label.querySelector("input").addEventListener("change", updateRequestPreview);
+            vmList.appendChild(label);
+          });
+          updateRequestPreview();
+          setStatus("VMs loaded.", false);
+        } catch (error) {
+          setStatus(`Unable to load the VMs: ${error.message}`, true);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function checkFilepool() {
+        clearResults();
+        setBusy(true);
+        setStatus("Checking the filepool...", false);
+        const files = [
+          "catalog.json",
+          "libertix-installer-bios.iso",
+          "libertix-installer-uefi.iso",
+          "aria2-64.zip",
+        ];
+        const result = { operation: "filepool", status: "ok", files: [] };
+        try {
+          for (const file of files) {
+            const response = await fetch(`/filepool/${file}`, { method: "HEAD" });
+            const item = {
+              file,
+              status: response.status,
+              ok: response.ok,
+              bytes: response.headers.get("content-length"),
+              content_type: response.headers.get("content-type"),
+            };
+            result.files.push(item);
+            addStep({
+              step: `filepool.${file}`,
+              status: response.ok ? "ok" : "error",
+              message: response.ok ? "File reachable" : `HTTP ${response.status}`,
+              context: item,
+            });
+            if (!response.ok) {
+              result.status = "error";
+            }
+          }
+          rawResult.textContent = JSON.stringify(result, null, 2);
+          setStatus(result.status === "ok" ? "Filepool reachable." : "Filepool incomplete.", result.status !== "ok");
+        } catch (error) {
+          setStatus(`Filepool error: ${error.message}`, true);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      function runValidation(stream) {
+        const body = requestBody();
+        if (!body) return;
+        if (stream) {
+          runStream("/api/v1/validation/stream?format=ndjson", body, "validation stream");
+          return;
+        }
+        runJson(
+          "/api/v1/validation",
+          { method: "POST", headers: requestHeaders(true), body: JSON.stringify(body) },
+          "validation",
+        );
+      }
+
+      function runAutomation(stream) {
+        const body = automationBody();
+        if (!body) return;
+        const full = automationModeInput.value === "full";
+        const scope = full ? "four successive installations per VM" : "one installation per VM";
+        if (!confirm(`Start ${scope} on ${body.vms.join(", ")}? The snapshots will be restored and the current data of these VMs replaced. ${full && body.continue_after_failure ? "The campaign will continue after failures and will erase the diagnostic state before the next scenario." : ""}`)) return;
+        const endpoint = automationEndpoint();
+        if (stream) {
+          runStream(`${endpoint}/stream?format=ndjson`, body, full ? "complete campaign" : "automated installation");
+          return;
+        }
+        runJson(
+          endpoint,
+          { method: "POST", headers: requestHeaders(true), body: JSON.stringify(body) },
+          "automation unattended",
+        );
+      }
+
+      function runReset(stream) {
+        const vms = selectedVms();
+        if (!vms.length) {
+          setStatus("Select at least one VM.", true);
+          return;
+        }
+        const params = new URLSearchParams();
+        vms.forEach((vm) => params.append("vm", vm));
+        const suffix = params.toString() ? `?${params.toString()}` : "";
+        if (stream) {
+          const separator = suffix ? "&" : "?";
+          runStream(`/api/v1/reset/stream${suffix}${separator}format=ndjson`, {}, "reset stream");
+          return;
+        }
+        runJson(`/api/v1/reset${suffix}`, { method: "POST" }, "reset");
+      }
+
+      async function runJson(url, options, label) {
+        clearResults();
+        setBusy(true);
+        setStatus(`Operation ${label} running...`, false);
+        try {
+          const response = await fetch(url, options);
+          const text = await response.text();
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${text}`);
+          }
+          const result = text ? JSON.parse(text) : {};
+          showResult(result);
+          if (!result.operation) {
+            setStatus(`Response ${label} received.`, false);
+          }
+        } catch (error) {
+          setStatus(`Interface error: ${error.message}`, true);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function runStream(url, body, label) {
+        clearResults();
+        setBusy(true);
+        setStatus(`Operation ${label} running...`, false);
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: requestHeaders(true),
+            body: JSON.stringify(body),
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+          }
+          if (!response.body) {
+            throw new Error("Streaming response body is unavailable in this browser.");
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let terminalSeen = false;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (const line of lines) {
+              terminalSeen = handleEventLine(line) || terminalSeen;
+            }
+          }
+          if (buffer.trim()) {
+            terminalSeen = handleEventLine(buffer) || terminalSeen;
+          }
+          if (!terminalSeen) throw new Error("Stream interrupted without a final verdict. The operation may continue on the server: do not restart it blindly.");
+        } catch (error) {
+          setStatus(`Interface error: ${error.message}`, true);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      function handleEventLine(line) {
+        if (!line.trim()) return;
+        const event = JSON.parse(line);
+        if (event.event === "step") {
+          addStep(event.data);
+          setStatus(`Last step: ${event.data.step}`, event.data.status !== "ok");
+          return;
+        }
+        if (event.event === "result") {
+          showResult(event.data);
+          return true;
+        }
+      }
+
+      function confirmReset(action) {
+        if (confirm("Confirm the reset: restore the configured snapshot on the selected VMs? The SMB share is kept.")) {
+          action();
+        }
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+    </script>
+  </body>
+</html>

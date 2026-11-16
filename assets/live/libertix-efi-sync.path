@@ -1,0 +1,12 @@
+[Unit]
+Description=Watch signed bootloader packages used by Libertix
+RequiresMountsFor=/boot/efi
+
+[Path]
+PathChanged=/usr/lib/shim
+PathChanged=/usr/lib/grub/x86_64-efi-signed
+PathExists=/boot/efi/EFI/Libertix/preferred-boot-path.sync.json
+Unit=libertix-efi-sync.service
+
+[Install]
+WantedBy=multi-user.target

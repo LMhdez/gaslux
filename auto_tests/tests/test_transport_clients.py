@@ -1,0 +1,889 @@
+from __future__ import annotations
+
+import base64
+import gzip
+import io
+import re
+import threading
+import time
+from contextlib import nullcontext
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from PIL import Image
+from vncdotool.client import KEYMAP
+
+import app.clients.ssh as ssh_module
+import app.clients.vnc as vnc_module
+from app.clients.proxmox import ProxmoxClient
+from app.clients.ssh import SSHClient
+from app.clients.vnc import VNCClient
+from app.errors import WorkflowError
+
+
+def test_proxmox_task_warning_is_not_reported_as_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = object.__new__(ProxmoxClient)
+    client.task_timeout = 5
+    monkeypatch.setattr(
+        client,
+        "_request",
+        lambda *_args, **_kwargs: {"status": "stopped", "exitstatus": "WARNINGS: 1"},
+    )
+
+    client._wait_task("node", "UPID:test", 500, action="start")
+
+
+def test_proxmox_failed_task_remains_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = object.__new__(ProxmoxClient)
+    client.task_timeout = 5
+    monkeypatch.setattr(
+        client,
+        "_request",
+        lambda *_args, **_kwargs: {"status": "stopped", "exitstatus": "ERROR"},
+    )
+
+    with pytest.raises(WorkflowError) as caught:
+        client._wait_task("node", "UPID:test", 500, action="start")
+
+    assert caught.value.details["exitstatus"] == "ERROR"
+
+
+class FakeChannel:
+    def __init__(self, stdout: bytes = b"", stderr: bytes = b"", exit_code: int = 0) -> None:
+        self.stdout = bytearray(stdout)
+        self.stderr = bytearray(stderr)
+        self.exit_code = exit_code
+        self.closed = False
+        self.input_closed = False
+
+    def recv_ready(self) -> bool:
+        return bool(self.stdout)
+
+    def recv_stderr_ready(self) -> bool:
+        return bool(self.stderr)
+
+    def recv(self, size: int) -> bytes:
+        chunk = bytes(self.stdout[:size])
+        del self.stdout[:size]
+        return chunk
+
+    def recv_stderr(self, size: int) -> bytes:
+        chunk = bytes(self.stderr[:size])
+        del self.stderr[:size]
+        return chunk
+
+    def exit_status_ready(self) -> bool:
+        return not self.stdout and not self.stderr
+
+    def recv_exit_status(self) -> int:
+        return self.exit_code
+
+    def close(self) -> None:
+        self.closed = True
+
+    def shutdown_write(self) -> None:
+        self.input_closed = True
+
+
+class FakeStdin:
+    def __init__(self, channel: FakeChannel) -> None:
+        self.channel = channel
+        self.content = ""
+
+    def write(self, content: str) -> None:
+        self.content += content
+
+    def flush(self) -> None:
+        pass
+
+
+class FakeParamikoClient:
+    def __init__(self, channel: FakeChannel | None = None) -> None:
+        self.channel = channel or FakeChannel()
+        self.connect_kwargs: dict[str, object] | None = None
+        self.loaded_host_keys: str | None = None
+        self.missing_host_key_policy: object | None = None
+        self.closed = False
+        self.last_stdin: FakeStdin | None = None
+        self.host_keys = ssh_module.paramiko.HostKeys()
+        self.saved_host_keys: str | None = None
+
+    def load_host_keys(self, path: str) -> None:
+        self.loaded_host_keys = path
+
+    def set_missing_host_key_policy(self, policy: object) -> None:
+        self.missing_host_key_policy = policy
+
+    def get_host_keys(self):
+        return self.host_keys
+
+    def save_host_keys(self, path: str) -> None:
+        self.saved_host_keys = path
+        self.host_keys.save(path)
+
+    def connect(self, host: str, **kwargs: object) -> None:
+        self.connect_kwargs = {"host": host, **kwargs}
+
+    def exec_command(self, _command: str, *, timeout: float):
+        assert timeout > 0
+        stream = SimpleNamespace(channel=self.channel)
+        self.last_stdin = FakeStdin(self.channel)
+        return self.last_stdin, stream, stream
+
+    def get_transport(self):
+        key = SimpleNamespace(asbytes=lambda: b"ephemeral-test-key")
+        return SimpleNamespace(get_remote_server_key=lambda: key)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_ssh_text_upload_writes_exactly_one_utf8_bom() -> None:
+    class FakeRemote:
+        def __init__(self) -> None:
+            self.content = bytearray()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def write(self, content: bytes) -> None:
+            self.content.extend(content)
+
+    class FakeSftp:
+        def __init__(self, remote: FakeRemote) -> None:
+            self.remote = remote
+            self.timeout = None
+
+        def get_channel(self):
+            return self
+
+        def settimeout(self, timeout: float) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def open(self, remote_path: str, mode: str) -> FakeRemote:
+            assert self.timeout == 120
+            assert remote_path == "C:/Windows/Temp/check.ps1"
+            assert mode == "wb"
+            return self.remote
+
+    remote = FakeRemote()
+    transport = SimpleNamespace(open_sftp=lambda: FakeSftp(remote))
+    client = object.__new__(SSHClient)
+    client.host = "example.test"
+    client._client = transport
+
+    client.upload_text(
+        "C:/Windows/Temp/check.ps1",
+        "\ufeffparam()\nWrite-Output 'é'\n",
+        step="ssh.upload_text",
+    )
+
+    assert bytes(remote.content).startswith(b"\xef\xbb\xbfparam")
+    assert not bytes(remote.content).startswith(b"\xef\xbb\xbf\xef\xbb\xbf")
+
+
+def test_ssh_file_upload_sets_a_stall_timeout_and_forwards_progress(tmp_path: Path) -> None:
+    class FakeChannel:
+        timeout = None
+
+        def settimeout(self, timeout: float) -> None:
+            self.timeout = timeout
+
+    class FakeSftp:
+        def __init__(self) -> None:
+            self.channel = FakeChannel()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def get_channel(self) -> FakeChannel:
+            return self.channel
+
+        def put(self, local: str, remote: str, *, callback=None) -> None:
+            assert Path(local).read_bytes() == b"payload"
+            assert remote == "/remote/artifact"
+            callback(3, 7)
+            callback(7, 7)
+
+    local = tmp_path / "artifact"
+    local.write_bytes(b"payload")
+    sftp = FakeSftp()
+    transport = SimpleNamespace(open_sftp=lambda: sftp)
+    client = object.__new__(SSHClient)
+    client.host = "example.test"
+    client._client = transport
+    progress: list[tuple[int, int]] = []
+
+    client.upload_file(
+        local,
+        "/remote/artifact",
+        step="ssh.upload_file",
+        on_progress=lambda transferred, total: progress.append((transferred, total)),
+        stall_timeout_seconds=45,
+    )
+
+    assert sftp.channel.timeout == 45
+    assert progress == [(3, 7), (7, 7)]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected", "error"),
+    [
+        (b'\xef\xbb\xbf{"sequence":1}', '{"sequence":1}', None),
+        (FileNotFoundError(2, "absent"), None, None),
+        (PermissionError(13, "denied"), None, "PermissionError"),
+        (TimeoutError("slow read"), None, "TimeoutError"),
+        (b"x" * 65, None, "ValueError"),
+        (b"\xff", None, "UnicodeDecodeError"),
+    ],
+)
+def test_ssh_text_read_is_bounded_and_does_not_spawn_commands(payload, expected, error) -> None:
+    channel = SimpleNamespace(settimeout=lambda seconds: None)
+
+    def open_file(path, mode):
+        assert path == "C:/Temp/status.json"
+        assert mode == "rb"
+        if isinstance(payload, Exception):
+            raise payload
+        return io.BytesIO(payload)
+
+    sftp = SimpleNamespace(get_channel=lambda: channel, open=open_file)
+    client = object.__new__(SSHClient)
+    client.host = "example.test"
+    client._client = SimpleNamespace(open_sftp=lambda: nullcontext(sftp))
+    if error:
+        with pytest.raises(WorkflowError) as caught:
+            client.read_text("C:/Temp/status.json", step="status", max_bytes=64)
+        assert caught.value.details["exception_type"] == error
+    else:
+        assert client.read_text("C:/Temp/status.json", step="status", max_bytes=64) == expected
+
+
+def test_ssh_text_read_timeout_also_bounds_subsystem_negotiation() -> None:
+    closed = threading.Event()
+
+    def blocked_open():
+        assert closed.wait(1)
+        raise EOFError("connection closed")
+
+    client = object.__new__(SSHClient)
+    client.host = "example.test"
+    client._client = SimpleNamespace(open_sftp=blocked_open, close=closed.set)
+    with pytest.raises(WorkflowError) as caught:
+        client.read_text("C:/Temp/status.json", step="status", timeout=0.05)
+    assert closed.is_set()
+    assert caught.value.details["exception_type"] == "EOFError"
+
+
+@pytest.mark.parametrize("blocked_stage", ["exec", "stdin"])
+def test_ssh_command_deadline_also_bounds_negotiation_and_stdin(monkeypatch, blocked_stage):
+    closed = threading.Event()
+    real_timer = threading.Timer
+    monkeypatch.setattr(
+        ssh_module.threading, "Timer", lambda _seconds, callback: real_timer(0.05, callback)
+    )
+
+    def block(*_args, **_kwargs):
+        assert closed.wait(2), "the transport deadline did not close the connection"
+        raise EOFError("connection closed")
+
+    fake = FakeParamikoClient()
+    fake.close = closed.set
+    if blocked_stage == "exec":
+        fake.exec_command = block
+    else:
+        stream = SimpleNamespace(channel=FakeChannel())
+        fake.exec_command = lambda *_args, **_kwargs: (SimpleNamespace(write=block), stream, stream)
+    client = SSHClient("vm.test", "test", "test", known_hosts_path="known_hosts")
+    client._client = fake
+    with pytest.raises(WorkflowError) as caught:
+        client.run("hostname", step="probe", timeout=5, stdin_data="input")
+    assert caught.value.details["exception_type"] == "TimeoutError"
+    assert caught.value.details["transport_error"] is True
+    assert closed.is_set()
+
+
+def test_replay_safe_ssh_failure_does_not_request_a_clean_scenario_restart(monkeypatch) -> None:
+    recovered = []
+    monkeypatch.setattr(
+        ssh_module.network_recovery,
+        "recover",
+        lambda failed_at, **kwargs: recovered.append((failed_at, kwargs)) or False,
+    )
+    client = SSHClient("vm.test", "test", "test", known_hosts_path="known_hosts")
+    client._client = SimpleNamespace(
+        exec_command=lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("lost")),
+        close=lambda: None,
+    )
+
+    with pytest.raises(WorkflowError):
+        client.run("hostname", step="boot.identity", timeout=5, replay_safe=True)
+
+    assert recovered[0][1]["replay_safe"] is True
+    assert recovered[0][1]["context"] == {
+        "failed_step": "boot.identity",
+        "target": "vm.test",
+        "transport_error": "TimeoutError",
+    }
+
+
+def test_ssh_client_connects_with_password_only_and_drains_both_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeParamikoClient(FakeChannel(b"result\n", b"warning\n", 0))
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", lambda: transport)
+
+    with SSHClient(
+        "example.test",
+        "oem",
+        "secret",
+        known_hosts_path="/tmp/test-known-hosts",
+        port=2222,
+        connect_timeout=4,
+    ) as client:
+        result = client.run("hostname", step="ssh.hostname", timeout=5)
+
+    assert result.stdout == "result"
+    assert result.stderr == "warning"
+    assert result.exit_code == 0
+    assert transport.connect_kwargs == {
+        "host": "example.test",
+        "port": 2222,
+        "username": "oem",
+        "password": "secret",
+        "timeout": 4,
+        "banner_timeout": 4,
+        "auth_timeout": 4,
+        "channel_timeout": 4,
+        "look_for_keys": False,
+        "allow_agent": False,
+    }
+    assert transport.closed is True
+    assert transport.loaded_host_keys == "/tmp/test-known-hosts"
+    assert isinstance(transport.missing_host_key_policy, ssh_module.paramiko.RejectPolicy)
+
+
+def test_ssh_failure_never_exposes_a_sensitive_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = FakeParamikoClient(FakeChannel(b"partial", b"denied", 5))
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", lambda: transport)
+
+    with (
+        SSHClient(
+            "example.test", "oem", "secret", known_hosts_path="/tmp/test-known-hosts"
+        ) as client,
+        pytest.raises(WorkflowError) as caught,
+    ):
+        client.run(
+            "command --password top-secret",
+            step="ssh.sensitive",
+            timeout=5,
+            sensitive=True,
+        )
+
+    assert caught.value.details["command"] == "[SENSITIVE COMMAND REDACTED]"
+    assert "top-secret" not in str(caught.value.as_dict())
+    assert caught.value.details["exit_code"] == 5
+
+
+def test_ssh_transport_eof_becomes_a_workflow_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = FakeParamikoClient()
+
+    def fail_exec(_command: str, *, timeout: float):
+        assert timeout > 0
+        raise EOFError
+
+    transport.exec_command = fail_exec  # type: ignore[method-assign]
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", lambda: transport)
+
+    with (
+        SSHClient(
+            "example.test", "oem", "secret", known_hosts_path="/tmp/test-known-hosts"
+        ) as client,
+        pytest.raises(WorkflowError) as caught,
+    ):
+        client.run("hostname", step="ssh.eof", timeout=5)
+
+    assert caught.value.step == "ssh.eof"
+    assert caught.value.details["exception_type"] == "EOFError"
+
+
+def test_ssh_missing_exit_status_is_a_reconnectable_transport_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeParamikoClient(FakeChannel(exit_code=-1))
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", lambda: transport)
+
+    with (
+        SSHClient(
+            "example.test", "oem", "secret", known_hosts_path="/tmp/test-known-hosts"
+        ) as client,
+        pytest.raises(WorkflowError) as caught,
+    ):
+        client.run("hostname", step="ssh.missing_exit_status", timeout=5)
+
+    assert caught.value.step == "ssh.missing_exit_status"
+    assert caught.value.details["exit_code"] == -1
+    assert caught.value.details["exception_type"] == "MissingExitStatus"
+    assert caught.value.details["transport_error"] is True
+
+
+def test_ssh_client_writes_sensitive_input_to_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = FakeParamikoClient()
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", lambda: transport)
+
+    with SSHClient(
+        "example.test", "oem", "secret", known_hosts_path="/tmp/test-known-hosts"
+    ) as client:
+        client.run(
+            "sudo -S true",
+            step="ssh.stdin",
+            timeout=5,
+            sensitive=True,
+            stdin_data="secret\n",
+        )
+
+    assert transport.last_stdin is not None
+    assert transport.last_stdin.content == "secret\n"
+    assert transport.channel.input_closed is True
+
+
+def test_ssh_remote_timeouts_are_enforced_on_linux_and_windows() -> None:
+    linux = object.__new__(SSHClient)
+    linux.remote_os = "linux"
+    linux_command = linux._remote_timeout_command("sleep 600", 12.2)
+    assert linux_command == "timeout --signal=TERM --kill-after=10s 13s sh -c 'sleep 600'"
+
+    windows = object.__new__(SSHClient)
+    windows.remote_os = "windows"
+    windows_command = windows._remote_timeout_command("ping -t 127.0.0.1", 10)
+    assert windows_command.startswith("powershell.exe -NoProfile -NonInteractive -Command ")
+    compressed_match = re.search(r"FromBase64String\('([^']+)'\)", windows_command)
+    assert compressed_match is not None
+    wrapper = gzip.decompress(base64.b64decode(compressed_match.group(1))).decode("utf-8")
+    assert len(windows_command) < 8191
+    assert "chcp 65001 >nul" in wrapper
+    assert "[Console]::OutputEncoding = $utf8NoBom" in wrapper
+    assert "function ConvertFrom-NativeOutputBytes" in wrapper
+    assert "[Text.Encoding]::Unicode.GetString" in wrapper
+    assert "CurrentCulture.TextInfo.OEMCodePage" in wrapper
+    assert "Read-NativeOutputText -LiteralPath $stdoutPath" in wrapper
+    assert "Read-NativeOutputText -LiteralPath $stderrPath" in wrapper
+    assert wrapper.count("-DrainClock $outputDrainClock") == 2
+    assert "$DrainClock.ElapsedMilliseconds -ge $DrainTimeoutMilliseconds" in wrapper
+    assert "$nativeError -notin @(32, 33)" in wrapper
+    assert "SSH output drain timed out" in wrapper
+    assert '"`r`necho %ERRORLEVEL% > `"$statusPath`"`r`n"' in wrapper
+    assert "[int]::TryParse($statusText, [ref]$reportedExitCode)" in wrapper
+    assert "$exitCode = 126" in wrapper
+    assert "System32\\taskkill.exe" in wrapper
+    assert "System32\taskkill.exe" not in wrapper
+
+
+def test_ssh_command_output_is_bounded_in_memory() -> None:
+    buffer = bytearray()
+    truncated = SSHClient._append_bounded(
+        buffer, b"x" * (ssh_module.MAX_COMMAND_OUTPUT_BYTES + 1024)
+    )
+
+    assert truncated is True
+    assert len(buffer) == ssh_module.MAX_COMMAND_OUTPUT_BYTES
+    assert SSHClient._decode_bounded(buffer, truncated).startswith(
+        "[earlier remote output truncated]\n"
+    )
+
+
+def test_ssh_output_keeps_utf8_diagnostics_and_removes_progress_clixml() -> None:
+    output = (
+        "Échec de l’exécution\r\n"
+        "#< CLIXML\r\n"
+        '<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+        '<Obj S="progress"><MS><PR N="Record"><AV>Préparation</AV></PR></MS></Obj>'
+        "</Objs>"
+    )
+
+    assert SSHClient._decode_bounded(bytearray(output.encode("utf-8")), False) == (
+        "Échec de l’exécution"
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ("Vérification réussie".encode("utf-8-sig"), "Vérification réussie"),
+        ("Vérification réussie".encode("utf-16"), "Vérification réussie"),
+        ("Vérification réussie".encode("utf-16-le"), "Vérification réussie"),
+        ("Vérification réussie".encode("utf-16-be"), "Vérification réussie"),
+    ],
+)
+def test_ssh_output_decodes_unicode_native_windows_streams(payload: bytes, expected: str) -> None:
+    assert SSHClient._decode_bounded(bytearray(payload), False) == expected
+
+
+def test_ssh_output_converts_non_progress_clixml_to_readable_text() -> None:
+    output = (
+        "#< CLIXML\r\n"
+        '<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+        '<Obj S="error"><S>Failure details</S></Obj>'
+        "</Objs>"
+    )
+
+    assert SSHClient._decode_bounded(bytearray(output.encode("utf-8")), False) == "Failure details"
+
+
+def test_ssh_output_removes_mixed_progress_clixml_and_keeps_readable_error() -> None:
+    output = (
+        "Diagnostic utile\r\n"
+        "#< CLIXML\r\n"
+        '<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+        '<Obj S="progress"><MS><PR N="Record"><AV>Commande sensible</AV></PR></MS></Obj>'
+        '<S S="Error">Échec natif_x000D__x000A_Détail</S>'
+        "</Objs>"
+    )
+
+    assert SSHClient._decode_bounded(bytearray(output.encode("utf-8")), False) == (
+        "Diagnostic utile\nÉchec natif\r\nDétail"
+    )
+
+
+def test_ssh_tofu_persists_first_key_in_isolated_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    transport = FakeParamikoClient()
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", lambda: transport)
+    known_hosts = tmp_path / "run" / "linux-known-hosts"
+    key = ssh_module.paramiko.RSAKey.generate(1024)
+    original_connect = transport.connect
+
+    def connect_and_offer_key(host: str, **kwargs: object) -> None:
+        original_connect(host, **kwargs)
+        policy = transport.missing_host_key_policy
+        assert isinstance(policy, ssh_module.PersistAuthenticatedHostKeyPolicy)
+        policy.missing_host_key(transport, host, key)
+
+    transport.connect = connect_and_offer_key  # type: ignore[method-assign]
+
+    with SSHClient(
+        "example.test",
+        "oem",
+        "secret",
+        known_hosts_path=known_hosts,
+        trust_on_first_use=True,
+    ):
+        policy = transport.missing_host_key_policy
+        assert isinstance(policy, ssh_module.PersistAuthenticatedHostKeyPolicy)
+
+    assert transport.loaded_host_keys is None
+    assert transport.saved_host_keys == str(known_hosts)
+    assert known_hosts.is_file()
+    assert known_hosts.stat().st_mode & 0o777 == 0o600
+
+
+def test_ssh_tofu_does_not_persist_a_key_before_authentication(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    transport = FakeParamikoClient()
+    known_hosts = tmp_path / "run" / "linux-known-hosts"
+
+    def fail_after_offering_key(host: str, **_kwargs: object) -> None:
+        policy = transport.missing_host_key_policy
+        assert isinstance(policy, ssh_module.PersistAuthenticatedHostKeyPolicy)
+        policy.missing_host_key(
+            transport,
+            host,
+            ssh_module.paramiko.RSAKey.generate(1024),
+        )
+        raise ssh_module.paramiko.AuthenticationException("wrong operating system")
+
+    transport.connect = fail_after_offering_key  # type: ignore[method-assign]
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", lambda: transport)
+    monkeypatch.setattr(ssh_module.time, "sleep", lambda _seconds: None)
+
+    with (
+        pytest.raises(WorkflowError),
+        SSHClient(
+            "example.test",
+            "oem",
+            "secret",
+            known_hosts_path=known_hosts,
+            trust_on_first_use=True,
+        ),
+    ):
+        pass
+
+    assert not known_hosts.exists()
+    assert transport.saved_host_keys is None
+
+
+def test_ssh_connection_failure_closes_the_partial_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeParamikoClient()
+
+    def fail_connect(_host: str, **_kwargs: object) -> None:
+        raise OSError("network unavailable")
+
+    transport.connect = fail_connect  # type: ignore[method-assign]
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", lambda: transport)
+    monkeypatch.setattr(ssh_module.time, "sleep", lambda _seconds: None)
+
+    with (
+        pytest.raises(WorkflowError) as caught,
+        SSHClient("example.test", "oem", "secret", known_hosts_path="/tmp/test-known-hosts"),
+    ):
+        pass
+
+    assert caught.value.step == "ssh.connect"
+    assert caught.value.details["exception_type"] == "OSError"
+    assert caught.value.details["attempts"] == 3
+    assert transport.closed is True
+
+
+def test_ssh_connection_retries_a_transient_authentication_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+    transports: list[FakeParamikoClient] = []
+
+    def new_transport() -> FakeParamikoClient:
+        nonlocal attempts
+        attempts += 1
+        transport = FakeParamikoClient()
+        transports.append(transport)
+        if attempts < 3:
+            transport.connect = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                ssh_module.paramiko.AuthenticationException("Authentication timeout.")
+            )
+        return transport
+
+    monkeypatch.setattr(ssh_module.paramiko, "SSHClient", new_transport)
+    monkeypatch.setattr(ssh_module.time, "sleep", lambda _seconds: None)
+
+    with SSHClient("example.test", "oem", "secret", known_hosts_path="/tmp/test-known-hosts"):
+        pass
+
+    assert attempts == 3
+    assert transports[0].closed is True
+    assert transports[1].closed is True
+
+
+class FakeVncConnection:
+    def __init__(self, *, fail_capture: bool = False) -> None:
+        self.fail_capture = fail_capture
+        self.events: list[tuple[object, ...]] = []
+        self.disconnected = False
+
+    def mouseMove(self, x: int, y: int) -> None:  # noqa: N802
+        self.events.append(("move", x, y))
+
+    def keyPress(self, key: str) -> None:  # noqa: N802
+        self.events.append(("key", key))
+
+    def captureScreen(self, destination: str) -> None:  # noqa: N802
+        self.events.append(("capture", destination))
+        if self.fail_capture:
+            raise RuntimeError("capture failed")
+        Image.new("RGB", (32, 24), (12, 24, 48)).save(destination)
+
+    def disconnect(self) -> None:
+        self.disconnected = True
+
+
+def test_vnc_capture_wakes_the_display_and_always_disconnects(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    connection = FakeVncConnection()
+    addresses: list[str] = []
+    monkeypatch.setattr(
+        vnc_module.api,
+        "connect",
+        lambda address, *, timeout, factory_class: (
+            addresses.append(f"{address}|{timeout}") or connection
+        ),
+    )
+    monkeypatch.setattr(vnc_module.time, "sleep", lambda _seconds: None)
+
+    destination = tmp_path / "capture.png"
+    result = VNCClient().capture("192.0.2.10:12", destination)
+
+    assert result == destination
+    with Image.open(destination) as capture:
+        assert capture.size == (32, 24)
+    assert addresses == ["192.0.2.10::5912|15"]
+    assert connection.events[0] == ("move", 1, 1)
+    assert connection.disconnected is True
+
+
+@pytest.mark.parametrize("callback_fails", [False, True])
+def test_vnc_capture_coordinates_before_disconnect_and_propagates_callback_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    callback_fails: bool,
+) -> None:
+    connection = FakeVncConnection()
+    monkeypatch.setattr(vnc_module.api, "connect", lambda *_args, **_kwargs: connection)
+    monkeypatch.setattr(vnc_module.time, "sleep", lambda _seconds: None)
+    observed: list[Path] = []
+
+    def coordinate(path: Path) -> None:
+        assert connection.disconnected is False
+        with Image.open(path) as capture:
+            capture.verify()
+        observed.append(path)
+        if callback_fails:
+            raise WorkflowError("test.ack", "Acknowledgement failed")
+
+    destination = tmp_path / "capture.png"
+    if callback_fails:
+        with pytest.raises(WorkflowError, match="Acknowledgement failed"):
+            VNCClient().capture("192.0.2.10:12", destination, on_captured=coordinate)
+    else:
+        assert (
+            VNCClient().capture("192.0.2.10:12", destination, on_captured=coordinate) == destination
+        )
+    assert observed == [destination]
+    assert connection.disconnected is True
+
+
+def test_vnc_capture_failure_removes_only_its_incomplete_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    connection = FakeVncConnection(fail_capture=True)
+    monkeypatch.setattr(vnc_module.api, "connect", lambda _address, **_kwargs: connection)
+    monkeypatch.setattr(vnc_module.time, "sleep", lambda _seconds: None)
+    destination = tmp_path / "capture.png"
+    destination.write_bytes(b"stale")
+
+    with pytest.raises(WorkflowError, match="VNC capture failed"):
+        VNCClient().capture("192.0.2.10:12", destination)
+
+    assert not destination.exists()
+    assert connection.disconnected is True
+
+
+def test_vnc_capture_retries_transient_network_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    attempts = 0
+    sleeps: list[float] = []
+
+    class TransientConnection(FakeVncConnection):
+        def captureScreen(self, destination: str) -> None:  # noqa: N802
+            nonlocal attempts
+            attempts += 1
+            if attempts < vnc_module.CAPTURE_MAX_ATTEMPTS:
+                raise OSError(101, "Network is unreachable")
+            Image.new("RGB", (32, 24), (12, 24, 48)).save(destination)
+
+    connections: list[TransientConnection] = []
+
+    def connect(_address: str, *, timeout: float, factory_class) -> TransientConnection:
+        assert timeout == 15
+        assert factory_class.protocol.encoding == vnc_module.rfb.Encoding.ZRLE
+        connection = TransientConnection()
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(vnc_module.api, "connect", connect)
+    monkeypatch.setattr(vnc_module.time, "sleep", sleeps.append)
+    destination = tmp_path / "capture.png"
+
+    assert VNCClient().capture("192.0.2.10:12", destination) == destination
+    assert attempts == vnc_module.CAPTURE_MAX_ATTEMPTS
+    with Image.open(destination) as capture:
+        assert capture.size == (32, 24)
+    assert all(connection.disconnected for connection in connections)
+    assert vnc_module.CAPTURE_MAX_ATTEMPTS == 5
+    assert vnc_module.CAPTURE_RETRY_SECONDS == 5
+    assert sleeps.count(vnc_module.CAPTURE_RETRY_SECONDS) == (vnc_module.CAPTURE_MAX_ATTEMPTS - 1)
+
+
+def test_vnc_capture_keeps_a_complete_image_written_before_transport_loss(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    attempts = 0
+
+    class RebootingConnection(FakeVncConnection):
+        def captureScreen(self, destination: str) -> None:  # noqa: N802
+            nonlocal attempts
+            attempts += 1
+            Image.new("RGB", (32, 24), (12, 24, 48)).save(destination)
+            raise TimeoutError("VNC disconnected during reboot")
+
+    connection = RebootingConnection()
+    monkeypatch.setattr(vnc_module.api, "connect", lambda _address, **_kwargs: connection)
+    monkeypatch.setattr(vnc_module.time, "sleep", lambda _seconds: None)
+    destination = tmp_path / "capture.png"
+
+    assert VNCClient().capture("192.0.2.10:12", destination) == destination
+    assert attempts == 1
+    with Image.open(destination) as capture:
+        assert capture.size == (32, 24)
+    assert connection.disconnected is True
+
+
+@pytest.mark.parametrize("address", ["", "host", ":10", "host:not-a-display"])
+def test_vnc_rejects_invalid_addresses_before_connecting(address: str) -> None:
+    with pytest.raises(WorkflowError) as caught:
+        VNCClient.vncdotool_address(address)
+
+    assert caught.value.step == "vnc.address"
+
+
+def test_vncdotool_exposes_the_password_field_clear_key() -> None:
+    assert "bsp" in KEYMAP
+
+
+def test_vnc_connection_establishment_is_serialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active = 0
+    maximum_active = 0
+    state_lock = threading.Lock()
+
+    def fake_connect(address: str, *, timeout: float, factory_class):
+        nonlocal active, maximum_active
+        assert factory_class.protocol.encoding == vnc_module.rfb.Encoding.ZRLE
+        with state_lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        time.sleep(0.02)
+        with state_lock:
+            active -= 1
+        return (address, timeout)
+
+    monkeypatch.setattr("app.clients.vnc.api.connect", fake_connect)
+    client = VNCClient(connect_timeout=7)
+    results: list[object] = []
+
+    threads = [
+        threading.Thread(target=lambda address=address: results.append(client.connect(address)))
+        for address in ("192.0.2.10:10", "192.0.2.10:11", "192.0.2.10:12")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert maximum_active == 1
+    assert len(results) == 3

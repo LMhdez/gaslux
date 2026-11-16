@@ -1,0 +1,14 @@
+[Unit]
+Description=Verify Libertix installation and resize root filesystem on first boot
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/first-boot-resize.sh
+RemainAfterExit=no
+KillMode=mixed
+TimeoutStartSec=30min
+TimeoutStopSec=15min
+
+[Install]
+WantedBy=multi-user.target

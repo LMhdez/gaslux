@@ -1,0 +1,102 @@
+using System;
+
+namespace Libertix.Installation
+{
+    /// <summary>
+    /// Single source of truth for the final Linux allocation and the temporary
+    /// bounded FAT32 staging allocation used by both firmware workflows.
+    /// </summary>
+    public static class InstallationSizePolicy
+    {
+        public static int MinimumFinalSizeGiB =>
+            InstallationPolicy.Current.Storage.MinimumFinalSizeGiB;
+        public static int TargetWindowsFreeSpaceGiB =>
+            InstallationPolicy.Current.Storage.TargetWindowsFreeSpaceGiB;
+        public static int WindowsFreeSpaceToleranceGiB =>
+            InstallationPolicy.Current.Storage.WindowsFreeSpaceToleranceGiB;
+        public static int MinimumWindowsFreeSpaceGiB =>
+            TargetWindowsFreeSpaceGiB - WindowsFreeSpaceToleranceGiB;
+        public static int MaximumDirectFat32SizeGiB =>
+            InstallationPolicy.Current.Storage.MaximumDirectFat32SizeGiB;
+        public static int StagingSizeGiB =>
+            InstallationPolicy.Current.Storage.StagingSizeGiB;
+        public static long PartitionAlignmentBytes =>
+            InstallationPolicy.Current.Storage.PartitionAlignmentBytes;
+        public static double RecommendedLinuxFractionOfFreeSpace =>
+            InstallationPolicy.Current.Storage.RecommendedLinuxFractionOfFreeSpace;
+        public static int MaximumRecommendedLinuxSizeGiB =>
+            InstallationPolicy.Current.Storage.MaximumRecommendedLinuxSizeGiB;
+        public const long BytesPerGiB = 1024L * 1024L * 1024L;
+        public const long MebibytesPerGiB = 1024L;
+
+        public static long GetFinalInstallerOffset(PartitionIdentity source, long finalSizeBytes)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            if (source.OffsetBytes <= 0 || source.SizeBytes <= 0 ||
+                source.OffsetBytes > long.MaxValue - source.SizeBytes)
+                throw new ArgumentOutOfRangeException(nameof(source));
+            long originalEnd = source.OffsetBytes + source.SizeBytes;
+            long padding = originalEnd % PartitionAlignmentBytes;
+            if (finalSizeBytes <= 0 || finalSizeBytes % PartitionAlignmentBytes != 0 ||
+                finalSizeBytes >= source.SizeBytes - padding)
+                throw new ArgumentOutOfRangeException(nameof(finalSizeBytes));
+            return originalEnd - padding - finalSizeBytes;
+        }
+
+        public static InstallationSizes FromRequestedGigabytes(double requestedGigabytes)
+        {
+            if (double.IsNaN(requestedGigabytes) || double.IsInfinity(requestedGigabytes))
+                throw new ArgumentOutOfRangeException(nameof(requestedGigabytes));
+
+            int finalSizeGiB = Math.Max(
+                MinimumFinalSizeGiB,
+                checked((int)Math.Round(requestedGigabytes)));
+            int stagingSizeGiB = Math.Min(finalSizeGiB, StagingSizeGiB);
+
+            return new InstallationSizes(finalSizeGiB, stagingSizeGiB);
+        }
+
+        public static double AvailableLinuxSizeGiB(
+            double initialWindowsFreeGiB,
+            double shrinkAvailableGiB,
+            double installerIsoGiB)
+        {
+            if (shrinkAvailableGiB < StagingSizeGiB)
+                return 0;
+
+            double downloadBudget =
+                initialWindowsFreeGiB - installerIsoGiB - MinimumWindowsFreeSpaceGiB;
+            if (downloadBudget < 0)
+                return 0;
+
+            // The final free-space budget credits the transaction ISO reclaimed
+            // by cleanup; the live installer still needs it during installation.
+            return Math.Max(0, initialWindowsFreeGiB - MinimumWindowsFreeSpaceGiB);
+        }
+
+        public static double RemainingWindowsFreeSpaceGiB(
+            double initialWindowsFreeGiB,
+            double linuxSizeGiB)
+        {
+            return initialWindowsFreeGiB - linuxSizeGiB;
+        }
+
+    }
+
+    public sealed class InstallationSizes
+    {
+        internal InstallationSizes(int finalSizeGiB, int stagingSizeGiB)
+        {
+            FinalSizeGiB = finalSizeGiB;
+            StagingSizeGiB = stagingSizeGiB;
+        }
+
+        public int FinalSizeGiB { get; }
+        public int StagingSizeGiB { get; }
+        public long FinalSizeBytes => checked(FinalSizeGiB * InstallationSizePolicy.BytesPerGiB);
+        public long StagingSizeBytes => checked(StagingSizeGiB * InstallationSizePolicy.BytesPerGiB);
+        public double FinalSizeMiB => FinalSizeGiB * InstallationSizePolicy.MebibytesPerGiB;
+        public double StagingSizeMiB => StagingSizeGiB * InstallationSizePolicy.MebibytesPerGiB;
+    }
+}

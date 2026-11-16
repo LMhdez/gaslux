@@ -1,0 +1,497 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+: "${LIBERTIX_FIRMWARE_MODE:?LIBERTIX_FIRMWARE_MODE is required}"
+case "$LIBERTIX_FIRMWARE_MODE" in
+    bios|uefi) ;;
+    *) echo "Unsupported firmware mode: $LIBERTIX_FIRMWARE_MODE" >&2; exit 2 ;;
+esac
+
+. /tmp/libertix-storage-common.sh
+
+configure_user() {
+    local group available_groups=""
+
+    if id "$USERNAME" >/dev/null 2>&1; then
+        [ "$(id -u "$USERNAME")" -ne 0 ] || { echo "Refusing UID 0 desktop account" >&2; exit 1; }
+    else
+        useradd -m -s /bin/bash "$USERNAME"
+    fi
+    getent group sudo >/dev/null || { echo "Required sudo group is missing" >&2; exit 1; }
+    for group in sudo adm cdrom audio video plugdev; do
+        getent group "$group" >/dev/null || continue
+        if [ -n "$available_groups" ]; then
+            available_groups="$available_groups,$group"
+        else
+            available_groups="$group"
+        fi
+    done
+    usermod -s /bin/bash -a -G "$available_groups" "$USERNAME"
+    [[ "$PASSWORD_HASH" == \$6\$* ]] || { echo "Invalid Linux password hash" >&2; exit 1; }
+    command -v chpasswd >/dev/null 2>&1 || { echo "chpasswd is required" >&2; exit 1; }
+    printf '%s:%s\n' "$USERNAME" "$PASSWORD_HASH" | chpasswd -e
+    passwd -S "$USERNAME" | grep -Eq "^[^ ]+ P "
+    echo "$COMPUTER_NAME" > /etc/hostname
+}
+
+assert_target_distribution_identity() {
+    local actual_id id_like token compatible=false
+
+    [ -r /etc/os-release ] || { echo "Target os-release is missing" >&2; exit 1; }
+    # os-release is part of the hash-verified squashfs and defines shell-safe
+    # assignments by specification.
+    . /etc/os-release
+    actual_id="${ID:-}"
+    id_like="${ID_LIKE:-}"
+    [ "$actual_id" = "$DISTRIBUTION_OS_RELEASE_ID" ] || {
+        echo "Target distribution mismatch: expected $DISTRIBUTION_OS_RELEASE_ID, found ${actual_id:-missing}" >&2
+        exit 1
+    }
+    for token in $actual_id $id_like; do
+        case "$token" in
+            debian|ubuntu) compatible=true ;;
+        esac
+    done
+    [ "$compatible" = true ] || {
+        echo "Target distribution is not in the Debian/Ubuntu family" >&2
+        exit 1
+    }
+}
+
+configure_windows_mount() {
+    local win_uuid uid gid
+    [ "$SHARE_WINDOWS_FILES_IN_LINUX" = "true" ] || {
+        echo "Windows-to-Linux file sharing disabled by the user."
+        return 0
+    }
+    [ -b "$WINDOWS_PART" ] || { echo "Windows partition missing: $WINDOWS_PART" >&2; exit 1; }
+    [ "$(blkid -s TYPE -o value "$WINDOWS_PART" 2>/dev/null)" = "ntfs" ] || {
+        echo "Windows partition is not NTFS: $WINDOWS_PART" >&2
+        exit 1
+    }
+    win_uuid="$(blkid -s UUID -o value "$WINDOWS_PART")"
+    [ -n "$win_uuid" ] || { echo "Windows UUID missing" >&2; exit 1; }
+    uid="$(id -u "$USERNAME")"
+    gid="$(id -g "$USERNAME")"
+    mkdir -p /mnt/windows
+    echo "UUID=$win_uuid /mnt/windows ntfs-3g defaults,uid=$uid,gid=$gid,dmask=022,fmask=133,windows_names,nofail 0 0" >> /etc/fstab
+}
+
+configure_windows_profile_shortcuts() {
+    [ "$SHARE_WINDOWS_FILES_IN_LINUX" = "true" ] || return 0
+    runuser -u "$USERNAME" -- env "LANG=$SYSTEM_LANG" "LC_ALL=$SYSTEM_LANG" xdg-user-dirs-update
+    python3 /usr/local/lib/libertix/libertix_windows_sharing.py configure \
+        /etc/libertix/installation-plan.json "$WINDOWS_PART"
+}
+
+configure_windows_readonly_request() {
+    mkdir -p /etc/libertix
+    printf '%s\n' "$SHARE_LINUX_FILES_IN_WINDOWS" > /etc/libertix/share-linux-in-windows
+}
+
+configure_windows_preferences() {
+    [ "$WINDOWS_PREFERENCE_MIGRATION_ENABLED" = "true" ] || {
+        echo "Windows preference migration disabled by the user."
+        return 0
+    }
+    [ -f /tmp/windows-preferences.secret.json ] || {
+        echo "Windows preference migration bundle is missing" >&2
+        return 1
+    }
+    /tmp/libertix-apply-windows-preferences.py apply \
+        /tmp/windows-preferences.secret.json \
+        "$INSTALLATION_PLAN_ID" \
+        "$USERNAME" \
+        "$WINDOWS_PREFERENCE_WIFI_PROFILE_COUNT"
+}
+
+configure_locale() {
+    local supported_directory=/var/lib/locales/supported.d
+    local supported_backup=/var/lib/locales/.libertix-supported.d.backup
+    local generated_directory=/var/lib/locales/.libertix-generated-supported.d
+    local locale_status=0
+
+    {
+        printf '%s UTF-8\n' "$SYSTEM_LANG"
+        if [ "$SYSTEM_LANG" != "en_US.UTF-8" ]; then
+            printf '%s UTF-8\n' "en_US.UTF-8"
+        fi
+    } > /etc/locale.gen
+
+    # Ubuntu language packs add broad generated lists under supported.d. The
+    # directory must remain installed for package maintenance, but hiding it
+    # during this one rebuild makes locale-gen compile only locale.gen. Debian
+    # has no supported.d directory and follows the same locale.gen contract.
+    if [ -d "$supported_directory" ]; then
+        [ ! -e "$supported_backup" ] || {
+            echo "Locale generation backup already exists: $supported_backup" >&2
+            return 1
+        }
+        [ ! -e "$generated_directory" ] || {
+            echo "Locale generation staging directory already exists: $generated_directory" >&2
+            return 1
+        }
+        mv "$supported_directory" "$supported_backup"
+        mkdir "$supported_directory"
+        locale-gen || locale_status=$?
+        mv "$supported_directory" "$generated_directory"
+        mv "$supported_backup" "$supported_directory"
+        rmdir "$generated_directory"
+        [ "$locale_status" -eq 0 ] || return "$locale_status"
+    else
+        locale-gen
+    fi
+    cat > /etc/default/locale <<EOF
+LANG=$SYSTEM_LANG
+LC_ALL=$SYSTEM_LANG
+LANGUAGE=$LANGUAGE_CODE
+EOF
+}
+
+divert_grub_generator() {
+    local generator="$1" diverted="$2" requirement="$3" owner true_name
+
+    case "$requirement" in
+        required|optional) ;;
+        *) echo "Invalid GRUB generator requirement: $requirement" >&2; return 2 ;;
+    esac
+
+    owner="$(dpkg-divert --listpackage "$generator")"
+    if [ -n "$owner" ]; then
+        [ "$owner" = "LOCAL" ] || {
+            echo "GRUB generator has a foreign diversion: $generator ($owner)" >&2
+            return 1
+        }
+        true_name="$(dpkg-divert --truename "$generator")"
+        [ "$true_name" = "$diverted" ] || {
+            echo "GRUB generator diversion target mismatch: $generator -> $true_name" >&2
+            return 1
+        }
+    else
+        [ "$requirement" = optional ] || [ -f "$generator" ] || {
+            echo "Required GRUB generator is missing: $generator" >&2
+            return 1
+        }
+        [ ! -e "$diverted" ] || {
+            echo "GRUB generator diversion target already exists: $diverted" >&2
+            return 1
+        }
+        dpkg-divert --local --add --rename --divert "$diverted" "$generator"
+    fi
+
+    if [ -f "$diverted" ]; then
+        chmod 0755 "$diverted"
+    elif [ "$requirement" = required ]; then
+        echo "Diverted GRUB generator is missing: $diverted" >&2
+        return 1
+    fi
+}
+
+configure_keyboard() {
+    cat > /etc/default/keyboard <<EOF
+XKBMODEL="$KEYBOARD_MODEL"
+XKBLAYOUT="$KEYBOARD_LAYOUT"
+XKBVARIANT="$KEYBOARD_VARIANT"
+XKBOPTIONS=""
+BACKSPACE="guess"
+EOF
+
+    mkdir -p /etc/X11/xorg.conf.d
+    cat > /etc/X11/xorg.conf.d/00-keyboard.conf <<EOF
+Section "InputClass"
+    Identifier "system-keyboard"
+    MatchIsKeyboard "on"
+    Option "XkbLayout" "$KEYBOARD_LAYOUT"
+    Option "XkbVariant" "$KEYBOARD_VARIANT"
+    Option "XkbModel" "$KEYBOARD_MODEL"
+EndSection
+EOF
+
+    local keyboard_source="$KEYBOARD_LAYOUT"
+    if [ -n "$KEYBOARD_VARIANT" ]; then
+        keyboard_source="${KEYBOARD_LAYOUT}+${KEYBOARD_VARIANT}"
+    fi
+
+    mkdir -p /etc/dconf/db/local.d
+    mkdir -p /etc/dconf/profile
+    if [ ! -f /etc/dconf/profile/user ]; then
+        printf '%s\n' 'user-db:user' 'system-db:local' > /etc/dconf/profile/user
+    elif ! grep -Fxq 'system-db:local' /etc/dconf/profile/user; then
+        printf '%s\n' 'system-db:local' >> /etc/dconf/profile/user
+    fi
+    cat > /etc/dconf/db/local.d/00-keyboard <<EOF
+[org/gnome/libgnomekbd/keyboard]
+layouts=['$keyboard_source']
+model='$KEYBOARD_MODEL'
+[org/cinnamon/desktop/input-sources]
+sources=[('xkb', '$keyboard_source')]
+[org/gnome/desktop/input-sources]
+sources=[('xkb', '$keyboard_source')]
+EOF
+    dconf update
+
+    mkdir -p /etc/xdg/autostart
+    cat > /etc/xdg/autostart/libertix-keyboard.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Libertix keyboard initialization
+Comment=Apply the installation keyboard layout to the first desktop session
+Exec=/usr/local/bin/libertix-apply-keyboard-once
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+EOF
+}
+
+configure_timezone() {
+    [ -f "/usr/share/zoneinfo/$TIMEZONE" ] || {
+        echo "Unknown IANA timezone: $TIMEZONE" >&2
+        return 1
+    }
+    ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
+    echo "$TIMEZONE" > /etc/timezone
+}
+
+configure_development_access() {
+    /tmp/libertix-configure-development-access.sh
+}
+
+cleanup_live_boot_artifacts() {
+    local unit
+
+    # The target filesystem comes from a live ISO squashfs. These units are
+    # useful only while booting the installer; keeping them in the installed
+    # system creates first-boot journal errors.
+    for unit in casper-md5check.service casper.service casper-stop.service; do
+        systemctl disable "$unit" 2>/dev/null || true
+        systemctl mask "$unit" 2>/dev/null || true
+    done
+
+    rm -f /etc/systemd/system/casper*.service
+    rm -f /etc/systemd/system/*/casper*.service
+    rm -f /etc/systemd/system/*.wants/casper*.service
+    rm -f /lib/systemd/system/casper*.service
+    rm -f /usr/lib/systemd/system/casper*.service
+    rm -f /usr/lib/systemd/system/*/casper*.service
+    rm -rf /var/lib/casper
+}
+
+refresh_installed_initramfs() {
+    local initrd listing found=false
+
+    command -v update-initramfs >/dev/null || {
+        echo "Target distribution does not provide update-initramfs" >&2
+        return 1
+    }
+    command -v lsinitramfs >/dev/null || {
+        echo "Target distribution does not provide lsinitramfs" >&2
+        return 1
+    }
+
+    # Ubuntu-family live images can ship an initramfs that unconditionally
+    # starts Casper. Rebuild it from the installed target after removing live
+    # units so the next boot follows the real root filesystem capabilities.
+    env -u CASPER_GENERATE_UUID update-initramfs -u -k all
+
+    for initrd in /boot/initrd.img-*; do
+        [ -f "$initrd" ] || continue
+        found=true
+        listing="$(lsinitramfs "$initrd")"
+        if printf '%s\n' "$listing" | grep -Eq \
+            '(^|/)(conf/conf.d/default-boot-to-casper\.conf|conf/conf.d/live-initrd\.conf|conf/uuid\.conf)$'; then
+            echo "Installed initramfs still forces live boot: $initrd" >&2
+            return 1
+        fi
+    done
+    [ "$found" = true ] || {
+        echo "Target distribution has no installed initramfs" >&2
+        return 1
+    }
+}
+
+find_windows_boot_uuid() {
+    local filesystem mount_directory expected_file mount_type uuid
+
+    [ -n "${WINDOWS_BOOT_PART:-}" ] && [ -b "$WINDOWS_BOOT_PART" ] || return 1
+    filesystem="$(blkid -s TYPE -o value "$WINDOWS_BOOT_PART" 2>/dev/null || echo "")"
+    if [ "$LIBERTIX_FIRMWARE_MODE" = "bios" ]; then
+        [ "$filesystem" = "ntfs" ] || return 1
+        mount_type="ntfs-3g"
+        expected_file="bootmgr"
+    else
+        case "$filesystem" in
+            vfat|fat|msdos) ;;
+            *) return 1 ;;
+        esac
+        mount_type="vfat"
+        expected_file="EFI/Microsoft/Boot/bootmgfw.efi"
+    fi
+
+    mount_directory="$(mktemp -d)"
+    if ! mount -t "$mount_type" -o ro "$WINDOWS_BOOT_PART" "$mount_directory" 2>/dev/null; then
+        rmdir "$mount_directory"
+        return 1
+    fi
+    if [ ! -f "$mount_directory/$expected_file" ]; then
+        umount "$mount_directory" 2>/dev/null || true
+        rmdir "$mount_directory" 2>/dev/null || true
+        return 1
+    fi
+
+    uuid="$(blkid -s UUID -o value "$WINDOWS_BOOT_PART" 2>/dev/null || true)"
+    umount "$mount_directory" || return 1
+    rmdir "$mount_directory" || return 1
+    [ -n "$uuid" ] || return 1
+    printf '%s\n' "$uuid"
+}
+
+write_windows_grub_entry() {
+    local windows_boot_uuid="$1"
+
+    mkdir -p /etc/libertix
+    if [ "$LIBERTIX_FIRMWARE_MODE" = "bios" ]; then
+        cat > /etc/libertix/grub-windows.cfg <<EOF
+menuentry "Windows" --class windows --class os --id libertix-windows {
+    insmod part_msdos
+    insmod ntfs
+    insmod ntldr
+    search --no-floppy --fs-uuid --set=root $windows_boot_uuid
+    ntldr /bootmgr
+}
+EOF
+        return
+    fi
+
+    cat > /etc/libertix/grub-windows.cfg <<EOF
+menuentry "Windows Boot Manager" --class windows --class os --id libertix-windows {
+    insmod part_gpt
+    insmod fat
+    search --no-floppy --fs-uuid --set=root $windows_boot_uuid
+    if [ -z "\${libertix_windows_loader}" ]; then
+        set libertix_windows_loader=/EFI/Microsoft/Boot/bootmgfw.efi
+    fi
+    chainloader \${libertix_windows_loader}
+}
+EOF
+}
+
+assert_grub_configuration() {
+    /usr/local/lib/libertix/libertix-validate-grub \
+        /boot/grub/grub.cfg \
+        /etc/libertix/installation-plan.json
+}
+
+configure_boot_update_guards() {
+    local update_grub=/usr/sbin/update-grub
+    local diverted=/usr/local/lib/libertix/update-grub.distrib
+    local owner true_name
+
+    owner="$(dpkg-divert --listpackage "$update_grub")"
+    if [ -n "$owner" ]; then
+        [ "$owner" = LOCAL ] || {
+            echo "update-grub has a foreign diversion: $owner" >&2
+            return 1
+        }
+        true_name="$(dpkg-divert --truename "$update_grub")"
+        [ "$true_name" = "$diverted" ] || {
+            echo "update-grub diversion target mismatch: $true_name" >&2
+            return 1
+        }
+    else
+        [ -x "$update_grub" ] || {
+            echo "Required update-grub command is missing" >&2
+            return 1
+        }
+        [ ! -e "$diverted" ] || {
+            echo "update-grub diversion target already exists: $diverted" >&2
+            return 1
+        }
+        dpkg-divert --local --add --rename --divert "$diverted" "$update_grub"
+    fi
+    install -m 0755 /usr/local/lib/libertix/libertix-update-grub.sh "$update_grub"
+
+    if [ "$LIBERTIX_FIRMWARE_MODE" = uefi ]; then
+        cat > /etc/apt/apt.conf.d/99-libertix-boot-maintenance <<'EOF'
+DPkg::Post-Invoke { "if test -x /usr/local/sbin/libertix-sync-efi; then /usr/local/sbin/libertix-sync-efi --if-present; fi"; };
+EOF
+        systemctl enable libertix-efi-sync.path
+    fi
+}
+
+configure_grub() {
+    local win_boot_uuid
+
+    [[ "${GRUB_RESOLUTION:-}" =~ ^[0-9]+x[0-9]+$ ]] || {
+        echo "Invalid GRUB resolution: ${GRUB_RESOLUTION:-missing}" >&2
+        exit 1
+    }
+
+    cat > /etc/default/grub <<EOF
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=-1
+GRUB_TIMEOUT_STYLE=menu
+GRUB_DISTRIBUTOR="$DISTRIBUTION_GRUB_DISPLAY_NAME"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX=""
+GRUB_DISABLE_OS_PROBER=true
+GRUB_RECORDFAIL_TIMEOUT=-1
+GRUB_THEME="/boot/grub/themes/Libertix/theme.txt"
+EOF
+    printf 'GRUB_GFXMODE="%s,auto"\n' "$GRUB_RESOLUTION" >> /etc/default/grub
+    mkdir -p /etc/default/grub.d
+    cp -f /etc/default/grub /etc/default/grub.d/99-libertix.cfg
+    win_boot_uuid="$(find_windows_boot_uuid || true)"
+
+    if [ -z "$win_boot_uuid" ]; then
+        echo "Windows boot manager was not found" >&2
+        exit 1
+    fi
+    write_windows_grub_entry "$win_boot_uuid"
+
+    mkdir -p /usr/local/lib/libertix/grub-generators
+    divert_grub_generator \
+        /etc/grub.d/10_linux \
+        /usr/local/lib/libertix/grub-generators/10_linux \
+        required
+    divert_grub_generator \
+        /etc/grub.d/30_uefi-firmware \
+        /usr/local/lib/libertix/grub-generators/30_uefi-firmware \
+        optional
+    for generator in /etc/grub.d/20_memtest86+ /etc/grub.d/20_memtest86; do
+        divert_grub_generator \
+            "$generator" \
+            "/usr/local/lib/libertix/grub-generators/$(basename "$generator")" \
+            optional
+    done
+    install -m 0755 /tmp/10_libertix /etc/grub.d/10_libertix
+    install -m 0755 /tmp/render-libertix-menu.py \
+        /usr/local/lib/libertix/render-libertix-menu.py
+    chmod -x /etc/grub.d/40_custom 2>/dev/null || true
+
+    configure_boot_update_guards
+    update-grub
+    assert_grub_configuration
+}
+
+enable_first_boot_resize() {
+    chmod +x /usr/local/bin/first-boot-resize.sh
+    systemctl enable first-boot-resize.service
+}
+
+main() {
+    assert_target_distribution_identity
+    configure_user
+    configure_windows_mount
+    configure_windows_readonly_request
+    configure_windows_preferences
+    configure_locale
+    configure_windows_profile_shortcuts
+    configure_keyboard
+    configure_timezone
+    configure_development_access
+    cleanup_live_boot_artifacts
+    refresh_installed_initramfs
+    configure_grub
+    enable_first_boot_resize
+}
+
+main "$@"

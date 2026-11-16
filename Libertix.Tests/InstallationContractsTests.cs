@@ -1,0 +1,2387 @@
+extern alias Guardian;
+
+using System;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Libertix.Helpers;
+using Libertix.Installation;
+using Libertix.Models;
+using Libertix.Pages;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace Libertix.Tests
+{
+    [TestClass]
+    public sealed class InstallationContractsTests
+    {
+        private const string PlanId = "0123456789abcdef0123456789abcdef";
+        private const long GiB = InstallationSizePolicy.BytesPerGiB;
+
+        [TestMethod]
+        public void Aria2UsesOneNonResumableConnectionWithoutByteRangeSupport()
+        {
+            string[] arguments = InstallationEngine.CreateAria2DownloadArguments(
+                "https://example.test/live.iso",
+                @"C:\LibertixTools\downloads",
+                "live.iso",
+                supportsByteRanges: false,
+                maximumConnections: 5);
+
+            CollectionAssert.Contains(arguments, "--continue=false");
+            CollectionAssert.Contains(arguments, "--max-connection-per-server=1");
+            CollectionAssert.Contains(arguments, "--split=1");
+            CollectionAssert.Contains(arguments, "--no-conf=true");
+        }
+
+        [DataTestMethod]
+        [DataRow("0.3", false)]
+        [DataRow("0.4-alpha", false)]
+        [DataRow("dev_123abcd", true)]
+        public void DevelopmentSshRequiresADevelopmentBuild(string version, bool allowed)
+        {
+            Assert.IsTrue(StartupOptions.TryParse(new[] {
+                "--dev-ssh-static-ip", "198.51.100.20",
+                "--dev-ssh-prefix-length", "24",
+                "--dev-ssh-gateway", "198.51.100.1",
+                "--dev-ssh-dns", "198.51.100.1"
+            }, out StartupOptions options, out string error), error);
+            Assert.AreEqual(allowed, options.TryValidateBuild(ApplicationBuild.Parse(version), out error));
+            Assert.AreEqual(allowed, error == null);
+            Assert.IsTrue(new StartupOptions().TryValidateBuild(ApplicationBuild.Parse(version), out error));
+        }
+
+        [TestMethod]
+        public void RangeProbeRequiresAnExactOneBytePartialResponse()
+        {
+            Assert.IsTrue(InstallationEngine.IsExactSingleByteRangeResponse(
+                HttpStatusCode.PartialContent,
+                ContentRangeHeaderValue.Parse("bytes 0-0/524288000")));
+            Assert.IsFalse(InstallationEngine.IsExactSingleByteRangeResponse(
+                HttpStatusCode.OK,
+                null));
+            Assert.IsFalse(InstallationEngine.IsExactSingleByteRangeResponse(
+                HttpStatusCode.PartialContent,
+                ContentRangeHeaderValue.Parse("bytes 0-524287999/524288000")));
+        }
+
+        [TestMethod]
+        public void TerminalDiagnosticsRemoveAnsiFormattingWithoutDamagingUnicode()
+        {
+            string diagnostic = "[\u001b[1;31mERROR\u001b[0m] Problème réseau";
+
+            Assert.AreEqual(
+                "[ERROR] Problème réseau",
+                WindowsProcessRunner.NormalizeTerminalText(diagnostic));
+        }
+
+        [TestMethod]
+        public void WindowsWifiParserAcceptsOpenOweWpa2AndWpa3PersonalProfiles()
+        {
+            WindowsWifiProfile open = WindowsWifiProfileReader.ParseProfile(
+                "Cafe",
+                WifiProfileXml("Cafe", "open", "none", null));
+            WindowsWifiProfile owe = WindowsWifiProfileReader.ParseProfile(
+                "Cafe Enhanced Open",
+                WifiProfileXml("Cafe Enhanced Open", "OWE", "AES", null));
+            WindowsWifiProfile wpa2 = WindowsWifiProfileReader.ParseProfile(
+                "Home WPA2",
+                WifiProfileXml("Home", "WPA2PSK", "AES", "test-password"));
+            WindowsWifiProfile wpa3 = WindowsWifiProfileReader.ParseProfile(
+                "Home WPA3",
+                WifiProfileXml("Home 3", "WPA3SAE", "AES", "sae-password"));
+
+            Assert.AreEqual("open", open.Security);
+            Assert.IsNull(open.Secret);
+            Assert.AreEqual("owe", owe.Security);
+            Assert.IsNull(owe.Secret);
+            Assert.AreEqual("wpa-psk", wpa2.Security);
+            Assert.AreEqual("test-password", wpa2.Secret);
+            Assert.AreEqual("sae", wpa3.Security);
+            Assert.AreEqual("sae-password", wpa3.Secret);
+        }
+
+        [TestMethod]
+        public void WifiServiceFailureIsNotReportedAsAnEmptyProfileList()
+        {
+            WindowsWifiProfileReader.AssertClientOpened(0);
+            foreach (int errorCode in new[] { 1062, 5, 1722 })
+            {
+                var error = Assert.ThrowsException<System.ComponentModel.Win32Exception>(
+                    () => WindowsWifiProfileReader.AssertClientOpened(errorCode));
+                Assert.AreEqual(errorCode, error.NativeErrorCode);
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow("true", "wpa-psk")]
+        [DataRow("1", "wpa-psk")]
+        [DataRow("false", "sae")]
+        [DataRow("0", "sae")]
+        public void WifiWpa3TransitionModePreservesAllowedAuthentication(string transition, string expected)
+        {
+            string xml = WifiProfileXml("Home", "WPA3SAE", "AES", "test-password")
+                .Replace("</authEncryption>",
+                    "<transitionMode xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v4\">" +
+                    transition + "</transitionMode></authEncryption>");
+            WindowsWifiProfile profile = WindowsWifiProfileReader.ParseProfile("Home", xml);
+            Assert.AreEqual(expected, profile.Security);
+            Assert.AreEqual("test-password", profile.Secret);
+        }
+
+        [TestMethod]
+        public void WifiWpa3InvalidTransitionModeIsNotSilentlyDowngraded()
+        {
+            string xml = WifiProfileXml("Home", "WPA3SAE", "AES", "test-password")
+                .Replace("</authEncryption>", "<transitionMode>invalid</transitionMode></authEncryption>");
+            Assert.ThrowsException<InvalidOperationException>(
+                () => WindowsWifiProfileReader.ParseProfile("Home", xml));
+        }
+
+        [TestMethod]
+        public void WindowsWifiParserExcludesWepAndEnterpriseProfiles()
+        {
+            Assert.IsNull(WindowsWifiProfileReader.ParseProfile(
+                "Legacy",
+                WifiProfileXml("Legacy", "open", "WEP", "abcde")));
+            Assert.IsNull(WindowsWifiProfileReader.ParseProfile(
+                "Enterprise",
+                WifiProfileXml("Enterprise", "WPA2", "AES", null)));
+            Assert.IsNull(WindowsWifiProfileReader.ParseProfile(
+                "Open 802.1X",
+                WifiProfileXml("Open 802.1X", "open", "none", null)
+                    .Replace("<useOneX>false</useOneX>", "<useOneX>true</useOneX>")));
+        }
+
+        [TestMethod]
+        public void WindowsWifiParserRequiresTheStoredPersonalSecret()
+        {
+            Assert.ThrowsException<InvalidOperationException>(() =>
+                WindowsWifiProfileReader.ParseProfile(
+                    "Home",
+                    WifiProfileXml("Home", "WPA2PSK", "AES", null)));
+        }
+
+        [TestMethod]
+        public void WindowsWifiParserRejectsEncryptedStoredPersonalSecret()
+        {
+            string encryptedProfile = WifiProfileXml(
+                "Home",
+                "WPA2PSK",
+                "AES",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+                .Replace("<protected>false</protected>", "<protected>true</protected>");
+
+            InvalidOperationException exception = Assert.ThrowsException<InvalidOperationException>(
+                () => WindowsWifiProfileReader.ParseProfile("Home", encryptedProfile));
+            StringAssert.Contains(exception.Message, "plaintext");
+        }
+
+        [TestMethod]
+        public void WindowsPreferenceCollectorCreatesAValidatedInMemoryBundle()
+        {
+            var profiles = new[] { WindowsWifiProfileReader.ParseProfile("Home",
+                WifiProfileXml("Home", "WPA2PSK", "AES", "test-password")) };
+            string json = WindowsPreferenceCollector.Serialize(PlanId, profiles, out int wifiProfileCount);
+            using (JsonDocument document = JsonDocument.Parse(json))
+            {
+                Assert.AreEqual(1, document.RootElement.GetProperty("schemaVersion").GetInt32());
+                Assert.AreEqual(PlanId, document.RootElement.GetProperty("planId").GetString());
+                Assert.AreEqual(1, wifiProfileCount);
+                Assert.AreEqual(
+                    wifiProfileCount,
+                    document.RootElement.GetProperty("wifiProfiles").GetArrayLength());
+                string primaryButton = document.RootElement
+                    .GetProperty("preferences")
+                    .GetProperty("primaryMouseButton")
+                    .GetString();
+                CollectionAssert.Contains(new[] { "left", "right" }, primaryButton);
+            }
+        }
+
+        [TestMethod]
+        public void KeyboardRepeatConversionPreservesWindowsRangeDirection()
+        {
+            Assert.AreEqual((uint)400, WindowsPreferenceCollector.ConvertKeyboardSpeedToInterval(0));
+            Assert.AreEqual((uint)33, WindowsPreferenceCollector.ConvertKeyboardSpeedToInterval(31));
+        }
+
+        [TestMethod]
+        public void InstallationPlanAcceptsASecretFreePreferenceMigrationManifest()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Features.WindowsPreferenceMigration = new InstallationPreferenceMigration
+            {
+                Enabled = true,
+                BundleFileName = WindowsPreferenceMigrationContract.BundleFileName,
+                BundleSha256 = new string('e', 64),
+                BundleSizeBytes = 4096,
+                WifiProfileCount = 3
+            };
+
+            InstallationPlanValidator.Validate(plan);
+        }
+
+        [TestMethod]
+        public void InstallationPlanRejectsAPreferenceMigrationBundleWithAnotherName()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Features.WindowsPreferenceMigration = new InstallationPreferenceMigration
+            {
+                Enabled = true,
+                BundleFileName = "other.json",
+                BundleSha256 = new string('e', 64),
+                BundleSizeBytes = 4096
+            };
+
+            InstallationPlanValidationException exception =
+                Assert.ThrowsException<InstallationPlanValidationException>(
+                    () => InstallationPlanValidator.Validate(plan));
+            StringAssert.Contains(exception.Message, "fixed transaction bundle name");
+        }
+
+        [TestMethod]
+        public void UefiRecoveryPayloadIncludesOnlyRequiredRuntimeFiles()
+        {
+            string root = Path.Combine(
+                Path.GetTempPath(),
+                "libertix-recovery-payload-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(root, "Scripts", "modules"));
+                Directory.CreateDirectory(Path.Combine(root, "Tools", "aria2"));
+                Directory.CreateDirectory(Path.Combine(root, "Resources"));
+                Directory.CreateDirectory(Path.Combine(root, "Unrelated"));
+                string[] included =
+                {
+                    "Libertix.exe",
+                    "Libertix.exe.config",
+                    "System.Text.Json.dll",
+                    Path.Combine("Scripts", "libertix-uefi-install.ps1"),
+                    Path.Combine("Scripts", "modules", "Libertix.Process.psm1"),
+                    Path.Combine("Scripts", "modules", "Libertix.FirmwareVariables.psm1"),
+                    Path.Combine("Scripts", "modules", "Libertix.PreferredBootPath.psm1"),
+                    Path.Combine("Scripts", "modules", "Libertix.StorageGeometry.psm1"),
+                    Path.Combine("Tools", "aria2", "aria2c.exe"),
+                    Path.Combine("Resources", "Libertix.Translations.json"),
+                    Path.Combine("Resources", "Images", "icon.ico")
+                };
+                foreach (string relativePath in included)
+                {
+                    string path = Path.Combine(root, relativePath);
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    File.WriteAllText(path, relativePath);
+                }
+                foreach (string relativePath in new[]
+                {
+                    "libertix-installer-uefi.iso",
+                    "Libertix.pdb",
+                    "catalog.json",
+                    Path.Combine("Unrelated", "debug.log")
+                })
+                {
+                    string path = Path.Combine(root, relativePath);
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    File.WriteAllText(path, relativePath);
+                }
+
+                string[] selected = InstallationEngine
+                    .EnumerateUefiRecoveryPayloadFiles(root)
+                    .Select(path => path.Substring(root.Length).TrimStart(
+                        Path.DirectorySeparatorChar,
+                        Path.AltDirectorySeparatorChar))
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                CollectionAssert.AreEqual(
+                    included.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
+                    selected);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, true);
+            }
+        }
+
+        [TestMethod]
+        public void PowerShellJsonResultUsesOnlyTheFinalCompleteObject()
+        {
+            PowerShellJsonResult result = PowerShellJsonResult.ParseFinalObject(
+                "CHECK=storage{diagnostic}\r\n" +
+                "{not-json}\r\n" +
+                "{\"preflightOk\":true,\"size\":42,\"warnings\":[\"one\",\"two\"]}\r\n");
+
+            Assert.IsTrue(result.GetBoolean("preflightOk"));
+            Assert.AreEqual(42, result.GetInt32("size"));
+            CollectionAssert.AreEqual(
+                new[] { "one", "two" },
+                result.GetStringArray("warnings"));
+        }
+
+        [TestMethod]
+        public void PowerShellJsonResultRejectsMissingFinalObject()
+        {
+            Assert.ThrowsException<InvalidOperationException>(
+                () => PowerShellJsonResult.ParseFinalObject("CHECK=storage\r\nnot json\r\n"));
+        }
+
+        [TestMethod]
+        public void PowerShellJsonResultPreservesInstallationTargetObjects()
+        {
+            PowerShellJsonResult result = PowerShellJsonResult.ParseFinalObject(
+                "{\"targets\":[{\"drive\":\"C:\",\"isWindows\":true,\"diskNumber\":3}," +
+                "{\"drive\":\"J:\",\"isWindows\":false,\"diskNumber\":0}]}");
+            InstallationTargetInfo[] targets = result.GetObjectArray<InstallationTargetInfo>("targets");
+            Assert.AreEqual(2, targets.Length);
+            Assert.AreEqual("C:", targets[0].Drive);
+            Assert.IsTrue(targets[0].IsWindows);
+            Assert.AreEqual(3, targets[0].DiskNumber);
+            Assert.AreEqual("J:", targets[1].Drive);
+            Assert.IsFalse(targets[1].IsWindows);
+            Assert.AreEqual(0, targets[1].DiskNumber);
+        }
+
+        [DataTestMethod]
+        [DataRow("{\"targets\":{}}")]
+        [DataRow("{\"targets\":[null]}")]
+        [DataRow("{\"targets\":[\"C:\"]}")]
+        [DataRow("{}")]
+        public void PowerShellJsonResultRejectsMalformedTargetCollections(string json)
+        {
+            Assert.ThrowsException<InvalidOperationException>(() =>
+                PowerShellJsonResult.ParseFinalObject(json).GetObjectArray<InstallationTargetInfo>("targets"));
+        }
+
+        [TestMethod]
+        public void PowerShellJsonResultRetainsTheExplicitNoAllocationDefault()
+        {
+            Assert.IsNull(PowerShellJsonResult.ParseFinalObject("{\"allocation\":null}")
+                .GetNullableObject<InstallationAllocation>("allocation"));
+        }
+
+        [TestMethod]
+        public void PowerShellJsonResultPreservesTheSelectedSourceIdentity()
+        {
+            var allocation = PowerShellJsonResult.ParseFinalObject(
+                "{\"allocation\":{\"number\":2,\"sourceDrive\":\"J:\",\"sourceVolumeId\":\"volume-j\"," +
+                "\"sourcePartition\":{\"number\":1,\"offsetBytes\":1048576,\"sizeBytes\":64424509440}," +
+                "\"sourceBitLockerState\":\"EncryptedOrProtected\"}}")
+                .GetNullableObject<InstallationAllocation>("allocation");
+            Assert.AreEqual(2, allocation.Number);
+            Assert.AreEqual("J:", allocation.SourceDrive);
+            Assert.AreEqual("volume-j", allocation.SourceVolumeId);
+            Assert.AreEqual(64424509440L, allocation.SourcePartition.SizeBytes);
+            Assert.AreEqual("EncryptedOrProtected", allocation.SourceBitLockerState);
+        }
+
+        [DataTestMethod]
+        [DataRow("{}")]
+        [DataRow("{\"allocation\":[]}")]
+        [DataRow("{\"allocation\":\"J:\"}")]
+        [DataRow("{\"allocation\":false}")]
+        public void PowerShellJsonResultRejectsMissingOrNonObjectAllocation(string json)
+        {
+            Assert.ThrowsException<InvalidOperationException>(() => PowerShellJsonResult.ParseFinalObject(json)
+                .GetNullableObject<InstallationAllocation>("allocation"));
+        }
+
+        [TestMethod]
+        public void RedirectedStreamDrainRefusesAnUnclosedPipe()
+        {
+            var incomplete = new TaskCompletionSource<bool>();
+
+            Assert.ThrowsException<UnterminatedProcessException>(() =>
+                WindowsProcessRunner.WaitForRedirectedStreams(
+                    TimeSpan.FromMilliseconds(20),
+                    incomplete.Task));
+        }
+
+        [TestMethod]
+        public void ChildProcessTerminationFailureCannotBecomeAnOrdinaryExitCode()
+        {
+            WindowsProcessRunner.AssertSafeExitCode(0);
+            WindowsProcessRunner.AssertSafeExitCode(1);
+            Assert.ThrowsException<UnterminatedProcessException>(() =>
+                WindowsProcessRunner.AssertSafeExitCode(173));
+            Assert.ThrowsException<UnterminatedProcessException>(() =>
+                WindowsProcessRunner.Run(
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"),
+                    "/d /c exit 173",
+                    TimeSpan.FromSeconds(30)));
+        }
+
+        [TestMethod]
+        public void UefiRecoveryStatePreservesFieldsOwnedByANewerAgent()
+        {
+            const string json = "{\"RunId\":\"0123456789abcdef0123456789abcdef\"," +
+                "\"Phase\":\"Preparing\",\"FutureCheckpoint\":{\"revision\":7}}";
+
+            UefiRecoveryState state = JsonSerializer.Deserialize<UefiRecoveryState>(json);
+            state.Phase = "FallbackNeeded";
+            string rewritten = JsonSerializer.Serialize(state);
+            using (JsonDocument document = JsonDocument.Parse(rewritten))
+            {
+                Assert.AreEqual(
+                    7,
+                    document.RootElement
+                        .GetProperty("FutureCheckpoint")
+                        .GetProperty("revision")
+                        .GetInt32());
+            }
+        }
+
+        [TestMethod]
+        public void DevelopmentSshOptionsAcceptACompleteNetworkProfile()
+        {
+            bool parsed = StartupOptions.TryParse(
+                new[]
+                {
+                    "--dev-ssh-static-ip", "198.51.100.20",
+                    "--dev-ssh-prefix-length", "23",
+                    "--dev-ssh-gateway", "198.51.100.1",
+                    "--dev-ssh-dns", "9.9.9.9",
+                    "--dev-ssh-dns", "1.1.1.1"
+                },
+                out StartupOptions options,
+                out string error);
+
+            Assert.IsTrue(parsed, error);
+            Assert.AreEqual("198.51.100.20", options.DevelopmentSshStaticIpv4Address);
+            Assert.AreEqual(23, options.DevelopmentSshStaticIpv4PrefixLength);
+            Assert.AreEqual("198.51.100.1", options.DevelopmentSshStaticIpv4Gateway);
+            CollectionAssert.AreEqual(
+                new[] { "9.9.9.9", "1.1.1.1" },
+                new System.Collections.Generic.List<string>(
+                    options.DevelopmentSshDnsServers));
+        }
+
+        [DataTestMethod]
+        [DataRow("198.51.100.0", "23", "198.51.100.1", "9.9.9.9")]
+        [DataRow("198.51.101.255", "23", "198.51.100.1", "9.9.9.9")]
+        [DataRow("198.51.100.20", "23", "203.0.113.1", "9.9.9.9")]
+        [DataRow("198.51.100.20", "31", "198.51.100.21", "9.9.9.9")]
+        [DataRow("not-an-address", "24", "198.51.100.1", "9.9.9.9")]
+        [DataRow("127.0.0.2", "24", "127.0.0.1", "9.9.9.9")]
+        [DataRow("169.254.10.2", "24", "169.254.10.1", "9.9.9.9")]
+        [DataRow("224.0.0.2", "24", "224.0.0.1", "9.9.9.9")]
+        public void DevelopmentSshOptionsRejectUnsafeProfiles(
+            string address,
+            string prefix,
+            string gateway,
+            string dns)
+        {
+            bool parsed = StartupOptions.TryParse(
+                new[]
+                {
+                    "--dev-ssh-static-ip", address,
+                    "--dev-ssh-prefix-length", prefix,
+                    "--dev-ssh-gateway", gateway,
+                    "--dev-ssh-dns", dns
+                },
+                out _,
+                out _);
+
+            Assert.IsFalse(parsed);
+        }
+
+        [TestMethod]
+        public void DevelopmentSshOptionsRequireTheCompleteProfile()
+        {
+            bool parsed = StartupOptions.TryParse(
+                new[] { "--dev-ssh-static-ip", "198.51.100.20" },
+                out _,
+                out string error);
+
+            Assert.IsFalse(parsed);
+            StringAssert.Contains(error, "requires");
+        }
+
+        [TestMethod]
+        public void NvramWriteProbeCanBeSkippedOnlyByExplicitOption()
+        {
+            Assert.IsTrue(StartupOptions.TryParse(
+                Array.Empty<string>(),
+                out StartupOptions defaults,
+                out string defaultError), defaultError);
+            Assert.IsFalse(defaults.SkipNvramWriteProbe);
+
+            Assert.IsTrue(StartupOptions.TryParse(
+                new[] { "--skip-nvram-write-probe" },
+                out StartupOptions optedOut,
+                out string optOutError), optOutError);
+            Assert.IsTrue(optedOut.SkipNvramWriteProbe);
+        }
+
+        [TestMethod]
+        public void NvramWriteProbeSkipOptionCannotBeRepeated()
+        {
+            bool parsed = StartupOptions.TryParse(
+                new[] { "--skip-nvram-write-probe", "--skip-nvram-write-probe" },
+                out _,
+                out string error);
+
+            Assert.IsFalse(parsed);
+            StringAssert.Contains(error, "can only be specified once");
+        }
+
+        [TestMethod]
+        public void StartupOptionsRejectUnknownArguments()
+        {
+            bool parsed = StartupOptions.TryParse(
+                new[] { "--dev-ssh-dsn", "9.9.9.9" },
+                out _,
+                out string error);
+
+            Assert.IsFalse(parsed);
+            StringAssert.Contains(error, "Unknown Libertix option");
+        }
+
+        [TestMethod]
+        public void StartupOptionsAcceptInternalUefiRecoveryArguments()
+        {
+            bool parsed = StartupOptions.TryParse(
+                new[]
+                {
+                    "--UEFI-BOOTNEXT-FAILED",
+                    "--UEFI-RECOVERY-STATE",
+                    @"C:\ProgramData\Libertix\UefiRecovery\state.json"
+                },
+                out StartupOptions options,
+                out string error);
+
+            Assert.IsTrue(parsed, error);
+            Assert.IsTrue(options.UefiBootNextFailed);
+            Assert.AreEqual(
+                @"C:\ProgramData\Libertix\UefiRecovery\state.json",
+                options.UefiRecoveryStatePath);
+        }
+
+        [DataTestMethod]
+        [DataRow("--unattended")]
+        [DataRow("--unattended-config")]
+        public void UnattendedStartupOptionsRequireThePairedArguments(string option)
+        {
+            string[] arguments = option == "--unattended"
+                ? new[] { option }
+                : new[] { option, @"C:\ProgramData\Libertix\Automation\missing.json" };
+
+            bool parsed = StartupOptions.TryParse(arguments, out _, out string error);
+
+            Assert.IsFalse(parsed);
+            StringAssert.Contains(error, "must be specified together");
+        }
+
+        [TestMethod]
+        public void UnattendedStartupOptionsLoadValidatedValuesAndConsumeTheSecretFile()
+        {
+            string configPath = WriteUnattendedConfig(
+                "{\"schemaVersion\":1,\"distribution\":\"zorin\"," +
+                "\"linuxSizeGiB\":120,\"linuxUsername\":\"test\"," +
+                "\"linuxPassword\":\"pass\",\"computerName\":\"test-linux\"," +
+                "\"shareWindowsFilesInLinux\":true," +
+                "\"shareLinuxFilesInWindows\":false}");
+
+            bool parsed = StartupOptions.TryParse(
+                new[] { "--unattended", "--unattended-config", configPath },
+                out StartupOptions options,
+                out string error);
+
+            Assert.IsTrue(parsed, error);
+            Assert.IsFalse(File.Exists(configPath));
+            Assert.AreEqual("zorin", options.Unattended.Distribution);
+            Assert.AreEqual(120, options.Unattended.LinuxSizeGiB);
+            Assert.AreEqual("test", options.Unattended.LinuxUsername);
+            Assert.AreEqual("pass", options.Unattended.LinuxPassword);
+            Assert.AreEqual("test-linux", options.Unattended.ComputerName);
+            Assert.IsTrue(options.Unattended.ShareWindowsFilesInLinux);
+            Assert.IsFalse(options.Unattended.ShareLinuxFilesInWindows);
+            StringAssert.EndsWith(options.Unattended.StatusPath, ".status.json");
+            StringAssert.EndsWith(options.Unattended.AcknowledgementPath, ".ack");
+        }
+
+        [TestMethod]
+        public void UnattendedStartupOptionsRejectAReservedLinuxAccountAndConsumeTheFile()
+        {
+            string configPath = WriteUnattendedConfig(
+                "{\"schemaVersion\":1,\"distribution\":\"mint\"," +
+                "\"linuxSizeGiB\":100,\"linuxUsername\":\"root\"," +
+                "\"linuxPassword\":\"pass\",\"computerName\":\"test-linux\"," +
+                "\"shareWindowsFilesInLinux\":true," +
+                "\"shareLinuxFilesInWindows\":true}");
+
+            bool parsed = StartupOptions.TryParse(
+                new[] { "--unattended", "--unattended-config", configPath },
+                out _,
+                out string error);
+
+            Assert.IsFalse(parsed);
+            StringAssert.Contains(error, "invalid or reserved");
+            Assert.IsFalse(File.Exists(configPath));
+        }
+
+        private static string WriteUnattendedConfig(string json)
+        {
+            string directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "Libertix",
+                "Automation");
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "unattended-test-" + Guid.NewGuid() + ".json");
+            File.WriteAllText(path, json);
+            return path;
+        }
+
+        [TestMethod]
+        public void SharedInstallationPolicyDefinesTheAria2ConnectionLimit()
+        {
+            Assert.AreEqual(5, InstallationPolicy.Current.Download.Aria2MaximumConnections);
+            Assert.AreEqual(6, InstallationPolicy.Current.Download.MaximumAttempts);
+            Assert.AreEqual(10, InstallationPolicy.Current.Download.RetryBaseDelaySeconds);
+        }
+
+        [TestMethod]
+        public void SharedInstallationPolicyDefinesDistinctMediaAndStagingLabels()
+        {
+            InstallationVolumeLabelPolicy labels = InstallationPolicy.Current.VolumeLabels;
+
+            Assert.AreEqual("LIBERTIXISO", labels.InstallationMedia);
+            Assert.AreEqual("LIBERTIXSTG", labels.Staging);
+            CollectionAssert.AreEqual(
+                new[] { "LIBERTIX", "LIBERTIXEFI" },
+                labels.LegacyStagingForRecovery);
+        }
+
+        [TestMethod]
+        public void SharedInstallationPolicyDefinesTheRecommendedLinuxSize()
+        {
+            Assert.AreEqual(
+                0.4,
+                InstallationSizePolicy.RecommendedLinuxFractionOfFreeSpace,
+                0.0001);
+            Assert.AreEqual(100, InstallationSizePolicy.MaximumRecommendedLinuxSizeGiB);
+        }
+
+        [TestMethod]
+        public void SharedInstallationPolicyDefinesDebianReservedAccountNames()
+        {
+            string[] names = InstallationPolicy.Current.Account.ReservedUsernames;
+
+            Assert.AreEqual(108, names.Length);
+            CollectionAssert.Contains(names, "root");
+            CollectionAssert.Contains(names, "admin");
+            CollectionAssert.Contains(names, "Debian-exim");
+            CollectionAssert.Contains(names, "input");
+            CollectionAssert.Contains(names, "kvm");
+            CollectionAssert.Contains(names, "render");
+            Assert.AreEqual(
+                "https://sources.debian.org/src/user-setup/1.107/reserved-usernames",
+                InstallationPolicy.Current.Account.ReservedUsernamesSource);
+        }
+
+        [DataTestMethod]
+        [DataRow("root")]
+        [DataRow("admin")]
+        [DataRow("debian-exim")]
+        public void AccountPolicyRejectsReservedLinuxUsernames(string username)
+        {
+            Assert.IsTrue(AccountPolicy.IsValidUsernameSyntax(username));
+            Assert.IsTrue(AccountPolicy.IsReservedUsername(username));
+            Assert.IsFalse(AccountPolicy.IsValidUsername(username));
+        }
+
+        [DataTestMethod]
+        [DataRow("admin", "admin-linux")]
+        [DataRow("root", "root-linux")]
+        [DataRow("Alice Smith", "alicesmith")]
+        [DataRow("123", "user")]
+        public void AccountPolicyCreatesAValidDefaultUsername(
+            string windowsUsername,
+            string expected)
+        {
+            string result = AccountPolicy.CreateDefaultUsername(windowsUsername);
+
+            Assert.AreEqual(expected, result);
+            Assert.IsTrue(AccountPolicy.IsValidUsername(result));
+        }
+
+        [TestMethod]
+        public void AccountPolicyUsesFourCharacterMinimumPassword()
+        {
+            Assert.AreEqual(4, AccountPolicy.MinimumPasswordLength);
+        }
+
+        [TestMethod]
+        public void AccountPolicyTruncatesTheDefaultUsernameSafely()
+        {
+            string result = AccountPolicy.CreateDefaultUsername(new string('a', 40));
+
+            Assert.AreEqual(32, result.Length);
+            Assert.IsTrue(AccountPolicy.IsValidUsername(result));
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorRejectsReservedLinuxUsername()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Account.Username = "admin";
+
+            InstallationPlanValidationException exception =
+                Assert.ThrowsException<InstallationPlanValidationException>(
+                    () => InstallationPlanValidator.Validate(plan));
+
+            StringAssert.Contains(exception.Message, "not a valid Linux username");
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorAcceptsCanonicalUefiPlan()
+        {
+            InstallationPlanValidator.Validate(CreateValidPlan());
+        }
+
+        private static InstallationPlan CreateSeparateAllocationPlan(bool bios, bool gptAllocation)
+        {
+            InstallationPlan plan = CreateValidPlan();
+            if (bios)
+            {
+                plan.Firmware = InstallationFirmware.Bios;
+                plan.Disk.PartitionStyle = InstallationPartitionStyle.Mbr;
+                plan.Disk.PartitionTableId = "mbr:12345678";
+                plan.Runtime.BootStrategy = InstallationBootStrategy.BiosGrub4Dos;
+                plan.Runtime.SecureBootEnabled = false;
+                plan.Runtime.TrustedMicrosoftUefiAuthorities = new string[0];
+            }
+            plan.SchemaVersion = InstallationPlan.SeparateAllocationSchemaVersion;
+            plan.Allocation = new InstallationAllocation
+            {
+                Number = 3, UniqueId = plan.Disk.UniqueId, SizeBytes = 64L * GiB,
+                PartitionStyle = gptAllocation ? InstallationPartitionStyle.Gpt : InstallationPartitionStyle.Mbr,
+                PartitionTableId = gptAllocation
+                    ? "gpt:87654321-1234-1234-1234-123456789abc" : "mbr:87654321",
+                LogicalSectorSizeBytes = 512, SourceDrive = "D:", SourceVolumeId = "volume-data",
+                SourceNtfsUuid = "1234567890ABCDEF",
+                SourceBitLockerState = InstallationBitLockerState.FullyDecrypted,
+                SourcePartition = new PartitionIdentity { Number = 2, OffsetBytes = GiB, SizeBytes = 60L * GiB }
+            };
+            plan.Disk.Installer.FinalOffsetBytes = 61L * GiB - plan.Disk.Installer.FinalSizeBytes;
+            plan.Disk.Installer.OffsetBytes = plan.Disk.Installer.FinalOffsetBytes;
+            return plan;
+        }
+
+        [DataTestMethod]
+        [DataRow(false, false)]
+        [DataRow(false, true)]
+        [DataRow(true, false)]
+        [DataRow(true, true)]
+        public void SeparateAllocationPreservesTheWindowsBootDisk(bool bios, bool gptAllocation)
+        {
+            InstallationPlan plan = CreateSeparateAllocationPlan(bios, gptAllocation);
+            PartitionIdentity windows = plan.Disk.Windows;
+            InstallationPlanValidator.Validate(plan);
+            Assert.AreSame(windows, plan.Disk.Windows);
+            Assert.AreEqual(0, plan.Disk.Number);
+            Assert.AreEqual(3, plan.Allocation.Number);
+        }
+
+        [DataTestMethod]
+        [DataRow("same-disk")]
+        [DataRow("same-table")]
+        [DataRow("same-drive")]
+        [DataRow("out-of-disk")]
+        [DataRow("wrong-extent")]
+        [DataRow("old-schema")]
+        [DataRow("missing-allocation")]
+        [DataRow("disk-id-control-character")]
+        [DataRow("volume-id-control-character")]
+        [DataRow("ntfs-uuid-missing")]
+        [DataRow("ntfs-uuid-zero")]
+        [DataRow("ntfs-uuid-short")]
+        [DataRow("ntfs-uuid-lowercase")]
+        public void SeparateAllocationRejectsAmbiguousOrInconsistentTargets(string mutation)
+        {
+            InstallationPlan plan = CreateSeparateAllocationPlan(false, true);
+            switch (mutation)
+            {
+                case "same-disk": plan.Allocation.Number = plan.Disk.Number; break;
+                case "same-table": plan.Allocation.PartitionTableId = plan.Disk.PartitionTableId; break;
+                case "same-drive": plan.Allocation.SourceDrive = plan.Disk.SystemDrive; break;
+                case "out-of-disk": plan.Allocation.SourcePartition.SizeBytes = 65L * GiB; break;
+                case "wrong-extent": plan.Disk.Installer.FinalOffsetBytes = 150L * GiB; break;
+                case "old-schema": plan.SchemaVersion = 4; break;
+                case "missing-allocation": plan.Allocation = null; break;
+                case "disk-id-control-character": plan.Allocation.UniqueId = "disk\nidentity"; break;
+                case "volume-id-control-character": plan.Allocation.SourceVolumeId = "volume\0identity"; break;
+                case "ntfs-uuid-missing": plan.Allocation.SourceNtfsUuid = null; break;
+                case "ntfs-uuid-zero": plan.Allocation.SourceNtfsUuid = "0000000000000000"; break;
+                case "ntfs-uuid-short": plan.Allocation.SourceNtfsUuid = "12345678"; break;
+                case "ntfs-uuid-lowercase": plan.Allocation.SourceNtfsUuid = "1234567890abcdef"; break;
+            }
+            Assert.ThrowsException<InstallationPlanValidationException>(() => InstallationPlanValidator.Validate(plan));
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorAcceptsPendingUefiBitLockerDecryption()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Runtime.WindowsBitLockerState =
+                InstallationBitLockerState.EncryptedOrProtected;
+
+            InstallationPlanValidator.Validate(plan);
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorAcceptsPendingBiosBitLockerDecryptionBeforePreparation()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Firmware = InstallationFirmware.Bios;
+            plan.Disk.PartitionStyle = InstallationPartitionStyle.Mbr;
+            plan.Disk.PartitionTableId = "mbr:12345678";
+            plan.Runtime.BootStrategy = InstallationBootStrategy.BiosGrub4Dos;
+            plan.Runtime.SecureBootEnabled = false;
+            plan.Runtime.TrustedMicrosoftUefiAuthorities = new string[0];
+            plan.Runtime.WindowsBitLockerState =
+                InstallationBitLockerState.EncryptedOrProtected;
+
+            InstallationPlanValidator.Validate(plan);
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorRejectsFirmwarePartitionMismatch()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.PartitionStyle = InstallationPartitionStyle.Mbr;
+
+            InstallationPlanValidationException exception =
+                Assert.ThrowsException<InstallationPlanValidationException>(
+                    () => InstallationPlanValidator.Validate(plan));
+
+            StringAssert.Contains(exception.Message, "UEFI plan requires a GPT disk");
+        }
+
+        [DataTestMethod]
+        [DataRow(true, true)]
+        [DataRow(true, false)]
+        [DataRow(false, true)]
+        public void SharedWindowsBootPartitionRequiresExactBiosIdentity(bool bios, bool sameNumber)
+        {
+            InstallationPlan plan = CreateValidPlan();
+            if (bios)
+            {
+                plan.Firmware = InstallationFirmware.Bios;
+                plan.Disk.PartitionStyle = InstallationPartitionStyle.Mbr;
+                plan.Disk.PartitionTableId = "mbr:12345678";
+                plan.Runtime.BootStrategy = InstallationBootStrategy.BiosGrub4Dos;
+                plan.Runtime.SecureBootEnabled = false;
+                plan.Runtime.TrustedMicrosoftUefiAuthorities = new string[0];
+            }
+            plan.Disk.Boot = new PartitionIdentity {
+                Number = plan.Disk.Windows.Number + (sameNumber ? 0 : 1),
+                OffsetBytes = plan.Disk.Windows.OffsetBytes,
+                SizeBytes = plan.Disk.Windows.SizeBytes
+            };
+            if (bios && sameNumber)
+                InstallationPlanValidator.Validate(plan);
+            else
+                Assert.ThrowsException<InstallationPlanValidationException>(() => InstallationPlanValidator.Validate(plan));
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorRejectsNoncanonicalStagingSize()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.Installer.StagingSizeBytes = 9L * InstallationSizePolicy.BytesPerGiB;
+
+            InstallationPlanValidationException exception =
+                Assert.ThrowsException<InstallationPlanValidationException>(
+                    () => InstallationPlanValidator.Validate(plan));
+
+            StringAssert.Contains(exception.Message, "shared FAT32 staging policy");
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorAcceptsAlignedFourKnGeometry()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.LogicalSectorSizeBytes = 4096;
+
+            InstallationPlanValidator.Validate(plan);
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorRejectsUnsupportedLogicalSectorSize()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.LogicalSectorSizeBytes = 1024;
+
+            InstallationPlanValidationException exception =
+                Assert.ThrowsException<InstallationPlanValidationException>(
+                    () => InstallationPlanValidator.Validate(plan));
+
+            StringAssert.Contains(exception.Message, "must be either 512 or 4096");
+        }
+
+        [TestMethod]
+        public void InstallationPlanValidatorRejectsPartitionOffsetOutsideLogicalSectors()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.LogicalSectorSizeBytes = 4096;
+            plan.Disk.Windows.OffsetBytes += 512;
+
+            InstallationPlanValidationException exception =
+                Assert.ThrowsException<InstallationPlanValidationException>(
+                    () => InstallationPlanValidator.Validate(plan));
+
+            StringAssert.Contains(exception.Message, "disk.windows.offsetBytes must align");
+        }
+
+        [TestMethod]
+        public async Task BoundedHttpContentRejectsDeclaredAndChunkedOversizePayloads()
+        {
+            using (var accepted = new ByteArrayContent(new byte[16]))
+            {
+                byte[] result = await BoundedHttpContent.ReadAsync(
+                    accepted,
+                    16,
+                    CancellationToken.None);
+                Assert.AreEqual(16, result.Length);
+            }
+
+            using (var declaredOversize = new ByteArrayContent(new byte[17]))
+            {
+                await Assert.ThrowsExceptionAsync<InvalidDataException>(() =>
+                    BoundedHttpContent.ReadAsync(
+                        declaredOversize,
+                        16,
+                        CancellationToken.None));
+            }
+
+            using (var chunkedOversize = new ByteArrayContent(new byte[17]))
+            {
+                chunkedOversize.Headers.ContentLength = null;
+                await Assert.ThrowsExceptionAsync<InvalidDataException>(() =>
+                    BoundedHttpContent.ReadAsync(
+                        chunkedOversize,
+                        16,
+                        CancellationToken.None));
+            }
+        }
+
+        [TestMethod]
+        public void AtomicJsonFileReplacesCompleteUtf8DocumentWithoutTemporaryResidue()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "libertix-tests-" + Guid.NewGuid());
+            string path = Path.Combine(directory, "state.json");
+            try
+            {
+                AtomicJsonFile.Write(path, "{\"revision\":1}");
+                AtomicJsonFile.Write(path, "{\"revision\":2,\"label\":\"été\"}");
+
+                byte[] bytes = File.ReadAllBytes(path);
+                CollectionAssert.AreEqual(
+                    System.Text.Encoding.UTF8.GetBytes("{\"revision\":2,\"label\":\"été\"}\n"),
+                    bytes);
+                CollectionAssert.AreEqual(
+                    Array.Empty<string>(),
+                    Directory.GetFiles(directory, "*.tmp"));
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, true);
+            }
+        }
+
+        [TestMethod]
+        public void AtomicJsonFileRetriesATransientWindowsSharingViolation()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "libertix-tests-" + Guid.NewGuid());
+            string path = Path.Combine(directory, "state.json");
+            try
+            {
+                AtomicJsonFile.Write(path, "{\"revision\":1}");
+                var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                Task release = Task.Run(() =>
+                {
+                    Thread.Sleep(150);
+                    locked.Dispose();
+                });
+
+                AtomicJsonFile.Write(path, "{\"revision\":2}");
+                release.Wait();
+
+                Assert.AreEqual("{\"revision\":2}\n", File.ReadAllText(path));
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, true);
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(20.0, 20, 8)]
+        [DataRow(31.0, 31, 8)]
+        [DataRow(32.0, 32, 8)]
+        [DataRow(72.0, 72, 8)]
+        public void SizePolicyUsesOneBoundedFat32StagingSize(
+            double requestedGiB,
+            int expectedFinalGiB,
+            int expectedStagingGiB)
+        {
+            InstallationSizes sizes = InstallationSizePolicy.FromRequestedGigabytes(requestedGiB);
+
+            Assert.AreEqual(expectedFinalGiB, sizes.FinalSizeGiB);
+            Assert.AreEqual(expectedStagingGiB, sizes.StagingSizeGiB);
+        }
+
+        [TestMethod]
+        public void SuccessfulStateCannotRetainFailureDetails()
+        {
+            InstallationStateMachine machine = InstallationStateMachine.Create(PlanId);
+            foreach (string step in new[]
+            {
+                InstallationStep.WindowsPreflightVerified,
+                InstallationStep.WindowsArtifactsVerified,
+                InstallationStep.WindowsRecoveryArmed,
+                InstallationStep.WindowsSystemVolumeShrunk,
+                InstallationStep.WindowsInstallerPartitionCreated,
+                InstallationStep.WindowsLiveMediaPrepared,
+                InstallationStep.WindowsTemporaryBootPrepared,
+                InstallationStep.LivePreflightVerified,
+                InstallationStep.LiveInstallerPartitionExpanded,
+                InstallationStep.LiveTargetFilesystemCreated,
+                InstallationStep.LiveDistributionExtracted,
+                InstallationStep.TargetSystemConfigured,
+                InstallationStep.TargetBootloaderInstalled,
+                InstallationStep.TargetInstallationVerified
+            })
+            {
+                machine.StartStep(step);
+                machine.CompleteStep(step);
+            }
+            machine.CompleteInstallation();
+            machine.State.Failure = new InstallationFailure
+            {
+                Code = "stale",
+                Message = "stale failure",
+                Component = InstallationPhase.Windows
+            };
+
+            Assert.ThrowsException<InvalidOperationException>(
+                () => InstallationStateMachine.ValidateState(machine.State));
+        }
+
+        [TestMethod]
+        public void StateMachineRejectsOutOfOrderAndIncompleteSuccess()
+        {
+            InstallationStateMachine machine = InstallationStateMachine.Create(PlanId);
+
+            Assert.ThrowsException<InvalidOperationException>(
+                () => machine.StartStep(InstallationStep.WindowsRecoveryArmed));
+
+            machine.StartStep(InstallationStep.WindowsPreflightVerified);
+            machine.CompleteStep(InstallationStep.WindowsPreflightVerified);
+
+            Assert.ThrowsException<InvalidOperationException>(
+                () => machine.CompleteInstallation());
+        }
+
+        [TestMethod]
+        public void LinuxAllocationRequiresTheInstallerDownloadAndCreditsItsCleanup()
+        {
+            Assert.AreEqual(
+                33d,
+                InstallationSizePolicy.AvailableLinuxSizeGiB(41d, 35d, 3d));
+            Assert.AreEqual(
+                13d,
+                InstallationSizePolicy.RemainingWindowsFreeSpaceGiB(41d, 28d));
+            Assert.AreEqual(
+                11d,
+                InstallationSizePolicy.RemainingWindowsFreeSpaceGiB(41d, 30d));
+            Assert.AreEqual(
+                0d,
+                InstallationSizePolicy.AvailableLinuxSizeGiB(10d, 35d, 3d));
+            Assert.AreEqual(
+                52d,
+                InstallationSizePolicy.AvailableLinuxSizeGiB(60d, 12d, 3d));
+            Assert.AreEqual(
+                0d,
+                InstallationSizePolicy.AvailableLinuxSizeGiB(60d, 7.99d, 3d));
+            Assert.AreEqual(
+                20.01d,
+                InstallationSizePolicy.AvailableLinuxSizeGiB(28.01d, 8d, 3.641d),
+                0.001d);
+            Assert.AreEqual(10, InstallationSizePolicy.TargetWindowsFreeSpaceGiB);
+            Assert.AreEqual(2, InstallationSizePolicy.WindowsFreeSpaceToleranceGiB);
+            Assert.AreEqual(8, InstallationSizePolicy.MinimumWindowsFreeSpaceGiB);
+        }
+
+        [TestMethod]
+        public void StateValidatorRejectsForgedIncompleteTerminalStates()
+        {
+            InstallationStateMachine succeeded = InstallationStateMachine.Create(PlanId);
+            succeeded.StartStep(InstallationStep.WindowsPreflightVerified);
+            succeeded.CompleteStep(InstallationStep.WindowsPreflightVerified);
+            succeeded.State.Status = InstallationStatus.Succeeded;
+            succeeded.State.Phase = InstallationPhase.Complete;
+
+            Assert.ThrowsException<InvalidOperationException>(
+                () => InstallationStateMachine.ValidateState(succeeded.State));
+
+            InstallationStateMachine rolledBack = InstallationStateMachine.Create(PlanId);
+            rolledBack.StartStep(InstallationStep.WindowsPreflightVerified);
+            rolledBack.CompleteStep(InstallationStep.WindowsPreflightVerified);
+            rolledBack.StartStep(InstallationStep.WindowsArtifactsVerified);
+            rolledBack.CompleteStep(InstallationStep.WindowsArtifactsVerified);
+            rolledBack.StartStep(InstallationStep.WindowsRecoveryArmed);
+            rolledBack.CompleteStep(InstallationStep.WindowsRecoveryArmed);
+            rolledBack.State.Status = InstallationStatus.RolledBack;
+            rolledBack.State.Phase = InstallationPhase.Complete;
+            rolledBack.State.Failure = new InstallationFailure
+            {
+                Code = "failure",
+                Message = "failure",
+                Component = InstallationPhase.Windows
+            };
+
+            Assert.ThrowsException<InvalidOperationException>(
+                () => InstallationStateMachine.ValidateState(rolledBack.State));
+        }
+
+        [TestMethod]
+        public void ProgressIsStoredAsValidatedStructuredState()
+        {
+            InstallationStateMachine machine = InstallationStateMachine.Create(PlanId);
+
+            machine.SetProgress("installer-iso-download", 37, 48);
+
+            Assert.AreEqual("installer-iso-download", machine.State.Progress.Stage);
+            Assert.AreEqual(37, machine.State.Progress.OverallPercent);
+            Assert.AreEqual(48, machine.State.Progress.DetailPercent);
+            InstallationStateMachine.ValidateState(machine.State);
+        }
+
+        [TestMethod]
+        public void RollbackCompensatesOnlyCompletedSteps()
+        {
+            InstallationStateMachine machine = InstallationStateMachine.Create(PlanId);
+            machine.StartStep(InstallationStep.WindowsPreflightVerified);
+            machine.Fail("cancelled", "Cancelled by the user.", InstallationPhase.Windows);
+            machine.BeginRollback();
+
+            Assert.ThrowsException<InvalidOperationException>(
+                () => machine.CompleteCompensation(InstallationStep.WindowsPreflightVerified));
+        }
+
+        [TestMethod]
+        public void SuccessfulInstallationCanBeginExplicitRollback()
+        {
+            InstallationStateMachine machine = InstallationStateMachine.Create(PlanId);
+            foreach (string step in new[]
+            {
+                InstallationStep.WindowsPreflightVerified,
+                InstallationStep.WindowsArtifactsVerified,
+                InstallationStep.WindowsRecoveryArmed,
+                InstallationStep.WindowsSystemVolumeShrunk,
+                InstallationStep.WindowsInstallerPartitionCreated,
+                InstallationStep.WindowsLiveMediaPrepared,
+                InstallationStep.WindowsTemporaryBootPrepared,
+                InstallationStep.LivePreflightVerified,
+                InstallationStep.LiveInstallerPartitionExpanded,
+                InstallationStep.LiveTargetFilesystemCreated,
+                InstallationStep.LiveDistributionExtracted,
+                InstallationStep.TargetSystemConfigured,
+                InstallationStep.TargetBootloaderInstalled,
+                InstallationStep.TargetInstallationVerified
+            })
+            {
+                machine.StartStep(step);
+                machine.CompleteStep(step);
+            }
+            machine.CompleteInstallation();
+
+            machine.BeginRollback();
+
+            Assert.AreEqual(InstallationStatus.RollbackRunning, machine.State.Status);
+            Assert.AreEqual(InstallationPhase.Rollback, machine.State.Phase);
+        }
+
+        [TestMethod]
+        public void ExecutionLedgerPersistsRollbackStartedAfterSuccessfulInstallation()
+        {
+            string directory = Path.Combine(
+                Path.GetTempPath(),
+                "libertix-ledger-success-rollback-" + Guid.NewGuid().ToString("N"));
+            string statePath = Path.Combine(directory, "installation-state.json");
+            try
+            {
+                InstallationStateMachine machine = InstallationStateMachine.Create(PlanId);
+                foreach (string step in new[]
+                {
+                    InstallationStep.WindowsPreflightVerified,
+                    InstallationStep.WindowsArtifactsVerified,
+                    InstallationStep.WindowsRecoveryArmed,
+                    InstallationStep.WindowsSystemVolumeShrunk,
+                    InstallationStep.WindowsInstallerPartitionCreated,
+                    InstallationStep.WindowsLiveMediaPrepared,
+                    InstallationStep.WindowsTemporaryBootPrepared,
+                    InstallationStep.LivePreflightVerified,
+                    InstallationStep.LiveInstallerPartitionExpanded,
+                    InstallationStep.LiveTargetFilesystemCreated,
+                    InstallationStep.LiveDistributionExtracted,
+                    InstallationStep.TargetSystemConfigured,
+                    InstallationStep.TargetBootloaderInstalled,
+                    InstallationStep.TargetInstallationVerified
+                })
+                {
+                    machine.StartStep(step);
+                    machine.CompleteStep(step);
+                }
+                machine.CompleteInstallation();
+                InstallationStateStore.WriteAtomic(statePath, machine.State);
+
+                InstallationExecutionLedger ledger =
+                    InstallationExecutionLedger.Open(statePath);
+                ledger.BeginRollback();
+
+                InstallationExecutionState persisted = InstallationStateStore.Read(statePath);
+                Assert.AreEqual(InstallationStatus.RollbackRunning, persisted.Status);
+                Assert.AreEqual(InstallationPhase.Rollback, persisted.Phase);
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, true);
+            }
+        }
+
+        [TestMethod]
+        public void ExecutionLedgerPersistsPrimaryAndMirroredTransitions()
+        {
+            string directory = Path.Combine(
+                Path.GetTempPath(),
+                "libertix-ledger-" + Guid.NewGuid().ToString("N"));
+            string statePath = Path.Combine(directory, "installation-state.json");
+            string mirrorPath = Path.Combine(directory, "live", "installation-state.json");
+            try
+            {
+                InstallationExecutionLedger ledger =
+                    InstallationExecutionLedger.Create(PlanId, statePath);
+                ledger.SetMirrorPath(mirrorPath);
+                ledger.StartStep(InstallationStep.WindowsPreflightVerified);
+                ledger.CompleteStep(InstallationStep.WindowsPreflightVerified);
+
+                InstallationExecutionState primary = InstallationStateStore.Read(statePath);
+                InstallationExecutionState mirror = InstallationStateStore.Read(mirrorPath);
+
+                Assert.AreEqual(primary.Revision, mirror.Revision);
+                CollectionAssert.AreEqual(
+                    primary.CompletedSteps.ToArray(),
+                    mirror.CompletedSteps.ToArray());
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, true);
+            }
+        }
+
+        [TestMethod]
+        public void ExecutionLedgerStopsUpdatingDetachedMirror()
+        {
+            string directory = Path.Combine(
+                Path.GetTempPath(),
+                "libertix-ledger-detach-" + Guid.NewGuid().ToString("N"));
+            string statePath = Path.Combine(directory, "installation-state.json");
+            string mirrorPath = Path.Combine(directory, "live", "installation-state.json");
+            try
+            {
+                InstallationExecutionLedger ledger =
+                    InstallationExecutionLedger.Create(PlanId, statePath);
+                ledger.SetMirrorPath(mirrorPath);
+                ledger.StartStep(InstallationStep.WindowsPreflightVerified);
+                ledger.CompleteStep(InstallationStep.WindowsPreflightVerified);
+
+                ledger.SetMirrorPath(null);
+                ledger.RecordFailure(
+                    "WINDOWS_ONLY_FAILURE",
+                    "The live handoff is already durable.",
+                    InstallationPhase.Windows);
+
+                InstallationExecutionState primary = InstallationStateStore.Read(statePath);
+                InstallationExecutionState mirror = InstallationStateStore.Read(mirrorPath);
+
+                Assert.AreEqual(InstallationStatus.Failed, primary.Status);
+                Assert.AreEqual(InstallationStatus.Running, mirror.Status);
+                CollectionAssert.Contains(
+                    mirror.CompletedSteps.ToArray(),
+                    InstallationStep.WindowsPreflightVerified);
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, true);
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(false)]
+        [DataRow(true)]
+        public void PlanFactoryBuildsValidatedUefiIntentFromWindowsInputs(bool separateAllocation)
+        {
+            const long GiB = InstallationSizePolicy.BytesPerGiB;
+            Assert.IsTrue(StartupOptions.TryParse(
+                Array.Empty<string>(),
+                out StartupOptions startupOptions,
+                out string startupError), startupError);
+
+            InstallationPlan plan = InstallationPlanFactory.Create(
+                new InstallationPlanCreationOptions
+                {
+                    PlanId = PlanId,
+                    Firmware = FirmwareType.Uefi,
+                    Allocation = separateAllocation ? CreateSeparateAllocationPlan(false, true).Allocation : null,
+                    Distribution = new DistroInfo
+                    {
+                        Id = "mint",
+                        Name = "Linux Mint",
+                        OsReleaseId = "linuxmint",
+                        GrubDisplayName = "Linux Mint 22.3 Cinnamon",
+                        GrubIcon = "linuxmint",
+                        SecureBootMicrosoftAuthorities =
+                            new System.Collections.Generic.List<string> { "2011" },
+                        IsoInstallerFileName = "mint.iso",
+                        IsoInstaller = "https://example.test/mint.iso",
+                        IsoInstallerSha256 = new string('a', 64),
+                        IsoUrl = "https://example.test/bios.iso",
+                        IsoSha256 = new string('b', 64),
+                        UefiIsoUrl = "https://example.test/uefi.iso",
+                        UefiIsoSha256 = new string('c', 64)
+                    },
+                    Account = new AccountInfo
+                    {
+                        Username = "test",
+                        ComputerName = "libertix-test"
+                    },
+                    Sharing = new SharingOptions(),
+                    Compatibility = new CompatibilityInfo
+                    {
+                        SecureBootEnabled = true,
+                        TrustedMicrosoftUefiAuthorities = new[] { "2011" }
+                    },
+                    Storage = new StoragePreflightInfo
+                    {
+                        SystemDiskNumber = 0,
+                        SystemDiskUniqueId = "test-disk",
+                        SystemDiskPartitionTableId = "gpt:12345678-1234-1234-1234-123456789abc",
+                        SystemDiskSize = 256L * GiB,
+                        LogicalSectorSize = 512,
+                        PartitionStyle = InstallationPartitionStyle.Gpt,
+                        SystemDrive = "C:",
+                        SystemPartitionNumber = 3,
+                        SystemPartitionOffset = 2L * GiB,
+                        SystemPartitionSize = 180L * GiB,
+                        BootPartitionNumber = 1,
+                        BootPartitionOffset = 1024L * 1024L,
+                        BootPartitionSize = 100L * 1024L * 1024L,
+                        RecoveryPartitionNumber = 4,
+                        RecoveryPartitionOffset = 240L * GiB,
+                        RecoveryPartitionSize = 1L * GiB,
+                        BitLockerState = "FullyDecrypted"
+                    },
+                    Sizes = InstallationSizePolicy.FromRequestedGigabytes(40),
+                    Keyboard = WindowsKeyboardLayout.ResolveIdentifier("00000409", "us"),
+                    StartupOptions = startupOptions,
+                    LanguageCode = "en",
+                    SystemLanguage = "en_US.UTF-8",
+                    Timezone = "Etc/UTC",
+                    SystemDriveRoot = @"C:\",
+                    PasswordHashWindowsPath = @"C:\ProgramData\Libertix\Recovery\account-secret.env",
+                    WindowsProfilesJsonBase64 = "W10=",
+                    RecoveryRootWindows = @"C:\ProgramData\Libertix\Recovery",
+                    RecoveryRunId = new string('d', 32)
+                });
+
+            Assert.AreEqual(InstallationFirmware.Uefi, plan.Firmware);
+            CollectionAssert.AreEqual(
+                new[] { "2011" },
+                plan.Distribution.SecureBootMicrosoftAuthorities);
+            CollectionAssert.AreEqual(
+                new[] { "2011" },
+                plan.Runtime.TrustedMicrosoftUefiAuthorities);
+            Assert.IsTrue(plan.Runtime.SecureBootEnabled);
+            Assert.AreEqual(40L * GiB, plan.Disk.Installer.FinalSizeBytes);
+            Assert.AreEqual(8L * GiB, plan.Disk.Installer.StagingSizeBytes);
+            Assert.AreEqual(separateAllocation ? 5 : 4, plan.SchemaVersion);
+            Assert.AreEqual((separateAllocation ? 21L : 142L) * GiB, plan.Disk.Installer.FinalOffsetBytes);
+            Assert.AreEqual(0, plan.Disk.Number);
+            Assert.AreEqual(180L * GiB, plan.Disk.Windows.SizeBytes);
+            Assert.AreEqual(240L * GiB, plan.Disk.Recovery.OffsetBytes);
+            StringAssert.StartsWith(plan.Distribution.InstallerIsoWindowsPath, @"C:\");
+            Assert.AreEqual(@"C:\ProgramData\Libertix\Recovery\account-secret.env", plan.Account.PasswordHashWindowsPath);
+            Assert.IsNull(plan.Development);
+        }
+
+        [TestMethod]
+        public void VersionedArtifactCataloguePassesValidation()
+        {
+            string path = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "TestData",
+                "Libertix.Artifacts.json");
+
+            ArtifactCatalog catalogue = ArtifactCatalog.Load(path);
+
+            Assert.AreEqual("aria2-64.zip", catalogue.Aria2.ArchiveFileName);
+            Assert.AreEqual("ext4-win-driver.exe", catalogue.Ext4Driver.FileName);
+            Assert.AreEqual(2426708L, catalogue.Ext4Driver.AttachedContainerSize);
+            Assert.AreEqual("a0", catalogue.Ext4Driver.WinFspPayloadName);
+            Assert.AreEqual("a1", catalogue.Ext4Driver.DriverPayloadName);
+            Assert.AreEqual("grldr", catalogue.Grub4Dos.LoaderFileName);
+            Assert.AreEqual("grldr.mbr", catalogue.Grub4Dos.MbrLoaderFileName);
+        }
+
+        [TestMethod]
+        public void Grub4DosMenuFindsThePreparedVolumeWithoutPartitionNumberConversion()
+        {
+            string path = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "TestData",
+                "Libertix.BootArguments.json");
+            LiveBootArguments arguments = LiveBootArguments.Load(path);
+
+            string menu = arguments.CreateGrub4DosMenu();
+
+            StringAssert.Contains(menu, "find --set-root /installation-plan.json");
+            Assert.IsFalse(menu.Contains("root (hd0,"));
+            StringAssert.Contains(menu, $"kernel /live/vmlinuz {arguments.Normal}");
+        }
+
+        [DataTestMethod]
+        [DataRow("00000409", "us", "", false)]
+        [DataRow("00020409", "us", "intl", false)]
+        [DataRow("0000040C", "fr", "", false)]
+        [DataRow("0000080C", "be", "", false)]
+        [DataRow("00000C0C", "ca", "fr-legacy", false)]
+        [DataRow("00011009", "ca", "multix", false)]
+        [DataRow("0000100C", "ch", "fr", false)]
+        [DataRow("0000040A", "es", "winkeys", false)]
+        [DataRow("0000080A", "latam", "", false)]
+        [DataRow("00000412", "kr", "", false)]
+        [DataRow("A000040C", "fr", "", true)]
+        [DataRow("not-a-klid", "us", "", true)]
+        public void WindowsKeyboardIdentifiersResolveToExpectedXkbConfiguration(
+            string identifier,
+            string expectedLayout,
+            string expectedVariant,
+            bool expectedFallback)
+        {
+            LinuxKeyboardConfiguration resolved = WindowsKeyboardLayout.ResolveIdentifier(
+                identifier,
+                "us");
+
+            Assert.AreEqual(expectedLayout, resolved.Layout);
+            Assert.AreEqual(expectedVariant, resolved.Variant);
+            Assert.AreEqual(expectedFallback, resolved.UsedFallback);
+        }
+
+        [TestMethod]
+        public void InstallationPlanAcceptsClonedWindowsGeometryWithPreservedGap()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.Windows.SizeBytes += 256L * 1024L;
+
+            InstallationPlanValidator.Validate(plan);
+        }
+
+        [TestMethod]
+        public void InstallationPlanRejectsUnexpectedInstallerOffset()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.Installer.OffsetBytes += 1024L * 1024L;
+
+            Assert.ThrowsException<InstallationPlanValidationException>(
+                () => InstallationPlanValidator.Validate(plan));
+        }
+
+        [TestMethod]
+        public void UefiPlanAcceptsRecoveryBeforeWindowsWithoutMovingIt()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.Recovery.OffsetBytes = 256L * 1024L * 1024L;
+            plan.Disk.Recovery.SizeBytes = 512L * 1024L * 1024L;
+            InstallationPlanValidator.Validate(plan);
+        }
+
+        [TestMethod]
+        public void InstallationPlanCannotAllocateTheEntireWindowsPartition()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.Installer.FinalSizeBytes = plan.Disk.Windows.SizeBytes;
+            plan.Disk.Installer.FinalOffsetBytes = plan.Disk.Windows.OffsetBytes;
+            plan.Disk.Installer.OffsetBytes = plan.Disk.Windows.OffsetBytes;
+            Assert.ThrowsException<InstallationPlanValidationException>(
+                () => InstallationPlanValidator.Validate(plan));
+        }
+
+        [TestMethod]
+        public void InstallationPlanRejectsWindowsPathsOnAnotherDrive()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Account.PasswordHashWindowsPath = @"D:\ProgramData\Libertix\account-secret.env";
+
+            Assert.ThrowsException<InstallationPlanValidationException>(
+                () => InstallationPlanValidator.Validate(plan));
+        }
+
+        [TestMethod]
+        public void InstallationPlanRejectsMixedSeparatorTraversalInRecoveryPaths()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Distribution.InstallerIsoWindowsPath =
+                @"C:\ProgramData\Libertix\Downloads\" + PlanId +
+                @"\safe/../mint.iso";
+
+            Assert.ThrowsException<InstallationPlanValidationException>(
+                () => InstallationPlanValidator.Validate(plan));
+
+            plan = CreateValidPlan();
+            plan.Account.PasswordHashWindowsPath =
+                @"C:\ProgramData\Libertix\Recovery\safe/../../account-secret.env";
+
+            Assert.ThrowsException<InstallationPlanValidationException>(
+                () => InstallationPlanValidator.Validate(plan));
+
+            plan = CreateValidPlan();
+            plan.Runtime.RecoveryRootWindows =
+                @"C:\ProgramData\Libertix\Recovery\safe/../escaped";
+            plan.Account.PasswordHashWindowsPath =
+                @"C:\ProgramData\Libertix\Recovery\safe/../escaped\account-secret.env";
+
+            Assert.ThrowsException<InstallationPlanValidationException>(
+                () => InstallationPlanValidator.Validate(plan));
+        }
+
+        [TestMethod]
+        public void InstallationPlanRequiresTheSecretUnderItsRecoveryRoot()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Account.PasswordHashWindowsPath =
+                @"C:\ProgramData\Libertix\Other\account-secret.env";
+
+            Assert.ThrowsException<InstallationPlanValidationException>(
+                () => InstallationPlanValidator.Validate(plan));
+        }
+
+        [TestMethod]
+        public void InstallationPlanAcceptsConsistentNonCSystemDrivePaths()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.SystemDrive = "D:";
+            plan.Distribution.InstallerIsoWindowsPath =
+                @"D:\ProgramData\Libertix\Downloads\" + PlanId + @"\mint.iso";
+            plan.Account.PasswordHashWindowsPath = @"D:\ProgramData\Libertix\Recovery\account-secret.env";
+            plan.Runtime.RecoveryRootWindows = @"D:\ProgramData\Libertix\Recovery";
+
+            InstallationPlanValidator.Validate(plan);
+        }
+
+        [TestMethod]
+        public void InstallationPlanAcceptsReservedPrimaryMbrOffset()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Firmware = InstallationFirmware.Bios;
+            plan.Disk.PartitionStyle = InstallationPartitionStyle.Mbr;
+            plan.Disk.PartitionTableId = "mbr:12345678";
+            plan.Runtime.BootStrategy = InstallationBootStrategy.BiosGrub4Dos;
+            plan.Runtime.SecureBootEnabled = false;
+            plan.Runtime.TrustedMicrosoftUefiAuthorities = new string[0];
+            plan.Disk.Installer.OffsetBytes -= 1024L * 1024L;
+
+            InstallationPlanValidator.Validate(plan);
+        }
+
+        [TestMethod]
+        public void TemporaryArtifactsUseThePlanOwnedProgramDataDirectory()
+        {
+            string isoPath = InstallationTemporaryArtifacts.GetDistributionIsoPath(
+                @"C:\",
+                PlanId,
+                "linux.iso");
+            string liveMediaDirectory = InstallationTemporaryArtifacts.GetLiveMediaDirectory(
+                @"C:\",
+                PlanId);
+
+            Assert.AreEqual(
+                @"C:\ProgramData\Libertix\Downloads\" + PlanId + @"\linux.iso",
+                isoPath);
+            Assert.AreEqual(
+                @"C:\ProgramData\Libertix\Downloads\" + PlanId + @"\live-media",
+                liveMediaDirectory);
+            Assert.AreNotEqual(Path.GetDirectoryName(isoPath), liveMediaDirectory);
+        }
+
+        private const string OrphanPlanId = "fedcba9876543210fedcba9876543210";
+
+        private static string ReuseIsoScenario(
+            Action<string> arrange,
+            Func<string, bool> recoveryTaskExists = null,
+            string expectedSha256 = null)
+        {
+            string root = Path.Combine(Path.GetTempPath(), "libertix-tests-" + Guid.NewGuid());
+            string downloads = Path.Combine(root, "Downloads");
+            string orphan = Path.Combine(downloads, OrphanPlanId, "linux.iso");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(orphan));
+                File.WriteAllText(orphan, "verified iso");
+                arrange(root);
+                string reused = InstallationTemporaryArtifacts.MoveReusableDistributionIso(
+                    downloads,
+                    Path.Combine(root, "UefiRecovery"),
+                    Path.Combine(root, "LibertixInstallRecovery"),
+                    PlanId,
+                    "linux.iso",
+                    expectedSha256 ?? Sha256Hex("verified iso"),
+                    1024,
+                    recoveryTaskExists ?? (_ => false));
+                string destination = Path.Combine(downloads, PlanId, "linux.iso");
+                Assert.AreEqual(reused != null, File.Exists(destination));
+                Assert.AreEqual(reused == null, File.Exists(orphan));
+                return reused;
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, true);
+            }
+        }
+
+        private static string Sha256Hex(string text)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                return BitConverter.ToString(
+                    sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text))).Replace("-", "");
+            }
+        }
+
+        [TestMethod]
+        public void ReusableDistributionIsoIsMovedFromAnOrphanedPlan()
+        {
+            Assert.IsNotNull(ReuseIsoScenario(_ => { }));
+        }
+
+        [TestMethod]
+        public void ReusableDistributionIsoSkipsAnUnfinishedAria2Download()
+        {
+            Assert.IsNull(ReuseIsoScenario(root => File.WriteAllText(
+                Path.Combine(root, "Downloads", OrphanPlanId, "linux.iso.aria2"),
+                "control")));
+        }
+
+        [TestMethod]
+        public void ReusableDistributionIsoSkipsAHashMismatch()
+        {
+            Assert.IsNull(ReuseIsoScenario(_ => { }, expectedSha256: new string('0', 64)));
+        }
+
+        [TestMethod]
+        public void ReusableDistributionIsoSkipsAPlanWithUefiRecoveryState()
+        {
+            Assert.IsNull(ReuseIsoScenario(root =>
+                Directory.CreateDirectory(Path.Combine(root, "UefiRecovery", OrphanPlanId))));
+            Assert.IsNull(ReuseIsoScenario(
+                _ => { },
+                recoveryTaskExists: name => name == "LibertixUefiRecoveryPrompt_" + OrphanPlanId));
+        }
+
+        [TestMethod]
+        public void ReusableDistributionIsoRespectsTheBiosRecoveryOwner()
+        {
+            Func<string, Action<string>> biosOwner = pending => root =>
+            {
+                string biosRoot = Path.Combine(root, "LibertixInstallRecovery");
+                Directory.CreateDirectory(biosRoot);
+                if (pending != null)
+                    File.WriteAllText(Path.Combine(biosRoot, "pending.env"), pending);
+            };
+
+            Assert.IsNull(ReuseIsoScenario(biosOwner("PLAN_ID=" + OrphanPlanId + "\n")));
+            Assert.IsNull(ReuseIsoScenario(biosOwner(null)));
+            Assert.IsNull(ReuseIsoScenario(biosOwner("PLAN_ID=unknown\n")));
+            Assert.IsNotNull(ReuseIsoScenario(biosOwner("PLAN_ID=" + new string('a', 32) + "\n")));
+        }
+
+        [TestMethod]
+        public void InstallationPlanRejectsReservedMbrOffsetForUefi()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Disk.Installer.OffsetBytes -= 1024L * 1024L;
+
+            Assert.ThrowsException<InstallationPlanValidationException>(
+                () => InstallationPlanValidator.Validate(plan));
+        }
+
+        [TestMethod]
+        public void InstallationPlanRejectsUnknownSecureBootAuthority()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Distribution.SecureBootMicrosoftAuthorities = new[] { "2040" };
+
+            InstallationPlanValidationException exception =
+                Assert.ThrowsException<InstallationPlanValidationException>(
+                    () => InstallationPlanValidator.Validate(plan));
+
+            StringAssert.Contains(
+                exception.Message,
+                "distribution.secureBootMicrosoftAuthorities");
+        }
+
+        [TestMethod]
+        public void InstallationPlanRejectsTrustedUefiAuthorityInBiosPlan()
+        {
+            InstallationPlan plan = CreateValidPlan();
+            plan.Firmware = InstallationFirmware.Bios;
+            plan.Disk.PartitionStyle = InstallationPartitionStyle.Mbr;
+            plan.Disk.PartitionTableId = "mbr:12345678";
+            plan.Runtime.BootStrategy = InstallationBootStrategy.BiosGrub4Dos;
+
+            InstallationPlanValidationException exception =
+                Assert.ThrowsException<InstallationPlanValidationException>(
+                    () => InstallationPlanValidator.Validate(plan));
+
+            StringAssert.Contains(
+                exception.Message,
+                "BIOS plan must not contain trusted Microsoft UEFI authorities");
+        }
+
+        [TestMethod]
+        public void WifiSsidUsesExactHexBytesInsteadOfTheDisplayName()
+        {
+            string xml = WifiProfileXml("display", "open", "none", null)
+                .Replace("<SSID><name>", "<SSID><hex>00FF8041</hex><name>");
+            WindowsWifiProfile profile = WindowsWifiProfileReader.ParseProfile("saved network", xml);
+            Assert.AreEqual("00ff8041", profile.SsidHex);
+            Assert.AreEqual("display", profile.Ssid);
+            profile = WindowsWifiProfileReader.ParseProfile("saved network", xml.Replace("<name>display</name>", ""));
+            Assert.AreEqual("00ff8041", profile.SsidHex);
+        }
+
+        [TestMethod]
+        public void WifiSsidRejectsInvalidHexWithoutFallingBackToTheName()
+        {
+            foreach (string hex in new[] { "", "0", "zz", "41 42", new string('a', 66) })
+            {
+                string xml = WifiProfileXml("display", "open", "none", null)
+                    .Replace("<SSID><name>", "<SSID><hex>" + hex + "</hex><name>");
+                Assert.ThrowsException<InvalidOperationException>(() => WindowsWifiProfileReader.ParseProfile("test", xml));
+            }
+        }
+
+        [TestMethod]
+        public void WifiSsidRetainsAsciiProfilesWithoutHexAndRejectsLossyConversion()
+        {
+            Assert.AreEqual("43616665", WindowsWifiProfileReader.ParseProfile("test",
+                WifiProfileXml("Cafe", "open", "none", null)).SsidHex);
+            Assert.ThrowsException<InvalidOperationException>(() => WindowsWifiProfileReader.ParseProfile("test",
+                WifiProfileXml("caf\u00e9", "open", "none", null)));
+        }
+
+        private static string WifiProfileXml(
+            string ssid,
+            string authentication,
+            string encryption,
+            string secret)
+        {
+            string sharedKey = secret == null
+                ? string.Empty
+                : "<sharedKey><keyType>passPhrase</keyType><protected>false</protected>" +
+                    "<keyMaterial>" + secret + "</keyMaterial></sharedKey>";
+            return
+                "<WLANProfile xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v1\">" +
+                "<name>Test</name><SSIDConfig><SSID><name>" + ssid +
+                "</name></SSID><nonBroadcast>false</nonBroadcast></SSIDConfig>" +
+                "<connectionType>ESS</connectionType><connectionMode>auto</connectionMode>" +
+                "<MSM><security><authEncryption><authentication>" + authentication +
+                "</authentication><encryption>" + encryption +
+                "</encryption><useOneX>false</useOneX></authEncryption>" + sharedKey +
+                "</security></MSM></WLANProfile>";
+        }
+
+        [TestMethod]
+        public void RollbackProgressCountsOnlyRecordedCompensatableOperations()
+        {
+            InstallationStateMachine machine = CreateSuccessfulExecutionState(PlanId);
+            machine.BeginRollback();
+            Assert.AreEqual(0, InstallationStateMachine.GetRollbackProgressPercent(machine.State));
+
+            machine.CompleteCompensation(InstallationStep.TargetBootloaderInstalled);
+            Assert.AreEqual(10, InstallationStateMachine.GetRollbackProgressPercent(machine.State));
+            foreach (string step in new[]
+            {
+                InstallationStep.TargetSystemConfigured,
+                InstallationStep.LiveDistributionExtracted,
+                InstallationStep.LiveTargetFilesystemCreated,
+                InstallationStep.LiveInstallerPartitionExpanded,
+                InstallationStep.WindowsTemporaryBootPrepared,
+                InstallationStep.WindowsLiveMediaPrepared,
+                InstallationStep.WindowsInstallerPartitionCreated,
+                InstallationStep.WindowsSystemVolumeShrunk,
+                InstallationStep.WindowsRecoveryArmed
+            })
+            {
+                machine.CompleteCompensation(step);
+            }
+            machine.CompleteRollback();
+
+            Assert.AreEqual(100, InstallationStateMachine.GetRollbackProgressPercent(machine.State));
+        }
+
+        [DataTestMethod]
+        [DataRow("bios")]
+        [DataRow("uefi")]
+        public void InstalledLinuxRecoveryRequiresACompleteVerifiedArchive(string firmware)
+        {
+            WithRecoveryRoots((systemRoot, programData, root) =>
+            {
+                CreateSuccessfulRecoveryArchive(root, firmware, PlanId);
+
+                InstalledLinuxRecoveryDetection detection =
+                    InstalledLinuxRecoveryLocator.Find(systemRoot, programData);
+
+                Assert.AreEqual(InstalledLinuxRecoveryStatus.Available, detection.Status);
+                Assert.AreEqual(firmware, detection.Candidate.Firmware);
+                Assert.AreEqual(PlanId, detection.Candidate.PlanId);
+                Assert.IsFalse(detection.Candidate.RollbackInProgress);
+            }, firmware, PlanId);
+        }
+
+        [DataTestMethod]
+        [DataRow("bios")]
+        [DataRow("uefi")]
+        public void RecoveryCodeUpgradePreservesOriginalCodeAndInstallationRecords(string firmware)
+        {
+            WithRecoveryRoots((systemRoot, programData, root) =>
+            {
+                string source = Path.Combine(root, "current-code");
+                Directory.CreateDirectory(Path.Combine(source, "modules"));
+                bool uefi = firmware == "uefi";
+                string scriptName = uefi ? "libertix-uefi-recovery-agent.ps1" : "libertix-recovery-guard.ps1";
+                string relative = uefi ? Path.Combine("Scripts", scriptName) : "recover.ps1";
+                string payload = uefi ? Path.Combine(root, "payload") : root;
+                string target = Path.Combine(payload, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                const string original = "param([string]$Action)";
+                const string current = "param([string]$Action, [switch]$VerifiedUninstall)";
+                File.WriteAllText(target, original);
+                File.WriteAllText(Path.Combine(source, scriptName), current);
+                string witness = Path.Combine(root, "installation-plan.json");
+                File.WriteAllText(witness, "original installation plan and backups must stay unchanged");
+                string manifestPath = Path.Combine(root, "payload-manifest.json");
+                string originalManifest = null;
+                if (uefi)
+                {
+                    string hash;
+                    using (var sha = System.Security.Cryptography.SHA256.Create())
+                        hash = BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(target))).Replace("-", "").ToLowerInvariant();
+                    originalManifest = new JsonObject { ["Files"] = new JsonArray(new JsonObject {
+                        ["RelativePath"] = relative, ["Length"] = new FileInfo(target).Length, ["Sha256"] = hash
+                    }) }.ToJsonString();
+                    File.WriteAllText(manifestPath, originalManifest);
+                }
+                var candidate = new InstalledLinuxRecoveryCandidate {
+                    Firmware = firmware, RecoveryRoot = root, RecoveryScriptPath = target
+                };
+                RecoveryCodeUpgrade.Prepare(candidate, source);
+                Assert.AreEqual(current, File.ReadAllText(target));
+                Assert.AreEqual(original, File.ReadAllText(Path.Combine(root, "pre-uninstall-code", relative)));
+                if (uefi)
+                {
+                    Assert.AreEqual(originalManifest, File.ReadAllText(Path.Combine(root, "pre-uninstall-code", "payload-manifest.json")));
+                    // Reproduce interruption after code replacement but before manifest publication.
+                    File.WriteAllText(manifestPath, originalManifest);
+                }
+                RecoveryCodeUpgrade.Prepare(candidate, source);
+                Assert.AreEqual(current, File.ReadAllText(target));
+                Assert.AreEqual(original, File.ReadAllText(Path.Combine(root, "pre-uninstall-code", relative)));
+                Assert.AreEqual("original installation plan and backups must stay unchanged", File.ReadAllText(witness));
+            }, firmware, PlanId);
+        }
+
+        [DataTestMethod]
+        [DataRow("bios")]
+        [DataRow("uefi")]
+        public void UninstallRejectsRecoveryRecordsWritableByStandardUsers(string firmware)
+        {
+            WithRecoveryRoots((systemRoot, programData, root) =>
+            {
+                CreateSuccessfulRecoveryArchive(root, firmware, PlanId);
+                string path = Path.Combine(root, "post-install-verification.json");
+                var security = File.GetAccessControl(path);
+                security.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                    new System.Security.Principal.SecurityIdentifier(
+                        System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null),
+                    System.Security.AccessControl.FileSystemRights.Modify,
+                    System.Security.AccessControl.AccessControlType.Allow));
+                File.SetAccessControl(path, security);
+
+                var detection = InstalledLinuxRecoveryLocator.Find(systemRoot, programData);
+
+                Assert.AreEqual(InstalledLinuxRecoveryStatus.Blocked, detection.Status);
+                StringAssert.Contains(detection.Diagnostic, "untrusted account");
+            }, firmware, PlanId);
+        }
+
+        [TestMethod]
+        public void InstalledLinuxRecoveryOffersToResumeAnInterruptedRollback()
+        {
+            WithRecoveryRoots((systemRoot, programData, root) =>
+            {
+                CreateSuccessfulRecoveryArchive(root, InstallationFirmware.Uefi, PlanId);
+                InstallationStateMachine machine = new InstallationStateMachine(
+                    InstallationStateStore.Read(Path.Combine(root, "installation-state.json")));
+                machine.BeginRollback();
+                machine.CompleteCompensation(InstallationStep.TargetBootloaderInstalled);
+                InstallationStateStore.WriteAtomic(
+                    Path.Combine(root, "installation-state.json"),
+                    machine.State);
+
+                InstalledLinuxRecoveryDetection detection =
+                    InstalledLinuxRecoveryLocator.Find(systemRoot, programData);
+
+                Assert.AreEqual(InstalledLinuxRecoveryStatus.Available, detection.Status);
+                Assert.IsTrue(detection.Candidate.RollbackInProgress);
+            }, InstallationFirmware.Uefi, PlanId);
+        }
+
+        [TestMethod]
+        public void InstalledLinuxRecoveryOffersToFinishAfterLedgerRollback()
+        {
+            WithRecoveryRoots((systemRoot, programData, root) =>
+            {
+                CreateSuccessfulRecoveryArchive(root, InstallationFirmware.Bios, PlanId);
+                InstallationStateMachine machine = new InstallationStateMachine(
+                    InstallationStateStore.Read(Path.Combine(root, "installation-state.json")));
+                machine.BeginRollback();
+                foreach (string step in new[]
+                {
+                    InstallationStep.TargetBootloaderInstalled,
+                    InstallationStep.TargetSystemConfigured,
+                    InstallationStep.LiveDistributionExtracted,
+                    InstallationStep.LiveTargetFilesystemCreated,
+                    InstallationStep.LiveInstallerPartitionExpanded,
+                    InstallationStep.WindowsTemporaryBootPrepared,
+                    InstallationStep.WindowsLiveMediaPrepared,
+                    InstallationStep.WindowsInstallerPartitionCreated,
+                    InstallationStep.WindowsSystemVolumeShrunk,
+                    InstallationStep.WindowsRecoveryArmed
+                })
+                {
+                    machine.CompleteCompensation(step);
+                }
+                machine.CompleteRollback();
+                InstallationStateStore.WriteAtomic(
+                    Path.Combine(root, "installation-state.json"),
+                    machine.State);
+
+                InstalledLinuxRecoveryDetection detection =
+                    InstalledLinuxRecoveryLocator.Find(systemRoot, programData);
+
+                Assert.AreEqual(InstalledLinuxRecoveryStatus.Available, detection.Status);
+                Assert.IsTrue(detection.Candidate.RollbackInProgress);
+
+                Assert.ThrowsException<InvalidOperationException>(() =>
+                    InstalledLinuxRecoveryLocator.VerifyRollbackResult(detection.Candidate, machine.State));
+                string resultPath = Path.Combine(root, "post-install-verification.json");
+                JsonObject result = JsonNode.Parse(File.ReadAllText(resultPath)).AsObject();
+                result["status"] = "rolled-back";
+                result["rollbackAvailable"] = false;
+                result["rollbackExecutionRevision"] = machine.State.Revision;
+                result["rolledBackAtUtc"] = DateTimeOffset.UtcNow.ToString("o");
+                File.WriteAllText(resultPath, result.ToJsonString());
+                string completedResult = File.ReadAllText(resultPath);
+                InstalledLinuxRecoveryLocator.VerifyRollbackResult(
+                    detection.Candidate,
+                    machine.State);
+                InstalledLinuxRecoveryLocator.VerifyRollbackResult(
+                    detection.Candidate,
+                    machine.State);
+                Assert.AreEqual(completedResult, File.ReadAllText(resultPath));
+
+                detection = InstalledLinuxRecoveryLocator.Find(systemRoot, programData);
+
+                Assert.AreEqual(InstalledLinuxRecoveryStatus.None, detection.Status);
+            }, InstallationFirmware.Bios, PlanId);
+        }
+
+        [DataTestMethod]
+        [DataRow("missing-evidence")]
+        [DataRow("failed-check")]
+        [DataRow("missing-runtime")]
+        [DataRow("missing-ledger")]
+        [DataRow("corrupt-ledger")]
+        public void InstalledLinuxRecoveryBlocksIncompleteOrAlteredProofs(string mutation)
+        {
+            WithRecoveryRoots((systemRoot, programData, root) =>
+            {
+                CreateSuccessfulRecoveryArchive(root, InstallationFirmware.Uefi, PlanId);
+                if (mutation == "missing-evidence")
+                {
+                    File.Delete(Path.Combine(root, "installed-linux-boot.json"));
+                }
+                else if (mutation == "failed-check")
+                {
+                    string path = Path.Combine(root, "post-install-verification.json");
+                    string json = File.ReadAllText(path).Replace(
+                        "\"passed\":true",
+                        "\"passed\":false");
+                    File.WriteAllText(path, json);
+                }
+                else if (mutation == "missing-runtime")
+                {
+                    File.Delete(Path.Combine(
+                        root,
+                        "payload",
+                        "Scripts",
+                        "libertix-uefi-recovery-agent.ps1"));
+                }
+                else if (mutation == "missing-ledger")
+                {
+                    File.Delete(Path.Combine(root, "installation-state.json"));
+                }
+                else
+                {
+                    File.WriteAllText(
+                        Path.Combine(root, "installation-state.json"),
+                        "{not-json");
+                }
+
+                InstalledLinuxRecoveryDetection detection =
+                    InstalledLinuxRecoveryLocator.Find(systemRoot, programData);
+
+                Assert.AreEqual(InstalledLinuxRecoveryStatus.Blocked, detection.Status);
+                Assert.IsNull(detection.Candidate);
+            }, InstallationFirmware.Uefi, PlanId);
+        }
+
+        [TestMethod]
+        public void InstalledLinuxRecoveryRejectsMultipleSuccessfulTransactions()
+        {
+            string firstPlanId = PlanId;
+            string secondPlanId = new string('e', 32);
+            string temporaryRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "libertix-recovery-detection-" + Guid.NewGuid().ToString("N"));
+            string systemRoot = Path.Combine(temporaryRoot, "system");
+            string programData = Path.Combine(temporaryRoot, "program-data");
+            try
+            {
+                Guardian::Libertix.Security.ProtectedFiles.CreateDirectory(temporaryRoot);
+                Directory.CreateDirectory(systemRoot);
+                string uefiRoot = Path.Combine(programData, "Libertix", "UefiRecovery");
+                CreateSuccessfulRecoveryArchive(
+                    Path.Combine(uefiRoot, firstPlanId),
+                    InstallationFirmware.Uefi,
+                    firstPlanId);
+                CreateSuccessfulRecoveryArchive(
+                    Path.Combine(uefiRoot, secondPlanId),
+                    InstallationFirmware.Uefi,
+                    secondPlanId);
+
+                InstalledLinuxRecoveryDetection detection =
+                    InstalledLinuxRecoveryLocator.Find(systemRoot, programData);
+
+                Assert.AreEqual(InstalledLinuxRecoveryStatus.Blocked, detection.Status);
+            }
+            finally
+            {
+                if (Directory.Exists(temporaryRoot))
+                    Directory.Delete(temporaryRoot, true);
+            }
+        }
+
+        private static void WithRecoveryRoots(
+            Action<string, string, string> test,
+            string firmware,
+            string planId)
+        {
+            string temporaryRoot = Path.Combine(
+                Path.GetTempPath(),
+                "libertix-recovery-detection-" + Guid.NewGuid().ToString("N"));
+            string systemRoot = Path.Combine(temporaryRoot, "system");
+            string programData = Path.Combine(temporaryRoot, "program-data");
+            string recoveryRoot = firmware == InstallationFirmware.Bios
+                ? Path.Combine(systemRoot, RuntimeNames.BiosRecoveryDirectory)
+                : Path.Combine(programData, "Libertix", "UefiRecovery", planId);
+            try
+            {
+                Directory.CreateDirectory(systemRoot);
+                test(systemRoot, programData, recoveryRoot);
+            }
+            finally
+            {
+                if (Directory.Exists(temporaryRoot))
+                    Directory.Delete(temporaryRoot, true);
+            }
+        }
+
+        private static void CreateSuccessfulRecoveryArchive(
+            string root,
+            string firmware,
+            string planId)
+        {
+            Directory.CreateDirectory(root);
+            InstallationPlan plan = CreateValidPlan();
+            plan.PlanId = planId;
+            plan.Firmware = firmware;
+            plan.Runtime.RecoveryRunId = planId;
+            plan.Runtime.RecoveryRootWindows = root;
+            plan.Account.PasswordHashWindowsPath = Path.Combine(root, "account-secret.env");
+            string drive = Path.GetPathRoot(root).TrimEnd('\\', '/');
+            plan.Disk.SystemDrive = drive;
+            plan.Distribution.InstallerIsoWindowsPath =
+                InstallationTemporaryArtifacts.GetDistributionIsoPath(
+                    drive + Path.DirectorySeparatorChar,
+                    planId,
+                    plan.Distribution.InstallerIsoFileName);
+            if (firmware == InstallationFirmware.Bios)
+            {
+                plan.Disk.PartitionStyle = InstallationPartitionStyle.Mbr;
+                plan.Disk.PartitionTableId = "mbr:12345678";
+                plan.Runtime.BootStrategy = InstallationBootStrategy.BiosGrub4Dos;
+                plan.Runtime.SecureBootEnabled = false;
+                plan.Runtime.TrustedMicrosoftUefiAuthorities = new string[0];
+            }
+            InstallationPlanSerializer.WriteAtomic(
+                Path.Combine(root, "installation-plan.json"),
+                plan);
+            File.WriteAllText(Path.Combine(root, "storage-before-installation.json"), "{}");
+
+            InstallationStateMachine machine = CreateSuccessfulExecutionState(planId);
+            InstallationStateStore.WriteAtomic(
+                Path.Combine(root, "installation-state.json"),
+                machine.State);
+            File.WriteAllText(
+                Path.Combine(root, "installed-linux-boot.json"),
+                JsonSerializer.Serialize(new
+                {
+                    schemaVersion = 1,
+                    planId,
+                    recoveryRunId = planId,
+                    firmware
+                }));
+
+            string[] checks = firmware == InstallationFirmware.Uefi
+                ? new[]
+                {
+                    "execution-ledger", "installed-linux-boot", "disk-geometry",
+                    "windows-read-only-linux-share", "windows-health", "boot-configuration",
+                    "temporary-boot-cleanup", "permanent-recovery-archive", "boot-guardian"
+                }
+                : new[]
+                {
+                    "execution-ledger", "installed-linux-boot", "disk-geometry",
+                    "windows-read-only-linux-share", "windows-health", "boot-configuration",
+                    "temporary-boot-cleanup", "permanent-recovery-archive"
+                };
+            File.WriteAllText(
+                Path.Combine(root, "post-install-verification.json"),
+                JsonSerializer.Serialize(new
+                {
+                    schemaVersion = 1,
+                    planId,
+                    firmware,
+                    status = "succeeded",
+                    rollbackAvailable = true,
+                    activeAttemptId = (string)null,
+                    checks = checks.Select(name => new { name, passed = true }).ToArray(),
+                    attempts = new[] { new { outcome = "succeeded" } }
+                }));
+
+            if (firmware == InstallationFirmware.Uefi)
+            {
+                string payloadRoot = Path.Combine(root, "payload");
+                File.WriteAllText(
+                    Path.Combine(root, "state.json"),
+                    JsonSerializer.Serialize(new UefiRecoveryState
+                    {
+                        RunId = planId,
+                        PlanId = planId,
+                        RecoveryRoot = root,
+                        PayloadRoot = payloadRoot,
+                        ConfigPath = Path.Combine(root, "uefi-config.json"),
+                        Phase = "Verified"
+                    }));
+                WriteRecoveryFiles(root, new[]
+                {
+                    "payload-manifest.json",
+                    "uefi-transaction.json",
+                    Path.Combine("payload", "Scripts", "libertix-uefi-recovery-agent.ps1"),
+                    Path.Combine("payload", "Scripts", "libertix-uefi-install.ps1"),
+                    Path.Combine("payload", "Scripts", "modules", "Libertix.InstallationState.psm1"),
+                    Path.Combine("payload", "Scripts", "modules", "Libertix.PostInstallVerification.psm1"),
+                    Path.Combine("payload", "Scripts", "modules", "Libertix.Rollback.psm1"),
+                    Path.Combine("payload", "Scripts", "modules", "Libertix.StorageBaseline.psm1")
+                });
+            }
+            else
+            {
+                File.WriteAllText(
+                    Path.Combine(root, "pending.env"),
+                    $"PLAN_ID={planId}{Environment.NewLine}RECOVERY_RUN_ID={planId}{Environment.NewLine}");
+                WriteRecoveryFiles(root, new[]
+                {
+                    "install-success.env", "recover.ps1", "Libertix.InstallationState.psm1",
+                    "Libertix.AtomicFile.psm1", "Libertix.InstallationPolicy.json",
+                    "Libertix.TemporaryArtifacts.psm1", "Libertix.PostInstallVerification.psm1",
+                    "Libertix.Rollback.psm1", "Libertix.StorageTargets.psm1",
+                    "Libertix.StorageBaseline.psm1",
+                    "Libertix.Process.psm1", "Libertix.WindowsProfiles.psm1",
+                    "Libertix.BiosMbr.psm1", "bcd-backup",
+                    Path.Combine("mbr-backup", "mbr-before-grub.bin"),
+                    Path.Combine("mbr-backup", "mbr-before-grub.sha256")
+                });
+            }
+        }
+
+        private static InstallationStateMachine CreateSuccessfulExecutionState(string planId)
+        {
+            InstallationStateMachine machine = InstallationStateMachine.Create(planId);
+            foreach (string step in new[]
+            {
+                InstallationStep.WindowsPreflightVerified,
+                InstallationStep.WindowsArtifactsVerified,
+                InstallationStep.WindowsRecoveryArmed,
+                InstallationStep.WindowsSystemVolumeShrunk,
+                InstallationStep.WindowsInstallerPartitionCreated,
+                InstallationStep.WindowsLiveMediaPrepared,
+                InstallationStep.WindowsTemporaryBootPrepared,
+                InstallationStep.LivePreflightVerified,
+                InstallationStep.LiveInstallerPartitionExpanded,
+                InstallationStep.LiveTargetFilesystemCreated,
+                InstallationStep.LiveDistributionExtracted,
+                InstallationStep.TargetSystemConfigured,
+                InstallationStep.TargetBootloaderInstalled,
+                InstallationStep.TargetInstallationVerified
+            })
+            {
+                machine.StartStep(step);
+                machine.CompleteStep(step);
+            }
+            machine.CompleteInstallation();
+            return machine;
+        }
+
+        private static void WriteRecoveryFiles(string root, string[] relativePaths)
+        {
+            foreach (string relativePath in relativePaths)
+            {
+                string path = Path.Combine(root, relativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, "test");
+            }
+        }
+
+        private static InstallationPlan CreateValidPlan()
+        {
+            const long GiB = InstallationSizePolicy.BytesPerGiB;
+            return new InstallationPlan
+            {
+                PlanId = PlanId,
+                CreatedAtUtc = DateTimeOffset.Parse("2026-08-05T12:00:00Z"),
+                Firmware = InstallationFirmware.Uefi,
+                Distribution = new InstallationDistribution
+                {
+                    Id = "mint",
+                    Name = "Linux Mint",
+                    OsReleaseId = "linuxmint",
+                    GrubDisplayName = "Linux Mint 22.3 Cinnamon",
+                    GrubIcon = "linuxmint",
+                    SecureBootMicrosoftAuthorities = new[] { "2011" },
+                    InstallerIsoFileName = "mint.iso",
+                    InstallerIsoUrl = "https://example.test/mint.iso",
+                    InstallerIsoWindowsPath =
+                        @"C:\ProgramData\Libertix\Downloads\" + PlanId + @"\mint.iso",
+                    InstallerIsoSha256 = new string('b', 64),
+                    LiveIsoUrl = "https://example.test/libertix-installer-uefi.iso",
+                    LiveIsoSha256 = new string('c', 64)
+                },
+                Locale = new InstallationLocale
+                {
+                    LanguageCode = "en",
+                    SystemLanguage = "en_US.UTF-8",
+                    KeyboardLayout = "us",
+                    KeyboardModel = "pc105",
+                    Timezone = "Etc/UTC"
+                },
+                Account = new InstallationAccount
+                {
+                    Username = "test",
+                    PasswordHashWindowsPath = @"C:\ProgramData\Libertix\Recovery\account-secret.env",
+                    ComputerName = "libertix-test"
+                },
+                Disk = new InstallationDisk
+                {
+                    Number = 0,
+                    UniqueId = "test-disk",
+                    PartitionTableId = "gpt:12345678-1234-1234-1234-123456789abc",
+                    SizeBytes = 256L * GiB,
+                    LogicalSectorSizeBytes = 512,
+                    PartitionStyle = InstallationPartitionStyle.Gpt,
+                    SystemDrive = "C:",
+                    Windows = new PartitionIdentity
+                    {
+                        Number = 3,
+                        OffsetBytes = 2L * GiB,
+                        SizeBytes = 180L * GiB
+                    },
+                    Boot = new PartitionIdentity
+                    {
+                        Number = 1,
+                        OffsetBytes = 1L * 1024 * 1024,
+                        SizeBytes = 100L * 1024 * 1024
+                    },
+                    Recovery = new PartitionIdentity
+                    {
+                        Number = 4,
+                        OffsetBytes = 240L * GiB,
+                        SizeBytes = 1L * GiB
+                    },
+                    Installer = new InstallerPartitionPlan
+                    {
+                        Number = 5,
+                        OffsetBytes = 142L * GiB,
+                        FinalOffsetBytes = 142L * GiB,
+                        FinalSizeBytes = 40L * GiB,
+                        StagingSizeBytes = 8L * GiB,
+                        ResizeMode = InstallationResizeMode.WindowsOnline
+                    }
+                },
+                Features = new InstallationFeatures
+                {
+                    WindowsProfilesJsonBase64 = "W10=",
+                    WindowsPreferenceMigration = new InstallationPreferenceMigration
+                    {
+                        Enabled = false
+                    }
+                },
+                Runtime = new InstallationRuntime
+                {
+                    BootStrategy = InstallationBootStrategy.UefiBootNext,
+                    SecureBootEnabled = true,
+                    TrustedMicrosoftUefiAuthorities = new[] { "2011" },
+                    WindowsBitLockerState = "FullyDecrypted",
+                    RecoveryRootWindows = @"C:\ProgramData\Libertix\Recovery",
+                    RecoveryRunId = new string('d', 32)
+                }
+            };
+        }
+    }
+}

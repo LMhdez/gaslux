@@ -1,0 +1,554 @@
+#requires -Version 5.1
+
+[CmdletBinding()]
+param(
+    [string]$ConfigPath = "",
+    [string]$InstallationPlanPath = "",
+    [string]$ExecutionStatePath = "",
+    [switch]$Force = $false,
+    [switch]$Revert = $false,
+    [switch]$RestoreWindowsSettings = $false,
+    [switch]$RecoverPreviousTransaction = $false,
+    [string]$ExpectedRecoveryRunId = "",
+    [string]$FilepoolBaseUrl = "",
+    [string]$LocalFilepoolDirectory = "",
+    [string]$LocalFilepoolServer = "",
+    [string]$Aria2ZipUrl = "",
+    [string]$Aria2ExePath = "",
+    [ValidateRange(0, 16)]
+    [int]$Aria2Connections = 0,
+    [ValidateSet("BootNext", "FirmwareBootOrder")]
+    [string]$BootStrategy = "BootNext",
+    [switch]$ReusePreparedInstaller = $false,
+    [switch]$PreserveConfig = $false
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+& "$env:SystemRoot\System32\chcp.com" 65001 > $null
+$utf8NoBom = New-Object Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $utf8NoBom
+[Console]::InputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
+$bootStrategyWasSpecified = $PSBoundParameters.ContainsKey("BootStrategy")
+
+$policyModulePath = Join-Path $PSScriptRoot "modules\Libertix.InstallationPolicy.psm1"
+if (-not (Test-Path -LiteralPath $policyModulePath -PathType Leaf)) {
+    throw "Libertix PowerShell module is missing: $policyModulePath"
+}
+Import-Module -Name $policyModulePath -Force -ErrorAction Stop
+$installationPolicy = Get-LibertixInstallationPolicy
+
+$requiredModules = @(
+    "Libertix.InstallationPlan.psm1",
+    "Libertix.InstallationState.psm1",
+    "Libertix.StorageGeometry.psm1",
+    "Libertix.StorageTargets.psm1",
+    "Libertix.Process.psm1",
+    "Libertix.Firmware.psm1",
+    "Libertix.FirmwareVariables.psm1",
+    "Libertix.Download.psm1",
+    "Libertix.TemporaryArtifacts.psm1",
+    "Libertix.Transaction.psm1",
+    "Libertix.Rollback.psm1",
+    # Import this last so dot-sourced UEFI components see its exported command.
+    "Libertix.AtomicFile.psm1"
+)
+foreach ($moduleName in $requiredModules) {
+    $modulePath = Join-Path $PSScriptRoot "modules\$moduleName"
+    if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+        throw "Libertix PowerShell module is missing: $modulePath"
+    }
+    Import-Module -Name $modulePath -Force -ErrorAction Stop
+}
+
+if ($Aria2Connections -eq 0) {
+    $Aria2Connections = [int]$installationPolicy.download.aria2MaximumConnections
+}
+
+# Dot-sourced components intentionally share this script's transaction scope.
+# They define functions only; all execution still starts in the orchestrator
+# below after configuration and the installation plan have been validated.
+$requiredComponents = @(
+    "Libertix.Uefi.Execution.ps1",
+    "Libertix.Uefi.Firmware.ps1",
+    "Libertix.Uefi.Storage.ps1",
+    "Libertix.Uefi.Downloads.ps1",
+    "Libertix.Uefi.Transaction.ps1",
+    "Libertix.Uefi.Staging.ps1"
+)
+foreach ($componentName in $requiredComponents) {
+    $componentPath = Join-Path $PSScriptRoot "uefi\$componentName"
+    if (-not (Test-Path -LiteralPath $componentPath -PathType Leaf)) {
+        throw "Libertix UEFI component is missing: $componentPath"
+    }
+    . $componentPath
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+    try {
+        $config = Get-Content -LiteralPath $ConfigPath -Raw -ErrorAction Stop | ConvertFrom-Json
+        if ($config.PSObject.Properties.Name -contains "InstallationPlanPath") {
+            $InstallationPlanPath = [string]$config.InstallationPlanPath
+        }
+        if ($config.PSObject.Properties.Name -contains "ExecutionStatePath") {
+            $ExecutionStatePath = [string]$config.ExecutionStatePath
+        }
+        $FilepoolBaseUrl = [string]$config.FilepoolBaseUrl
+        if ($config.PSObject.Properties.Name -contains "LocalFilepoolDirectory") {
+            $LocalFilepoolDirectory = [string]$config.LocalFilepoolDirectory
+        }
+        if ($config.PSObject.Properties.Name -contains "LocalFilepoolServer") {
+            $LocalFilepoolServer = [string]$config.LocalFilepoolServer
+        }
+        if ($config.PSObject.Properties.Name -contains "Aria2ZipUrl") {
+            $Aria2ZipUrl = [string]$config.Aria2ZipUrl
+        }
+        $Aria2ExePath = [string]$config.Aria2ExePath
+        $Aria2Connections = [int]$config.Aria2Connections
+        if (-not $bootStrategyWasSpecified -and $config.PSObject.Properties.Name -contains "BootStrategy") {
+            $BootStrategy = [string]$config.BootStrategy
+        }
+    } finally {
+        if (-not $PreserveConfig) {
+            Remove-Item -LiteralPath $ConfigPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+if ($Aria2Connections -lt 1 -or $Aria2Connections -gt 16) {
+    throw "Aria2Connections must be between 1 and 16."
+}
+
+$installationPlan = $null
+$RecoveryRunId = ""
+if (-not [string]::IsNullOrWhiteSpace($InstallationPlanPath)) {
+    $installationPlan = Read-LibertixInstallationPlan -Path $InstallationPlanPath
+    if ([string]$installationPlan.firmware -ne "uefi") {
+        throw "The UEFI installer requires an installation plan with firmware='uefi'."
+    }
+
+    [int64]$finalSizeBytes = [int64]$installationPlan.disk.installer.finalSizeBytes
+    if (($finalSizeBytes % 1GB) -ne 0) {
+        throw "Installation plan finalSizeBytes must be an exact number of GiB."
+    }
+    $InstallerPartitionSizeGB = [int]($finalSizeBytes / 1GB)
+    $RecoveryRoot = [string]$installationPlan.runtime.recoveryRootWindows
+    $RecoveryRunId = [string]$installationPlan.runtime.recoveryRunId
+    $LowMemoryMode = [bool]$installationPlan.runtime.lowMemoryMode
+    $ShareWindowsFilesInLinux = [bool]$installationPlan.features.shareWindowsFilesInLinux
+    if (-not $bootStrategyWasSpecified) {
+        $BootStrategy = switch ([string]$installationPlan.runtime.bootStrategy) {
+            "uefi-boot-next" { "BootNext" }
+            "uefi-firmware-boot-order" { "FirmwareBootOrder" }
+            default { throw "Unsupported plan boot strategy: $($installationPlan.runtime.bootStrategy)" }
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ExecutionStatePath)) {
+        throw "ExecutionStatePath is required when InstallationPlanPath is supplied."
+    }
+    $executionState = Read-LibertixExecutionState -Path $ExecutionStatePath
+    if ([string]$executionState.planId -ne [string]$installationPlan.planId) {
+        throw "Installation plan and execution state planId values do not match."
+    }
+}
+
+if (
+    -not $Revert -and
+    -not $RestoreWindowsSettings -and
+    -not $RecoverPreviousTransaction -and
+    $null -eq $installationPlan
+) {
+    throw "InstallationPlanPath is required for every UEFI preparation workflow."
+}
+
+$SystemDrive = if ($installationPlan) {
+    [string]$installationPlan.disk.systemDrive
+} else {
+    [string]$env:SystemDrive
+}
+if ($SystemDrive -notmatch "^[A-Za-z]:$") {
+    throw "Invalid Windows system drive: $SystemDrive"
+}
+$SystemDrive = $SystemDrive.ToUpperInvariant()
+$SystemDriveLetter = $SystemDrive.TrimEnd(":")
+
+# A rollback only consumes the transaction state stored on disk. It must remain
+# available even when no download configuration is supplied by the caller.
+if (-not $Revert -and -not $RestoreWindowsSettings -and -not $RecoverPreviousTransaction) {
+    $parsedFilepoolUri = $null
+    if (
+        [string]::IsNullOrWhiteSpace($FilepoolBaseUrl) -or
+        -not [Uri]::TryCreate($FilepoolBaseUrl, [UriKind]::Absolute, [ref]$parsedFilepoolUri) -or
+        $parsedFilepoolUri.Scheme -notin @("http", "https")
+    ) {
+        throw "FilepoolBaseUrl is required and must be an absolute HTTP(S) URL supplied by Libertix."
+    }
+    $FilepoolBaseUrl = $FilepoolBaseUrl.TrimEnd("/")
+    if (-not [string]::IsNullOrWhiteSpace($LocalFilepoolDirectory)) {
+        $LocalFilepoolDirectory = [IO.Path]::GetFullPath($LocalFilepoolDirectory)
+        if (-not (Test-Path -LiteralPath $LocalFilepoolDirectory -PathType Container)) {
+            throw "The selected local filepool is no longer available."
+        }
+    }
+}
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+
+# Download hashes and names are shared with the WPF path so an artifact update
+# cannot silently reach only one firmware workflow.
+$artifactCatalogPath = Join-Path $PSScriptRoot "config\Libertix.Artifacts.json"
+$artifactCatalog = Get-Content -LiteralPath $artifactCatalogPath -Raw -ErrorAction Stop |
+    ConvertFrom-Json -ErrorAction Stop
+$Aria2ZipName = [string]$artifactCatalog.aria2.archiveFileName
+$InstallerIsoUrl = if ($installationPlan) { [string]$installationPlan.distribution.liveIsoUrl } else { "" }
+$InstallerIsoName = "libertix-installer-uefi.iso"
+$InstallerIsoSha256 = if ($installationPlan) { [string]$installationPlan.distribution.liveIsoSha256 } else { "" }
+$DistributionIsoUrl = if ($installationPlan) { [string]$installationPlan.distribution.installerIsoUrl } else { "" }
+$DistributionIsoPath = if ($installationPlan) { [string]$installationPlan.distribution.installerIsoWindowsPath } else { "" }
+$DistributionIsoSha256 = if ($installationPlan) { [string]$installationPlan.distribution.installerIsoSha256 } else { "" }
+$Aria2ZipSha256 = [string]$artifactCatalog.aria2.archiveSha256
+$Aria2ExeSha256 = [string]$artifactCatalog.aria2.executableSha256
+$Aria2CacheDir = "$SystemDrive\LibertixTools\aria2"
+$Aria2DownloadDir = "$SystemDrive\LibertixTools\downloads"
+$LowMemoryIsoPath = "$SystemDrive\libertix-live.iso"
+
+$InstallerLetter = Get-LibertixFreeDriveLetter
+$EspLetter = Get-LibertixFreeDriveLetter -ExcludedLetters @($InstallerLetter)
+$InstallerLabel = [string]$installationPolicy.volumeLabels.staging
+$firmwareOwnerRunId = if ($RecoveryRunId -match '^[0-9a-f]{32}$') {
+    $RecoveryRunId
+} elseif ($ExpectedRecoveryRunId -match '^[0-9a-f]{32}$') {
+    $ExpectedRecoveryRunId
+} else {
+    ""
+}
+$InstallerBootDescription = if ($firmwareOwnerRunId) {
+    "Libertix UEFI Installer $firmwareOwnerRunId"
+} else {
+    "Libertix UEFI Installer"
+}
+if (-not $RecoveryRunId -and $firmwareOwnerRunId) {
+    $RecoveryRunId = $firmwareOwnerRunId
+}
+$InstallerEspDirectory = "EFI\LibertixInstaller"
+$InstallerEspOwnershipFile = ".libertix-owner"
+$InstalledEspDirectory = "EFI\Libertix"
+$InstalledBootDescription = "Libertix"
+$InstalledBootLoaderPath = "\EFI\Libertix\shimx64.efi"
+$TransactionStatePath = "$SystemDrive\LibertixTools\uefi-transaction.json"
+
+if ($BootStrategy -notin @("BootNext", "FirmwareBootOrder")) {
+    throw "Unsupported UEFI boot strategy: $BootStrategy"
+}
+
+if (-not (Test-Administrator)) {
+    Write-Log "Run this script as Administrator." "Red"
+    exit 1
+}
+
+$exclusiveModes = @(
+    @($Revert, $RestoreWindowsSettings, $RecoverPreviousTransaction) |
+        Where-Object { $_ }
+)
+if ($exclusiveModes.Count -gt 1) {
+    throw "Revert, RestoreWindowsSettings, and RecoverPreviousTransaction are mutually exclusive."
+}
+
+function Get-LibertixDurableRecoveryContext {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidatePattern('^[0-9a-f]{32}$')]
+        [string]$RunId
+    )
+
+    $root = [IO.Path]::GetFullPath(
+        (Join-Path $env:ProgramData "Libertix\UefiRecovery\$RunId")
+    ).TrimEnd('\')
+    $planPath = Join-Path $root "installation-plan.json"
+    $statePath = Join-Path $root "installation-state.json"
+    if (
+        -not (Test-Path -LiteralPath $planPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $statePath -PathType Leaf)
+    ) {
+        throw "UEFI recovery metadata is incomplete; refusing rollback."
+    }
+
+    $plan = Read-LibertixInstallationPlan -Path $planPath
+    $executionState = Read-LibertixExecutionState -Path $statePath
+    if (
+        [string]$plan.planId -ne $RunId -or
+        [string]$plan.runtime.recoveryRunId -ne $RunId -or
+        [string]$executionState.planId -ne $RunId
+    ) {
+        throw "UEFI recovery plan, execution state, and transaction identity do not match."
+    }
+    $planRecoveryRoot = [IO.Path]::GetFullPath(
+        [string]$plan.runtime.recoveryRootWindows
+    ).TrimEnd('\')
+    if (-not $planRecoveryRoot.Equals($root, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "UEFI recovery plan root does not match its durable transaction directory."
+    }
+    if (-not ([string]$plan.disk.systemDrive).Equals(
+        $SystemDrive,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "UEFI recovery plan system drive does not match the running Windows installation."
+    }
+
+    return [pscustomobject]@{
+        Root = $root
+        PlanPath = $planPath
+        StatePath = $statePath
+        Plan = $plan
+        ExecutionState = $executionState
+    }
+}
+
+if ($RecoverPreviousTransaction) {
+    $previousState = $null
+    try {
+        $previousState = Get-ValidatedLibertixTransactionState
+        if (-not $previousState) {
+            Write-Log "LIBERTIX_PREVIOUS_TRANSACTION=none" "Gray"
+            exit 0
+        }
+
+        $RecoveryRunId = [string]$previousState.RecoveryRunId
+        $RecoveryRoot = [string]$previousState.RecoveryRoot
+        $InstallerBootDescription = "Libertix UEFI Installer $RecoveryRunId"
+        if (
+            $previousState.PSObject.Properties.Name -contains "BootStrategy" -and
+            [string]$previousState.BootStrategy -in @("BootNext", "FirmwareBootOrder")
+        ) {
+            $BootStrategy = [string]$previousState.BootStrategy
+        }
+        $previousContext = Get-LibertixDurableRecoveryContext -RunId $RecoveryRunId
+        $installationPlan = $previousContext.Plan
+        $previousExecutionState = $previousContext.ExecutionState
+        if ([string]$previousExecutionState.status -eq "succeeded") {
+            throw "A completed UEFI installation still owns the active transaction; refusing automatic rollback."
+        }
+        if ([string]$previousExecutionState.status -eq "pending") {
+            throw "Previous UEFI execution state is inconsistent with an active transaction."
+        }
+        if ([string]$previousExecutionState.status -eq "rolled-back") {
+            # The durable ledger already proves every compensation. Run the
+            # idempotent physical checks without attempting a second state
+            # transition, then remove only the leftover active transaction.
+            # Keep the validated disk proof even when ledger transitions are disabled.
+            $InstallationPlanPath = ""
+            $ExecutionStatePath = ""
+        } else {
+            $InstallationPlanPath = $previousContext.PlanPath
+            $ExecutionStatePath = $previousContext.StatePath
+        }
+
+        Write-Log "Recovering unfinished UEFI transaction $RecoveryRunId before a new installation..." "Yellow"
+        Assert-LibertixTransactionRecoveryRunId -ExpectedRecoveryRunId $RecoveryRunId
+        Start-LibertixTrackedRollback
+        Invoke-Revert
+        Write-Log "LIBERTIX_PREVIOUS_TRANSACTION=recovered" "Green"
+        exit 0
+    } catch {
+        $previousRecoveryError = $_
+        Write-Log "Previous UEFI transaction recovery failed: $($previousRecoveryError.Exception.Message)" "Red"
+        $previousRecoveryCorrelationId = if ($previousState) {
+            [string]$previousState.RecoveryRunId
+        } else {
+            ""
+        }
+        Write-ExceptionDiagnostics `
+            -ErrorRecord $previousRecoveryError `
+            -Kind "Primary" `
+            -CorrelationId $previousRecoveryCorrelationId `
+            -Stage "previous-transaction-recovery"
+        if ($previousRecoveryError.Exception.Message -like "*PROCESS_TREE_NOT_STOPPED*") { exit 173 }
+        exit 1
+    }
+}
+
+if ($Revert) {
+    try {
+        Assert-LibertixTransactionRecoveryRunId -ExpectedRecoveryRunId $ExpectedRecoveryRunId
+        $rollbackContext = Get-LibertixDurableRecoveryContext -RunId $ExpectedRecoveryRunId
+        if ([string]$rollbackContext.ExecutionState.status -eq "pending") {
+            throw "UEFI recovery execution state is pending; no rollback is active."
+        }
+        $installationPlan = $rollbackContext.Plan
+        if ([string]$rollbackContext.ExecutionState.status -eq "rolled-back") {
+            # The ledger is already terminal. Keep the physical cleanup idempotent
+            # without trying to record a second rollback transition.
+            # Storage verification still needs the original disk and Windows extent.
+            $InstallationPlanPath = ""
+            $ExecutionStatePath = ""
+        } else {
+            $InstallationPlanPath = $rollbackContext.PlanPath
+            $ExecutionStatePath = $rollbackContext.StatePath
+        }
+        Start-LibertixTrackedRollback
+        Invoke-Revert
+        exit 0
+    } catch {
+        $rollbackError = $_
+        Write-ExceptionDiagnostics `
+            -ErrorRecord $rollbackError `
+            -Kind "Rollback" `
+            -CorrelationId $ExpectedRecoveryRunId `
+            -Stage "rollback"
+        if ($rollbackError.Exception.Message -like "*PROCESS_TREE_NOT_STOPPED*") { exit 173 }
+        exit 1
+    }
+}
+
+if ($RestoreWindowsSettings) {
+    Assert-LibertixTransactionRecoveryRunId -ExpectedRecoveryRunId $ExpectedRecoveryRunId
+    Restore-LibertixTransactionWindowsSettings
+    exit 0
+}
+
+# Diagnostic only. The BootNext fallback deliberately re-enters this script
+# without -Force while its own firmware entry still exists, so reporting the
+# existing entry must never interrupt the workflow.
+if (-not $Force) {
+    $already = Invoke-BcdeditCommand -Arguments @("/enum", "firmware") |
+        Select-String -Pattern "Libertix UEFI Installer"
+    if ($already) {
+        Write-Log "Libertix UEFI entry already exists and will be reused or replaced." "Yellow"
+    }
+}
+
+try {
+    if ($ReusePreparedInstaller) {
+        if ($BootStrategy -ne "FirmwareBootOrder") {
+            throw "Prepared installer reuse is only valid with FirmwareBootOrder."
+        }
+        $info = Get-ReusablePreparedInstallerPartition
+        $drive = $info["Drive"]
+        Assert-PreparedInstallerManifest -InstallerDrive $drive
+        if ($installationPlan) {
+            $installationPlan.runtime.bootStrategy = "uefi-firmware-boot-order"
+            Write-LibertixInstallationPlanAtomic -Path $InstallationPlanPath -Plan $installationPlan
+        }
+        Start-LibertixTrackedStep -Step "windows.temporary-boot-prepared"
+        Set-LibertixUefiBootEntry `
+            -InstallerDrive $drive `
+            -InstallerDiskNumber ([int]$info["DiskNumber"]) `
+            -InstallerPartitionNumber ([int]$info["PartitionNumber"]) `
+            -ReusePreparedInstaller
+        Complete-LibertixTrackedStep -Step "windows.temporary-boot-prepared"
+        Publish-LibertixInstallationContext -PartitionDrive $drive
+        # The fallback changes the published plan after validating the original
+        # media. Refresh the manifest so another guarded retry validates the
+        # exact plan that is now present on the staging volume.
+        Save-PreparedInstallerManifest -InstallerDrive $drive
+        Dismount-Letter -Letter ($drive.TrimEnd(":"))
+        Write-Log "FALLBACK_REUSED_PREPARED_INSTALLER=true" "Green"
+        Write-Log "Preparation complete; waiting for the user interface to confirm restart." "Cyan"
+        exit 0
+    }
+
+    Assert-LibertixPlanMatchesCurrentStorage
+    Assert-LibertixAllocationMatchesCurrentStorage
+    Test-LibertixSecureBootCompatibility -InstallationPlan $installationPlan
+    Assert-LibertixTransactionRecoveryRunId -ExpectedRecoveryRunId $RecoveryRunId
+    if (-not (Get-TransactionPartitionState)) {
+        Save-TransactionPreparationState -SystemPartition (Get-Partition -DriveLetter $SystemDriveLetter -ErrorAction Stop)
+    }
+    Assert-LibertixEspPreparationOwnership
+    Set-WindowsVolumeReadableFromLinux -VerifyStorageIdentity {
+        Assert-LibertixPlanMatchesCurrentStorage
+        Assert-LibertixAllocationMatchesCurrentStorage
+    }
+    Set-LibertixInstallationPlanWindowsBitLockerState -State "FullyDecrypted"
+    Set-LibertixAllocationVolumeReadableFromLinux
+    Start-LibertixTrackedStep -Step "windows.artifacts-verified"
+    Write-LibertixProgress -Stage "installer-iso-download" -Percent 30
+    Set-DistributionIsoOnWindows
+    Write-LibertixProgress -Stage "installer-iso-ready" -Percent 45
+    Complete-LibertixTrackedStep -Step "windows.artifacts-verified"
+
+    Write-LibertixProgress -Stage "staging-partition" -Percent 52
+    $info = New-OrReuseInstallerPartition -SizeGB $InstallerPartitionSizeGB
+    $drive = $info["Drive"]
+    $installerDiskNumber = [int]$info["DiskNumber"]
+    $installerPartitionNumber = [int]$info["PartitionNumber"]
+
+    Start-LibertixTrackedStep -Step "windows.live-media-prepared"
+    Install-LibertixIsoToPartition -PartitionDrive $drive
+    Publish-LibertixInstallationContext -PartitionDrive $drive
+    Complete-LibertixTrackedStep -Step "windows.live-media-prepared"
+
+    Start-LibertixTrackedStep -Step "windows.temporary-boot-prepared"
+    Write-LibertixProgress -Stage "temporary-boot" -Percent 90
+    Set-LibertixUefiBootEntry `
+        -InstallerDrive $drive `
+        -InstallerDiskNumber $installerDiskNumber `
+        -InstallerPartitionNumber $installerPartitionNumber
+    Save-PreparedInstallerManifest -InstallerDrive $drive
+    Complete-LibertixTrackedStep -Step "windows.temporary-boot-prepared"
+    Publish-LibertixInstallationContext -PartitionDrive $drive
+
+    Dismount-Letter -Letter ($drive.TrimEnd(":"))
+
+    Write-Host ""
+    Write-LibertixProgress -Stage "complete" -Percent 100
+    Write-Log "Complete. Next boot should start Libertix UEFI installer once." "Green"
+    Write-Host ""
+    Write-Host "First boot: signed shim/GRUB should start the Libertix live installer." `
+        -ForegroundColor Yellow
+
+    Write-Log "Preparation complete; waiting for the user interface to confirm restart." "Cyan"
+    exit 0
+} catch {
+    $preparationError = $_
+    Write-Log $preparationError.Exception.Message "Red"
+    $diagnosticCorrelationId = if ($RecoveryRunId) {
+        $RecoveryRunId
+    } elseif ($installationPlan) {
+        [string]$installationPlan.planId
+    } else {
+        ""
+    }
+    $diagnosticStage = Get-LibertixDiagnosticStage
+    Write-ExceptionDiagnostics `
+        -ErrorRecord $preparationError `
+        -Kind "Primary" `
+        -CorrelationId $diagnosticCorrelationId `
+        -Stage $diagnosticStage
+    if ($preparationError.Exception.Message -like "*PROCESS_TREE_NOT_STOPPED*") {
+        try {
+            Set-LibertixTrackedFailure `
+                -Code "WINDOWS_PROCESS_TERMINATION_UNVERIFIED" `
+                -Message $preparationError.Exception.Message
+            Write-Log "Automatic revert is blocked until all previous writers are proven stopped." "Red"
+        } finally {
+            exit 173
+        }
+    }
+    Write-Log "Error during preparation; running automatic revert..." "Yellow"
+    try {
+        Set-LibertixTrackedFailure `
+            -Code "UEFI_PREPARATION_FAILED" `
+            -Message $preparationError.Exception.Message
+        Start-LibertixTrackedRollback
+    } catch {
+        Write-Log "Execution-state failure tracking failed: $($_.Exception.Message)" "Yellow"
+    }
+    try {
+        Invoke-Revert
+    } catch {
+        $revertError = $_
+        Write-Log "Automatic revert failed: $($revertError.Exception.Message)" "Red"
+        Write-ExceptionDiagnostics `
+            -ErrorRecord $revertError `
+            -Kind "Rollback" `
+            -CorrelationId $diagnosticCorrelationId `
+            -Stage "rollback"
+        Write-Log "Tip: you can run with -Revert to restore Windows boot." "Yellow"
+        if ($revertError.Exception.Message -like "*PROCESS_TREE_NOT_STOPPED*") { exit 173 }
+    }
+    exit 1
+}

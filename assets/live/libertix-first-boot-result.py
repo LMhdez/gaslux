@@ -1,0 +1,451 @@
+#!/usr/bin/env python3
+"""Show the durable Libertix first-boot verification result once per update."""
+
+from __future__ import annotations
+
+import hashlib
+import importlib
+import json
+import os
+import pwd
+import shutil
+import subprocess
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+
+PLAN_PATH = Path("/etc/libertix/installation-plan.json")
+STATUS_PATH = Path("/var/lib/libertix/first-boot-verification.json")
+SERVICE_STATE_PATH = Path("/var/lib/libertix/first-boot-service-state.json")
+WAIT_SECONDS = 600
+SESSION_SETTLE_SECONDS = 10
+SESSION_LOCALIZATION_WAIT_SECONDS = 60
+
+
+def resolve_translation_catalogue_path() -> Path:
+    adjacent = Path(__file__).with_name("Libertix.Translations.json")
+    source_tree = Path(__file__).resolve().parents[2] / "Resources/Libertix.Translations.json"
+    return adjacent if adjacent.is_file() else source_tree
+
+
+TRANSLATION_CATALOGUE_PATH = resolve_translation_catalogue_path()
+
+
+def resolve_logo_path() -> Path:
+    adjacent = Path(__file__).with_name("Libertix.ico")
+    source_tree = Path(__file__).resolve().parents[2] / "Resources/Images/icon.ico"
+    return adjacent if adjacent.is_file() else source_tree
+
+
+LOGO_PATH = resolve_logo_path()
+
+
+def load_translations(language: object) -> dict[str, str]:
+    catalogue = json.loads(TRANSLATION_CATALOGUE_PATH.read_text(encoding="utf-8"))
+    supported = catalogue["supportedLanguages"]
+    selected = str(language) if str(language) in supported else "en"
+    translations = catalogue["languages"][selected]["firstBoot"]
+    fallback = catalogue["languages"]["en"]["firstBoot"]
+    return {key: translations.get(key, value) for key, value in fallback.items()}
+
+
+def read_json(path: Path) -> dict[str, object] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def write_json_atomic(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.parent / f".{path.name}.{os.getpid()}.tmp"
+    temporary.write_text(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+
+
+def status_fingerprint(status: dict[str, object]) -> str:
+    fields = {
+        "planId": status.get("planId"),
+        "status": status.get("status"),
+        "updatedAtUtc": status.get("updatedAtUtc"),
+        "error": status.get("error"),
+        "attemptId": status.get("attemptId"),
+    }
+    if "archiveError" in status:
+        fields["archiveError"] = status["archiveError"]
+    return hashlib.sha256(json.dumps(fields, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def wait_for_terminal_status(plan_id: object) -> dict[str, object] | None:
+    deadline = time.monotonic() + WAIT_SECONDS
+    while True:
+        service = read_json(SERVICE_STATE_PATH)
+        status = read_json(STATUS_PATH)
+        terminal = (
+            status is not None
+            and status.get("planId") == plan_id
+            and status.get("status") in ("succeeded", "failed")
+        )
+        if service is not None:
+            attempts = service.get("attempts")
+            latest = attempts[-1] if isinstance(attempts, list) and attempts else None
+            terminal = (
+                terminal
+                and isinstance(latest, dict)
+                and bool(latest.get("attemptId"))
+                and status.get("attemptId") == latest["attemptId"]
+                and latest.get("outcome") == status.get("status")
+                and service.get("status") == status.get("status")
+            )
+        if terminal and read_json(SERVICE_STATE_PATH) == service:
+            return status
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
+
+
+def show_gtk_dialog(
+    title: str,
+    message: str,
+    failed: bool,
+    state_root: Path | None = None,
+    fingerprint: str | None = None,
+    development_mode: bool = False,
+    close_label: str = "OK",
+) -> bool:
+    try:
+        gi = importlib.import_module("gi")
+        gi.require_version("Gtk", "3.0")
+        gtk = importlib.import_module("gi.repository.Gtk")
+        glib = importlib.import_module("gi.repository.GLib")
+        gdk = importlib.import_module("gi.repository.Gdk")
+        pango = importlib.import_module("gi.repository.Pango")
+    except (ImportError, ValueError):
+        return False
+
+    try:
+        dialog = gtk.Dialog(title=f"Libertix - {title}", flags=gtk.DialogFlags.MODAL)
+        dialog.add_button(close_label, gtk.ResponseType.OK)
+        dialog.set_default_size(720, 430)
+        dialog.set_keep_above(True)
+        dialog.set_urgency_hint(True)
+        dialog.set_position(gtk.WindowPosition.CENTER)
+        dialog.stick()
+
+        provider = gtk.CssProvider()
+        provider.load_from_data(
+            b"""
+            #libertix-result { background: #232139; color: #f7f3ff; }
+            #libertix-header { background: #2d2a47; padding: 22px; }
+            #libertix-brand { color: #f7f3ff; font-size: 28px; font-weight: bold; }
+            #libertix-title { color: #38b9e8; font-size: 19px; font-weight: bold; }
+            #libertix-title-error { color: #e96a91; font-size: 19px; font-weight: bold; }
+            #libertix-message { color: #f7f3ff; font-size: 15px; padding: 26px; }
+            #libertix-close {
+                background: #38b9e8;
+                color: #232139;
+                font-weight: bold;
+                padding: 10px 28px;
+            }
+            """
+        )
+        screen = gdk.Screen.get_default()
+        if screen is not None:
+            gtk.StyleContext.add_provider_for_screen(
+                screen,
+                provider,
+                gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+
+        dialog.set_name("libertix-result")
+        if LOGO_PATH.is_file():
+            dialog.set_icon_from_file(str(LOGO_PATH))
+        content = dialog.get_content_area()
+        content.set_spacing(0)
+
+        header = gtk.Box(orientation=gtk.Orientation.HORIZONTAL, spacing=18)
+        header.set_name("libertix-header")
+        heading = gtk.Box(orientation=gtk.Orientation.VERTICAL, spacing=4)
+        brand = gtk.Label(label="Libertix", xalign=0)
+        brand.set_name("libertix-brand")
+        title_label = gtk.Label(label=title, xalign=0)
+        title_label.set_line_wrap(True)
+        title_label.set_name("libertix-title-error" if failed else "libertix-title")
+        heading.pack_start(brand, False, False, 0)
+        heading.pack_start(title_label, False, False, 0)
+        header.pack_start(heading, True, True, 0)
+        content.pack_start(header, False, False, 0)
+
+        message_label = gtk.Label(label=message, xalign=0, yalign=0)
+        message_label.set_name("libertix-message")
+        message_label.set_line_wrap(True)
+        message_label.set_line_wrap_mode(pango.WrapMode.WORD_CHAR)
+        message_label.set_selectable(True)
+        content.pack_start(message_label, True, True, 0)
+
+        close_button = dialog.get_widget_for_response(gtk.ResponseType.OK)
+        if close_button is not None:
+            close_button.set_name("libertix-close")
+        dialog.show_all()
+        dialog.present()
+
+        ui_state_path = state_root / "first-boot-result-ui.json" if state_root else None
+        activation_request_path = (
+            state_root / "first-boot-result-activate.json" if state_root else None
+        )
+        last_activation_request = ""
+
+        def publish_ui_state() -> None:
+            if ui_state_path is None:
+                return
+            write_json_atomic(
+                ui_state_path,
+                {
+                    "schemaVersion": 1,
+                    "processId": os.getpid(),
+                    "fingerprint": fingerprint,
+                    "visible": bool(dialog.get_visible()),
+                    "active": bool(dialog.is_active()),
+                    "title": title,
+                    "updatedAtUtc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                },
+            )
+
+        def process_development_activation() -> bool:
+            nonlocal last_activation_request
+            if not development_mode or activation_request_path is None:
+                publish_ui_state()
+                return True
+            request = read_json(activation_request_path)
+            request_id = str(request.get("requestId", "")) if request else ""
+            if (
+                request
+                and request.get("fingerprint") == fingerprint
+                and request_id
+                and request_id != last_activation_request
+            ):
+                last_activation_request = request_id
+                dialog.present()
+            publish_ui_state()
+            return True
+
+        publish_ui_state()
+        glib.timeout_add(200, process_development_activation)
+
+        def present_after_desktop_startup() -> bool:
+            if dialog.get_visible():
+                dialog.present()
+            return False
+
+        # Distribution welcome applications can open after this autostart entry
+        # and otherwise cover the verification result. Re-present once after the
+        # desktop has settled without repeatedly stealing focus from the user.
+        glib.timeout_add_seconds(5, present_after_desktop_startup)
+        dialog.run()
+        if ui_state_path is not None:
+            write_json_atomic(
+                ui_state_path,
+                {
+                    "schemaVersion": 1,
+                    "processId": os.getpid(),
+                    "fingerprint": fingerprint,
+                    "visible": False,
+                    "active": False,
+                    "title": title,
+                    "updatedAtUtc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                },
+            )
+        dialog.destroy()
+        while gtk.events_pending():
+            gtk.main_iteration()
+    except Exception:
+        return False
+    return True
+
+
+def show_dialog(
+    title: str,
+    message: str,
+    failed: bool,
+    state_root: Path | None = None,
+    fingerprint: str | None = None,
+    development_mode: bool = False,
+    close_label: str = "OK",
+) -> bool:
+    if state_root is None:
+        gtk_shown = show_gtk_dialog(title, message, failed, close_label=close_label)
+    else:
+        gtk_shown = show_gtk_dialog(
+            title,
+            message,
+            failed,
+            state_root,
+            fingerprint,
+            development_mode,
+            close_label,
+        )
+    if gtk_shown:
+        return True
+
+    commands: list[list[str]] = []
+    if shutil.which("zenity"):
+        commands.append(
+            [
+                "zenity",
+                "--error" if failed else "--info",
+                "--no-markup",
+                "--width=640",
+                "--title",
+                title,
+                "--text",
+                message,
+                "--ok-label",
+                close_label,
+            ]
+        )
+    if shutil.which("yad"):
+        commands.append(
+            [
+                "yad",
+                "--error" if failed else "--info",
+                "--width=640",
+                "--title",
+                title,
+                "--text",
+                message,
+            ]
+        )
+    if shutil.which("kdialog"):
+        commands.append(["kdialog", "--error" if failed else "--msgbox", message, "--title", title])
+    if shutil.which("xmessage"):
+        commands.append(["xmessage", "-center", "-title", title, message])
+    if shutil.which("notify-send"):
+        commands.append(
+            [
+                "notify-send",
+                "--urgency=critical" if failed else "--urgency=normal",
+                title,
+                message,
+            ]
+        )
+    for command in commands:
+        result = subprocess.run(command, check=False)
+        if result.returncode == 0:
+            return True
+    return False
+
+
+def wait_for_session_localization(plan: dict[str, object]) -> str | None:
+    locale = plan.get("locale")
+    if not isinstance(locale, dict):
+        return "The installation plan has no localization configuration."
+    expected_language = locale.get("systemLanguage")
+    expected_layout = locale.get("keyboardLayout")
+    expected_variant = locale.get("keyboardVariant", "")
+    if not all(
+        isinstance(value, str) for value in (expected_language, expected_layout, expected_variant)
+    ):
+        return "The installation plan localization configuration is invalid."
+
+    expected_source = expected_layout
+    if expected_variant:
+        expected_source += "+" + expected_variant
+    marker_path = Path.home() / ".config" / "libertix" / "keyboard-initialized.json"
+    deadline = time.monotonic() + SESSION_LOCALIZATION_WAIT_SECONDS
+    marker = read_json(marker_path)
+    while marker is None and time.monotonic() < deadline:
+        time.sleep(1)
+        marker = read_json(marker_path)
+    if marker is None:
+        return "The desktop keyboard initialization proof is missing."
+
+    expected_values = {
+        "status": "succeeded",
+        "sessionLanguage": expected_language,
+        "configuredLanguage": expected_language,
+        "layout": expected_layout,
+        "variant": expected_variant,
+        "desktopSource": expected_source,
+    }
+    for name, expected_value in expected_values.items():
+        if marker.get(name) != expected_value:
+            return f"The desktop localization proof differs from the installation plan: {name}."
+    return None
+
+
+def main() -> int:
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return 0
+    plan = read_json(PLAN_PATH)
+    if plan is None:
+        return 0
+    account = plan.get("account")
+    if not isinstance(account, dict):
+        return 0
+    if account.get("username") != pwd.getpwuid(os.getuid()).pw_name:
+        return 0
+
+    status = wait_for_terminal_status(plan.get("planId"))
+    if status is None:
+        return 0
+
+    state_root = Path.home() / ".local" / "state" / "libertix"
+    acknowledgement_path = state_root / "first-boot-result-ack.json"
+    fingerprint = status_fingerprint(status)
+    acknowledgement = read_json(acknowledgement_path)
+    if acknowledgement and acknowledgement.get("fingerprint") == fingerprint:
+        return 0
+
+    locale = plan.get("locale")
+    language = locale.get("languageCode") if isinstance(locale, dict) else "en"
+    text = load_translations(language)
+    failed = status.get("status") == "failed"
+    session_localization_error = None
+    if not failed:
+        session_localization_error = wait_for_session_localization(plan)
+        failed = session_localization_error is not None
+    title = text["failure_title"] if failed else text["success_title"]
+    message = text["failure"] if failed else text["success"]
+    if not failed and status.get("archiveError"):
+        title = text["archive_warning_title"]
+        message = text["archive_warning"] + f"\n\n{status['archiveError']}"
+    if failed and status.get("error"):
+        message += f"\n\n{status['error']}"
+    if session_localization_error:
+        message += f"\n\n{session_localization_error}"
+    message += f"\n\n{text['log']}: {status.get('logPath', '')}"
+    time.sleep(SESSION_SETTLE_SECONDS)
+    if not show_dialog(
+        title,
+        message,
+        failed,
+        state_root,
+        fingerprint,
+        Path("/var/lib/libertix/development-ssh-ready").is_file(),
+        text["close"],
+    ):
+        return 0
+
+    # A missing or mismatched session proof can be repaired by the desktop
+    # initializer on a later login. Do not acknowledge that transient failure,
+    # otherwise the later successful state would never be shown to the user.
+    if session_localization_error:
+        return 0
+
+    write_json_atomic(
+        acknowledgement_path,
+        {
+            "schemaVersion": 1,
+            "fingerprint": fingerprint,
+            "acknowledgedAtUtc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        },
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

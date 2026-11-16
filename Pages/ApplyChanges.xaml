@@ -1,0 +1,174 @@
+<Page x:Class="Libertix.Pages.ApplyChanges"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:controls="clr-namespace:Libertix.Controls"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:local="clr-namespace:Libertix.Pages"
+      mc:Ignorable="d"
+      KeyboardNavigation.TabNavigation="Cycle"
+      Title="ApplyChanges">
+
+    <Grid Background="{DynamicResource PrimaryBackground}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Label Grid.Row="0"
+               Content="{DynamicResource ApplyChangesTitle}"
+               HorizontalAlignment="Center"
+               Margin="20"
+               FontSize="48"
+               FontWeight="Light"
+               Foreground="{DynamicResource TextPrimary}"/>
+
+        <StackPanel Grid.Row="1"
+                    Width="600"
+                    VerticalAlignment="Center">
+
+            <Border x:Name="ProgressPanel"
+                    Background="{DynamicResource SecondaryBackground}"
+                    CornerRadius="8"
+                    Padding="20"
+                    BorderBrush="{DynamicResource PanelBorder}"
+                    BorderThickness="1">
+                <StackPanel>
+                    <TextBlock x:Name="CurrentStepText"
+                               Text="{DynamicResource ApplyChangesWaiting}"
+                               Foreground="{DynamicResource TextPrimary}"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,15"/>
+
+                    <ProgressBar x:Name="ProgressBar"
+                                 Height="20"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 Value="0"
+                                 Foreground="{DynamicResource AccentColor}"
+                                 Background="{DynamicResource PanelBorder}"/>
+
+                    <TextBlock x:Name="ProgressText"
+                               Text="0%"
+                               Foreground="{DynamicResource TextSecondary}"
+                               FontSize="14"
+                               HorizontalAlignment="Center"
+                               Margin="0,10,0,0"/>
+
+                    <TextBox x:Name="LogOutput"
+                             Height="180"
+                             Margin="0,20,0,0"
+                             Background="{DynamicResource DeepBackground}"
+                             Foreground="{DynamicResource TextSecondary}"
+                             BorderBrush="{DynamicResource PanelBorder}"
+                             BorderThickness="1"
+                             FontFamily="Consolas"
+                             FontSize="12"
+                             IsReadOnly="True"
+                             VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.ScrollChanged="LogOutput_ScrollChanged"
+                             TextWrapping="Wrap"/>
+
+                    <controls:SupportActions Context="{Binding Text, ElementName=CurrentStepText}"
+                                             Details="{Binding Text, ElementName=LogOutput}"/>
+                    <Button x:Name="ExpandLogsButton"
+                            Content="{DynamicResource ApplyChangesExpandLogs}"
+                            Style="{StaticResource ModernButton}"
+                            Width="200"
+                            Height="50"
+                            HorizontalAlignment="Right"
+                            Margin="0,10,0,0"
+                            Click="ExpandLogsButton_Click"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+
+        <Grid Grid.Row="2" Margin="20">
+            <Button x:Name="BackButton"
+                    Content="{DynamicResource Back}"
+                    Style="{StaticResource ModernButton}"
+                    Width="200"
+                    Height="50"
+                    HorizontalAlignment="Left"
+                    Click="BackButton_Click"/>
+
+            <Button x:Name="RebootButton"
+                    Content="{DynamicResource ApplyChangesReboot}"
+                    Style="{StaticResource ModernButton}"
+                    AutomationProperties.AutomationId="ApplyChangesRebootButton"
+                    Width="200"
+                    Height="50"
+                    HorizontalAlignment="Right"
+                    Visibility="Collapsed"
+                    Click="RebootButton_Click"/>
+
+            <Button x:Name="CancelInstallationButton"
+                    Content="{DynamicResource ApplyChangesCancel}"
+                    Style="{StaticResource ModernButton}"
+                    AutomationProperties.AutomationId="ApplyChangesCancelButton"
+                    Width="220"
+                    Height="50"
+                    HorizontalAlignment="Right"
+                    Visibility="Collapsed"
+                    Click="CancelInstallationButton_Click"/>
+        </Grid>
+
+        <Grid x:Name="ExpandedLogsOverlay"
+              Grid.RowSpan="3"
+              Panel.ZIndex="10"
+              Background="{DynamicResource OverlayBackground}"
+              Visibility="Collapsed">
+            <Border Margin="45"
+                    Padding="20"
+                    Background="{DynamicResource SecondaryBackground}"
+                    BorderBrush="{DynamicResource PanelBorder}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Text="{DynamicResource ApplyChangesLogsTitle}"
+                               Foreground="{DynamicResource TextPrimary}"
+                               FontSize="22"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,15"/>
+
+                    <TextBox x:Name="ExpandedLogOutput"
+                             Grid.Row="1"
+                             Background="{DynamicResource DeepBackground}"
+                             Foreground="{DynamicResource TextSecondary}"
+                             BorderBrush="{DynamicResource PanelBorder}"
+                             BorderThickness="1"
+                             FontFamily="Consolas"
+                             FontSize="13"
+                             IsReadOnly="True"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"
+                             ScrollViewer.ScrollChanged="LogOutput_ScrollChanged"
+                             TextWrapping="NoWrap"/>
+
+                    <controls:SupportActions Grid.Row="2" HorizontalAlignment="Left" MaxWidth="480"
+                                             Context="{Binding Text, ElementName=CurrentStepText}"
+                                             Details="{Binding Text, ElementName=ExpandedLogOutput}"/>
+                    <Button Grid.Row="2"
+                            Content="{DynamicResource ApplyChangesCloseExpandedLogs}"
+                            Style="{StaticResource ModernButton}"
+                            Width="200"
+                            Height="40"
+                            HorizontalAlignment="Right"
+                            Margin="0,15,0,0"
+                            Click="CloseExpandedLogsButton_Click"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>

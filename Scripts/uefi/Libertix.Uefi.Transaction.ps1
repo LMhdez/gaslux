@@ -1,0 +1,881 @@
+#requires -Version 5.1
+
+# Persistent transaction state and verified rollback orchestration.
+
+function Save-LibertixTransactionStateAtomic {
+    # Invoke-Revert depends entirely on this document to know whether the
+    # Windows volume must be grown back and to which size. A torn write would
+    # make rollback impossible after that volume has already been shrunk, so
+    # publish it with the same-directory atomic rename used for the plan
+    # and execution state. Depth 8 covers the nested SHA-256 maps.
+    param([Parameter(Mandatory = $true)][object]$State)
+
+    $fullPath = [IO.Path]::GetFullPath($TransactionStatePath)
+    $directory = [IO.Path]::GetDirectoryName($fullPath)
+    [IO.Directory]::CreateDirectory($directory) | Out-Null
+    $temporaryPath = Join-Path $directory ".$(Split-Path -Leaf $fullPath).$([Guid]::NewGuid().ToString('N')).tmp"
+    $backupPath = Join-Path $directory ".$(Split-Path -Leaf $fullPath).$([Guid]::NewGuid().ToString('N')).bak"
+    try {
+        $json = $State | ConvertTo-Json -Depth 8
+        $encoding = New-Object Text.UTF8Encoding($false)
+        $stream = New-Object IO.FileStream(
+            $temporaryPath,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None,
+            4096,
+            [IO.FileOptions]::WriteThrough
+        )
+        try {
+            $writer = New-Object IO.StreamWriter($stream, $encoding)
+            try {
+                $writer.Write($json)
+                $writer.Write("`n")
+                $writer.Flush()
+                $stream.Flush($true)
+            } finally {
+                $writer.Dispose()
+            }
+        } finally {
+            $stream.Dispose()
+        }
+
+        Publish-LibertixFileAtomic `
+            -TemporaryPath $temporaryPath `
+            -DestinationPath $fullPath `
+            -BackupPath $backupPath
+    } finally {
+        if ([IO.File]::Exists($temporaryPath)) { [IO.File]::Delete($temporaryPath) }
+        if ([IO.File]::Exists($backupPath)) { [IO.File]::Delete($backupPath) }
+    }
+}
+
+function Get-LibertixTransactionStorageBinding {
+    param([object]$State)
+
+    $separate = $installationPlan.PSObject.Properties.Name -contains 'allocation' -and
+        $null -ne $installationPlan.allocation
+    $binding = [pscustomobject]@{
+        Separate = $separate
+        Disk = $installationPlan.disk
+        SourcePartition = $installationPlan.disk.windows
+        SourceDrive = [string]$installationPlan.disk.systemDrive
+        SourceVolumeId = ''
+    }
+    if ($separate) {
+        $binding.Disk = $installationPlan.allocation
+        $binding.SourcePartition = $installationPlan.allocation.sourcePartition
+        $binding.SourceDrive = [string]$installationPlan.allocation.sourceDrive
+        $binding.SourceVolumeId = [string]$installationPlan.allocation.sourceVolumeId
+        if ([int]$binding.Disk.number -eq [int]$installationPlan.disk.number -or
+            $binding.SourceDrive -eq [string]$installationPlan.disk.systemDrive) {
+            throw 'The UEFI allocation must identify a separate physical disk.'
+        }
+        if ($State) {
+            foreach ($name in @('Version', 'SourceDrive', 'SourceVolumeId', 'OriginalSourceSize', 'SourceOffset',
+                'SourceNtfsUuid', 'InitialSourceEncryption')) {
+                if ($State.PSObject.Properties.Name -notcontains $name) {
+                    throw 'The UEFI allocation transaction has no complete source-volume proof.'
+                }
+            }
+            if ([int]$State.Version -ne 2 -or
+                [string]$State.SourceDrive -ne $binding.SourceDrive -or
+                [string]$State.SourceVolumeId -ne $binding.SourceVolumeId -or
+                [string]$State.SourceNtfsUuid -cne [string]$binding.Disk.sourceNtfsUuid -or
+                [long]$State.SourceOffset -ne [long]$binding.SourcePartition.offsetBytes -or
+                [long]$State.OriginalSourceSize -ne [long]$binding.SourcePartition.sizeBytes) {
+                throw 'The UEFI allocation transaction does not match the planned source volume.'
+            }
+        }
+    }
+    if ($State -and ([int]$State.DiskNumber -ne [int]$binding.Disk.number -or
+        ([string]$State.DiskUniqueId).Trim() -ne ([string]$binding.Disk.uniqueId).Trim())) {
+        throw 'The UEFI transaction does not match the planned allocation disk.'
+    }
+    return $binding
+}
+
+function Save-TransactionPreparationState {
+    param([Parameter(Mandatory = $true)]$SystemPartition)
+
+    $existing = Get-TransactionPartitionState
+    Assert-LibertixTransactionRecoveryRunId -ExpectedRecoveryRunId $RecoveryRunId
+    $disk = Get-Disk -Number $SystemPartition.DiskNumber -ErrorAction Stop
+    Assert-LibertixDiskMatchesPlan -Disk $disk -PlanDisk $installationPlan.disk
+    if ([long]$SystemPartition.Offset -ne [long]$installationPlan.disk.windows.offsetBytes -or
+        [long]$SystemPartition.Size -ne [long]$installationPlan.disk.windows.sizeBytes) {
+        throw 'The Windows partition changed before arming the UEFI transaction.'
+    }
+    $binding = Get-LibertixTransactionStorageBinding
+    $sourcePartition = $SystemPartition
+    if ($binding.Separate) {
+        $sourcePartition = Get-Partition -DriveLetter $binding.SourceDrive.TrimEnd(':') -ErrorAction Stop
+        $disk = Get-Disk -Number $sourcePartition.DiskNumber -ErrorAction Stop
+        Assert-LibertixDiskMatchesPlan -Disk $disk -PlanDisk $binding.Disk
+        $volume = Get-Volume -DriveLetter $binding.SourceDrive.TrimEnd(':') -ErrorAction Stop
+        if ([long]$sourcePartition.Offset -ne [long]$binding.SourcePartition.offsetBytes -or
+            [long]$sourcePartition.Size -ne [long]$binding.SourcePartition.sizeBytes -or
+            [string]$volume.UniqueId -ne $binding.SourceVolumeId -or [string]$volume.FileSystem -ne 'NTFS' -or
+            (Get-LibertixNtfsVolumeSerial -Drive $binding.SourceDrive) -cne [string]$binding.Disk.sourceNtfsUuid) {
+            throw 'The source volume changed before arming the UEFI transaction.'
+        }
+    }
+    $state = [ordered]@{
+        Version = if ($binding.Separate) { 2 } else { 1 }
+        DiskNumber = [int]$sourcePartition.DiskNumber
+        DiskUniqueId = [string]$disk.UniqueId
+        SystemDrive = $SystemDrive
+        OriginalCSize = [int64]$SystemPartition.Size
+        PartitionNumber = 0
+        PartitionOffset = 0
+        PartitionSize = 0
+        PartitionGuid = ""
+        PartitionStyle = [string]$disk.PartitionStyle
+        Label = $InstallerLabel
+        BootStrategy = $BootStrategy
+        RecoveryRoot = $RecoveryRoot
+        RecoveryRunId = $RecoveryRunId
+        OriginalBootOrder = @()
+        InstallerBootNumber = $null
+        InstallerBootVariable = ""
+        FirmwareEntryId = ""
+        EspLoaderSha256 = @{}
+        TemporaryBootPreparationStarted = if (-not $existing) { $false } elseif (
+            $existing.PSObject.Properties.Name -contains 'TemporaryBootPreparationStarted'
+        ) { $existing.TemporaryBootPreparationStarted } else { $true }
+        InstallerFileSha256 = @{}
+        OriginalHibernateEnabled = Get-HibernateEnabled
+        LowMemoryMode = [bool]$LowMemoryMode
+        CreatedUtc = [DateTime]::UtcNow.ToString("o")
+    }
+    if ($binding.Separate) {
+        $state.SourceDrive = $binding.SourceDrive
+        $state.SourceVolumeId = $binding.SourceVolumeId
+        $state.SourceNtfsUuid = [string]$binding.Disk.sourceNtfsUuid
+        if ($null -ne $existing) {
+            Get-LibertixTransactionStorageBinding -State $existing | Out-Null
+            $state.InitialSourceEncryption = $existing.InitialSourceEncryption
+        } else {
+            $state.InitialSourceEncryption = Get-LibertixTargetVolumeEncryptionSnapshot -Drive $binding.SourceDrive
+        }
+        $state.SourceOffset = [long]$binding.SourcePartition.offsetBytes
+        $state.OriginalSourceSize = [long]$binding.SourcePartition.sizeBytes
+    }
+    $directory = Split-Path -Parent $TransactionStatePath
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    Save-LibertixTransactionStateAtomic -State $state
+}
+
+function Get-LibertixVerifiedTransactionSourcePartition {
+    param([Parameter(Mandatory = $true)][long]$ExpectedSize)
+
+    $binding = Get-LibertixTransactionStorageBinding -State (Get-TransactionPartitionState)
+    $partition = Get-Partition -DriveLetter $binding.SourceDrive.TrimEnd(':') -ErrorAction Stop
+    $disk = Get-Disk -Number $partition.DiskNumber -ErrorAction Stop
+    Assert-LibertixDiskMatchesPlan -Disk $disk -PlanDisk $binding.Disk
+    if ([long]$partition.Offset -ne [long]$binding.SourcePartition.offsetBytes -or
+        [long]$partition.Size -ne $ExpectedSize -or $ExpectedSize -le 0 -or
+        $ExpectedSize -gt [long]$binding.SourcePartition.sizeBytes) {
+        throw 'The source partition geometry changed during UEFI preparation.'
+    }
+    if ($binding.Separate) {
+        $volume = Get-Volume -DriveLetter $binding.SourceDrive.TrimEnd(':') -ErrorAction Stop
+        if ([string]$volume.UniqueId -ne $binding.SourceVolumeId -or [string]$volume.FileSystem -ne 'NTFS' -or
+            (Get-LibertixNtfsVolumeSerial -Drive $binding.SourceDrive) -cne [string]$binding.Disk.sourceNtfsUuid) {
+            throw 'The source NTFS volume changed during UEFI preparation.'
+        }
+        $encryption = Get-BitLockerVolume -MountPoint $binding.SourceDrive -ErrorAction Stop
+        if (-not $encryption -or -not (Test-BitLockerVolumeReadable -Volume $encryption)) {
+            throw 'The selected allocation volume must be fully decrypted before partition preparation.'
+        }
+    }
+    return $partition
+}
+
+function Set-LibertixTransactionStateProperty {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [AllowNull()]$Value
+    )
+    if ($State.PSObject.Properties.Name -contains $Name) {
+        $State.$Name = $Value
+    } else {
+        $State | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+    }
+}
+
+function Save-TransactionPartitionCreationIntent {
+    param(
+        [Parameter(Mandatory = $true)][int]$DiskNumber,
+        [Parameter(Mandatory = $true)][int64]$Offset,
+        [Parameter(Mandatory = $true)][int64]$Size
+    )
+
+    $state = Get-TransactionPartitionState
+    $disk = Get-Disk -Number $DiskNumber -ErrorAction Stop
+    if (-not $state -or [int]$state.DiskNumber -ne $DiskNumber -or
+        ([string]$disk.UniqueId).Trim() -ne ([string]$state.DiskUniqueId).Trim() -or
+        [string]$state.RecoveryRunId -ne $RecoveryRunId -or
+        $Offset -le 0 -or $Size -le 0 -or $Size -gt [int64]$disk.Size -or
+        $Offset -gt ([int64]$disk.Size - $Size)) {
+        throw "Cannot persist an unverified UEFI partition creation intent."
+    }
+    $binding = Get-LibertixTransactionStorageBinding -State $state
+    Assert-LibertixDiskMatchesPlan -Disk $disk -PlanDisk $binding.Disk
+    $overlaps = @(Get-Partition -DiskNumber $DiskNumber -ErrorAction Stop | Where-Object {
+        [int64]$_.Offset -lt ($Offset + $Size) -and
+        ([int64]$_.Offset + [int64]$_.Size) -gt $Offset
+    })
+    if ($overlaps.Count -ne 0) { throw "UEFI partition creation intent overlaps an existing partition." }
+    $state.PartitionNumber = 0
+    $state.PartitionOffset = $Offset
+    $state.PartitionSize = $Size
+    Set-LibertixTransactionStateProperty -State $state -Name 'PartitionGuid' -Value ''
+    Set-LibertixTransactionStateProperty `
+        -State $state `
+        -Name 'PartitionStyle' `
+        -Value ([string]$disk.PartitionStyle)
+    Save-LibertixTransactionStateAtomic -State $state
+}
+
+function Save-TransactionPartitionState {
+    param([Parameter(Mandatory = $true)]$Partition)
+
+    $disk = Get-Disk -Number $Partition.DiskNumber -ErrorAction Stop
+    $existing = Get-TransactionPartitionState
+    $binding = Get-LibertixTransactionStorageBinding -State $existing
+    Assert-LibertixDiskMatchesPlan -Disk $disk -PlanDisk $binding.Disk
+    if ($binding.Separate -and (-not $existing -or
+        [long]$existing.PartitionOffset -ne [long]$Partition.Offset -or
+        [long]$existing.PartitionSize -ne [long]$Partition.Size)) {
+        throw 'The created UEFI partition has no matching durable allocation intent.'
+    }
+    if ([string]$disk.PartitionStyle -eq 'GPT' -and -not $Partition.Guid) {
+        throw 'The created UEFI partition has no stable GPT identity.'
+    }
+    $partitionGuid = if ($Partition.Guid) {
+        Get-GuidDLower -Guid ([Guid]$Partition.Guid)
+    } else {
+        ''
+    }
+    $originalCSize = if ($existing -and $existing.OriginalCSize) {
+        [int64]$existing.OriginalCSize
+    } else {
+        [int64](Get-Partition -DriveLetter $SystemDriveLetter -ErrorAction Stop).Size
+    }
+    $state = [ordered]@{
+        Version = if ($binding.Separate) { 2 } else { 1 }
+        DiskNumber = [int]$Partition.DiskNumber
+        DiskUniqueId = [string]$disk.UniqueId
+        SystemDrive = if (
+            $existing -and
+            $existing.PSObject.Properties.Name -contains "SystemDrive" -and
+            $existing.SystemDrive
+        ) { [string]$existing.SystemDrive } else { $SystemDrive }
+        OriginalCSize = $originalCSize
+        PartitionNumber = [int]$Partition.PartitionNumber
+        PartitionOffset = [int64]$Partition.Offset
+        PartitionSize = [int64]$Partition.Size
+        PartitionGuid = $partitionGuid
+        PartitionStyle = [string]$disk.PartitionStyle
+        Label = $InstallerLabel
+        BootStrategy = if ($existing -and $existing.BootStrategy) { [string]$existing.BootStrategy } else { $BootStrategy }
+        RecoveryRoot = if ($existing -and $existing.RecoveryRoot) { [string]$existing.RecoveryRoot } else { $RecoveryRoot }
+        RecoveryRunId = if ($existing -and $existing.RecoveryRunId) { [string]$existing.RecoveryRunId } else { $RecoveryRunId }
+        OriginalBootOrder = if ($existing -and $existing.OriginalBootOrder) { @($existing.OriginalBootOrder) } else { @() }
+        InstallerBootNumber = if ($existing) { $existing.InstallerBootNumber } else { $null }
+        InstallerBootVariable = if ($existing) { [string]$existing.InstallerBootVariable } else { "" }
+        FirmwareEntryId = if ($existing) { [string]$existing.FirmwareEntryId } else { "" }
+        EspLoaderSha256 = if ($existing -and $existing.EspLoaderSha256) { $existing.EspLoaderSha256 } else { @{} }
+        InstallerFileSha256 = if ($existing -and $existing.InstallerFileSha256) { $existing.InstallerFileSha256 } else { @{} }
+        OriginalHibernateEnabled = if (
+            $existing -and
+            $existing.PSObject.Properties.Name -contains "OriginalHibernateEnabled" -and
+            $null -ne $existing.OriginalHibernateEnabled
+        ) {
+            $existing.OriginalHibernateEnabled
+        } else {
+            Get-HibernateEnabled
+        }
+        LowMemoryMode = if (
+            $existing -and
+            $existing.PSObject.Properties.Name -contains "LowMemoryMode"
+        ) {
+            [bool]$existing.LowMemoryMode
+        } else {
+            [bool]$LowMemoryMode
+        }
+        CreatedUtc = [DateTime]::UtcNow.ToString("o")
+    }
+    if ($existing -and $existing.PSObject.Properties.Name -contains 'TemporaryBootPreparationStarted') {
+        $state.TemporaryBootPreparationStarted = $existing.TemporaryBootPreparationStarted
+    }
+    if ($binding.Separate) {
+        $state.SourceDrive = $existing.SourceDrive
+        $state.SourceVolumeId = $existing.SourceVolumeId
+        $state.SourceNtfsUuid = $existing.SourceNtfsUuid
+        $state.InitialSourceEncryption = $existing.InitialSourceEncryption
+        $state.SourceOffset = $existing.SourceOffset
+        $state.OriginalSourceSize = $existing.OriginalSourceSize
+    }
+    $directory = Split-Path -Parent $TransactionStatePath
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    Save-LibertixTransactionStateAtomic -State $state
+}
+
+function Get-TransactionPartitionState {
+    if (-not (Test-Path -LiteralPath $TransactionStatePath -PathType Leaf)) {
+        return $null
+    }
+    try {
+        return Get-Content -LiteralPath $TransactionStatePath -Raw -ErrorAction Stop |
+            ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw "Invalid UEFI transaction state file: $($_.Exception.Message)"
+    }
+}
+
+function Assert-LibertixTransactionRecoveryRunId {
+    param([Parameter(Mandatory = $true)][string]$ExpectedRecoveryRunId)
+
+    if ($ExpectedRecoveryRunId -notmatch '^[0-9a-f]{32}$') {
+        throw "A valid ExpectedRecoveryRunId is required for UEFI rollback."
+    }
+    $state = Get-TransactionPartitionState
+    if (-not $state) {
+        return
+    }
+    if (
+        -not ($state.PSObject.Properties.Name -contains "RecoveryRunId") -or
+        [string]$state.RecoveryRunId -ne $ExpectedRecoveryRunId
+    ) {
+        throw "The UEFI transaction belongs to another recovery run; refusing rollback."
+    }
+}
+
+function Restore-LibertixTransactionWindowsSettings {
+    $state = Get-TransactionPartitionState
+    if (-not $state) {
+        throw "UEFI transaction state is missing; Windows settings cannot be restored."
+    }
+    if (
+        $state.PSObject.Properties.Name -contains "OriginalHibernateEnabled" -and
+        $null -ne $state.OriginalHibernateEnabled
+    ) {
+        $expected = [bool]$state.OriginalHibernateEnabled
+        if ($expected -ne (Get-HibernateEnabled)) {
+            Set-HibernateEnabled -Enabled $expected
+        }
+        if ($expected -ne (Get-HibernateEnabled)) {
+            throw "Windows hibernation did not return to its pre-installation state."
+        }
+    }
+}
+
+function Save-PreparedInstallerManifest {
+    param([Parameter(Mandatory = $true)][string]$InstallerDrive)
+
+    $state = Get-TransactionPartitionState
+    if (-not $state) {
+        throw "Cannot save prepared installer manifest without transaction state."
+    }
+    $manifest = Get-FileHashManifest `
+        -Root "$InstallerDrive\" `
+        -RelativePaths (Get-InstallerManifestRelativePaths)
+    $state | Add-Member -NotePropertyName InstallerFileSha256 -NotePropertyValue $manifest -Force
+    $state | Add-Member -NotePropertyName InstallerManifestUtc -NotePropertyValue ([DateTime]::UtcNow.ToString("o")) -Force
+    Save-LibertixTransactionStateAtomic -State $state
+    Write-Log "Prepared installer SHA256 manifest saved ($($manifest.Count) files)." "Green"
+}
+
+function Assert-PreparedInstallerManifest {
+    param([Parameter(Mandatory = $true)][string]$InstallerDrive)
+
+    $state = Get-TransactionPartitionState
+    if (-not $state -or -not $state.InstallerFileSha256) {
+        throw "Prepared installer SHA256 manifest is missing; refusing firmware fallback."
+    }
+    $expectedPaths = @(Get-InstallerManifestRelativePaths)
+    $savedProperties = @($state.InstallerFileSha256.PSObject.Properties)
+    if ($savedProperties.Count -ne $expectedPaths.Count) {
+        throw "Prepared installer SHA256 manifest is incomplete; refusing firmware fallback."
+    }
+    foreach ($relativePath in $expectedPaths) {
+        $saved = $state.InstallerFileSha256.PSObject.Properties[$relativePath]
+        if (-not $saved -or [string]::IsNullOrWhiteSpace([string]$saved.Value)) {
+            throw "Prepared installer SHA256 manifest has no hash for $relativePath"
+        }
+        $fullPath = Join-Path "$InstallerDrive\" $relativePath
+        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+            throw "Prepared installer verification failed; missing $relativePath"
+        }
+        $actual = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+        if ($actual -ne ([string]$saved.Value).ToLowerInvariant()) {
+            throw "Prepared installer SHA256 mismatch: $relativePath"
+        }
+    }
+    Write-Log "Prepared installer SHA256 manifest verified ($($expectedPaths.Count) files)." "Green"
+}
+
+function Update-TransactionFirmwareState {
+    param(
+        [Parameter(Mandatory = $true)][uint16]$BootNumber,
+        [Parameter(Mandatory = $true)][string]$BootVariable,
+        [string]$FirmwareEntryId = "",
+        [hashtable]$EspLoaderSha256 = @{},
+        [uint16[]]$OriginalBootOrder = @()
+    )
+
+    $state = Get-TransactionPartitionState
+    if (-not $state) {
+        throw "Cannot save UEFI firmware state without a transaction state file."
+    }
+
+    $state | Add-Member -NotePropertyName BootStrategy -NotePropertyValue $BootStrategy -Force
+    $state | Add-Member -NotePropertyName InstallerBootNumber -NotePropertyValue ([int]$BootNumber) -Force
+    $state | Add-Member -NotePropertyName InstallerBootVariable -NotePropertyValue $BootVariable -Force
+    $state | Add-Member -NotePropertyName FirmwareEntryId -NotePropertyValue $FirmwareEntryId -Force
+    $state | Add-Member -NotePropertyName EspLoaderSha256 -NotePropertyValue $EspLoaderSha256 -Force
+    $state | Add-Member -NotePropertyName OriginalBootOrder -NotePropertyValue @($OriginalBootOrder | ForEach-Object { [int]$_ }) -Force
+    $state | Add-Member -NotePropertyName BootPreparedUtc -NotePropertyValue ([DateTime]::UtcNow.ToString("o")) -Force
+    Save-LibertixTransactionStateAtomic -State $state
+}
+
+function Update-TransactionBcdEntryState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidatePattern('^\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}$')]
+        [string]$FirmwareEntryId
+    )
+
+    $state = Get-TransactionPartitionState
+    if (-not $state) {
+        throw "Cannot save the BCD firmware owner without a transaction state file."
+    }
+    if (
+        -not ($state.PSObject.Properties.Name -contains "RecoveryRunId") -or
+        [string]$state.RecoveryRunId -ne $RecoveryRunId
+    ) {
+        throw "The BCD firmware owner does not match the active recovery run."
+    }
+
+    $state | Add-Member `
+        -NotePropertyName FirmwareEntryId `
+        -NotePropertyValue $FirmwareEntryId `
+        -Force
+    $state | Add-Member `
+        -NotePropertyName BcdEntryCreatedUtc `
+        -NotePropertyValue ([DateTime]::UtcNow.ToString("o")) `
+        -Force
+    Save-LibertixTransactionStateAtomic -State $state
+}
+
+function Get-ValidatedLibertixTransactionState {
+    $state = Get-TransactionPartitionState
+    if (-not $state) {
+        return $null
+    }
+    if (
+        -not ($state.PSObject.Properties.Name -contains "RecoveryRunId") -or
+        [string]$state.RecoveryRunId -notmatch '^[0-9a-f]{32}$'
+    ) {
+        throw "UEFI transaction recovery identity is invalid."
+    }
+    if (-not ($state.PSObject.Properties.Name -contains "RecoveryRoot")) {
+        throw "UEFI transaction recovery root is missing."
+    }
+
+    $expectedRoot = [IO.Path]::GetFullPath(
+        (Join-Path $env:ProgramData "Libertix\UefiRecovery\$($state.RecoveryRunId)")
+    ).TrimEnd('\')
+    $actualRoot = [IO.Path]::GetFullPath([string]$state.RecoveryRoot).TrimEnd('\')
+    if (-not $actualRoot.Equals($expectedRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "UEFI transaction recovery root does not match its recovery identity."
+    }
+    return $state
+}
+
+function Save-LibertixRollbackTransactionArchive {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidatePattern('^[0-9a-f]{32}$')]
+        [string]$ExpectedRecoveryRunId
+    )
+
+    $state = Get-ValidatedLibertixTransactionState
+    if (-not $state -or [string]$state.RecoveryRunId -ne $ExpectedRecoveryRunId) {
+        throw "UEFI transaction changed before rollback archival."
+    }
+    $state | Add-Member -NotePropertyName Status -NotePropertyValue "rolled-back" -Force
+    $state | Add-Member `
+        -NotePropertyName RolledBackUtc `
+        -NotePropertyValue ([DateTime]::UtcNow.ToString("o")) `
+        -Force
+    Save-LibertixTransactionStateAtomic -State $state
+
+    [IO.Directory]::CreateDirectory([string]$state.RecoveryRoot) | Out-Null
+    $destination = Join-Path ([string]$state.RecoveryRoot) "uefi-transaction.json"
+    $temporary = Join-Path `
+        ([string]$state.RecoveryRoot) `
+        ".uefi-transaction.$([Guid]::NewGuid().ToString('N')).tmp"
+    $backup = Join-Path `
+        ([string]$state.RecoveryRoot) `
+        ".uefi-transaction.$([Guid]::NewGuid().ToString('N')).bak"
+    try {
+        Copy-Item -LiteralPath $TransactionStatePath -Destination $temporary -Force -ErrorAction Stop
+        Publish-LibertixFileAtomic `
+            -TemporaryPath $temporary `
+            -DestinationPath $destination `
+            -BackupPath $backup
+    } finally {
+        if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+        if ([IO.File]::Exists($backup)) { [IO.File]::Delete($backup) }
+    }
+    Write-Log "UEFI rollback transaction state archived permanently." "Green"
+}
+
+function Remove-LibertixRecoveryTasksForRunId {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidatePattern('^[0-9a-f]{32}$')]
+        [string]$RunId
+    )
+
+    foreach ($taskName in @(
+        "LibertixUefiRecovery_$RunId",
+        "LibertixUefiRecoveryPrompt_$RunId"
+    )) {
+        Unregister-ScheduledTask `
+            -TaskName $taskName `
+            -Confirm:$false `
+            -ErrorAction SilentlyContinue
+        if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+            throw "Recovery task still exists after removal: $taskName"
+        }
+    }
+}
+
+function Resolve-LibertixTransactionPartition {
+    param([switch]$AllowMissing)
+
+    $state = Get-TransactionPartitionState
+    if (-not $state) {
+        return $null
+    }
+    if ([int64]$state.PartitionOffset -le 0 -or [int64]$state.PartitionSize -le 0) {
+        return $null
+    }
+    $diskNumber = [int]$state.DiskNumber
+    $binding = Get-LibertixTransactionStorageBinding -State $state
+    $disk = Get-Disk -Number $diskNumber -ErrorAction Stop
+    if (([string]$disk.UniqueId).Trim() -ne ([string]$state.DiskUniqueId).Trim()) {
+        throw "UEFI transaction partition identity does not match the saved state."
+    }
+    Assert-LibertixDiskMatchesPlan -Disk $disk -PlanDisk $binding.Disk
+
+    # Windows may renumber a partition after live expansion. Its saved offset
+    # and size, then its GPT identity, must still identify exactly one owner.
+    $stateChanged = $false
+    $partitionWasCommitted = [int]$state.PartitionNumber -ne 0
+    $partitionCandidates = @(
+        Get-Partition -DiskNumber $diskNumber -ErrorAction Stop |
+            Where-Object {
+                [int64]$_.Offset -eq [int64]$state.PartitionOffset -and
+                [int64]$_.Size -eq [int64]$state.PartitionSize
+            }
+    )
+    if (
+        $partitionCandidates.Count -eq 0 -and
+        $null -ne $installationPlan -and
+        [string]$installationPlan.disk.installer.resizeMode -in @(
+            "windows-online",
+            "live-offline"
+        ) -and
+        [string]$installationPlan.runtime.recoveryRunId -eq [string]$state.RecoveryRunId -and
+        [int]$binding.Disk.number -eq $diskNumber
+    ) {
+        [int64]$finalOffset = [int64]$installationPlan.disk.installer.finalOffsetBytes
+        [int64]$finalSize = [int64]$installationPlan.disk.installer.finalSizeBytes
+        [int64]$alignmentTolerance = [int64]$installationPolicy.storage.partitionAlignmentBytes
+        if ($alignmentTolerance -le 0) {
+            throw "Installation policy partition alignment is invalid during rollback."
+        }
+        $partitionCandidates = @(
+            Get-Partition -DiskNumber $diskNumber -ErrorAction Stop |
+                Where-Object {
+                    [int64]$_.Offset -eq $finalOffset -and
+                    [int64]$_.Size -le $finalSize -and
+                    [int64]$_.Size -ge ($finalSize - $alignmentTolerance)
+                }
+        )
+        if ($partitionCandidates.Count -eq 1) {
+            $state.PartitionNumber = [int]$partitionCandidates[0].PartitionNumber
+            $state.PartitionOffset = $finalOffset
+            $state.PartitionSize = [int64]$partitionCandidates[0].Size
+            $stateChanged = $true
+            Write-Log (
+                "Resolved the live-expanded UEFI partition from the durable plan: " +
+                "disk=$diskNumber offset=$finalOffset " +
+                "plannedSize=$finalSize observedSize=$($state.PartitionSize)."
+            ) "Yellow"
+        }
+    }
+
+    $savedPartitionGuid = if (
+        $state.PSObject.Properties.Name -contains 'PartitionGuid'
+    ) {
+        [string]$state.PartitionGuid
+    } else {
+        ''
+    }
+    if ([string]$disk.PartitionStyle -eq 'GPT' -and
+        -not [string]::IsNullOrWhiteSpace($savedPartitionGuid)) {
+        try {
+            $savedPartitionGuid = Get-GuidDLower -Guid ([Guid]$savedPartitionGuid)
+        } catch {
+            throw 'The saved UEFI transaction partition GUID is invalid.'
+        }
+        $partitionMatches = @(
+            $partitionCandidates | Where-Object {
+                $_.Guid -and
+                (Get-GuidDLower -Guid ([Guid]$_.Guid)) -eq $savedPartitionGuid
+            }
+        )
+        if ($partitionCandidates.Count -gt 0 -and $partitionMatches.Count -eq 0) {
+            throw 'The UEFI transaction partition identity changed at the saved geometry.'
+        }
+    } elseif ([string]$disk.PartitionStyle -eq 'GPT') {
+        if ($partitionWasCommitted) {
+            throw 'The UEFI transaction has no durable partition GUID; refusing recovery.'
+        }
+        $partitionMatches = @($partitionCandidates)
+    } else {
+        if (
+            -not ($state.PSObject.Properties.Name -contains 'PartitionStyle') -or
+            [string]$state.PartitionStyle -ne 'MBR'
+        ) {
+            throw 'The UEFI MBR transaction partition style is missing or invalid.'
+        }
+        $partitionMatches = @($partitionCandidates)
+    }
+
+    if ($partitionMatches.Count -eq 0 -and $AllowMissing) {
+        Write-Log (
+            "The saved UEFI transaction partition is already absent: " +
+            "disk=$diskNumber offset=$($state.PartitionOffset) size=$($state.PartitionSize)."
+        ) "Yellow"
+        return $null
+    }
+    if ($partitionMatches.Count -ne 1) {
+        throw (
+            "UEFI transaction partition geometry is ambiguous: disk=$diskNumber " +
+            "offset=$($state.PartitionOffset) size=$($state.PartitionSize) " +
+            "matches=$($partitionMatches.Count)."
+        )
+    }
+
+    $partition = $partitionMatches[0]
+    if ([string]$disk.PartitionStyle -eq 'GPT' -and
+        [string]::IsNullOrWhiteSpace($savedPartitionGuid)) {
+        if (-not $partition.Guid) {
+            throw 'The resolved UEFI transaction partition has no stable GPT identity.'
+        }
+        Set-LibertixTransactionStateProperty `
+            -State $state `
+            -Name 'PartitionGuid' `
+            -Value (Get-GuidDLower -Guid ([Guid]$partition.Guid))
+        $stateChanged = $true
+    }
+    if ([int]$state.PartitionNumber -ne [int]$partition.PartitionNumber) {
+        Write-Log "Windows renumbered the transaction partition from $($state.PartitionNumber) to $($partition.PartitionNumber); updating saved state." "Yellow"
+        $state.PartitionNumber = [int]$partition.PartitionNumber
+        $stateChanged = $true
+    }
+    if ([int64]$state.PartitionOffset -ne [int64]$partition.Offset -or
+        [int64]$state.PartitionSize -ne [int64]$partition.Size) {
+        $state.PartitionOffset = [int64]$partition.Offset
+        $state.PartitionSize = [int64]$partition.Size
+        $stateChanged = $true
+    }
+
+    # Persist a newly resolved GUID or Windows partition number before any
+    # rollback step relies on the updated identity.
+    if ($stateChanged) {
+        Save-LibertixTransactionStateAtomic -State $state
+    }
+    return $partition
+}
+
+function Invoke-Revert {
+    Write-Log "Reverting Libertix UEFI installer changes..." "Cyan"
+
+    $rollbackState = Get-TransactionPartitionState
+    if (-not $rollbackState -and (Test-LibertixTrackedExecution)) {
+        $executionState = Read-LibertixExecutionState -Path $ExecutionStatePath
+        $stateDependentSteps = @(
+            "windows.system-volume-shrunk",
+            "windows.installer-partition-created",
+            "windows.live-media-prepared",
+            "windows.temporary-boot-prepared"
+        )
+        $uncompensatedStateDependentSteps = @(
+            $executionState.completedSteps |
+                Where-Object {
+                    $_ -in $stateDependentSteps -and
+                    $_ -notin @($executionState.compensatedSteps)
+                }
+        )
+        if ($uncompensatedStateDependentSteps.Count -gt 0) {
+            throw (
+                "UEFI transaction state is missing while rollback still requires " +
+                "'$($uncompensatedStateDependentSteps[0])'; refusing unverified recovery."
+            )
+        }
+    }
+    if ($rollbackState) {
+        Assert-LibertixTransactionRecoveryRunId -ExpectedRecoveryRunId $RecoveryRunId
+        $binding = Get-LibertixTransactionStorageBinding -State $rollbackState
+        $windowsPartition = Get-Partition `
+            -DriveLetter ([string]$installationPlan.disk.systemDrive).TrimEnd(':') -ErrorAction Stop
+        $windowsDisk = Get-Disk -Number $windowsPartition.DiskNumber -ErrorAction Stop
+        Assert-LibertixDiskMatchesPlan -Disk $windowsDisk -PlanDisk $installationPlan.disk
+        if ([long]$windowsPartition.Offset -ne [long]$installationPlan.disk.windows.offsetBytes -or
+            ($binding.Separate -and
+                [long]$windowsPartition.Size -ne [long]$installationPlan.disk.windows.sizeBytes)) {
+            throw 'The Windows storage identity changed before UEFI rollback.'
+        }
+        $sourcePartition = Get-Partition -DriveLetter $binding.SourceDrive.TrimEnd(':') -ErrorAction Stop
+        $sourceDisk = Get-Disk -Number $sourcePartition.DiskNumber -ErrorAction Stop
+        Assert-LibertixDiskMatchesPlan -Disk $sourceDisk -PlanDisk $binding.Disk
+        if ([long]$sourcePartition.Offset -ne [long]$binding.SourcePartition.offsetBytes) {
+            throw 'The source volume moved before UEFI rollback.'
+        }
+        if ($binding.Separate) {
+            $volume = Get-Volume -DriveLetter $binding.SourceDrive.TrimEnd(':') -ErrorAction Stop
+            if ([string]$volume.UniqueId -ne $binding.SourceVolumeId -or
+                [string]$volume.FileSystem -ne 'NTFS' -or
+                (Get-LibertixNtfsVolumeSerial -Drive $binding.SourceDrive) -ne
+                    [string]$binding.Disk.sourceNtfsUuid) {
+                throw 'The source volume was replaced before UEFI rollback.'
+            }
+        }
+    }
+
+    # Old transactions have no write-intent proof and keep the strict cleanup path.
+    $bootWasUntouched = $rollbackState -and
+        $rollbackState.PSObject.Properties.Name -contains 'TemporaryBootPreparationStarted' -and
+        $rollbackState.TemporaryBootPreparationStarted -is [bool] -and
+        $rollbackState.TemporaryBootPreparationStarted -eq $false
+    $esp = $null
+    try {
+        if ($bootWasUntouched) {
+            Write-Log "No EFI writes were started by this transaction; preserving existing ESP files and firmware entries." "Gray"
+        } else {
+            $esp = Mount-Esp -Letter $EspLetter
+
+            Remove-LibertixTemporaryEspFiles -EspDrive $esp
+
+            # A post-install rollback also owns the final loader, but only when its
+            # durable ESP marker matches this exact recovery run.
+            if (Assert-LibertixInstalledEspOwnership -EspDrive $esp) {
+                Remove-LibertixInstalledFirmwareEntries -EspDrive $esp
+                Remove-LibertixInstalledEspFiles -EspDrive $esp
+            }
+
+            Remove-LibertixTemporaryFirmwareEntries `
+                -ExpectedLoaderPath "\$InstallerEspDirectory\BOOTX64.EFI"
+            Restore-OriginalFirmwareBootOrder
+            Complete-LibertixTrackedCompensation -Step "windows.temporary-boot-prepared"
+        }
+    } finally {
+        if ($esp) { Dismount-Letter -Letter $EspLetter }
+    }
+
+    Remove-LibertixInstallerPartitionIfPresent
+    $transactionUsedLowMemory = (
+        $rollbackState -and
+        $rollbackState.PSObject.Properties.Name -contains "LowMemoryMode" -and
+        [bool]$rollbackState.LowMemoryMode
+    )
+    if ($transactionUsedLowMemory -and (Test-Path -LiteralPath $LowMemoryIsoPath -PathType Leaf)) {
+        Write-Log "Removing low-memory live ISO: $LowMemoryIsoPath" "Cyan"
+        Remove-Item -LiteralPath $LowMemoryIsoPath -Force -ErrorAction Stop
+    }
+    Complete-LibertixTrackedCompensation -Step "windows.live-media-prepared"
+    Complete-LibertixTrackedCompensation -Step "windows.installer-partition-created"
+    if (-not $rollbackState) {
+        # No transaction state means the workflow failed before Windows was resized.
+        # Remove-LibertixInstallerPartitionIfPresent already refuses to continue
+        # if an unowned staging partition exists, so there is nothing left
+        # to restore in this early-failure case.
+        Write-Log "No transaction state found; $SystemDrive was not resized by this run." "Gray"
+        Remove-LibertixTransactionDownloads `
+            -SystemDrive $SystemDrive `
+            -PlanId $RecoveryRunId
+        Remove-LibertixUefiToolArtifacts -SystemDrive $SystemDrive
+        Complete-LibertixTrackedCompensation -Step "windows.recovery-armed"
+        Complete-LibertixTrackedRollback
+        Remove-LibertixRecoveryTasksForRunId -RunId $RecoveryRunId
+        Write-Log "Revert complete." "Green"
+        return
+    }
+    if ($binding.Separate) {
+        Restore-LibertixSourceVolumeInitialSize -SourceDrive $binding.SourceDrive `
+            -PlanDisk $binding.Disk -SourcePartition $binding.SourcePartition `
+            -ExpectedVolumeId $binding.SourceVolumeId
+    } else {
+        Restore-LibertixSystemDriveInitialSize -State $rollbackState -PlanDisk $installationPlan.disk
+    }
+    # Removing the owned Linux partition and its owned ESP files physically
+    # compensates every completed live/target mutation. Record those proofs
+    # only after the Windows partition has also been restored and verified.
+    Complete-LibertixTrackedCompensation -Step "target.bootloader-installed"
+    Complete-LibertixTrackedCompensation -Step "target.system-configured"
+    Complete-LibertixTrackedCompensation -Step "live.distribution-extracted"
+    Complete-LibertixTrackedCompensation -Step "live.target-filesystem-created"
+    Complete-LibertixTrackedCompensation -Step "live.installer-partition-expanded"
+    Complete-LibertixTrackedCompensation -Step "windows.system-volume-shrunk"
+
+    # Hibernation is switched off so that the installed Linux can safely mount
+    # Windows read-write. A rollback removes that Linux installation, so the
+    # user's original setting must come back with it.
+    if (
+        $rollbackState.PSObject.Properties.Name -contains "OriginalHibernateEnabled" -and
+        $null -ne $rollbackState.OriginalHibernateEnabled
+    ) {
+        $originalHibernate = [bool]$rollbackState.OriginalHibernateEnabled
+        if ($originalHibernate -ne (Get-HibernateEnabled)) {
+            Set-HibernateEnabled -Enabled $originalHibernate
+        }
+    }
+
+    Remove-LibertixTransactionDownloads `
+        -SystemDrive $SystemDrive `
+        -PlanId $RecoveryRunId
+    Remove-LibertixUefiToolArtifacts `
+        -SystemDrive $SystemDrive `
+        -PreserveTransactionState
+    Complete-LibertixTrackedCompensation -Step "windows.recovery-armed"
+    if ($binding.Separate) {
+        $currentEncryption = Get-LibertixTargetVolumeEncryptionSnapshot -Drive $binding.SourceDrive
+        foreach ($field in @('state', 'conversionStatus', 'encryptionPercentage', 'protectionStatus')) {
+            if ($null -eq $rollbackState.InitialSourceEncryption -or
+                $rollbackState.InitialSourceEncryption.PSObject.Properties.Name -notcontains $field -or
+                $currentEncryption.$field -cne $rollbackState.InitialSourceEncryption.$field) {
+                throw 'Disk and boot rollback completed, but the source volume BitLocker state differs from its initial state.'
+            }
+        }
+    }
+    Complete-LibertixTrackedRollback
+
+    # Keep the active owner document until every physical compensation and the
+    # execution ledger are terminal. A later retry can then finish archival if
+    # power is lost at any preceding boundary.
+    Save-LibertixRollbackTransactionArchive -ExpectedRecoveryRunId $RecoveryRunId
+    Remove-LibertixRecoveryTasksForRunId -RunId $RecoveryRunId
+    Remove-Item -LiteralPath $TransactionStatePath -Force -ErrorAction Stop
+    Remove-LibertixUefiToolArtifacts -SystemDrive $SystemDrive
+
+    Write-Log "Revert complete." "Green"
+}

@@ -1,0 +1,342 @@
+﻿<Page x:Class="Libertix.Pages.ResizeDisk"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:local="clr-namespace:Libertix.Pages"
+      xmlns:controls="clr-namespace:Libertix.Controls"
+      mc:Ignorable="d"
+      Title="Resize Disk"
+      KeyboardNavigation.TabNavigation="Cycle"
+      Loaded="ResizeDisk_Loaded"
+      PreviewKeyDown="ResizeDisk_PreviewKeyDown">
+
+    <Page.Resources>
+        <BooleanToVisibilityConverter x:Key="TargetVisibility"/>
+        <Style x:Key="SliderRepeatButton" TargetType="RepeatButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Height="8"
+                                CornerRadius="4"
+                                VerticalAlignment="Center"
+                                Background="{TemplateBinding Background}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SliderThumb" TargetType="Thumb">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid>
+                            <Ellipse Width="28" Height="28" Fill="{DynamicResource AccentColor}"/>
+                            <Ellipse Width="20" Height="20" Fill="{DynamicResource PrimaryBackground}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CustomSlider" TargetType="Slider">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto" MinHeight="{TemplateBinding MinHeight}"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Track Grid.Row="1"
+                                   x:Name="PART_Track"
+                                   VerticalAlignment="Center">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SliderRepeatButton}" Background="{DynamicResource AccentColor}"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SliderRepeatButton}" Background="{DynamicResource PanelBorder}"/>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource SliderThumb}"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
+    <Grid Background="{DynamicResource PrimaryBackground}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <ScrollViewer x:Name="AllocationScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+        <Grid MinHeight="{Binding ViewportHeight, ElementName=AllocationScroll}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+        <Label
+               Content="{DynamicResource ResizeDiskTitle}"
+               HorizontalAlignment="Center"
+               Margin="20"
+               FontSize="48"
+               FontWeight="Light"
+               Foreground="{DynamicResource TextPrimary}"/>
+            <StackPanel Margin="40,0,40,8" Visibility="{Binding HasMultipleTargets, Converter={StaticResource TargetVisibility}}">
+                <TextBlock Text="{DynamicResource ResizeDiskTargetTitle}" Foreground="{DynamicResource TextPrimary}"/>
+                <ComboBox x:Name="InstallationTargetComboBox" ItemsSource="{Binding InstallationTargets}"
+                          SelectedItem="{Binding SelectedTarget, Mode=TwoWay}" Margin="0,4" MinHeight="28">
+                    <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem">
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsWindows}" Value="True"/>
+                                        <Condition Binding="{Binding DataContext.IsWindowsTargetUnavailable, RelativeSource={RelativeSource AncestorType=ComboBox}}" Value="True"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ComboBox.ItemContainerStyle>
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Drive}" Margin="0,0,12,0"/>
+                                <TextBlock Text="{Binding FriendlyName}" Margin="0,0,12,0"/>
+                                <TextBlock Text="{DynamicResource ResizeDiskPhysicalDisk}" Margin="0,0,4,0"/>
+                                <TextBlock Text="{Binding DiskNumber}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="{Binding TargetRecommendation}" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+            </StackPanel>
+            <TextBlock Margin="40,0,40,8" Text="{Binding WindowsTargetUnavailableMessage}"
+                       TextWrapping="Wrap" Foreground="{DynamicResource ErrorColor}"
+                       Visibility="{Binding IsWindowsTargetUnavailable, Converter={StaticResource TargetVisibility}}"/>
+            <Border x:Name="SecondaryDiskWarningPanel" Margin="40,0,40,8" Padding="10"
+                    BorderBrush="{DynamicResource ErrorColor}" BorderThickness="1" CornerRadius="4"
+                    Visibility="{Binding IsSecondaryTarget, Converter={StaticResource TargetVisibility}}">
+                <TextBlock Text="{Binding SecondaryDiskWarning}" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextPrimary}" FontSize="12"/>
+            </Border>
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Height="100"
+                Margin="40,20"
+                BorderThickness="1"
+                BorderBrush="{DynamicResource TextSecondary}"
+                CornerRadius="4"
+                ClipToBounds="True">
+            <Grid x:Name="DiskVisualization">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{Binding WindowsPartitionPercentage}"/>
+                    <ColumnDefinition Width="{Binding LinuxPartitionPercentage}"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="{DynamicResource WindowsPartitionColor}" CornerRadius="3" Padding="6">
+                    <Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="{Binding WindowsUsedPercentage}"/>
+                                <ColumnDefinition Width="{Binding WindowsFreeInPartitionPercentage}"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="{DynamicResource WindowsPartitionDetailColor}" RadiusX="2" RadiusY="2"/>
+                            <Rectangle Grid.Column="1" Fill="{DynamicResource AccentColor}" RadiusX="2" RadiusY="2"/>
+                        </Grid>
+
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding RetainedVolumeName}"
+                                       Foreground="{DynamicResource TextPrimary}"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding WindowsFreeInsideLabel}"
+                                       Foreground="{DynamicResource TextPrimary}"
+                                       FontSize="12"
+                                       Opacity="0.8"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Column="1">
+                    <Rectangle Fill="{DynamicResource ErrorColor}" RadiusX="3" RadiusY="3"/>
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="{DynamicResource Linux}"
+                                   Foreground="{DynamicResource PrimaryBackground}"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding LinuxSizeLabel}"
+                                   Foreground="{DynamicResource PrimaryBackground}"
+                                   FontSize="12"
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,0,-5">
+            <StackPanel Orientation="Horizontal" Margin="10,0">
+                <Rectangle Width="16" Height="16" Fill="{DynamicResource WindowsPartitionColor}" RadiusX="2" RadiusY="2" Margin="0,0,5,0"/>
+                <TextBlock Text="{Binding WindowsUsedLegend}"
+                           Foreground="{DynamicResource TextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="10,0">
+                <Rectangle Width="16" Height="16" Fill="{DynamicResource AccentColor}" RadiusX="2" RadiusY="2" Margin="0,0,5,0"/>
+                <TextBlock Text="{Binding WindowsFreeLegend}"
+                           Foreground="{DynamicResource TextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="10,0">
+                <Rectangle Width="16" Height="16" Fill="{DynamicResource ErrorColor}" RadiusX="2" RadiusY="2" Margin="0,0,5,0"/>
+                <TextBlock Text="{Binding LinuxLegend}"
+                           Foreground="{DynamicResource TextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Margin="40,20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Slider x:Name="PartitionSlider"
+                        Style="{StaticResource CustomSlider}"
+                        MinHeight="32"
+                        Minimum="{Binding MinimumSize}"
+                        Maximum="{Binding MaximumSize}"
+                        Value="{Binding SelectedSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        IsEnabled="{Binding CanAllocateLinux}"
+                        IsMoveToPointEnabled="True"
+                        TabIndex="0"
+                        TickFrequency="1"
+                        SmallChange="1"
+                        LargeChange="5"
+                        Delay="250"
+                        Interval="40"
+                        IsSnapToTickEnabled="True"
+                        AutoToolTipPlacement="TopLeft"
+                        AutoToolTipPrecision="0"
+                        Cursor="Hand"/>
+
+                <TextBox x:Name="ManualSizeBox"
+                         Grid.Column="1"
+                         Width="80"
+                         Height="30"
+                         Margin="20,0,5,0"
+                         Background="{DynamicResource SecondaryBackground}"
+                         Foreground="{DynamicResource TextPrimary}"
+                         BorderBrush="{DynamicResource PanelBorder}"
+                         TextAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding ManualSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         IsEnabled="{Binding CanAllocateLinux}"
+                         TabIndex="1"
+                         PreviewTextInput="NumberValidationTextBox"
+                         DataObject.Pasting="ManualSize_Pasting"/>
+
+                <TextBlock Grid.Column="2"
+                          VerticalAlignment="Center"
+                          Foreground="{DynamicResource TextPrimary}"
+                          Text="{DynamicResource ResizeDiskSizeUnit}"/>
+            </Grid>
+
+            <TextBlock Margin="0,5,0,0"
+                       Foreground="{DynamicResource ErrorColor}"
+                       Text="{Binding SizeErrorMessage}"
+                       Visibility="{Binding HasSizeError, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+            <Grid Margin="0,20,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Foreground="{DynamicResource AccentColor}" FontWeight="SemiBold"
+                               Text="{Binding WindowsTotalLegend}"/>
+                    <TextBlock Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="10,2,0,0"
+                               Text="{Binding WindowsUsedDetail}"/>
+                    <TextBlock Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="10,2,0,0"
+                               Text="{Binding WindowsFreeDetail}"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1">
+                    <TextBlock Foreground="{DynamicResource ErrorColor}" FontWeight="SemiBold"
+                               Text="{Binding LinuxLegend}"/>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+
+        <controls:ErrorPanel x:Name="FallbackPanel"
+                           Grid.Row="1"
+                           Grid.RowSpan="2"
+                           Visibility="{Binding HasError, Converter={StaticResource BoolToVisibilityConverter}}"
+                           MaxWidth="800"
+                           Margin="40"
+                           Title="{Binding AllocationErrorTitle}"
+                           Message="{Binding AllocationErrorMessage}"
+                           Details="{Binding SystemRequirements}"
+                           AdditionalDetails="{Binding AdditionalSpaceNeeded}"/>
+        </Grid>
+        </ScrollViewer>
+
+        <Grid Grid.Row="1" Margin="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Button Content="{DynamicResource Back}"
+                    Style="{StaticResource ModernButton}"
+                    Width="200"
+                    Height="50"
+                    HorizontalAlignment="Left"
+                    TabIndex="2"
+                    Click="BackButton_Click"/>
+
+            <Button x:Name="NextButton"
+                    Grid.Column="1"
+                    Content="{DynamicResource Next}"
+                    Width="200"
+                    Height="50"
+                    HorizontalAlignment="Right"
+                    TabIndex="3"
+                    IsDefault="True"
+                    Click="NextButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                        <Setter Property="IsEnabled" Value="False"/>
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding HasError}" Value="False"/>
+                                    <Condition Binding="{Binding HasSizeError}" Value="False"/>
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="IsEnabled" Value="True"/>
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </Grid>
+    </Grid>
+</Page>

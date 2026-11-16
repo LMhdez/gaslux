@@ -1,0 +1,564 @@
+﻿using System;
+using System.ComponentModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.IO;
+using System.Globalization;
+using System.Linq;
+using Libertix.Helpers;
+using Libertix.Installation;
+using Libertix.Models;
+
+namespace Libertix.Pages
+{
+    public partial class ResizeDisk : Page, INotifyPropertyChanged
+    {
+        private readonly InstallationState _installationState;
+        private double _totalSpace;
+        private double _initialFreeSpace;
+        private double _shrinkAvailableSpace;
+        private InstallationTargetInfo _selectedTarget;
+        private double _selectedSize;
+        private double _windowsUsedSpace;
+        private double _windowsFreeSpace;
+        private double _isoSize;
+        private double _linuxSize;
+        private bool _hasError;
+        private double _recommendedSize;
+        private string _manualSize;
+        private string _sizeErrorMessage;
+        private bool _hasSizeError;
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        public InstallationTargetInfo[] InstallationTargets { get; private set; } = new InstallationTargetInfo[0];
+        public bool HasMultipleTargets => InstallationTargets.Length > 1;
+        public bool IsWindowsTarget => _selectedTarget == null || _selectedTarget.IsWindows;
+        public bool IsSecondaryTarget => !IsWindowsTarget;
+        public bool HasSelectedTarget => _selectedTarget != null || InstallationTargets.Length == 0;
+        public bool IsWindowsTargetUnavailable
+        {
+            get
+            {
+                if (_installationState.Compatibility?.WindowsPartitionSlotAvailable == false)
+                    return true;
+                var windows = InstallationTargets.FirstOrDefault(target => target.IsWindows);
+                return windows != null && InstallationSizePolicy.AvailableLinuxSizeGiB(
+                    windows.FreeBytes / (double)InstallationSizePolicy.BytesPerGiB,
+                    (_installationState.Compatibility?.ShrinkAvailableBytes ?? 0) /
+                        (double)InstallationSizePolicy.BytesPerGiB, IsoSize) < MinimumSize;
+            }
+        }
+        public string WindowsTargetUnavailableMessage => string.Format(CultureInfo.CurrentCulture,
+            Localization.GetString(_installationState.Compatibility?.WindowsPartitionSlotAvailable == false
+                ? "ResizeDiskWindowsMbrUnavailable" : "ResizeDiskWindowsSpaceUnavailable"),
+            InstallationTargets.FirstOrDefault(target => target.IsWindows)?.Drive ?? Path.GetPathRoot(Environment.SystemDirectory));
+        public string AllocationErrorTitle => !HasSelectedTarget
+            ? Localization.GetString("ResizeDiskTargetTitle") : Localization.GetString("NotEnoughSpace");
+        public string AllocationErrorMessage => !HasSelectedTarget
+            ? Localization.GetString("ResizeDiskChooseAvailableTarget") : Localization.GetString("FreeUpSpace");
+        public string SecondaryDiskWarning => IsSecondaryTarget
+            ? string.Format(CultureInfo.CurrentCulture, Localization.GetString(IsWindowsTargetUnavailable
+                ? "ResizeDiskSecondaryWarningNoWindows" : "ResizeDiskSecondaryWarning"),
+                _selectedTarget.Drive, InstallationTargets.FirstOrDefault(target => target.IsWindows)?.Drive ?? Path.GetPathRoot(Environment.SystemDirectory))
+            : string.Empty;
+        public string RetainedVolumeName => IsWindowsTarget ? Localization.GetString("Windows") : _selectedTarget.Drive;
+        public string TargetRecommendation => IsWindowsTargetUnavailable
+            ? Localization.GetString("ResizeDiskChooseAvailableTarget") : string.Format(CultureInfo.CurrentCulture,
+            Localization.GetString("ResizeDiskTargetRecommendation"),
+            InstallationTargets.FirstOrDefault(target => target.IsWindows)?.Drive ?? Path.GetPathRoot(Environment.SystemDirectory));
+        private double AllocationIsoSize => IsWindowsTarget ? IsoSize : 0;
+        private bool HasWindowsDownloadSpace => IsWindowsTarget ||
+            InstallationTargets.Any(target => target.IsWindows &&
+                target.FreeBytes / (double)InstallationSizePolicy.BytesPerGiB >= IsoSize + MinimumWindowsFree);
+
+        public InstallationTargetInfo SelectedTarget
+        {
+            get => _selectedTarget;
+            set
+            {
+                if (value == null || ReferenceEquals(value, _selectedTarget))
+                    return;
+                if (!InstallationTargets.Contains(value))
+                    throw new InvalidOperationException("The selected installation target is not in the verified inventory.");
+                if (value.IsWindows && IsWindowsTargetUnavailable)
+                    throw new InvalidOperationException(WindowsTargetUnavailableMessage);
+                _selectedTarget = value;
+                _installationState.SelectedInstallationTarget = value.IsWindows ? null : value;
+                _totalSpace = value.SizeBytes / (double)InstallationSizePolicy.BytesPerGiB;
+                _initialFreeSpace = value.FreeBytes / (double)InstallationSizePolicy.BytesPerGiB;
+                _shrinkAvailableSpace = value.IsWindows
+                    ? (_installationState.Compatibility?.ShrinkAvailableBytes ?? 0) / (double)InstallationSizePolicy.BytesPerGiB
+                    : Math.Max(0, value.SizeBytes - value.MinimumSizeBytes - InstallationSizePolicy.PartitionAlignmentBytes) /
+                        (double)InstallationSizePolicy.BytesPerGiB;
+                WindowsUsedSpace = _totalSpace - _initialFreeSpace;
+                if (_installationState.SelectedDistro != null)
+                    LoadState(_installationState.SelectedDistro);
+                UpdatePartitionSizes(SelectedSize);
+                NotifyPropertyChanged(string.Empty);
+            }
+        }
+
+        public double MinimumSize => InstallationSizePolicy.MinimumFinalSizeGiB;
+        public double MinimumWindowsFree => InstallationSizePolicy.MinimumWindowsFreeSpaceGiB;
+        private double AvailableLinuxSize => InstallationSizePolicy.AvailableLinuxSizeGiB(
+            _initialFreeSpace,
+            _shrinkAvailableSpace,
+            AllocationIsoSize);
+        // WPF rejects a slider whose maximum is lower than its minimum. The
+        // separate CanAllocateLinux flag still prevents an invalid install.
+        public double MaximumSize => Math.Max(MinimumSize, Math.Floor(AvailableLinuxSize));
+        public bool CanAllocateLinux => HasSelectedTarget &&
+            (!IsWindowsTarget || !IsWindowsTargetUnavailable) &&
+            AvailableLinuxSize >= MinimumSize && HasWindowsDownloadSpace;
+
+        public double WindowsTotalSpace => _windowsUsedSpace + _windowsFreeSpace;
+        public GridLength WindowsPartitionPercentage => new GridLength(
+            CanAllocateLinux ? WindowsTotalSpace * 100 / _totalSpace : 100, GridUnitType.Star);
+        public GridLength LinuxPartitionPercentage => new GridLength(
+            CanAllocateLinux ? _linuxSize * 100 / _totalSpace : 0, GridUnitType.Star);
+        public GridLength WindowsUsedPercentage => new GridLength(_windowsUsedSpace, GridUnitType.Star);
+        public GridLength WindowsFreeInPartitionPercentage => new GridLength(_windowsFreeSpace > 0 ? _windowsFreeSpace : 0.001, GridUnitType.Star);
+        public string WindowsFreeInsideLabel => FormatSize("ResizeDiskWindowsFreeInside", WindowsFreeSpace);
+        public string WindowsUsedLegend => FormatSize("ResizeDiskWindowsUsedLegend", WindowsUsedSpace);
+        public string WindowsFreeLegend => FormatSize("ResizeDiskWindowsFreeLegend", WindowsFreeSpace);
+        public string LinuxSizeLabel => FormatSize("ResizeDiskSizeValue", LinuxSize);
+        public string LinuxLegend => FormatSize("ResizeDiskLinuxLegend", LinuxSize);
+        public string WindowsTotalLegend => FormatSize("ResizeDiskWindowsTotalLegend", WindowsTotalSpace);
+        public string WindowsUsedDetail => FormatSize("ResizeDiskUsedDetail", WindowsUsedSpace);
+        public string WindowsFreeDetail => FormatSize("ResizeDiskFreeDetail", WindowsFreeSpace);
+
+        public double WindowsUsedSpace
+        {
+            get => _windowsUsedSpace;
+            private set
+            {
+                _windowsUsedSpace = value;
+                NotifyPropertyChanged(nameof(WindowsUsedSpace));
+                NotifyPropertyChanged(nameof(WindowsUsedPercentage));
+                NotifyPropertyChanged(nameof(WindowsUsedLegend));
+                NotifyPropertyChanged(nameof(WindowsTotalLegend));
+                NotifyPropertyChanged(nameof(WindowsUsedDetail));
+                NotifyPropertyChanged(nameof(SystemRequirements));
+            }
+        }
+
+        public double WindowsFreeSpace
+        {
+            get => _windowsFreeSpace;
+            private set
+            {
+                _windowsFreeSpace = value;
+                NotifyPropertyChanged(nameof(WindowsFreeSpace));
+                NotifyPropertyChanged(nameof(WindowsTotalSpace));
+                NotifyPropertyChanged(nameof(WindowsPartitionPercentage));
+                NotifyPropertyChanged(nameof(WindowsFreeInPartitionPercentage));
+                NotifyPropertyChanged(nameof(WindowsFreeInsideLabel));
+                NotifyPropertyChanged(nameof(WindowsFreeLegend));
+                NotifyPropertyChanged(nameof(WindowsTotalLegend));
+                NotifyPropertyChanged(nameof(WindowsFreeDetail));
+                NotifyPropertyChanged(nameof(SystemRequirements));
+                NotifyPropertyChanged(nameof(AdditionalSpaceNeeded));
+            }
+        }
+
+        public double IsoSize
+        {
+            get => _isoSize;
+            private set
+            {
+                _isoSize = value;
+                NotifyPropertyChanged(nameof(IsoSize));
+                NotifyPropertyChanged(nameof(SystemRequirements));
+            }
+        }
+
+        public double LinuxSize
+        {
+            get => _linuxSize;
+            private set
+            {
+                _linuxSize = value;
+                NotifyPropertyChanged(nameof(LinuxSize));
+                NotifyPropertyChanged(nameof(LinuxSizeLabel));
+                NotifyPropertyChanged(nameof(LinuxLegend));
+            }
+        }
+
+        public double SelectedSize
+        {
+            get => _selectedSize;
+            set
+            {
+                if (_selectedSize != value)
+                {
+                    _selectedSize = value;
+                    UpdatePartitionSizes(value);
+                    ManualSize = value.ToString("F0", CultureInfo.InvariantCulture);
+                    NotifyPropertyChanged(nameof(SelectedSize));
+                }
+            }
+        }
+
+        public double RecommendedSize
+        {
+            get => _recommendedSize;
+            private set
+            {
+                _recommendedSize = value;
+                NotifyPropertyChanged(nameof(RecommendedSize));
+            }
+        }
+
+        public string ManualSize
+        {
+            get => _manualSize;
+            set
+            {
+                _manualSize = value;
+                ValidateAndUpdateSize(value);
+                NotifyPropertyChanged(nameof(ManualSize));
+            }
+        }
+
+        public string SizeErrorMessage
+        {
+            get => _sizeErrorMessage;
+            set
+            {
+                _sizeErrorMessage = value;
+                NotifyPropertyChanged(nameof(SizeErrorMessage));
+            }
+        }
+
+        public bool HasSizeError
+        {
+            get => _hasSizeError;
+            set
+            {
+                _hasSizeError = value;
+                NotifyPropertyChanged(nameof(HasSizeError));
+            }
+        }
+
+        private void UpdatePartitionSizes(double linuxSize)
+        {
+            LinuxSize = linuxSize;
+            WindowsFreeSpace = InstallationSizePolicy.RemainingWindowsFreeSpaceGiB(
+                _initialFreeSpace,
+                linuxSize);
+
+            // These bindings depend on calculated properties rather than stored
+            // fields, so changing LinuxSize does not notify them automatically.
+            NotifyPropertyChanged(nameof(WindowsTotalSpace));
+            NotifyPropertyChanged(nameof(WindowsPartitionPercentage));
+            NotifyPropertyChanged(nameof(LinuxPartitionPercentage));
+            NotifyPropertyChanged(nameof(WindowsUsedPercentage));
+            NotifyPropertyChanged(nameof(WindowsFreeInPartitionPercentage));
+
+            CheckSpaceRequirements();
+        }
+
+        public bool HasError
+        {
+            get => _hasError;
+            set
+            {
+                _hasError = value;
+                NotifyPropertyChanged(nameof(HasError));
+                NotifyPropertyChanged(nameof(AdditionalSpaceNeeded));
+            }
+        }
+
+        public string SystemRequirements => string.Join(
+            Environment.NewLine,
+            string.Format(CultureInfo.CurrentCulture,
+                GetVolumeResource("ResizeDiskWindowsUsedSpace"), WindowsUsedSpace),
+            string.Format(CultureInfo.CurrentCulture,
+                GetVolumeResource("ResizeDiskWindowsFreeSpace"), WindowsFreeSpace),
+            string.Format(CultureInfo.CurrentCulture,
+                Localization.GetString("ResizeDiskIsoSize"), IsoSize),
+            string.Format(CultureInfo.CurrentCulture,
+                Localization.GetString("ResizeDiskLinuxMinimum"), MinimumSize));
+
+        public string AdditionalSpaceNeeded => !HasSelectedTarget ? null : !HasWindowsDownloadSpace
+            ? Localization.GetString("ResizeDiskWindowsDownloadSpace")
+            : HasError ? string.Format(
+                CultureInfo.CurrentCulture,
+                Localization.GetString("ResizeDiskAdditionalSpace"),
+                Math.Max(0, MinimumSize - AvailableLinuxSize))
+            : null;
+
+        private string GetVolumeResource(string resourceKey)
+        {
+            return Localization.GetString(IsWindowsTarget ? resourceKey : resourceKey.Replace("Windows", "Source"));
+        }
+
+        private string FormatSize(string resourceKey, double value)
+        {
+            return string.Format(
+                CultureInfo.CurrentCulture,
+                GetVolumeResource(resourceKey),
+                value);
+        }
+
+        public ResizeDisk() : this(((App)Application.Current).InstallationState)
+        {
+        }
+
+        public ResizeDisk(InstallationState installationState) : this(installationState, GetSystemDrive())
+        {
+        }
+
+        private ResizeDisk(InstallationState installationState, DriveInfo drive)
+            : this(installationState, drive.TotalSize, drive.AvailableFreeSpace)
+        {
+        }
+
+        private static DriveInfo GetSystemDrive()
+        {
+            var systemRoot = Path.GetPathRoot(Environment.SystemDirectory);
+            return DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady &&
+                string.Equals(d.Name, systemRoot, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException($"System drive not found: {systemRoot}");
+        }
+
+        internal ResizeDisk(InstallationState installationState, long totalBytes, long freeBytes)
+        {
+            _installationState = installationState ?? throw new ArgumentNullException(nameof(installationState));
+            InitializeComponent();
+            DataContext = this;
+
+            _totalSpace = totalBytes / 1024.0 / 1024.0 / 1024.0;
+            WindowsUsedSpace =
+                (totalBytes - freeBytes) /
+                1024.0 / 1024.0 / 1024.0;
+            // Keep the exact byte-derived value for policy decisions. Rounding
+            // up here can offer a Linux size that the storage layer must reject
+            // later when the machine is close to the minimum Windows reserve.
+            _initialFreeSpace =
+                freeBytes / 1024.0 / 1024.0 / 1024.0;
+            _shrinkAvailableSpace = Math.Max(
+                0,
+                (_installationState.Compatibility?.ShrinkAvailableBytes ?? 0) /
+                    1024d / 1024d / 1024d);
+            WindowsFreeSpace = _initialFreeSpace;
+
+            if (_installationState.SelectedDistro is Models.DistroInfo distro)
+            {
+                LoadState(distro);
+            }
+
+            if (_installationState.Compatibility?.InstallationTargets?.Length > 0)
+            {
+                InstallationTargets = InstallationTargetSelection.ForFirmware(
+                    _installationState.Compatibility.InstallationTargets, _installationState.Compatibility.Firmware);
+                if (!IsWindowsTargetUnavailable || _installationState.SelectedInstallationTarget != null)
+                    SelectedTarget = InstallationTargetSelection.Select(InstallationTargets,
+                        _installationState.SelectedInstallationTarget?.Drive);
+                CheckSpaceRequirements();
+                NotifyPropertyChanged(string.Empty);
+            }
+
+        }
+
+        private void ResizeDisk_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (PartitionSlider.IsEnabled)
+                PartitionSlider.Focus();
+            else
+                NextButton.Focus();
+        }
+
+        private void ResizeDisk_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Home && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                if (PartitionSlider.IsEnabled)
+                    PartitionSlider.Focus();
+                else
+                    NextButton.Focus();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.End && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                NextButton.Focus();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Enter &&
+                Keyboard.Modifiers == ModifierKeys.None &&
+                NextButton.IsEnabled)
+            {
+                NavigateToSharingOptions();
+                e.Handled = true;
+            }
+        }
+
+        private void SaveState()
+        {
+            _installationState.SelectedLinuxSizeGiB = SelectedSize;
+        }
+
+        private void LoadState(DistroInfo distro)
+        {
+            IsoSize = distro.IsoInstallerSizeBytes /
+                (double)InstallationSizePolicy.BytesPerGiB;
+            RecommendedSize = CalculateRecommendedSize();
+
+            if (_installationState.SelectedLinuxSizeGiB is double savedSize)
+            {
+                // A previously saved choice can become invalid after Windows
+                // moves unmovable files or consumes disk space. Clamp it to the
+                // current typed preflight result instead of displaying an
+                // allocation that the storage layer will later reject.
+                SelectedSize = Math.Max(MinimumSize, Math.Min(Math.Floor(savedSize), MaximumSize));
+                ManualSize = SelectedSize.ToString("F0", CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                SelectedSize = RecommendedSize;
+                ManualSize = RecommendedSize.ToString("F0", CultureInfo.InvariantCulture);
+            }
+        }
+
+        private double CalculateRecommendedSize()
+        {
+            if (!CanAllocateLinux)
+                return MinimumSize;
+            double recommendedSize = Math.Max(
+                MinimumSize,
+                _initialFreeSpace * InstallationSizePolicy.RecommendedLinuxFractionOfFreeSpace);
+            return Math.Floor(Math.Min(
+                Math.Min(recommendedSize, InstallationSizePolicy.MaximumRecommendedLinuxSizeGiB),
+                AvailableLinuxSize));
+        }
+
+        private void CheckSpaceRequirements()
+        {
+            HasError = WindowsFreeSpace < MinimumWindowsFree || !CanAllocateLinux;
+        }
+
+        private void ValidateAndUpdateSize(string value)
+        {
+            if (!HasWindowsDownloadSpace)
+            {
+                HasSizeError = true;
+                SizeErrorMessage = Localization.GetString("ResizeDiskWindowsDownloadSpace");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                HasSizeError = true;
+                SizeErrorMessage = Localization.GetString("ResizeDiskSizeEmpty");
+                return;
+            }
+
+            if (uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out uint parsed))
+            {
+                double size = parsed;
+                if (size < MinimumSize)
+                {
+                    HasSizeError = true;
+                    SizeErrorMessage = string.Format(CultureInfo.CurrentCulture, Localization.GetString("ResizeDiskSizeTooSmall"), MinimumSize);
+                    return;
+                }
+
+                if (AvailableLinuxSize < MinimumSize)
+                {
+                    HasSizeError = true;
+                    SizeErrorMessage = string.Format(CultureInfo.CurrentCulture, Localization.GetString(IsWindowsTarget ? "ResizeDiskNotEnoughSpace" : "ResizeDiskSourceNotEnoughSpace"), MinimumWindowsFree, MinimumSize);
+                    return;
+                }
+
+                if (size > AvailableLinuxSize)
+                {
+                    HasSizeError = true;
+                    SizeErrorMessage = string.Format(CultureInfo.CurrentCulture, Localization.GetString(IsWindowsTarget ? "ResizeDiskSizeTooLarge" : "ResizeDiskSourceSizeTooLarge"), AvailableLinuxSize, MinimumWindowsFree);
+                    return;
+                }
+
+                HasSizeError = false;
+                SizeErrorMessage = string.Empty;
+                SelectedSize = size;
+            }
+            else
+            {
+                HasSizeError = true;
+                SizeErrorMessage = Localization.GetString("ResizeDiskInvalidNumber");
+            }
+        }
+
+        private void NumberValidationTextBox(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !IsTextAllowed(e.Text);
+        }
+
+        private static bool IsTextAllowed(string text)
+        {
+            return text.All(char.IsDigit);
+        }
+
+        private void ManualSize_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            if (!e.SourceDataObject.GetDataPresent(DataFormats.UnicodeText, true))
+            {
+                e.CancelCommand();
+                return;
+            }
+
+            string text = e.SourceDataObject.GetData(DataFormats.UnicodeText) as string;
+            if (string.IsNullOrEmpty(text) || !text.All(char.IsDigit))
+                e.CancelCommand();
+        }
+
+        private void NotifyPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private void BackButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_installationState.SelectedDistro != null)
+            {
+                SaveState();
+            }
+            NavigationHelper.NavigateWithAnimation(
+                NavigationService,
+                new ChooseDistro(_installationState),
+                TimeSpan.FromSeconds(0.3),
+                slideLeft: false);
+        }
+
+        private void NextButton_Click(object sender, RoutedEventArgs e)
+        {
+            NavigateToSharingOptions();
+        }
+
+        private void NavigateToSharingOptions()
+        {
+            ValidateAndUpdateSize(ManualSize);
+            if (HasError || HasSizeError)
+            {
+                Support.SupportReportDialog.Show(Localization.GetString("ResizeDiskErrorTitle"),
+                    SizeErrorMessage ?? Localization.GetString("ResizeDiskNoSpace"));
+                return;
+            }
+
+            if (_installationState.SelectedDistro != null)
+            {
+                SaveState();
+            }
+            NavigationHelper.NavigateWithAnimation(
+                NavigationService,
+                new SharingOptionsPage(_installationState),
+                TimeSpan.FromSeconds(0.3));
+        }
+    }
+}

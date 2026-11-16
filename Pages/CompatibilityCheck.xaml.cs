@@ -1,0 +1,167 @@
+using System;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using Libertix.Dialogs;
+using Libertix.Helpers;
+using Libertix.Installation;
+using Libertix.Models;
+
+namespace Libertix.Pages
+{
+    public partial class CompatibilityCheck : Page
+    {
+        private readonly InstallationState _installationState;
+        private readonly StringBuilder _details = new StringBuilder();
+        private bool _running;
+
+        public CompatibilityCheck() : this(((App)Application.Current).InstallationState)
+        {
+        }
+
+        public CompatibilityCheck(InstallationState installationState)
+        {
+            _installationState = installationState ?? throw new ArgumentNullException(nameof(installationState));
+            InitializeComponent();
+            Loaded += CompatibilityCheck_Loaded;
+        }
+
+        private async void CompatibilityCheck_Loaded(object sender, RoutedEventArgs e)
+        {
+            Loaded -= CompatibilityCheck_Loaded;
+            await RunChecksAsync();
+        }
+
+        private async Task RunChecksAsync()
+        {
+            if (_running) return;
+            _running = true;
+            _details.Clear();
+            DetailsText.Text = string.Empty;
+            StatusText.Text = Localization.GetString("CompatibilityRunning");
+            StatusText.Foreground = (System.Windows.Media.Brush)FindResource("TextPrimary");
+            CheckProgress.IsIndeterminate = true;
+            CheckProgress.Value = 0;
+            ContinueButton.IsEnabled = false;
+            RetryButton.Visibility = Visibility.Collapsed;
+
+            try
+            {
+                await UnattendedWorkflow.PublishStageAndWaitAsync("compatibility-running");
+                var application = (App)Application.Current;
+                if (application.Filepool.LocalDirectory != null)
+                {
+                    try
+                    {
+                        await DistributionCatalogLoader.VerifyLocalFilepoolAsync(
+                            application.Filepool,
+                            AppendDetail);
+                        if (!application.Filepool.SkipWebCatalogComparison)
+                            ApplicationLogger.Write(
+                                "LOCAL_FILEPOOL_ONLINE_VERIFIED=" + application.Filepool.LocalDirectory);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new CompatibilityPreflightException(
+                            "COMPAT_E_LOCAL_FILEPOOL",
+                            ex.Message,
+                            application.Filepool.LocalDirectory);
+                    }
+                }
+                bool skipNvramWriteProbe =
+                    application.RuntimeOptions.SkipNvramWriteProbe;
+                CompatibilityInfo info = await CompatibilityPreflightRunner.RunAsync(
+                    application.Filepool.CatalogUrl,
+                    AppendDetail,
+                    skipNvramWriteProbe,
+                    application.Filepool.LocalDirectory != null &&
+                    application.Filepool.SkipWebCatalogComparison);
+                _installationState.Compatibility = info;
+                CheckProgress.IsIndeterminate = false;
+                CheckProgress.Value = 100;
+                StatusText.Text = info.LowMemoryMode
+                    ? Localization.GetString("CompatibilityLowMemorySuccess")
+                    : Localization.GetString("CompatibilitySuccess");
+                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("AccentColor");
+                ContinueButton.IsEnabled = true;
+                ContinueButton.Focus();
+                foreach (string warning in info.Warnings)
+                    AppendDetail(Localization.GetString("CompatibilityWarningPrefix") + warning);
+                if (UnattendedWorkflow.IsEnabled)
+                {
+                    await UnattendedWorkflow.PublishStageAndWaitAsync("compatibility-passed");
+                    await UnattendedInstallationConfigurator.ConfigureAsync(
+                        _installationState,
+                        application.Filepool);
+                    bool accepted = await UnattendedWarningDialog.ShowAsync(
+                        application.MainWindow,
+                        _installationState);
+                    if (!accepted)
+                    {
+                        UnattendedWorkflow.TryPublishFailure(
+                            "unattended-warning-declined",
+                            "The unattended destructive installation was declined.");
+                        application.Shutdown(0);
+                        return;
+                    }
+
+                    NavigationHelper.NavigateWithAnimation(
+                        NavigationService,
+                        new ApplyChanges(_installationState),
+                        TimeSpan.FromSeconds(0.3));
+                }
+            }
+            catch (CompatibilityPreflightException ex)
+            {
+                UnattendedWorkflow.TryPublishFailure(ex.Code, ex.Message);
+                _installationState.Compatibility = null;
+                CheckProgress.IsIndeterminate = false;
+                CheckProgress.Value = 0;
+                StatusText.Text = ex.Code + " : " + ex.Message;
+                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorColor");
+                AppendDetail(ex.Diagnostics);
+                RetryButton.Visibility = Visibility.Visible;
+                RetryButton.Focus();
+            }
+            catch (Exception ex)
+            {
+                UnattendedWorkflow.TryPublishFailure(
+                    "compatibility-unexpected",
+                    ex.Message);
+                _installationState.Compatibility = null;
+                CheckProgress.IsIndeterminate = false;
+                CheckProgress.Value = 0;
+                StatusText.Text = Localization.GetString("CompatibilityUnexpectedPrefix") + ex.Message;
+                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorColor");
+                RetryButton.Visibility = Visibility.Visible;
+                RetryButton.Focus();
+            }
+            finally
+            {
+                _running = false;
+            }
+        }
+
+        private void AppendDetail(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return;
+            Dispatcher.Invoke(() =>
+            {
+                _details.AppendLine(line.Trim());
+                DetailsText.Text = _details.ToString();
+            });
+        }
+
+        private async void RetryButton_Click(object sender, RoutedEventArgs e) => await RunChecksAsync();
+
+        private void ContinueButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_installationState.Compatibility == null) return;
+            NavigationHelper.NavigateWithAnimation(
+                NavigationService,
+                new ChooseDistro(_installationState),
+                TimeSpan.FromSeconds(0.3));
+        }
+    }
+}

@@ -1,0 +1,500 @@
+﻿using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using Libertix.Helpers;
+using Libertix.Installation;
+using Libertix.Models;
+
+namespace Libertix
+{
+    public partial class App : Application
+    {
+        private Mutex _singleInstanceMutex;
+        private bool _ownsSingleInstanceMutex;
+        private bool _keepAwakeRequested;
+
+        [Flags]
+        private enum ExecutionState : uint
+        {
+            SystemRequired = 0x00000001,
+            DisplayRequired = 0x00000002,
+            Continuous = 0x80000000
+        }
+
+        [DllImport("kernel32.dll")]
+        private static extern ExecutionState SetThreadExecutionState(ExecutionState flags);
+        public InstallationState InstallationState { get; } = new InstallationState();
+        public StartupOptions RuntimeOptions { get; private set; } = new StartupOptions();
+        public ApplicationBuild Build { get; } = ApplicationBuild.Current;
+        public FilepoolConfig Filepool { get; private set; } =
+            FilepoolConfig.ForBuild(ApplicationBuild.Current);
+
+        protected override async void OnStartup(StartupEventArgs e)
+        {
+            _singleInstanceMutex = new Mutex(
+                initiallyOwned: true,
+                name: @"Global\Libertix.Installation",
+                createdNew: out bool createdNew);
+            _ownsSingleInstanceMutex = createdNew;
+            if (!createdNew)
+            {
+                _singleInstanceMutex.Dispose();
+                _singleInstanceMutex = null;
+                if (IsRecoveryUiInvocation(e.Args))
+                {
+                    Shutdown(0);
+                    return;
+                }
+                MessageBox.Show(
+                    Localization.GetBootstrapString(
+                        "SingleInstanceRequired",
+                        "Another Libertix instance is already running."),
+                    "Libertix",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                Shutdown(3);
+                return;
+            }
+            var permissionChoices = new Dictionary<string, bool>(StringComparer.Ordinal);
+            Security.ProtectedFiles.ConfirmPermissions = warning => Dispatcher.Invoke(() =>
+            {
+                if (!permissionChoices.TryGetValue(warning, out bool accepted))
+                {
+                    accepted = MessageBox.Show(
+                        Localization.GetBootstrapString("UnsafePermissionsConfirmation",
+                            "The permissions on this path do not guarantee Libertix's security. " +
+                            "Another user could modify or replace code run as administrator. " +
+                            "Continue despite this risk?") + "\n\n" + warning,
+                        "Libertix", MessageBoxButton.YesNo, MessageBoxImage.Warning,
+                        MessageBoxResult.No) == MessageBoxResult.Yes;
+                    permissionChoices.Add(warning, accepted);
+                }
+                return accepted;
+            });
+            ApplicationLogger.Initialize();
+            if (permissionChoices.ContainsValue(false))
+            {
+                Shutdown(1);
+                return;
+            }
+            ApplicationLogger.Write("Libertix.exe startup.");
+            RegisterApplicationErrorLogging();
+
+            if (!TryConfigureStartupOptions(e.Args))
+                return;
+
+            if (!IsRunningAsAdministrator())
+            {
+                ApplicationLogger.Write("Startup refused: administrator privileges are missing.");
+                // This runs before the language dictionary is merged, so the
+                // message is resolved from the Windows UI language directly.
+                Support.SupportReportDialog.Show("Libertix", AdministratorRequiredMessage());
+
+                Shutdown(1);
+                return;
+            }
+
+            // Keep this request on the WPF thread until OnExit, including time in the tray.
+            // Windows also releases it if the process terminates without running OnExit.
+            _keepAwakeRequested = SetThreadExecutionState(
+                ExecutionState.Continuous | ExecutionState.SystemRequired |
+                ExecutionState.DisplayRequired) != 0;
+            if (!_keepAwakeRequested)
+            {
+                ApplicationLogger.Write("Startup refused: Windows rejected the sleep prevention request.");
+                Support.SupportReportDialog.Show(
+                    "Libertix",
+                    Localization.GetBootstrapString(
+                        "SleepPreventionFailed",
+                        "Windows could not keep the computer and display awake. " +
+                        "Libertix will close without starting the installation. Try again."));
+                Shutdown(6);
+                return;
+            }
+            ApplicationLogger.Write("Automatic system sleep and display timeout prevention requested.");
+
+            string recoveryStatePath = TryGetUefiRecoveryStatePath(RuntimeOptions);
+            if (!string.IsNullOrWhiteSpace(recoveryStatePath))
+            {
+                InstallationState.UefiRecoveryStatePath = recoveryStatePath;
+                ApplicationLogger.Write(
+                    "Published version check skipped for the protected cached recovery UI.");
+            }
+            if (string.IsNullOrWhiteSpace(recoveryStatePath) &&
+                Filepool.LocalDirectory == null && !Filepool.IsDevelopmentMode &&
+                RuntimeOptions.Unattended == null)
+                await ChooseLocalServerAsync();
+            await RunValidatedStartupAsync(
+                () => string.IsNullOrWhiteSpace(recoveryStatePath)
+                    ? ValidatePublishedVersionAsync()
+                    : Task.FromResult(true),
+                () =>
+                {
+                    base.OnStartup(e);
+                    MainWindow = new MainWindow();
+                    MainWindow.Show();
+                });
+        }
+
+        internal static async Task RunValidatedStartupAsync(Func<Task<bool>> validate, Action openWindow)
+        {
+            // StartupUri would open the window as soon as async OnStartup yields.
+            if (await validate())
+                openWindow();
+        }
+
+        private async Task ChooseLocalServerAsync()
+        {
+            try
+            {
+                var servers = await LocalFilepoolDiscovery.FindAsync(Build.Channel);
+                for (int index = 0; index < servers.Count; index++)
+                {
+                    string prompt = string.Format(Localization.GetBootstrapString(
+                        "LocalServerChoice",
+                        "Local installation server {0} ({1}/{2}). Use this server? " +
+                        "Files will still be verified using the signed GitHub catalog. " +
+                        "Yes: use it. No: next server. Cancel: use official downloads."),
+                        servers[index], index + 1, servers.Count);
+                    var choice = MessageBox.Show(prompt, "Libertix", MessageBoxButton.YesNoCancel,
+                        MessageBoxImage.Question, MessageBoxResult.No);
+                    if (choice == MessageBoxResult.Cancel)
+                        return;
+                    if (choice == MessageBoxResult.Yes)
+                    {
+                        Filepool = Filepool.WithLocalServer(servers[index]);
+                        ApplicationLogger.Write("Accepted local filepool: " + Filepool.LocalServer);
+                        return;
+                    }
+                }
+            }
+            catch (System.Net.Sockets.SocketException error)
+            {
+                ApplicationLogger.Write("Local server discovery unavailable: " + error.Message);
+            }
+            catch (System.Net.NetworkInformation.NetworkInformationException error)
+            {
+                ApplicationLogger.Write("Local network enumeration unavailable: " + error.Message);
+            }
+        }
+
+        private static bool IsRecoveryUiInvocation(string[] args)
+        {
+            if (args == null)
+                return false;
+
+            bool hasFailureMarker = false;
+            bool hasStatePath = false;
+            for (int index = 0; index < args.Length; index++)
+            {
+                if (string.Equals(
+                    args[index],
+                    "--uefi-bootnext-failed",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    hasFailureMarker = true;
+                }
+                else if (string.Equals(
+                    args[index],
+                    "--uefi-recovery-state",
+                    StringComparison.OrdinalIgnoreCase) &&
+                    index + 1 < args.Length &&
+                    !string.IsNullOrWhiteSpace(args[index + 1]))
+                {
+                    hasStatePath = true;
+                    index++;
+                }
+            }
+            return hasFailureMarker && hasStatePath;
+        }
+
+        private bool TryConfigureStartupOptions(string[] args)
+        {
+            if (!StartupOptions.TryParse(args, out StartupOptions options, out string error))
+            {
+                RejectInvalidStartupOptions(error);
+                return false;
+            }
+
+            FilepoolConfig filepool = FilepoolConfig.ForBuild(Build);
+            if (!options.TryValidateBuild(Build, out error))
+            {
+                RejectInvalidStartupOptions(error);
+                return false;
+            }
+            if (!string.IsNullOrWhiteSpace(options.FilepoolBaseUrlOverride))
+            {
+                if (!Build.AllowsDevelopmentFilepoolOverride)
+                {
+                    RejectInvalidStartupOptions(
+                        "The filepool override is available only in development builds.");
+                    return false;
+                }
+
+                if (!FilepoolConfig.TryCreate(
+                    options.FilepoolBaseUrlOverride,
+                    out filepool,
+                    out error))
+                {
+                    RejectInvalidStartupOptions(error);
+                    return false;
+                }
+            }
+
+            string localDirectory = options.LocalFilepoolDirectory ?? ApplicationFiles.Resolve("filepool");
+            if (options.LocalFilepoolDirectory != null && !Directory.Exists(localDirectory))
+            {
+                RejectInvalidStartupOptions("The adjacent filepool directory is no longer available.");
+                return false;
+            }
+            if (Directory.Exists(localDirectory))
+            {
+                string prompt = Localization.GetBootstrapString(
+                    "LocalFilepoolChoice",
+                    "A filepool folder was found beside Libertix.exe. Use its files " +
+                    "for installation? They will be verified during the compatibility check. " +
+                    "Choose No to download from the online filepool.");
+                if (MessageBox.Show(
+                    prompt,
+                    "Libertix",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) == MessageBoxResult.Yes)
+                {
+                    filepool = filepool.WithLocalDirectory(
+                        localDirectory,
+                        options.DevelopmentMode);
+                }
+            }
+            if (options.DevelopmentMode && filepool.LocalDirectory == null)
+            {
+                RejectInvalidStartupOptions("--dev requires choosing the adjacent filepool folder.");
+                return false;
+            }
+
+            Filepool = filepool;
+
+            bool usesPublishedDevelopmentChannel =
+                Build.IsDevelopment &&
+                string.Equals(
+                    Filepool.BaseUrl,
+                    Build.MetadataBaseUrl,
+                    StringComparison.OrdinalIgnoreCase);
+            if (options.Unattended != null &&
+                !Filepool.IsDevelopmentMode &&
+                !usesPublishedDevelopmentChannel)
+            {
+                RejectInvalidStartupOptions(
+                    "Unattended mode requires a development build channel or " +
+                    "an explicit development filepool URL.");
+                return false;
+            }
+            if (options.ForceOfflineNtfsResize &&
+                !Filepool.IsDevelopmentMode &&
+                !usesPublishedDevelopmentChannel)
+            {
+                RejectInvalidStartupOptions(
+                    "Forced offline NTFS resize requires a development build channel or " +
+                    "an explicit development filepool URL.");
+                return false;
+            }
+
+            RuntimeOptions = options;
+            ApplicationLogger.Write($"Filepool base URL: {Filepool.BaseUrl}");
+            if (Filepool.LocalDirectory != null)
+                ApplicationLogger.Write("Local filepool selected: " + Filepool.LocalDirectory);
+            ApplicationLogger.Write($"Build version: {Build.Version}; channel={Build.Channel}.");
+            if (!string.IsNullOrEmpty(options.DevelopmentSshStaticIpv4Address))
+            {
+                ApplicationLogger.Write(
+                    "Development SSH/static network enabled for " +
+                    options.DevelopmentSshStaticIpv4Address + "/" +
+                    options.DevelopmentSshStaticIpv4PrefixLength + ".");
+            }
+            if (options.Unattended != null)
+                ApplicationLogger.Write("Unattended development workflow enabled.");
+            if (options.ForceOfflineNtfsResize)
+                ApplicationLogger.Write("Forced offline NTFS resize development workflow enabled.");
+            return true;
+        }
+
+        private async Task<bool> ValidatePublishedVersionAsync()
+        {
+            if (RuntimeOptions.DevelopmentMode && Filepool.LocalDirectory != null)
+            {
+                ApplicationLogger.Write("Published version check bypassed for the explicitly selected local filepool in development mode.");
+                return true;
+            }
+
+            ReleaseCheckResult result = await ReleaseMetadataClient.CheckAsync(Build, Filepool);
+            if (result.IsCurrent)
+                return true;
+
+            if (!string.IsNullOrWhiteSpace(result.Error))
+            {
+                ApplicationLogger.Write("Published version check failed: " + result.Error);
+                Support.SupportReportDialog.Show(
+                    Localization.GetBootstrapString(
+                        "ReleaseCheckFailedTitle",
+                        "Libertix - version verification failed"),
+                    string.Format(
+                        Localization.GetBootstrapString(
+                            "ReleaseCheckFailedMessage",
+                            "Libertix could not verify the current published version: {0}"),
+                        result.Error));
+                Shutdown(4);
+                return false;
+            }
+
+            ApplicationLogger.Write(
+                $"Startup refused: build {Build.Version} is older than {result.LatestVersion}.");
+            MessageBoxResult response = MessageBox.Show(
+                string.Format(
+                    Localization.GetBootstrapString(
+                        "ReleaseUpdateRequiredMessage",
+                        "This Libertix version ({0}) is no longer current. The latest version is {1}. " +
+                        "Download the current release before continuing. Open the download page now?"),
+                    Build.Version,
+                    result.LatestVersion),
+                Localization.GetBootstrapString(
+                    "ReleaseUpdateRequiredTitle",
+                    "Libertix - update required"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (response == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    Process.Start(result.ReleaseUrl);
+                }
+                catch (Exception exception) when (
+                    exception is InvalidOperationException ||
+                    exception is System.ComponentModel.Win32Exception)
+                {
+                    ApplicationLogger.WriteException(
+                        "The current release URL could not be opened.",
+                        exception);
+                }
+            }
+            Shutdown(5);
+            return false;
+        }
+
+        private static void RejectInvalidStartupOptions(string error)
+        {
+            ApplicationLogger.Write("Startup refused: " + error);
+            Support.SupportReportDialog.Show(
+                Localization.GetBootstrapString(
+                    "InvalidStartupOptionsTitle",
+                    "Libertix - invalid startup option"),
+                string.Format(
+                    Localization.GetBootstrapString(
+                        "InvalidStartupOptionsMessage",
+                        "Invalid startup option: {0}"),
+                    error));
+            Current.Shutdown(2);
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            if (_keepAwakeRequested)
+            {
+                bool released = SetThreadExecutionState(ExecutionState.Continuous) != 0;
+                ApplicationLogger.Write(released
+                    ? "Automatic system sleep and display timeout prevention released."
+                    : "Sleep prevention release failed; Windows will release it when this thread exits.");
+                _keepAwakeRequested = false;
+            }
+            ApplicationLogger.Write($"Libertix.exe exit, code={e.ApplicationExitCode}.");
+            if (_singleInstanceMutex != null)
+            {
+                if (_ownsSingleInstanceMutex)
+                    _singleInstanceMutex.ReleaseMutex();
+                _singleInstanceMutex.Dispose();
+                _singleInstanceMutex = null;
+                _ownsSingleInstanceMutex = false;
+            }
+            base.OnExit(e);
+        }
+
+        protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+        {
+            if (MainWindow is MainWindow window)
+                window.PrepareForSystemRestart();
+            base.OnSessionEnding(e);
+        }
+
+        private void RegisterApplicationErrorLogging()
+        {
+            DispatcherUnhandledException += (_, args) =>
+            {
+                UnattendedWorkflow.TryPublishFailure(
+                    "wpf-dispatcher-unhandled",
+                    args.Exception?.Message);
+                ApplicationLogger.WriteException(
+                    "Unhandled WPF dispatcher exception.",
+                    args.Exception);
+            };
+            AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            {
+                UnattendedWorkflow.TryPublishFailure(
+                    "appdomain-unhandled",
+                    (args.ExceptionObject as Exception)?.Message ??
+                    "Unhandled AppDomain exception.");
+                ApplicationLogger.Write(
+                    "Unhandled AppDomain exception." + Environment.NewLine +
+                    (args.ExceptionObject?.ToString() ?? "No exception details."));
+            };
+            TaskScheduler.UnobservedTaskException += (_, args) =>
+                ApplicationLogger.WriteException("Unobserved task exception.", args.Exception);
+        }
+
+        private static string TryGetUefiRecoveryStatePath(StartupOptions options)
+        {
+            if (options == null ||
+                !options.UefiBootNextFailed ||
+                string.IsNullOrWhiteSpace(options.UefiRecoveryStatePath))
+            {
+                return null;
+            }
+
+            try
+            {
+                string path = Path.GetFullPath(options.UefiRecoveryStatePath);
+                string root = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Libertix",
+                    "UefiRecovery") + Path.DirectorySeparatorChar;
+                if (path.StartsWith(root, StringComparison.OrdinalIgnoreCase) && File.Exists(path))
+                    return path;
+            }
+            catch
+            {
+                // Invalid or inaccessible command-line paths are rejected like
+                // paths outside the protected recovery directory.
+            }
+            return null;
+        }
+
+        private static string AdministratorRequiredMessage()
+        {
+            return Localization.GetBootstrapString(
+                "AdministratorRequired",
+                "Libertix must be run as administrator.");
+        }
+
+        private static bool IsRunningAsAdministrator()
+        {
+            using (var identity = WindowsIdentity.GetCurrent())
+            {
+                var principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+        }
+    }
+}
