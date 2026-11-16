@@ -23,7 +23,7 @@ class CachyosPreflightTests(unittest.TestCase):
         self.image.touch()
 
     @staticmethod
-    def runner(os_release='NAME="CachyOS"\nID=arch\n', inventory=None, *, returncode=0):
+    def runner(os_release='NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\nIMAGE_ID=cachyos\n', inventory=None, *, returncode=0):
         if inventory is None:
             inventory = ('-rw-r--r-- root/root 123 2026-01-01 squashfs-root/etc/pacman.conf\n'
                          '-rwxr-xr-x root/root 456 2026-01-01 squashfs-root/usr/bin/pacman\n')
@@ -37,6 +37,8 @@ class CachyosPreflightTests(unittest.TestCase):
     def test_good_image_recognized_but_not_installable(self):
         value = preflight.inspect_cachyos_iso_root(self.root, runner=self.runner())
         self.assertEqual(value["distribution"], "cachyos")
+        self.assertEqual(value["live_os_release_id"], "cachyos")
+        self.assertEqual(value["live_os_release_id_like"], "arch")
         self.assertFalse(value["libertix_installation_supported"])
         self.assertFalse(value["mutates_storage"])
 
@@ -57,9 +59,21 @@ class CachyosPreflightTests(unittest.TestCase):
         with self.assertRaises(preflight.PreflightError):
             preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('ID=arch\nNAME="EndeavourOS"\n'))
 
-    def test_cachyos_live_is_not_identified_by_id_cachyos(self):
+    def test_generic_arch_live_cannot_impersonate_cachyos(self):
         with self.assertRaises(preflight.PreflightError):
-            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('NAME="CachyOS"\nID=cachyos\n'))
+            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('NAME="CachyOS"\nID=arch\n'))
+
+    def test_cachyos_name_only_is_not_enough(self):
+        with self.assertRaises(preflight.PreflightError):
+            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('NAME="CachyOS Linux"\nID=cachyos\n'))
+
+    def test_missing_cachyos_image_id_is_rejected(self):
+        with self.assertRaises(preflight.PreflightError):
+            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\n'))
+
+    def test_fake_image_id_is_rejected(self):
+        with self.assertRaises(preflight.PreflightError):
+            preflight.inspect_cachyos_iso_root(self.root, runner=self.runner('NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\nIMAGE_ID=other\n'))
 
     def test_pacman_required(self):
         with self.assertRaises(preflight.PreflightError):
