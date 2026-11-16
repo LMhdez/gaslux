@@ -86,7 +86,7 @@ class GeneratedBootTests(unittest.TestCase):
         unchanged = fake_handoff({"isoStorageUuid": UUID})["grubEntry"].splitlines()
         new = cfg.splitlines()[5:]
         self.assertEqual(len(unchanged), len(new))
-        changed = [(old, actual) for old, actual in zip(unchanged, new) if old != actual]
+        changed = [(old, actual) for old, actual in zip(unchanged, new, strict=True) if old != actual]
         self.assertEqual(len(changed), 1)
         self.assertTrue(changed[0][0].startswith("    linux (gaslux_iso)/"))
         self.assertEqual(changed[0][1], changed[0][0] + boot._DIAGNOSTIC_FLAGS)
@@ -119,18 +119,22 @@ class GeneratedBootTests(unittest.TestCase):
     def test_backend_cannot_claim_production_support(self):
         def unsafe(plan, **kwargs):
             return {**fake_handoff(plan, **kwargs), "productionInstallSupported": True}
-        with patch.object(boot._HANDOFF, "prepare", side_effect=unsafe):
-            with self.assertRaisesRegex(boot.LabBootError, "backend readiness"):
-                boot.generate(self.file, HASH, UUID, self.mount)
+        with (
+            patch.object(boot._HANDOFF, "prepare", side_effect=unsafe),
+            self.assertRaisesRegex(boot.LabBootError, "backend readiness"),
+        ):
+            boot.generate(self.file, HASH, UUID, self.mount)
 
     def test_backend_missing_initramfs_rejected(self):
         def no_initrd(plan, **kwargs):
             obj = fake_handoff(plan, **kwargs)
             obj["grubEntry"] = obj["grubEntry"].replace("    initrd ", "    absent ")
             return obj
-        with patch.object(boot._HANDOFF, "prepare", side_effect=no_initrd):
-            with self.assertRaisesRegex(boot.LabBootError, "exactly one"):
-                boot.generate(self.file, HASH, UUID, self.mount)
+        with (
+            patch.object(boot._HANDOFF, "prepare", side_effect=no_initrd),
+            self.assertRaisesRegex(boot.LabBootError, "exactly one"),
+        ):
+            boot.generate(self.file, HASH, UUID, self.mount)
 
     def test_backend_wrong_uuid_rejected(self):
         def stale(plan, **kwargs):
@@ -139,9 +143,11 @@ class GeneratedBootTests(unittest.TestCase):
                 "img_dev=UUID=" + UUID, "img_dev=UUID=" + "0" * 36
             )
             return obj
-        with patch.object(boot._HANDOFF, "prepare", side_effect=stale):
-            with self.assertRaisesRegex(boot.LabBootError, "img_dev"):
-                boot.generate(self.file, HASH, UUID, self.mount)
+        with (
+            patch.object(boot._HANDOFF, "prepare", side_effect=stale),
+            self.assertRaisesRegex(boot.LabBootError, "img_dev"),
+        ):
+            boot.generate(self.file, HASH, UUID, self.mount)
 
 
 if __name__ == "__main__":
