@@ -127,8 +127,7 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -device qemu-xhci \
   -drive if=none,id=labefi,format=raw,file="$work/efi.img" \
   -device usb-storage,drive=labefi \
-  -drive if=none,id=labcd,format=raw,readonly=on,media=cdrom,file="$iso" \
-  -device ide-cd,bus=ide.1,unit=0,drive=labcd \
+  -cdrom "$iso" \
   -serial "file:$work/serial.log" &
 guest="$!"
 guest_verified=0
