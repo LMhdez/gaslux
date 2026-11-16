@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/bootstrap-libertix.yml
+      - bootstrap/libertix-cachyos-preflight.patch
   workflow_dispatch:
 
 permissions:
