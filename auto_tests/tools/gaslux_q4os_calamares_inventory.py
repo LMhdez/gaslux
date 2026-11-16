@@ -82,7 +82,37 @@ def modules_in_sequence(settings: object) -> dict[str, list[str]]:
     return sequences
 
 
-def inventory(iso: Path, squashfs: Path, out: Path) -> dict:
+
+def verify_iso_mount_binding(iso: Path, squashfs: Path, mount_root: Path) -> None:
+    """Prove that the read-only SquashFS is on a loop mount of the hashed ISO."""
+    if mount_root.is_symlink() or not mount_root.is_mount():
+        raise ValueError("ISO root is not a real mounted filesystem")
+    root = mount_root.resolve(strict=True)
+    actual_squash = squashfs.resolve(strict=True)
+    if not actual_squash.is_relative_to(root):
+        raise ValueError("SquashFS is outside the mounted official ISO")
+    result = subprocess.run(
+        ["findmnt", "-n", "-M", str(root), "-o", "SOURCE,FSTYPE"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    parts = result.stdout.strip().split()
+    if len(parts) != 2 or parts[1] != "iso9660" or not re.fullmatch(r"/dev/loop[0-9]+", parts[0]):
+        raise ValueError("Expected a dedicated loop-backed ISO9660 mount")
+    result = subprocess.run(
+        ["losetup", "-n", "-O", "BACK-FILE", parts[0]],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    backing = result.stdout.strip()
+    if not backing or not Path(backing).samefile(iso):
+        raise ValueError("ISO mount backing file differs from the SHA-256-verified image")
+
+def inventory(iso: Path, squashfs: Path, out: Path, mount_root: Path) -> dict:
     if iso.is_symlink() or squashfs.is_symlink():
         raise ValueError("Refusing symlinked ISO or SquashFS")
     iso_hash = sha256_file(iso)
@@ -90,6 +120,7 @@ def inventory(iso: Path, squashfs: Path, out: Path) -> dict:
         raise ValueError("Actual ISO does not match pinned Q4OS 6.10 r2 SHA-256")
     if not squashfs.is_file():
         raise ValueError("Missing live SquashFS from verified ISO")
+    verify_iso_mount_binding(iso, squashfs, mount_root)
     paths = listing_paths(squashfs)
     settings_path = next((p for p in CONFIG_CANDIDATES if paths.get(p) == "-"), None)
     version_path = next((p for p in VERSION_CANDIDATES if paths.get(p) == "-"), None)
@@ -154,8 +185,9 @@ def main() -> int:
     parser.add_argument("--iso", type=Path, required=True)
     parser.add_argument("--squashfs", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--mount-root", type=Path, required=True)
     args = parser.parse_args()
-    report = inventory(args.iso, args.squashfs, args.out)
+    report = inventory(args.iso, args.squashfs, args.out, args.mount_root)
     print("Q4OS pinned ISO SHA-256:", report["pinnedIsoSha256"])
     print("Q4OS identity path:", report["q4osVersionFile"])
     print("Calamares binary:", report["calamaresBinaryPresent"])
