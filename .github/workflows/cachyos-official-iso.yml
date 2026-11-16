@@ -71,6 +71,12 @@ jobs:
           if ! python3 assets/live/libertix-cachyos-preflight.py "$w/mounted" > "$w/preflight.json"; then
             echo "::error::CachyOS Archiso preflight rejected the verified official ISO"
             cat "$w/preflight.json"
+            echo "::group::Read-only live identity from verified squashfs"
+            unsquashfs -cat "$w/mounted/arch/x86_64/airootfs.sfs" etc/os-release | head -60 || true
+            echo "::endgroup::"
+            echo "::group::Read-only pacman capabilities in verified squashfs"
+            unsquashfs -ll "$w/mounted/arch/x86_64/airootfs.sfs" etc/pacman.conf usr/bin/pacman | tail -35 || true
+            echo "::endgroup::"
             echo "::group::Official ISO file layout"
             find "$w/mounted" -maxdepth 4 -type f | sed "s|$w/mounted/||" | head -100 || true
             echo "::endgroup::"
