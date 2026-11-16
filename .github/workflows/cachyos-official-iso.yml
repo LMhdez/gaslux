@@ -6,6 +6,7 @@ on:
     branches:
       - feature/cachyos-archiso-handoff
       - feature/cachyos-e2e-release-gate
+      - feature/cachyos-real-iso-contract
     paths:
       - .github/workflows/cachyos-official-iso.yml
 
@@ -65,7 +66,16 @@ jobs:
           sudo mount -o loop,ro "$w/cachyos.iso" "$w/mounted"
           cleanup() { sudo umount "$w/mounted" || true; }
           trap cleanup EXIT
-          python3 assets/live/libertix-cachyos-preflight.py "$w/mounted" > "$w/preflight.json"
+          # Surface the exact reason when the real signed ISO differs from
+          # synthetic preflight fixtures; never treat a failed inspection as success.
+          if ! python3 assets/live/libertix-cachyos-preflight.py "$w/mounted" > "$w/preflight.json"; then
+            echo "::error::CachyOS Archiso preflight rejected the verified official ISO"
+            cat "$w/preflight.json"
+            echo "::group::Official ISO file layout"
+            find "$w/mounted" -maxdepth 4 -type f | sed "s|$w/mounted/||" | head -100 || true
+            echo "::endgroup::"
+            exit 1
+          fi
           python3 - "$w" "$ISO_SHA256" <<'PY'
           import hashlib, importlib.util, json, sys
           from pathlib import Path
