@@ -93,9 +93,11 @@ class StageTargetSafetyTests(unittest.TestCase):
         # Pinned official CachyOS 260809: ID=cachyos and ID_LIKE=arch.
         self.assertIn('[ "$host_id" = cachyos ]', host)
         self.assertIn('[ "$host_like" = arch ]', host)
-        self.assertIn('[ "$host_name" = CachyOS ]', host)
+        self.assertIn("[ \"$host_name\" = 'CachyOS Linux' ]", host)
+        self.assertIn("grep -qx 'IMAGE_ID=cachyos'", host)
+        self.assertIn("grep -qx 'IMAGE_VERSION=2026.08.09'", host)
         self.assertNotIn('[ "$host_id" = arch ]', host)
-        self.assertIn("not official CachyOS Archiso", host)
+        self.assertIn("identity does not match verified ISO", host)
 
     def test_static_guard_remains_before_pacstrap(self):
         source = SCRIPT.read_text()
