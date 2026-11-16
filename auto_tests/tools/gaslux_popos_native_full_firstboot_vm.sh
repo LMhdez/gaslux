@@ -78,18 +78,13 @@ printf 'kernel=%s\ninitrd=%s\n' "$kernel" "$initrd" > "$work/kernel-path.txt"
 sudo umount "$work/iso-root"
 mounted=0
 
-code=''
-vars=''
-for suffix in _4M ''; do
-  c="/usr/share/OVMF/OVMF_CODE${suffix}.fd"
-  v="/usr/share/OVMF/OVMF_VARS${suffix}.fd"
-  if [[ -f "$c" && -f "$v" ]]; then
-    code="$c"
-    vars="$v"
-    break
-  fi
-done
-[[ -n "$code" && -n "$vars" ]] || die 'OVMF firmware and variables absent'
+# Use Secure Boot CAPABLE firmware but CLEAN, keyless VARS in this VM.
+# OVMF_CODE_4M.fd can omit SecureBoot efivars entirely; never infer disabled.
+code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
+vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+[[ -f "$code" && -f "$vars" ]] ||
+  die 'No matching Secure Boot-capable OVMF firmware and blank VARS'
+[[ "$vars" != *.ms.fd ]] || die 'Enrolled-key firmware variables forbidden'
 cp "$vars" "$work/nvram-live.fd"
 cp "$vars" "$work/nvram-installed.fd"
 
