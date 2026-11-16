@@ -142,9 +142,12 @@ class StrictPacmanConfigTests(unittest.TestCase):
                 STRICT.config_for(candidate)
 
     def test_prepare_vm_refuses_without_disposable_vm(self):
-        with patch.dict("os.environ", {"GASLUX_DISPOSABLE_VM": ""}):
-            with self.assertRaisesRegex(STRICT.StrictConfigError, "consent"):
-                STRICT.check_vm_environment()
+        with (
+            patch.object(STRICT.os, "geteuid", return_value=0),
+            patch.dict("os.environ", {"GASLUX_DISPOSABLE_VM": ""}),
+            self.assertRaisesRegex(STRICT.StrictConfigError, "consent"),
+        ):
+            STRICT.check_vm_environment()
 
     def test_prepare_vm_never_runs_on_unverified_hardware(self):
         with patch.object(STRICT.os, "geteuid", return_value=0):
