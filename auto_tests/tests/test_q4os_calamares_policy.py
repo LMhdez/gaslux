@@ -185,9 +185,18 @@ def _synthetic_hook_evidence(evidence):
     lines = []
     for path in _HOOK_PATHS:
         name = path.replace("/", "__")
-        content = (
-            "# inert synthetic fixture\n" if path.endswith(".sh") else "type: process\n"
-        ).encode()
+        if path.endswith("module.desc"):
+            module = path.split("/")[-2]
+            contents = {
+                "type": "job",
+                "name": module,
+                "interface": "process",
+                "command": f"/usr/sbin/debian_adjust{module[-1]}.sh",
+                "timeout": {"q4oshook2": 3600, "q4oshook3": 18000, "q4oshook5": 600}[module],
+            }
+            content = yaml.safe_dump(contents).encode()
+        else:
+            content = b"# inert synthetic fixture\n"
         (folder / name).write_bytes(content)
         lines.append(f"{hashlib.sha256(content).hexdigest()}  {name}")
     (folder / "q4os-hooks-files.sha256").write_text(
