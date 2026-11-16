@@ -135,10 +135,8 @@ def audit_q4os_native_hooks(root: Path) -> dict:
         "liveMediumBindMount": b"mount --bind" in hook2,
         "unquotedChrootPathRemoval": b"rm -rf $CHROOT" in hook2 or b"rm -rf $CHROOT" in hook3,
         "guestTargetAptPurge": b"apt-get -y --purge autoremove" in hook3,
-        "guestTargetEssentialPackageForcePurge": (
-            b"--force-remove-essential q4os-loopin" in hook3
-        ),
-        "legacyEfiDirectoryCreation": b'/boot/efi/EFI/debian/' in hook3,
+        "guestTargetEssentialPackageForcePurge": (b"--force-remove-essential q4os-loopin" in hook3),
+        "legacyEfiDirectoryCreation": b"/boot/efi/EFI/debian/" in hook3,
         "legacyEfiConfigRewrite": changes_efi_debian,
         "forcedEfiGrubInstallInAuxiliaryHook": invokes_forced_grub,
         "chrootUpdateGrub": b"chroot $CHROOT update-grub" in hook5,
