@@ -38,8 +38,13 @@ jobs:
           mkdir -p "$workspace/mounted"
           echo "GASLUX_ISO_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           echo "$ISO_URL" > "$workspace/source-url.txt"
-          curl -fLsS --retry 3 --retry-delay 4 --connect-timeout 30 \
-            --max-time 1050 -o "$workspace/cachyos.iso" "$ISO_URL"
+          # Large ISO downloads can be cut off by intermediaries. Force HTTP/1.1,
+          # resume only from the already downloaded byte count and verify the
+          # complete file against CachyOS's independently published SHA-256.
+          curl --http1.1 --fail --location --silent --show-error \
+            --retry 8 --retry-all-errors --retry-delay 5 --retry-max-time 1400 \
+            --connect-timeout 30 --max-time 1350 --continue-at - \
+            --output "$workspace/cachyos.iso" "$ISO_URL"
           printf '%s  %s\n' "$ISO_SHA256" "$workspace/cachyos.iso" | sha256sum --check --status
           echo "Verified official CachyOS ISO version $RELEASE SHA-256: $ISO_SHA256"
       - name: Mount verified ISO read-only and inspect live Archiso payload
