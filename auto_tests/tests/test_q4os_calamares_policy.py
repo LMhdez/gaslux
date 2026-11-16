@@ -182,7 +182,7 @@ def _synthetic_hook_evidence(evidence):
     lines = []
     for path in _HOOK_PATHS:
         name = path.replace("/", "__")
-        content = ("# inert synthetic fixture\n" if path.endswith(".sh") else "type: process\n").encode()
+        content = (\n            "# inert synthetic fixture\n" if path.endswith(".sh") else "type: process\n"\n        ).encode()
         (folder / name).write_bytes(content)
         lines.append(f"{hashlib.sha256(content).hexdigest()}  {name}")
     (folder / "q4os-hooks-files.sha256").write_text(
