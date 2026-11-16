@@ -146,7 +146,10 @@ class WindowsRecoveryFixtureTests(unittest.TestCase):
         self.rejected(lambda a, b: b.update(secureBootEnabled=True), message="Secure Boot")
 
     def test_no_independently_observed_reboot(self):
-        self.rejected(lambda a, b: b.update(windowsBootTime=a["windowsBootTime"]), message="subsequent Windows boot")
+        self.rejected(
+            lambda a, b: b.update(windowsBootTime=a["windowsBootTime"]),
+            message="subsequent Windows boot",
+        )
 
     def test_recovery_partition_deleted(self):
         self.rejected(lambda a, b: b["disks"][0]["partitions"].pop(2), message="removed")
