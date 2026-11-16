@@ -11,6 +11,7 @@ from pathlib import Path
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 LOGIN = re.compile(rb"(?im)(?:^|[\r\n])[^:\r\n]{0,80}login:\s*$")
 PASSWORD = re.compile(rb"(?im)Password:\s*$")
+ROOT_DEBUG_SHELL = re.compile(rb"(?m)^[^\r\n]{0,130}#\s*$")
 READY = re.compile(rb"(?m)^GASLUX_POP_LIVE_SHELL_READY\r?$")
 PASSED = re.compile(rb"(?m)^GASLUX_POP_DISTINST_GUEST_READONLY_PASS=1\r?$")
 FAILED = re.compile(rb"GASLUX_POP_GUEST_DISTINST_FAILURE")
@@ -69,23 +70,18 @@ def run(socket_path: Path, transcript: bytearray, trusted_sha: str) -> None:
                 if time.monotonic() >= deadline:
                     raise GuestProbeError("QEMU socket did not appear") from None
                 time.sleep(0.25)
-        wait_for(conn, transcript, LOGIN, timeout_seconds=300)
-        # The verified Pop 24.04 serial getty explicitly requests Password:
-        # after the live-user name. Never send shell code into a password prompt.
-        login_start = len(transcript)
-        conn.sendall(b"pop-os\r")
-        wait_for(conn, transcript, PASSWORD, timeout_seconds=25, start=login_start)
-        conn.sendall(b"\r")  # Blank password on this isolated live ISO only.
-        time.sleep(1)
+        # systemd.debug_shell=ttyS0 is enabled ONLY by the disposable QEMU
+        # test runner (no NIC, no host disks). Never brute-force a live login.
+        wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=305)
         ready_start = len(transcript)
         conn.sendall(b"printf 'GASLUX_POP_LIVE_SHELL_READY\\n'\r")
         wait_for(conn, transcript, READY, timeout_seconds=25, start=ready_start)
         cmd = (
-            "sudo -n mkdir -p /run/gaslux-pop-lab && "
-            "sudo -n mount -t vfat -o ro /dev/disk/by-label/GASLUXLAB "
+            "mkdir -p /run/gaslux-pop-lab && "
+            "mount -t vfat -o ro /dev/disk/by-label/GASLUXLAB "
             "/run/gaslux-pop-lab && "
             "cd /run/gaslux-pop-lab && sha256sum -c probe.sha256 && "
-            "sudo -n bash probe.sh " + trusted_sha + "\r"
+            "bash probe.sh " + trusted_sha + "\r"
         )
         start = len(transcript)
         conn.sendall(cmd.encode("ascii"))
