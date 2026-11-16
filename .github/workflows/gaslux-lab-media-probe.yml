@@ -21,6 +21,7 @@ on:
       - '.github/workflows/gaslux-lab-media-probe.yml'
       - 'auto_tests/tests/test_q4os_calamares_probe.py'
       - 'assets/live/gaslux_q4os_calamares_policy.py'
+      - 'assets/live/gaslux_q4os_hook_policy.py'
       - 'auto_tests/tests/test_q4os_calamares_policy.py'
       - 'auto_tests/tests/test_q4os_installed_root_lab.py'
       - 'auto_tests/tools/gaslux_q4os_installed_root_lab.sh'
@@ -46,7 +47,7 @@ jobs:
       - name: Read-only probe syntax, lint and negative tests
         run: |
           shopt -s nullglob
-          sources=(assets/live/gaslux_lab_media_probe.py assets/live/gaslux_candidate_handoff.py assets/live/gaslux_candidate_target_audit.py assets/live/gaslux_q4os_calamares_policy.py assets/live/gaslux_*preflight.py)
+          sources=(assets/live/gaslux_lab_media_probe.py assets/live/gaslux_candidate_handoff.py assets/live/gaslux_candidate_target_audit.py assets/live/gaslux_q4os_calamares_policy.py assets/live/gaslux_q4os_hook_policy.py assets/live/gaslux_*preflight.py)
           tests=(auto_tests/tests/test_lab_media_probe.py auto_tests/tests/test_candidate_handoff.py auto_tests/tests/test_candidate_target_audit.py auto_tests/tests/test_*preflight.py auto_tests/tests/test_candidate_live_boot_transport.py auto_tests/tests/test_q4os_calamares_probe.py auto_tests/tests/test_q4os_calamares_policy.py auto_tests/tests/test_q4os_installed_root_lab.py auto_tests/tests/test_q4os_native_grub_guest.py)
           python -m compileall -q "${sources[@]}" "${tests[@]}"
           python -m ruff check --config auto_tests/pyproject.toml "${sources[@]}" "${tests[@]}"
