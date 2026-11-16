@@ -13,6 +13,8 @@ on:
       - 'auto_tests/tests/test_q4os_calamares_probe.py'
       - 'assets/live/gaslux_q4os_calamares_policy.py'
       - 'auto_tests/tests/test_q4os_calamares_policy.py'
+      - 'auto_tests/tools/gaslux_q4os_installed_root_lab.sh'
+      - 'auto_tests/tests/test_q4os_installed_root_lab.py'
       - 'auto_tests/tests/test_candidate_live_boot_transport.py'
   workflow_dispatch:
 
@@ -124,6 +126,18 @@ jobs:
           if result['installationAuthorized'] or result['windowsEspFallbackWriteAuthorized']:
               raise SystemExit('Q4OS native Calamares must remain lab-only')
           PY
+      - name: Attempt Q4OS installed-root first boot from owned disposable GPT disk
+        shell: bash
+        env:
+          GASLUX_Q4OS_ALLOW_DISPOSABLE_INSTALL: yes
+          Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_q4os_installed_root_lab.sh
+          bash auto_tests/tools/gaslux_q4os_installed_root_lab.sh \
+            "$GASLUX_Q4OS_FILE" "$Q4OS_SHA256" \
+            "$RUNNER_TEMP/gaslux-q4os/evidence"
+          echo 'Only disposable guest GPT, not Windows or host storage, was formatted.'
       - name: Boot actual verified Q4OS live ISO in disposable OVMF/QEMU
         shell: bash
         env:
