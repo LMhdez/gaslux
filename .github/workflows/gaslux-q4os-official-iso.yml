@@ -14,6 +14,7 @@ on:
       - 'auto_tests/tools/gaslux_q4os_calamares_probe.sh'
       - 'auto_tests/tests/test_q4os_calamares_probe.py'
       - 'assets/live/gaslux_q4os_calamares_policy.py'
+      - 'assets/live/gaslux_q4os_hook_policy.py'
       - 'auto_tests/tests/test_q4os_calamares_policy.py'
       - 'auto_tests/tools/gaslux_q4os_installed_root_lab.sh'
       - 'auto_tests/tests/test_q4os_installed_root_lab.py'
@@ -130,6 +131,28 @@ jobs:
           if result['installationAuthorized'] or result['windowsEspFallbackWriteAuthorized']:
               raise SystemExit('Q4OS native Calamares must remain lab-only')
           PY
+      - name: Audit exact native Q4OS hooks without executing them
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          w="$RUNNER_TEMP/gaslux-q4os/evidence"
+          (cd "$w/native-hooks" && sha256sum -c q4os-hooks-files.sha256)
+          PYTHONPATH=assets/live python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from gaslux_q4os_hook_policy import audit_q4os_native_hooks
+
+          evidence = Path(os.environ['RUNNER_TEMP']) / 'gaslux-q4os/evidence'
+          result = audit_q4os_native_hooks(evidence)
+          print(json.dumps(result, indent=2, sort_keys=True))
+          (evidence / 'native-hook-source-audit.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          if result['nativeHookCommandsExecuted'] or result['hookExecutionAuthorized']:
+              raise SystemExit('Native Q4OS source inspection must never execute hooks')
+          PY
+          echo 'Q4OS scripts and module descriptors checked as inert ISO-origin evidence.'
       - name: Fetch native Debian 13 EFI GRUB package through signed APT metadata (lab only)
         shell: bash
         run: |
