@@ -1,0 +1,118 @@
+name: CachyOS real pacstrap and installed Linux first boot (VM only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/cachyos-gh-actions-real-pacstrap-firstboot
+    paths:
+      - .github/workflows/cachyos-qemu-pacstrap-firstboot.yml
+      - auto_tests/tools/cachyos_qemu_install_firstboot.sh
+      - auto_tests/tools/cachyos_vm_guest_install.sh
+      - auto_tests/tools/cachyos_generated_boot_config.py
+      - assets/live/cachyos-stage-target.sh
+      - auto_tests/test_cachyos_stage_target_safety.py
+
+permissions:
+  contents: read
+
+jobs:
+  no-write-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Python and Bash guard regressions
+        run: |
+          set -Eeuo pipefail
+          bash -n assets/live/cachyos-stage-target.sh
+          bash -n auto_tests/tools/cachyos_vm_guest_install.sh
+          bash -n auto_tests/tools/cachyos_qemu_install_firstboot.sh
+          python3 -m unittest auto_tests.test_cachyos_stage_target_safety auto_tests.test_cachyos_generated_boot -v
+      - name: Guard that the lab does not target any physical disk
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          host=Path('auto_tests/tools/cachyos_qemu_install_firstboot.sh').read_text()
+          guest=Path('auto_tests/tools/cachyos_vm_guest_install.sh').read_text()
+          assert 'GITHUB_ACTIONS' in host and 'RUNNER_OS' in host
+          assert 'losetup --find --show --partscan "$w/root.raw"' in host
+          assert 'readonly=on' in host and 'q35,accel=tcg' in host
+          assert 'GASLUX_VM_FIRSTBOOT_PASS:' in host and guest
+          assert 'systemd-detect-virt --vm' in guest
+          assert 'bash /mnt/stage.sh --validate-target' in guest
+          assert 'pacstrap -K /mnt/target' in guest
+          assert 'arch-chroot /mnt/target grub-install' in guest
+          assert 'systemd.run=' in host
+          assert 'source /mnt/lab.env' in guest
+          assert '/dev/vdb1' in guest and '/dev/vdc' in guest
+          print('PASS: CI-only disk ownership and first-boot structural contract')
+          PY
+
+  real-archiso-pacstrap-firstboot:
+    needs: no-write-safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install disposable QEMU, GPT, ext4, EFI tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 gdisk util-linux ovmf qemu-system-x86 \
+            grub-efi-amd64-bin grub-common mtools dosfstools \
+            e2fsprogs squashfs-tools
+      - name: Fetch and verify pinned official CachyOS desktop ISO
+        shell: bash
+        env:
+          RELEASE: '260809'
+          ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+          ISO_URL: 'https://build.cachyos.org/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
+        run: |
+          set -Eeuo pipefail
+          workspace="$(mktemp -d -t gaslux-real-cachyos-XXXXXX)"
+          mkdir -p "$workspace/mounted"
+          echo "GASLUX_ISO_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          echo "$ISO_URL" > "$workspace/source-url.txt"
+          # The origin truncates multi-gigabyte transfers. Use resumable range
+          # requests from independent CachyOS mirrors. Only the pinned
+          # maintainer-published hash decides whether any bytes are trusted.
+          {
+            printf '%s\t%s\n' 'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' 'https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
+            printf '  dir=%s\n' "$workspace"
+            printf '  out=cachyos.iso\n'
+          } > "$workspace/iso-mirrors.txt"
+          aria2c --input-file="$workspace/iso-mirrors.txt" \
+            --split=8 --min-split-size=32M --max-connection-per-server=8 \
+            --max-concurrent-downloads=1 --continue=true \
+            --file-allocation=none --retry-wait=8 --max-tries=8 \
+            --timeout=45 --connect-timeout=25 \
+            --check-integrity=true --checksum="sha-256=$ISO_SHA256"
+          printf '%s  %s\n' "$ISO_SHA256" "$workspace/cachyos.iso" | sha256sum --check --status
+          echo "Verified official CachyOS ISO version $RELEASE SHA-256: $ISO_SHA256"
+      - name: Perform genuine pacstrap, install EFI GRUB, and reboot installed CachyOS
+        shell: bash
+        env:
+          ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+          GASLUX_VM_EVIDENCE_DIR: 'gaslux-real-install-evidence'
+        run: |
+          set -Eeuo pipefail
+          bash auto_tests/tools/cachyos_qemu_install_firstboot.sh \
+            "$GASLUX_ISO_WORKSPACE/cachyos.iso" "$ISO_SHA256"
+          printf 'Actual CachyOS pacstrap and independent installed Linux first boot: PASS in disposable QEMU\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'No Windows, no real disk, no production dual boot or WinRE rollback tested.\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve bounded serial and GRUB proof for independent human review
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cachyos-qemu-genuine-pacstrap-and-firstboot
+          path: gaslux-real-install-evidence/
+          if-no-files-found: warn
+          retention-days: 14
