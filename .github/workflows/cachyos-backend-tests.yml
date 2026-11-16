@@ -7,6 +7,7 @@ on:
       - feature/cachyos-efi-hardening
       - feature/cachyos-archiso-handoff
       - feature/cachyos-e2e-release-gate
+      - feature/cachyos-real-iso-contract
   pull_request:
     branches:
       - main
