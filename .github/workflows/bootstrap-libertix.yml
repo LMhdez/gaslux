@@ -1,0 +1,61 @@
+name: Bootstrap Libertix and CachyOS preflight
+# One-time import. This workflow does not install Linux or touch any real disks.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/bootstrap-libertix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gaslux-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.repository == 'LMhdez/gaslux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out destination
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Import source, test CachyOS preflight and publish branches
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch main
+          if git ls-remote --exit-code --heads origin refs/heads/feature/cachyos-preflight >/dev/null 2>&1; then
+            echo "Feature branch already exists; refusing to overwrite it."
+            exit 1
+          fi
+          if [ -e README.md ] || [ -e assets/live/libertix-install-main.sh ]; then
+            echo "Destination is no longer in bootstrap-only state; refusing to overwrite existing work."
+            exit 1
+          fi
+          git remote add upstream https://github.com/ekimiateam/libertix.git
+          git fetch --no-tags upstream main
+          # Merge preserves upstream history AND the target repository's bootstrap commit.
+          git merge --no-ff --allow-unrelated-histories -m "Import upstream Libertix history" upstream/main
+          # Prevent upstream's release/signing CI from running in this separate fork.
+          # Keep the original unchanged for future re-enablement after fork configuration.
+          if [ -f .github/workflows/ci.yml ]; then
+            git mv .github/workflows/ci.yml .github/workflows/ci.yml.upstream-disabled
+            git commit -sm "Disable upstream release workflow in the unconfigured fork"
+          fi
+          git switch -c feature/cachyos-preflight
+          git apply --check bootstrap/libertix-cachyos-preflight.patch
+          git apply bootstrap/libertix-cachyos-preflight.patch
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_preflight.py' -v
+          git add assets/live/libertix-cachyos-preflight.py auto_tests/test_cachyos_preflight.py docs/CACHYOS_BACKEND.md
+          git commit -sm "Add read-only CachyOS Archiso preflight and regression tests"
+          git switch main
+          git push origin HEAD:refs/heads/main
+          git push origin feature/cachyos-preflight:refs/heads/feature/cachyos-preflight
+          echo "Published Libertix baseline to main and CachyOS preflight to feature/cachyos-preflight."
