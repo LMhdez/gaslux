@@ -1,0 +1,31 @@
+name: CachyOS signed-only pacman VM-lab candidate (non-destructive CI)
+on:
+  push:
+    branches:
+      - feature/cachyos-signed-pacman-lab-config
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Python and Bash syntax
+        run: |
+          python3 -m py_compile assets/live/cachyos-strict-pacman.py auto_tests/test_cachyos_strict_pacman.py auto_tests/test_cachyos_pacman_trust.py
+          bash -n assets/live/cachyos-stage-target.sh
+      - name: Test strict signing policy and isolated VM gate
+        run: |
+          python3 -m unittest auto_tests.test_cachyos_strict_pacman auto_tests.test_cachyos_pacman_trust auto_tests.test_cachyos_pinned_iso_repo_audit -v
+      - name: Install Ruff
+        run: python3 -m pip install --break-system-packages ruff==0.13.3
+      - name: Ruff lint
+        run: |
+          python3 -m ruff check --config auto_tests/pyproject.toml assets/live/cachyos-strict-pacman.py auto_tests/test_cachyos_strict_pacman.py auto_tests/test_cachyos_pacman_trust.py
+      - name: Ruff format
+        run: |
+          python3 -m ruff format --check --config auto_tests/pyproject.toml assets/live/cachyos-strict-pacman.py auto_tests/test_cachyos_strict_pacman.py auto_tests/test_cachyos_pacman_trust.py
