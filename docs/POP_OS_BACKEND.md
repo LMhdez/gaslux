@@ -103,10 +103,14 @@ Source: https://github.com/pop-os/distinst/blob/master/cli/src/main.rs
 
 ## Executed native CLI in disposable live guest (not an install)
 
-The next experimental stage uses a QEMU/OVMF serial socket to log in to the
-real verified Pop!_OS live ISO, mounts the temporary **VM-created** Gaslux FAT
+The next experimental stage uses a QEMU/OVMF serial socket to access only the
+verified Pop!_OS live guest's lab debug shell, mounts the temporary **VM-created** Gaslux FAT
 ESP read-only, hash-checks a tracked probe script, and runs only
-`/usr/bin/distinst --help`. The guest independently verifies the real
+`/usr/bin/distinst --help`. A `systemd.debug_shell=ttyS0` root console is
+explicitly enabled **only for this disposable no-network QEMU guest** because
+Pop's live console requires credentials unavailable to the test harness. This
+kernel argument must never enter a production plan or bootloader. The guest
+independently verifies the real
 `ID=pop`, QEMU/KVM environment and installed `distinst` SHA-256 against
 the digest taken from the GPG-verified signed official ISO. No target disk is
 attached, no disk-writer flag is used and no Windows/EFI bootloader operation
