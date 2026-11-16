@@ -87,6 +87,10 @@
     "distribution": {
       "type": "object",
       "additionalProperties": false,
+      "oneOf": [
+        { "properties": { "id": { "const": "mint" }, "osReleaseId": { "const": "linuxmint" } } },
+        { "properties": { "id": { "const": "zorin" }, "osReleaseId": { "const": "zorin" } } }
+      ],
       "required": [
         "id",
         "name",

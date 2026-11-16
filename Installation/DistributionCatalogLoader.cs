@@ -253,6 +253,17 @@ namespace Libertix.Installation
 
         private static void ValidateDistribution(DistroInfoJson distribution)
         {
+            // Schema v1 has no authenticated backend capability field.
+            // Never dispatch an arbitrary signed catalogue entry into the
+            // existing Debian/Ubuntu extractor.
+            if (distribution == null ||
+                !DistributionBackendPolicy.CanUseLegacyDebianBackend(
+                    distribution.Id, distribution.OsReleaseId))
+            {
+                throw new InvalidOperationException(
+                    "This distribution has no authorized installation backend.");
+            }
+
             if (!Regex.IsMatch(
                     distribution.Id ?? string.Empty,
                     "^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$") ||

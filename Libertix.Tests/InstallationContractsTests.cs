@@ -745,6 +745,39 @@ namespace Libertix.Tests
             InstallationPlanValidator.Validate(CreateValidPlan());
         }
 
+        [DataTestMethod]
+        [DataRow("mint", "linuxmint", true)]
+        [DataRow("zorin", "zorin", true)]
+        [DataRow("mint", "zorin", false)]
+        [DataRow("zorin", "linuxmint", false)]
+        [DataRow("cachyos", "cachyos", false)]
+        [DataRow("popos", "pop", false)]
+        [DataRow("bazzite", "bazzite", false)]
+        [DataRow("q4os", "q4os", false)]
+        public void LegacyPlanRejectsUnauthorizedDistributionBackend(
+            string id, string osReleaseId, bool allowed)
+        {
+            Assert.AreEqual(
+                allowed,
+                DistributionBackendPolicy.CanUseLegacyDebianBackend(id, osReleaseId));
+
+            InstallationPlan plan = CreateValidPlan();
+            plan.Distribution.Id = id;
+            plan.Distribution.OsReleaseId = osReleaseId;
+
+            if (allowed)
+            {
+                InstallationPlanValidator.Validate(plan);
+            }
+            else
+            {
+                InstallationPlanValidationException error =
+                    Assert.ThrowsException<InstallationPlanValidationException>(
+                        () => InstallationPlanValidator.Validate(plan));
+                StringAssert.Contains(error.Message, "distribution backend");
+            }
+        }
+
         private static InstallationPlan CreateSeparateAllocationPlan(bool bios, bool gptAllocation)
         {
             InstallationPlan plan = CreateValidPlan();

@@ -74,6 +74,15 @@ def load_distribution_profile(distribution_id: str) -> DistributionProfile:
                 "The selected distribution has invalid automation metadata",
                 details={"path": str(catalog_path), "distribution": distribution_id},
             )
+        if (values["id"], values["os_release_id"]) not in {
+            ("mint", "linuxmint"),
+            ("zorin", "zorin"),
+        }:
+            raise WorkflowError(
+                "automation.distribution_catalog",
+                "The selected distribution has no authorized legacy backend",
+                details={"path": str(catalog_path), "distribution": distribution_id},
+            )
         matches.append(DistributionProfile(catalog_index=index, **values))
 
     if len(matches) != 1:
