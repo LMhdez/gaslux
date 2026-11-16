@@ -477,8 +477,30 @@ enable_first_boot_resize() {
     systemctl enable first-boot-resize.service
 }
 
-main() {
-    assert_target_distribution_identity
+# Target configuration remains exclusive to the inherited Mint/Zorin backend.
+# This check runs before any configuration of the target filesystem. A System76
+# candidate must use a separate, signed and audited installer transaction.
+validate_legacy_target_backend_or_die() {
+    case "${DISTRIBUTION_ID:-}:${DISTRIBUTION_OS_RELEASE_ID:-}" in
+        mint:linuxmint|zorin:zorin) ;;
+        *)
+            echo "Only Mint/Zorin can use the legacy Debian squashfs target backend" >&2
+            return 2
+            ;;
+    esac
+    case "${GASLUX_TARGET_BACKEND:-debian-squashfs}" in
+        debian-squashfs) ;;
+        *)
+            echo "Requested target backend is not available in the legacy installer" >&2
+            return 2
+            ;;
+    esac
+}
+
+# These operations are shared Ubuntu-family configuration candidates. Each
+# downstream distribution must separately validate its package/runtime behavior
+# before reusing them; this function is not a Pop!_OS installation entrypoint.
+configure_common_ubuntu_target() {
     configure_user
     configure_windows_mount
     configure_windows_readonly_request
@@ -488,10 +510,32 @@ main() {
     configure_keyboard
     configure_timezone
     configure_development_access
+}
+
+# Preserve the existing Mint/Zorin GRUB, initramfs and first-boot behavior,
+# including its original operation order and rollback ownership contracts.
+configure_legacy_grub_target() {
     cleanup_live_boot_artifacts
     refresh_installed_initramfs
     configure_grub
     enable_first_boot_resize
+}
+
+configure_target_backend() {
+    case "${GASLUX_TARGET_BACKEND:-debian-squashfs}" in
+        debian-squashfs) configure_legacy_grub_target ;;
+        *)
+            echo "Target bootloader backend has no implementation" >&2
+            return 2
+            ;;
+    esac
+}
+
+main() {
+    validate_legacy_target_backend_or_die
+    assert_target_distribution_identity
+    configure_common_ubuntu_target
+    configure_target_backend
 }
 
 main "$@"
