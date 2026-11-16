@@ -29,7 +29,8 @@ PY
   for cmd in pacstrap arch-chroot pacman findmnt blkid; do
     command -v "$cmd" >/dev/null || die "required command missing: $cmd"
   done
-  grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*$' /etc/pacman.conf || die 'CachyOS pacman repo missing'
+  grep -Eq '^[[:space:]]*\[cachyos\][[:space:]]*$' "$TARGET/etc/pacman.conf" || die 'installed pacman config lacks CachyOS'
+  printf '%s\n' "$hostname" > "$TARGET/etc/hostname"
 }
 
 check_target() {
