@@ -20,7 +20,7 @@ vm_pid=''
 save_evidence() {
   if [[ -v GASLUX_VM_EVIDENCE_DIR && -n "$GASLUX_VM_EVIDENCE_DIR" ]]; then
     mkdir -p "$GASLUX_VM_EVIDENCE_DIR"
-    for f in live-serial.log firstboot-serial.log boot-report.json grub.cfg; do
+    for f in live-serial.log firstboot-serial.log boot-report.json grub.cfg kvm-probe.log live-qemu-stderr.log; do
       if [[ -f "$w/$f" ]]; then cp "$w/$f" "$GASLUX_VM_EVIDENCE_DIR/$f"; fi
     done
     ( cd "$GASLUX_VM_EVIDENCE_DIR" && sha256sum ./* > SHA256SUMS ) || true
@@ -130,9 +130,16 @@ if [[ -c /dev/kvm ]] && command -v setfacl >/dev/null 2>&1 &&
   set +e
   # No -S: QEMU must initialize KVM and run the vCPU. A paused
   # machine can survive 3s even if KVM subsequently rejects execution.
+  # Test the SAME Secure-Boot-capable OVMF pflash/SMM combination used
+  # by the real installer. A diskless generic CPU probe is insufficient.
+  cp "$vars" "$w/nvram-kvm-probe.fd"
   timeout --kill-after=2s 5s qemu-system-x86_64 \
-    -machine q35,accel=kvm,smm=on -cpu host -smp 2 -m 256 \
-    -nodefaults -display none -monitor none -serial none \
+    -machine q35,accel=kvm,smm=on -cpu host \
+    -global driver=cfi.pflash01,property=secure,value=on \
+    -smp 2 -m 6144 -display none -monitor none -serial none -no-reboot \
+    -drive if=pflash,format=raw,readonly=on,file="$code" \
+    -drive if=pflash,format=raw,file="$w/nvram-kvm-probe.fd" \
+    -nodefaults \
     > "$w/kvm-probe.log" 2>&1
   kvm_probe_rc=$?
   set -e
@@ -148,56 +155,74 @@ if [[ -c /dev/kvm ]] && command -v setfacl >/dev/null 2>&1 &&
 fi
 echo "GASLUX_QEMU_ACCELERATOR=$accel"
 
-echo 'GASLUX_VM_LIVE_QEMU_START'
-timeout --kill-after=5s 3300s qemu-system-x86_64 \
-  -machine "q35,accel=$accel,smm=on" -cpu "$cpu" \
-  -global driver=cfi.pflash01,property=secure,value=on \
-  -smp 2 -m 6144 -display none -monitor none -no-reboot -boot order=c \
-  -drive if=pflash,format=raw,readonly=on,file="$code" \
-  -drive if=pflash,format=raw,file="$w/nvram-live.fd" \
-  -device qemu-xhci \
-  -drive if=none,id=liveefi,format=raw,file="$w/liveboot.raw",readonly=on \
-  -device usb-storage,drive=liveefi \
-  -drive if=none,id=source,format=raw,file="$w/iso.raw",readonly=on \
-  -device virtio-blk-pci,drive=source \
-  -drive if=none,id=target,format=raw,file="$w/root.raw" \
-  -device virtio-blk-pci,drive=target \
-  -drive if=none,id=esp,format=raw,file="$w/esp.raw" \
-  -device virtio-blk-pci,drive=esp \
-  -drive if=none,id=control,format=raw,file="$w/control.raw",readonly=on \
-  -device virtio-blk-pci,drive=control \
-  -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
-  -serial "file:$w/live-serial.log" &
-vm_pid=$!
-for attempt in $(seq 1 655); do
-  sleep 5
-  # A booted live ISO with no running guest installation is NOT a pass.
-  # Stop promptly if the systemd hook never executes (max 15 minutes).
-  if (( attempt == 180 )) && ! grep -q 'GASLUX_VM_INSTALL_BEGIN' "$w/live-serial.log" 2>/dev/null; then
-    echo 'FAIL: live Archiso never executed the authenticated QEMU-only installer'
-    kill "$vm_pid" 2>/dev/null || true
-    break
-  fi
-  # Human-reviewable milestones in Actions logs; a silent QEMU never counts
-  # as a passed installation. Never interpret these logs as boot proof.
-  if (( attempt % 12 == 0 )); then
-    echo "GASLUX_VM_PROGRESS_SECONDS=$((attempt * 5))"
-    grep -aE 'GASLUX_VM_|CACHYOS_STAGE_ERROR|pacstrap|error:|failed' "$w/live-serial.log" 2>/dev/null | tail -n 14 || true
-  fi
-  if grep -q 'GASLUX_VM_INSTALL_FAILED:' "$w/live-serial.log" 2>/dev/null; then
-    kill "$vm_pid" 2>/dev/null || true
-    break
-  fi
-  kill -0 "$vm_pid" 2>/dev/null || break
-done
-set +e
-wait "$vm_pid"
-live_rc=$?
-set -e
-vm_pid=''
+# This helper intentionally reuses the *same* disposable guest-owned disks
+# when KVM is rejected before any vCPU executes. No KVM retry is allowed
+# after serial output (the guest might already have written its target).
+run_live_guest() {
+  : > "$w/live-serial.log"
+  : > "$w/live-qemu-stderr.log"
+  echo "GASLUX_VM_LIVE_QEMU_START:accel=$accel"
+  timeout --kill-after=5s 3300s qemu-system-x86_64 \
+    -machine "q35,accel=$accel,smm=on" -cpu "$cpu" \
+    -global driver=cfi.pflash01,property=secure,value=on \
+    -smp 2 -m 6144 -display none -monitor none -no-reboot -boot order=c \
+    -drive if=pflash,format=raw,readonly=on,file="$code" \
+    -drive if=pflash,format=raw,file="$w/nvram-live.fd" \
+    -device qemu-xhci \
+    -drive if=none,id=liveefi,format=raw,file="$w/liveboot.raw",readonly=on \
+    -device usb-storage,drive=liveefi \
+    -drive if=none,id=source,format=raw,file="$w/iso.raw",readonly=on \
+    -device virtio-blk-pci,drive=source \
+    -drive if=none,id=target,format=raw,file="$w/root.raw" \
+    -device virtio-blk-pci,drive=target \
+    -drive if=none,id=esp,format=raw,file="$w/esp.raw" \
+    -device virtio-blk-pci,drive=esp \
+    -drive if=none,id=control,format=raw,file="$w/control.raw",readonly=on \
+    -device virtio-blk-pci,drive=control \
+    -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+    -serial "file:$w/live-serial.log" 2> "$w/live-qemu-stderr.log" &
+  vm_pid=$!
+  for attempt in $(seq 1 655); do
+    sleep 5
+    # A booted live ISO with no running guest installation is NOT a pass.
+    # Stop promptly if the systemd hook never executes (max 15 minutes).
+    if (( attempt == 180 )) && ! grep -q 'GASLUX_VM_INSTALL_BEGIN' "$w/live-serial.log" 2>/dev/null; then
+      echo 'FAIL: live Archiso never executed the authenticated QEMU-only installer'
+      kill "$vm_pid" 2>/dev/null || true
+      break
+    fi
+    # Human-reviewable milestones in Actions logs; a silent QEMU never counts
+    # as a passed installation. Never interpret these logs as boot proof.
+    if (( attempt % 12 == 0 )); then
+      echo "GASLUX_VM_PROGRESS_SECONDS=$((attempt * 5))"
+      grep -aE 'GASLUX_VM_|CACHYOS_STAGE_ERROR|pacstrap|error:|failed' "$w/live-serial.log" 2>/dev/null | tail -n 14 || true
+    fi
+    if grep -q 'GASLUX_VM_INSTALL_FAILED:' "$w/live-serial.log" 2>/dev/null; then
+      kill "$vm_pid" 2>/dev/null || true
+      break
+    fi
+    kill -0 "$vm_pid" 2>/dev/null || break
+  done
+  set +e
+  wait "$vm_pid"
+  live_rc=$?
+  set -e
+  vm_pid=''
+  }
+
+run_live_guest
+if [[ "$accel" == kvm ]] && (( live_rc != 0 )) &&
+   [[ ! -s "$w/live-serial.log" ]] &&
+   grep -Eiq 'failed to initialize kvm: permission denied|could not access kvm kernel module: permission denied' "$w/live-qemu-stderr.log"; then
+  echo 'GASLUX_KVM_REAL_BOOT_DENIED_FALLBACK_TCG=true'
+  accel=tcg
+  cpu=qemu64
+  run_live_guest
+fi
 if ! grep -Fq "GASLUX_VM_PACSTRAP_PASS:$run_id:$root_uuid" "$w/live-serial.log"; then
   echo "FAILED: pacstrap is not proven; QEMU status=$live_rc"
   tail -c 7000 "$w/live-serial.log" || true
+  tail -c 1500 "$w/live-qemu-stderr.log" || true
   exit 1
 fi
 [[ "$live_rc" == 0 ]] || { echo 'Guest did not power off cleanly'; exit 1; }

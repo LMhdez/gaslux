@@ -46,6 +46,10 @@ jobs:
           assert '    -S -nodefaults ' not in host
           assert '    -nodefaults -display none -monitor none -serial none' in host
           assert 'GASLUX_KVM_VCPU_EXECUTION_PROVEN=true' in host
+          assert 'nvram-kvm-probe.fd' in host
+          assert 'GASLUX_KVM_REAL_BOOT_DENIED_FALLBACK_TCG=true' in host
+          assert 'live-qemu-stderr.log' in host
+          assert 'run_live_guest' in host
           assert 'permission denied|failed to initialize kvm|could not access kvm' in host
           assert 'qemu|kvm' in guest
           assert 'GASLUX_VM_FIRSTBOOT_PASS:' in host and guest
