@@ -195,6 +195,8 @@ def _synthetic_hook_evidence(evidence):
                 "timeout": {"q4oshook2": 3600, "q4oshook3": 18000, "q4oshook5": 600}[module],
             }
             content = yaml.safe_dump(contents).encode()
+        elif path.endswith("q4os-hook3a.sh"):
+            content = b"# /boot/efi/EFI/debian/grub.cfg\n# grub-install --force\n"
         else:
             content = b"# inert synthetic fixture\n"
         (folder / name).write_bytes(content)
@@ -216,6 +218,9 @@ def test_q4os_hook_sources_stay_non_executable_even_when_manifest_is_valid(evide
     assert report["nativeInstallationProven"] is False
     assert report["windowsEspWriteAuthorized"] is False
     assert report["diskWrites"] == 0
+    assert report["unownedEfiDebianWriteRiskObserved"] is True
+    assert report["forcedGrubInstallRiskObserved"] is True
+    assert report["unreviewedOperationsRequireTransactionOwnership"] is True
 
 
 def test_refuse_q4os_hook_source_tampering(evidence):
@@ -261,4 +266,22 @@ def test_refuse_unsupported_q4os_release_for_native_hooks(evidence):
     _synthetic_hook_evidence(evidence)
     (evidence / "etc__q4os_version").write_text("6.11-deb13u1\n")
     with pytest.raises(CalamaresRefusal, match="identity"):
+        audit_q4os_native_hooks(evidence)
+
+
+def test_refuse_changed_calamares_command_even_if_manifest_is_recomputed(evidence):
+    import hashlib
+
+    folder = _synthetic_hook_evidence(evidence)
+    descriptor_path = folder / "usr__lib__calamares__modules__q4oshook3__module.desc"
+    descriptor = yaml.safe_load(descriptor_path.read_text())
+    descriptor["command"] = "/usr/bin/true"
+    descriptor_path.write_text(yaml.safe_dump(descriptor))
+    rows = []
+    for path in sorted(folder.iterdir()):
+        if path.name == "q4os-hooks-files.sha256":
+            continue
+        rows.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}")
+    (folder / "q4os-hooks-files.sha256").write_text("\n".join(rows) + "\n")
+    with pytest.raises(CalamaresRefusal, match="Unexpected native Q4OS process command"):
         audit_q4os_native_hooks(evidence)
