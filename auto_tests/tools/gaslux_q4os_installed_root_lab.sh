@@ -113,6 +113,22 @@ if [[ "$native_grub" == yes ]]; then
   [[ -f "$guest_tool" && ! -L "$guest_tool" ]] ||
     die 'Missing trusted native GRUB guest-only code'
   sudo install -D -m 0755 "$guest_tool"     "$work/root/usr/local/sbin/gaslux-q4os-native-grub-guest"
+  packages="$(dirname "$evidence")/packages"
+  [[ -d "$packages" && ! -L "$packages" ]] ||
+    die 'Missing authentic Debian APT package cache'
+  shopt -s nullglob
+  grub_debs=("$packages"/grub-efi-amd64-bin_*_amd64.deb)
+  shopt -u nullglob
+  [[ "${#grub_debs[@]}" -eq 1 && -f "${grub_debs[0]}" && ! -L "${grub_debs[0]}" ]] ||
+    die 'Expected exactly one authentic native GRUB EFI deb'
+  [[ -f "$packages/grub-efi-amd64-bin.sha256" &&
+     ! -L "$packages/grub-efi-amd64-bin.sha256" ]] ||
+    die 'Missing downloaded package digest'
+  (cd "$packages" && sha256sum -c --status grub-efi-amd64-bin.sha256) ||
+    die 'Offline native EFI GRUB package digest mismatch'
+  sudo install -d -m 0755 "$work/root/var/cache/gaslux-q4os-lab"
+  sudo install -m 0644 "${grub_debs[0]}"     "$work/root/var/cache/gaslux-q4os-lab/$(basename -- "${grub_debs[0]}")"
+  sudo install -m 0644 "$packages/grub-efi-amd64-bin.sha256"     "$work/root/var/cache/gaslux-q4os-lab/grub-efi-amd64-bin.sha256"
   printf '%s\n' "$root_uuid" |
     sudo tee "$work/root/etc/gaslux-q4os-lab-root.uuid" >/dev/null
   sudo tee "$work/root/etc/systemd/system/gaslux-q4os-native-grub.service" >/dev/null <<'UNIT'
