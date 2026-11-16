@@ -7,6 +7,7 @@ on:
       - feature/q4os-ovmf-verified-virtio-live
       - feature/q4os-verified-calamares-target-lab
       - feature/q4os-native-grub-reboot-lab
+      - feature/q4os-native-hook-source-audit
     paths:
       - '.github/workflows/gaslux-q4os-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
