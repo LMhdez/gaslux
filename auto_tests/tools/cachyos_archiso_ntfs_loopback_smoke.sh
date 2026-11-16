@@ -15,9 +15,13 @@ mkdir -p "$w/source/etc" "$w/source/usr/bin" \
   "$w/storage"
 
 cat > "$w/source/etc/os-release" <<'EOF'
-NAME="CachyOS"
-ID=arch
+NAME="CachyOS Linux"
+PRETTY_NAME="CachyOS"
+ID=cachyos
+ID_LIKE=arch
 BUILD_ID=rolling
+IMAGE_ID=cachyos
+IMAGE_VERSION=2026.08.09
 EOF
 printf '[options]\n' > "$w/source/etc/pacman.conf"
 printf '#!/bin/sh\nexit 0\n' > "$w/source/usr/bin/pacman"
