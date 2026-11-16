@@ -7,6 +7,7 @@ on:
       - feature/popos-ovmf-optical-media-proof
       - feature/popos-signed-distinst-agent-audit
       - feature/popos-native-distinst-guest-cli-proof
+      - feature/popos-native-distinst-vm-partition-test
     paths:
       - '.github/workflows/gaslux-popos-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
@@ -28,7 +29,7 @@ jobs:
       - name: Prepare isolated ISO lab tools
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools binutils xorriso gnupg curl ca-certificates ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools gdisk
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools binutils ntfs-3g xorriso gnupg curl ca-certificates ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools gdisk
       - name: Resolve official ISO API with exact release identity and versioned URL
         shell: bash
         run: |
@@ -202,6 +203,17 @@ jobs:
           set -Eeuo pipefail
           bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
           bash -n auto_tests/tools/gaslux_popos_vm_guest_probe.sh
+          bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            popos "$GASLUX_POP_ISO_FILE" "$GASLUX_POP_ISO_SHA256"
+      - name: Native distinst partition-stage test on isolated mock-Windows GPT
+        shell: bash
+        env:
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-popos/evidence/partition-guest
+          GASLUX_POP_GUEST_DISTINST_PROBE: '0'
+          GASLUX_POP_GUEST_DISTINST_TARGET_TEST: '1'
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_popos_vm_target_test.sh
           bash auto_tests/tools/gaslux_candidate_live_boot.sh \
             popos "$GASLUX_POP_ISO_FILE" "$GASLUX_POP_ISO_SHA256"
       - name: Retain hash-linked live-media evidence

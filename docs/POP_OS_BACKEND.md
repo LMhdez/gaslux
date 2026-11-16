@@ -118,3 +118,15 @@ is performed. The QEMU serial transcript is retained on success and failure.
 
 The separate first-boot, native installation, systemd-boot/GRUB update
 persistence and Windows recovery tests remain mandatory for production.
+
+## Native distinst partition-stage validation (synthetic Windows GPT)
+
+A separate VM-only experiment invokes the authenticated real Pop!_OS
+`distinst --test` against an **ephemeral** 32-GiB virtio disk with a
+mock FAT Windows ESP, mock NTFS partition and distinct Gaslux-owned root.
+The official ISO remains read-only; the VM has no network and no host disks.
+Because upstream `--test` can reach partition operations, the host hashes
+both mock Windows partitions and compares the GPT before and after execution.
+A mismatch is a test failure. A mock Windows loader is **not** a working
+Windows Boot Manager; BCD, WinRE and actual dual boot are not proved.
+This is not a production plan or installation authorization.

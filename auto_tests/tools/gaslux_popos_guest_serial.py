@@ -14,6 +14,7 @@ PASSWORD = re.compile(rb"(?im)Password:\s*$")
 ROOT_DEBUG_SHELL = re.compile(rb"(?m)^[^\r\n]{0,130}#\s*$")
 READY = re.compile(rb"(?m)^GASLUX_POP_LIVE_SHELL_READY\r?$")
 PASSED = re.compile(rb"(?m)^GASLUX_POP_DISTINST_GUEST_READONLY_PASS=1\r?$")
+TARGET_PASSED = re.compile(rb"(?m)^GASLUX_POP_DISTINST_VM_TARGET_TEST_PASS=1\r?$")
 FAILED = re.compile(rb"GASLUX_POP_GUEST_DISTINST_FAILURE")
 CONTROL = re.compile(rb"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[GHJKmnhl]")
 
@@ -54,7 +55,9 @@ def wait_for(
     raise GuestProbeError("expected guest proof timed out")
 
 
-def run(socket_path: Path, transcript: bytearray, trusted_sha: str) -> None:
+def run(
+    socket_path: Path, transcript: bytearray, trusted_sha: str, *, target_test: bool = False
+) -> None:
     if not SHA.fullmatch(trusted_sha):
         raise GuestProbeError("invalid independently pinned agent hash")
     if not socket_path.is_absolute() or socket_path.is_symlink():
@@ -85,7 +88,13 @@ def run(socket_path: Path, transcript: bytearray, trusted_sha: str) -> None:
         )
         start = len(transcript)
         conn.sendall(cmd.encode("ascii"))
-        wait_for(conn, transcript, PASSED, timeout_seconds=90, start=start)
+        wait_for(
+            conn,
+            transcript,
+            TARGET_PASSED if target_test else PASSED,
+            timeout_seconds=250 if target_test else 90,
+            start=start,
+        )
     finally:
         conn.close()
 
@@ -95,10 +104,11 @@ def main() -> int:
     ap.add_argument("--socket", required=True, type=Path)
     ap.add_argument("--trace", required=True, type=Path)
     ap.add_argument("--distinst-sha256", required=True)
+    ap.add_argument("--target-test", action="store_true")
     args = ap.parse_args()
     data = bytearray()
     try:
-        run(args.socket, data, args.distinst_sha256)
+        run(args.socket, data, args.distinst_sha256, target_test=args.target_test)
     except (GuestProbeError, OSError) as error:
         print(f"GASLUX_POP_GUEST_NATIVE_PROBE_FAILED: {error}", file=sys.stderr)
         # Diagnostic data is from a disposable ISO guest only, never user media.
@@ -109,7 +119,10 @@ def main() -> int:
         print("GASLUX_POP_GUEST_SERIAL_TAIL_END", file=sys.stderr)
         code = 1
     else:
-        print("GASLUX_POP_NATIVE_DISTINST_GUEST_PROVEN=1")
+        if args.target_test:
+            print("GASLUX_POP_NATIVE_DISTINST_TARGET_VM_PROVEN=1")
+        else:
+            print("GASLUX_POP_NATIVE_DISTINST_GUEST_PROVEN=1")
         code = 0
     finally:
         args.trace.write_bytes(bytes(data))

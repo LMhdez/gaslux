@@ -29,7 +29,8 @@ cleanup() {
   if [[ "$mounted" -eq 1 ]]; then sudo umount "$work/iso-root" >/dev/null 2>&1 || true; fi
   if [[ -n "${GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR:-}" ]]; then
     mkdir -p "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"
-    for path in "$work"/serial.log "$work"/pop-guest-console.log "$work"/grub.cfg "$work"/qemu.rc; do
+    for path in "$work"/serial.log "$work"/pop-guest-console.log "$work"/grub.cfg "$work"/qemu.rc \
+      "$work"/target-protected.before.sha256 "$work"/target-protected.after.sha256; do
       [[ -f "$path" ]] && cp "$path" "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/" || true
     done
     (cd "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR" &&
@@ -94,7 +95,8 @@ done
 cp "$vars" "$work/nvram.fd"
 
 serial_boot_args='systemd.wants=serial-getty@ttyS0.service'
-if [[ "${GASLUX_POP_GUEST_DISTINST_PROBE:-0}" == 1 ]]; then
+if [[ "${GASLUX_POP_GUEST_DISTINST_PROBE:-0}" == 1 ||
+      "${GASLUX_POP_GUEST_DISTINST_TARGET_TEST:-0}" == 1 ]]; then
   [[ "$distro" == popos ]] || die 'Debug shell confined to Pop disposable lab'
   serial_boot_args='systemd.debug_shell=ttyS0 systemd.mask=serial-getty@ttyS0.service'
 fi
@@ -134,18 +136,70 @@ mmd -i "$work/efi-part.img" ::/EFI
 mmd -i "$work/efi-part.img" ::/EFI/BOOT
 mcopy -i "$work/efi-part.img" "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
 guest_probe=0
-if [[ "${GASLUX_POP_GUEST_DISTINST_PROBE:-0}" == 1 ]]; then
+target_probe=0
+if [[ "${GASLUX_POP_GUEST_DISTINST_TARGET_TEST:-0}" == 1 ]]; then
+  [[ "${GASLUX_POP_GUEST_DISTINST_PROBE:-0}" != 1 ]] ||
+    die 'VM target test and CLI help probe are mutually exclusive'
+  target_probe=1
+fi
+if [[ "${GASLUX_POP_GUEST_DISTINST_PROBE:-0}" == 1 || "$target_probe" -eq 1 ]]; then
   [[ "$distro" == popos ]] || die 'Native guest probe requires official Pop ISO'
   [[ "${GASLUX_POP_NATIVE_DISTINST_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] ||
     die 'Official native distinst hash missing'
   guest_probe=1
   script="$PWD/auto_tests/tools/gaslux_popos_vm_guest_probe.sh"
-  [[ -f "$script" && ! -L "$script" ]] || die 'Missing tracked read-only guest probe'
+  if [[ "$target_probe" -eq 1 ]]; then
+    script="$PWD/auto_tests/tools/gaslux_popos_vm_target_test.sh"
+  fi
+  [[ -f "$script" && ! -L "$script" ]] || die 'Missing tracked VM-only guest probe'
   sha256sum "$script" | awk '{print $1 "  probe.sh"}' > "$work/probe.sha256"
   mcopy -i "$work/efi-part.img" "$script" ::/probe.sh
   mcopy -i "$work/efi-part.img" "$work/probe.sha256" ::/probe.sha256
 fi
 dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc status=none
+
+# VM-only: synthetic GPT disk, containing fake protected Windows ESP + NTFS
+# and an unrelated transaction-owned Linux root. No host devices are attached.
+target_args=()
+if [[ "$target_probe" -eq 1 ]]; then
+  command -v mkfs.ntfs >/dev/null || die 'Missing mock Windows NTFS formatter'
+  truncate -s 32G "$work/pop-target.raw"
+  sgdisk --zap-all \
+    --new=1:2048:+512M --typecode=1:EF00 --change-name=1:GASLUX-MOCK-WIN-ESP \
+    --new=2:0:+512M --typecode=2:0700 --change-name=2:GASLUX-MOCK-WIN-NTFS \
+    --new=3:0:+28G --typecode=3:8300 --change-name=3:GASLUX-OWNED-ROOT \
+    "$work/pop-target.raw" >/dev/null
+  for index in 1 2 3; do
+    start="$(sgdisk --info="$index" "$work/pop-target.raw" |
+      awk '/First sector:/ {print $3; exit}')"
+    case "$index:$start" in
+      1:2048|2:1050624|3:2099200) ;;
+      *) die "Unexpected lab disk GPT layout: $index:$start" ;;
+    esac
+  done
+  truncate -s 512M "$work/mock-esp.part"
+  mkfs.vfat -F 32 -n GXMCKESP "$work/mock-esp.part" >/dev/null
+  mmd -i "$work/mock-esp.part" ::/EFI
+  mmd -i "$work/mock-esp.part" ::/EFI/Microsoft
+  mmd -i "$work/mock-esp.part" ::/EFI/Microsoft/Boot
+  printf 'GASLUX MOCK WINDOWS FILE, NOT A REAL BOOTLOADER\n' > "$work/mock-win.efi"
+  mcopy -i "$work/mock-esp.part" "$work/mock-win.efi" ::/EFI/Microsoft/Boot/bootmgfw.efi
+  truncate -s 512M "$work/mock-ntfs.part"
+  mkfs.ntfs -F -Q -L GXMCKWIN "$work/mock-ntfs.part" >/dev/null
+  dd if="$work/mock-esp.part" of="$work/pop-target.raw" \
+    bs=1M seek=1 conv=notrunc status=none
+  dd if="$work/mock-ntfs.part" of="$work/pop-target.raw" \
+    bs=1M seek=513 conv=notrunc status=none
+  rm -f -- "$work/mock-esp.part" "$work/mock-ntfs.part"
+  sgdisk --backup="$work/target.gpt.before" "$work/pop-target.raw" >/dev/null
+  {
+    dd if="$work/pop-target.raw" bs=1M skip=1 count=512 status=none | sha256sum
+    dd if="$work/pop-target.raw" bs=1M skip=513 count=512 status=none | sha256sum
+  } > "$work/target-protected.before.sha256"
+  target_args=(-drive "if=none,id=pop_target,format=raw,file=$work/pop-target.raw"
+               -device virtio-blk-pci,drive=pop_target,serial=GASLUXPOPTARGET,bootindex=3)
+  echo 'GASLUX_MOCK_WINDOWS_TARGET=ephemeral-qemu-gpt-only'
+fi
 
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
@@ -164,7 +218,9 @@ serial_args=(-serial "file:$work/serial.log")
 if [[ "$guest_probe" -eq 1 ]]; then
   serial_args=(-chardev "socket,id=pop_serial,path=$work/pop-serial.sock,server=on,wait=off,logfile=$work/serial.log" -serial chardev:pop_serial)
 fi
-timeout --kill-after=5s 375s qemu-system-x86_64 \
+guest_timeout=375
+if [[ "$target_probe" -eq 1 ]]; then guest_timeout=650; fi
+timeout --kill-after=5s "${guest_timeout}s" qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
@@ -172,16 +228,20 @@ timeout --kill-after=5s 375s qemu-system-x86_64 \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
   "${iso_args[@]}" \
+  "${target_args[@]}" \
   -boot order=c,menu=off \
   "${serial_args[@]}" &
 guest="$!"
 guest_verified=0
 if [[ "$guest_probe" -eq 1 ]]; then
   set +e
+  serial_mode=()
+  if [[ "$target_probe" -eq 1 ]]; then serial_mode=(--target-test); fi
   python3 auto_tests/tools/gaslux_popos_guest_serial.py \
     --socket "$work/pop-serial.sock" \
     --trace "$work/pop-guest-console.log" \
-    --distinst-sha256 "$GASLUX_POP_NATIVE_DISTINST_SHA256"
+    --distinst-sha256 "$GASLUX_POP_NATIVE_DISTINST_SHA256" \
+    "${serial_mode[@]}"
   probe_rc=$?
   set -e
   if [[ "$probe_rc" -eq 0 ]]; then guest_verified=1; fi
@@ -204,9 +264,25 @@ wait "$guest"
 rc="$?"
 set -e
 printf '%s\n' "$rc" > "$work/qemu.rc"
+if [[ "$target_probe" -eq 1 ]]; then
+  sgdisk --backup="$work/target.gpt.after" "$work/pop-target.raw" >/dev/null
+  {
+    dd if="$work/pop-target.raw" bs=1M skip=1 count=512 status=none | sha256sum
+    dd if="$work/pop-target.raw" bs=1M skip=513 count=512 status=none | sha256sum
+  } > "$work/target-protected.after.sha256"
+  cmp -s "$work/target-protected.before.sha256" "$work/target-protected.after.sha256" ||
+    die 'VM mock Windows ESP or NTFS changed: do not authorize installation'
+  cmp -s "$work/target.gpt.before" "$work/target.gpt.after" ||
+    die 'VM GPT changed: native test is not safe for Windows'
+  echo 'GASLUX_POP_MOCK_WINDOWS_PARTITIONS_UNCHANGED=1'
+fi
 if [[ "$guest_verified" -eq 1 ]]; then
   if [[ "$guest_probe" -eq 1 ]]; then
-    echo "PASS: native System76 distinst --help executed in verified disposable live QEMU guest."
+    if [[ "$target_probe" -eq 1 ]]; then
+      echo 'PASS: native distinst --test completed; mock Windows ESP, NTFS and GPT unchanged.'
+    else
+      echo "PASS: native System76 distinst --help executed in verified disposable live QEMU guest."
+    fi
   else
     echo "PASS: real $distro live kernel and userspace reached QEMU serial login."
   fi
