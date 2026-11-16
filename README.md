@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="docs/brand/hero.svg" alt="Gaslux: Linux alongside Windows, without a USB stick. Project in development." width="100%">
+</p>
+
+<p align="center">
+  <a href="docs/brand/README.md"><img src="docs/brand/logo.svg" alt="Gaslux original wordmark and icon" width="310"></a>
+</p>
+
 # Gaslux
 
 **Install Linux alongside Windows — without a USB stick or a separate manual Linux installer.**
@@ -14,6 +22,7 @@ Gaslux is built on [Libertix](https://github.com/ekimiateam/libertix). It retain
 </p>
 
 <p align="center">
+  <a href="docs/brand/README.md">Brand assets</a> ·
   <a href="#project-status">Project status</a> ·
   <a href="#distribution-roadmap">Distributions</a> ·
   <a href="#how-gaslux-is-designed-to-work">How it works</a> ·
@@ -62,6 +71,10 @@ Development work is tracked in the [pull requests](https://github.com/LMhdez/gas
 
 ## Distribution roadmap
 
+<p align="center">
+  <img src="docs/brand/distributions.svg" alt="Development status: inherited Mint and Zorin, experimental CachyOS, planned Pop!_OS, Q4OS and Bazzite." width="100%">
+</p>
+
 The target distributions are **Linux Mint, Zorin OS, CachyOS, Pop!_OS, Bazzite and Q4OS**. Every backend must validate an exact supported ISO or installation source, perform a native installation, manage its own updates and bootloader, and verify both systems after reboot.
 
 | Distribution | Gaslux implementation status | Firmware / partition policy |
@@ -86,6 +99,10 @@ These systems do not share a universal installation mechanism:
 - **Bazzite:** respect Fedora Atomic's installer, deployment, bootloader and update model rather than treating it like a traditional mutable distribution.
 
 ## How Gaslux is designed to work
+
+<p align="center">
+  <img src="docs/brand/workflow.svg" alt="Target workflow: choose, preflight, verify installation media, native installation and proof of both Windows and Linux boots." width="100%">
+</p>
 
 The intended user experience has no requirement for a USB stick, a terminal or a second interactive Linux installer.
 
@@ -172,6 +189,8 @@ Existing CI, unit tests, signed contracts, mocked ISOs and isolated QEMU/OVMF bo
 The upstream Libertix application and its releases are separate from Gaslux; see [the original Libertix project](https://github.com/ekimiateam/libertix). This repository currently still contains upstream-named executables, build artifacts and release settings while the product transition is in progress.
 
 ## Development and testing
+
+For the new visual identity, original logo, diagrams and suggested repository metadata, see the [Gaslux brand kit](docs/brand/README.md) and [brand metadata](docs/brand/metadata.json). These are documentation assets and do not rename the inherited Windows executable.
 
 The repository keeps its inherited implementation languages and boundaries instead of rewriting functioning infrastructure solely to change branding.
 

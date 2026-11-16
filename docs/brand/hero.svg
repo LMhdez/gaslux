@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="620" viewBox="0 0 1600 620" role="img" aria-labelledby="title desc">
+<title id="title">Gaslux — Linux alongside Windows, without a USB stick</title>
+<desc id="desc">Midnight-blue Gaslux banner with original cyan-mint G logo, a diagram showing Windows and Linux sharing the same computer, and a development-status label.</desc>
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="620" gradientUnits="userSpaceOnUse"><stop stop-color="#09172C"/><stop offset=".56" stop-color="#0B2038"/><stop offset="1" stop-color="#102443"/></linearGradient>
+ <linearGradient id="cyan" x1="940" y1="160" x2="1450" y2="520" gradientUnits="userSpaceOnUse"><stop stop-color="#48C7FF"/><stop offset="1" stop-color="#57E9B9"/></linearGradient>
+ <linearGradient id="glass" x1="1030" y1="120" x2="1400" y2="510" gradientUnits="userSpaceOnUse"><stop stop-color="#18334E"/><stop offset="1" stop-color="#0A1B34"/></linearGradient>
+ <radialGradient id="halo" cx=".5" cy=".5" r=".5"><stop stop-color="#2678B9" stop-opacity=".36"/><stop offset="1" stop-color="#2678B9" stop-opacity="0"/></radialGradient>
+ <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#6FA8C9" opacity=".075" stroke-width="1"/></pattern>
+ 
+  <linearGradient id="markGradient" x1="24" y1="22" x2="127" y2="134" gradientUnits="userSpaceOnUse"><stop stop-color="#48C7FF"/><stop offset=".53" stop-color="#39DFD6"/><stop offset="1" stop-color="#65EEB2"/></linearGradient>
+
+</defs>
+<rect width="1600" height="620" rx="24" fill="url(#bg)"/>
+<rect width="1600" height="620" rx="24" fill="url(#grid)"/>
+<ellipse cx="1290" cy="327" rx="410" ry="290" fill="url(#halo)"/>
+<path d="M728 0L1150 0L1600 450" stroke="#66C7F8" stroke-opacity=".055" stroke-width="130" fill="none"/>
+<g transform="translate(91 82) scale(.67)"><g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M115 49C106 35 89 28 73 28C45 28 25 51 25 80C25 109 46 132 75 132C99 132 116 115 124 94L91 94" stroke="url(#markGradient)" stroke-width="19"/>
+  <path d="M91 94H123" stroke="#52E7BF" stroke-width="19"/>
+  <rect x="112" y="63" width="18" height="17" rx="5" fill="#FFB45A" stroke="none"/>
+</g></g>
+<text x="210" y="175" fill="#F4FAFF" font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="760" font-size="87" letter-spacing="-4">gaslux</text>
+<text x="100" y="294" fill="#EDF7FF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="52" font-weight="710" letter-spacing="-1.5">Linux alongside Windows.</text>
+<text x="101" y="348" fill="#A9C5D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30">No USB stick. No manual Linux installer.</text>
+<text x="101" y="396" fill="#A9C5D9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30">One carefully verified dual-boot workflow.</text>
+<rect x="101" y="473" width="296" height="52" rx="26" fill="#102E47" stroke="#2F6688"/>
+<circle cx="132" cy="499" r="7" fill="#FFB45A"/>
+<text x="155" y="506" fill="#D5EAF8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" font-weight="700" letter-spacing="1.5">IN DEVELOPMENT</text>
+<g transform="translate(928 105)">
+ <circle cx="275" cy="209" r="190" fill="none" stroke="#58DECD" stroke-width="1.5" stroke-opacity=".23" stroke-dasharray="6 16"/>
+ <circle cx="275" cy="209" r="148" fill="none" stroke="#4BBBE6" stroke-width="2" stroke-opacity=".32"/>
+ <path d="M173 125C217 54 330 40 389 110" stroke="url(#cyan)" stroke-width="11" stroke-linecap="round" fill="none"/>
+ <path d="M387 285C339 362 216 365 168 296" stroke="url(#cyan)" stroke-width="11" stroke-linecap="round" fill="none"/>
+ <path d="M391 111l-33-3 17-31" fill="none" stroke="#63EABA" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+ <path d="M167 295l34 2-17 30" fill="none" stroke="#48C7FF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+ <g transform="translate(34 120)">
+  <rect width="248" height="201" rx="24" fill="url(#glass)" stroke="#32617C" stroke-width="2"/>
+  <rect x="20" y="20" width="208" height="111" rx="14" fill="#183C60"/>
+  <path d="M82 46l31-5v35H82zm38-6 34-5v41h-34zM82 83h31v36l-31-5zm38 0h34v41l-34-5z" fill="#66C6FA"/>
+  <text x="124" y="170" fill="#ECF8FF" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="24" font-weight="700">Windows</text>
+ </g>
+ <g transform="translate(270 20)">
+  <rect width="248" height="201" rx="24" fill="url(#glass)" stroke="#36816F" stroke-width="2"/>
+  <rect x="20" y="20" width="208" height="111" rx="14" fill="#145044"/>
+  <path d="M104 39c-18 0-31 18-31 42 0 19-17 28-16 39h94c1-11-17-20-17-39 0-24-12-42-30-42zm-19 49c8 7 31 7 39 0" fill="none" stroke="#80F5C5" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="92" cy="64" r="4.5" fill="#80F5C5"/><circle cx="116" cy="64" r="4.5" fill="#80F5C5"/>
+  <text x="124" y="170" fill="#ECF8FF" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="24" font-weight="700">Linux</text>
+ </g>
+ <rect x="173" y="397" width="213" height="46" rx="23" fill="#112F46" stroke="#38788F"/>
+ <circle cx="199" cy="420" r="6" fill="#64E9BD"/>
+ <text x="219" y="428" fill="#C8EBF3" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19" font-weight="700">ONE COMPUTER</text>
+</g>
+<path d="M36 596H1564" stroke="#38617C" stroke-opacity=".55"/>
+<text x="100" y="574" fill="#688CA7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" letter-spacing="2">WINDOWS FIRST  /  NATIVE LINUX  /  RECOVERY FIRST</text>
+</svg>

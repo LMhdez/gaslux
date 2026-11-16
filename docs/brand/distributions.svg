@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="490" viewBox="0 0 1600 490" role="img" aria-labelledby="title desc">
+<title id="title">Gaslux distribution development status</title>
+<desc id="desc">Linux Mint and Zorin use the inherited Libertix backend. CachyOS is experimental. Pop OS, Q4OS, and Bazzite are planned. No new distribution is certified for stable release.</desc>
+<rect width="1600" height="490" rx="24" fill="#0B1830"/>
+<text x="49" y="59" fill="#EFF9FF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="750">Distribution roadmap</text>
+<text x="1550" y="58" text-anchor="end" fill="#FFCA8A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" font-weight="660" letter-spacing="1">NEW BACKENDS NOT RELEASED</text>
+<g transform="translate(50 135)">
+ <rect width="476" height="138" rx="19" fill="#11273D" stroke="#2C5368" stroke-width="1.6"/>
+ <rect x="18" y="20" width="7" height="98" rx="3" fill="#57E7C7"/>
+ <text x="42" y="56" fill="#F1F9FE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="730">Linux Mint</text>
+ <text x="43" y="90" fill="#9AB8CD" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18">Mint 22.3 Cinnamon</text>
+ <text x="43" y="117" fill="#57E7C7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.5">INHERITED BACKEND</text>
+ </g>
+<g transform="translate(557 135)">
+ <rect width="476" height="138" rx="19" fill="#11273D" stroke="#2C5368" stroke-width="1.6"/>
+ <rect x="18" y="20" width="7" height="98" rx="3" fill="#57E7C7"/>
+ <text x="42" y="56" fill="#F1F9FE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="730">Zorin OS</text>
+ <text x="43" y="90" fill="#9AB8CD" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18">Zorin OS 18.1 Core</text>
+ <text x="43" y="117" fill="#57E7C7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.5">INHERITED BACKEND</text>
+ </g>
+<g transform="translate(1064 135)">
+ <rect width="476" height="138" rx="19" fill="#11273D" stroke="#2C5368" stroke-width="1.6"/>
+ <rect x="18" y="20" width="7" height="98" rx="3" fill="#FFB45A"/>
+ <text x="42" y="56" fill="#F1F9FE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="730">CachyOS</text>
+ <text x="43" y="90" fill="#9AB8CD" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18">Archiso integration in progress</text>
+ <text x="43" y="117" fill="#FFB45A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.5">EXPERIMENTAL</text>
+ </g>
+<g transform="translate(50 292)">
+ <rect width="476" height="138" rx="19" fill="#11273D" stroke="#2C5368" stroke-width="1.6"/>
+ <rect x="18" y="20" width="7" height="98" rx="3" fill="#90AFC5"/>
+ <text x="42" y="56" fill="#F1F9FE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="730">Pop!_OS</text>
+ <text x="43" y="90" fill="#9AB8CD" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18">System76-specific backend</text>
+ <text x="43" y="117" fill="#90AFC5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.5">PLANNED</text>
+ </g>
+<g transform="translate(557 292)">
+ <rect width="476" height="138" rx="19" fill="#11273D" stroke="#2C5368" stroke-width="1.6"/>
+ <rect x="18" y="20" width="7" height="98" rx="3" fill="#90AFC5"/>
+ <text x="42" y="56" fill="#F1F9FE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="730">Q4OS</text>
+ <text x="43" y="90" fill="#9AB8CD" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18">Native ISO validation</text>
+ <text x="43" y="117" fill="#90AFC5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.5">PLANNED</text>
+ </g>
+<g transform="translate(1064 292)">
+ <rect width="476" height="138" rx="19" fill="#11273D" stroke="#2C5368" stroke-width="1.6"/>
+ <rect x="18" y="20" width="7" height="98" rx="3" fill="#90AFC5"/>
+ <text x="42" y="56" fill="#F1F9FE" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="730">Bazzite</text>
+ <text x="43" y="90" fill="#9AB8CD" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18">UEFI / GPT only</text>
+ <text x="43" y="117" fill="#90AFC5" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.5">PLANNED</text>
+ </g>
+<text x="51" y="468" fill="#88A9BD" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17">Inherited does not mean every disk/firmware layout is certified. Experimental and planned backends are unavailable in stable builds.</text>
+</svg>
