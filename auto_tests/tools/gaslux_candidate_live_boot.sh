@@ -132,9 +132,16 @@ dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
 echo "GASLUX_GUEST_INITRD=$initrd"
-# No host block devices are attached. Both guest disks are new temporary images;
-# the SHA-256 verified official ISO is mapped strictly read-only using the
-# same virtio-blk interface that OVMF/GRUB visibly enumerates for the lab ESP.
+# No host block devices are attached. The ESP and NVRAM are temporary.
+# Only the Pop!_OS lab maps the SHA-256 verified official ISO read-only through
+# virtio-blk; retain the original optical-device behavior for Q4OS experiments.
+[[ "$iso" != *,* ]] || die 'Unsafe ISO path delimiter for QEMU drive options'
+if [[ "$distro" == popos ]]; then
+  iso_args=(-drive "if=none,id=officialiso,readonly=on,format=raw,file=$iso"
+            -device virtio-blk-pci,drive=officialiso,bootindex=2)
+else
+  iso_args=(-cdrom "$iso")
+fi
 timeout --kill-after=5s 320s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
@@ -142,8 +149,7 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
-  -drive if=none,id=officialiso,readonly=on,format=raw,file="$iso" \
-  -device virtio-blk-pci,drive=officialiso,bootindex=2 \
+  "${iso_args[@]}" \
   -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
 guest="$!"
