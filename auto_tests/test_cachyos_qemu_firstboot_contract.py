@@ -42,7 +42,7 @@ class CachyosFirstBootContracts(unittest.TestCase):
             preflight += b"GASLUX_LAB_TARGET_INSTALLED=1\r\n"
         return FakeSerial(
             b"CachyOS login: ", b"[root@CachyOS ~]# ",
-            b"GASLUX_ROOT_SHELL_READY\r\n",
+            b"[root@CachyOS ~]# \r\nGASLUX_ROOT_SHELL_READY\r\n",
             preflight, installer_output,
         )
 
