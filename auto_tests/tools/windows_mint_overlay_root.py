@@ -143,7 +143,7 @@ def install_mint_root_and_boot(
         run(["bash", "-c", validator, "gaslux-mint-identity", str(rootfs)])
         unpacked = temp / "unpacked"
         unpacked.mkdir(mode=0o700)
-        run(["unsquashfs", "-f", "-processors", "2", "-d", str(unpacked), str(rootfs)],
+        run(["sudo", "unsquashfs", "-f", "-processors", "2", "-d", str(unpacked), str(rootfs)],
             timeout=900, capture=False)
         run(["sudo", "guestmount", "-a", str(overlay), "-m", "/dev/sda5",
              "--rw", str(target)], timeout=120)
@@ -268,7 +268,19 @@ def install_mint_root_and_boot(
         return proof
     finally:
         if guest_mounted:
-            subprocess.run(["sudo", "guestunmount", str(target)], check=False)
+            result = subprocess.run(["sudo", "guestunmount", str(target)],
+                                    check=False, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            guest_mounted = result.returncode != 0
         if iso_mounted:
-            subprocess.run(["sudo", "umount", str(iso_mount)], check=False)
-        shutil.rmtree(temp, ignore_errors=True)
+            result = subprocess.run(["sudo", "umount", str(iso_mount)],
+                                    check=False, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            iso_mounted = result.returncode != 0
+        mounts = subprocess.run(["findmnt", "-rn", "-o", "TARGET"],
+                                check=False, capture_output=True, text=True)
+        active = set(mounts.stdout.splitlines()) if mounts.returncode == 0 else {str(target), str(iso_mount)}
+        if not guest_mounted and not iso_mounted and str(target) not in active and str(iso_mount) not in active:
+            shutil.rmtree(temp, ignore_errors=True)
+        else:
+            print("WARNING: preserving Mint COW workspace because a mount remains active")
