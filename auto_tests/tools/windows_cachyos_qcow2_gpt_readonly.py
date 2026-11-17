@@ -98,10 +98,12 @@ def inspect_gpt_windows(front: bytes, back: bytes,
             "invalid protective MBR signature")
     entries_mbr = [front[446 + 16*i:446 + 16*(i+1)] for i in range(4)]
     total = disk_bytes // SECTOR
-    # A mere 0xEE type byte does not establish a protective MBR. In
-    # particular, a forged zero-length/shifted entry must not certify a
-    # disk for subsequent Linux partition planning. This fixed-size lab
-    # fits the protective MBR's 32-bit sector-count field exactly.
+    # Windows 10's actual UEFI/GPT image has also been witnessed with a
+    # saturated 0xFFFFFFFF PMBR sector count on a <2TiB disk. This is a
+    # READ-ONLY compatibility allowance already tested in PR #123,
+    # Actions #44103537748. It must NEVER determine free space, target
+    # extents or authorize a disk write: those come exclusively from the
+    # independently checked primary+backup GPT.
     protective_start, protective_span = struct.unpack_from(
         "<II", entries_mbr[0], 8,
     )
@@ -114,7 +116,7 @@ def inspect_gpt_windows(front: bytes, back: bytes,
         protective_boot == 0
         and protective_type == 0xEE
         and protective_start == 1
-        and protective_span == expected_span
+        and protective_span in (expected_span, 0xffffffff)
         and not extra_slots,
         "hybrid or invalid protective MBR geometry: "
         f"boot={protective_boot}, type=0x{protective_type:02x}, "
