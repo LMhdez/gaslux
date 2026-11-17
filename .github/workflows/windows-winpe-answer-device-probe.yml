@@ -6,10 +6,13 @@ on:
       - diag/windows-winpe-answer-device-probe
       - fix/windows-winpe-diskless-answer-probe-no-install-directives
       - fix/windows-winpe-setup-runsynchronous-schema-valid
+      - diag/windows-winpe-diskless-private-vga-numeric
     paths:
       - .github/workflows/windows-winpe-answer-device-probe.yml
       - auto_tests/tools/windows_x64_winpe_answer_probe.py
       - auto_tests/test_windows_x64_winpe_answer_probe.py
+      - auto_tests/tools/windows_x64_winpe_private_vga.py
+      - auto_tests/test_windows_x64_winpe_private_vga.py
   workflow_dispatch:
 
 permissions:
@@ -32,9 +35,12 @@ jobs:
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile \
             auto_tests/tools/windows_x64_winpe_answer_probe.py \
+            auto_tests/tools/windows_x64_winpe_private_vga.py \
+            auto_tests/test_windows_x64_winpe_private_vga.py \
             auto_tests/test_windows_x64_winpe_answer_probe.py \
             auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_winpe_answer_probe.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_winpe_private_vga.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_usb_firstlogon_command.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_derived_iso_usb_ab.py' -v
           echo 'Only no-guest safety contracts: no Windows install, no host disk, no release gate.' >> "$GITHUB_STEP_SUMMARY"
@@ -69,7 +75,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf p7zip-full genisoimage \
             dosfstools mtools
-      - name: Probe FAT12 vs USB WinPE answer consumption with ALL disk/OOBE instructions stripped
+      - name: Probe two FAT12/USB WinPE guests, numeric VGA/serial only, NO disk/OOBE
         shell: bash
         run: |
           set -Eeuo pipefail
