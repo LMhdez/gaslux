@@ -1,0 +1,35 @@
+name: CachyOS synthetic shared GPT add/remove rollback (file only)
+on:
+  push:
+    branches: [test/cachyos-synthetic-gpt-add-remove-rollback]
+    paths:
+      - .github/workflows/cachyos-synthetic-gpt-rollback.yml
+      - auto_tests/tools/cachyos_synthetic_shared_gpt_rollback.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-gpt-transaction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      GASLUX_SYNTHETIC_GPT_CONSENT: I_ACCEPT_SYNTHETIC_FILE_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install GPT validation utilities
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gdisk
+      - name: Validate only a fresh private sparse raw file, never a device
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/cachyos_synthetic_shared_gpt_rollback.py
+          python3 auto_tests/tools/cachyos_synthetic_shared_gpt_rollback.py
+          printf '%s\n' 'Synthetic fresh file-backed GPT add/delete and Windows-entry preservation passed; not a Windows+CachyOS same-disk VM or real recovery test.' >> "$GITHUB_STEP_SUMMARY"
