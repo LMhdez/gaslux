@@ -50,11 +50,11 @@ def test_media_must_be_cosign_verified_and_never_authorized():
     for required in (
         "download.bazzite.gg/bazzite-stable-live-amd64.iso",
         "gaslux_bazzite_iso_signature.py",
-        "--signature \"$iso.sig\"",
-        "--public-key \"$GITHUB_WORKSPACE/assets/keys/bazzite-upstream-cosign.pub\"",
+        '--signature "$iso.sig"',
+        '--public-key "$GITHUB_WORKSPACE/assets/keys/bazzite-upstream-cosign.pub"',
         f"--trusted-key-sha256 {KEY_SHA256}",
-        "--expected-iso-sha256 \"$sha\"",
-        "--expected-iso-size \"$size\"",
+        '--expected-iso-sha256 "$sha"',
+        '--expected-iso-size "$size"',
         "--firmware uefi --partition-style gpt",
         "installationAuthorized",
         "installationAuthorised",
@@ -73,9 +73,18 @@ def test_media_must_be_cosign_verified_and_never_authorized():
 def test_no_target_writes_or_private_iso_in_artifacts():
     source = WORKFLOW.read_text(encoding="utf-8")
     for forbidden in (
-        "mkfs.", "parted ", "sgdisk ", "wipefs ", "bootc install",
-        "efibootmgr ", "dd if=", "-hda ", "-hdb ", "-hdd ",
-        "-blockdev driver=host_device", "-drive file=/dev/",
+        "mkfs.",
+        "parted ",
+        "sgdisk ",
+        "wipefs ",
+        "bootc install",
+        "efibootmgr ",
+        "dd if=",
+        "-hda ",
+        "-hdb ",
+        "-hdd ",
+        "-blockdev driver=host_device",
+        "-drive file=/dev/",
     ):
         assert forbidden not in source, forbidden
     assert '-drive "if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso"' in source
