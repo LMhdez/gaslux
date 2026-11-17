@@ -10,9 +10,11 @@ on:
       - fix/windows-eval-oobe-international-pass
       - fix/windows-two-stage-removable-oobe-answer
       - fix/windows-firstlogon-bounded-failure-stages
+      - fix/windows-serial-coalesced-firstboot-witness
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_clean_poweroff_gate.py
       - auto_tests/test_windows_x64_two_stage_boot.py
       - auto_tests/test_windows_x64_swtpm_reconnect.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
