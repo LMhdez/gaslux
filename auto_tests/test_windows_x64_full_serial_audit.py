@@ -200,5 +200,38 @@ class FullSerialAuditContracts(unittest.TestCase):
         self.assertIn("before installed Windows first-logon", diagnostic)
 
 
+    def test_guest_serial_exceeding_32mib_is_rejected_before_read(self):
+        # A sparse file simulates guest-controlled runaway COM1 without
+        # allocating RAM or writing 32 MiB of physical storage.
+        with tempfile.TemporaryDirectory() as root:
+            serial = Path(root) / "guest.log"
+            with serial.open("wb") as stream:
+                stream.truncate(vm.MAX_WINDOWS_GUEST_SERIAL_BYTES + 1)
+            with self.assertRaisesRegex(
+                vm.LabError, "exceeded maximum evidence size"
+            ):
+                vm.scan_windows_guest_tokens(serial, 0, b"", False)
+
+    def test_guest_serial_offset_past_limit_fails_closed(self):
+        with tempfile.TemporaryDirectory() as root:
+            serial = Path(root) / "guest.log"
+            serial.write_bytes(PROOFS)
+            with self.assertRaisesRegex(vm.LabError, "scanner state"):
+                vm.scan_windows_guest_tokens(
+                    serial, vm.MAX_WINDOWS_GUEST_SERIAL_BYTES + 1, b"", False
+                )
+
+    def test_archive_uses_identical_guest_serial_size_cap(self):
+        # The stored evidence must not bypass the live read cap after a
+        # QEMU shutdown. This is a source contract; no VM is launched.
+        source = (TOOLS / "windows_x64_tcg_firstboot.py").read_text()
+        self.assertIn(
+            "serial.stat().st_size <= MAX_WINDOWS_GUEST_SERIAL_BYTES", source
+        )
+        self.assertIn(
+            "Windows guest COM1 serial artifact exceeded maximum size", source
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
