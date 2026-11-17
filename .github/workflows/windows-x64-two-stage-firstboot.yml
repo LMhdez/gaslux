@@ -79,7 +79,19 @@ jobs:
           chmod 700 "$tmp"
           trap 'rm -rf -- "$tmp"' EXIT
           qemu-img create -f qcow2 "$tmp/only-disposable-windows-target.qcow2" 64M
-          guestfish --ro --format=qcow2 -a "$tmp/only-disposable-windows-target.qcow2" run : list-filesystems
+          echo '== Kernel appliance prerequisites (no user data) =='
+          uname -r
+          for kernel in /boot/vmlinuz-*; do
+            if [[ -f "$kernel" ]]; then stat -c 'host-kernel=%n mode=%a owner=%U' "$kernel"; fi
+          done
+          if ! LIBGUESTFS_DEBUG=1 LIBGUESTFS_TRACE=1 guestfish --ro --format=qcow2 \
+            -a "$tmp/only-disposable-windows-target.qcow2" run : list-filesystems \
+            > "$tmp/guestfish-smoke.log" 2>&1; then
+            echo 'guestfish failure diagnostics (limited to kernel/supermin lines):'
+            grep -Ei 'supermin:|kernel:|permission denied|failed to find|no suitable kernel|cp: cannot|error:' \
+              "$tmp/guestfish-smoke.log" | tail -n 60 || true
+            exit 1
+          fi
           echo 'PASS: libguestfs opened only a synthetic QCOW2 read-only; no Windows/Panther data, no boot proof.' >> "$GITHUB_STEP_SUMMARY"
 
   genuine-client-two-stage-firstboot:
