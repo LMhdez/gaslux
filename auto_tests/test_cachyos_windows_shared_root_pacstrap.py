@@ -47,8 +47,8 @@ def check(front, back, plan):
     # No block device is ever accessed or mutated.
     def pread(_fd, _count, offset):
         return front if offset == 0 else back
-    with patch.object(Path, "is_block_device", return_value=True), \\
-         patch("os.pread", side_effect=pread), \\
+    with patch.object(Path, "is_block_device", return_value=True), \
+         patch("os.pread", side_effect=pread), \
          patch("os.fstat", return_value=SimpleNamespace(st_mode=stat.S_IFBLK)):
         return shared.strict_gpt_evidence(Path("/dev/null"), plan)
 
@@ -96,8 +96,8 @@ class SharedRootOnlySafety(unittest.TestCase):
 
     def test_no_disk_actions_from_non_archiso_user(self):
         with patch.object(shared, "require_live_archiso",
-                          side_effect=shared.SharedDiskHandoffRejected("not Archiso")), \\
-             patch.object(shared, "protected_files_readonly") as files, \\
+                          side_effect=shared.SharedDiskHandoffRejected("not Archiso")), \
+             patch.object(shared, "protected_files_readonly") as files, \
              patch.object(shared, "execute") as commands:
             with self.assertRaisesRegex(shared.SharedDiskHandoffRejected, "not Archiso"):
                 shared.guest_plan(SimpleNamespace())
