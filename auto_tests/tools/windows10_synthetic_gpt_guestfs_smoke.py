@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import struct
 import subprocess
 import tempfile
 from pathlib import Path
@@ -79,6 +80,23 @@ def exercise() -> None:
             g.umount_all()
         finally:
             g.close()
+        if os.environ.get("GASLUX_SYNTHETIC_OVERSIZED_WINDOWS_PMBR") == "1":
+            # Deliberately reproduce the *known* Microsoft Windows 10 lab PMBR
+            # count on this SYNTHETIC private QCOW2 only. Windows/CachyOS
+            # PR #131 observed 0xFFFFFFFF on a 128-GiB disk. Preserve every
+            # other MBR byte, then prove overlay staging doesn't rewrite it.
+            g = guestfs.GuestFS(python_return_dict=True)
+            try:
+                g.add_drive_opts(str(disk), readonly=0, format="qcow2")
+                g.launch()
+                require(g.list_devices() == ["/dev/sda"], "unexpected synthetic disk")
+                written = g.pwrite_device(
+                    "/dev/sda", struct.pack("<I", 0xFFFFFFFF), 446 + 12
+                )
+                require(written == 4, "synthetic MBR patch was incomplete")
+                g.sync()
+            finally:
+                g.close()
         report = inspect_owned_disk(disk)
         require(report["partitionCount"] == 4 and
                 report["espBootManagerPresent"] is True and
