@@ -169,7 +169,7 @@ def parse_kernel_cmdline(value: str) -> dict[str, str]:
 
 
 def file_bytes(path: Path, maximum: int) -> bytes:
-    require(type(path) is Path and path.is_file() and not path.is_symlink()
+    require(isinstance(path, Path) and path.is_file() and not path.is_symlink()
             and 0 < path.stat().st_size <= maximum,
             "missing, linked or oversized handoff artifact")
     return path.read_bytes()
