@@ -101,7 +101,7 @@ def capture(image: Path) -> dict:
             backup, mirrored = _header(disk, DISK_SIZE // SECTOR_SIZE - 1)
             if (
                 len(mbr) != SECTOR_SIZE
-                or mbr[510:512] != b"\\x55\\xaa"
+                or mbr[510:512] != b"\x55\xaa"
                 or mbr[450] != 0xEE
                 or entries != mirrored
                 or primary["diskGuid"] != backup["diskGuid"]
