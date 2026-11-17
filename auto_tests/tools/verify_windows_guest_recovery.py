@@ -26,11 +26,13 @@ FIELDS = {
     "capturedAt",
     "computerName",
     "windowsVersion",
+    "windowsProductType",
     "windowsBootTime",
     "windowsDiskId",
     "windowsPartitionGuid",
     "espPartitionGuid",
     "windowsEfiSha256",
+    "espFilesystemUuid",
     "winreWimSha256",
     "secureBootEnabled",
     "winreEnabled",
@@ -91,11 +93,22 @@ def validate(doc: Any, phase: str) -> None:
         isinstance(doc["runId"], str) and RUN_ID.fullmatch(doc["runId"]) is not None,
         "invalid transaction/run ID",
     )
+    require(
+        type(doc["windowsProductType"]) is int and doc["windowsProductType"] == 1
+        and re.fullmatch(r"10\.0\.\d+\.\d+", doc["windowsVersion"]) is not None,
+        "only a verified Windows 10/11 client version can supply evidence",
+    )
     for k in ("computerName", "windowsVersion", "windowsDiskId"):
         require(isinstance(doc[k], str) and bool(doc[k].strip()), f"missing {k}")
     require(
         instant(doc["capturedAt"]) >= instant(doc["windowsBootTime"]),
         "observation precedes Windows boot",
+    )
+    require(
+        isinstance(doc["espFilesystemUuid"], str)
+        and re.fullmatch(r"[0-9A-F]{4}-[0-9A-F]{4}", doc["espFilesystemUuid"]) is not None
+        and doc["espFilesystemUuid"] != "0000-0000",
+        "missing verified FAT32 serial for the Windows ESP",
     )
     for k in ("windowsPartitionGuid", "espPartitionGuid"):
         require(isinstance(doc[k], str) and GUID.fullmatch(doc[k]) is not None, f"invalid {k}")
@@ -243,6 +256,8 @@ def compare(before: dict[str, Any], after: dict[str, Any], mode: str) -> dict[st
         "windowsPartitionGuid",
         "espPartitionGuid",
         "windowsEfiSha256",
+        "espFilesystemUuid",
+        "windowsProductType",
         "winreWimSha256",
         "bitlocker",
         "bcdCurrentRaw",
