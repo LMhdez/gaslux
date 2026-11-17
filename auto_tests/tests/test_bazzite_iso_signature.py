@@ -110,18 +110,22 @@ def test_signature_symlink_refused(sample):
 
 def test_cosign_failure_refused(sample):
     bad = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="bad signature")
-    with patch("gaslux_bazzite_iso_signature.subprocess.run", return_value=bad):
-        with pytest.raises(ProbeRefusal, match="signature is invalid"):
-            verify_bazzite_iso_blob(**sample)
+    with (
+        patch("gaslux_bazzite_iso_signature.subprocess.run", return_value=bad),
+        pytest.raises(ProbeRefusal, match="signature is invalid"),
+    ):
+        verify_bazzite_iso_blob(**sample)
 
 
 def test_cosign_timeout_refused(sample):
-    with patch(
-        "gaslux_bazzite_iso_signature.subprocess.run",
-        side_effect=subprocess.TimeoutExpired(cmd="cosign", timeout=1),
+    with (
+        patch(
+            "gaslux_bazzite_iso_signature.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="cosign", timeout=1),
+        ),
+        pytest.raises(ProbeRefusal, match="could not complete"),
     ):
-        with pytest.raises(ProbeRefusal, match="could not complete"):
-            verify_bazzite_iso_blob(**sample)
+        verify_bazzite_iso_blob(**sample)
 
 
 def test_iso_change_during_cosign_is_refused(sample):
@@ -131,9 +135,11 @@ def test_iso_change_during_cosign_is_refused(sample):
             stream.write(b"MODIFIED")
         return _fake_success()
 
-    with patch("gaslux_bazzite_iso_signature.subprocess.run", side_effect=replace_iso):
-        with pytest.raises(ProbeRefusal, match="SHA-256"):
-            verify_bazzite_iso_blob(**sample)
+    with (
+        patch("gaslux_bazzite_iso_signature.subprocess.run", side_effect=replace_iso),
+        pytest.raises(ProbeRefusal, match="SHA-256"),
+    ):
+        verify_bazzite_iso_blob(**sample)
 
 
 def test_oci_registry_digest_not_an_iso_filename(sample):
