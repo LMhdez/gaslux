@@ -83,8 +83,7 @@ def test_desktop_launcher_requires_pixel_attestations_and_closed_welcome():
     assert "vnc-after-installer-icon.png" in source
     assert '"$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1' in source
     assert (
-        "NOT PROVEN: Calamares GUI identity unless screenshot is independently reviewed."
-        in source
+        "NOT PROVEN: Calamares GUI identity unless screenshot is independently reviewed." in source
     )
     assert "calamares -d" not in source
 
