@@ -1,0 +1,104 @@
+name: Windows two-stage FAT32 USB answer device graph in paused QEMU (no Windows)
+
+on:
+  push:
+    branches: [fix/windows-two-stage-removable-oobe-answer]
+    paths:
+      - .github/workflows/windows-x64-two-stage-usb-graph-smoke.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_two_stage_boot.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qemu-usb-answer-graph:
+    name: Confirm two independent USB devices and FAT32 answer in paused QEMU
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate the exact Python XML and fail-closed two-stage contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_two_stage_boot.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py' -v
+      - name: Install ephemeral QEMU and FAT32 file tools (no Windows ISO)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils dosfstools mtools
+      - name: Start paused, diskless-OS QEMU with owned FAT32 USB and keyboard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import os, pathlib, subprocess, sys, tempfile, time
+          sys.path.insert(0, 'auto_tests/tools')
+          from windows_x64_tcg_firstboot import generate_unattend, validate_oobe_answer_pass
+          assert os.environ['GITHUB_ACTIONS'] == 'true'
+          assert os.environ['RUNNER_ENVIRONMENT'] == 'github-hosted'
+          assert os.environ['RUNNER_TEMP'] == '/home/runner/work/_temp'
+          with tempfile.TemporaryDirectory(
+              prefix='gaslux-win-x64-', dir=os.environ['RUNNER_TEMP']
+          ) as tmp:
+              w = pathlib.Path(tmp)
+              assert w.stat().st_mode & 0o777 == 0o700
+              answer = w / 'only-disposable-answer-usb.img'
+              xml = w / 'Autounattend.xml'
+              data = generate_unattend('win11_26h2_en_us_x64', '26300',
+                                       removable_answer=True)
+              validate_oobe_answer_pass(data)
+              xml.write_bytes(data)
+              subprocess.run(['truncate', '-s', '64M', str(answer)], check=True)
+              subprocess.run(['mkfs.vfat', '-F', '32', '-n', 'GASLUXCI', str(answer)],
+                             check=True, stdout=subprocess.DEVNULL)
+              subprocess.run(['mcopy', '-i', str(answer), str(xml),
+                              '::/Autounattend.xml'], check=True)
+              subprocess.run(['mdir', '-i', str(answer), '::/Autounattend.xml'],
+                             check=True, stdout=subprocess.DEVNULL)
+              disk = w / 'only-disposable-windows-target.qcow2'
+              subprocess.run(['qemu-img', 'create', '-f', 'qcow2', str(disk), '1G'],
+                             check=True, stdout=subprocess.DEVNULL)
+              args = [
+                  'qemu-system-x86_64', '-machine', 'q35,accel=tcg',
+                  '-cpu', 'qemu64', '-smp', '1', '-m', '512',
+                  '-S', '-display', 'none', '-monitor', 'none', '-serial', 'none',
+                  '-net', 'none', '-nodefaults',
+                  '-device', 'qemu-xhci,id=lab_usb',
+                  '-device', 'usb-kbd,bus=lab_usb.0',
+                  '-drive', f'if=none,id=lab_unattend,format=raw,readonly=on,file={answer}',
+                  '-device', 'usb-storage,drive=lab_unattend,bus=lab_usb.0',
+                  '-device', 'ich9-ahci,id=lab_sata',
+                  '-drive', f'if=none,id=only_windows,format=qcow2,file={disk}',
+                  '-device', 'ide-hd,drive=only_windows,bus=lab_sata.0',
+              ]
+              with (w / 'stderr.log').open('xb') as stderr:
+                  proc = subprocess.Popen(args, cwd=w, stdout=subprocess.DEVNULL,
+                                          stderr=stderr)
+                  try:
+                      time.sleep(3)
+                      if proc.poll() is not None:
+                          raise RuntimeError(
+                              f'QEMU USB media device graph rejected: exit {proc.returncode}; '
+                              + (w / 'stderr.log').read_text()[-1000:]
+                          )
+                      print('GASLUX_QEMU_REAL_USB_FAT32_GRAPH_ACCEPTED=1', flush=True)
+                      print('No guest OS executed: QEMU CPU was paused (-S); '
+                            'no Microsoft ISO or physical media attached.', flush=True)
+                  finally:
+                      if proc.poll() is None:
+                          proc.terminate()
+                      proc.wait(timeout=10)
+          PY
+          echo 'PASS: real paused QEMU accepted owned FAT32 USB + keyboard + qcow2 device graph; no Windows OS boot.' >> "$GITHUB_STEP_SUMMARY"

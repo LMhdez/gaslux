@@ -31,7 +31,7 @@ def synthetic_args(tmp):
         "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
         "-drive", "if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file=/tmp/derived.iso",
         "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
-        "-drive", "if=none,id=lab_unattend,format=raw,readonly=on,file=/tmp/only-disposable-answer-usb.img",
+        "-drive", f"if=none,id=lab_unattend,format=raw,readonly=on,file={tmp}/only-disposable-answer-usb.img",
         "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
         "-serial", f"file:{tmp}/win-guest-serial.log",
         "-boot", "order=c,once=d",
@@ -121,6 +121,7 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
             for replacement in (
                 ans.replace("readonly=on,", ""),
                 ans.replace("only-disposable-answer-usb.img", "foreign-usb.img"),
+                ans.replace(str(pathlib.Path(d)), "/tmp/foreign-gaslux-vm"),
             ):
                 with self.subTest(replacement=replacement):
                     modified = list(original)

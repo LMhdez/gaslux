@@ -611,10 +611,10 @@ def build_two_stage_qemu_args(
     ]
     require(
         len(answer_drives) == 1 and
-        answer_drives[0].startswith(
+        answer_drives[0] == (
             "if=none,id=lab_unattend,format=raw,readonly=on,file="
+            + str(initial_serial.parent / "only-disposable-answer-usb.img")
         ) and
-        answer_drives[0].endswith("/only-disposable-answer-usb.img") and
         answer_devices == ["usb-storage,drive=lab_unattend,bus=lab_usb.0"] and
         not any("if=floppy" in arg for arg in original),
         "two-stage Windows lab requires unique read-only owned USB answer",
