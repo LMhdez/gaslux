@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import fcntl
 import stat
 import json
 import os
@@ -65,6 +64,7 @@ def validate_environment(workspace: Path, accelerator: str = "tcg") -> None:
             os.environ.get("RUNNER_OS") == "Linux" and consent_ok,
             "not an expressly authorized disposable GitHub Linux VM laboratory")
     if accelerator == "kvm":
+        import fcntl  # POSIX only; Windows CI imports this module for PS AST checks.
         require(os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted",
                 "KVM refused on self-hosted or unidentified runner")
         kvm = Path("/dev/kvm")
