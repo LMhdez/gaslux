@@ -15,6 +15,7 @@ on:
       - fix/windows-gpt-qcow2-window-extraction-probe
       - fix/cachyos-qcow2-read-consistency-issue3
       - test/cachyos-same-disk-readonly-extent-gate
+      - test/windows10-cachyos-disposable-overlay-recovery
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -26,6 +27,7 @@ on:
       - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
       - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
       - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
   workflow_dispatch:
 
 permissions:
@@ -50,7 +52,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
-          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_noprompt_one_shot.py \
@@ -92,6 +94,7 @@ jobs:
       PYTHONUNBUFFERED: '1'
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
       GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WINDOWS_OVERLAY_TEST: I_ACCEPT_NEW_QCOW2_OVERLAY_ONLY
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -163,6 +166,15 @@ jobs:
           assert report['readOnlyGptGeometryEvidenceSha256'] == hashlib.sha256(
               disk_layout.read_bytes()).hexdigest()
           assert baseline['candidateWindowsGptPrimaryAndBackupConsistent'] is True
+          overlay = report.get('disposableOverlayExperiment')
+          assert isinstance(overlay, dict)
+          assert overlay['overlayFaultRejected'] is True
+          assert overlay['overlayDiscarded'] is True
+          assert overlay['backingWindowsGptUnchanged'] is True
+          for guard in ('windowsRebootAfterFaultVerified',
+                        'windowsBcdWinreRestorationVerified', 'linuxInstalled',
+                        'dualBootVerified', 'storageWritesAuthorized', 'releaseEligible'):
+              assert overlay[guard] is False
           assert len(baseline['windowsPartitions']) == 4
           assert baseline['unallocatedAfterWindowsBytes'] >= 40 * 1024**3
           observed = baseline['observedPostWindowsFreeExtent']
