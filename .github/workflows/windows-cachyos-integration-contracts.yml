@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/windows-cachyos-integrated-kvm-evidence
+      - fix/windows-cachyos-original-iso-evidence-mode
     paths:
       - .github/workflows/windows-cachyos-integration-contracts.yml
       - .github/workflows/windows-x64-two-stage-firstboot.yml
