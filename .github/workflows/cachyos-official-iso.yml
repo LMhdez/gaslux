@@ -1,5 +1,10 @@
 name: Official CachyOS ISO integrity and Archiso contract (not an installer)
 
+# Avoid parallel ISO downloads and stale long-running QEMU runs on the same branch.
+concurrency:
+  group: cachyos-official-iso-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
   push:
