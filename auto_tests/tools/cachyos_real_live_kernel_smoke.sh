@@ -260,16 +260,25 @@ if [[ "$lab_install" -eq 1 ]]; then
     -serial "file:$w/installed-serial.log" &
   installed_pid=$!
   installed_success=0
+  # serial-getty writes "hostname login: " without a newline. A VM-only
+  # systemd proof arriving at that instant appears on the SAME serial line.
+  # Admit only the exact marker or this exact known guest prompt + marker;
+  # arbitrary prefixes, partial markers and terminal-control text fail.
+  installed_marker_present() {
+    local marker="$1"
+    awk -v marker="$marker" '{
+      gsub(/\r/, "")
+      if ($0 == marker || $0 == "gaslux-cachyos-ci login: " marker) found=1
+    } END {exit !found}' "$w/installed-serial.log"
+  }
   for _ in $(seq 1 112); do
     sleep 5
     [[ -f "$w/installed-serial.log" ]] || continue
-    if ! awk '{gsub(/\r/, ""); if($0=="GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1") pass=1}
-        END{exit !pass}' "$w/installed-serial.log"; then
+    if ! installed_marker_present 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1'; then
       continue
     fi
     if [[ "$graphical" -eq 1 ]] &&
-       ! awk '{gsub(/\r/, ""); if($0=="GASLUX_VM_CACHYOS_PLASMA_WAYLAND_SESSION_PASS=1") pass=1}
-          END{exit !pass}' "$w/installed-serial.log"; then
+       ! installed_marker_present 'GASLUX_VM_CACHYOS_PLASMA_WAYLAND_SESSION_PASS=1'; then
       continue
     fi
     installed_success=1
