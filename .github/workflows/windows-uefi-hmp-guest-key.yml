@@ -64,7 +64,7 @@ jobs:
           terminal_output serial
           terminal_input console
           echo GASLUX_EFI_GUEST_WAITING_FOR_ENTER=1
-          if read --prompt="EFI Enter> " lab_input; then
+          if read lab_input; then
               echo GASLUX_EFI_GUEST_ENTER_RECEIVED=1
           else
               echo GASLUX_EFI_GUEST_ENTER_REJECTED=1
