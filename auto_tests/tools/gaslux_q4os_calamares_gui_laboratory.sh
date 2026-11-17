@@ -207,8 +207,7 @@ for tick in $(seq 1 "$max_ticks"); do
         elif [[ "$selected_modal" -eq 1 && "$current" != "$expected_modal" ]]; then
           dismissed_modal=1
           cp "$work/vnc-$tick.png" "$work/vnc-after-language.png"
-          if [[ "$launch_installer" == yes && "$launcher_clicked" -eq 0 &&
-                "$current" == "$expected_desktop" ]]; then
+          if [[ "$launch_installer" == yes && "$launcher_clicked" -eq 0 && "$current" == "$expected_desktop" ]]; then
             # First click closes the Q4OS welcome window, second *double*
             # click starts the already verified desktop "Install Q4OS" icon.
             # Neither of these is a Calamares install/partition confirmation.
@@ -217,8 +216,7 @@ for tick in $(seq 1 "$max_ticks"); do
               move 948 93 click 1 pause 1 move 57 39 click 1 pause 0.3 click 1 ||
               die 'SHA-verified native installer desktop icon click failed'
             launcher_clicked=1
-          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 &&
-                  "$current" != "$expected_desktop" ]]; then
+          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 && "$current" != "$expected_desktop" ]]; then
             post_launcher_frame=1
             cp "$work/vnc-$tick.png" "$work/vnc-after-installer-icon.png"
           fi
@@ -235,9 +233,9 @@ rc="$?"
 set -e
 printf '%s\n' "$rc" > "$work/qemu.rc"
 if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
-      "$selected_modal" -eq 1 && "$dismissed_modal" -eq 1 &&
-      { "$launch_installer" == no ||
-        { "$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1; }; } ]]; then
+      "$selected_modal" -eq 1 && "$dismissed_modal" -eq 1 ]] &&
+   { [[ "$launch_installer" == no ]] ||
+     [[ "$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1 ]]; }; then
   echo 'PASS: Q4OS first-run modal and audited graphical desktop transitioned under SHA-bound VNC actions.'
   if [[ "$launch_installer" == yes ]]; then
     echo 'PASS: audited Install Q4OS desktop ICON was clicked and a subsequent VNC frame changed.'
