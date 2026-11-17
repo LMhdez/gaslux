@@ -6,6 +6,10 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import json
 import stat
 import struct
 from types import SimpleNamespace
@@ -18,6 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "tools"))
 import cachyos_windows_shared_root_pacstrap as shared
 from test_windows_cachyos_qcow2_gpt_readonly import create_disk_windows
+from test_cachyos_windows_shared_archiso_handoff import fixture as signed_fixture
 from tools.windows_cachyos_qcow2_gpt_readonly import TYPES
 
 LINUX = "0fc63daf-8483-4772-8e79-3d69d8477de4"
@@ -111,6 +116,87 @@ class SharedRootOnlySafety(unittest.TestCase):
                 shared.guest_plan(SimpleNamespace())
             files.assert_not_called()
             commands.assert_not_called()
+
+    @unittest.skipUnless(shutil.which("openssl"), "Ed25519 requires openssl")
+    def test_independent_ed25519_cow_grant_required_and_signed(self):
+        plan = signed_fixture()
+        signed_bytes = shared.canonical(plan)
+        with tempfile.TemporaryDirectory(prefix="gaslux-grant-sign-") as tmp:
+            root = Path(tmp)
+            private = root / "signing-key.pem"
+            pub = root / "public.pem"
+            plan_path = root / "plan.json"
+            grant_path = root / "grant.json"
+            signature = root / "grant.sig"
+            plan_path.write_bytes(signed_bytes)
+            subprocess.run(["openssl", "genpkey", "-algorithm", "Ed25519",
+                            "-out", str(private)], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["openssl", "pkey", "-in", str(private),
+                            "-pubout", "-out", str(pub)], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            grant = {
+                "schemaVersion": 1, "labOnly": True,
+                "operation": "pacstrap-only-preexisting-fifth-ext4",
+                "runId": plan["runId"], "bootNonce": plan["bootNonce"],
+                "signedPlanSha256": hashlib.sha256(signed_bytes).hexdigest(),
+                "targetVirtioSerial": plan["targetVirtioSerial"],
+                "rootPartuuid": plan["partitions"][4]["uniqueGuid"],
+                "rootFsUuid": plan["rootFsUuid"],
+                "sourceWindowsGptSha256": plan["gptWindowsSha256"],
+                "hostCheckpointSha256": "1" * 64,
+                "hostOverlayBackingProofSha256": "2" * 64,
+                "sourceImageReadOnly": True, "discardableOverlay": True,
+                "windowsEspWritesAllowed": False,
+            }
+            args = SimpleNamespace(root_write_grant=grant_path,
+                                   grant_signature=signature,
+                                   plan=plan_path, public_key=pub)
+            def signed(value):
+                grant_path.write_bytes(shared.canonical(value))
+                subprocess.run(["openssl", "pkeyutl", "-sign",
+                                "-inkey", str(private), "-rawin",
+                                "-in", str(grant_path), "-out",
+                                str(signature)], check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            signed(grant)
+            shared.verify_lab_root_write_grant(args, plan)
+            # A correct detached signature is insufficient if any scope
+            # or host-checkpoint statement is changed and then re-signed.
+            for field, wrong in (
+                ("windowsEspWritesAllowed", True),
+                ("discardableOverlay", False),
+                ("sourceImageReadOnly", False),
+                ("hostCheckpointSha256", "0" * 64),
+                ("rootPartuuid", "00000000-0000-0000-0000-000000000000"),
+                ("operation", "format-entire-disk"),
+            ):
+                altered = dict(grant)
+                altered[field] = wrong
+                signed(altered)
+                with self.subTest(field=field), self.assertRaises(
+                        shared.SharedDiskHandoffRejected):
+                    shared.verify_lab_root_write_grant(args, plan)
+            signed(grant)
+            grant_path.write_bytes(grant_path.read_bytes().replace(
+                b'pacstrap-only', b'pacstrap-evil'))
+            with self.assertRaises(shared.SharedDiskHandoffRejected):
+                shared.verify_lab_root_write_grant(args, plan)
+            args.grant_signature = None
+            with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
+                                        "separate signed"):
+                shared.verify_lab_root_write_grant(args, plan)
+
+    def test_pacstrap_never_called_without_separate_write_grant(self):
+        args = SimpleNamespace()
+        with patch.object(shared, "guest_plan",
+                          return_value=(signed_fixture(), Path("/dev/null"))), \\
+             patch.object(shared, "verify_lab_root_write_grant",
+                          side_effect=shared.SharedDiskHandoffRejected("no grant")), \\
+             patch.object(shared, "execute") as command:
+            with self.assertRaisesRegex(shared.SharedDiskHandoffRejected, "no grant"):
+                shared.pacstrap_only(args)
+            command.assert_not_called()
 
     def test_backend_writes_only_native_root_never_installs_bootloader(self):
         source = (HERE / "tools/cachyos_windows_shared_root_pacstrap.py").read_text()
