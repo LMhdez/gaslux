@@ -130,6 +130,12 @@ class SharedRootOnlySafety(unittest.TestCase):
             grant_path = root / "grant.json"
             signature = root / "grant.sig"
             plan_path.write_bytes(signed_bytes)
+            # Synthetic immutable control scripts: the grant must bind the
+            # same bytes that the Archiso will later execute from RO media.
+            builder = root / "strict-pacman.py"
+            checker = root / "pacman-trust.py"
+            builder.write_bytes((HERE.parent / "assets/live/cachyos-strict-pacman.py").read_bytes())
+            checker.write_bytes((HERE.parent / "assets/live/cachyos-pacman-trust.py").read_bytes())
             subprocess.run(["openssl", "genpkey", "-algorithm", "Ed25519",
                             "-out", str(private)], check=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -149,6 +155,8 @@ class SharedRootOnlySafety(unittest.TestCase):
                 "hostOverlayBackingProofSha256": "2" * 64,
                 "sourceImageReadOnly": True, "discardableOverlay": True,
                 "windowsEspWritesAllowed": False,
+                "strictPacmanBuilderSha256": hashlib.sha256(builder.read_bytes()).hexdigest(),
+                "pacmanTrustGuardSha256": hashlib.sha256(checker.read_bytes()).hexdigest(),
             }
             args = SimpleNamespace(root_write_grant=grant_path,
                                    grant_signature=signature,
@@ -161,7 +169,7 @@ class SharedRootOnlySafety(unittest.TestCase):
                                 str(signature)], check=True,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             signed(grant)
-            shared.verify_lab_root_write_grant(args, plan)
+            shared.verify_lab_root_write_grant(args, plan, control_dir=root)
             # A correct detached signature is insufficient if any scope
             # or host-checkpoint statement is changed and then re-signed.
             for field, wrong in (
@@ -177,16 +185,31 @@ class SharedRootOnlySafety(unittest.TestCase):
                 signed(altered)
                 with self.subTest(field=field), self.assertRaises(
                         shared.SharedDiskHandoffRejected):
-                    shared.verify_lab_root_write_grant(args, plan)
+                    shared.verify_lab_root_write_grant(args, plan, control_dir=root)
+            # Even a correctly signed grant cannot accept modified policy
+            # executables mounted from a foreign or swapped control image.
+            signed(grant)
+            original_builder = builder.read_bytes()
+            builder.write_bytes(original_builder + b"\n# unexpected alteration\n")
+            with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
+                                        "program bytes differ"):
+                shared.verify_lab_root_write_grant(args, plan, control_dir=root)
+            builder.write_bytes(original_builder)
+            original_checker = checker.read_bytes()
+            checker.write_bytes(original_checker + b"\n# unexpected alteration\n")
+            with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
+                                        "program bytes differ"):
+                shared.verify_lab_root_write_grant(args, plan, control_dir=root)
+            checker.write_bytes(original_checker)
             signed(grant)
             grant_path.write_bytes(grant_path.read_bytes().replace(
                 b'pacstrap-only', b'pacstrap-evil'))
             with self.assertRaises(shared.SharedDiskHandoffRejected):
-                shared.verify_lab_root_write_grant(args, plan)
+                shared.verify_lab_root_write_grant(args, plan, control_dir=root)
             args.grant_signature = None
             with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
                                         "separate signed"):
-                shared.verify_lab_root_write_grant(args, plan)
+                shared.verify_lab_root_write_grant(args, plan, control_dir=root)
 
     def test_pacstrap_never_called_without_separate_write_grant(self):
         args = SimpleNamespace()
