@@ -38,13 +38,45 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
                 self.assertEqual(len(cmds), 1)
                 command = cmds[0]
                 self.assertEqual(command.find("u:Order", NS).text, "1")
-                self.assertEqual(command.find("u:WillReboot", NS).text, "Never")
+                # Microsoft-Windows-Setup/RunSynchronousCommand does not
+                # allow WillReboot in the windowsPE component schema.
+                self.assertIsNone(command.find("u:WillReboot", NS))
+                self.assertEqual(
+                    {child.tag.rsplit("}", 1)[-1] for child in command},
+                    {"Order", "Path", "Description"},
+                )
                 self.assertEqual(command.find("u:Path", NS).text,
                                  "cmd.exe /c echo GASLUX_WINPE_AUTOANSWER_ACTUALLY_CONSUMED=1>COM1")
                 self.assertIsNone(setup[0].find("u:DiskConfiguration", NS))
                 self.assertIsNone(setup[0].find("u:ImageInstall", NS))
                 self.assertIsNone(setup[0].find("u:UserData", NS))
                 self.assertNotIn("dualBootVerified", xml.decode("utf-8"))
+
+    def test_all_winpe_setup_sync_children_match_microsoft_schema(self):
+        """A non-schema WillReboot invalidates both FAT12 and FAT32 answers."""
+        for mode in PROBE.MODES:
+            with self.subTest(mode=mode):
+                xml = PROBE.build_winpe_witness_xml(mode)
+                root = ET.fromstring(xml)
+                components = root.findall(
+                    ".//u:component[@name='Microsoft-Windows-Setup']", NS
+                )
+                self.assertEqual(len(components), 1)
+                commands = components[0].findall(
+                    "u:RunSynchronous/u:RunSynchronousCommand", NS
+                )
+                self.assertEqual(len(commands), 1)
+                children = [
+                    child.tag.rsplit("}", 1)[-1] for child in commands[0]
+                ]
+                self.assertEqual(
+                    set(children), {"Order", "Description", "Path"}
+                )
+                self.assertEqual(len(children), len(set(children)))
+                self.assertNotIn(b"WillReboot", xml)
+                self.assertNotIn(b"DiskID", xml)
+                self.assertNotIn(b"WillWipeDisk", xml)
+                self.assertNotIn(b"InstallTo", xml)
 
     def test_real_unattend_disk_and_oobe_operations_never_reach_diskless_xml(self):
         """A no-target guest must not receive DiskID=0 or installer writes."""
