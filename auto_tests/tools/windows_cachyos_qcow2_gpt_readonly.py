@@ -181,6 +181,23 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     free_end_bytes = (last_usable - spans[-1][1]) * SECTOR
     require(free_end_bytes >= MIN_UNALLOCATED,
             "insufficient untouched post-Windows GPT free space")
+    # READ-ONLY observation of an aligned whole-MiB gap after Windows
+    # Recovery. There is no transaction-owned Linux partition, recovery
+    # snapshot, independent EFI inventory or executable installation plan.
+    # This must NEVER be interpreted as authorization to format the extent.
+    alignment_lbas = 1024 * 1024 // SECTOR
+    first_free = ((spans[-1][1] + 1 + alignment_lbas - 1) //
+                  alignment_lbas) * alignment_lbas
+    last_free = ((last_usable + 1) // alignment_lbas) * alignment_lbas - 1
+    require(
+        spans[-1][1] < first_free <= last_free <= last_usable
+        and first_free % alignment_lbas == 0
+        and (last_free + 1) % alignment_lbas == 0,
+        "no safely bounded aligned post-Windows free extent",
+    )
+    aligned_bytes = (last_free - first_free + 1) * SECTOR
+    require(aligned_bytes >= MIN_UNALLOCATED,
+            "insufficient aligned post-Windows GPT free space")
     return {
         "candidateWindowsGptPrimaryAndBackupConsistent": True,
         "protectiveMbrCanonical": not oversized_windows_pmbr,
@@ -189,6 +206,16 @@ def inspect_gpt_windows(front: bytes, back: bytes,
         "sectorBytes": SECTOR,
         "windowsPartitions": result_parts,
         "unallocatedAfterWindowsBytes": free_end_bytes,
+        "observedPostWindowsFreeExtent": {
+            "firstLba": first_free,
+            "lastLba": last_free,
+            "lengthBytes": aligned_bytes,
+            "alignmentBytes": alignment_lbas * SECTOR,
+            "readOnlyObservation": True,
+            "partitionCreated": False,
+            "linuxWriteAuthorized": False,
+            "recoveryAndOwnershipProofRequired": True,
+        },
         "diskGuidSha256": hashlib.sha256(primary[56:72]).hexdigest(),
         "windowsGuestOriginAuthenticated": False,
         "windowsBootVerified": False,
