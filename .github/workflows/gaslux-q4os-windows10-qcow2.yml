@@ -144,11 +144,11 @@ jobs:
           set +e
           timeout --signal=TERM --kill-after=30s 7200s qemu-system-x86_64 \
             -no-user-config -machine q35,accel=kvm -cpu host -smp 4 -m 6144 \
-            -rtc base=utc -no-reboot -display none -vga std \
+            -rtc base=utc -display none -vga std \
             -serial "file:$serial" -monitor none -net none \
             -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
             -drive "if=pflash,format=raw,unit=1,file=$vars" \
-            -device ahci,id=sata \
+            -device ich9-ahci,id=sata \
             -drive "if=none,id=system,file=$image,format=qcow2,cache=writeback" \
             -device ide-hd,drive=system,bus=sata.0,bootindex=2 \
             -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on" \
