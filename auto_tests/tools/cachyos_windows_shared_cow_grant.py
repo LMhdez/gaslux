@@ -165,10 +165,15 @@ def _validate_windows_evidence(
         and staged.get("overlayGptLinuxRootEntryPrepared") is True
         and staged.get("onlyDisposableOverlayModified") is True
         and staged.get("windowsPartitionEntriesUnchanged") is True
+        and staged.get("windowsPartitionBoundarySamplesUnchanged") is True
+        and staged.get("protectiveMbrAndGptOutsideWhitelistUnchanged") is True
         and staged.get("bothGptMirrorsAfterStageVerified") is True
         and staged.get("windowsBackingQcow2Unchanged") is True
         and staged.get("windowsUefiVariablesUnchanged") is True
         and staged.get("linuxRoot", {}).get("index") == 5
+        and third.get("windowsBootAfterOverlayMutationVerified") is True
+        and third.get("guestBcdWinreEspAfterOverlayVerified") is True
+        and third.get("windowsGuestShutdownAfterOverlayVerified") is True
         and ext4.get("onlyOwnedOverlayFifthPartitionFormatted") is True
         and ext4.get("linuxRootFilesystemFormatted") is True
         and ext4.get("rootFilesystem", {}).get("filesystemType") == "ext4"
