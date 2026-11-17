@@ -9,6 +9,7 @@ on:
       - fix/windows-two-stage-full-serial-dvd-guard
       - fix/windows-eval-oobe-international-pass
       - test/windows-floppy-proven-setup-firstlogon-fix
+      - test/windows11-fat12-proven-firstlogon-kvm
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -69,11 +70,12 @@ jobs:
       fail-fast: false
       matrix:
         profile:
-          # Historical 44048550209 reached installed Windows 10 Boot Manager
-          # with floppy media, but guest PowerShell collapsed the 7 markers.
-          # Re-run this EXACT former installation path after correcting only
-          # marker-array semantics. Do not imply support for Windows 11.
-          - win10_22h2_en_us_x64
+          # Windows 10 FAT12/no-prompt derivative successfully installed,
+          # independently rebooted and proved FirstLogon on #44085976726.
+          # Re-run that identical versioned installer/media path for Windows 11
+          # with owned TPM NV state, checked ISO and fresh QCOW2. This is NOT
+          # Windows 11 firstboot proof until the actual guest audit passes.
+          - win11_26h2_en_us_x64
     env:
       PYTHONUNBUFFERED: '1'
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
