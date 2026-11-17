@@ -280,6 +280,12 @@ def compare(before: dict[str, Any], after: dict[str, Any], mode: str) -> dict[st
         instant(after["windowsBootTime"]) > instant(before["windowsBootTime"]),
         "no actual subsequent Windows boot was observed",
     )
+    # A later boot timestamp is insufficient if it predates the baseline
+    # observation: that would not demonstrate a post-transaction reboot.
+    require(
+        instant(after["windowsBootTime"]) > instant(before["capturedAt"]),
+        "Windows reboot was not observed after baseline evidence capture",
+    )
     if mode == "rollback":
         for k in ("bcdAllRaw", "firmwareRaw", "winreRaw", "secureBootEnabled"):
             require(before[k] == after[k], f"rollback did not restore {k}")

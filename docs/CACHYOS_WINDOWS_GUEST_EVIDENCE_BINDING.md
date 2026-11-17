@@ -23,6 +23,10 @@ Additional restrictions implemented here:
   `GetVolumeInformationW` on its existing volume GUID path, without mounting
   or assigning a drive letter. Reject unreadable, non-FAT32, zero or unknown
   values; canonicalize as `AB12-CD34`.
+- The offline verifier rejects purported postinstall/rollback Windows reboots
+  whose last-boot timestamp is not strictly later than the captured baseline;
+  a boot after the previous boot but before the baseline is insufficient.
+  This is a consistency gate on self-reported evidence, not proof of provenance.
 - The offline verifier rejects changed FAT32 serials across guest observations,
   changed Windows EFI hashes, changed WinRE WIM digests, tampered BCD, unsafe
   GPT changes and an absent subsequent Windows reboot timestamp.

@@ -175,6 +175,25 @@ class WindowsRecoveryFixtureTests(unittest.TestCase):
             message="subsequent Windows boot",
         )
 
+    def test_reboot_before_baseline_capture_is_not_postinstall_proof(self):
+        self.rejected(
+            lambda a, b: b.update(windowsBootTime="2026-11-16T14:30:00+00:00"),
+            message="after baseline evidence capture",
+        )
+
+    def test_reboot_equal_to_baseline_capture_is_not_postinstall_proof(self):
+        self.rejected(
+            lambda a, b: b.update(windowsBootTime=a["capturedAt"]),
+            message="after baseline evidence capture",
+        )
+
+    def test_rollback_reboot_before_baseline_capture_is_not_recovery_proof(self):
+        self.rejected(
+            lambda a, b: b.update(windowsBootTime="2026-11-16T14:30:00+00:00"),
+            mode="rollback",
+            message="after baseline evidence capture",
+        )
+
     def test_recovery_partition_deleted(self):
         self.rejected(lambda a, b: b["disks"][0]["partitions"].pop(2), message="removed")
 

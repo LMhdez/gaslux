@@ -175,6 +175,13 @@ class WindowsGuestBindingTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.GUEST.EvidenceError, "subsequent Windows boot"):
             self.check()
 
+    def test_after_boot_timestamp_predating_baseline_capture_rejected(self):
+        self.after["windowsBootTime"] = "2026-11-16T14:30:00+00:00"
+        with self.assertRaisesRegex(
+            MODULE.GUEST.EvidenceError, "after baseline evidence capture"
+        ):
+            self.check()
+
     def test_installed_linux_partition_must_match_owned_offset(self):
         self.after["disks"][0]["partitions"][-1]["offset"] += GIB
         self.after["disks"][0]["partitions"][-1]["size"] -= GIB
