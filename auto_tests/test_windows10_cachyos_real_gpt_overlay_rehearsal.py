@@ -52,7 +52,7 @@ class WindowsCachyosRealOverlaySafetyTests(unittest.TestCase):
             trial = parent / "windows-reboot-after-linux-gpt-discard.qcow2"
             vars = parent / "trial-ovmf-variables.fd"
             for candidate in (base_args()[:3], base_args() + [
-                "-drive", base_args()[7],
+                "-drive", base_args()[6],
             ]):
                 with self.subTest(candidate=candidate):
                     with self.assertRaises(rehearsal.GptOverlayTrialRejected):
