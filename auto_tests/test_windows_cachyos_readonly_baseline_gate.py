@@ -544,6 +544,46 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
         self.assertFalse(proof["windowsGuestOriginAuthenticated"])
         self.assertFalse(proof["windowsBootVerified"])
 
+    def test_exact_third_boot_audit_sha_requires_explicit_mode(self):
+        from windows_cachyos_overlay_reboot import guest_reboot_script
+        from windows_x64_tcg_firstboot import witness_powershell
+        report, serial, manifest = synthetic("win10_22h2_en_us_x64")
+        digest = hashlib.sha256((guest_reboot_script() + "\n").encode()).hexdigest()
+        report["thirdBootAuditorScriptSha256"] = digest
+        report["windowsBootAfterLinuxGptOverlayVerified"] = True
+        report["thirdBootBcdWinreEspVerified"] = True
+        report["thirdBootProofSha256"] = "f" * 64
+        report["firstLogonScriptSha256"] = hashlib.sha256((
+            witness_powershell(report["profile"], "19045",
+                               overlay_reboot_script_sha256=digest) + "\n"
+        ).encode()).hexdigest()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "explicitly authorized"):
+            self.exercise(report, serial, manifest)
+        initial_manifest = (
+            hashlib.sha256(INITIAL_SERIAL).hexdigest() + "  " +
+            report["profile"] + "-initial-dvd-serial.log\n"
+        ).encode()
+        result = GATE.evaluate(report["profile"], report, serial, manifest,
+                               INITIAL_SERIAL, initial_manifest,
+                               overlay_reboot_audit=True)
+        self.assertTrue(result["candidateWindowsFirstbootDocumentsConsistent"])
+        self.assertFalse(result["storageWritesAuthorized"])
+        self.assertFalse(result["sameDiskDualBootVerified"])
+        report["thirdBootAuditorScriptSha256"] = "0" * 64
+        with self.assertRaisesRegex(GATE.BaselineGateError, "checked-out source"):
+            GATE.evaluate(report["profile"], report, serial, manifest,
+                          INITIAL_SERIAL, initial_manifest,
+                          overlay_reboot_audit=True)
+
+    def test_third_boot_mode_refuses_windows11(self):
+        report, serial, manifest = synthetic("win11_26h2_en_us_x64")
+        with self.assertRaisesRegex(GATE.BaselineGateError, "another Windows profile"):
+            GATE.evaluate(report["profile"], report, serial, manifest,
+                          INITIAL_SERIAL,
+                          (hashlib.sha256(INITIAL_SERIAL).hexdigest()
+                           + "  " + report["profile"] + "-initial-dvd-serial.log\n").encode(),
+                          overlay_reboot_audit=True)
+
     def test_no_disk_mutation_imports_or_calls(self):
         source = SOURCE.read_text()
         for forbidden in ("qemu-img", "sgdisk", "mkfs", "wipefs",
