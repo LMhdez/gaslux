@@ -63,6 +63,7 @@ jobs:
         shell: bash
         env:
           GASLUX_RUN_SYNTHETIC_POP_OVERLAY_STAGE: '1'
+          GASLUX_SYNTHETIC_OVERSIZED_WINDOWS_PMBR: '1'
           GASLUX_WIN10_POP_OVERLAY_CONSENT: I_ACCEPT_GITHUB_ONLY_QCOW2_COPY_ON_WRITE_LINUX_ROOT_STAGE
         run: |
           set -Eeuo pipefail
