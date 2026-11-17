@@ -175,7 +175,12 @@ menuentry 'CachyOS installed VM test' {
   initrd /boot/initramfs-linux-cachyos.img
 }
 EOF
-arch-chroot /mnt/target grub-script-check /boot/grub/grub.cfg
+echo 'GASLUX_VM_GRUB_INSTALL_PASS'
+if ! arch-chroot /mnt/target grub-script-check /boot/grub/grub.cfg; then
+  echo 'GASLUX_VM_GRUB_SCRIPT_INVALID'
+  exit 61
+fi
+echo 'GASLUX_VM_GRUB_CONFIG_PASS'
 [[ -s /mnt/target/boot/initramfs-linux-cachyos.img ]] || exit 27
 mkdir -p /mnt/target/usr/local/libexec
 cat > /mnt/target/usr/local/libexec/gaslux-lab-firstboot-check <<'FIRSTBOOT'
@@ -220,8 +225,26 @@ StandardError=journal+console
 [Install]
 WantedBy=multi-user.target
 UNIT
-arch-chroot /mnt/target systemctl enable gaslux-lab-firstboot.service
-arch-chroot /mnt/target systemctl enable serial-getty@ttyS0.service
+# Work on the validated VM-owned root directly; never contact live systemd
+# or enable a unit on the host/Archiso. --root performs offline symlink edits.
+if ! systemctl --root=/mnt/target enable gaslux-lab-firstboot.service; then
+  echo 'GASLUX_VM_FIRSTBOOT_UNIT_ENABLE_FAILED'
+  exit 62
+fi
+if ! systemctl --root=/mnt/target is-enabled --quiet gaslux-lab-firstboot.service; then
+  echo 'GASLUX_VM_FIRSTBOOT_UNIT_NOT_ENABLED'
+  exit 63
+fi
+echo 'GASLUX_VM_FIRSTBOOT_UNIT_ENABLED'
+if ! systemctl --root=/mnt/target enable serial-getty@ttyS0.service; then
+  echo 'GASLUX_VM_SERIAL_UNIT_ENABLE_FAILED'
+  exit 64
+fi
+if ! systemctl --root=/mnt/target is-enabled --quiet serial-getty@ttyS0.service; then
+  echo 'GASLUX_VM_SERIAL_UNIT_NOT_ENABLED'
+  exit 65
+fi
+echo 'GASLUX_VM_SERIAL_UNIT_ENABLED'
 sync
 echo "GASLUX_VM_PACSTRAP_PASS:$RUN_ID:$ROOT_UUID"
 systemctl --no-block poweroff
