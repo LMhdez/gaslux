@@ -3,6 +3,7 @@ name: Multidistro legacy backend contract tests
 on:
   push:
     branches:
+      - dev
       - feature/multidistro-legacy-backend-gate
   pull_request:
     paths:
