@@ -63,7 +63,7 @@ class NoPromptExperimentalMediaTests(unittest.TestCase):
         self.assertIn('report["officialIsoUnmodified"] = True', src)
         self.assertIn('no-prompt derived ISO permitted only in isolated hosted KVM', src)
         self.assertIn("if not args.boot_probe_only:", src)
-        self.assertIn("no writable target disk", src.lower())
+        self.assertIn("must not expose a writable target disk", src.lower())
         self.assertIn('not derived.exists() and not derived.is_symlink()', src)
 
     def test_guest_boot_observation_does_not_certify_windows_installed(self):
