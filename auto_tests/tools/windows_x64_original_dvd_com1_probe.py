@@ -17,6 +17,7 @@ import tempfile
 import time
 
 from windows_x64_qemu_host_gate import load_catalog, OVMF_CODE, OVMF_VARS
+from windows_x64_vga_diagnostic import capture_owned_qemu_vga
 from windows_x64_tcg_firstboot import (
     BOOT_FROM_CD_PROMPT, LabError, download_verified_iso,
     first_stage_dvd_key_ready, require, scan_two_stage_dvd_serial,
@@ -53,6 +54,7 @@ def original_dvd_probe(qemu: list[str], serial: Path, monitor: Path,
     started_at = time.monotonic()
     start_seen_at = None
     key_at = None
+    vga_samples: list[dict[str, int]] = []
     count, offset, carry = 0, 0, b""
     with (serial.parent / f"short-probe-{hold_ms}-qemu-stderr.log").open("xb") as stderr:
         proc = subprocess.Popen(qemu, stdout=subprocess.DEVNULL, stderr=stderr)
@@ -82,12 +84,41 @@ def original_dvd_probe(qemu: list[str], serial: Path, monitor: Path,
                         key_at = time.monotonic()
                         print(f"GASLUX_ORIGINAL_WIN10_COM1_PROMPT_HMP_{hold_ms}MS_ACK=1",
                               flush=True)
-                    if key_at is not None and time.monotonic() - key_at >= 20:
-                        print(f"GASLUX_ORIGINAL_WIN10_DVD_NO_IMMEDIATE_TIMEOUT_{hold_ms}MS=1",
-                              flush=True)
-                        print("NOT TESTED: WinPE Setup, Windows installation, firstboot, "
-                              "ESP/BCD/WinRE or Windows+CachyOS", flush=True)
-                        return True
+                    # The absence of OVMF timeout alone does not prove
+                    # WinPE was entered. Reuse PR #107's privacy-preserving
+                    # numeric VGA captures: exactly two frames, at 12s and
+                    # 55s, with raw PPM deleted in a finally block. The
+                    # snapshots are NOT Windows Setup verification.
+                    if key_at is not None:
+                        elapsed = time.monotonic() - key_at
+                        for ordinal, when, basename in (
+                            (0, 12, "first-stage-vga-early.ppm"),
+                            (1, 55, "first-stage-vga-timeout.ppm"),
+                        ):
+                            if len(vga_samples) == ordinal and elapsed >= when:
+                                stats = capture_owned_qemu_vga(
+                                    monitor, serial.parent / basename)
+                                vga_samples.append(stats)
+                                summary = ",".join(f"{k}={v}" for k, v
+                                                   in sorted(stats.items()))
+                                print(
+                                    f"GASLUX_ORIGINAL_WIN10_DVD_VGA_NUMERIC_"
+                                    f"{hold_ms}MS_FRAME_{ordinal + 1}={summary}",
+                                    flush=True,
+                                )
+                        if len(vga_samples) == 2:
+                            changed = int(vga_samples[0] != vga_samples[1])
+                            print(
+                                f"GASLUX_ORIGINAL_WIN10_DVD_VGA_STATS_CHANGED_"
+                                f"{hold_ms}MS={changed}", flush=True)
+                            print(
+                                f"GASLUX_ORIGINAL_WIN10_DVD_NO_TIMEOUT_55S_"
+                                f"{hold_ms}MS=1", flush=True)
+                            print(
+                                "NOT TESTED: WinPE Setup, Windows installation, "
+                                "firstboot, ESP/BCD/WinRE or Windows+CachyOS",
+                                flush=True)
+                            return True
                 time.sleep(0.1 if key_at is None else 0.3)
             raise LabError("official Microsoft DVD short probe timed out; "
                            "no EFI input progress proven")
