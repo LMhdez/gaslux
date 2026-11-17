@@ -10,6 +10,7 @@ on:
       - fix/windows-eval-oobe-international-pass
       - test/windows-floppy-proven-setup-firstlogon-fix
       - test/windows10-proven-floppy-cachyos-readonly-gate
+      - test/windows11-firstboot-cachyos-dual-stage-readonly
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -74,11 +75,12 @@ jobs:
       fail-fast: false
       matrix:
         profile:
-          # Historical 44048550209 reached installed Windows 10 Boot Manager
-          # with floppy media, but guest PowerShell collapsed the 7 markers.
-          # Re-run this EXACT former installation path after correcting only
-          # marker-array semantics. Do not imply support for Windows 11.
-          - win10_22h2_en_us_x64
+          # Windows 11 firstboot was established by the independent
+          # official-Microsoft-ISO FAT12-floppy + owned swtpm KVM baseline
+          # (PR #117, Actions #44094951108). Reuse the same installer source
+          # and append the PR #116 post-boot documentary gate; no Linux
+          # storage writer is authorized by a passing Windows guest.
+          - win11_26h2_en_us_x64
     env:
       PYTHONUNBUFFERED: '1'
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
@@ -113,18 +115,18 @@ jobs:
             --profile "${{ matrix.profile }}" --accel kvm \
             --derived-no-prompt --two-stage-install-only --boot-timeout 4800
           echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
-      # Never run this candidate check unless the exact existing Windows 10
+      # Never run this candidate check unless the proven Windows 11
       # DVD+FAT12 unattended install has rebooted and passed its firstlogon
       # ESP/BCD/WinRE audit with clean Windows poweroff. It cannot authorize
       # any Linux disk mutation, even when it prints success.
-      - name: Cross-check first DVD and installed Windows 10 COM1 SHA manifests (READ-ONLY)
+      - name: Cross-check first DVD and installed Windows 11 COM1 SHA manifests (READ-ONLY)
         shell: bash
         run: |
           set -Eeuo pipefail
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           PROFILE="${{ matrix.profile }}"
-          test "$PROFILE" = win10_22h2_en_us_x64
+          test "$PROFILE" = win11_26h2_en_us_x64
           PROOF="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
             --profile "$PROFILE" \
@@ -133,7 +135,7 @@ jobs:
             --serial-sha256 "$PROOF/$PROFILE-serial.sha256" \
             --initial-dvd-serial "$PROOF/$PROFILE-initial-dvd-serial.log" \
             --initial-dvd-serial-sha256 "$PROOF/$PROFILE-initial-dvd-serial.sha256"
-          echo 'PASS: same-run Windows 10 candidate document consistency only. No independent provenance authentication, Windows+Linux same-disk install or recovery; no storage write permitted.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'PASS: same-run Windows 11 candidate document consistency only. No independent provenance authentication, Windows+Linux same-disk install or recovery; no storage write permitted.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
