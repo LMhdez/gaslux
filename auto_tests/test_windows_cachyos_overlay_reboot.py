@@ -74,12 +74,14 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
         self.assertIn('Register-ScheduledTask',armed)
         self.assertIn('GASLUX_WINDOWS_X64_BCD_ENUMERATED=1',armed)
 
-    def test_guest_script_checks_fifth_partition_bcd_and_winre(self):
+    def test_guest_script_checks_both_fifth_gpt_and_four_partition_baseline(self):
         script=boot.guest_reboot_script()
         for required in (
             'Get-Partition -DiskNumber 0',
-            'PartitionNumber -ne 5',
-            '24GB','bcdedit.exe','reagentc.exe',
+            '$parts.Count -eq 5', '$parts.Count -eq 4',
+            'PartitionNumber -ne 5', '24GB',
+            'GASLUX_COW_WIN10_BASELINE_NO_LINUX=1',
+            'bcdedit.exe', 'reagentc.exe',
             'Windows RE status:', 'GASLUX_COW_WIN10_REBOOT_FAIL',
         ):
             self.assertIn(required,script)
@@ -116,6 +118,46 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
             serial.write_bytes(raw)
             self.assertEqual(boot.audit_complete_third_serial(serial),
                              hashlib.sha256(raw).hexdigest())
+
+    def test_four_partition_baseline_serial_requires_single_windows_boot_and_all_markers(self):
+        import hashlib, tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            serial=Path(folder)/'baseline.log'
+            raw=(b'BdsDxe: starting Boot0003 "Windows Boot Manager"\\r\\n'
+                 + b"".join((x+"\\r\\n").encode("ascii")
+                           for x in boot.PROOF_FOUR_PARTITION_BASELINE))
+            serial.write_bytes(raw)
+            self.assertEqual(boot.audit_complete_four_partition_serial(serial),
+                             hashlib.sha256(raw).hexdigest())
+
+    def test_four_partition_baseline_rejects_missing_duplicate_or_fifth_gpt_marker(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            serial=Path(folder)/'baseline.log'
+            bm=b'BdsDxe: starting Boot0003 "Windows Boot Manager"\\r\\n'
+            markers=[(x+"\\n").encode("ascii")
+                     for x in boot.PROOF_FOUR_PARTITION_BASELINE]
+            for bad in (
+                bm+b"".join(markers[:-1]),
+                bm+b"".join(markers)+markers[0],
+                bm+b"".join(markers)+b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1\\n",
+            ):
+                serial.write_bytes(bad)
+                with self.assertRaises(boot.OverlayBootError):
+                    boot.audit_complete_four_partition_serial(serial)
+
+    def test_four_partition_baseline_rejects_dvd_fallback_and_failed_guest(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            serial=Path(folder)/'baseline.log'
+            bm=b'BdsDxe: starting Boot0003 "Windows Boot Manager"\\r\\n'
+            markers=b"".join((x+"\\n").encode("ascii")
+                             for x in boot.PROOF_FOUR_PARTITION_BASELINE)
+            for bad in (bm+b"UEFI QEMU DVD-ROM\\n"+markers,
+                        bm+markers+b"GASLUX_COW_WIN10_REBOOT_FAIL=1\\n"):
+                serial.write_bytes(bad)
+                with self.assertRaises(boot.OverlayBootError):
+                    boot.audit_complete_four_partition_serial(serial)
 
     def test_second_boot_manager_rejected_even_if_all_proofs_present(self):
         import tempfile
