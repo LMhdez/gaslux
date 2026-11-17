@@ -935,13 +935,18 @@ def main(argv: list[str] | None = None) -> int:
                 encoding="utf-8")
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
-            floppy = workspace / "unattend-floppy.img"
-            subprocess.run(["truncate", "-s", "1440K", str(floppy)], check=True)
-            subprocess.run(["mkfs.vfat", "-F", "12", "-n", "GASLUXCI", str(floppy)],
+            # CONTROLLED A/B TEST: retain the SAME known-working derived DVD,
+            # guest PowerShell and boot sequence; vary ONLY the guest answer
+            # medium from a file-backed FAT12 floppy to a read-only FAT32 USB.
+            answer = workspace / "only-disposable-answer-usb.img"
+            require(not answer.exists() and not answer.is_symlink(),
+                    "refusing reused Windows Setup answer media")
+            subprocess.run(["truncate", "-s", "64M", str(answer)], check=True)
+            subprocess.run(["mkfs.vfat", "-F", "32", "-n", "GASLUXCI", str(answer)],
                            check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(["mcopy", "-i", str(floppy), str(xmlfile),
+            subprocess.run(["mcopy", "-i", str(answer), str(xmlfile),
                             "::/Autounattend.xml"], check=True)
-            subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps1),
+            subprocess.run(["mcopy", "-i", str(answer), str(guest_ps1),
                             "::/GASLUX.PS1"], check=True)
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
@@ -986,7 +991,10 @@ def main(argv: list[str] | None = None) -> int:
                 base.extend([
                     "-drive", f"if=none,id=only_windows,format=qcow2,file={disk}",
                     "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
-                    "-drive", f"if=floppy,format=raw,file={floppy}",
+                    # Read-only file-backed FAT32 answer medium is exposed
+                    # to both original and independent disk-only guest boots.
+                    "-drive", f"if=none,id=lab_unattend,format=raw,readonly=on,file={answer}",
+                    "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
                 ])
             tpm = None
             if args.profile.startswith("win11"):
