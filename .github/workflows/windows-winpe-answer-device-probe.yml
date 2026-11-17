@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - diag/windows-winpe-answer-device-probe
+      - fix/windows-winpe-diskless-answer-probe-no-install-directives
     paths:
       - .github/workflows/windows-winpe-answer-device-probe.yml
       - auto_tests/tools/windows_x64_winpe_answer_probe.py
@@ -67,7 +68,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf p7zip-full genisoimage \
             dosfstools mtools
-      - name: Probe only Windows PE answer consumption, never install onto disk
+      - name: Probe FAT12 vs USB WinPE answer consumption with ALL disk/OOBE instructions stripped
         shell: bash
         run: |
           set -Eeuo pipefail
