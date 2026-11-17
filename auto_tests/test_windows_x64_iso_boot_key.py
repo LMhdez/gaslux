@@ -141,5 +141,54 @@ class OfficialISOBootPromptTests(unittest.TestCase):
         sock.settimeout.assert_called_once_with(2)
 
 
+class LocalVncIsoBootKeyTests(unittest.TestCase):
+    def test_vnc_rejects_foreign_monitor_before_network_access(self):
+        with self.assertRaisesRegex(vm.LabError, "unapproved"):
+            vm.send_first_iso_boot_key_vnc(
+                pathlib.Path("/home/runner/work/_temp/gaslux-win-x64-lab/hmp.sock"),
+                hold_ms=12000,
+            )
+        with patch.dict(vm.os.environ, {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "github-hosted",
+            "RUNNER_OS": "Linux",
+        }):
+            with self.assertRaisesRegex(vm.LabError, "unowned QEMU monitor"):
+                vm.send_first_iso_boot_key_vnc(pathlib.Path("/tmp/foreign.sock"))
+
+    def test_loopback_rfb_sends_exactly_one_return_pair(self):
+        monitor = pathlib.Path(
+            "/home/runner/work/_temp/gaslux-win-x64-vnc/initial-installer-hmp.sock"
+        )
+        sock = MagicMock()
+        sock.__enter__.return_value = sock
+        name = b"QEMU"
+        server_init = bytes(20) + len(name).to_bytes(4, "big")
+        sock.recv.side_effect = [
+            b"RFB 003.008\\n", b"\\x01", b"\\x01", b"\\x00" * 4, server_init, name
+        ]
+        hosted = {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "github-hosted",
+            "RUNNER_OS": "Linux",
+        }
+        with patch.dict(vm.os.environ, hosted), patch.object(
+            pathlib.Path, "is_socket", return_value=True
+        ), patch.object(pathlib.Path, "is_symlink", return_value=False), patch.object(
+            vm.socket, "create_connection", return_value=sock
+        ) as maker, patch.object(vm.time, "sleep", return_value=None):
+            vm.send_first_iso_boot_key_vnc(monitor)
+        maker.assert_called_once_with(("127.0.0.1", 5979), timeout=5)
+        self.assertEqual(
+            [call.args[0] for call in sock.sendall.call_args_list],
+            [
+                b"RFB 003.008\\n", b"\\x01", b"\\x01",
+                vm.struct.pack(">BBHI", 4, 1, 0, 0xFF0D),
+                vm.struct.pack(">BBHI", 4, 0, 0, 0xFF0D),
+            ],
+        )
+
+
+
 if __name__ == "__main__":
     unittest.main()

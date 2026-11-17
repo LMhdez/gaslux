@@ -5,10 +5,12 @@ on:
   push:
     branches:
       - feature/windows-x64-tcg-winre-recovery-baseline
+      - feature/windows-x64-vnc-official-dvd-firstboot
     paths:
       - .github/workflows/windows-x64-kvm-installed-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_kvm_opt_in.py
+      - auto_tests/test_windows_x64_iso_boot_key.py
       - auto_tests/test_windows_x64_clean_poweroff_gate.py
       - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
 
@@ -38,6 +40,7 @@ jobs:
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_winre_baseline_contract.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_kvm_opt_in.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_iso_boot_key.py'
       - name: Install QEMU, matched OVMF firmware and host-side FAT tools
         shell: bash
         run: |
@@ -123,7 +126,7 @@ jobs:
           set -Eeuo pipefail
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
-            --profile "${{ matrix.profile }}" --accel kvm --boot-timeout 4800
+            --profile "${{ matrix.profile }}" --accel kvm --vnc-dvd-enter --boot-timeout 4800
           echo 'Real installed Windows x64 client audit and clean guest shutdown verified; Linux dual boot and Windows rollback NOT tested.' >> "$GITHUB_STEP_SUMMARY"
       - name: Archive only guest serial, SHA256 and verification JSON (never ISO/QCOW2/TPM)
         if: always()

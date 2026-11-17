@@ -18,6 +18,7 @@ import platform
 import re
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -362,14 +363,73 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
         raise LabError("QEMU HMP failed to deliver initial ISO boot key") from exc
 
 
+def send_first_iso_boot_key_vnc(monitor_path: Path, hold_ms: int = 300) -> None:
+    """Send exactly one local RFB Return key down/up to an isolated QEMU guest.
+
+    The synthetic GRUB EFI witness in the parent PR proved this delivery
+    route; an actual Windows firstboot witness is STILL required. Only
+    GitHub-hosted KVM and an owned ephemeral HMP socket may authorize input.
+    """
+    require(hold_ms in (300, 6000), "unapproved firmware boot-key duration")
+    require(os.environ.get("GITHUB_ACTIONS") == "true" and
+            os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
+            os.environ.get("RUNNER_OS") == "Linux",
+            "VNC firmware input restricted to hosted GitHub VM laboratory")
+    require(monitor_path.is_absolute() and monitor_path.is_socket() and
+            not monitor_path.is_symlink() and
+            monitor_path.parent.name.startswith("gaslux-win-x64-") and
+            monitor_path.parent.parent == Path("/home/runner/work/_temp"),
+            "refusing VNC input for an unowned QEMU monitor")
+
+    def receive_exact(conn, count: int) -> bytes:
+        result = b""
+        while len(result) != count:
+            data = conn.recv(count - len(result))
+            if not data:
+                raise LabError("loopback RFB server disconnected early")
+            result += data
+        return result
+
+    try:
+        # 5979 is QEMU display :79. No Internet, VNC listener is loopback-only.
+        with socket.create_connection(("127.0.0.1", 5979), timeout=5) as conn:
+            conn.settimeout(5)
+            version = receive_exact(conn, 12)
+            require(version == b"RFB 003.008\\n", "unexpected RFB protocol")
+            conn.sendall(version)
+            count = receive_exact(conn, 1)[0]
+            require(0 < count <= 8, "invalid RFB security option count")
+            options = receive_exact(conn, count)
+            require(1 in options, "RFB loopback security negotiation refused")
+            conn.sendall(b"\\x01")  # RFB SecurityType None (localhost only).
+            require(receive_exact(conn, 4) == b"\\x00" * 4,
+                    "RFB security negotiation failed")
+            conn.sendall(b"\\x01")  # shared framebuffer session
+            server_init = receive_exact(conn, 24)
+            name_length = struct.unpack(">I", server_init[20:24])[0]
+            require(0 < name_length <= 1024, "unexpected RFB desktop identity")
+            receive_exact(conn, name_length)
+            conn.sendall(struct.pack(">BBHI", 4, 1, 0, 0xFF0D))
+            time.sleep(hold_ms / 1000)
+            conn.sendall(struct.pack(">BBHI", 4, 0, 0, 0xFF0D))
+    except (TimeoutError, OSError) as exc:
+        raise LabError("QEMU local RFB failed to deliver initial ISO Return") from exc
+
+
 def boot_vm(args: list[str], transcript: Path, limit: int,
-            profile_key: str, monitor_socket: Path | None = None) -> tuple[bool, str]:
+            profile_key: str, monitor_socket: Path | None = None,
+            boot_key_transport: str = "hmp") -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
     requests ACPI Windows shutdown after the read-only audit, and QEMU must
     exit successfully before the host may claim a clean installed firstboot.
     """
+    require(boot_key_transport in ("hmp", "vnc"), "unknown ISO boot input route")
+    if boot_key_transport == "vnc":
+        require(monitor_socket is not None, "VNC boot key requires owned monitor")
+    send_boot_key = (send_first_iso_boot_key_vnc if boot_key_transport == "vnc"
+                     else send_first_iso_boot_key)
     build_by_profile = {
         "win10_22h2_en_us_x64": "19045",
         "win11_26h2_en_us_x64": "26300",
@@ -403,7 +463,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                         }
                     if monitor_socket is not None and not initial_cd_key_sent:
                         if BOOT_FROM_CD_PROMPT in serial_data:
-                            send_first_iso_boot_key(monitor_socket)
+                            send_boot_key(monitor_socket)
                             initial_cd_key_sent = True
                             print("GASLUX_VM_INITIAL_OFFICIAL_ISO_PROMPT_KEY_SENT=1",
                                   flush=True)
@@ -415,7 +475,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             # DVD startup, but not a visible serial prompt.
                             # Hold ONE Enter through its VGA-only prompt.
                             if time.monotonic() - win11_dvd_started_at >= 1:
-                                send_first_iso_boot_key(monitor_socket, hold_ms=6000)
+                                send_boot_key(monitor_socket, hold_ms=6000)
                                 initial_cd_key_sent = True
                                 print("GASLUX_VM_INITIAL_OFFICIAL_WIN11_DVD_KEY_SENT=1",
                                       flush=True)
@@ -456,7 +516,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
+    ap.add_argument("--vnc-dvd-enter", action="store_true",
+                    help="hosted KVM-only: deliver the original Microsoft DVD prompt Return via loopback RFB")
     args = ap.parse_args(argv)
+    if args.vnc_dvd_enter and args.accel != "kvm":
+        raise SystemExit("loopback VNC EFI input requires hosted disposable KVM")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
@@ -519,7 +583,8 @@ def main(argv: list[str] | None = None) -> int:
                 "-global", "driver=cfi.pflash01,property=secure,value=on",
                 "-cpu", ("host" if args.accel == "kvm" else "max"),
                 "-smp", "2", "-m", "4096",
-                "-display", "none", "-vga", "std",
+                "-display", ("vnc=127.0.0.1:79" if args.vnc_dvd_enter else "none"),
+                "-vga", "std",
                 "-monitor", f"unix:{monitor_path},server,nowait", "-net", "none",
                 "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
                 "-drive", f"if=pflash,format=raw,file={nvram}",
@@ -560,7 +625,8 @@ def main(argv: list[str] | None = None) -> int:
                              "-device", "tpm-tis,tpmdev=tpm0"])
             try:
                 ok, diagnostic = boot_vm(base, serial, args.boot_timeout,
-                                         args.profile, monitor_socket=monitor_path)
+                                         args.profile, monitor_socket=monitor_path,
+                                         boot_key_transport=("vnc" if args.vnc_dvd_enter else "hmp"))
                 report["windowsClientBootVerified"] = ok
                 report["diagnostic"] = diagnostic
             finally:
