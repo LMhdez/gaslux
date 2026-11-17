@@ -11,6 +11,7 @@ on:
       - test/windows-floppy-proven-setup-firstlogon-fix
       - test/windows10-proven-floppy-cachyos-readonly-gate
       - test/windows10-gpt-primary-backup-readonly-evidence
+      - fix/windows10-gpt-protective-mbr-unique-guids
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
