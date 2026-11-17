@@ -1,0 +1,108 @@
+name: Bazzite ISO blob trust gate (synthetic, read-only)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-iso-blob-trust-gate
+  pull_request:
+    paths:
+      - 'assets/live/gaslux_bazzite_iso_signature.py'
+      - 'auto_tests/tests/test_bazzite_iso_signature.py'
+      - '.github/workflows/gaslux-bazzite-iso-signature.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install read-only test tools
+        run: python -m pip install pytest ruff cryptography
+      - name: Syntax, Ruff and negative unit tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q assets/live/gaslux_bazzite_iso_signature.py auto_tests/tests/test_bazzite_iso_signature.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_bazzite_iso_signature.py auto_tests/tests/test_bazzite_iso_signature.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_bazzite_iso_signature.py auto_tests/tests/test_bazzite_iso_signature.py
+          python -m pytest -q auto_tests/tests/test_bazzite_iso_signature.py auto_tests/tests/test_bazzite_atomic_preflight.py auto_tests/tests/test_lab_media_probe.py
+
+  ephemeral-key-blob-verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated Cosign v2 verifier
+        uses: sigstore/cosign-installer@v3.8.2
+        with:
+          cosign-release: 'v2.6.5'
+      - name: Sign synthetic ISO, verify, tamper, and demand refusal
+        shell: bash
+        env:
+          COSIGN_PASSWORD: ''
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-iso-blob-smoke"
+          mkdir -p "$work"
+          iso="$work/bazzite-stable-live-amd64.iso"
+          python3 - "$iso" <<'PY'
+          import sys
+          from pathlib import Path
+          data = bytearray(40 * 2048)
+          data[16 * 2048 : 16 * 2048 + 7] = b"\x01CD001\x01"
+          data[17 * 2048 : 17 * 2048 + 7] = b"\xffCD001\x01"
+          Path(sys.argv[1]).write_bytes(data)
+          PY
+          cosign generate-key-pair --output-key-prefix "$work/ephemeral"
+          cosign sign-blob --yes --tlog-upload=false --key "$work/ephemeral.key" \
+            --output-signature "$iso.sig" "$iso"
+          sha="$(sha256sum "$iso" | cut -d ' ' -f1)"
+          keysha="$(sha256sum "$work/ephemeral.pub" | cut -d ' ' -f1)"
+          args=(
+            --iso "$iso"
+            --signature "$iso.sig"
+            --public-key "$work/ephemeral.pub"
+            --trusted-key-sha256 "$keysha"
+            --expected-iso-sha256 "$sha"
+            --expected-iso-size "$(stat -c %s "$iso")"
+            --firmware uefi --partition-style gpt
+          )
+          PYTHONPATH=assets/live python3 assets/live/gaslux_bazzite_iso_signature.py "${args[@]}" \
+            | tee "$work/evidence.json"
+          python3 - "$work/evidence.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          result = json.loads(Path(sys.argv[1]).read_text())
+          assert result["detachedSignatureVerified"] is True
+          assert result["installationAuthorized"] is False
+          assert result["installerIdentityVerified"] is False
+          PY
+          printf 'tampered-signature' > "$iso.sig"
+          if PYTHONPATH=assets/live python3 assets/live/gaslux_bazzite_iso_signature.py "${args[@]}"; then
+            echo "FAIL: altered detached signature was accepted" >&2
+            exit 1
+          fi
+          if PYTHONPATH=assets/live python3 assets/live/gaslux_bazzite_iso_signature.py \
+            --iso /no/such.iso --signature /no/such.iso.sig \
+            --public-key "$work/ephemeral.pub" --trusted-key-sha256 "$keysha" \
+            --expected-iso-sha256 "$sha" --expected-iso-size 81920 \
+            --firmware bios --partition-style mbr; then
+            echo "FAIL: BIOS/MBR was accepted" >&2
+            exit 1
+          fi
+          echo "PASS: only synthetic ISO blob signature verified. No real ISO, boot or installation."
