@@ -23,3 +23,10 @@ The lab uses a random password for a temporary local Administrator account. The 
 - A first-logon marker plus offline EFI/BCD checks proves a Windows guest reached its first interactive logon in this VM. It is not a complete compatibility or hardware validation.
 
 The next stage is to use this Windows QCOW2 as a disposable guest target, make a controlled, transaction-owned guest mutation, and prove restore/boot from an independent pre-write snapshot before any Linux partitioning or Calamares execution.
+
+
+## Runner acceleration policy — 17 November 2026
+
+- The lab uses KVM only when `/dev/kvm` is present and accessible to the runner.
+- Standard GitHub-hosted runners may not expose nested KVM. In that case the workflow explicitly selects QEMU TCG, uses a five-hour guest-process ceiling and a six-hour job ceiling; it does **not** mark the run successful unless Windows Setup, first interactive logon, clean shutdown, offline GPT/ESP/BCD checks and the self-contained QCOW2 checks all complete.
+- A TCG timeout or resource exhaustion is a failed/incomplete fixture, never a synthetic success. No fallback skips the guest boot or weakens the Windows evidence gates.
