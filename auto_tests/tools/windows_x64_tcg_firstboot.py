@@ -490,6 +490,22 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
 
 MAX_GUEST_TOKEN_BYTES = 256
 
+# Guest COM1 is untrusted until independent VM boot evidence exists. Retain
+# only tokens that can actually satisfy the pinned Windows 10/11 client
+# contract. Otherwise arbitrary unique prefixed strings can grow an
+# unbounded in-memory set in a long-running guest serial scanner.
+GUEST_PROOF_TOKEN_ALLOWLIST = frozenset({
+    b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+    b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+    b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+    b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+    b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+    b"GASLUX_WINDOWS_X64_BOOT_BUILD=19045",
+    b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300",
+    f"{MARKER}=win10_22h2_en_us_x64".encode("ascii"),
+    f"{MARKER}=win11_26h2_en_us_x64".encode("ascii"),
+})
+
 
 def scan_windows_guest_tokens(
     path: Path, offset: int, carry: bytes, discarding: bool,
@@ -526,8 +542,7 @@ def scan_windows_guest_tokens(
                 token = data[pos:delimiter.start()]
                 if token.startswith(FAILURE.encode()):
                     found.add(FAILURE.encode())
-                elif (len(token) <= MAX_GUEST_TOKEN_BYTES
-                      and token.startswith(b"GASLUX_WINDOWS_X64_")):
+                elif token in GUEST_PROOF_TOKEN_ALLOWLIST:
                     found.add(token)
                 pos = delimiter.end()
             carry = data[pos:]
