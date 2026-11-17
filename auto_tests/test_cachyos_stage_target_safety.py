@@ -78,6 +78,34 @@ class StageTargetSafetyTests(unittest.TestCase):
         self.assertIn("grep -qx 'IMAGE_ID=cachyos' /etc/os-release", source)
         self.assertIn("grep -qx 'IMAGE_VERSION=2026.08.09' /etc/os-release", source)
 
+    def test_qemu_virtio_rng_is_inside_both_complete_invocations(self):
+        # Regression: an inline comment after a Bash continuation previously
+        # separated the virtio-rng device from the QEMU process (run 43987877507).
+        host = (
+            Path(__file__).resolve().parents[1]
+            / "auto_tests/tools/cachyos_qemu_install_firstboot.sh"
+        ).read_text()
+        lines = host.splitlines()
+        starts = [
+            i for i, line in enumerate(lines)
+            if line.lstrip().startswith("timeout --kill-after=5s ")
+            and "qemu-system-x86_64" in line
+        ]
+        self.assertEqual(len(starts), 2)
+        for start in starts:
+            with self.subTest(start_line=start + 1):
+                command = []
+                for line in lines[start:]:
+                    command.append(line.strip())
+                    if not line.rstrip().endswith("\\"):
+                        break
+                joined = " ".join(command)
+                self.assertIn("-object rng-random,id=gasluxrng0,filename=/dev/urandom", joined)
+                self.assertIn("-device virtio-rng-pci,rng=gasluxrng0", joined)
+                self.assertIn("-serial ", joined)
+                self.assertFalse(any(line.startswith("#") for line in command))
+                self.assertTrue(all(line.endswith("\\") for line in command[:-1]))
+
     def test_no_unknown_mode_is_accepted(self):
         result = invoke("--erase-disk", RUN_ID, ROOT_UUID)
         self.assertEqual(result.returncode, 2)
