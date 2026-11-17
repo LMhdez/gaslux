@@ -1,5 +1,10 @@
 # Native Windows PowerShell lexical/evaluation contract for COM1 first logon.
 # No COM1, QEMU, Windows Setup or disk writes.
+param(
+    [ValidateSet('win10_22h2_en_us_x64', 'win11_26h2_en_us_x64')]
+    [string]$Profile = 'win10_22h2_en_us_x64'
+)
+$build = if ($Profile -eq 'win10_22h2_en_us_x64') { '19045' } else { '26300' }
 $ErrorActionPreference = 'Stop'
 $sourceFile = Join-Path $PSScriptRoot 'win-firstlogon-source.ps1'
 if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) {
@@ -21,7 +26,7 @@ $match = [regex]::Match(
 if (-not $match.Success) {
     throw 'Missing bounded native serial marker array'
 }
-$os = [pscustomobject]@{ BuildNumber = '19045' }
+$os = [pscustomobject]@{ BuildNumber = $build }
 $markerSnippet = '$serialProof = @(' + [Environment]::NewLine + $match.Groups['items'].Value + [Environment]::NewLine + ')'
 . ([scriptblock]::Create($markerSnippet))
 $observed = @($serialProof)
@@ -30,13 +35,13 @@ if ($observed.Count -ne 7) {
     throw 'PowerShell constructed incorrect number of individual serial markers'
 }
 $expected = @(
-    'GASLUX_WINDOWS_X64_BOOT_BUILD=19045'
+    ('GASLUX_WINDOWS_X64_BOOT_BUILD=' + $build)
     'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1'
     'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1'
     'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1'
     'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1'
     'GASLUX_WINDOWS_X64_WINRE_ENABLED=1'
-    'GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win10_22h2_en_us_x64'
+    ('GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=' + $Profile)
 )
 for ($i = 0; $i -lt $expected.Count; $i++) {
     if ($observed[$i] -isnot [string]) {
