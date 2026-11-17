@@ -85,8 +85,9 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertIn('"sameDiskDualBootVerified": False', source)
         self.assertIn('"updatesVerified": False', source)
         self.assertIn('"rollbackVerified": False', source)
-        self.assertNotIn('/dev/sda', source)
-        self.assertNotIn('/dev/nvme', source)
+        self.assertNotIn("losetup", source)
+        self.assertNotIn("mkfs.ext4", source)
+        self.assertNotIn("sgdisk", source)
 
     def test_success_returns_four_windows_partition_hashes(self):
         fake = FakeGuest()
