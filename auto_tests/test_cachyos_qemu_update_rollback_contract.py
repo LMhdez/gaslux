@@ -93,6 +93,17 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         ):
             self.assertIn(requirement, self.host)
 
+    def test_vm_explicit_failure_aborts_marker_wait_before_success(self):
+        # Fail closed if an installed service reports a concrete problem,
+        # even if an unrelated marker exists or QEMU remains running.
+        body = self.host.split('require_marker() {', 1)[1].split('\n}\n', 1)[0]
+        failure = body.index("GASLUX_VM_UPDATE_FAILURE:")
+        success = body.index("awk -v marker=")
+        self.assertLess(failure, success)
+        self.assertIn("GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_FAIL:", body)
+        self.assertIn('guest explicitly rejected VM phase before $marker', body)
+        self.assertIn("tail -c 10000", body)
+
     def test_updated_disk_must_power_off_cleanly_before_new_boot(self):
         # Do not SIGKILL immediately after native pacman/GRUB writes: that
         # would inject an unintended crash unrelated to the power-cut case.
