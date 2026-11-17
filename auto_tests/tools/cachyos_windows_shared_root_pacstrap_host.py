@@ -173,6 +173,25 @@ def _create_boot_config(
     return grub_cfg
 
 
+
+def _copy_fresh_ovmf_vars(template: Path, destination: Path) -> str:
+    """Use clean disposable OVMF variables so Windows BootOrder cannot steal the live-ISO boot."""
+    require(template.is_absolute() and template.is_file() and not template.is_symlink()
+            and template.stat().st_size >= 64 * 1024,
+            "clean OVMF variable template is missing or invalid")
+    require(not destination.exists() and not destination.is_symlink(),
+            "refusing to reuse Archiso trial NVRAM")
+    with template.open("rb") as source, destination.open("xb") as target:
+        shutil.copyfileobj(source, target, length=256 * 1024)
+        target.flush()
+        os.fsync(target.fileno())
+    os.chmod(destination, 0o600)
+    require(destination.is_file() and not destination.is_symlink()
+            and destination.stat().st_size == template.stat().st_size
+            and _sha(destination) == _sha(template),
+            "fresh trial OVMF variables differ from the trusted template")
+    return _sha(destination)
+
 def _verify_installed_root(
     overlay: Path, plan: dict[str, Any], run_id: str,
 ) -> dict[str, Any]:
@@ -379,10 +398,9 @@ def run_shared_root_pacstrap(
     _copy_to_fat(boot_efi, standalone, "EFI/BOOT/BOOTX64.EFI")
 
     trial_vars = workspace / "cachyos-trial-ovmf-variables.fd"
-    require(not trial_vars.exists() and not trial_vars.is_symlink(),
-            "refusing to reuse Archiso trial NVRAM")
-    shutil.copyfile(nvram, trial_vars)
-    os.chmod(trial_vars, 0o600)
+    # Never inherit the Windows BootOrder: it could bypass the signed live-ISO EFI loader.
+    # The original Windows NVRAM remains separately hashed and untouched.
+    _copy_fresh_ovmf_vars(Path(OVMF_VARS), trial_vars)
     before_base_sha = _sha(base)
     before_base_identity = qcow2_file_identity(base)
     before_nvram_sha = _sha(nvram)
@@ -397,12 +415,11 @@ def run_shared_root_pacstrap(
         "-global", "driver=cfi.pflash01,property=secure,value=on",
         "-cpu", "host", "-smp", "2", "-m", "6144",
         "-display", "none", "-monitor", "none", "-no-reboot",
-        "-boot", "order=c",
         "-drive", "if=pflash,format=raw,readonly=on,file=" + str(ovmf_code),
         "-drive", "if=pflash,format=raw,file=" + str(trial_vars),
         "-device", "qemu-xhci",
         "-drive", "if=none,id=liveefi,format=raw,file=" + str(boot_efi) + ",readonly=on",
-        "-device", "usb-storage,drive=liveefi",
+        "-device", "usb-storage,drive=liveefi,bootindex=1",
         "-drive", "if=none,id=iso_source,format=raw,file=" + str(iso_image) + ",readonly=on",
         "-device", "virtio-blk-pci,drive=iso_source",
         # The sole writable Windows-containing disk is this owned COW overlay.
