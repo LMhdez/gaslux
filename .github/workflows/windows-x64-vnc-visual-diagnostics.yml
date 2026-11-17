@@ -11,6 +11,7 @@ on:
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_vnc_screen_diagnostics.py
       - auto_tests/test_windows_x64_usb_answer_contract.py
+      - auto_tests/tools/windows_x64_qemu_screen_smoke.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
   push:
     branches:
@@ -21,6 +22,7 @@ on:
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_vnc_screen_diagnostics.py
       - auto_tests/test_windows_x64_usb_answer_contract.py
+      - auto_tests/tools/windows_x64_qemu_screen_smoke.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
 
 permissions:
@@ -45,8 +47,24 @@ jobs:
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_winre_baseline_contract.py'
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
-  disposable-guest-screen:
+  diskless-framebuffer-smoke:
     needs: safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate real HMP framebuffer on a paused diskless QEMU
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86
+          python3 auto_tests/tools/windows_x64_qemu_screen_smoke.py
+  disposable-guest-screen:
+    needs: [safety, diskless-framebuffer-smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
