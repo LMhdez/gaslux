@@ -231,7 +231,7 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
         )
         manifest = (hashlib.sha256(serial).hexdigest() + "  " +
                     report["profile"] + "-serial.log\n").encode()
-        with self.assertRaisesRegex(GATE.BaselineGateError, "WINRE"):
+        with self.assertRaisesRegex(GATE.BaselineGateError, "unexpected prefix"):
             self.exercise(report, serial, manifest)
 
     def test_build_prefix_extension_rejected(self):
