@@ -41,6 +41,17 @@ if not agent.is_file() or agent.is_symlink():
 for name in ("bin", "sbin", "dev", "proc", "sys", "tmp", "run", "usr/bin", "etc"):
     (root / name).mkdir(parents=True, exist_ok=True)
 
+for name, major, minor, mode in (
+    ("console", 5, 1, 0o600),
+    ("null", 1, 3, 0o666),
+):
+    node = root / "dev" / name
+    subprocess.run(
+        ["sudo", "mknod", str(node), "c", str(major), str(minor)],
+        check=True,
+    )
+    node.chmod(mode)
+
 def copy_file(source: Path, destination: Path) -> None:
     if not source.is_file():
         raise SystemExit(f"required initramfs file missing: {source}")
