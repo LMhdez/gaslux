@@ -134,7 +134,10 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
                     self.assertNotIn("virtio", " ".join(args))
                     self.assertEqual(args[args.index("-net") + 1], "none")
                     self.assertEqual(args[args.index("-boot") + 1], "order=d")
-                    self.assertEqual(args[args.index("-monitor") + 1], "none")
+                    self.assertEqual(
+                        args[args.index("-monitor") + 1],
+                        f"unix:{root / 'winpe-hmp.sock'},server,nowait",
+                    )
                     self.assertIn("-no-reboot", args)
                     if mode == "fat32_usb":
                         self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0", args)
@@ -164,6 +167,19 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
         self.assertIn('GASLUX_WINDOWS_WINPE_PROBE_CONSENT', source)
         self.assertIn('CI_CONSENT = "I_ACCEPT_DISPOSABLE_WINPE_NO_TARGET_DISK"', source)
         self.assertIn('validate_environment(root, "kvm")', source)
+
+    def test_numeric_vga_never_promotes_windows_or_linux_evidence(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("capture_numeric_vga(work, basename)", source)
+        self.assertIn('"winpe-vga-early.ppm"', source)
+        self.assertIn('"winpe-vga-late.ppm"', source)
+        self.assertIn('"_VGA_STATS_CHANGED="', source)
+        self.assertIn('"_FIRMWARE_DVD_STARTED="', source)
+        self.assertIn('"_SERIAL_BYTE_COUNT="', source)
+        self.assertIn('require(result["fat12_floppy"]', source)
+        self.assertIn('require(result["fat32_usb"]', source)
+        self.assertNotIn('"windowsClientBootVerified": True', source)
+        self.assertNotIn('"storageWritesAuthorized": True', source)
 
     def test_same_windows_10_profile_and_answer_label_in_both_controls(self):
         source = SOURCE.read_text(encoding="utf-8")
