@@ -92,8 +92,7 @@ def verified_native_calamares_welcome(path: Path) -> bool:
     if screen is None:
         return False
     return all(
-        _roi_sha(screen, box) == expected for box, expected in
-        (_CALAMARES_WINDOW, _CALAMARES_NEXT)
+        _roi_sha(screen, box) == expected for box, expected in (_CALAMARES_WINDOW, _CALAMARES_NEXT)
     )
 
 
