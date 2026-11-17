@@ -9,6 +9,8 @@ on:
       - '.github/workflows/gaslux-q4os-calamares-ui.yml'
       - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
       - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
+      - 'auto_tests/tests/test_q4os_vnc_visual_gate.py'
   workflow_dispatch:
 
 permissions:
@@ -60,6 +62,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash -n auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
+          python3 -m py_compile auto_tests/tools/gaslux_q4os_vnc_visual_gate.py
           bash auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh q4os "$GASLUX_Q4OS_ISO" "$Q4OS_SHA256"
       - name: Preserve exact first-run screenshot transition, kernel logs and SHA evidence
         if: always()
