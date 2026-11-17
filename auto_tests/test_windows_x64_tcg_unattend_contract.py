@@ -159,7 +159,7 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
             self.assertIn(value, code)
         # The controlled A/B mode deliberately switches FAT12 floppy to
         # one file-backed, read-only FAT32 USB. Preserve host-disk bans.
-        self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0", code)
+        self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on", code)
         self.assertIn("readonly=on,file={answer}", code)
         self.assertNotIn("if=floppy,format=raw", code)
         for banned in ("if=ide,file=/dev/", "if=none,file=/dev/",
