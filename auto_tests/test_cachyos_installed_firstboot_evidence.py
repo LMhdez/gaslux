@@ -17,6 +17,16 @@ class InstalledEvidenceTests(unittest.TestCase):
     def test_valid(self):
         MOD.verify(b"UEFI GRUB boot\r\n" + UUID + PASS)
 
+    def test_real_ovmf_console_bare_cr_and_escape_sequences(self):
+        # From the structure of the official CachyOS installed-boot serial
+        # artifact #14272809927, including agetty CR cursor movement.
+        MOD.verify(b"\x1b[2JUEFI Misc Device\r\n" + UUID + PASS
+                   + b"\x1b[!p\x1bP+q6E616D65\x1b\\\r\r\nCachyOS login: ")
+
+    def test_failure_with_bare_cr_is_not_ignored(self):
+        with self.assertRaises(MOD.EvidenceError):
+            MOD.verify(UUID + PASS + b"GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_FAIL: error\r")
+
     def test_missing_root(self):
         with self.assertRaises(MOD.EvidenceError):
             MOD.verify(PASS)
