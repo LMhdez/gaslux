@@ -155,7 +155,7 @@ class FullSerialAuditContracts(unittest.TestCase):
         # A compromised guest can emit arbitrarily many distinct serial
         # messages. None is proof unless it is one of the pinned audit tokens.
         noise = b"".join(
-            f"GASLUX_WINDOWS_X64_UNTRUSTED_{i}=1\\n".encode("ascii")
+            f"GASLUX_WINDOWS_X64_UNTRUSTED_{i}=1\n".encode("ascii")
             for i in range(12000)
         )
         with tempfile.TemporaryDirectory() as root:
@@ -171,9 +171,9 @@ class FullSerialAuditContracts(unittest.TestCase):
             self.assertFalse(discarding)
 
     def test_noisy_serial_failure_still_overrides_valid_proof(self):
-        noise = b"GASLUX_WINDOWS_X64_UNTRUSTED_IGNORE=1\\n" * 3000
+        noise = b"GASLUX_WINDOWS_X64_UNTRUSTED_IGNORE=1\n" * 3000
         ok, diagnostic = self.boot(
-            noise + b"GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL_STAGE=WINRE\\n"
+            noise + b"GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL_STAGE=WINRE\n"
             + PROOFS
         )
         self.assertFalse(ok)
