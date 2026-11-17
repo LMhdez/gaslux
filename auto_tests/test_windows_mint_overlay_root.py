@@ -68,7 +68,9 @@ class MintOverlayContracts(unittest.TestCase):
     def test_guestmount_workflow_enables_fuse_allow_other(self):
         root = Path(mint.__file__).resolve().parents[2]
         workflow = root / ".github/workflows/windows-cachyos-post-ext4-fourth-boot.yml"
-        self.assertIn("user_allow_other", workflow.read_text(encoding="utf-8"))
+        content = workflow.read_text(encoding="utf-8")
+        self.assertIn("sudo modprobe fuse", content)
+        self.assertIn("user_allow_other", content)
 
     def test_wrong_root_extent_is_rejected(self):
         fake = FakeGuest(root_size=23 * 1024**3)
