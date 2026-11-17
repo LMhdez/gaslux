@@ -216,6 +216,7 @@ def install_mint_root_and_boot(
         write_target_configuration(target, root_uuid)
         run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
         run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
+        run(["sudo", "mount", "-t", "sysfs", "sysfs", str(target / "sys")])
         run(["sudo", "mount", "--bind", "/dev/pts", str(target / "dev/pts")])
         try:
             run(["sudo", "chroot", str(target), "/usr/bin/env", "-u",
@@ -231,7 +232,7 @@ def install_mint_root_and_boot(
             require("conf/conf.d/default-boot-to-casper.conf" not in listing,
                     "Mint initramfs still redirects to Casper")
         finally:
-            for path in (target / "dev/pts", target / "dev", target / "proc"):
+            for path in (target / "dev/pts", target / "dev", target / "sys", target / "proc"):
                 subprocess.run(["sudo", "umount", str(path)], check=False,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         kernel_copy = temp / "vmlinuz"
