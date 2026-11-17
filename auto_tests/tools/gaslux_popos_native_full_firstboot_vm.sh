@@ -168,7 +168,8 @@ printf 'GASLUX_POP_NATIVE_INSTALL_LAB_DISK=isolated-linux-only\n'
   die 'Unsafe QEMU path separator'
 timeout --kill-after=15s 1700s qemu-system-x86_64 \
   -machine q35,accel=kvm -cpu host -smp 2 -m 4096 \
-  -display none -monitor none -no-reboot -net none \
+  -display none -monitor none -no-reboot \
+  -netdev user,id=labnet -device virtio-net-pci,netdev=labnet \
   -drive "if=pflash,format=raw,readonly=on,file=$code" \
   -drive "if=pflash,format=raw,file=$work/nvram-live.fd" \
   -drive "if=none,id=labefi,format=raw,file=$work/lab-efi.raw" \

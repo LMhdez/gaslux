@@ -166,3 +166,16 @@ full account provisioning, Secure Boot variants, upgrades, uninstallation,
 Windows 10/11 boot (BCD, WinRE, BitLocker) or rollback. These need later
 snapshotted Windows VMs and explicit disk ownership proof. The production
 backend remains unimplemented and blocked in the stable catalogue.
+
+
+## Network-dependency diagnostic in a separate disposable VM branch
+
+The separate `feature/popos-native-full-install-net-lab` branch repeats the
+same verified full native install with **QEMU user-mode NAT networking only in
+the first, disposable ISO guest**, to isolate whether package configuration
+requires network access. Its second-boot proof VM retains `-net none` and
+only the installed target disk. The original offline full-install lab in PR
+#50 is unchanged; no network mode authorizes production disk operations or
+weakens the signed ISO/agent checks. The shorter TCG-only live and mock GPT
+regressions are inherited from prior proven PRs and intentionally skipped in
+this targeted A/B experiment; they are not replaced by this result.

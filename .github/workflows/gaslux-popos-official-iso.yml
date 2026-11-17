@@ -9,6 +9,7 @@ on:
       - feature/popos-native-distinst-guest-cli-proof
       - feature/popos-native-distinst-vm-partition-test
       - feature/popos-native-full-install-firstboot-ovmf
+      - feature/popos-native-full-install-net-lab
     paths:
       - '.github/workflows/gaslux-popos-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
@@ -202,6 +203,7 @@ jobs:
           echo "PASS: real SHA-pinned Pop!_OS ISO and matching live root inspected."
           echo "NOT TESTED: installed Pop OS, EFI boot, Windows dual boot or rollback."
       - name: Boot real Pop!_OS live ISO in disposable OVMF/QEMU
+        if: github.ref_name != 'feature/popos-native-full-install-net-lab'
         shell: bash
         env:
           GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-popos/evidence/guest
@@ -213,6 +215,7 @@ jobs:
           bash auto_tests/tools/gaslux_candidate_live_boot.sh \
             popos "$GASLUX_POP_ISO_FILE" "$GASLUX_POP_ISO_SHA256"
       - name: Native distinst partition-stage test on isolated mock-Windows GPT
+        if: github.ref_name != 'feature/popos-native-full-install-net-lab'
         shell: bash
         env:
           GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-popos/evidence/partition-guest

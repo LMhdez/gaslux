@@ -10,6 +10,7 @@ on:
       - feature/popos-native-distinst-guest-cli-proof
       - feature/popos-native-distinst-vm-partition-test
       - feature/popos-native-full-install-firstboot-ovmf
+      - feature/popos-native-full-install-net-lab
       - feature/bazzite-atomic-preflight
       - feature/q4os-native-preflight
   pull_request:

@@ -27,6 +27,9 @@ def test_native_install_is_isolated_to_explicit_hosted_kvm_lab():
     assert "CI:-" in run
     assert "/dev/kvm" in run
     assert "accel=kvm" in run
+    assert "-netdev user,id=labnet" in run
+    assert "-device virtio-net-pci,netdev=labnet" in run
+    assert run.count("-net none") == 1
     assert "-net none" in run
     assert "sudo setfacl" in run
     assert 'truncate -s 32G "$target"' in run
