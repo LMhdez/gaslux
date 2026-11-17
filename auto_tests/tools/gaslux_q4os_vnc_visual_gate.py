@@ -67,6 +67,17 @@ _CALAMARES_KEYBOARD_NEXT = (
     (960, 626, 1044, 663),
     "157a5d9d73c5c231ea486fa09312969567e247701384f51ee4f3cf4c20ed22b9",
 )
+# Official Q4OS 6.10 r2 Calamares Software screen, two independent
+# 17 Nov QEMU runs: #44147193591/#14357786943 and #44147341109/#14357482399.
+# None had any package/profile selected and Next was disabled.
+_CALAMARES_SOFTWARE_WINDOW = (
+    (128, 118, 1152, 667),
+    "a3ca14d75d281ca13f387cbe9e3b07cf3ce90297034d36c6f46887915b4dfd7b",
+)
+_CALAMARES_SOFTWARE_PROFILE = (
+    (327, 155, 500, 249),
+    "2832aaeac6d7d6c3f008071a6fe7261d327efeeeee2c38a33aeb960749fd674e",
+)
 
 
 def _open_verified_screen(path: Path) -> Image.Image | None:
@@ -141,6 +152,17 @@ def verified_native_calamares_keyboard(path: Path) -> bool:
     )
 
 
+def verified_native_calamares_software_unselected(path: Path) -> bool:
+    """Allow only a Q4OS Desktop selection on the pinned unselected Software view."""
+    screen = _open_verified_screen(path)
+    if screen is None:
+        return False
+    return (
+        _roi_sha(screen, _CALAMARES_SOFTWARE_WINDOW[0]) == _CALAMARES_SOFTWARE_WINDOW[1]
+        and _roi_sha(screen, _CALAMARES_SOFTWARE_PROFILE[0]) == _CALAMARES_SOFTWARE_PROFILE[1]
+    )
+
+
 def verified_centre_changed(before: Path, after: Path) -> bool:
     """Taskbar-clock updates alone must never satisfy a GUI transition."""
     previous = _open_verified_screen(before)
@@ -165,6 +187,8 @@ def main() -> int:
         passed = verified_native_calamares_location(Path(sys.argv[2]))
     elif mode == "calamares-keyboard" and len(sys.argv) == 3:
         passed = verified_native_calamares_keyboard(Path(sys.argv[2]))
+    elif mode == "calamares-software-unselected" and len(sys.argv) == 3:
+        passed = verified_native_calamares_software_unselected(Path(sys.argv[2]))
     elif mode == "changed-centre" and len(sys.argv) == 4:
         passed = verified_centre_changed(Path(sys.argv[2]), Path(sys.argv[3]))
     else:

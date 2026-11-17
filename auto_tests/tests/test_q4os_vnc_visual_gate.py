@@ -15,6 +15,8 @@ from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     _CALAMARES_LOCATION_NEXT,
     _CALAMARES_LOCATION_WINDOW,
     _CALAMARES_NEXT,
+    _CALAMARES_SOFTWARE_PROFILE,
+    _CALAMARES_SOFTWARE_WINDOW,
     _CALAMARES_WINDOW,
     _EXPECTED_SCREEN,
     _ICON,
@@ -24,6 +26,7 @@ from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     verified_centre_changed,
     verified_native_calamares_keyboard,
     verified_native_calamares_location,
+    verified_native_calamares_software_unselected,
     verified_native_calamares_welcome,
     verified_q4os_welcome_desktop,
 )
@@ -191,3 +194,28 @@ def test_refuse_unknown_keyboard_screen_and_unknown_dimensions(tmp_path):
         )
         assert result.returncode == 1
         assert "REFUSED" in result.stderr
+
+
+def test_software_unselected_native_screen_sha_from_two_independent_runs():
+    assert _CALAMARES_SOFTWARE_WINDOW == (
+        (128, 118, 1152, 667),
+        "a3ca14d75d281ca13f387cbe9e3b07cf3ce90297034d36c6f46887915b4dfd7b",
+    )
+    assert _CALAMARES_SOFTWARE_PROFILE == (
+        (327, 155, 500, 249),
+        "2832aaeac6d7d6c3f008071a6fe7261d327efeeeee2c38a33aeb960749fd674e",
+    )
+
+
+def test_untrusted_software_screen_never_authorizes_selection(tmp_path):
+    image = tmp_path / "foreign-software.png"
+    Image.new("RGB", (1280, 800), "black").save(image)
+    assert not verified_native_calamares_software_unselected(image)
+    result = subprocess.run(
+        [sys.executable, str(GATE), "calamares-software-unselected", str(image)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 1
+    assert "REFUSED" in result.stderr
