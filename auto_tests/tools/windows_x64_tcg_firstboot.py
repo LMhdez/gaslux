@@ -207,10 +207,11 @@ def derive_no_prompt_uefi_lab_iso(original: Path, derived: Path,
         return hashlib.file_digest(fd, "sha256").hexdigest()
 
 
-def witness_powershell(profile_key: str, build: str) -> str:
+def witness_powershell(profile_key: str, build: str,
+                       third_boot_lab: bool = False) -> str:
     # Runs ONLY at FirstLogon in the installed Windows evaluation client.
     # The test-only local account has no usable remote credentials.
-    return r'''
+    script = r'''
 $ErrorActionPreference = 'Stop'
 $ser = $null
 try {
@@ -265,6 +266,51 @@ Start-Sleep -Seconds 2
 & "$env:WINDIR\System32\shutdown.exe" /s /f /t 0
 '''.replace("__BUILD__", build).replace("__PROFILE__", profile_key).replace(
         "__MARKER__", MARKER).strip()
+    if third_boot_lab:
+        if profile_key != "win10_22h2_en_us_x64":
+            raise LabError("third guest audit is Windows 10 only")
+        # This lab-only startup task is installed during the genuine
+        # FirstLogon witness, after its existing ESP/BCD/WinRE checks.
+        # It runs on the NEXT OS boot, not in the current firstlogon.
+        script = script.replace("  $serialProof = @(", r'''
+  $labDir = 'C:\ProgramData\GasluxThirdBootLab'
+  New-Item -ItemType Directory -Path $labDir -Force | Out-Null
+  $nextAudit = @'
+$ErrorActionPreference = 'Stop'
+$serial = $null
+try {
+  $serial = [System.IO.Ports.SerialPort]::new('COM1',115200,[System.IO.Ports.Parity]::None,8,[System.IO.Ports.StopBits]::One)
+  $serial.NewLine = "`n"
+  $serial.Open()
+  $os = Get-CimInstance Win32_OperatingSystem
+  if ([int]$os.ProductType -ne 1 -or $os.BuildNumber -ne '19045') { throw 'not installed Windows 10' }
+  if ((Get-Disk -Number 0).PartitionStyle -ne 'GPT') { throw 'disk not GPT' }
+  $parts = @(Get-Partition -DiskNumber 0)
+  if (@($parts | Where-Object { $_.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' }).Count -ne 1) { throw 'ESP invalid' }
+  if (@($parts | Where-Object { $_.GptType -eq '{de94bba4-06d1-4d40-a16a-bfd50179d6ac}' }).Count -ne 1) { throw 'Recovery invalid' }
+  if (-not (Test-Path 'C:\Windows\System32\winload.efi')) { throw 'Windows loader missing' }
+  $bcd = & bcdedit.exe /enum '{bootmgr}' 2>&1
+  if ($LASTEXITCODE -ne 0) { throw 'BCD unavailable' }
+  $winre = & reagentc.exe /info 2>&1
+  if ($LASTEXITCODE -ne 0 -or (($winre -join "`n") -notmatch 'Windows RE status:\s+Enabled')) { throw 'WinRE disabled' }
+  $serial.WriteLine('GASLUX_WINDOWS_X64_THIRDBOOT_BUILD=19045')
+  $serial.WriteLine('GASLUX_WINDOWS_X64_THIRDBOOT_BCD_OK=1')
+  $serial.WriteLine('GASLUX_WINDOWS_X64_THIRDBOOT_WINRE_OK=1')
+  $serial.WriteLine('GASLUX_WINDOWS_X64_THIRDBOOT_PASS=1')
+} catch {
+  if ($serial -and $serial.IsOpen) { $serial.WriteLine('GASLUX_WINDOWS_X64_THIRDBOOT_FAIL=1') }
+} finally {
+  if ($serial) { $serial.Close(); $serial.Dispose() }
+  Start-Sleep -Seconds 2
+  & "$env:WINDIR\System32\shutdown.exe" /s /f /t 0
+}
+'@
+  $nextAuditPath = Join-Path $labDir 'thirdboot.ps1'
+  [System.IO.File]::WriteAllText($nextAuditPath, $nextAudit, [System.Text.UTF8Encoding]::new($false))
+  & schtasks.exe /Create /TN 'GasluxThirdBootLab' /SC ONSTART /DELAY 0000:30 /RU SYSTEM /RL HIGHEST /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\GasluxThirdBootLab\thirdboot.ps1" /F | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'failed to register next-boot task' }
+  $serialProof = @(''')
+    return script
 
 
 def generate_unattend(profile_key: str, build: str) -> bytes:
@@ -930,8 +976,11 @@ def main(argv: list[str] | None = None) -> int:
             xmlfile.write_bytes(xml)
             guest_ps1 = workspace / "GASLUX.PS1"
             guest_ps1.write_text(
-                witness_powershell(args.profile,
-                                   profile["expectedWindowsBuildPrefix"]) + "\n",
+                witness_powershell(
+                    args.profile, profile["expectedWindowsBuildPrefix"],
+                    third_boot_lab=(os.environ.get("GASLUX_WINDOWS_THIRDBOOT_TEST")
+                                    == "I_ACCEPT_THIRD_WINDOWS_KVM_BOOT"),
+                ) + "\n",
                 encoding="utf-8")
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
