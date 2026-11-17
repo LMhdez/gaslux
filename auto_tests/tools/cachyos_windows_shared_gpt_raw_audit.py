@@ -15,7 +15,7 @@ import struct
 import uuid
 
 from cachyos_windows_shared_archiso_handoff import (
-    validate_plan, require,
+    SharedDiskHandoffRejected, validate_plan, require,
 )
 from windows_cachyos_qcow2_gpt_readonly import (
     VIRTUAL_BYTES, SECTOR, WINDOW_BYTES, header_at, part_array,
