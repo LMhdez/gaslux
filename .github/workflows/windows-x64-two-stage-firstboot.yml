@@ -14,7 +14,8 @@ on:
       - fix/windows10-gpt-protective-mbr-unique-guids
       - fix/windows-gpt-qcow2-window-extraction-probe
       - fix/cachyos-qcow2-read-consistency-issue3
-      - test/cachyos-same-disk-readonly-extent-gate\n      - fix/cachyos-gpt-evidence-digest-issue3
+      - test/cachyos-same-disk-readonly-extent-gate
+      - fix/cachyos-gpt-evidence-digest-issue3
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -165,7 +166,9 @@ jobs:
           assert baseline['candidateWindowsGptPrimaryAndBackupConsistent'] is True
           assert len(baseline['windowsPartitions']) == 4
           assert baseline['unallocatedAfterWindowsBytes'] >= 40 * 1024**3
-          assert len(baseline['gptAuditWindowsSha256']) == 64\n          assert all(ch in '0123456789abcdef' for ch in baseline['gptAuditWindowsSha256'])\n          observed = baseline['observedPostWindowsFreeExtent']
+          assert len(baseline['gptAuditWindowsSha256']) == 64
+          assert all(ch in '0123456789abcdef' for ch in baseline['gptAuditWindowsSha256'])
+          observed = baseline['observedPostWindowsFreeExtent']
           assert observed['readOnlyObservation'] is True
           assert observed['partitionCreated'] is False
           assert observed['linuxWriteAuthorized'] is False
