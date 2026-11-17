@@ -168,6 +168,11 @@ jobs:
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
             p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic \
             aria2 squashfs-tools
+          test -c /dev/fuse && test ! -L /dev/fuse
+          if ! sudo grep -Eq '^[[:space:]]*user_allow_other([[:space:]]|$)' /etc/fuse.conf; then
+            printf 'user_allow_other\n' | sudo tee -a /etc/fuse.conf >/dev/null
+          fi
+          sudo grep -Eq '^[[:space:]]*user_allow_other([[:space:]]|$)' /etc/fuse.conf
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
