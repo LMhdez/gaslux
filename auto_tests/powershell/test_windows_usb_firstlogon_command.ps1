@@ -47,7 +47,17 @@ function Get-FileHash {
 }
 
 $preflight = $body.Substring(0, $body.Length - ';&$p'.Length)
-$resolvedPath = Invoke-Expression ($preflight + ';$p')
+# The mocked function returns only synthetic in-memory records. Log counts
+# (never real host volume identities) to explain unexpected PS5.1 behavior.
+$synthetic = @(Get-Volume -FileSystemL GASLUXCI)
+Write-Output ("GASLUX_PS_SYNTHETIC_VOLUME_COUNT=" + $synthetic.Count)
+Write-Output ("GASLUX_PS_SYNTHETIC_HASH_MATCH=" +
+    [int]($script:actualHash -eq $script:expectedHash))
+try {
+    $resolvedPath = Invoke-Expression ($preflight + ';$p')
+} catch {
+    throw ("GASLUX_VALID_SYNTHETIC_USB_LOOKUP_FAILED: " + $_.Exception.Message)
+}
 if ($resolvedPath -ne 'Z:\GASLUX.PS1') {
     throw "Valid unique FAT32 USB did not resolve its dynamic drive"
 }
