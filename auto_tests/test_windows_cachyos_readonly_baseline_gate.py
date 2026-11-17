@@ -98,6 +98,76 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
         self.assertIs(got["storageWritesAuthorized"], False)
         self.assertTrue(got["pinnedMicrosoftIsoDigestMatched"])
 
+    def test_original_microsoft_iso_candidate_never_authorizes_writes(self):
+        for profile in ("win10_22h2_en_us_x64", "win11_26h2_en_us_x64"):
+            with self.subTest(profile=profile):
+                report, serial, manifest = synthetic(profile)
+                report["labDerivedIsoOnly"] = False
+                report.pop("labDerivedIsoSha256")
+                proof = self.exercise(report, serial, manifest)
+                self.assertIs(
+                    proof["candidateWindowsFirstbootDocumentsConsistent"], True
+                )
+                self.assertIs(proof["windowsGuestOriginAuthenticated"], False)
+                self.assertIs(proof["windowsBootVerified"], False)
+                self.assertIs(proof["sameDiskDualBootVerified"], False)
+                self.assertIs(proof["storageWritesAuthorized"], False)
+                self.assertIs(proof["releaseEligible"], False)
+
+    def test_original_iso_with_derivative_sha_rejected(self):
+        report, serial, manifest = synthetic()
+        report["labDerivedIsoOnly"] = False
+        with self.assertRaisesRegex(GATE.BaselineGateError, "cannot claim"):
+            self.exercise(report, serial, manifest)
+
+    def test_missing_or_incorrect_media_mode_rejected(self):
+        report, serial, manifest = synthetic()
+        for value in (None, 0, 1, "true", "false", [], {}):
+            with self.subTest(value=value):
+                candidate = copy.deepcopy(report)
+                candidate["labDerivedIsoOnly"] = value
+                with self.assertRaisesRegex(
+                    GATE.BaselineGateError, "explicit boolean"
+                ):
+                    self.exercise(candidate, serial, manifest)
+        candidate = copy.deepcopy(report)
+        del candidate["labDerivedIsoOnly"]
+        with self.assertRaises(GATE.BaselineGateError):
+            self.exercise(candidate, serial, manifest)
+
+    def test_derived_iso_without_sha_rejected(self):
+        report, serial, manifest = synthetic()
+        del report["labDerivedIsoSha256"]
+        with self.assertRaisesRegex(GATE.BaselineGateError, "distinct SHA256"):
+            self.exercise(report, serial, manifest)
+
+    def test_derived_iso_same_sha_as_original_rejected(self):
+        report, serial, manifest = synthetic()
+        report["labDerivedIsoSha256"] = GATE.EXPECTED[report["profile"]]
+        with self.assertRaisesRegex(GATE.BaselineGateError, "distinct SHA256"):
+            self.exercise(report, serial, manifest)
+
+    def test_original_iso_bad_sha_rejected(self):
+        report, serial, manifest = synthetic()
+        report["labDerivedIsoOnly"] = False
+        del report["labDerivedIsoSha256"]
+        report["isoSha256"] = "0" * 64
+        with self.assertRaisesRegex(GATE.BaselineGateError, "pinned Microsoft"):
+            self.exercise(report, serial, manifest)
+
+    def test_original_iso_unverified_source_rejected(self):
+        report, serial, manifest = synthetic()
+        report["labDerivedIsoOnly"] = False
+        del report["labDerivedIsoSha256"]
+        for field in ("isoHashVerified", "officialIsoUnmodified"):
+            with self.subTest(field=field):
+                candidate = copy.deepcopy(report)
+                candidate[field] = False
+                with self.assertRaisesRegex(
+                    GATE.BaselineGateError, "missing Windows lab proof"
+                ):
+                    self.exercise(candidate, serial, manifest)
+
     def test_actual_com1_markers_coalesced_on_same_line_are_accepted_as_documents(self):
         report, serial, _ = synthetic()
         first, *markers = serial.splitlines()
