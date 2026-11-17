@@ -21,8 +21,9 @@ implements the next root-only installation *candidate*:
 3. Independently read both GPT windows, validate primary/backup CRC and the
    first four Windows GPT record bytes; reject MBR hybrids, foreign entries,
    changed Windows GPT GUIDs and mismatched Linux entry #5. The signed
-   `gptWindowsSha256` is SHA-256 of the 512 bytes containing GPT entries
-   #1–#4 in on-disk native GPT record encoding.
+   `gptWindowsSha256` is SHA-256 of the concatenated primary and backup
+   1-MiB GPT windows, as measured by the signed Archiso handoff; each of the
+   four Windows entry records is additionally checked against the plan.
 4. Read-only mount the Windows ESP, Windows NTFS and Recovery volume and
    compare SHA-256 of bootmgfw.efi, BCD, winload.efi and Winre.wim with
    the signed plan. Missing NTFS3 support or dirty/encrypted volumes fail
@@ -85,7 +86,7 @@ The proven policy components from experimental PR #34 are reused unchanged:
 per-repository configuration on private `/run` tmpfs and
 `assets/live/cachyos-pacman-trust.py` checks the effective package-signature
 policy with `pacman-conf`. The candidate now requires these programs on the
-read-only Archiso control volume, refuses a writable control mount and runs
+read-only Archiso control volume. Before any Linux mount it also verifies\nthe **two script SHA-256 digests in the independently signed root-only Ed25519\ngrant**, rejecting altered scripts or swapped control media, and refuses a\nwritable control mount. Only then it runs
 `pacstrap -K -C <strict-config>` **only after** the independent Ed25519
 laboratory root-write grant, disk and Windows-content checks. It also installs
 the exact signed-only target pacman.conf and filtered mirrorlists into the
