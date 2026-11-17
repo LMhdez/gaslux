@@ -32,6 +32,7 @@ $script:actualHash = $script:expectedHash.ToUpperInvariant()
 $script:volumes = @([pscustomobject]@{DriveLetter = 'Z'})
 $script:seenLabel = ''
 $script:seenPath = ''
+$script:hashMockCalls = 0
 
 # Shadow the disk cmdlets: these tests never enumerate real volumes, get a
 # real file hash or execute the guest FirstLogon PowerShell script.
@@ -43,6 +44,7 @@ function Get-Volume {
 function Get-FileHash {
     param([string]$Path)
     $script:seenPath = $Path
+    $script:hashMockCalls++
     return [pscustomobject]@{Hash = $script:actualHash}
 }
 
@@ -51,12 +53,18 @@ $preflight = $body.Substring(0, $body.Length - ';&$p'.Length)
 # (never real host volume identities) to explain unexpected PS5.1 behavior.
 $synthetic = @(Get-Volume -FileSystemL GASLUXCI)
 Write-Output ("GASLUX_PS_SYNTHETIC_VOLUME_COUNT=" + $synthetic.Count)
+Write-Output ("GASLUX_PS_FILE_HASH_COMMAND_TYPE=" +
+    (Get-Command Get-FileHash).CommandType)
+Write-Output ("GASLUX_PS_FILE_HASH_PROBE=" +
+    (Get-FileHash -Path 'Z:\GASLUX.PS1').Hash.Length)
 Write-Output ("GASLUX_PS_SYNTHETIC_HASH_MATCH=" +
     [int]($script:actualHash -eq $script:expectedHash))
 try {
     $resolvedPath = Invoke-Expression ($preflight + ';$p')
 } catch {
-    throw ("GASLUX_VALID_SYNTHETIC_USB_LOOKUP_FAILED: " + $_.Exception.Message)
+    throw ("GASLUX_VALID_SYNTHETIC_USB_LOOKUP_FAILED: "
+        + $_.Exception.Message + "; mockHashCalls=" + $script:hashMockCalls
+        + "; seenPath=" + $script:seenPath + "; seenLabel=" + $script:seenLabel)
 }
 if ($resolvedPath -ne 'Z:\GASLUX.PS1') {
     throw "Valid unique FAT32 USB did not resolve its dynamic drive"
