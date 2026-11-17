@@ -9,6 +9,7 @@ on:
       - fix/windows-two-stage-full-serial-dvd-guard
       - fix/windows-eval-oobe-international-pass
       - test/windows-floppy-proven-setup-firstlogon-fix
+      - test/windows11-floppy-firstboot-control
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -16,6 +17,7 @@ on:
       - auto_tests/test_windows_x64_swtpm_reconnect.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
       - auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+      - auto_tests/test_windows11_floppy_control.py
   workflow_dispatch:
 
 permissions:
@@ -47,7 +49,8 @@ jobs:
               test_windows_x64_clean_poweroff_gate.py \
               test_windows_x64_tcg_unattend_contract.py \
               test_windows_x64_winre_baseline_contract.py \
-              test_windows_x64_qemu_host_gate.py; do
+              test_windows_x64_qemu_host_gate.py \
+              test_windows11_floppy_control.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
       - name: Prove physical-host-safe swtpm listener restart with same private NV directory
@@ -69,11 +72,13 @@ jobs:
       fail-fast: false
       matrix:
         profile:
-          # Historical 44048550209 reached installed Windows 10 Boot Manager
-          # with floppy media, but guest PowerShell collapsed the 7 markers.
-          # Re-run this EXACT former installation path after correcting only
-          # marker-array semantics. Do not imply support for Windows 11.
-          - win10_22h2_en_us_x64
+          # Isolated Windows 11 control using the exact FAT12 floppy + derived
+          # Microsoft ISO route independently proven for Windows 10 by
+          # Actions #44085976726 (PR #113). Change ONLY this matrix profile;
+          # Win11 must retain its own TPM 2.0 NV state across both QEMU guests.
+          # Do not claim Windows 11 support until guest FirstLogon/BCD/WinRE,
+          # a clean shutdown and exact ISO digest are verified in this run.
+          - win11_26h2_en_us_x64
     env:
       PYTHONUNBUFFERED: '1'
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
