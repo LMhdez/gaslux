@@ -55,6 +55,8 @@ class HostedKvmGate(unittest.TestCase):
         for required in (
             '"q35,accel=kvm,smm=on"',
             '"q35,accel=tcg,smm=on"',
+            '"qemu-xhci,id=lab_usb"',
+            '"usb-kbd,bus=lab_usb.0"',
             '"host" if args.accel == "kvm"',
             "0xAE00", "0xAE01",
             'os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"',
