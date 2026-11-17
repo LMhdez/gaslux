@@ -865,6 +865,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="Windows 10 hosted KVM ONLY, after genuine installed "
                          "firstboot/GPT audit: create disposable COW overlay "
                          "with private OVMF VARS checkpoint; no Linux writes")
+    ap.add_argument("--stage-cachyos-overlay-root-gpt-only", action="store_true",
+                    help="hosted Windows 10 post-FirstLogon ONLY: stage one "
+                         "unformatted 24GiB Linux GPT root exclusively on "
+                         "private disposable COW overlay; no EFI writes")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -882,6 +886,17 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(
                 "COW checkpoint requires separate hosted Windows 10 KVM "
                 "postboot+read-only-GPT-only consent; no Linux writes")
+    if args.stage_cachyos_overlay_root_gpt_only:
+        if not (args.prepare_owned_cow_checkpoint and
+                args.two_stage_install_only and
+                args.profile == "win10_22h2_en_us_x64" and
+                args.derived_no_prompt and args.accel == "kvm" and
+                not args.fixture_only and
+                os.environ.get("GASLUX_CACHYOS_OVERLAY_GPT_CONSENT")
+                == "I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY"):
+            raise SystemExit(
+                "CachyOS GPT staging requires explicit Windows postboot "
+                "COW checkpoint, hosted VM-only consent, and no filesystem writes")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -1089,6 +1104,34 @@ def main(argv: list[str] | None = None) -> int:
                             )
                             print("GASLUX_WINDOWS_COW_CHECKPOINT_CANDIDATE=1",
                                   flush=True)
+                            if args.stage_cachyos_overlay_root_gpt_only:
+                                # Windows only started when genuinely installed
+                                # and shut down. Never install CachyOS/modify
+                                # ESP; write only the COW's fifth GPT entry.
+                                from windows_cachyos_overlay_gpt_stage import (
+                                    stage_overlay_gpt,
+                                )
+                                from uuid import uuid4
+                                staged = stage_overlay_gpt(
+                                    disk, nvram, candidate, cow, uuid4(),
+                                )
+                                staged_bytes = (
+                                    json.dumps(staged, sort_keys=True, indent=2)
+                                    + "\n"
+                                ).encode("utf-8")
+                                staged_doc = (evidence /
+                                    f"{args.profile}-linux-overlay-gpt-candidate.json")
+                                require(not staged_doc.exists() and
+                                        not staged_doc.is_symlink(),
+                                        "refusing existing COW Linux GPT evidence")
+                                with staged_doc.open("xb") as out:
+                                    out.write(staged_bytes)
+                                report["linuxOverlayGptRootCandidatePrepared"] = True
+                                report["linuxOverlayGptRootCandidateSha256"] = (
+                                    hashlib.sha256(staged_bytes).hexdigest()
+                                )
+                                print("GASLUX_CACHYOS_COW_GPT_ROOT_STAGED_ONLY=1",
+                                      flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
