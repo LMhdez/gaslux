@@ -255,6 +255,88 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
             self.assertFalse(good)
             self.assertIn("rebooted after first-logon", detail)
 
+
+    def test_one_delayed_guest_acpi_retry_then_real_clean_exit(self):
+        class PendingQemu:
+            clean = False
+            def poll(self): return 0 if self.clean else None
+            def kill(self): raise AssertionError("no host kill for ACPI success")
+            def wait(self, timeout): return 0
+        guest = PendingQemu()
+        proof = b"\n".join([
+            b'BdsDxe: starting Boot0003 "Windows Boot Manager"',
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300",
+            b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+            b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+            b"GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64",
+        ]) + b"\n"
+        events = []
+        clock = {"t": 0.0}
+        def advance(_):
+            clock["t"] += 65.0
+        def press(sock):
+            events.append(sock)
+            if len(events) == 2:
+                guest.clean = True
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = pathlib.Path(tmp)/"com1.log"
+            transcript.write_bytes(proof)
+            socket = pathlib.Path(tmp)/"socket"
+            with patch.object(VM.subprocess, "Popen", return_value=guest), \
+                 patch.object(VM, "request_owned_windows_acpi_powerdown",
+                              side_effect=press), \
+                 patch.object(VM.time, "monotonic",
+                              side_effect=lambda: clock["t"]), \
+                 patch.object(VM.time, "sleep", side_effect=advance):
+                success, reason = VM.boot_vm(
+                    ["qemu-system-x86_64"], transcript, 800,
+                    "win11_26h2_en_us_x64",
+                    reject_repeated_dvd_boot=True, acpi_powerdown_socket=socket)
+        self.assertTrue(success, reason)
+        self.assertEqual(events, [socket, socket])
+
+    def test_two_ignored_guest_acpi_requests_never_establish_boot(self):
+        class HungQemu:
+            killed = False
+            def poll(self): return -9 if self.killed else None
+            def kill(self): self.killed = True
+            def wait(self, timeout): return -9
+        guest = HungQemu()
+        proof = b"\n".join([
+            b'BdsDxe: starting Boot0003 "Windows Boot Manager"',
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300",
+            b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+            b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+            b"GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64",
+        ]) + b"\n"
+        events = []
+        clock = {"t": 0.0}
+        def advance(_): clock["t"] += 125.0
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = pathlib.Path(tmp)/"com1.log"
+            transcript.write_bytes(proof)
+            socket = pathlib.Path(tmp)/"socket"
+            with patch.object(VM.subprocess, "Popen", return_value=guest), \
+                 patch.object(VM, "request_owned_windows_acpi_powerdown",
+                              side_effect=lambda arg: events.append(arg)), \
+                 patch.object(VM.time, "monotonic",
+                              side_effect=lambda: clock["t"]), \
+                 patch.object(VM.time, "sleep", side_effect=advance):
+                success, reason = VM.boot_vm(
+                    ["qemu-system-x86_64"], transcript, 800,
+                    "win11_26h2_en_us_x64",
+                    reject_repeated_dvd_boot=True, acpi_powerdown_socket=socket)
+        self.assertFalse(success)
+        self.assertIn("ignored two bounded", reason)
+        self.assertTrue(guest.killed)
+        self.assertEqual(events, [socket, socket])
+
     def test_duplicate_iso_device_fails_closed(self):
         with tempfile.TemporaryDirectory() as d:
             args = synthetic_args(d)

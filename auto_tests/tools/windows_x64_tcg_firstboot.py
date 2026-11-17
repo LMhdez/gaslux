@@ -547,6 +547,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     started = time.monotonic()
     witnessed_at: float | None = None
     acpi_requested_at: float | None = None
+    acpi_powerdown_attempts = 0
     initial_cd_key_sent = False
     win11_dvd_started_at: float | None = None
     # Firmware replay evidence must survive COM1 tails exceeding 400 KiB.
@@ -625,10 +626,24 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     if acpi_requested_at is None:
                         request_owned_windows_acpi_powerdown(acpi_powerdown_socket)
                         acpi_requested_at = time.monotonic()
+                        acpi_powerdown_attempts = 1
                         print("GASLUX_WIN11_GUEST_ACPI_POWERDOWN_REQUESTED_AFTER_AUDIT=1",
                               flush=True)
-                    elif time.monotonic() - acpi_requested_at > 120:
-                        return False, "Windows guest ignored ACPI powerdown after audit"
+                    else:
+                        elapsed = time.monotonic() - acpi_requested_at
+                        if acpi_powerdown_attempts == 1 and elapsed >= 120:
+                            # A verified Win11 26H2 VM sometimes acknowledges
+                            # ACPI but remains alive while servicing OOBE.
+                            # Retry ONE guest power-button request after 2m.
+                            # Never send HMP quit/kill and never treat the
+                            # command acknowledgment as a clean Windows exit.
+                            request_owned_windows_acpi_powerdown(acpi_powerdown_socket)
+                            acpi_powerdown_attempts = 2
+                            print("GASLUX_WIN11_GUEST_ACPI_POWERDOWN_SECOND_REQUEST_AFTER_120S=1",
+                                  flush=True)
+                        if elapsed >= 360:
+                            return False, ("Windows guest ignored two bounded "
+                                           "ACPI powerdown requests after audit")
                 if (monitor_socket is not None and not initial_cd_key_sent and
                         time.monotonic() - started > 300):
                     return False, "official ISO did not reach UEFI DVD boot or serial prompt"
