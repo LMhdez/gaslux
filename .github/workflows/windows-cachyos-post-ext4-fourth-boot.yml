@@ -167,7 +167,8 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
             p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic \
-            aria2 squashfs-tools
+            aria2 squashfs-tools fuse3
+          sudo modprobe fuse
           test -c /dev/fuse && test ! -L /dev/fuse
           if ! sudo grep -Eq '^[[:space:]]*user_allow_other([[:space:]]|$)' /etc/fuse.conf; then
             printf 'user_allow_other\n' | sudo tee -a /etc/fuse.conf >/dev/null
