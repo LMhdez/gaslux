@@ -14,6 +14,7 @@ on:
       - feature/cachyos-signed-grub-qemu-execution
       - feature/cachyos-qemu-pacstrap-firstboot
       - feature/cachyos-windows-transaction-readonly-bridge
+      - feature/cachyos-windows-guest-evidence-binding
   pull_request:
     branches:
       - main
@@ -24,6 +25,27 @@ permissions:
   contents: read
 
 jobs:
+
+  legacy-contract-regressions:
+    name: Existing Mint/Zorin plan, state and allocation safety regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install pinned, read-only contract test dependencies
+        run: |
+          python3 -m pip install --break-system-packages \
+            "pytest==9.0.3" "jsonschema==4.23.0"
+      - name: Run legacy installation and separate-allocation contract tests
+        env:
+          PYTHONPATH: auto_tests
+        run: |
+          python3 -m pytest -q \
+            auto_tests/tests/test_installation_contracts.py \
+            auto_tests/tests/test_separate_allocation_plan.py
+
   cachyos:
     name: Read-only preflight and target verification
     runs-on: ubuntu-24.04
@@ -55,6 +77,8 @@ jobs:
             assets/live/cachyos-archiso-handoff.py \
             auto_tests/tools/cachyos_release_gate.py \
             auto_tests/tools/cachyos_windows_transaction_bridge.py \
+            auto_tests/tools/cachyos_windows_guest_evidence_binding.py \
+            auto_tests/tools/verify_windows_guest_recovery.py \
             auto_tests/tools/cachyos_lab_readiness.py \
             auto_tests/tools/cachyos_live_guest_serial.py \
             assets/live/cachyos-uefi-lab.py \
