@@ -129,7 +129,10 @@ def run_lab(workspace: Path, plan_dir: Path, evidence: Path) -> dict[str, Any]:
     )
     _require(workspace.stat().st_uid == os.getuid(), "Workspace is not runner-owned")
     _require(plan_dir.stat().st_uid == os.getuid(), "Plan directory is not runner-owned")
-    _require(not evidence.exists() and not evidence.is_symlink(), "Evidence directory already exists")
+    _require(
+        not evidence.exists() and not evidence.is_symlink(),
+        "Evidence directory already exists",
+    )
     evidence.mkdir(mode=0o700)
     disk = workspace / "efi-disk.img"
     snapshot = evidence / SNAPSHOT_NAME
@@ -137,11 +140,23 @@ def run_lab(workspace: Path, plan_dir: Path, evidence: Path) -> dict[str, Any]:
 
     try:
         plan, raw_plan, verification = _verify_plan(workspace, plan_dir)
-        _require(verification.get("signatureVerified") is True, "Signed target plan is not verified")
+        _require(
+            verification.get("signatureVerified") is True,
+            "Signed target plan is not verified",
+        )
         _require(verification.get("gptMetadataVerified") is True, "Target GPT is not verified")
-        _require(plan.get("installationAuthorized") is False, "Installation authority must remain false")
-        _require(plan.get("calamaresJobsAuthorized") is False, "Calamares authority must remain false")
-        _require(plan.get("windowsEspWritesAuthorized") is False, "Windows ESP write authority must remain false")
+        _require(
+            plan.get("installationAuthorized") is False,
+            "Installation authority must remain false",
+        )
+        _require(
+            plan.get("calamaresJobsAuthorized") is False,
+            "Calamares authority must remain false",
+        )
+        _require(
+            plan.get("windowsEspWritesAuthorized") is False,
+            "Windows ESP write authority must remain false",
+        )
         _require(plan.get("diskSizeBytes") == DISK_BYTES, "Unexpected target disk size")
         base_before = sparse_content_sha256(disk)
         _fsync_then_chmod(disk, 0o400)

@@ -53,7 +53,10 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         "snapshotFilename", "snapshotSha256", "snapshotFileSizeBytes",
         "snapshotFormat", "snapshotVirtualSizeBytes", "snapshotBackingFile",
         "snapshotSelfContained", "snapshotIntegrityVerified",
-        "snapshotDurableForRunnerJob", "snapshotArtifactPrepared", "artifactRetentionDays", "restorePerformed",
+        "snapshotDurableForRunnerJob",
+        "snapshotArtifactPrepared",
+        "artifactRetentionDays",
+        "restorePerformed",
         "restoreTargetFilename", "restoreTargetIsNewHostFile", "restoreCompareVerified",
         "restoredGptVerified", "restoredDiskGuid", "restoredEspGuid",
         "restoredEspStartLba", "restoredEspEndLba", "restoredEspLabel",
@@ -64,21 +67,56 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         "windowsEspWritesAuthorized", "rollbackVerified",
     }
     _require(set(value) == fields, "Snapshot manifest fields differ from contract")
-    _require(type(value["schemaVersion"]) is int and value["schemaVersion"] == 1, "Unsupported snapshot manifest schema")
-    _require(value["operation"] == "self-contained-read-only-snapshot", "Unexpected snapshot operation")
+    _require(
+        type(value["schemaVersion"]) is int and value["schemaVersion"] == 1,
+        "Unsupported snapshot manifest schema",
+    )
+    _require(
+        value["operation"] == "self-contained-read-only-snapshot",
+        "Unexpected snapshot operation",
+    )
     _require(isinstance(value["runId"], str) and 12 <= len(value["runId"]) <= 100, "Invalid run ID")
-    _require(isinstance(value["nonce"], str) and NONCE_RE.fullmatch(value["nonce"]) is not None, "Invalid nonce")
-    for field in ("planSha256", "snapshotSha256", "baseImageSparseSha256Before", "baseImageSparseSha256After"):
-        _require(isinstance(value[field], str) and HASH_RE.fullmatch(value[field]) is not None, f"Invalid {field}")
+    _require(
+        isinstance(value["nonce"], str)
+        and NONCE_RE.fullmatch(value["nonce"]) is not None,
+        "Invalid nonce",
+    )
+    for field in (
+        "planSha256",
+        "snapshotSha256",
+        "baseImageSparseSha256Before",
+        "baseImageSparseSha256After",
+    ):
+        _require(
+            isinstance(value[field], str)
+            and HASH_RE.fullmatch(value[field]) is not None,
+            f"Invalid {field}",
+        )
     _require(value["snapshotFilename"] == SNAPSHOT_NAME, "Unexpected snapshot filename")
     _require(value["restoreTargetFilename"] == RESTORE_NAME, "Unexpected restore target filename")
     _require(value["snapshotFormat"] == "qcow2", "Snapshot is not qcow2")
     _require(value["snapshotBackingFile"] is None, "Snapshot must not depend on a backing file")
-    _require(type(value["snapshotFileSizeBytes"]) is int and value["snapshotFileSizeBytes"] > 0, "Invalid snapshot file size")
-    _require(type(value["snapshotVirtualSizeBytes"]) is int and value["snapshotVirtualSizeBytes"] == DISK_BYTES, "Snapshot virtual size mismatch")
-    _require(type(value["artifactRetentionDays"]) is int and value["artifactRetentionDays"] == 7, "Unexpected artifact retention")
-    _require(type(value["restoredEspStartLba"]) is int and value["restoredEspStartLba"] == 2048, "Restored ESP start mismatch")
-    _require(type(value["restoredEspEndLba"]) is int and value["restoredEspEndLba"] == 1050623, "Restored ESP end mismatch")
+    _require(
+        type(value["snapshotFileSizeBytes"]) is int and value["snapshotFileSizeBytes"] > 0,
+        "Invalid snapshot file size",
+    )
+    _require(
+        type(value["snapshotVirtualSizeBytes"]) is int
+        and value["snapshotVirtualSizeBytes"] == DISK_BYTES,
+        "Snapshot virtual size mismatch",
+    )
+    _require(
+        type(value["artifactRetentionDays"]) is int and value["artifactRetentionDays"] == 7,
+        "Unexpected artifact retention",
+    )
+    _require(
+        type(value["restoredEspStartLba"]) is int and value["restoredEspStartLba"] == 2048,
+        "Restored ESP start mismatch",
+    )
+    _require(
+        type(value["restoredEspEndLba"]) is int and value["restoredEspEndLba"] == 1050623,
+        "Restored ESP end mismatch",
+    )
     try:
         uuid.UUID(value["restoredDiskGuid"])
         uuid.UUID(value["restoredEspGuid"])
@@ -86,7 +124,10 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         raise Q4osSnapshotRecoveryRefusal("Malformed restored GPT GUID") from exc
     _require(value["restoredEspLabel"] == "GASLUX-LAB-ESP", "Restored ESP label mismatch")
     true_fields = (
-        "snapshotSelfContained", "snapshotIntegrityVerified", "snapshotDurableForRunnerJob", "snapshotArtifactPrepared",
+        "snapshotSelfContained",
+        "snapshotIntegrityVerified",
+        "snapshotDurableForRunnerJob",
+        "snapshotArtifactPrepared",
         "restorePerformed", "restoreTargetIsNewHostFile", "restoreCompareVerified",
         "restoredGptVerified", "baseImageUnchanged", "manifestSigned",
         "planSignatureVerified", "gptMetadataVerified",
@@ -99,7 +140,10 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         _require(value[field] is True, f"{field} must be true")
     for field in false_fields:
         _require(value[field] is False, f"{field} must remain false")
-    _require(value["baseImageSparseSha256Before"] == value["baseImageSparseSha256After"], "Base image changed during snapshot/restore")
+    _require(
+        value["baseImageSparseSha256Before"] == value["baseImageSparseSha256After"],
+        "Base image changed during snapshot/restore",
+    )
 
 
 def sign_manifest(
@@ -137,5 +181,7 @@ def verify_signed_manifest(
     try:
         Ed25519PublicKey.from_public_bytes(public_key).verify(signature, DOMAIN + raw)
     except (InvalidSignature, ValueError) as exc:
-        raise Q4osSnapshotRecoveryRefusal("Snapshot manifest signature verification failed") from exc
+        raise Q4osSnapshotRecoveryRefusal(
+            "Snapshot manifest signature verification failed"
+        ) from exc
     return value
