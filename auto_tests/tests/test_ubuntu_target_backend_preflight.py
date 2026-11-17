@@ -258,7 +258,9 @@ LIVE_INSTALLER = ROOT / "assets/live/libertix-install-main.sh"
 def test_legacy_iso_preflight_fails_closed_and_releases_mounted_iso(
     distro, os_id, hash_ok, busy, mount_ok, rootfs_ok, payload_ok, umount_ok, expected
 ):
-    shell = ISO_PREFLIGHT.read_text(encoding="utf-8") + r"""
+    shell = (
+        ISO_PREFLIGHT.read_text(encoding="utf-8")
+        + r"""
 verify_file_sha256() { echo HASH; [ "$HASH_OK" = 1 ]; }
 mkdir() { :; }
 findmnt() { [ "$MOUNT_BUSY" = 1 ]; }
@@ -274,6 +276,7 @@ assert_distribution_rootfs_compatible_or_die() {
 umount() { echo UNMOUNT; [ "$UMOUNT_OK" = 1 ]; }
 preflight_legacy_installer_iso_or_die /fake/zorin.iso hash "$DISTRO" "$OS_ID"
 """
+    )
     env = dict(
         os.environ,
         DISTRO=distro,
