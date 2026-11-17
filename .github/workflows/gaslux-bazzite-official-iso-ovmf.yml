@@ -1,0 +1,183 @@
+name: Bazzite official ISO and diskless OVMF (experimental)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-official-iso-ovmf
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-bazzite-official-iso-ovmf.yml'
+      - 'auto_tests/tests/test_bazzite_official_iso_workflow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Syntax, Ruff and fail-closed contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff PyYAML cryptography
+          python -m pytest -q auto_tests/tests/test_bazzite_official_iso_workflow.py auto_tests/tests/test_bazzite_iso_signature.py auto_tests/tests/test_bazzite_atomic_preflight.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/tests/test_bazzite_official_iso_workflow.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_bazzite_official_iso_workflow.py
+
+  official-iso-diskless:
+    needs: contracts
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify pinned key, network endpoints and ephemeral runner capacity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'af78ecfda6eb21c35195af3739341715e9cfc3f2f5911dd9c10b0670547bf6e8  assets/keys/bazzite-upstream-cosign.pub' | sha256sum --check --strict
+          base='https://download.bazzite.gg/bazzite-stable-live-amd64.iso'
+          for suffix in '' '.sig'; do
+            code=$(curl --silent --show-error --fail --location --head --retry 2 --connect-timeout 15 --max-time 90 --proto '=https' --proto-redir '=https' --write-out '%{http_code}' --output /dev/null "$base$suffix")
+            [[ "$code" == 200 ]] || { echo "Unreachable official ISO or .sig: HTTP $code" >&2; exit 1; }
+          done
+          free_bytes=$(df -PB1 "$RUNNER_TEMP" | awk 'NR==2 {print $4}')
+          host_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+          echo "RUNNER: available disk bytes=$free_bytes, memory KiB=$host_kib"
+          if (( free_bytes < 9*1024*1024*1024 )); then
+            echo 'Insufficient ephemeral storage; no ISO downloaded' >&2; exit 1
+          fi
+      - name: Install QEMU, OVMF, ISO tools and VNC client
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf xorriso python3-pip tesseract-ocr
+          python -m pip install --user vncdotool Pillow
+      - name: Install Cosign version used by signed blob gate
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        with:
+          cosign-release: 'v2.6.5'
+      - name: Download real official ISO and verify its detached upstream signature
+        shell: bash
+        timeout-minutes: 60
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-official"
+          mkdir -p "$work" bazzite-evidence
+          iso="$work/bazzite-stable-live-amd64.iso"
+          url='https://download.bazzite.gg/bazzite-stable-live-amd64.iso'
+          length=$(curl --silent --show-error --fail --location --head --retry 2 --max-time 90 --proto '=https' --proto-redir '=https' "$url" | tr -d '\r' | awk 'tolower($1)=="content-length:" {n=$2} END {print n}')
+          [[ "$length" =~ ^[1-9][0-9]*$ ]] || { echo 'No official Content-Length'; exit 1; }
+          if (( length < 1024*1024*1024 || length > 16*1024*1024*1024 )); then
+            echo 'Unexpected live ISO byte size' >&2; exit 1
+          fi
+          free_bytes=$(df -PB1 "$work" | awk 'NR==2 {print $4}')
+          if (( free_bytes < length + 2*1024*1024*1024 )); then
+            echo 'Runner storage insufficient for current ISO plus reserved space' >&2; exit 1
+          fi
+          curl --fail --location --show-error --silent --retry 2 --connect-timeout 20 --max-time 3200 --proto '=https' --proto-redir '=https' "$url" -o "$iso"
+          curl --fail --location --show-error --silent --retry 2 --connect-timeout 20 --max-time 180 --proto '=https' --proto-redir '=https' "$url.sig" -o "$iso.sig"
+          size=$(stat -c '%s' "$iso")
+          sha=$(sha256sum "$iso" | awk '{print $1}')
+          [[ "$size" == "$length" ]] || { echo 'ISO download size changed'; exit 1; }
+          python3 assets/live/gaslux_bazzite_iso_signature.py \
+            --iso "$iso" --signature "$iso.sig" \
+            --public-key "$GITHUB_WORKSPACE/assets/keys/bazzite-upstream-cosign.pub" \
+            --trusted-key-sha256 af78ecfda6eb21c35195af3739341715e9cfc3f2f5911dd9c10b0670547bf6e8 \
+            --expected-iso-sha256 "$sha" --expected-iso-size "$size" \
+            --firmware uefi --partition-style gpt > bazzite-evidence/iso-trust.json
+          xorriso -indev "$iso" -report_el_torito plain > bazzite-evidence/eltorito.txt 2>&1
+          grep -qi EFI bazzite-evidence/eltorito.txt || { echo 'Missing ISO EFI boot entry'; exit 1; }
+          python3 - "$sha" "$size" <<'PY'
+          import json
+          import pathlib
+          import sys
+          p = pathlib.Path("bazzite-evidence/iso-trust.json")
+          obj = json.loads(p.read_text())
+          assert obj["detachedSignatureVerified"] is True
+          assert obj["installationAuthorized"] is False
+          obj["catalogPinAuthorized"] = False
+          obj["PIN_DISCOVERY_ONLY"] = True
+          obj["observedIsoSha256"] = sys.argv[1]
+          obj["observedIsoSizeBytes"] = int(sys.argv[2])
+          obj["installerIdentityVerified"] = False
+          p.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n")
+          print("SIGNED OFFICIAL ISO DISCOVERED. Digest not approved for release catalog.")
+          PY
+      - name: Boot ISO using QEMU/OVMF with no guest hard disk
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-official"
+          iso="$work/bazzite-stable-live-amd64.iso"
+          if [[ -f /usr/share/OVMF/OVMF_CODE_4M.fd && -f /usr/share/OVMF/OVMF_VARS_4M.fd ]]; then
+            code=/usr/share/OVMF/OVMF_CODE_4M.fd
+            vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          elif [[ -f /usr/share/OVMF/OVMF_CODE.fd && -f /usr/share/OVMF/OVMF_VARS.fd ]]; then
+            code=/usr/share/OVMF/OVMF_CODE.fd
+            vars=/usr/share/OVMF/OVMF_VARS.fd
+          else
+            echo 'No matching OVMF templates'; exit 1
+          fi
+          cp "$vars" "$work/OVMF_VARS.disposable.fd"
+          host_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+          if (( host_kib < 6*1024*1024 )); then
+            echo 'Runner cannot safely host constrained Bazzite live-boot probe'; exit 1
+          fi
+          # The 4096 MiB hosted-runner diagnostic is BELOW Bazzite 8 GiB minimum.
+          guest_mem=4096
+          if (( host_kib >= 11*1024*1024 )); then guest_mem=8192; fi
+          accel=tcg
+          if [[ -r /dev/kvm && -w /dev/kvm ]]; then accel=kvm; fi
+          echo "guest RAM=$guest_mem MiB; mode=$accel; NOT INSTALLATION PROOF" | tee bazzite-evidence/vm-config.txt
+          qemu-system-x86_64 \
+            -nodefaults -machine "q35,accel=$accel" -cpu max -smp 2 -m "$guest_mem" \
+            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,unit=1,file=$work/OVMF_VARS.disposable.fd" \
+            -vga std -device ich9-ahci,id=sata \
+            -drive "if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso" \
+            -device ide-cd,drive=optical,bus=sata.0 \
+            -boot order=d -nic none -monitor none \
+            -serial "file:bazzite-evidence/serial.log" \
+            -vnc 127.0.0.1:1 -no-reboot \
+            > bazzite-evidence/qemu-stdout.txt 2> bazzite-evidence/qemu-stderr.txt &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || :; wait "$pid" 2>/dev/null || :' EXIT
+          sleep 150
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo 'Guest terminated before observation'; exit 1
+          fi
+          "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 capture bazzite-evidence/screen.png
+          python3 - <<'PY'
+          from PIL import Image
+          image = Image.open("bazzite-evidence/screen.png").convert("RGB")
+          assert image.width >= 640 and image.height >= 480
+          assert len(image.getcolors(maxcolors=1000000) or []) > 2, "Blank EFI console"
+          print("Nonblank guest screen captured; not proof of native installer.")
+          PY
+          tesseract bazzite-evidence/screen.png stdout 2>/dev/null > bazzite-evidence/screen-ocr.txt || :
+          echo 'NO INSTALLER PROOF: screen requires human inspection; no disk attached.' > bazzite-evidence/guest-result.txt
+      - name: Publish limited read-only evidence (never ISO or private NVRAM)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-official-iso-ovmf-evidence
+          path: bazzite-evidence/
+          if-no-files-found: warn
+          retention-days: 3
