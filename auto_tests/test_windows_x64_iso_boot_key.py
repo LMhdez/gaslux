@@ -180,7 +180,7 @@ class LocalVncIsoBootKeyTests(unittest.TestCase):
     def test_unowned_vnc_socket_rejected_before_connect(self):
         monitor, vnc = self.paths()
         with patch.dict(vm.os.environ, self.hosted()), patch.object(
-            pathlib.Path, "is_socket",
+            pathlib.Path, "is_socket", autospec=True,
             side_effect=lambda p: p != vnc
         ), patch.object(pathlib.Path, "is_dir", return_value=True), patch.object(
             pathlib.Path, "is_symlink", return_value=False
