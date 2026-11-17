@@ -1,0 +1,133 @@
+name: Q4OS self-contained synthetic snapshot and restore
+
+on:
+  push:
+    branches:
+      - feature/q4os-durable-snapshot-recovery
+    paths:
+      - '.github/workflows/gaslux-q4os-snapshot-recovery.yml'
+      - 'assets/live/gaslux_q4os_vm_target_plan.py'
+      - 'auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tools/q4os_guest_identity_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_manifest.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py'
+      - 'auto_tests/tests/test_q4os_snapshot_recovery.py'
+      - 'schemas/gaslux-q4os-durable-snapshot-manifest.schema.json'
+      - 'docs/Q4OS_DURABLE_SNAPSHOT_RECOVERY_LAB.md'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-snapshot-recovery.yml'
+      - 'assets/live/gaslux_q4os_vm_target_plan.py'
+      - 'auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tools/q4os_guest_identity_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_manifest.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py'
+      - 'auto_tests/tests/test_q4os_snapshot_recovery.py'
+      - 'schemas/gaslux-q4os-durable-snapshot-manifest.schema.json'
+      - 'docs/Q4OS_DURABLE_SNAPSHOT_RECOVERY_LAB.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install isolated snapshot lab dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-utils gdisk dosfstools
+          python -m pip install 'pytest>=9,<10' 'cryptography>=46,<51' \
+            'jsonschema>=4,<5' 'ruff>=0.8,<1'
+
+      - name: Compile, lint, format and test snapshot manifest and restore contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q \
+            auto_tests/tools/gaslux_q4os_snapshot_manifest.py \
+            auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tools/gaslux_q4os_snapshot_manifest.py \
+            auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tools/gaslux_q4os_snapshot_manifest.py \
+            auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py
+          python -m pytest -q auto_tests/tests/test_q4os_snapshot_recovery.py
+
+      - name: Create signed 32-GiB synthetic UEFI/GPT target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          work="$(mktemp -d -p "$RUNNER_TEMP" gaslux-q4os-snapshot-XXXXXXXX)"
+          plan_dir="$RUNNER_TEMP/q4os-snapshot-plan-$GITHUB_RUN_ID"
+          evidence="$RUNNER_TEMP/q4os-snapshot-evidence-$GITHUB_RUN_ID"
+          [[ ! -e "$plan_dir" && ! -L "$plan_dir" ]] || exit 1
+          [[ ! -e "$evidence" && ! -L "$evidence" ]] || exit 1
+          printf 'GASLUX_Q4OS_SNAPSHOT_WORK=%s\n' "$work" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_SNAPSHOT_PLAN=%s\n' "$plan_dir" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_SNAPSHOT_EVIDENCE=%s\n' "$evidence" >> "$GITHUB_ENV"
+          truncate -s 32G "$work/efi-disk.img"
+          sgdisk --zap-all --new=1:2048:+512M --typecode=1:EF00 \
+            --change-name=1:GASLUX-LAB-ESP "$work/efi-disk.img" >/dev/null
+          truncate -s 512M "$work/efi-part.img"
+          mkfs.vfat -F 32 -n GASLUXLAB "$work/efi-part.img" >/dev/null
+          dd if="$work/efi-part.img" of="$work/efi-disk.img" \
+            bs=1M seek=1 conv=notrunc,sparse status=none
+          sgdisk --verify "$work/efi-disk.img"
+          python auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py "$work" "$plan_dir"
+
+      - name: Create self-contained snapshot, restore to new host file and verify
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py \
+            "$GASLUX_Q4OS_SNAPSHOT_WORK" \
+            "$GASLUX_Q4OS_SNAPSHOT_PLAN" \
+            "$GASLUX_Q4OS_SNAPSHOT_EVIDENCE"
+
+      - name: Validate signed manifest against JSON Schema
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - "$GASLUX_Q4OS_SNAPSHOT_EVIDENCE" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from jsonschema import Draft202012Validator, FormatChecker
+          root = Path(sys.argv[1])
+          schema = json.loads(Path("schemas/gaslux-q4os-durable-snapshot-manifest.schema.json").read_text())
+          manifest = json.loads((root / "q4os-recovery-snapshot-manifest.json").read_text())
+          Draft202012Validator(schema, format_checker=FormatChecker()).validate(manifest)
+          print("Q4OS snapshot manifest JSON Schema: PASS")
+          PY
+
+      - name: Upload signed snapshot and restore evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-self-contained-synthetic-snapshot-and-restore
+          path: |
+            ${{ runner.temp }}/q4os-snapshot-plan-${{ github.run_id }}/
+            ${{ runner.temp }}/q4os-snapshot-evidence-${{ github.run_id }}/
+          if-no-files-found: warn
+          retention-days: 7

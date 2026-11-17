@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/gaslux-q4os-durable-snapshot-manifest.schema.json",
+  "title": "Q4OS self-contained synthetic snapshot manifest (host-only; no rollback authority)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "operation": {
+      "type": "string",
+      "const": "self-contained-read-only-snapshot"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 100
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "planSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "snapshotFilename": {
+      "type": "string",
+      "const": "q4os-recovery-snapshot.qcow2"
+    },
+    "snapshotSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "snapshotFileSizeBytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "snapshotFormat": {
+      "type": "string",
+      "const": "qcow2"
+    },
+    "snapshotVirtualSizeBytes": {
+      "type": "integer",
+      "const": 34359738368
+    },
+    "snapshotBackingFile": {
+      "type": "null"
+    },
+    "snapshotSelfContained": {
+      "type": "boolean",
+      "const": true
+    },
+    "snapshotIntegrityVerified": {
+      "type": "boolean",
+      "const": true
+    },
+    "snapshotDurableForRunnerJob": {
+      "type": "boolean",
+      "const": true
+    },
+    "snapshotArtifactPrepared": {
+      "type": "boolean",
+      "const": true
+    },
+    "artifactRetentionDays": {
+      "type": "integer",
+      "const": 7
+    },
+    "restorePerformed": {
+      "type": "boolean",
+      "const": true
+    },
+    "restoreTargetFilename": {
+      "type": "string",
+      "const": "q4os-restored.raw"
+    },
+    "restoreTargetIsNewHostFile": {
+      "type": "boolean",
+      "const": true
+    },
+    "restoreCompareVerified": {
+      "type": "boolean",
+      "const": true
+    },
+    "restoredGptVerified": {
+      "type": "boolean",
+      "const": true
+    },
+    "restoredDiskGuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "restoredEspGuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "restoredEspStartLba": {
+      "type": "integer",
+      "const": 2048
+    },
+    "restoredEspEndLba": {
+      "type": "integer",
+      "const": 1050623
+    },
+    "restoredEspLabel": {
+      "type": "string",
+      "const": "GASLUX-LAB-ESP"
+    },
+    "baseImageSparseSha256Before": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "baseImageSparseSha256After": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "baseImageUnchanged": {
+      "type": "boolean",
+      "const": true
+    },
+    "manifestSigned": {
+      "type": "boolean",
+      "const": true
+    },
+    "planSignatureVerified": {
+      "type": "boolean",
+      "const": true
+    },
+    "gptMetadataVerified": {
+      "type": "boolean",
+      "const": true
+    },
+    "guestBooted": {
+      "type": "boolean",
+      "const": false
+    },
+    "guestDiskWrites": {
+      "type": "boolean",
+      "const": false
+    },
+    "diskWritesAuthorized": {
+      "type": "boolean",
+      "const": false
+    },
+    "installationAuthorized": {
+      "type": "boolean",
+      "const": false
+    },
+    "calamaresJobsAuthorized": {
+      "type": "boolean",
+      "const": false
+    },
+    "windowsEspWritesAuthorized": {
+      "type": "boolean",
+      "const": false
+    },
+    "rollbackVerified": {
+      "type": "boolean",
+      "const": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "operation",
+    "runId",
+    "nonce",
+    "planSha256",
+    "snapshotFilename",
+    "snapshotSha256",
+    "snapshotFileSizeBytes",
+    "snapshotFormat",
+    "snapshotVirtualSizeBytes",
+    "snapshotBackingFile",
+    "snapshotSelfContained",
+    "snapshotIntegrityVerified",
+    "snapshotDurableForRunnerJob",
+    "snapshotArtifactPrepared",
+    "artifactRetentionDays",
+    "restorePerformed",
+    "restoreTargetFilename",
+    "restoreTargetIsNewHostFile",
+    "restoreCompareVerified",
+    "restoredGptVerified",
+    "restoredDiskGuid",
+    "restoredEspGuid",
+    "restoredEspStartLba",
+    "restoredEspEndLba",
+    "restoredEspLabel",
+    "baseImageSparseSha256Before",
+    "baseImageSparseSha256After",
+    "baseImageUnchanged",
+    "manifestSigned",
+    "planSignatureVerified",
+    "gptMetadataVerified",
+    "guestBooted",
+    "guestDiskWrites",
+    "diskWritesAuthorized",
+    "installationAuthorized",
+    "calamaresJobsAuthorized",
+    "windowsEspWritesAuthorized",
+    "rollbackVerified"
+  ]
+}
