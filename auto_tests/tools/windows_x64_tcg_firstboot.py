@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import fcntl
+import stat
 import json
 import os
 import platform
@@ -51,11 +53,32 @@ def require(condition: bool, message: str) -> None:
         raise LabError(message)
 
 
-def validate_environment(workspace: Path) -> None:
+def validate_environment(workspace: Path, accelerator: str = "tcg") -> None:
+    require(accelerator in ("tcg", "kvm"), "unknown guest accelerator")
+    consent_ok = (
+        os.environ.get("GASLUX_WINDOWS_KVM_CONSENT") ==
+        "I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY"
+        if accelerator == "kvm" else
+        os.environ.get("GASLUX_WINDOWS_TCG_CONSENT") == CONSENT
+    )
     require(os.environ.get("GITHUB_ACTIONS") == "true" and
-            os.environ.get("RUNNER_OS") == "Linux" and
-            os.environ.get("GASLUX_WINDOWS_TCG_CONSENT") == CONSENT,
-            "not the expressly authorized disposable GitHub Linux TCG laboratory")
+            os.environ.get("RUNNER_OS") == "Linux" and consent_ok,
+            "not an expressly authorized disposable GitHub Linux VM laboratory")
+    if accelerator == "kvm":
+        require(os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted",
+                "KVM refused on self-hosted or unidentified runner")
+        kvm = Path("/dev/kvm")
+        require(kvm.exists() and not kvm.is_symlink() and
+                stat.S_ISCHR(kvm.stat().st_mode),
+                "KVM device missing or unsafe")
+        try:
+            with kvm.open("rb+") as device:
+                require(fcntl.ioctl(device.fileno(), 0xAE00, 0) == 12,
+                        "unsupported KVM kernel API")
+                guest_fd = fcntl.ioctl(device.fileno(), 0xAE01, 0)
+                os.close(guest_fd)
+        except OSError as exc:
+            raise LabError("KVM inaccessible: use hosted-runner device-group gate") from exc
     require(platform.system() == "Linux" and platform.machine() == "x86_64",
             "only Linux x64 host is supported")
     host_temp = Path(os.environ.get("RUNNER_TEMP", ""))
@@ -366,6 +389,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
     ap.add_argument("--boot-timeout", type=int, default=6300)
+    ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
+                    help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
@@ -379,14 +404,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     evidence = Path(os.environ.get("GASLUX_WINDOWS_EVIDENCE", ""))
     report = {
-        "profile": args.profile, "isoHashVerified": False,
+        "profile": args.profile, "accelerator": args.accel, "isoHashVerified": False,
         "windowsClientBootVerified": False, "dualBootVerified": False,
         "winReAndBcdRecovered": False, "stable": False,
     }
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
-            validate_environment(workspace)
+            validate_environment(workspace, args.accel)
             require(120 <= args.boot_timeout <= 6600,
                     "unbounded or insufficient guest boot timeout")
             iso = workspace / "verified-microsoft-evaluation.iso"
@@ -420,9 +445,12 @@ def main(argv: list[str] | None = None) -> int:
             shutil.copyfile(OVMF_VARS, nvram)
             serial = workspace / "win-guest-serial.log"
             base = [
-                "qemu-system-x86_64", "-machine", "q35,accel=tcg,smm=on",
+                "qemu-system-x86_64", "-machine",
+                ("q35,accel=kvm,smm=on" if args.accel == "kvm"
+                 else "q35,accel=tcg,smm=on"),
                 "-global", "driver=cfi.pflash01,property=secure,value=on",
-                "-cpu", "max", "-smp", "2", "-m", "4096",
+                "-cpu", ("host" if args.accel == "kvm" else "max"),
+                "-smp", "2", "-m", "4096",
                 "-display", "none", "-vga", "std",
                 "-monitor", "none", "-net", "none",
                 "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
