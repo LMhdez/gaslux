@@ -1,6 +1,25 @@
 name: Q4OS integrated QEMU identity and durable snapshot rehearsal
 
 on:
+  push:
+    branches:
+      - feature/q4os-qemu-snapshot-integration
+    paths:
+      - '.github/workflows/gaslux-q4os-qemu-snapshot-integration.yml'
+      - 'assets/live/gaslux_q4os_vm_target_plan.py'
+      - 'assets/live/gaslux_q4os_guest_disk_probe.py'
+      - 'auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_manifest.py'
+      - 'auto_tests/tools/q4os_guest_identity_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_identity_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tests/test_q4os_snapshot_recovery.py'
+      - 'schemas/gaslux-q4os-vm-target-plan.schema.json'
+      - 'schemas/gaslux-q4os-guest-disk-report.schema.json'
+      - 'schemas/gaslux-q4os-durable-snapshot-manifest.schema.json'
+      - 'docs/Q4OS_QEMU_SNAPSHOT_INTEGRATION_LAB.md'
   pull_request:
     paths:
       - '.github/workflows/gaslux-q4os-qemu-snapshot-integration.yml'
