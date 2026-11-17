@@ -131,6 +131,14 @@ class RealReadOnlyGptWindowsTests(unittest.TestCase):
                 inspect.SharedDiskHandoffRejected,"hybrid"):
             inspect.inspect_bound_gpt_windows(bytes(first),back,plan)
 
+    def test_readonly_raw_audit_never_accepts_a_partition_device_path(self):
+        # Reject before stat/open/ioctl, even if lsblk claims the device exists.
+        for forbidden in ("/dev/vdb1", "/dev/vda5", "/dev/vdaa1",
+                          "/dev/vdb/", "/dev/vdb-1", "/dev/nvme0n1"):
+            with self.subTest(device=forbidden), self.assertRaisesRegex(
+                    inspect.SharedDiskHandoffRejected, "virtio"):
+                inspect.read_guest_disk_windows_readonly(Path(forbidden))
+
     def test_real_host_files_and_character_devices_not_accepted(self):
         with self.assertRaisesRegex(
                 inspect.SharedDiskHandoffRejected,"virtio"):
