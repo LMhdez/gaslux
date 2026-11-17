@@ -22,8 +22,8 @@ class DerivedIsoUsbABTest(unittest.TestCase):
     def test_only_readonly_file_backed_answer_usb_in_source(self):
         source = SRC.read_text(encoding="utf-8")
         self.assertIn('answer = workspace / "only-disposable-answer-usb.img"', source)
-        self.assertIn('["truncate", "-s", "64M", str(answer)]', source)
-        self.assertIn('["mkfs.vfat", "-F", "32", "-n", "GASLUXCI", str(answer)]', source)
+        self.assertIn('build_partitioned_answer(answer, xmlfile, guest_ps1)', source)
+        self.assertIn('from windows_x64_partitioned_answer_usb import', source)
         self.assertIn('f"if=none,id=lab_unattend,format=raw,readonly=on,file={answer}"',
                       source)
         self.assertIn('"usb-storage,drive=lab_unattend,bus=lab_usb.0"', source)
@@ -34,9 +34,11 @@ class DerivedIsoUsbABTest(unittest.TestCase):
 
     def test_unattend_and_guest_script_remain_on_the_same_owned_image(self):
         source = SRC.read_text(encoding="utf-8")
-        self.assertIn('["mcopy", "-i", str(answer), str(xmlfile)', source)
-        self.assertIn('["mcopy", "-i", str(answer), str(guest_ps1)', source)
-        self.assertIn('require(not answer.exists() and not answer.is_symlink()', source)
+        image_helper = (TOOLS / "windows_x64_partitioned_answer_usb.py").read_text()
+        self.assertIn('"@@1M"', image_helper)
+        self.assertIn('["mcopy", "-i", str(image) + "@@1M", str(xml)', image_helper)
+        self.assertIn('["mcopy", "-i", str(image) + "@@1M", str(powershell)', image_helper)
+        self.assertIn('and not image.exists() and not image.is_symlink()', image_helper)
         self.assertIn('guest_ps1.write_text(', source)
         self.assertIn('if (@($serialProof).Count -ne 7)', source)
 
