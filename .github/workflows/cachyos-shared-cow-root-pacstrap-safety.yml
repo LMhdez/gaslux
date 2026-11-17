@@ -6,6 +6,10 @@ on:
     paths:
       - .github/workflows/cachyos-shared-cow-root-pacstrap-safety.yml
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap.py
+      - assets/live/cachyos-strict-pacman.py
+      - assets/live/cachyos-pacman-trust.py
+      - auto_tests/test_cachyos_strict_pacman.py
+      - auto_tests/test_cachyos_pacman_trust.py
       - auto_tests/test_cachyos_windows_shared_root_pacstrap.py
       - docs/CACHYOS_WINDOWS_SHARED_ROOT_PACSTRAP_BOUNDARY.md
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
@@ -34,10 +38,14 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
           python3 -m py_compile \
             auto_tests/tools/cachyos_windows_shared_root_pacstrap.py \
+            assets/live/cachyos-strict-pacman.py \
+            assets/live/cachyos-pacman-trust.py \
             auto_tests/test_cachyos_windows_shared_root_pacstrap.py \
             auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
             auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_root_pacstrap.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_strict_pacman.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_pacman_trust.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_handoff.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_guest_probe.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
