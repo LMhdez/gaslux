@@ -82,7 +82,7 @@ jobs:
           truncate -s 64M "$disk"
           sudo mkfs.ext4 -F "$disk" >/dev/null
           sudo guestmount -a "$disk" -m /dev/sda --rw \
-            -o allow_other,default_permissions "$mountpoint"
+            -o allow_other -o default_permissions "$mountpoint"
           printf 'runner-visible\n' | sudo tee "$mountpoint/runner-visible" >/dev/null
           test -d "$mountpoint"
           test "$(cat "$mountpoint/runner-visible")" = runner-visible
