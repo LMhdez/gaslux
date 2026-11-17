@@ -94,7 +94,8 @@ def validate(doc: Any, phase: str) -> None:
         "invalid transaction/run ID",
     )
     require(
-        type(doc["windowsProductType"]) is int and doc["windowsProductType"] == 1
+        type(doc["windowsProductType"]) is int
+        and doc["windowsProductType"] == 1
         and re.fullmatch(r"10\.0\.\d{4,5}(?:\.\d+)?", doc["windowsVersion"]) is not None,
         "only a verified Windows 10/11 client version can supply evidence",
     )
