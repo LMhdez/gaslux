@@ -86,6 +86,20 @@ class NativeArchisoGuestLayoutTests(unittest.TestCase):
                     guest.SharedDiskHandoffRejected):
                 guest.validate_lsblk_readonly(plan, observed)
 
+    def test_foreign_parent_cannot_pass_with_consistently_forged_children(self):
+        # A forged lsblk report can make the partition paths agree with
+        # /dev/sda; do not accept it as a QEMU virtio whole disk.
+        for foreign in ("/dev/sda", "/dev/nvme0n1", "/dev/mapper/fake"):
+            plan, observed = evidence()
+            disk = observed["blockdevices"][0]
+            disk["path"] = foreign
+            for number, child in enumerate(disk["children"], 1):
+                child["path"] = f"{foreign}{number}"
+                child["name"] = f"{foreign[5:]}{number}"
+            with self.subTest(parent=foreign), self.assertRaisesRegex(
+                    guest.SharedDiskHandoffRejected, "block device geometry"):
+                guest.validate_lsblk_readonly(plan, observed)
+
     def test_wrong_target_disk_capacity_or_sector_size_rejected(self):
         for key,value in (("size",64*1024**3),("log-sec",4096),
                           ("path",""),("serial","GASLUXLABTARGET")):
