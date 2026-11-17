@@ -144,7 +144,7 @@ def build_no_target_qemu_args(
     else:
         args += [
             "-drive", f"if=none,id=lab_unattend,format=raw,readonly=on,file={answer}",
-            "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
+            "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on",
         ]
     require(
         args[args.index("-monitor") + 1]
