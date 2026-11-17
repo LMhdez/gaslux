@@ -205,6 +205,53 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
              "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY"},
         )
 
+    def test_original_iso_without_two_stage_consent_is_refused(self):
+        self.assert_rejected_before_iso_download(
+            ["--two-stage-install-only", "--official-original-iso",
+             "--accel", "kvm"])
+
+    def test_original_iso_cannot_combine_with_derived_media(self):
+        with patch.dict(os.environ, {
+            "GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT":
+            "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY",
+        }, clear=True):
+            proc = subprocess.run([
+                sys.executable, str(SRC), "--profile", "win10_22h2_en_us_x64",
+                "--two-stage-install-only", "--official-original-iso",
+                "--derived-no-prompt", "--accel", "kvm",
+            ], capture_output=True, text=True, timeout=15)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("original Microsoft ISO requires exclusive", proc.stderr)
+
+    def test_original_iso_forbidden_as_fixture_probe_or_one_shot(self):
+        for args in (
+            ["--fixture-only"],
+            ["--one-shot-install-only"],
+            ["--boot-probe-only"],
+            [],
+        ):
+            with self.subTest(args=args):
+                proc = subprocess.run([
+                    sys.executable, str(SRC), "--profile",
+                    "win10_22h2_en_us_x64",
+                    "--official-original-iso", *args,
+                ], capture_output=True, text=True, timeout=15)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn(
+                    "original Microsoft ISO requires exclusive", proc.stderr)
+
+    def test_original_media_mode_still_requires_real_client_proof(self):
+        source = SRC.read_text(encoding="utf-8")
+        self.assertIn(
+            'GASLUX_WINDOWS_ORIGINAL_MICROSOFT_ISO_DIRECT_KVM=1', source)
+        self.assertIn('report["labDerivedIsoOnly"] = False', source)
+        self.assertIn('report["officialIsoUnmodified"] = True', source)
+        self.assertIn("ok, diagnostic = boot_two_stage_windows(", source)
+        self.assertIn('report["windowsClientBootVerified"] = ok', source)
+        self.assertIn('if not ok:\\n                raise LabError(diagnostic)', source)
+        self.assertIn('send_first_iso_boot_key(expected_monitor, hold_ms=6000)',
+                      source)
+
     def test_probe_cannot_be_mistaken_for_full_two_stage_install(self):
         self.assert_rejected_before_iso_download(
             ["--two-stage-install-only", "--boot-probe-only",
