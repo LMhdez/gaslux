@@ -126,6 +126,54 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
             self.assertEqual(raw["back"][-512:], b"\x5a" * 512)
             self.assertEqual(raw["back"][:512], b"\x00" * 512)
 
+    def test_qcow2_identity_guard_accepts_unchanged_owned_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            disk = Path(tmp) / "synthetic.qcow2"
+            disk.write_bytes(b"synthetic owned bytes")
+            before = gpt.qcow2_file_identity(disk)
+            gpt.require_unchanged_qcow2(disk, before)
+
+    def test_qcow2_identity_guard_rejects_mutation_between_windows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            disk = Path(tmp) / "synthetic.qcow2"
+            disk.write_bytes(b"synthetic owned bytes")
+            before = gpt.qcow2_file_identity(disk)
+            disk.write_bytes(b"different length and contents")
+            with self.assertRaisesRegex(gpt.GeometryError, "changed during GPT audit"):
+                gpt.require_unchanged_qcow2(disk, before)
+
+    def test_qcow2_identity_guard_rejects_replacement_same_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            disk = Path(tmp) / "synthetic.qcow2"
+            replacement = Path(tmp) / "replacement"
+            disk.write_bytes(b"original")
+            before = gpt.qcow2_file_identity(disk)
+            replacement.write_bytes(b"replaced")
+            replacement.replace(disk)
+            with self.assertRaisesRegex(gpt.GeometryError, "changed during GPT audit"):
+                gpt.require_unchanged_qcow2(disk, before)
+
+    def test_qcow2_identity_guard_rejects_extra_hardlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            disk = Path(tmp) / "synthetic.qcow2"
+            disk.write_bytes(b"original")
+            before = gpt.qcow2_file_identity(disk)
+            os.link(disk, Path(tmp) / "foreign-hardlink")
+            with self.assertRaisesRegex(gpt.GeometryError, "exclusive regular file"):
+                gpt.require_unchanged_qcow2(disk, before)
+
+    def test_qcow2_identity_guard_rejects_symlink_swap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            disk = Path(tmp) / "synthetic.qcow2"
+            target = Path(tmp) / "foreign"
+            disk.write_bytes(b"original")
+            before = gpt.qcow2_file_identity(disk)
+            target.write_bytes(b"foreign")
+            disk.unlink()
+            disk.symlink_to(target)
+            with self.assertRaisesRegex(gpt.GeometryError, "exclusive regular file"):
+                gpt.require_unchanged_qcow2(disk, before)
+
     def test_clean_windows_gpt_and_free_extent_are_document_only(self):
         front, back = create_disk_windows()
         result = gpt.inspect_gpt_windows(front, back)
