@@ -11,6 +11,10 @@ on:
       - auto_tests/tools/windows_x64_tcg_firstboot.py
   workflow_dispatch:
 
+concurrency:
+  group: windows-iso-visual-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
