@@ -105,7 +105,7 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn('all("only_windows" not in arg and "ide-hd" not in arg', source)
         self.assertIn('"qcow2" not in arg', source)
-        self.assertIn('"readonly=on,file=', source)
+        self.assertIn("readonly=on,file=", source)
         self.assertIn('GASLUX_WINDOWS_WINPE_PROBE_CONSENT', source)
         self.assertIn('CI_CONSENT = "I_ACCEPT_DISPOSABLE_WINPE_NO_TARGET_DISK"', source)
         self.assertIn('validate_environment(root, "kvm")', source)
