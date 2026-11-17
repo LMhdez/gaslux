@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import subprocess
@@ -81,6 +82,30 @@ try {
 Start-Sleep -Seconds 2
 & "$env:WINDIR\System32\shutdown.exe" /s /f /t 0
 """.strip()
+
+
+# An unattended third boot must not turn a later guest reboot into success.
+# Validate the complete serial again only AFTER QEMU has exited.
+BOOT_MANAGER = re.compile(
+    rb'BdsDxe: starting Boot[0-9A-Fa-f]{4} "Windows Boot Manager"'
+)
+def audit_complete_third_serial(path: Path) -> str:
+    require(path.is_file() and not path.is_symlink()
+            and path.stat().st_nlink == 1
+            and 0 < path.stat().st_size <= 512_000,
+            "missing, linked or oversized third Windows serial")
+    data = path.read_bytes()
+    require(len(data) <= 512_000, "third Windows COM1 grew beyond limit")
+    # The third guest receives neither DVD nor a boot-key mechanism.
+    require(len(BOOT_MANAGER.findall(data)) == 1
+            and b'UEFI QEMU DVD-ROM' not in data,
+            "third guest rebooted or tried DVD rather than single Windows boot")
+    require(b'GASLUX_COW_WIN10_REBOOT_FAIL=1' not in data,
+            "third guest audit failure takes precedence over positive markers")
+    lines = data.splitlines()
+    require(all(lines.count(line.encode("ascii")) == 1 for line in PROOF),
+            "missing, duplicated or coalesced third Windows audit witnesses")
+    return hashlib.sha256(data).hexdigest()
 
 def first_logon_task(script_hash: str) -> str:
     require(len(script_hash) == 64 and all(c in '0123456789abcdef' for c in script_hash),
@@ -197,21 +222,26 @@ def verify_third_windows_boot(original: list[str], base: Path, nvram: Path,
     serial=base.parent/'third-overlay-windows-serial.log'
     require(not serial.exists() and not serial.is_symlink(),'third serial path reused')
     args=third_guest_args(original,base,nvram,overlay,trial,serial)
-    witnessed=False
+    digest=None
     with (scratch/'third-overlay-qemu-stderr.log').open('xb') as stderr:
         proc=subprocess.Popen(args,stdout=subprocess.DEVNULL,stderr=stderr)
         try:
             started=time.monotonic()
             while time.monotonic()-started<timeout:
                 if serial.is_file():
-                    require(serial.stat().st_size<=512_000,'unbounded Windows COM1')
-                    lines=set(serial.read_text(encoding='utf-8',errors='replace').splitlines())
-                    if 'GASLUX_COW_WIN10_REBOOT_FAIL=1' in lines:
-                        raise OverlayBootError('installed Windows rejected BCD/WinRE/GPT')
-                    witnessed=set(PROOF).issubset(lines)
-                if proc.poll() is not None:
-                    require(proc.returncode==0 and witnessed,
-                            'Windows reboot witness or guest clean shutdown missing')
+                    require(not serial.is_symlink() and
+                            serial.stat().st_size<=512_000,
+                            'untrusted or oversized Windows COM1')
+                    if b'GASLUX_COW_WIN10_REBOOT_FAIL=1' in serial.read_bytes():
+                        raise OverlayBootError(
+                            'installed Windows rejected BCD/WinRE/GPT')
+                rc=proc.poll()
+                if rc is not None:
+                    require(rc==0,
+                            'Windows third guest did not power off cleanly')
+                    # Final evidence may be appended between serial.read_bytes
+                    # and proc.poll(). Do not decide success on a stale read.
+                    digest=audit_complete_third_serial(serial)
                     break
                 time.sleep(3)
             else:
@@ -226,8 +256,7 @@ def verify_third_windows_boot(original: list[str], base: Path, nvram: Path,
     require_unchanged_qcow2(base,identity)
     require(sha256_file(nvram)==nvhash and sha256_file(nvbase)==nvhash,
             'original Windows UEFI variables changed after overlay boot')
-    with serial.open('rb') as handle:
-        digest=hashlib.file_digest(handle,'sha256').hexdigest()
+    require(digest is not None, 'third Windows COM1 not authenticated after exit')
     return {
         'windowsBootAfterOverlayMutationVerified':True,
         'guestBcdWinreEspAfterOverlayVerified':True,

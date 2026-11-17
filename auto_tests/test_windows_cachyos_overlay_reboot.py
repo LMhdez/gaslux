@@ -107,5 +107,60 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
                     self.original,self.disk,self.nvram,{}, {}, {},timeout=120)
 
 
+    def test_third_serial_proofs_only_after_single_boot_and_complete_lines(self):
+        import hashlib, tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            serial=Path(folder)/'third.log'
+            raw=(b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+                 + b"".join((x+"\r\n").encode("ascii") for x in boot.PROOF))
+            serial.write_bytes(raw)
+            self.assertEqual(boot.audit_complete_third_serial(serial),
+                             hashlib.sha256(raw).hexdigest())
+
+    def test_second_boot_manager_rejected_even_if_all_proofs_present(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            p=Path(folder)/'third.log'
+            bm=b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+            p.write_bytes(bm+b"".join((x+"\n").encode() for x in boot.PROOF)
+                          +b"X"*450_000+bm)
+            with self.assertRaisesRegex(boot.OverlayBootError,"rebooted"):
+                boot.audit_complete_third_serial(p)
+
+    def test_negative_audit_after_proofs_always_rejected(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            p=Path(folder)/'third.log'
+            p.write_bytes(b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+                          +b"".join((x+"\n").encode() for x in boot.PROOF)
+                          +b'GASLUX_COW_WIN10_REBOOT_FAIL=1\n')
+            with self.assertRaisesRegex(boot.OverlayBootError,"failure"):
+                boot.audit_complete_third_serial(p)
+
+    def test_duplicate_missing_and_coalesced_audit_rejected(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            p=Path(folder)/'third.log'
+            bm=b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+            markers=[(x+"\n").encode() for x in boot.PROOF]
+            for bad in (bm+b"".join(markers)+markers[0],
+                        bm+b"".join(markers[:-1]),
+                        bm+b" ".join(x.strip() for x in markers)+b"\n"):
+                p.write_bytes(bad)
+                with self.assertRaisesRegex(boot.OverlayBootError,"audit witnesses"):
+                    boot.audit_complete_third_serial(p)
+
+    def test_dvd_fallback_rejected_even_if_windows_proofs_follow(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            p=Path(folder)/'third.log'
+            p.write_bytes(b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+                          +b'UEFI QEMU DVD-ROM\r\n'
+                          +b"".join((x+"\n").encode() for x in boot.PROOF))
+            with self.assertRaisesRegex(boot.OverlayBootError,"DVD"):
+                boot.audit_complete_third_serial(p)
+
+
+
 if __name__=='__main__':
     unittest.main()
