@@ -38,10 +38,10 @@ GRANT_NAME = "root-write-grant.json"
 SIGNATURE_NAME = "root-write-grant.sig"
 
 PROGRAM_FIELDS = {
-    "shared-root-pacstrap.py": "sharedRootPacstrapSha256",
-    "archiso-handoff.py": "archisoHandoffVerifierSha256",
-    "archiso-guest-probe.py": "archisoGuestProbeSha256",
-    "windows-gpt-readonly.py": "gptReaderSha256",
+    "cachyos_windows_shared_root_pacstrap.py": "sharedRootPacstrapSha256",
+    "cachyos_windows_shared_archiso_handoff.py": "archisoHandoffVerifierSha256",
+    "cachyos_windows_shared_archiso_guest_probe.py": "archisoGuestProbeSha256",
+    "windows_cachyos_qcow2_gpt_readonly.py": "gptReaderSha256",
     "strict-pacman.py": "strictPacmanBuilderSha256",
     "pacman-trust.py": "pacmanTrustGuardSha256",
     "gaslux-install.sh": "guestInstallScriptSha256",
@@ -123,9 +123,9 @@ def _verify_plan_signature(plan_path: Path, signature_path: Path,
     require(type(plan) is dict and canonical(plan) == raw,
             "signed plan is not canonical")
     validate_plan(plan)
-    _owned_regular(plan_path, plan_path.parent, "plan.json", 0o600)
-    _owned_regular(signature_path, signature_path.parent, "plan.sig", 0o600)
-    _owned_regular(public_key, public_key.parent, "public.pem", 0o600)
+    _owned_regular(plan_path, plan_path.parent, "plan.json")
+    _owned_regular(signature_path, signature_path.parent, "plan.sig")
+    _owned_regular(public_key, public_key.parent, "public.pem")
     _owned_regular(private_key, private_key.parent, "private.pem", 0o600)
     require(signature_path.stat().st_size == 64,
             "plan Ed25519 signature has invalid length")
