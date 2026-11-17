@@ -217,7 +217,8 @@ def test_q4os_desktop_selection_is_source_gated_and_never_installs():
     source = SCRIPT.read_text(encoding="utf-8")
     assert 'select_software="${GASLUX_Q4OS_SELECT_SOFTWARE:-no}"' in source
     assert "Q4OS Desktop selection requires SHA-verified Keyboard step" in source
-    assert 'python3 "$visual_gate" calamares-software-unselected "$work/vnc-software-page.png"' in source
+    gate = 'python3 "$visual_gate" calamares-software-unselected "$work/vnc-software-page.png"'
+    assert gate in source
     assert "move 392 166 click 1" in source
     assert "vnc-software-selected.png" in source
     assert '"$q4os_desktop_profile_clicked" -eq 1 && "$q4os_desktop_selected_frame" -eq 1' in source
