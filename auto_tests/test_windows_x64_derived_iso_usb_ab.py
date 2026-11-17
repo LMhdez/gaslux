@@ -26,7 +26,7 @@ class DerivedIsoUsbABTest(unittest.TestCase):
         self.assertIn('from windows_x64_partitioned_answer_usb import', source)
         self.assertIn('f"if=none,id=lab_unattend,format=raw,readonly=on,file={answer}"',
                       source)
-        self.assertIn('"usb-storage,drive=lab_unattend,bus=lab_usb.0"', source)
+        self.assertIn('"usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on"', source)
         self.assertNotIn('if=floppy,format=raw,file=', source)
         self.assertIn('boot_iso = derived', source)
         self.assertIn('GASLUX_MICROSOFT_VERIFIED_SOURCE_TO_LAB_NOPROMPT_DERIVATIVE=1',
@@ -53,7 +53,7 @@ class DerivedIsoUsbABTest(unittest.TestCase):
             "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
             "-drive",
             "if=none,id=lab_unattend,format=raw,readonly=on,file=/tmp/owned-usb.img",
-            "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
+            "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on",
         ]
         first, second = VM.build_two_stage_qemu_args(
             original, Path("/tmp/initial-serial.log"))
@@ -65,10 +65,22 @@ class DerivedIsoUsbABTest(unittest.TestCase):
         self.assertFalse(any("verified_iso" in x for x in second))
         for stage in (first, second):
             self.assertEqual(sum("id=lab_unattend" in a for a in stage), 1)
-            self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0", stage)
+            self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on", stage)
             self.assertFalse(any("if=floppy" in a for a in stage))
             self.assertEqual(sum("readonly=on,file=/tmp/owned-usb.img" in a
                                  for a in stage), 1)
+
+    def test_explicit_removable_flag_only_on_owned_readonly_usb(self):
+        source = SRC.read_text(encoding="utf-8")
+        self.assertEqual(
+            source.count(
+                '"usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on"'
+            ), 1)
+        self.assertIn("readonly=on,file={answer}", source)
+        self.assertIn("build_partitioned_answer(answer, xmlfile, guest_ps1)",
+                      source)
+        self.assertIn("boot_iso = derived", source)
+        self.assertNotIn("removable=off", source)
 
     def test_source_has_no_relaxed_windows_firstboot_gate(self):
         source = SRC.read_text(encoding="utf-8")
