@@ -86,13 +86,11 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
         # stage must emit a distinct line after its previous command succeeded.
         stages = (
             (
-                "mkdir -p /run/gaslux-pop-lab && "
-                "echo GASLUX_POP_LAB_DIR_READY=1",
+                "mkdir -p /run/gaslux-pop-lab && echo GASLUX_POP_LAB_DIR_READY=1",
                 re.compile(rb"(?m)^GASLUX_POP_LAB_DIR_READY=1\r?$"),
             ),
             (
-                "mount -L GASLUXLAB -o ro /run/gaslux-pop-lab && "
-                "echo GASLUX_POP_LAB_MOUNT_READY=1",
+                "mount -L GASLUXLAB -o ro /run/gaslux-pop-lab && echo GASLUX_POP_LAB_MOUNT_READY=1",
                 re.compile(rb"(?m)^GASLUX_POP_LAB_MOUNT_READY=1\r?$"),
             ),
             (

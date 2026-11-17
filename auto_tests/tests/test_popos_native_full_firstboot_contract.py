@@ -37,7 +37,7 @@ def test_native_install_is_isolated_to_explicit_hosted_kvm_lab():
     assert "GASLUX_POP_NATIVE_FULL_INSTALL_GUEST_PROVEN" not in run
     assert "sha256sum -c --status" in run
     assert "GASLUX_POP_NATIVE_FIRSTBOOT_WITHOUT_LIVE_ISO=1" in run
-    assert '::/agent.sha256' in run
+    assert "::/agent.sha256" in run
     assert "agent.sha256" in RUNNER.read_text(encoding="utf-8")
     controller = (ROOT / "auto_tests/tools/gaslux_popos_native_install_serial.py").read_text(
         encoding="utf-8"
