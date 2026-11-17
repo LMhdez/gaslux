@@ -31,8 +31,11 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl
+            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl
           sudo modprobe nbd max_part=8
+          if [[ -c /dev/kvm ]]; then
+            sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
+          fi
           if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
             printf 'GASLUX_WIN10_ACCEL=kvm\n' >> "$GITHUB_ENV"
             echo 'Windows lab accelerator: KVM'
