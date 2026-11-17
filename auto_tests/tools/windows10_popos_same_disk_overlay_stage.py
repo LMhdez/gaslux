@@ -279,6 +279,10 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
             g.launch()
             result = validate_after(g, before, plan)
         result["primaryAndBackupGptCrcVerifiedAfterStage"] = True
+        result["windowsProtectiveMbrCanonical"] = crc_before["protectiveMbrCanonical"]
+        result["windowsOversizedProtectiveMbrLabOnly"] = crc_before[
+            "oversizedWindowsPmbrLabOnly"
+        ]
         stat_after = base.stat()
         require(
             original_stat.st_size == stat_after.st_size
