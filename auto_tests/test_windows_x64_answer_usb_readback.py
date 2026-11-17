@@ -64,6 +64,31 @@ class WindowsAnswerUSBFAT32ReadbackTests(unittest.TestCase):
     def test_real_fat32_media_readback_exact_bytes(self):
         vm.verify_owned_answer_usb_image(self.image, XML, SCRIPT)
 
+    def test_real_generated_windows_10_and_11_unattend_payloads(self):
+        # Exercise the actual lab-generated XML and Windows guest-script
+        # bytes; no Windows guest or script execution is involved.
+        for profile, build in (
+            ("win10_22h2_en_us_x64", "19045"),
+            ("win11_26h2_en_us_x64", "26300"),
+        ):
+            with self.subTest(profile=profile):
+                xml = vm.generate_unattend(
+                    profile, build, removable_answer=True,
+                )
+                script = (vm.witness_powershell(profile, build) + "\n").encode("utf-8")
+                for filename, payload in (
+                    ("Autounattend.xml", xml),
+                    ("GASLUX.PS1", script),
+                ):
+                    source = self.workspace / ("real-generated-" + filename)
+                    source.write_bytes(payload)
+                    subprocess.run(
+                        ["mcopy", "-o", "-i", str(self.image),
+                         str(source), "::/" + filename],
+                        check=True, stdout=subprocess.DEVNULL,
+                    )
+                vm.verify_owned_answer_usb_image(self.image, xml, script)
+
     def test_incorrect_xml_bytes_are_rejected(self):
         with self.assertRaisesRegex(vm.LabError, "Autounattend.xml"):
             vm.verify_owned_answer_usb_image(self.image, XML + b"extra", SCRIPT)
