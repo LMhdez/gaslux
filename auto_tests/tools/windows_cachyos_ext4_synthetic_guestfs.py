@@ -41,8 +41,11 @@ def run() -> None:
         options = [
             "sgdisk", "-n", "1:2048:+100M", "-t", "1:ef00",
             "-n", "2:0:+16M", "-t", "2:0c01",
-            "-n", "3:0:+72G", "-t", "3:0700",
-            "-n", "4:0:+1536M", "-t", "4:2700",
+            # Compact synthetic Windows-style volumes to test the API without
+            # hashing 72 GiB twice. Real Windows CI still hashes ALL actual
+            # Windows partition bytes at their unchanged production geometry.
+            "-n", "3:0:+256M", "-t", "3:0700",
+            "-n", "4:0:+128M", "-t", "4:2700",
             "-n", "5:0:+24G", "-t", "5:8300",
             str(img),
         ]
