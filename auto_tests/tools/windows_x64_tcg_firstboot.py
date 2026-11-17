@@ -1027,7 +1027,7 @@ def main(argv: list[str] | None = None) -> int:
                     # Read-only file-backed FAT32 answer medium is exposed
                     # to both original and independent disk-only guest boots.
                     "-drive", f"if=none,id=lab_unattend,format=raw,readonly=on,file={answer}",
-                    "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
+                    "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on",
                 ])
             tpm = None
             if args.profile.startswith("win11"):
