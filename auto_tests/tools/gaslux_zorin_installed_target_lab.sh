@@ -36,12 +36,16 @@ chroot_mounted=0
 # On failure the runner can reclaim it after teardown; our script must not
 # traverse external filesystems through a leaked guest mount.
 lab_mounts_remaining() {
-  local target
+  local target mounts
+  mounts="$(findmnt -rn -o TARGET)" || {
+    echo '::error::Cannot inspect live mount table; preserving workspace.' >&2
+    return 0
+  }
   while IFS= read -r target; do
     case "$target" in
       "$work"/*) echo "ACTIVE_LAB_MOUNT=$target" >&2; return 0 ;;
     esac
-  done < <(findmnt -rn -o TARGET)
+  done <<< "$mounts"
   return 1
 }
 
