@@ -518,7 +518,8 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     initial_cd_key_at: float | None = None
     captured_times: set[int] = set()
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
-        proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
+        proc = subprocess.Popen(args, cwd=transcript.parent,
+                                stdout=subprocess.DEVNULL, stderr=err)
         try:
             while time.monotonic() - started < limit:
                 if transcript.is_file():
