@@ -18,13 +18,13 @@ sys.path.insert(0, str(ROOT / "assets" / "live"))
 sys.path.insert(0, str(ROOT / "auto_tests" / "tools"))
 
 from gaslux_q4os_guest_disk_probe import canonical_guest_json, expected_virtio_serial  # noqa: E402
-from gaslux_q4os_vm_target_plan import Q4osPlanRefusal  # noqa: E402
 from gaslux_q4os_qemu_identity_lab import (  # noqa: E402
     MAC_DOMAIN,
     Q4osQemuLabRefusal,
     sparse_content_sha256,
     verify_authenticated_report,
 )
+from gaslux_q4os_vm_target_plan import Q4osPlanRefusal  # noqa: E402
 from q4os_guest_identity_agent import (  # noqa: E402
     ESP_TYPE_GUID,
     GuestProbeError,
@@ -109,7 +109,11 @@ def make_gpt_image(
     part_guid = uuid.UUID(PLAN["espGuid"])
     table = bytearray(128 * 128)
     entry = bytearray(128)
-    type_guid = uuid.UUID("0fc63daf-8483-4772-8e79-3d69d8477de4") if wrong_type else uuid.UUID(ESP_TYPE_GUID)
+    type_guid = (
+        uuid.UUID("0fc63daf-8483-4772-8e79-3d69d8477de4")
+        if wrong_type
+        else uuid.UUID(ESP_TYPE_GUID)
+    )
     entry[:16] = type_guid.bytes_le
     entry[16:32] = part_guid.bytes_le
     struct.pack_into("<QQQ", entry, 32, 2048, 8191, 0)
@@ -294,7 +298,12 @@ def test_authenticated_report_refuses_replayed_or_wrong_disk_identity():
 def test_authenticated_report_refuses_oversized_payload_and_bad_secret():
     raw = canonical_guest_json(guest_report())
     with pytest.raises(Q4osQemuLabRefusal, match="length"):
-        verify_authenticated_report(raw + b" " * 17000, "0" * 64, challenge_secret="ab" * 32, plan=PLAN)
+        verify_authenticated_report(
+            raw + b" " * 17000,
+            "0" * 64,
+            challenge_secret="ab" * 32,
+            plan=PLAN,
+        )
     with pytest.raises(Q4osQemuLabRefusal, match="secret"):
         verify_authenticated_report(raw, "0" * 64, challenge_secret="not-a-secret", plan=PLAN)
 

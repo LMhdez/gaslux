@@ -194,10 +194,19 @@ def _verify_plan(workspace: Path, plan_dir: Path) -> tuple[dict[str, Any], bytes
     public_path = plan_dir / "q4os-vm-lab-public-key.bin"
     fingerprint_path = plan_dir / "q4os-vm-key-sha256.txt"
     for path in (disk, plan_path, signature_path, public_path, fingerprint_path):
-        _require(path.is_file() and not path.is_symlink(), f"Missing or unsafe signed-plan input: {path.name}")
+        _require(
+            path.is_file() and not path.is_symlink(),
+            f"Missing or unsafe signed-plan input: {path.name}",
+        )
     info = disk.stat()
-    _require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "Target image is not exclusively owned")
-    _require(info.st_uid == os.getuid() and info.st_size == DISK_BYTES, "Target image owner or size mismatch")
+    _require(
+        stat.S_ISREG(info.st_mode) and info.st_nlink == 1,
+        "Target image is not exclusively owned",
+    )
+    _require(
+        info.st_uid == os.getuid() and info.st_size == DISK_BYTES,
+        "Target image owner or size mismatch",
+    )
     raw_plan = plan_path.read_bytes()
     plan = json.loads(raw_plan.decode("utf-8"))
     signature = signature_path.read_bytes()
@@ -483,7 +492,12 @@ def run_lab(
         _require(info.get("backing-filename") == str(disk), "QEMU overlay backing image mismatch")
         _require(info.get("backing-filename-format") == "raw", "QEMU backing format mismatch")
         _require(info.get("virtual-size") == DISK_BYTES, "QEMU overlay virtual size mismatch")
-        subprocess.run(["qemu-img", "check", str(overlay)], check=True, capture_output=True, timeout=60)
+        subprocess.run(
+            ["qemu-img", "check", str(overlay)],
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
         _fsync_then_chmod(disk, 0o400)
         _fsync_then_chmod(overlay, 0o400)
         checkpoint["overlayImageSparseSha256Before"] = sparse_content_sha256(overlay)
@@ -533,7 +547,10 @@ def run_lab(
         _write_json_durable(checkpoint_path, checkpoint)
         overlay.unlink()
         _fsync_directory(workspace)
-        _require(sparse_content_sha256(disk) == base_before, "Backing image changed after overlay discard")
+        _require(
+            sparse_content_sha256(disk) == base_before,
+            "Backing image changed after overlay discard",
+        )
         checkpoint["overlayDiscarded"] = True
         checkpoint["baseRevalidatedAfterOverlayDiscard"] = True
         checkpoint["rollbackVerified"] = False
@@ -571,7 +588,7 @@ def run_lab(
             "hostPlanRevalidatedAfterGuest": True,
             "reportMacSha256": identity["reportMacSha256"],
             "observedGuestReport": {
-                "device": identity["observedDevice"] if "observedDevice" in identity else None,
+                "device": identity.get("observedDevice"),
                 "serial": identity["observedSerial"],
                 "diskGuid": identity["observedDiskGuid"],
                 "espGuid": identity["observedEspGuid"],
@@ -610,7 +627,13 @@ def main() -> int:
             Path(sys.argv[4]),
             Path(sys.argv[5]),
         )
-    except (Q4osQemuLabRefusal, Q4osPlanRefusal, OSError, ValueError, subprocess.SubprocessError) as exc:
+    except (
+        Q4osQemuLabRefusal,
+        Q4osPlanRefusal,
+        OSError,
+        ValueError,
+        subprocess.SubprocessError,
+    ) as exc:
         print(f"GASLUX_Q4OS_QEMU_IDENTITY_REFUSED={exc}", file=sys.stderr, flush=True)
         return 1
     print("GASLUX_Q4OS_QEMU_BOOT=PASS")
