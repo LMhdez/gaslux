@@ -14,6 +14,9 @@ distro="$1"
 iso="$(realpath -e -- "$2")"
 digest="$3"
 [[ "$distro" == q4os ]] || die 'Only the pinned Q4OS laboratory source is allowed'
+launch_installer="${GASLUX_Q4OS_LAUNCH_INSTALLER:-no}"
+[[ "$launch_installer" == yes || "$launch_installer" == no ]] ||
+  die 'Unrecognized Q4OS GUI launch laboratory mode'
 [[ "$digest" == '1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d' ]] ||
   die 'Official Q4OS 6.10 r2 SHA-256 is not the independently pinned digest'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
@@ -168,6 +171,7 @@ capture_every=18
 if [[ "$qemu_accel" == kvm ]]; then
   max_ticks=42
   capture_every=7
+  if [[ "$launch_installer" == yes ]]; then max_ticks=56; fi
 fi
 # Reproduce the *exact* native Q4OS first-run language prompt captured in
 # independent QEMU Actions #43964633501, artifact #14275594316. All six
@@ -177,6 +181,12 @@ fi
 expected_modal='da8d7c7f26051f0962152a99494001960f852f222104cb49be2a9962ef95aac8'
 selected_modal=0
 dismissed_modal=0
+# Independently captured Q4OS desktop and its "Install Q4OS" icon from
+# successful Actions #43990554360, screenshot #14287807199, 1280x800.
+# Never click any installer "Install"/partition/confirmation buttons here.
+expected_desktop='231a01a5e394937808d71080dbb4f1a8e9da3bc52e61d80e2e5cdebce8d638d7'
+launcher_clicked=0
+post_launcher_frame=0
 
 for tick in $(seq 1 "$max_ticks"); do
   sleep 5
@@ -197,6 +207,21 @@ for tick in $(seq 1 "$max_ticks"); do
         elif [[ "$selected_modal" -eq 1 && "$current" != "$expected_modal" ]]; then
           dismissed_modal=1
           cp "$work/vnc-$tick.png" "$work/vnc-after-language.png"
+          if [[ "$launch_installer" == yes && "$launcher_clicked" -eq 0 &&
+                "$current" == "$expected_desktop" ]]; then
+            # First click closes the Q4OS welcome window, second *double*
+            # click starts the already verified desktop "Install Q4OS" icon.
+            # Neither of these is a Calamares install/partition confirmation.
+            printf 'GASLUX_Q4OS_PINNED_DESKTOP_LAUNCHER_VERIFIED=1280x800\n'
+            timeout 20s vncdo -s 127.0.0.1:1 \
+              move 948 93 click 1 pause 1 move 57 39 click 1 pause 0.3 click 1 ||
+              die 'SHA-verified native installer desktop icon click failed'
+            launcher_clicked=1
+          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 &&
+                  "$current" != "$expected_desktop" ]]; then
+            post_launcher_frame=1
+            cp "$work/vnc-$tick.png" "$work/vnc-after-installer-icon.png"
+          fi
         fi
       fi
     fi
@@ -210,11 +235,17 @@ rc="$?"
 set -e
 printf '%s\n' "$rc" > "$work/qemu.rc"
 if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
-      "$selected_modal" -eq 1 && "$dismissed_modal" -eq 1 ]]; then
-  echo 'PASS: real Q4OS graphical first-run language modal was SHA-matched, clicked once and changed.'
+      "$selected_modal" -eq 1 && "$dismissed_modal" -eq 1 &&
+      { "$launch_installer" == no ||
+        { "$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1; }; } ]]; then
+  echo 'PASS: Q4OS first-run modal and audited graphical desktop transitioned under SHA-bound VNC actions.'
+  if [[ "$launch_installer" == yes ]]; then
+    echo 'PASS: audited Install Q4OS desktop ICON was clicked and a subsequent VNC frame changed.'
+    echo 'NOT PROVEN: Calamares executable actually started; screenshot must be reviewed.'
+  fi
   echo "GASLUX_Q4OS_FRAME_COUNT=$frame_count"
   echo 'NOT PROVEN: native Calamares job execution, full installation, Linux/Windows dual boot or rollback.'
 else
   tail -c 5000 "$work/serial.log" >&2 || true
-  die "NO VERIFIED Q4OS FIRST-RUN UI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal)"
+  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame)"
 fi
