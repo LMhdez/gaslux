@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 
 # The file contains only the generated Windows Setup command, not a guest script.
 $line = (Get-Content -LiteralPath $CommandFile -Raw).TrimEnd("`r", "`n")
-$prefix = 'powershell.exe -NoP -EP Bypass -C "'
+$prefix = 'powershell -NoP -EP Bypass -C "'
 if (-not $line.StartsWith($prefix) -or -not $line.EndsWith('"')) {
     throw 'Unexpected USB FirstLogon PowerShell invocation'
 }
