@@ -1,0 +1,33 @@
+name: Windows 11 primary/backup GPT fail-closed QCOW2 safety (no Windows)
+on:
+  push:
+    branches: [test/windows11-gpt-primary-backup-readonly-gate]
+    paths:
+      - .github/workflows/windows11-gpt-primary-backup-readonly-smoke.yml
+      - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-gpt-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fail closed on corrupted GPT and verify qemu-img bounded reads
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_installed_gpt_ro_audit.py' -v
+          echo 'Only GPT CRC/MBR/geometry tests and owned synthetic QCOW2 extraction; no OS boot, Linux writes or dual boot.' >> "$GITHUB_STEP_SUMMARY"

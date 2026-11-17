@@ -864,6 +864,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--audit-installed-gpt-readonly", action="store_true",
                     help="Windows 10/11 hosted KVM ONLY: after verified client shutdown, "
                          "inspect the owned installed QCOW2 via read-only libguestfs")
+    ap.add_argument("--audit-primary-backup-gpt-readonly", action="store_true",
+                    help="Windows 11 KVM only: validate both GPT copies, >=40 GiB free "
+                         "and exact agreement with libguestfs, after clean shutdown")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -876,6 +879,16 @@ def main(argv: list[str] | None = None) -> int:
     ):
         raise SystemExit("offline installed GPT audit requires genuine Windows 10/11 "
                          "two-stage hosted KVM firstboot")
+    if args.audit_primary_backup_gpt_readonly and not (
+        args.profile == "win11_26h2_en_us_x64"
+        and args.audit_installed_gpt_readonly
+        and args.two_stage_install_only
+        and args.accel == "kvm"
+        and args.derived_no_prompt
+        and not args.fixture_only
+    ):
+        raise SystemExit("primary/backup GPT audit requires genuine Windows 11 "
+                         "two-stage KVM and independent libguestfs proof")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -914,6 +927,8 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.audit_installed_gpt_readonly:
         report["installedGptReadOnlyVerified"] = False
+    if args.audit_primary_backup_gpt_readonly:
+        report["gptPrimaryBackupReadOnlyVerified"] = False
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
@@ -1047,6 +1062,14 @@ def main(argv: list[str] | None = None) -> int:
                             inspect_owned_disk, encode_report,
                         )
                         snapshot = inspect_owned_disk(disk, args.profile)
+                        candidate = None
+                        if args.audit_primary_backup_gpt_readonly:
+                            from windows_cachyos_qcow2_gpt_readonly import (
+                                inspect_owned_qcow2, correlate_host_gpt_and_guestfs,
+                            )
+                            candidate = correlate_host_gpt_and_guestfs(
+                                inspect_owned_qcow2(disk), snapshot, args.profile,
+                            )
                         require(evidence.is_dir() and not evidence.is_symlink()
                                 and evidence.resolve() == evidence
                                 and evidence.name == "windows-x64-tcg-evidence",
@@ -1054,6 +1077,17 @@ def main(argv: list[str] | None = None) -> int:
                         target = evidence / (args.profile + "-installed-gpt-readonly.json")
                         with target.open("x", encoding="utf-8") as outfile:
                             outfile.write(encode_report(snapshot))
+                        if candidate is not None:
+                            body = json.dumps(candidate, sort_keys=True, indent=2) + "\n"
+                            candidate_name = args.profile + "-gpt-primary-backup-readonly.json"
+                            with (evidence / candidate_name).open("x", encoding="utf-8") as outfile:
+                                outfile.write(body)
+                            digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+                            (evidence / (candidate_name + ".sha256")).write_text(
+                                f"{digest}  {candidate_name}\n", encoding="ascii")
+                            report["gptPrimaryBackupReadOnlyVerified"] = True
+                            print("GASLUX_WINDOWS_GPT_PRIMARY_BACKUP_READONLY_VERIFIED=1",
+                                  flush=True)
                         report["installedGptReadOnlyVerified"] = True
                         print("GASLUX_WINDOWS_INSTALLED_GPT_OFFLINE_READONLY_VERIFIED=1",
                               flush=True)

@@ -130,6 +130,32 @@ class OfflineWindowsDiskAuditTests(unittest.TestCase):
             vm.main(["--profile", WIN11, "--fixture-only",
                      "--audit-installed-gpt-readonly"])
 
+    def test_primary_backup_requires_genuine_win11_and_libguestfs_optin(self):
+        import importlib.util
+        import sys
+        source = TOOLS / "windows_x64_tcg_firstboot.py"
+        spec = importlib.util.spec_from_file_location("win11_primary_gpt_preflight", source)
+        assert spec and spec.loader
+        old_path = list(sys.path)
+        try:
+            sys.path.insert(0, str(TOOLS))
+            vm = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(vm)
+        finally:
+            sys.path[:] = old_path
+        for argv in (
+            ["--profile", WIN11, "--audit-primary-backup-gpt-readonly"],
+            ["--profile", WIN10, "--audit-primary-backup-gpt-readonly",
+             "--audit-installed-gpt-readonly", "--two-stage-install-only",
+             "--derived-no-prompt", "--accel", "kvm"],
+            ["--profile", WIN11, "--fixture-only",
+             "--audit-primary-backup-gpt-readonly",
+             "--audit-installed-gpt-readonly", "--two-stage-install-only",
+             "--derived-no-prompt", "--accel", "kvm"],
+        ):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit):
+                vm.main(argv)
+
     def test_mbr_is_rejected(self):
         self.assert_rejected(
             lambda g: setattr(g, "part_get_parttype", lambda _: "msdos"),
