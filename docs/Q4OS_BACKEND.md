@@ -283,3 +283,42 @@ This is **a guest-owned hook replacement milestone only**. It does not
 establish a Calamares GUI/job execution, account password provisioning,
 Windows dual boot, upgrade survival or rollback. No stable release gate
 was satisfied.
+
+## Exact 29-job native Calamares graph and inert safety profile
+
+The [draft PR #55](https://github.com/LMhdez/gaslux/pull/55)
+is a prerequisite to running the *actual* native Calamares job engine
+safely. The same official Q4OS 6.10 r2 ISO exposes 7 preparatory
+`show` views, **29 `exec` jobs** and the `finished` view. The
+profile builder compares the entire execution order with the
+ISO-verified, allowlisted sequence and rechecks all 12 extracted
+Q4OS process-hook/script SHA-256 records.
+
+A newly generated, **inert and non-activatable** Calamares overlay
+keeps the original job order but blocks the three native Q4OS
+process hooks (`command: /bin/false`), GRUB installation, GRUB
+configuration and `efibootmgr` (`/bin/false`), disables upstream
+`installEFIFallback: true`, and removes the unattended
+`packages` removal list. This is intentionally an **abort-by-default**
+configuration, not a deployable Calamares installation profile. A
+missing source, changed module command, changed execution sequence,
+tampered per-file SHA, symlink or existing output directory causes
+a refusal before generating the profile. The output is written only
+within the isolated GitHub Actions evidence directory, not to
+`/etc/calamares` on the host or an installed system.
+
+The profile audit sets
+`calamaresJobEngineExecuted=false`,
+`profileActivationAuthorized=false`,
+`installationAuthorized=false`,
+`windowsEspWriteAuthorized=false` and
+`diskWrites=0`. These values do not certify a fully installed Q4OS
+or recovery support.
+
+**Not completed:** an authenticated automatic Calamares view
+controller and preflight identity proof on its *live guest*, a
+transaction-limited partition/mount worker, safe native locale/
+keyboard/users/bootloader/package modules, full GUI/exec sequencing,
+and a Windows 10/11 dual-boot recovery simulation. Do not declare
+a full Calamares installation by observing the previous
+`unsquashfs` + `systemd` guest tests.
