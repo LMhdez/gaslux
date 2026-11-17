@@ -80,7 +80,7 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
             'Get-Partition -DiskNumber 0',
             '$parts.Count -eq 5', '$parts.Count -eq 4',
             'PartitionNumber -ne 5', '24GB',
-            'GASLUX_COW_WIN10_BASELINE_NO_LINUX=1',
+            'GASLUX_COW_WIN10_ROLLBACK_FOUR_GPT=1',
             'bcdedit.exe', 'reagentc.exe',
             'Windows RE status:', 'GASLUX_COW_WIN10_REBOOT_FAIL',
         ):
