@@ -128,27 +128,45 @@ cat > "$TARGET/etc/pacman.conf" <<'PACMAN'
 [options]
 Architecture = auto
 CheckSpace
-SigLevel = Required DatabaseOptional
-LocalFileSigLevel = Required
+SigLevel = Required DatabaseOptional TrustedOnly
+LocalFileSigLevel = Required TrustedOnly
+RemoteFileSigLevel = Required TrustedOnly
 
 [cachyos]
-SigLevel = Required DatabaseOptional
+SigLevel = Required DatabaseOptional TrustedOnly
 Include = /etc/pacman.d/cachyos-mirrorlist
 
 [core]
-SigLevel = Required DatabaseOptional
+SigLevel = Required DatabaseOptional TrustedOnly
 Include = /etc/pacman.d/mirrorlist
 
 [extra]
-SigLevel = Required DatabaseOptional
+SigLevel = Required DatabaseOptional TrustedOnly
 Include = /etc/pacman.d/mirrorlist
 PACMAN
 # Refuse any drift from the three signed native repositories.
 [[ "$(arch-chroot "$TARGET" pacman-conf --repo-list)" == "$(printf '%s\n' cachyos core extra)" ]] ||
   die 'installed repo set does not match signed CachyOS/core/extra policy'
+# Pacman-conf reports normalized *effective* signature tokens. Exact
+# string equality falsely rejected a signed install in run 43998900405.
+# Match policy semantics and fail on every unknown/weakening token.
 for repo in cachyos core extra; do
-  [[ "$(arch-chroot "$TARGET" pacman-conf --repo "$repo" SigLevel)" == 'Required DatabaseOptional' ]] ||
-    die "installed $repo repository package-signature policy is not mandatory"
+  level="$(arch-chroot "$TARGET" pacman-conf --repo "$repo" SigLevel)" ||
+    die "cannot inspect installed $repo signature policy"
+  python3 - "$repo" "$level" <<'PY' || die "installed $repo package-signature policy rejected"
+import sys
+repo, raw = sys.argv[1:]
+tokens = raw.split()
+allowed = {'Required', 'PackageRequired', 'DatabaseRequired',
+           'DatabaseOptional', 'TrustedOnly', 'PackageTrustedOnly',
+           'DatabaseTrustedOnly'}
+if (not tokens or len(tokens) != len(set(tokens))
+        or not set(tokens).issubset(allowed)
+        or not ({'Required', 'PackageRequired'} & set(tokens))
+        or not ({'TrustedOnly', 'PackageTrustedOnly'} & set(tokens))):
+    print(f'Unacceptable effective SigLevel for {repo}: {raw!r}', file=sys.stderr)
+    raise SystemExit(1)
+PY
 done
 echo 'GASLUX_LAB_SIGNED_INSTALLED_REPOS_CONFIGURED=1'
 [[ -s "$TARGET/boot/vmlinuz-linux-cachyos-lts" ]] || die 'kernel missing'
