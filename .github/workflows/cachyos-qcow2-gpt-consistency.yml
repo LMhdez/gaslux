@@ -6,6 +6,7 @@ on:
       - .github/workflows/cachyos-qcow2-gpt-consistency.yml
       - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
       - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
   workflow_dispatch:
 permissions:
   contents: read
