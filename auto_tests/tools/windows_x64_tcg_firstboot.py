@@ -489,6 +489,11 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
 
 
 MAX_GUEST_TOKEN_BYTES = 256
+# This cap is deliberately far above normal OVMF/Windows COM1 diagnostic
+# output. QEMU serial is guest-controlled; it must not exhaust a hosted
+# runner or become an unbounded uploaded artifact. Exceeding the cap is
+# an inconclusive/failed lab, not a Windows firstboot success.
+MAX_WINDOWS_GUEST_SERIAL_BYTES = 32 * 1024 * 1024
 
 # Guest COM1 is untrusted until independent VM boot evidence exists. Retain
 # only tokens that can actually satisfy the pinned Windows 10/11 client
@@ -517,7 +522,8 @@ def scan_windows_guest_tokens(
     A token longer than 256 bytes is not evidence; its suffix must not
     be mistaken for a new proof token across chunk boundaries.
     """
-    require(offset >= 0 and len(carry) <= MAX_GUEST_TOKEN_BYTES,
+    require(0 <= offset <= MAX_WINDOWS_GUEST_SERIAL_BYTES
+            and len(carry) <= MAX_GUEST_TOKEN_BYTES,
             "invalid Windows guest serial scanner state")
     require(path.is_file() and not path.is_symlink(),
             "untrusted Windows guest serial evidence")
@@ -525,6 +531,8 @@ def scan_windows_guest_tokens(
     with path.open("rb") as stream:
         end = stream.seek(0, os.SEEK_END)
         require(end >= offset, "Windows guest serial evidence was truncated")
+        require(end <= MAX_WINDOWS_GUEST_SERIAL_BYTES,
+                "Windows guest COM1 serial exceeded maximum evidence size")
         stream.seek(offset)
         while offset < end:
             chunk = stream.read(min(65536, end - offset))
@@ -1223,6 +1231,10 @@ def main(argv: list[str] | None = None) -> int:
                     tpm.terminate()
                     tpm.wait(timeout=10)
             if serial.is_file():
+                require(not serial.is_symlink(),
+                        "untrusted guest COM1 serial artifact path")
+                require(serial.stat().st_size <= MAX_WINDOWS_GUEST_SERIAL_BYTES,
+                        "Windows guest COM1 serial artifact exceeded maximum size")
                 dest = evidence / f"{args.profile}-serial.log"
                 require(not dest.exists(), "existing evidence log")
                 shutil.copyfile(serial, dest)
