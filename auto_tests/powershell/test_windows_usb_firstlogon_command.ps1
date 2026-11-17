@@ -62,9 +62,7 @@ Write-Output ("GASLUX_PS_SYNTHETIC_HASH_MATCH=" +
 try {
     $resolvedPath = Invoke-Expression ($preflight + ';$p')
 } catch {
-    throw ("GASLUX_VALID_SYNTHETIC_USB_LOOKUP_FAILED: "
-        + $_.Exception.Message + "; mockHashCalls=" + $script:hashMockCalls
-        + "; seenPath=" + $script:seenPath + "; seenLabel=" + $script:seenLabel)
+    throw ("GASLUX_VALID_SYNTHETIC_USB_LOOKUP_FAILED: {0}; mockHashCalls={1}; seenPath={2}; seenLabel={3}" -f $_.Exception.Message, $script:hashMockCalls, $script:seenPath, $script:seenLabel)
 }
 if ($resolvedPath -ne 'Z:\GASLUX.PS1') {
     throw "Valid unique FAT32 USB did not resolve its dynamic drive"
