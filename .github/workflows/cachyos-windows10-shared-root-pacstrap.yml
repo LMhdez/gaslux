@@ -242,8 +242,11 @@ jobs:
           recorded, filename = manifest.read_text().split()
           assert filename == fifth.name
           assert recorded == hashlib.sha256(fifth.read_bytes()).hexdigest()
-          assert b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1" in fifth.read_bytes()
-          assert b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1" in fifth.read_bytes()
+          fifth_raw = fifth.read_bytes()
+          assert fifth_raw.count(b"GASLUX_COW_WIN10_REBOOT_BCD=1") == 1
+          assert fifth_raw.count(b"GASLUX_COW_WIN10_REBOOT_WINRE=1") == 1
+          assert fifth_raw.count(b"GASLUX_COW_WIN10_ROLLBACK_FOUR_GPT=1") == 1
+          assert b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1" not in fifth_raw
           print("PASS: genuine Archiso pacstrap populated the existing fifth ext4 partition on a Windows-backed disposable COW.")
           print("PASS: Windows GPT/ESP/BCD/WinRE hashes and immutable base stayed unchanged; COW discarded; clean Windows baseline booted.")
           print("NOT PROVEN: native CachyOS bootloader, first boot, same-disk dual boot, updates, in-place recovery, physical hardware or production safety.")
