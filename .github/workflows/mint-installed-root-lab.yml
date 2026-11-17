@@ -27,15 +27,13 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          bash -n auto_tests/tools/gaslux_legacy_installed_target_lab.sh \
-            auto_tests/tools/gaslux_legacy_installed_target_lab.sh
+          bash -n auto_tests/tools/gaslux_legacy_installed_target_lab.sh
           if bash auto_tests/tools/gaslux_legacy_installed_target_lab.sh mint /not-a-real-image "not-a-hash"; then
             echo "::error::Owned disk test accepted bogus ISO credentials"
             exit 1
           fi
           # All physical devices are forbidden; only generated loop files are eligible.
           if grep -Eq '/dev/(sd[a-z]|nvme[0-9]|vd[a-z]|hd[a-z])' \
-              auto_tests/tools/gaslux_legacy_installed_target_lab.sh \
               auto_tests/tools/gaslux_legacy_installed_target_lab.sh; then
             echo "::error::An actual block-device path was introduced in the lab"
             exit 1
@@ -72,7 +70,7 @@ jobs:
           assert item["isoInstallerSha256"] == os.environ["MINT_SHA"]
           assert item["isoInstallerSizeBytes"] == int(os.environ["MINT_BYTES"])
           assert shutil.disk_usage(os.environ["RUNNER_TEMP"]).free > 15 * 1024**3
-          print("Verified exact pinned 22.3 Core release and disposable storage budget")
+          print("Verified exact pinned 22.3 Cinnamon release and disposable storage budget")
           PY
       - name: Install isolated disk/VM and read-only media tools
         run: |
@@ -108,7 +106,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: mint-181-disposable-installed-root-evidence
+          name: mint-223-disposable-installed-root-evidence
           path: ${{ runner.temp }}/mint-installed-evidence/
           if-no-files-found: warn
           retention-days: 14
