@@ -149,7 +149,10 @@ def capture(image: Path) -> dict:
 
 
 def verify(before: dict, after: dict) -> dict:
-    if any(type(snapshot) is not dict or set(snapshot) != _SNAPSHOT_KEYS for snapshot in (before, after)):
+    if any(
+        type(snapshot) is not dict or set(snapshot) != _SNAPSHOT_KEYS
+        for snapshot in (before, after)
+    ):
         raise GptRefusal("Unrecognised EFI snapshot schema")
     if before["version"] != 1 or after["version"] != 1:
         raise GptRefusal("Unsupported EFI snapshot version")
