@@ -1,0 +1,75 @@
+name: Replay prior genuine Win10 fifth-GPT thirdboot evidence (NO VM or storage writes)
+
+on:
+  push:
+    branches:
+      - test/windows10-cachyos-overlay-third-boot-audit
+    paths:
+      - .github/workflows/windows-cachyos-thirdboot-evidence-replay.yml
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  replay-immutable-genuine-witness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT: I_ACCEPT_WINDOWS_GUEST_REBOOT_ON_PRIVATE_GPT_OVERLAY_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Authenticate exact previous KVM artifact SHA256 and replay candidate audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          cd "$RUNNER_TEMP"
+          test ! -e original-real-guest.zip
+          gh api -H "Accept: application/vnd.github+json" \
+            repos/LMhdez/gaslux/actions/artifacts/14347725977/zip > original-real-guest.zip
+          echo "4af5cd0cdde7f956f6e8799d587a21cca98e297f697ad1bad8e6be3d0a9ae088  original-real-guest.zip" | sha256sum -c -
+          mkdir -m 700 extracted
+          unzip -q -o original-real-guest.zip -d extracted/
+          cd "$GITHUB_WORKSPACE"
+          evidence="$RUNNER_TEMP/extracted"
+          profile=win10_22h2_en_us_x64
+          python3 auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            --profile "$profile" \
+            --result "$evidence/$profile-result.json" \
+            --serial "$evidence/$profile-serial.log" \
+            --serial-sha256 "$evidence/$profile-serial.sha256" \
+            --initial-dvd-serial "$evidence/$profile-initial-dvd-serial.log" \
+            --initial-dvd-serial-sha256 "$evidence/$profile-initial-dvd-serial.sha256" \
+            --verify-owned-overlay-third-boot
+          python3 - "$evidence" "$profile" <<'PY'
+          import hashlib,json,pathlib,sys
+          root,profile=pathlib.Path(sys.argv[1]),sys.argv[2]
+          result=json.loads((root/(profile+'-result.json')).read_text())
+          third=(root/(profile+'-third-overlay-boot.json'))
+          proof=json.loads(third.read_text())
+          assert result['windowsClientBootVerified'] is True
+          assert result['windowsBootAfterLinuxGptOverlayVerified'] is True
+          assert result['thirdBootBcdWinreEspVerified'] is True
+          assert hashlib.sha256(third.read_bytes()).hexdigest()==result['thirdBootProofSha256']
+          serial=(root/(profile+'-third-boot-serial.log'))
+          assert hashlib.sha256(serial.read_bytes()).hexdigest()==proof['thirdBootGuestSerialSha256']
+          for field in ('windowsBootAfterOverlayMutationVerified','guestBcdWinreEspAfterOverlayVerified',
+                        'windowsGuestShutdownAfterOverlayVerified','fifthGptUnchangedAfterGuestBoot',
+                        'windowsBackingUnchangedAfterGuestBoot','originalUefiVarsUnchangedAfterGuestBoot'):
+              assert proof[field] is True,field
+          for field in ('cachyosInstalled','cachyosFirstBootVerified','rollbackProven',
+                        'sameDiskDualBootVerified','storageWritesAuthorized','releaseEligible'):
+              assert proof[field] is False,field
+          print("PASS: sha256-pinned prior Win10 fifth-GPT thirdboot artifact replay")
+          print("NOT proof of fresh Windows VM boot or dual boot on this run")
+          PY
+          echo 'PASS: hash-pinned prior genuine Windows boot evidence replay; no VM boot or disk write performed in this job.' >> "$GITHUB_STEP_SUMMARY"
