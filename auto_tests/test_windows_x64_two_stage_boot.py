@@ -100,7 +100,7 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertNotIn("-no-reboot", second)
         self.assertEqual(first[first.index("-boot") + 1], "order=d")
         self.assertEqual(second[second.index("-boot") + 1], "order=c")
-        self.assertEqual(first[first.index("-monitor") + 1], f"unix:{tmp}/hmp.sock,server,nowait")
+        self.assertEqual(first[first.index("-monitor") + 1], f"unix:{d}/hmp.sock,server,nowait")
         self.assertEqual(second[second.index("-monitor") + 1], "none")
         self.assertIn("/tmp/derived.iso", " ".join(first))
         self.assertNotIn("/tmp/derived.iso", " ".join(second))
