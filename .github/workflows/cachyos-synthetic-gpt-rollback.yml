@@ -1,10 +1,11 @@
 name: CachyOS synthetic shared GPT add/remove rollback (file only)
 on:
   push:
-    branches: [test/cachyos-synthetic-gpt-add-remove-rollback]
+    branches: [test/cachyos-synthetic-gpt-add-remove-rollback, test/cachyos-gpt-durable-checkpoint-recovery]
     paths:
       - .github/workflows/cachyos-synthetic-gpt-rollback.yml
       - auto_tests/tools/cachyos_synthetic_shared_gpt_rollback.py
+      - auto_tests/tools/cachyos_synthetic_gpt_durable_recovery.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,4 +33,6 @@ jobs:
           set -Eeuo pipefail
           python3 -m py_compile auto_tests/tools/cachyos_synthetic_shared_gpt_rollback.py
           python3 auto_tests/tools/cachyos_synthetic_shared_gpt_rollback.py
-          printf '%s\n' 'Synthetic fresh file-backed GPT add/delete and Windows-entry preservation passed; not a Windows+CachyOS same-disk VM or real recovery test.' >> "$GITHUB_STEP_SUMMARY"
+          python3 -m py_compile auto_tests/tools/cachyos_synthetic_gpt_durable_recovery.py
+          python3 auto_tests/tools/cachyos_synthetic_gpt_durable_recovery.py
+          printf '%s\n' 'Synthetic fresh file-backed GPT add/delete, durable checkpoint fault injection and idempotent recovery passed; no genuine Windows/CachyOS VM or real recovery.' >> "$GITHUB_STEP_SUMMARY"
