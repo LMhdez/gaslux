@@ -13,6 +13,7 @@ options="$(findmnt -rn -M /run/gaslux-control -o OPTIONS)"
 # systemd.run-generator's oneshot service inherits the default start timeout.
 # Running long pacman-key/pacstrap inside that oneshot can terminate
 # prematurely with no useful Bash exit marker. Spawn a separately supervised,
-# bounded unit and let the kernel command line oneshot return promptly.
-systemd-run --no-block --unit=gaslux-vm-install   --property=Type=exec   --property=TimeoutStartSec=0   --property=RuntimeMaxSec=1800   --property=StandardOutput=journal+console   --property=StandardError=journal+console   /usr/bin/bash /run/gaslux-control/gaslux-run.sh
+# bounded Type=simple unit and let the kernel command line oneshot return promptly.
+# The independent Bash INSTALL_BEGIN marker remains mandatory.
+systemd-run --no-block --unit=gaslux-vm-install   --property=Type=simple   --property=TimeoutStartSec=infinity   --property=RuntimeMaxSec=1800   --property=StandardOutput=journal+console   --property=StandardError=journal+console   /usr/bin/bash /run/gaslux-control/gaslux-run.sh
 echo 'GASLUX_VM_INSTALL_UNIT_SUBMITTED'
