@@ -25,6 +25,7 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urlparse
 
 from windows_x64_qemu_host_gate import load_catalog, EXPECTED, OVMF_CODE, OVMF_VARS
@@ -558,9 +559,77 @@ def build_two_stage_qemu_args(
     return first, second
 
 
+def restart_owned_swtpm_for_second_guest(
+    first_process: subprocess.Popen, workspace: Path,
+) -> subprocess.Popen:
+    """Reconnect TPM 2.0 to a second QEMU process, preserving the SAME NV state.
+
+    swtpm's Unix control listener can terminate when QEMU -no-reboot closes.
+    Reusing its stale socket breaks Windows 11 at QEMU process startup. Never
+    remove the TPM state directory or import an unrelated process/socket.
+    """
+    state_dir = workspace / "swtpm-state"
+    endpoint = workspace / "swtpm.sock"
+    require(
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and os.environ.get("RUNNER_OS") == "Linux"
+        and workspace.is_absolute()
+        and workspace.parent == Path("/home/runner/work/_temp")
+        and workspace.name.startswith("gaslux-win-x64-")
+        and workspace.is_dir() and not workspace.is_symlink()
+        and workspace.resolve() == workspace
+        and workspace.stat().st_uid == os.getuid()
+        and stat.S_IMODE(workspace.stat().st_mode) == 0o700
+        and state_dir.is_dir() and not state_dir.is_symlink()
+        and state_dir.stat().st_uid == os.getuid()
+        and stat.S_IMODE(state_dir.stat().st_mode) == 0o700,
+        "refusing TPM restart outside private owned hosted Windows VM",
+    )
+    # Never unlink files or sockets that an unrelated process could own.
+    require(
+        not endpoint.is_symlink()
+        and (not endpoint.exists()
+             or (endpoint.is_socket()
+                 and endpoint.stat().st_uid == os.getuid())),
+        "refusing to replace an unowned TPM socket",
+    )
+    if first_process.poll() is None:
+        first_process.terminate()
+    try:
+        first_process.wait(timeout=10)
+    except subprocess.TimeoutExpired as exc:
+        raise LabError("first-stage swtpm did not exit cleanly") from exc
+    if endpoint.exists():
+        endpoint.unlink()  # Only a validated socket in our private 0700 VM dir.
+    require(shutil.which("swtpm") is not None, "Windows 11 TPM 2.0 unavailable")
+    stderr_path = workspace / "swtpm-second-stderr.log"
+    with stderr_path.open("xb") as err:
+        second = subprocess.Popen(
+            ["swtpm", "socket", "--tpm2", "--tpmstate", f"dir={state_dir}",
+             "--ctrl", f"type=unixio,path={endpoint}",
+             "--flags", "not-need-init"],
+            stdout=subprocess.DEVNULL, stderr=err,
+        )
+    for _ in range(100):
+        if second.poll() is not None:
+            break
+        if endpoint.is_socket() and not endpoint.is_symlink():
+            require(endpoint.stat().st_uid == os.getuid(),
+                    "second TPM socket owner mismatch")
+            print("GASLUX_WINDOWS_VM_SECOND_TPM_SOCKET_RECONNECTED=1", flush=True)
+            return second
+        time.sleep(0.1)
+    if second.poll() is None:
+        second.terminate()
+        second.wait(timeout=10)
+    raise LabError("fresh second-stage swtpm listener unavailable")
+
+
 def boot_two_stage_windows(
     original_args: list[str], disk: Path, final_serial: Path,
     limit: int, profile_key: str,
+    restart_tpm: Callable[[], None] | None = None,
 ) -> tuple[bool, str]:
     """DVD Setup stage exits at guest reboot; independently boot OWNED GPT disk.
 
@@ -580,6 +649,8 @@ def boot_two_stage_windows(
         == "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY",
         "two-stage Windows guest has unowned disk or missing hosted consent",
     )
+    require(profile_key != "win11_26h2_en_us_x64" or restart_tpm is not None,
+            "Windows 11 second stage requires a fresh owned TPM 2.0 listener")
     initial_serial = final_serial.parent / "initial-dvd-guest-serial.log"
     require(not initial_serial.exists() and not final_serial.exists(),
             "VM serial evidence path was reused")
@@ -632,6 +703,8 @@ def boot_two_stage_windows(
         return False, "not enough time for independent installed Windows boot"
     print("GASLUX_WINDOWS_VM_INITIAL_DVD_STAGE_REBOOT_AND_GPT_WRITES_OBSERVED=1",
           flush=True)
+    if restart_tpm is not None:
+        restart_tpm()
     # The second VM is constructed without ANY DVD, even if OVMF BootOrder
     # retained an old DVD preference. First Windows client boot must therefore
     # originate from the exact new file-backed GPT target.
@@ -823,7 +896,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.profile.startswith("win11"):
                 require(shutil.which("swtpm") is not None, "Windows 11 requires TPM 2.0")
                 state = workspace / "swtpm-state"
-                state.mkdir()
+                state.mkdir(mode=0o700)
                 socket = workspace / "swtpm.sock"
                 tpm = subprocess.Popen(
                     ["swtpm", "socket", "--tpm2", "--tpmstate", f"dir={state}",
@@ -846,8 +919,15 @@ def main(argv: list[str] | None = None) -> int:
                     report["labNoPromptDvdBootProbePassed"] = ok
                     report["windowsClientBootVerified"] = False
                 elif args.two_stage_install_only:
+                    def restart_guest_tpm() -> None:
+                        nonlocal tpm
+                        require(tpm is not None, "Windows 11 virtual TPM missing")
+                        tpm = restart_owned_swtpm_for_second_guest(tpm, workspace)
+
                     ok, diagnostic = boot_two_stage_windows(
                         base, disk, serial, args.boot_timeout, args.profile,
+                        restart_tpm=(restart_guest_tpm if args.profile.startswith("win11")
+                                     else None),
                     )
                 else:
                     ok, diagnostic = boot_vm(
