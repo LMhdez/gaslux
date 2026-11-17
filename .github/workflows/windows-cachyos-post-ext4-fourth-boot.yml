@@ -76,7 +76,7 @@ jobs:
               test_windows_cachyos_overlay_gpt_stage.py \
               test_windows_cachyos_overlay_reboot.py \
               test_windows_cachyos_overlay_ext4_only.py \
-              test_windows_cachyos_postext4_windows.py \\
+              test_windows_cachyos_postext4_windows.py \
               test_windows_mint_overlay_root.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
@@ -159,7 +159,7 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
-            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic \\
+            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic \
             aria2 squashfs-tools
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
@@ -198,7 +198,7 @@ jobs:
             --stage-cachyos-overlay-root-gpt-only \
             --verify-windows-reboot-with-fifth-gpt \
             --format-owned-fifth-ext4-only \
-            --verify-windows-reboot-after-ext4 \\
+            --verify-windows-reboot-after-ext4 \
             --install-mint-cow-root --mint-iso "$RUNNER_TEMP/mint-upstream/mint.iso"
           echo 'Mint and Windows are boot-tested on the same disposable COW; native GRUB menu, updates and rollback remain unproven.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
