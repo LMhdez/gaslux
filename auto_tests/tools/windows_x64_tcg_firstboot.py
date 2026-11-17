@@ -1197,7 +1197,7 @@ def main(argv: list[str] | None = None) -> int:
                                 shutil.copyfile(third_log, third_dest)
                                 digest = hashlib.sha256(third_dest.read_bytes()).hexdigest()
                                 (evidence / f"{args.profile}-thirdboot-serial.sha256").write_text(
-                                    f"{digest}  {third_dest.name}\\n", encoding="ascii",
+                                    f"{digest}  {third_dest.name}\n", encoding="ascii",
                                 )
                                 report["thirdWindowsBootSerialSha256"] = digest
                 else:
