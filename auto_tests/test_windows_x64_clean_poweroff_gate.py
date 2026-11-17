@@ -93,10 +93,76 @@ class InstalledWindowsPoweroffContracts(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("before installed Windows first-logon witness", info)
 
-    def test_markers_must_be_complete_lines_not_substrings(self):
+    def test_markers_must_be_complete_delimited_tokens_not_substrings(self):
         data = b"UNTRUSTED_PREFIX_" + witness()
         (ok, info), _ = self.run_guest(data, 0)
         self.assertFalse(ok)
+
+    def test_coalesced_genuine_win10_evidence_with_boot_manager(self):
+        # Synthetic replay of the authentic Windows 10 Actions artifact:
+        # OVMF Windows Boot Manager, then all seven audit tokens on ONE line.
+        # No guest GPT GUID, credentials or machine identifiers are copied.
+        serial = (
+            b'BdsDxe: starting Boot0003 "Windows Boot Manager"\n'
+            + b" ".join(witness().splitlines()) + b"\n"
+        )
+        (ok, info), qemu = self.run_guest(serial, 0)
+        self.assertTrue(ok, info)
+        self.assertIn("clean VM poweroff verified", info)
+        self.assertFalse(qemu.killed)
+
+    def test_coalesced_witness_missing_winre_rejected(self):
+        serial = b" ".join(witness().splitlines()).replace(
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1", b"")
+        (ok, info), _ = self.run_guest(serial, 0)
+        self.assertFalse(ok)
+        self.assertIn("before installed Windows first-logon witness", info)
+
+    def test_coalesced_build_prefix_is_not_a_build_witness(self):
+        for suffix in (b"0", b"_EXTRA", b"-bad"):
+            with self.subTest(suffix=suffix):
+                serial = b" ".join(witness().splitlines()).replace(
+                    b"GASLUX_WINDOWS_X64_BOOT_BUILD=19045",
+                    b"GASLUX_WINDOWS_X64_BOOT_BUILD=19045" + suffix,
+                )
+                (ok, info), _ = self.run_guest(serial, 0)
+                self.assertFalse(ok)
+                self.assertIn("before installed Windows first-logon witness", info)
+
+    def test_coalesced_proofs_must_have_full_token_boundaries(self):
+        for prefix in (b"UNTRUSTED_", b"X"):
+            with self.subTest(prefix=prefix):
+                serial = b" ".join(witness().splitlines()).replace(
+                    b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+                    prefix + b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+                )
+                (ok, _), _ = self.run_guest(serial, 0)
+                self.assertFalse(ok)
+
+    def test_coalesced_negative_guest_audit_overrides_success(self):
+        serial = (b" ".join(witness().splitlines())
+                  + b" GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL:"
+                    b" guest audit rejected\n")
+        (ok, info), _ = self.run_guest(serial, 0)
+        self.assertFalse(ok)
+        self.assertIn("explicitly rejected", info)
+
+    def test_coalesced_success_needs_clean_shutdown(self):
+        (ok, info), qemu = self.run_guest(
+            b" ".join(witness().splitlines()), 1)
+        self.assertFalse(ok)
+        self.assertIn("abnormally", info)
+        self.assertFalse(qemu.killed)
+
+    def test_witness_can_mix_newlines_and_whitespace(self):
+        serial = witness().replace(
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1\n"
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1 "
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+        )
+        (ok, info), _ = self.run_guest(serial, 0)
+        self.assertTrue(ok, info)
 
     def test_windows_com1_newline_is_actual_lf(self):
         p = vm.witness_powershell("win10_22h2_en_us_x64", "19045")
