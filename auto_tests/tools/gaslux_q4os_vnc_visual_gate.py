@@ -58,10 +58,7 @@ def verified_after_close(path: Path) -> bool:
     screen = _open_verified_screen(path)
     if screen is None:
         return False
-    return (
-        _roi_sha(screen, _ICON[0]) == _ICON[1]
-        and _roi_sha(screen, _WELCOME[0]) != _WELCOME[1]
-    )
+    return _roi_sha(screen, _ICON[0]) == _ICON[1] and _roi_sha(screen, _WELCOME[0]) != _WELCOME[1]
 
 
 def verified_centre_changed(before: Path, after: Path) -> bool:
