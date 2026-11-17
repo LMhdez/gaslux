@@ -4,6 +4,8 @@ from __future__ import annotations
 import binascii
 import importlib.util
 import os
+import shutil
+import subprocess
 from pathlib import Path
 import struct
 import tempfile
@@ -70,6 +72,60 @@ def create_disk_windows(part_types=None, overlap=False, small_free=False,
 
 
 class WindowsQcow2GptCandidateTests(unittest.TestCase):
+    def test_qemu_img_dd_uses_count_only_for_primary_gpt_window(self):
+        disk = Path("/tmp/synthetic-only.qcow2")
+        front = gpt.bounded_qcow2_dd_command(
+            disk, Path("/tmp/front.raw"), "front"
+        )
+        back = gpt.bounded_qcow2_dd_command(
+            disk, Path("/tmp/back.raw"), "back"
+        )
+        self.assertIn("count=2048", front)
+        self.assertIn("skip=0", front)
+        self.assertNotIn("count=2048", back)
+        self.assertIn(
+            f"skip={TOTAL - gpt.WINDOW_SECTORS}", back,
+        )
+        self.assertEqual(front[0:5], back[0:5])
+        with self.assertRaisesRegex(gpt.GeometryError, "unknown GPT window"):
+            gpt.bounded_qcow2_dd_command(
+                disk, Path("/tmp/sentinel.raw"), "middle"
+            )
+
+    @unittest.skipUnless(
+        shutil.which("qemu-img") and shutil.which("qemu-io"),
+        "native file-backed qemu-img/qemu-io test needs qemu-utils",
+    )
+    def test_qemu_img_dd_reads_actual_last_sector_of_sparse_qcow2(self):
+        # A disposable sparse 128-GiB VIRTUAL QCOW2 has tiny host allocation.
+        # No VM, host block device, network or Windows installation is used.
+        with tempfile.TemporaryDirectory(prefix="gaslux-gpt-qemu-dd-") as tmp:
+            root = Path(tmp)
+            disk = root / "only-disposable-windows-target.qcow2"
+            subprocess.run(
+                ["qemu-img", "create", "-f", "qcow2", str(disk), "128G"],
+                check=True, capture_output=True, timeout=30,
+            )
+            subprocess.run(
+                ["qemu-io", "-f", "qcow2",
+                 "-c", "write -P 0xa5 0 512",
+                 "-c", f"write -P 0x5a {gpt.VIRTUAL_BYTES - 512} 512",
+                 str(disk)],
+                check=True, capture_output=True, timeout=30,
+            )
+            raw = {}
+            for suffix in ("front", "back"):
+                dest = root / (suffix + ".raw")
+                subprocess.run(
+                    gpt.bounded_qcow2_dd_command(disk, dest, suffix),
+                    check=True, capture_output=True, timeout=60,
+                )
+                self.assertEqual(dest.stat().st_size, gpt.WINDOW_BYTES)
+                raw[suffix] = dest.read_bytes()
+            self.assertEqual(raw["front"][:512], b"\xa5" * 512)
+            self.assertEqual(raw["back"][-512:], b"\x5a" * 512)
+            self.assertEqual(raw["back"][:512], b"\x00" * 512)
+
     def test_clean_windows_gpt_and_free_extent_are_document_only(self):
         front, back = create_disk_windows()
         result = gpt.inspect_gpt_windows(front, back)
