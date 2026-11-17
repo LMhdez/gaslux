@@ -83,7 +83,10 @@ def generate(
         "isoSha256": pinned_sha256,
         "isoSizeBytes": iso_path.stat().st_size,
     }
-    handoff = _HANDOFF.prepare(\n        plan, storage_root=iso_path.parent, iso_root=iso_root,\n        require_mounted_iso=True,\n    )
+    handoff = _HANDOFF.prepare(
+        plan, storage_root=iso_path.parent, iso_root=iso_root,
+        require_mounted_iso=True,
+    )
     require(
         handoff["ok"] is True
         and handoff["isoSha256Verified"] is True
