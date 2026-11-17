@@ -78,7 +78,7 @@ jobs:
           assert 'StandardOutput=journal+console' in guest
           assert 'GASLUX_VM_FIRSTBOOT_PASS:' in guest
           assert 'gaslux-lab-firstboot.service' in guest
-          assert 'console=ttyS0' in host
+          assert '-serial "file:$w/live-serial.log"' in host
           assert 'mcopy -i "$w/control.raw" "$launch" ::/gaslux-launch.sh' in host
           assert 'systemd-run --no-block --unit=gaslux-vm-install' in launcher
           assert '--property=TimeoutStartSec=infinity' in launcher
