@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -55,9 +56,12 @@ def validate_lsblk_readonly(plan: dict, observed: Any) -> dict[str, bool]:
     require(type(children) is list and len(children) == 5,
             "foreign/missing Windows or Linux GPT child partition")
     seen: set[str] = set()
-    for planned, actual in zip(plan["partitions"], children):
+    for number, (planned, actual) in enumerate(zip(plan["partitions"], children), 1):
         require(type(actual) is dict and actual.get("type") == "part",
                 "non-partition object on chosen Windows disk")
+        require(actual.get("path") == f"{disk['path']}{number}"
+                and actual.get("name") == f"{disk['path'][5:]}{number}",
+                "guest partition device path differs from selected disk")
         for key in ("partuuid", "parttype", "fstype", "uuid"):
             require(actual.get(key) is None or isinstance(actual[key], str),
                     "malformed observed partition metadata")
