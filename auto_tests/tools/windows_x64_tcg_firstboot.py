@@ -525,9 +525,11 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     with transcript.open("rb") as source:
                         source.seek(max(0, transcript.stat().st_size - 400_000))
                         serial_data = source.read(400_000)
-                        lines = {
-                            line.strip() for line in serial_data.splitlines()
-                        }
+                        # Genuine Windows COM1 serial output may coalesce
+                        # several WriteLine records into one space-separated
+                        # frame. Only FULL whitespace-delimited proof tokens
+                        # are accepted: no substrings or build prefixes.
+                        tokens = set(serial_data.split())
                     if reject_repeated_dvd_boot:
                         dvd_starts = re.findall(
                             rb'BdsDxe: starting Boot[0-9]{4} "UEFI QEMU DVD-ROM',
@@ -556,11 +558,11 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                                 initial_cd_key_sent = True
                                 print("GASLUX_VM_INITIAL_OFFICIAL_WIN11_DVD_KEY_SENT=1",
                                       flush=True)
-                    if any(line.startswith(FAILURE.encode()) for line in lines):
+                    # A guest audit failure always overrides any
+                    # coalesced positive witness, including stage failures.
+                    if any(token.startswith(FAILURE.encode()) for token in tokens):
                         return False, "installed Windows explicitly rejected firstboot audit"
-                    if required.issubset(lines) and any(
-                        line.startswith(build_line) for line in lines
-                    ):
+                    if required.issubset(tokens) and build_line in tokens:
                         if witnessed_at is None:
                             witnessed_at = time.monotonic()
                 rc = proc.poll()
