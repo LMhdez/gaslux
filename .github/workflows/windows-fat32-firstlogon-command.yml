@@ -54,7 +54,7 @@ jobs:
             $owned = Join-Path $env:RUNNER_TEMP ("gaslux-fat32-" + $profile)
             $null = New-Item -ItemType Directory -Path $owned -Force
             $scriptFile = Join-Path $owned 'GASLUX.PS1'
-            python -c "import sys;from pathlib import Path;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import witness_powershell;Path(sys.argv[3]).write_text(witness_powershell(sys.argv[1],sys.argv[2])+chr(10),encoding='utf-8')" $profile $build $scriptFile
+            python -c "import sys;from pathlib import Path;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import witness_powershell;Path(sys.argv[3]).write_bytes((witness_powershell(sys.argv[1],sys.argv[2])+chr(10)).encode('utf-8'))" $profile $build $scriptFile
             if ($LASTEXITCODE -ne 0) { throw 'Real synthetic guest script bytes could not be generated' }
             python -c "import sys;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import usb_firstlogon_command;print(usb_firstlogon_command(sys.argv[1],sys.argv[2]))" $profile $build |
               Out-File -LiteralPath $source -Encoding ascii
