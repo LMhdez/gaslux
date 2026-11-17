@@ -192,8 +192,11 @@ class WindowsRecoveryFixtureTests(unittest.TestCase):
         self.rejected(
             lambda old, new: new["disks"][1]["partitions"].append(
                 part(
-                    "abcdef12-1111-2222-3333-444444444444", 1,
-                    52 * GIB, GIB, "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7",
+                    "abcdef12-1111-2222-3333-444444444444",
+                    1,
+                    52 * GIB,
+                    GIB,
+                    "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7",
                 )
             ),
             message="duplicate partition number",
