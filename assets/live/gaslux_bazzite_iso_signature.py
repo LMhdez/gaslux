@@ -99,10 +99,13 @@ def verify_bazzite_iso_blob(
     try:
         result = subprocess.run(
             [
-                str(program), "verify-blob",
+                str(program),
+                "verify-blob",
                 "--insecure-ignore-tlog=true",
-                "--key", str(pubkey),
-                "--signature", str(signature),
+                "--key",
+                str(pubkey),
+                "--signature",
+                str(signature),
                 str(iso),
             ],
             capture_output=True,
