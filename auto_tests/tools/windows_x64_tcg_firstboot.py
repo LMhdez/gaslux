@@ -1180,6 +1180,26 @@ def main(argv: list[str] | None = None) -> int:
                                     base, workspace, args.profile),
                                     "third independent Windows guest not verified")
                                 report["windowsRebootAfterOverlayDiscardVerified"] = True
+                                if "disposableBcdOverlayExperiment" in report:
+                                    report["disposableBcdOverlayExperiment"][
+                                        "windowsRebootAfterBcdOverlayDiscardVerified"
+                                    ] = True
+                                # Persist only bounded third-boot COM1 proof,
+                                # never a Windows image or unbounded logs.
+                                third_log = workspace / "thirdboot-windows-serial.log"
+                                require(third_log.is_file() and not third_log.is_symlink()
+                                        and 0 < third_log.stat().st_size <= 2_000_000,
+                                        "unbounded or missing independent third boot serial")
+                                third_dest = evidence / f"{args.profile}-thirdboot-serial.log"
+                                require(not third_dest.exists() and
+                                        not third_dest.is_symlink(),
+                                        "third-boot evidence path reused")
+                                shutil.copyfile(third_log, third_dest)
+                                digest = hashlib.sha256(third_dest.read_bytes()).hexdigest()
+                                (evidence / f"{args.profile}-thirdboot-serial.sha256").write_text(
+                                    f"{digest}  {third_dest.name}\\n", encoding="ascii",
+                                )
+                                report["thirdWindowsBootSerialSha256"] = digest
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
