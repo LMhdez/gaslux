@@ -18,6 +18,7 @@ on:
       - test/windows10-cachyos-disposable-overlay-recovery
       - test/windows10-overlay-efi-bcd-guestfs-evidence
       - test/windows10-thirdboot-after-overlay
+      - integration/windows-cow-bcd-rebased-20261117
       - test/windows10-overlay-bcd-corruption-discard
       - test/windows10-cachyos-owned-gpt-overlay-transaction
     paths:
