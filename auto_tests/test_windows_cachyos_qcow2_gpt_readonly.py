@@ -213,7 +213,7 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
             (extent["lastLba"] - extent["firstLba"] + 1) * gpt.SECTOR,
         )
 
-    def test_noncanonical_windows_pmbr_does_not_authorize_observed_extent(self):
+    def test_observed_extent_fingerprint_binds_both_exact_readonly_windows(self):\n        front, back = create_disk_windows()\n        report = gpt.inspect_gpt_windows(front, back)\n        self.assertEqual(\n            report["gptAuditWindowsSha256"],\n            hashlib.sha256(front + back).hexdigest(),\n        )\n        # A change outside both GPT structures must still produce a distinct\n        # evidence identity even if the parsed partition layout is identical.\n        changed = bytearray(back)\n        changed[0] ^= 1\n        modified = gpt.inspect_gpt_windows(front, bytes(changed))\n        self.assertEqual(\n            modified["observedPostWindowsFreeExtent"],\n            report["observedPostWindowsFreeExtent"],\n        )\n        self.assertNotEqual(\n            modified["gptAuditWindowsSha256"],\n            report["gptAuditWindowsSha256"],\n        )\n        self.assertFalse(modified["storageWritesAuthorized"])\n\n    def test_noncanonical_windows_pmbr_does_not_authorize_observed_extent(self):
         front, back = create_disk_windows()
         changed = bytearray(front)
         struct.pack_into("<I", changed, 446 + 12, 0xFFFFFFFF)
