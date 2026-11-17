@@ -416,6 +416,49 @@ def send_first_iso_boot_key_vnc(monitor_path: Path, hold_ms: int = 300) -> None:
         raise LabError("QEMU local RFB failed to deliver initial ISO Return") from exc
 
 
+def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
+    """Read-only framebuffer diagnostic; not evidence of Windows boot."""
+    require(os.environ.get("GITHUB_ACTIONS") == "true" and
+            os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
+            os.environ.get("RUNNER_OS") == "Linux",
+            "GUI capture restricted to hosted Linux runner")
+    require(monitor_path.is_absolute() and monitor_path.is_socket() and
+            not monitor_path.is_symlink() and
+            monitor_path.parent.name.startswith("gaslux-win-x64-") and
+            monitor_path.parent.parent == Path("/home/runner/work/_temp"),
+            "refusing unowned QEMU diagnostic monitor")
+    require(destination.parent == monitor_path.parent and
+            destination.name in ("windows-dvd-90s.ppm", "windows-dvd-180s.ppm") and
+            not destination.exists() and not destination.is_symlink() and
+            stat.S_IMODE(destination.parent.stat().st_mode) == 0o700,
+            "refusing unowned framebuffer destination")
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
+            monitor.settimeout(5)
+            monitor.connect(str(monitor_path))
+            banner = monitor.recv(8192)
+            require(b"QEMU" in banner or b"(qemu)" in banner,
+                    "unexpected QEMU HMP monitor")
+            # HMP screendump only reads the VM display: no input or disk writes.
+            monitor.sendall(f"screendump {destination}\n".encode("ascii"))
+            response = monitor.recv(8192)
+            require(b"Error:" not in response and b"unknown command" not in response,
+                    "QEMU refused read-only screendump")
+        for _ in range(40):
+            if destination.is_file() and destination.stat().st_size > 100:
+                break
+            time.sleep(.1)
+        require(destination.is_file() and not destination.is_symlink(),
+                "missing QEMU framebuffer")
+        require(100 < destination.stat().st_size <= 20 * 1024**2,
+                "unexpected QEMU framebuffer size")
+        with destination.open("rb") as stream:
+            require(stream.read(2) == b"P6", "unexpected QEMU framebuffer format")
+        return hashlib.sha256(destination.read_bytes()).hexdigest()
+    except (TimeoutError, OSError) as exc:
+        raise LabError("QEMU read-only screendump failed") from exc
+
+
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
             boot_key_transport: str = "hmp") -> tuple[bool, str]:
