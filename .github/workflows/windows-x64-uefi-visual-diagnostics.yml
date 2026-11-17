@@ -1,0 +1,121 @@
+name: Windows 10/11 official ISO UEFI VGA diagnostics (not dual boot)
+
+on:
+  push:
+    branches:
+      - feature/windows-x64-uefi-dvd-visual-diagnostics
+    paths:
+      - .github/workflows/windows-x64-uefi-visual-diagnostics.yml
+      - auto_tests/tools/windows_x64_uefi_visual_probe.py
+      - auto_tests/test_windows_x64_uefi_visual_probe.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-write-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Check HMP socket isolation, screenshot format and witness gates
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_uefi_visual_probe.py
+          python3 -m unittest -v auto_tests.test_windows_x64_uefi_visual_probe
+          python3 -m unittest -v auto_tests.test_windows_x64_iso_boot_key
+          python3 -m unittest -v auto_tests.test_windows_x64_clean_poweroff_gate
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path('auto_tests/tools/windows_x64_uefi_visual_probe.py').read_text()
+          assert 'screendump ' in source and 'sendkey ' not in source
+          for name in ('windowsClientBootVerified','dualBootVerified','rollbackVerified'):
+              assert '"' + name + '": False' in source
+          print('PASS: display capture is read-only and never boot proof')
+          PY
+
+  official-iso-display:
+    needs: no-write-regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 36
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - win10_22h2_en_us_x64
+          - win11_26h2_en_us_x64
+    env:
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Prepare ephemeral VM-only KVM/OVMF
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_OS" = Linux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools
+          test -c /dev/kvm
+          test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Observe pinned Windows ISO guest display without boot claims
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -Eeuo pipefail
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile "$PROFILE" --accel kvm --boot-timeout 360 \
+            > "$GASLUX_WINDOWS_EVIDENCE/$PROFILE-driver.log" 2>&1 &
+          installer_pid=$!
+          set +e
+          python3 auto_tests/tools/windows_x64_uefi_visual_probe.py --profile "$PROFILE"
+          probe_rc=$?
+          wait "$installer_pid"
+          installer_rc=$?
+          set -e
+          echo "GASLUX_DIAGNOSTIC_PROBE_RC=$probe_rc INSTALL_ATTEMPT_RC=$installer_rc"
+          python3 - "$PROFILE" "$probe_rc" <<'PY'
+          import hashlib, json, pathlib, sys
+          profile, probe_rc = sys.argv[1], int(sys.argv[2])
+          evidence = pathlib.Path('windows-x64-tcg-evidence')
+          result = json.loads((evidence / (profile + '-result.json')).read_text())
+          assert result['profile'] == profile
+          assert result['isoHashVerified'] is True
+          assert result['stable'] is False and result['dualBootVerified'] is False
+          assert result['winReAndBcdRecovered'] is False
+          assert probe_rc == 0, 'visual probe did not finish'
+          report = json.loads((evidence / (profile + '-display-probe.json')).read_text())
+          assert report['diagnosticOnly'] is True
+          for claim in ('windowsClientBootVerified','dualBootVerified','rollbackVerified'):
+              assert report[claim] is False
+          assert len(report['screenshots']) == 3
+          for entry in report['screenshots']:
+              file = evidence / entry['file']
+              assert file.is_file() and not file.is_symlink()
+              assert file.stat().st_size == entry['bytes'] <= 16 * 1024 * 1024
+              assert hashlib.sha256(file.read_bytes()).hexdigest() == entry['sha256']
+          print('PASS: three VGA frames from pinned official Windows ISO QEMU guest')
+          print('NOT proof of Windows installation, Windows boot, dual boot or rollback')
+          PY
+          echo 'VGA stage diagnostic only, not Windows/Linux boot or rollback proof.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Save only bounded VGA and serial evidence, never the Windows ISO or QCOW2
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-uefi-vga-${{ matrix.profile }}
+          path: windows-x64-tcg-evidence/
+          retention-days: 3
+          if-no-files-found: warn
