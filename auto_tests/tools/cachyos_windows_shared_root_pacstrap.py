@@ -324,6 +324,9 @@ def verify_lab_root_write_grant(
             and grant["discardableOverlay"] is True
             and grant["windowsEspWritesAllowed"] is False,
             "signed grant does not bind this exact fifth root and immutable COW")
+    require(control_dir.is_absolute() and control_dir.is_dir()
+            and not control_dir.is_symlink() and control_dir.resolve() == control_dir,
+            "missing canonical Archiso control directory for host checkpoint")
     for name in ("hostCheckpointSha256", "hostOverlayBackingProofSha256"):
         value = grant[name]
         require(type(value) is str and SHA.fullmatch(value) is not None
@@ -377,9 +380,6 @@ def verify_lab_root_write_grant(
     # A signed grant must authenticate the exact control programs that will
     # build and evaluate pacman's effective trust policy before root writes.
     # The real guest control medium is attached readonly=on and mounted ro.
-    require(control_dir.is_absolute() and control_dir.is_dir()
-            and not control_dir.is_symlink(),
-            "missing canonical Archiso control directory for script identity")
     for filename, field in (
         ("cachyos_windows_shared_root_pacstrap.py", "sharedRootPacstrapSha256"),
         ("cachyos_windows_shared_archiso_handoff.py", "archisoHandoffVerifierSha256"),
