@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from windows_x64_qemu_host_gate import EXPECTED, load_catalog
+from windows_x64_tcg_firstboot import witness_powershell
 
 MAX_REPORT = 65536
 MAX_SERIAL = 16 * 1024 * 1024
@@ -71,6 +72,14 @@ def evaluate(profile: str, report: dict, serial: bytes,
         require(report.get(key) is False,
                 "unsupported Windows recovery/stability claim: " + key)
     require(not report.get("error"), "Windows lab reported failure")
+    # A reported success flag alone is not proof of completion. Require the
+    # exact diagnostic emitted only by the verified installed-guest serial
+    # audit followed by clean QEMU exit, not a generic exit code zero.
+    require(
+        report.get("diagnostic") ==
+        "installed Windows client audit and clean VM poweroff verified",
+        "Windows firstboot audit and clean guest shutdown not both proven",
+    )
     require(report.get("accelerator") == "kvm", "Windows did not run in KVM")
     require(report.get("isoSha256") == EXPECTED[profile],
             "Windows ISO does not match pinned Microsoft digest")
@@ -83,6 +92,17 @@ def evaluate(profile: str, report: dict, serial: bytes,
         require(type(report.get(key)) is str and
                 SHA256.fullmatch(report[key]) is not None,
                 "missing SHA256: " + key)
+    # Bind the Windows guest audit script to the checked-out source itself,
+    # rather than accepting an arbitrary syntactically valid SHA256. This
+    # independently catches an altered FirstLogon audit payload.
+    generated = witness_powershell(
+        profile, catalog["profiles"][profile]["expectedWindowsBuildPrefix"],
+    ) + "\n"
+    require(
+        report["firstLogonScriptSha256"] ==
+        hashlib.sha256(generated.encode("utf-8")).hexdigest(),
+        "Windows FirstLogon script SHA256 differs from checked-out witness",
+    )
     require(len(serial) > 0 and len(serial) <= MAX_SERIAL,
             "empty or oversized installed Windows serial")
     require(not DVD_START.search(serial),
