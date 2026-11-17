@@ -488,6 +488,57 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
         raise LabError("QEMU HMP failed to deliver initial ISO boot key") from exc
 
 
+MAX_GUEST_TOKEN_BYTES = 256
+
+
+def scan_windows_guest_tokens(
+    path: Path, offset: int, carry: bytes, discarding: bool,
+) -> tuple[set[bytes], int, bytes, bool]:
+    """Read every COM1 byte exactly once; keep only delimited proof tokens.
+
+    A 400 KiB tail must never erase earlier guest audit failures. Pending
+    fragments are bounded and never accepted as evidence while QEMU runs.
+    A token longer than 256 bytes is not evidence; its suffix must not
+    be mistaken for a new proof token across chunk boundaries.
+    """
+    require(offset >= 0 and len(carry) <= MAX_GUEST_TOKEN_BYTES,
+            "invalid Windows guest serial scanner state")
+    require(path.is_file() and not path.is_symlink(),
+            "untrusted Windows guest serial evidence")
+    found: set[bytes] = set()
+    with path.open("rb") as stream:
+        end = stream.seek(0, os.SEEK_END)
+        require(end >= offset, "Windows guest serial evidence was truncated")
+        stream.seek(offset)
+        while offset < end:
+            chunk = stream.read(min(65536, end - offset))
+            require(bool(chunk), "Windows guest serial changed while reading")
+            offset += len(chunk)
+            if discarding:
+                delimiter = re.search(rb"\s+", chunk)
+                if delimiter is None:
+                    continue
+                chunk = chunk[delimiter.end():]
+                discarding = False
+            data = carry + chunk
+            pos = 0
+            for delimiter in re.finditer(rb"\s+", data):
+                token = data[pos:delimiter.start()]
+                if token.startswith(FAILURE.encode()):
+                    found.add(FAILURE.encode())
+                elif (len(token) <= MAX_GUEST_TOKEN_BYTES
+                      and token.startswith(b"GASLUX_WINDOWS_X64_")):
+                    found.add(token)
+                pos = delimiter.end()
+            carry = data[pos:]
+            if len(carry) > MAX_GUEST_TOKEN_BYTES:
+                if carry.startswith(FAILURE.encode()):
+                    found.add(FAILURE.encode())
+                carry = b""
+                discarding = True
+    return found, offset, carry, discarding
+
+
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
             reject_repeated_dvd_boot: bool = False) -> tuple[bool, str]:
@@ -517,25 +568,37 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     witnessed_at: float | None = None
     initial_cd_key_sent = False
     win11_dvd_started_at: float | None = None
+    serial_offset = 0
+    serial_carry = b""
+    serial_discarding = False
+    seen_proofs: set[bytes] = set()
+    dvd_offset = 0
+    dvd_carry = b""
+    dvd_start_count = 0
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
             while time.monotonic() - started < limit:
                 if transcript.is_file():
+                    # Keep the bounded tail only for interactive DVD prompts.
+                    # Proofs, failures and DVD replays scan the ENTIRE append-only
+                    # transcript; otherwise >400 KiB can erase a prior failure.
                     with transcript.open("rb") as source:
                         source.seek(max(0, transcript.stat().st_size - 400_000))
                         serial_data = source.read(400_000)
-                        # Genuine Windows COM1 serial output may coalesce
-                        # several WriteLine records into one space-separated
-                        # frame. Only FULL whitespace-delimited proof tokens
-                        # are accepted: no substrings or build prefixes.
-                        tokens = set(serial_data.split())
+                    (tokens, serial_offset, serial_carry,
+                     serial_discarding) = scan_windows_guest_tokens(
+                        transcript, serial_offset, serial_carry,
+                        serial_discarding,
+                    )
                     if reject_repeated_dvd_boot:
-                        dvd_starts = re.findall(
-                            rb'BdsDxe: starting Boot[0-9]{4} "UEFI QEMU DVD-ROM',
-                            serial_data,
+                        (hits, dvd_offset, dvd_carry, _) = (
+                            scan_two_stage_dvd_serial(
+                                transcript, dvd_offset, dvd_carry,
+                            )
                         )
-                        if len(dvd_starts) > 1:
+                        dvd_start_count += hits
+                        if dvd_start_count > 1:
                             return False, (
                                 "firmware retried one-shot Microsoft DVD after "
                                 "initial startup; abort disposable VM"
@@ -562,11 +625,22 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     # coalesced positive witness, including stage failures.
                     if any(token.startswith(FAILURE.encode()) for token in tokens):
                         return False, "installed Windows explicitly rejected firstboot audit"
-                    if required.issubset(tokens) and build_line in tokens:
+                    seen_proofs.update(tokens.intersection(required | {build_line}))
+                    if required.issubset(seen_proofs) and build_line in seen_proofs:
                         if witnessed_at is None:
                             witnessed_at = time.monotonic()
                 rc = proc.poll()
                 if rc is not None:
+                    # EOF is a valid final token boundary only after the guest
+                    # process exited. Never accept an incomplete running token.
+                    if serial_carry and not serial_discarding:
+                        if serial_carry.startswith(FAILURE.encode()):
+                            return False, "installed Windows explicitly rejected firstboot audit"
+                        if serial_carry in required or serial_carry == build_line:
+                            seen_proofs.add(serial_carry)
+                    if (witnessed_at is None and required.issubset(seen_proofs)
+                            and build_line in seen_proofs):
+                        witnessed_at = time.monotonic()
                     if witnessed_at is not None and rc == 0:
                         return True, "installed Windows client audit and clean VM poweroff verified"
                     if witnessed_at is not None:
