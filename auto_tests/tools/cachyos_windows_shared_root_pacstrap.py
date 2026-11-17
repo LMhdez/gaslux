@@ -301,6 +301,9 @@ def verify_lab_root_write_grant(
         "hostOverlayBackingProofSha256", "sourceImageReadOnly",
         "discardableOverlay", "windowsEspWritesAllowed",
         "strictPacmanBuilderSha256", "pacmanTrustGuardSha256",
+        "sharedRootPacstrapSha256", "archisoHandoffVerifierSha256",
+        "archisoGuestProbeSha256", "gptReaderSha256",
+        "guestInstallScriptSha256", "guestLaunchScriptSha256",
     }
     require(type(grant) is dict and set(grant) == expected_keys
             and canonical(grant) == signed_bytes,
@@ -340,19 +343,28 @@ def verify_lab_root_write_grant(
             and not control_dir.is_symlink(),
             "missing canonical Archiso control directory for script identity")
     for filename, field in (
+        ("cachyos_windows_shared_root_pacstrap.py", "sharedRootPacstrapSha256"),
+        ("cachyos_windows_shared_archiso_handoff.py", "archisoHandoffVerifierSha256"),
+        ("cachyos_windows_shared_archiso_guest_probe.py", "archisoGuestProbeSha256"),
+        ("windows_cachyos_qcow2_gpt_readonly.py", "gptReaderSha256"),
         ("strict-pacman.py", "strictPacmanBuilderSha256"),
         ("pacman-trust.py", "pacmanTrustGuardSha256"),
+        ("gaslux-install.sh", "guestInstallScriptSha256"),
+        ("gaslux-launch.sh", "guestLaunchScriptSha256"),
     ):
         expected = grant[field]
         require(type(expected) is str and SHA.fullmatch(expected) is not None
                 and expected != "0" * 64,
-                "signed package-policy program hash missing or malformed")
+                "signed guest program hash missing or malformed")
         source = control_dir / filename
         require(source.is_file() and not source.is_symlink()
-                and 1024 < source.stat().st_size < 64 * 1024,
-                "signed package-policy program is missing or unexpected")
+                and 100 < source.stat().st_size < 256 * 1024,
+                "signed guest program is missing or unexpected")
+        if filename in ("strict-pacman.py", "pacman-trust.py"):
+            require(source.stat().st_size > 1024,
+                    "signed package-policy program is unexpectedly small")
         require(sha_file(source) == expected,
-                "signed package-policy program bytes differ from root grant")
+                "guest program bytes differ from signed root grant")
 
 
 def prepare_signed_only_pacman(plan: dict[str, Any]) -> Path:
@@ -412,13 +424,36 @@ def pacstrap_only(args: argparse.Namespace) -> None:
             and ROOT.parent == Path("/mnt")
             and not any(ROOT.iterdir()),
             "root mount target not empty, private or root-owned")
-    for tool in ("pacstrap", "pacman-key", "arch-chroot", "mount", "umount"):
+    for tool in ("pacstrap", "arch-chroot", "mount", "umount",
+                 "nm-online", "systemctl", "udevadm"):
         require(subprocess.run(["which", tool], stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL).returncode == 0,
                 "missing native CachyOS stage capability: " + tool)
     require(Path("/usr/share/pacman/keyrings/archlinux.gpg").is_file()
             and Path("/usr/share/pacman/keyrings/cachyos.gpg").is_file(),
-            "pinned live ISO lacks signing keyrings")
+            "pinned live ISO lacks vendor signing keyrings")
+    # Reuse the native Archiso network/keyring initialization transaction.
+    # Never race pacman-init.service or manufacture/replace vendor keys.
+    execute(["nm-online", "-q", "--timeout=90"], timeout=120)
+    keyring_ready = False
+    for attempt in range(240):
+        active = subprocess.run(
+            ["systemctl", "is-active", "--quiet", "pacman-init.service"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=10,
+        ).returncode == 0
+        if active:
+            keyring_ready = True
+            break
+        failed = subprocess.run(
+            ["systemctl", "is-failed", "--quiet", "pacman-init.service"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=10,
+        ).returncode == 0
+        require(not failed, "native Archiso pacman-init.service failed")
+        import time
+        time.sleep(1)
+    require(keyring_ready, "native Archiso package keyring did not become active")
     strict_folder = prepare_signed_only_pacman(plan)
     strict_config = strict_folder / "pacman-install.conf"
     execute(["mount", "-t", "ext4", "-o", "rw,nosuid,nodev",
@@ -430,15 +465,9 @@ def pacstrap_only(args: argparse.Namespace) -> None:
                 "pre-existing OS or foreign root content")
         # Only the transaction-owned ext4 root is writable in this VM.
         # NEVER pass /dev/sda, its ESP, WinRE or Windows partition to pacstrap.
-        keyring = ROOT / "etc/pacman.d/gnupg"
-        keyring.mkdir(parents=True, exist_ok=False)
-        execute(["pacman-key", "--gpgdir", str(keyring), "--init"], timeout=90)
-        execute(["pacman-key", "--gpgdir", str(keyring),
-                 "--populate", "archlinux", "cachyos"], timeout=120)
-        # Official keyring identity already proven in the separate
-        # CachyOS VM-only installation test. Never change SigLevel.
-        execute(["pacman-key", "--gpgdir", str(keyring), "--list-keys",
-                 "882DCFE48E2051D48E2562ABF3B607488DB35A47"])
+        # pacstrap -K initializes the target keyring using the native,
+        # already-active Archiso keyring. Never race pacman-init or seed
+        # unverified target trust anchors by hand.
         packages = [
             "base", "linux-cachyos-lts", "mkinitcpio", "grub", "efibootmgr",
             "cachyos-keyring", "cachyos-mirrorlist", "cachyos-settings",
@@ -455,15 +484,14 @@ def pacstrap_only(args: argparse.Namespace) -> None:
                 (strict_folder / "pacman-target.conf").read_bytes(),
                 "installed package signature policy does not match validated source")
         require((ROOT / "boot/vmlinuz-linux-cachyos-lts").is_file()
-                and (ROOT / "usr/share/libalpm/scripts/cachyos-branding").is_file(),
-                "signed native kernel/CachyOS branding packages absent")
-        execute(["arch-chroot", str(ROOT),
-                 "/usr/share/libalpm/scripts/cachyos-branding", "os-release"],
-                timeout=75)
+                and (ROOT / "boot/initramfs-linux-cachyos-lts.img").is_file()
+                and (ROOT / "var/lib/pacman/local/ALPM_DB_VERSION").is_file(),
+                "pacstrap did not produce a native CachyOS kernel/initramfs/package database")
         release = (ROOT / "etc/os-release").read_text(encoding="utf-8")
-        require("ID=cachyos\n" in release
-                and "ID_LIKE=arch\n" in release,
-                "native CachyOS identity not established by signed branding")
+        release_lines = set(release.splitlines())
+        require("ID=cachyos" in release_lines
+                and "ID_LIKE=arch" in release_lines,
+                "installed signed CachyOS package identity is absent")
         (ROOT / ".gaslux-lab-root-owner").write_text(
             plan["runId"] + "\n", encoding="ascii")
         os.sync()
