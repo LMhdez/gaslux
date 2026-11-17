@@ -1,0 +1,114 @@
+name: Mint genuine installed-root firstboot (disposable OVMF, no Windows)
+
+on:
+  push:
+    branches:
+      - test/mint223-installed-root-ovmf-lab
+  pull_request:
+    paths:
+      - '.github/workflows/mint-installed-root-lab.yml'
+      - 'auto_tests/tools/gaslux_legacy_installed_target_lab.sh'
+      - 'assets/live/libertix-distribution-common.sh'
+      - 'assets/live/libertix-install-runtime-common.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Parse isolated real-target harness and demand invalid identity rejection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_legacy_installed_target_lab.sh \
+            auto_tests/tools/gaslux_legacy_installed_target_lab.sh
+          if bash auto_tests/tools/gaslux_legacy_installed_target_lab.sh mint /not-a-real-image "not-a-hash"; then
+            echo "::error::Owned disk test accepted bogus ISO credentials"
+            exit 1
+          fi
+          # All physical devices are forbidden; only generated loop files are eligible.
+          if grep -Eq '/dev/(sd[a-z]|nvme[0-9]|vd[a-z]|hd[a-z])' \
+              auto_tests/tools/gaslux_legacy_installed_target_lab.sh \
+              auto_tests/tools/gaslux_legacy_installed_target_lab.sh; then
+            echo "::error::An actual block-device path was introduced in the lab"
+            exit 1
+          fi
+
+  genuine-installed-firstboot:
+    needs: preflight-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      MINT_SHA: a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4
+      MINT_BYTES: '3091660800'
+      MINT_URL: https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Assert stable catalog pin and enough scratch space
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          catalog = json.loads(Path("release-config.json").read_text())
+          items = [item for item in catalog["distributions"] if item["id"] == "mint"]
+          assert len(items) == 1
+          item = items[0]
+          assert item["name"] == "Linux Mint 22.3 Cinnamon"
+          assert item["osReleaseId"] == "linuxmint"
+          assert item["isoInstaller"] == os.environ["MINT_URL"]
+          assert item["isoInstallerSha256"] == os.environ["MINT_SHA"]
+          assert item["isoInstallerSizeBytes"] == int(os.environ["MINT_BYTES"])
+          assert shutil.disk_usage(os.environ["RUNNER_TEMP"]).free > 15 * 1024**3
+          print("Verified exact pinned 22.3 Core release and disposable storage budget")
+          PY
+      - name: Install isolated disk/VM and read-only media tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get -qq update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 squashfs-tools gdisk dosfstools e2fsprogs util-linux \
+            grub-efi-amd64-bin grub-common qemu-system-x86 ovmf
+      - name: Obtain official ISO and independently verify SHA-256 and byte count
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/mint-upstream"
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=5 --retry-wait=10 --timeout=90 --connect-timeout=30 \
+            --check-integrity=true --checksum="sha-256=$MINT_SHA" \
+            --dir="$RUNNER_TEMP/mint-upstream" --out=mint.iso "$MINT_URL"
+          iso="$RUNNER_TEMP/mint-upstream/mint.iso"
+          test -f "$iso" && test ! -L "$iso"
+          test "$(stat -c %s "$iso")" = "$MINT_BYTES"
+          printf '%s  %s\n' "$MINT_SHA" "$iso" | sha256sum --check --status
+      - name: Extract installed Mint into exclusively owned GPT/ext4 and require disk-only login
+        shell: bash
+        env:
+          GASLUX_LEGACY_INSTALLED_EVIDENCE: ${{ runner.temp }}/mint-installed-evidence
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_legacy_installed_target_lab.sh
+          bash auto_tests/tools/gaslux_legacy_installed_target_lab.sh \
+            mint "$RUNNER_TEMP/mint-upstream/mint.iso" "$MINT_SHA"
+          grep -Fxq "installedMintFirstBootVerified=true" \
+            "$GASLUX_LEGACY_INSTALLED_EVIDENCE/installed-check.txt"
+      - name: Retain bounded manifests and serial logs only (no disk images or ISO)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mint-181-disposable-installed-root-evidence
+          path: ${{ runner.temp }}/mint-installed-evidence/
+          if-no-files-found: warn
+          retention-days: 14
