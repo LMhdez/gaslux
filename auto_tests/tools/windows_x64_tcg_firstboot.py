@@ -499,7 +499,8 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                         return True, "installed Windows client audit and clean VM poweroff verified"
                     if witnessed_at is not None:
                         return False, "QEMU exited abnormally after Windows audit"
-                    return False, "QEMU exited before installed Windows first-logon witness"
+                    return False, (f"QEMU exited before installed Windows first-logon witness "
+                                   f"(QEMU exit code {rc}; Windows still unverified)")
                 if (monitor_socket is not None and not initial_cd_key_sent and
                         time.monotonic() - started > 300):
                     return False, "official ISO did not reach UEFI DVD boot or serial prompt"
@@ -866,6 +867,7 @@ def main(argv: list[str] | None = None) -> int:
                     for source_name, suffix, max_bytes in (
                         ("initial-dvd-guest-serial.log", "initial-dvd-serial", 2_000_000),
                         ("first-qemu-stderr.log", "initial-qemu-stderr", 256_000),
+                        ("qemu-stderr.log", "second-qemu-stderr", 256_000),
                     ):
                         source = workspace / source_name
                         if (source.is_file() and not source.is_symlink()
