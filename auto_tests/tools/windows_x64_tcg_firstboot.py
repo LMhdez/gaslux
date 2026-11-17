@@ -321,9 +321,13 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     child(command, "Description", "Gaslux first boot serial verification")
     # FirstLogonCommands must remain short. Base64-encoding a full witness
     # makes the setup XML command longer than Windows command-line limits.
-    # Only a hash-checked, VM-exclusive floppy is available to Windows.
-    child(command, "CommandLine", "powershell.exe -NoProfile -NonInteractive "
-          "-ExecutionPolicy Bypass -File A:\\GASLUX.PS1")
+    # A dedicated disposable FAT32 USB volume has a non-deterministic
+    # Windows drive letter. Resolve its unique label at first logon.
+    child(command, "CommandLine",
+          "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass "
+          "-Command \"$v=@(Get-Volume -FileSystemLabel GASLUXCI|? DriveLetter);"
+          "if($v.Count -ne 1){exit 20};"
+          "& ($v[0].DriveLetter + ':\\\\GASLUX.PS1')\"")
     child(command, "RequiresUserInput", "false")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
