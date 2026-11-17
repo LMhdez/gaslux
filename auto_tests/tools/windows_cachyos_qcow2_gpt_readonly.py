@@ -180,6 +180,25 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     }
 
 
+def bounded_qcow2_dd_command(disk: Path, dest: Path, suffix: str) -> list[str]:
+    """Read a bounded window from a closed QCOW2 without modifying the source.
+
+    QEMU img_dd initializes the output size with count * bs BEFORE applying
+    skip (see qemu-img.c). Using count=2048 plus a 128-GiB tail skip creates
+    a ZERO-BYTE output despite a successful exit. Use count only at the front;
+    reading without count from exactly 1 MiB before EOF naturally bounds the
+    tail to 1 MiB. In both cases the caller verifies output length/identity.
+    """
+    require(suffix in ("front", "back"), "unknown GPT window selector")
+    skip = (0 if suffix == "front" else
+            VIRTUAL_BYTES // SECTOR - WINDOW_SECTORS)
+    cmd = ["qemu-img", "dd", "-f", "qcow2", "-O", "raw", f"bs={SECTOR}"]
+    if suffix == "front":
+        cmd.append(f"count={WINDOW_SECTORS}")
+    cmd.extend([f"skip={skip}", f"if={disk}", f"of={dest}"])
+    return cmd
+
+
 def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
     """QEMU reads only an owned QCOW2 and writes at most 2 MiB private scratch."""
     require(os.environ.get("GITHUB_ACTIONS") == "true" and
@@ -212,16 +231,12 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
             "QCOW2 has unexpected format, size, encryption or backing chain")
     with tempfile.TemporaryDirectory(prefix="gaslux-gpt-readonly-", dir=disk.parent) as tmp:
         region = []
-        for suffix, skip in (
-            ("front", 0),
-            ("back", VIRTUAL_BYTES // SECTOR - WINDOW_SECTORS),
-        ):
+        for suffix in ("front", "back"):
             dest = Path(tmp) / (suffix + ".raw")
-            subprocess.run([
-                "qemu-img", "dd", "-f", "qcow2", "-O", "raw",
-                f"bs={SECTOR}", f"count={WINDOW_SECTORS}", f"skip={skip}",
-                f"if={disk}", f"of={dest}",
-            ], check=True, capture_output=True, timeout=60)
+            subprocess.run(
+                bounded_qcow2_dd_command(disk, dest, suffix),
+                check=True, capture_output=True, timeout=60,
+            )
             require(dest.is_file() and not dest.is_symlink() and
                     dest.stat().st_size == WINDOW_BYTES,
                     "QEMU returned an invalid bounded GPT window")
