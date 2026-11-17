@@ -92,9 +92,14 @@ require_marker() {
       tail -c 10000 "$file" >&2 || true
       die "guest explicitly rejected VM phase before $marker"
     fi
+    # On the installed serial console agetty can leave its login prompt
+    # on the current line: "gaslux-cachyos-ci login: GASLUX_VM_UPDATE_APPLIED=1".
+    # Accept only this known lab hostname prefix or an exact standalone line.
+    # Never accept arbitrary prefix, substring, echo or suffix matches.
     if [[ -f "$file" ]] && awk -v marker="$marker" \
-      '{gsub(/\r/, ""); if ($0 == marker) found = 1} END {exit !found}' \
-      "$file"; then
+      '{gsub(/\r/, ""); if ($0 == marker ||
+        $0 == "gaslux-cachyos-ci login: " marker) found = 1}
+       END {exit !found}' "$file"; then
       seen=1; break
     fi
     kill -0 "$vm_pid" 2>/dev/null || break
