@@ -8,6 +8,7 @@ on:
       - .github/workflows/windows-x64-derived-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_two_stage_lab.py
+      - auto_tests/test_windows_x64_tcg_unattend_contract.py
   workflow_dispatch:
 
 permissions:
