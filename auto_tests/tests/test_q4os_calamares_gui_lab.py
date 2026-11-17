@@ -247,3 +247,16 @@ def test_q4os_software_without_verified_keyboard_refuses_before_disk_setup(tmp_p
     )
     assert result.returncode != 0
     assert "Q4OS Desktop selection requires SHA-verified Keyboard step" in result.stderr
+
+
+def test_disposable_gpt_is_reaudited_before_qemu_guest_boot():
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'sgdisk --verify "$work/efi-disk.img"' in source
+    assert 'sgdisk --print "$work/efi-disk.img"' in source
+    assert '"1:34359738368"' in source
+    assert "1 2048 1050623 EF00 GASLUX-LAB-ESP" in source
+    assert "GASLUX_Q4OS_VM_GPT_PARTITIONS=1" in source
+    assert "GASLUX_Q4OS_VM_GPT_ROOT_PARTITION=NOT_CREATED" in source
+    assert "GASLUX_Q4OS_VM_GPT_INSTALL_AUTHORIZED=NO" in source
+    assert "gpt-audit.txt" in source
+    assert "-drive file=/dev/" not in source

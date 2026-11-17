@@ -60,7 +60,7 @@ cleanup() {
   if [[ "$mounted" -eq 1 ]]; then sudo umount "$work/iso-root" >/dev/null 2>&1 || true; fi
   if [[ -n "${GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR:-}" ]]; then
     mkdir -p "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"
-    for path in "$work"/serial.log "$work"/grub.cfg "$work"/qemu.rc "$work"/vnc-*.png; do
+    for path in "$work"/serial.log "$work"/grub.cfg "$work"/qemu.rc "$work"/gpt-audit.txt "$work"/vnc-*.png; do
       [[ -f "$path" ]] && cp "$path" "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/" || true
     done
     (cd "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR" &&
@@ -159,6 +159,40 @@ mmd -i "$work/efi-part.img" ::/EFI
 mmd -i "$work/efi-part.img" ::/EFI/BOOT
 mcopy -i "$work/efi-part.img" "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
 dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc status=none
+
+# Read-only pre-guest GPT gate: this exact file was just created in a
+# disposable mktemp directory; NO host /dev block device is ever audited.
+# sgdisk -v checks both GPT header and entry CRCs; no root partition is
+# created here, and a Linux installation remains unauthorized.
+[[ -f "$work/efi-disk.img" && ! -L "$work/efi-disk.img" &&
+   -O "$work/efi-disk.img" ]] || die 'Unowned Q4OS VM disk before boot'
+[[ "$(stat -c '%h:%s' "$work/efi-disk.img")" == "1:34359738368" ]] ||
+  die 'Unexpected Q4OS VM disk links or size'
+sgdisk --verify "$work/efi-disk.img" > "$work/gpt-audit.txt" ||
+  die 'Disposable GPT header/entry CRC verification failed'
+grep -Fq 'No problems found' "$work/gpt-audit.txt" ||
+  die 'Disposable primary/backup GPT verification did not pass'
+sgdisk --print "$work/efi-disk.img" > "$work/gpt-print.txt" ||
+  die 'Cannot inventory disposable GPT partitions'
+mapfile -t q4os_gpt_rows < <(awk '
+  $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {
+    print $1 " " $2 " " $3 " " $(NF-1) " " $NF
+  }' "$work/gpt-print.txt")
+[[ "${#q4os_gpt_rows[@]}" -eq 1 &&
+   "${q4os_gpt_rows[0]}" == '1 2048 1050623 EF00 GASLUX-LAB-ESP' ]] ||
+  die 'Unexpected or foreign GPT partition on the disposable Q4OS VM disk'
+{
+  printf 'GASLUX_Q4OS_VM_GPT_AUDIT=PASS\n'
+  printf 'GASLUX_Q4OS_VM_GPT_PARTITIONS=1\n'
+  printf 'GASLUX_Q4OS_VM_GPT_ROOT_PARTITION=NOT_CREATED\n'
+  printf 'GASLUX_Q4OS_VM_GPT_INSTALL_AUTHORIZED=NO\n'
+  printf 'GASLUX_Q4OS_VM_GPT_PRIMARY_SHA256='
+  dd if="$work/efi-disk.img" bs=512 count=34 status=none | sha256sum | cut -d' ' -f1
+  printf 'GASLUX_Q4OS_VM_GPT_BACKUP_SHA256='
+  dd if="$work/efi-disk.img" bs=512 skip=67108831 count=33 status=none |
+    sha256sum | cut -d' ' -f1
+} >> "$work/gpt-audit.txt"
+cat "$work/gpt-audit.txt"
 
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
