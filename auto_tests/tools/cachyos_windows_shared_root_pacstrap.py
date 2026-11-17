@@ -30,7 +30,7 @@ from cachyos_windows_shared_archiso_guest_probe import (
 )
 from cachyos_windows_shared_archiso_handoff import (
     SERIAL, VIRTUAL_BYTES, SECTOR_BYTES, ISO_SHA256,
-    validate_plan, verify, SharedDiskHandoffRejected,
+    canonical, validate_plan, verify, SharedDiskHandoffRejected,
 )
 from windows_cachyos_qcow2_gpt_readonly import (
     WINDOW_BYTES, SECTOR, header_at, part_array,
@@ -209,8 +209,74 @@ def guest_plan(
     return plan, disk
 
 
+def verify_lab_root_write_grant(
+    args: argparse.Namespace, plan: dict[str, Any],
+) -> None:
+    """Require a second signed, strictly root-only COW lab grant.
+
+    The normal plan explicitly denies production writes. An unsigned opt-in
+    or a signed read-only plan by itself never authorizes pacstrap. The
+    ephemeral lab signer must separately attest a host-owned/discardable
+    overlay and immutable recovery checkpoint; guest independently enforces
+    partition identity and all Windows hashes before any root mount.
+    """
+    require(args.root_write_grant is not None
+            and args.grant_signature is not None,
+            "no separate signed laboratory COW root-write grant")
+    grant_file, signature_file = args.root_write_grant, args.grant_signature
+    require(grant_file.is_file() and not grant_file.is_symlink()
+            and 0 < grant_file.stat().st_size < 8192
+            and signature_file.is_file() and not signature_file.is_symlink()
+            and signature_file.stat().st_size == 64,
+            "missing or oversized signed root-only grant")
+    signed_bytes = grant_file.read_bytes()
+    try:
+        grant = json.loads(signed_bytes)
+    except ValueError as error:
+        raise SharedDiskHandoffRejected("invalid signed root-only grant") from error
+    expected_keys = {
+        "schemaVersion", "labOnly", "operation", "runId", "bootNonce",
+        "signedPlanSha256", "targetVirtioSerial", "rootPartuuid",
+        "rootFsUuid", "sourceWindowsGptSha256", "hostCheckpointSha256",
+        "hostOverlayBackingProofSha256", "sourceImageReadOnly",
+        "discardableOverlay", "windowsEspWritesAllowed",
+    }
+    require(type(grant) is dict and set(grant) == expected_keys
+            and canonical(grant) == signed_bytes,
+            "noncanonical, extra-field or ambiguous lab grant")
+    require(type(grant["schemaVersion"]) is int
+            and grant["schemaVersion"] == 1
+            and grant["labOnly"] is True
+            and grant["operation"] == "pacstrap-only-preexisting-fifth-ext4"
+            and grant["runId"] == plan["runId"]
+            and grant["bootNonce"] == plan["bootNonce"]
+            and grant["targetVirtioSerial"] == SERIAL
+            and grant["rootPartuuid"] == plan["partitions"][4]["uniqueGuid"]
+            and grant["rootFsUuid"] == plan["rootFsUuid"]
+            and grant["sourceWindowsGptSha256"] == plan["gptWindowsSha256"]
+            and grant["signedPlanSha256"] == hashlib.sha256(
+                args.plan.read_bytes()).hexdigest()
+            and grant["sourceImageReadOnly"] is True
+            and grant["discardableOverlay"] is True
+            and grant["windowsEspWritesAllowed"] is False,
+            "signed grant does not bind this exact fifth root and immutable COW")
+    for name in ("hostCheckpointSha256", "hostOverlayBackingProofSha256"):
+        value = grant[name]
+        require(type(value) is str and SHA.fullmatch(value) is not None
+                and value != "0" * 64,
+                "missing host checkpoint / backing-chain attestation digest")
+    outcome = subprocess.run([
+        "openssl", "pkeyutl", "-verify", "-pubin", "-inkey",
+        str(args.public_key), "-sigfile", str(signature_file),
+        "-rawin", "-in", str(grant_file),
+    ], capture_output=True, timeout=20, check=False)
+    require(outcome.returncode == 0,
+            "Ed25519 root-only COW grant signature rejected")
+
+
 def pacstrap_only(args: argparse.Namespace) -> None:
     plan, disk = guest_plan(args)
+    verify_lab_root_write_grant(args, plan)
     root_id = plan["partitions"][4]["uniqueGuid"]
     by_id = Path("/dev/disk/by-partuuid") / root_id
     require(by_id.is_symlink() and by_id.resolve().is_block_device(),
@@ -289,6 +355,8 @@ def main() -> int:
     parser.add_argument("--expected-run-id", required=True)
     parser.add_argument("--expected-root-uuid", required=True)
     parser.add_argument("--lab-install", action="store_true")
+    parser.add_argument("--root-write-grant", type=Path)
+    parser.add_argument("--grant-signature", type=Path)
     args = parser.parse_args()
     try:
         if args.lab_install:
