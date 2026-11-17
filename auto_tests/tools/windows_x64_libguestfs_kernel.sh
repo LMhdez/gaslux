@@ -35,7 +35,21 @@ if (( ${#versions[@]} == 0 )); then
 fi
 
 version="$(printf '%s\n' "${versions[@]}" | sort -V | tail -n 1)"
-export SUPERMIN_KERNEL="/boot/vmlinuz-$version"
+# Ubuntu installs /boot/vmlinuz-* as root:root 0600, so an unprivileged
+# GitHub runner cannot let supermin copy that image even when modules exist.
+# Never chmod /boot or run guestfish as root. Copy ONLY this packaged kernel
+# into the current runner's private ephemeral temp directory.
+kernel_dir="$(mktemp -d "$RUNNER_TEMP/gaslux-guestfs-kernel-XXXXXXXX")"
+chmod 700 "$kernel_dir"
+image="$kernel_dir/vmlinuz-$version"
+sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" \
+  "/boot/vmlinuz-$version" "$image"
+if [[ ! -f "$image" || -L "$image" || ! -r "$image" ||
+      "$(stat -c '%u' "$image")" != "$(id -u)" ]]; then
+  echo "GASLUX_GUESTFS_KERNEL_GATE_FAILED: no private readable image" >&2
+  return 1 2>/dev/null || exit 1
+fi
+export SUPERMIN_KERNEL="$image"
 export SUPERMIN_MODULES="/lib/modules/$version"
 export SUPERMIN_KERNEL_VERSION="$version"
 export LIBGUESTFS_BACKEND=direct
