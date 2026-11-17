@@ -456,7 +456,11 @@ def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
                 fragment = monitor.recv(8192 - len(response))
                 require(bool(fragment), "QEMU HMP closed during framebuffer request")
                 response += fragment
-            require(b"(qemu)" in response, "QEMU HMP never completed the request")
+            sample = response[-250:].decode("ascii", "replace").replace(
+                str(destination.parent), "<vm>")
+            require(b"(qemu)" in response,
+                    "QEMU HMP incomplete response bytes=" + str(len(response))
+                    + " tail=" + repr(sample))
             require(b"Error" not in response and b"unknown command" not in response,
                     "QEMU rejected read-only framebuffer request")
         for _ in range(40):
