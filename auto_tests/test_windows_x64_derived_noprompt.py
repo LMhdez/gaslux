@@ -32,6 +32,15 @@ class NoPromptExperimentalMediaTests(unittest.TestCase):
         self.assertNotEqual(program.returncode, 0)
         self.assertIn("requires explicit lab-derived", program.stderr)
 
+    def test_full_installer_cannot_reboot_into_no_prompt_dvd(self):
+        program = subprocess.run(
+            [sys.executable, str(SRC), "--profile", "win10_22h2_en_us_x64",
+             "--derived-no-prompt", "--accel", "kvm"],
+            capture_output=True, text=True, timeout=12,
+        )
+        self.assertNotEqual(program.returncode, 0)
+        self.assertIn("requires probe-only", program.stderr)
+
     def test_refuse_untrusted_host_and_missing_original(self):
         with tempfile.TemporaryDirectory() as p:
             root = Path(p)
@@ -53,6 +62,8 @@ class NoPromptExperimentalMediaTests(unittest.TestCase):
         self.assertIn('report["labDerivedIsoSha256"] = derived_sha256', src)
         self.assertIn('report["officialIsoUnmodified"] = True', src)
         self.assertIn('no-prompt derived ISO permitted only in isolated hosted KVM', src)
+        self.assertIn("if not args.boot_probe_only:", src)
+        self.assertIn("no writable target disk", src.lower())
         self.assertIn('not derived.exists() and not derived.is_symlink()', src)
 
     def test_guest_boot_observation_does_not_certify_windows_installed(self):
