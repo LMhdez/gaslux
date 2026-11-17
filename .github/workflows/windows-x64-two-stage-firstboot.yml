@@ -10,6 +10,7 @@ on:
       - fix/windows-eval-oobe-international-pass
       - fix/windows-two-stage-removable-oobe-answer
       - test/windows-two-stage-offline-panther-cache-evidence
+      - fix/windows-panther-guestfs-kernel-appliance
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -17,6 +18,7 @@ on:
       - auto_tests/test_windows_x64_swtpm_reconnect.py
       - auto_tests/tools/windows_x64_offline_panther_probe.py
       - auto_tests/test_windows_x64_offline_panther_probe.py
+      - auto_tests/tools/windows_x64_libguestfs_kernel.sh
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
   workflow_dispatch:
 
@@ -46,6 +48,8 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m py_compile auto_tests/tools/windows_x64_offline_panther_probe.py
+          bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_offline_panther_probe.py \
@@ -74,7 +78,11 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_OS" = Linux
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libguestfs-tools qemu-utils
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libguestfs-tools qemu-utils linux-image-generic
+          # Ubuntu AWS runner can lack its executing kernel image in /boot.
+          # This chooses a complete installed generic image for supermin only.
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
           tmp="$(mktemp -d "$RUNNER_TEMP/gaslux-win-x64-panther-XXXXXX")"
           chmod 700 "$tmp"
           trap 'rm -rf -- "$tmp"' EXIT
@@ -84,7 +92,7 @@ jobs:
           for kernel in /boot/vmlinuz-*; do
             if [[ -f "$kernel" ]]; then stat -c 'host-kernel=%n mode=%a owner=%U' "$kernel"; fi
           done
-          if ! LIBGUESTFS_DEBUG=1 LIBGUESTFS_TRACE=1 guestfish --ro --format=qcow2 \
+          if ! timeout --kill-after=10s 100s guestfish --ro --format=qcow2 \
             -a "$tmp/only-disposable-windows-target.qcow2" run : list-filesystems \
             > "$tmp/guestfish-smoke.log" 2>&1; then
             echo 'guestfish failure diagnostics (limited to kernel/supermin lines):'
@@ -125,7 +133,8 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
-            p7zip-full genisoimage libguestfs-tools
+            p7zip-full genisoimage libguestfs-tools linux-image-generic
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
