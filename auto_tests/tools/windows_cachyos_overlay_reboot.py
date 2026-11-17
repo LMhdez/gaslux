@@ -26,6 +26,14 @@ PROOF = (
     "GASLUX_COW_WIN10_REBOOT_WINRE=1",
     "GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1",
 )
+PROOF_FOUR_PARTITION_BASELINE = (
+    "GASLUX_COW_WIN10_BASELINE_AFTER_COW_DISCARD=1",
+    "GASLUX_COW_WIN10_BASELINE_GPT_PARTITIONS=4",
+    "GASLUX_COW_WIN10_BASELINE_ESP=1",
+    "GASLUX_COW_WIN10_BASELINE_BCD=1",
+    "GASLUX_COW_WIN10_BASELINE_WINRE=1",
+    "GASLUX_COW_WIN10_BASELINE_NO_LINUX=1",
+)
 
 class OverlayBootError(ValueError):
     pass
@@ -46,18 +54,45 @@ try {
   $os = Get-CimInstance Win32_OperatingSystem
   if ($os.ProductType -ne 1 -or -not $os.BuildNumber.StartsWith('19045')) { throw 'unexpected Windows client build' }
   $disk = Get-Disk -Number 0
-  $parts = @(Get-Partition -DiskNumber 0)
-  if ($disk.PartitionStyle -ne 'GPT' -or $parts.Count -ne 5) { throw 'GPT partition count not five' }
+  $parts = @(Get-Partition -DiskNumber 0 | Sort-Object PartitionNumber)
+  if ($disk.PartitionStyle -ne 'GPT') { throw 'Windows baseline is not GPT' }
   $esp = @($parts | Where-Object { $_.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' })
+  $msr = @($parts | Where-Object { $_.GptType -eq '{e3c9e316-0b5c-4db8-817d-f92df00215ae}' })
   $recovery = @($parts | Where-Object { $_.GptType -eq '{de94bba4-06d1-4d40-a16a-bfd50179d6ac}' })
   $linux = @($parts | Where-Object { $_.GptType -eq '{0fc63daf-8483-4772-8e79-3d69d8477de4}' })
-  if ($esp.Count -ne 1 -or $recovery.Count -ne 1 -or $linux.Count -ne 1) { throw 'ESP, Recovery or Linux root missing' }
-  if ($linux[0].PartitionNumber -ne 5 -or $linux[0].Size -ne 24GB) { throw 'Linux root geometry not 24 GiB' }
   $windows = Get-Partition -DriveLetter C
-  if ($windows.DiskNumber -ne 0 -or $windows.PartitionNumber -ne 3 -or
-      $recovery[0].PartitionNumber -ne 4 -or
-      $linux[0].Offset -lt ($recovery[0].Offset + $recovery[0].Size)) {
-    throw 'Windows or Linux partition changed order'
+  if ($esp.Count -ne 1 -or $msr.Count -ne 1 -or $recovery.Count -ne 1 -or
+      $windows.DiskNumber -ne 0 -or $windows.PartitionNumber -ne 3 -or
+      $esp[0].PartitionNumber -ne 1 -or $msr[0].PartitionNumber -ne 2 -or
+      $recovery[0].PartitionNumber -ne 4) {
+    throw 'Windows ESP/MSR/OS/Recovery partition identity changed'
+  }
+  if ($parts.Count -eq 5) {
+    if ($linux.Count -ne 1 -or $linux[0].PartitionNumber -ne 5 -or
+        $linux[0].Size -ne 24GB -or
+        $linux[0].Offset -lt ($recovery[0].Offset + $recovery[0].Size)) {
+      throw 'fifth Linux root geometry not 24 GiB'
+    }
+    $markers = @(
+      'GASLUX_COW_WIN10_REBOOT_LIVE=1',
+      'GASLUX_COW_WIN10_REBOOT_BUILD=19045',
+      'GASLUX_COW_WIN10_REBOOT_ESP=1',
+      'GASLUX_COW_WIN10_REBOOT_BCD=1',
+      'GASLUX_COW_WIN10_REBOOT_WINRE=1',
+      'GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1'
+    )
+  } elseif ($parts.Count -eq 4) {
+    if ($linux.Count -ne 0) { throw 'discarded baseline still contains Linux root' }
+    $markers = @(
+      'GASLUX_COW_WIN10_BASELINE_AFTER_COW_DISCARD=1',
+      'GASLUX_COW_WIN10_BASELINE_GPT_PARTITIONS=4',
+      'GASLUX_COW_WIN10_BASELINE_ESP=1',
+      'GASLUX_COW_WIN10_BASELINE_BCD=1',
+      'GASLUX_COW_WIN10_BASELINE_WINRE=1',
+      'GASLUX_COW_WIN10_BASELINE_NO_LINUX=1'
+    )
+  } else {
+    throw 'unexpected Windows GPT partition count'
   }
   if (-not (Test-Path 'C:\Windows\System32\winload.efi')) { throw 'Windows bootloader missing' }
   $bcd = & bcdedit.exe /enum '{bootmgr}' 2>&1
@@ -66,14 +101,7 @@ try {
   if ($LASTEXITCODE -ne 0 -or ($re -join [Environment]::NewLine) -notmatch 'Windows RE status:\s+Enabled') {
     throw 'WinRE is missing or disabled'
   }
-  foreach ($m in @(
-    'GASLUX_COW_WIN10_REBOOT_LIVE=1',
-    'GASLUX_COW_WIN10_REBOOT_BUILD=19045',
-    'GASLUX_COW_WIN10_REBOOT_ESP=1',
-    'GASLUX_COW_WIN10_REBOOT_BCD=1',
-    'GASLUX_COW_WIN10_REBOOT_WINRE=1',
-    'GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1'
-  )) { $serial.WriteLine($m); Start-Sleep -Milliseconds 150 }
+  foreach ($m in $markers) { $serial.WriteLine($m); Start-Sleep -Milliseconds 150 }
 } catch {
   if ($serial -and $serial.IsOpen) { $serial.WriteLine('GASLUX_COW_WIN10_REBOOT_FAIL=1') }
 } finally {
@@ -105,6 +133,25 @@ def audit_complete_third_serial(path: Path) -> str:
     lines = data.splitlines()
     require(all(lines.count(line.encode("ascii")) == 1 for line in PROOF),
             "missing, duplicated or coalesced third Windows audit witnesses")
+    return hashlib.sha256(data).hexdigest()
+
+def audit_complete_four_partition_serial(path: Path) -> str:
+    require(path.is_file() and not path.is_symlink()
+            and path.stat().st_nlink == 1
+            and 0 < path.stat().st_size <= 512_000,
+            "missing, linked or oversized post-discard Windows serial")
+    data = path.read_bytes()
+    require(len(BOOT_MANAGER.findall(data)) == 1
+            and b'UEFI QEMU DVD-ROM' not in data
+            and b'GASLUX_COW_WIN10_REBOOT_FAIL=1' not in data,
+            "post-discard guest did not complete one clean Windows boot")
+    lines = data.splitlines()
+    require(all(lines.count(line.encode("ascii")) == 1
+                for line in PROOF_FOUR_PARTITION_BASELINE),
+            "missing, duplicated or coalesced four-partition Windows baseline witnesses")
+    require(not any(line.startswith(b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=")
+                    for line in lines),
+            "post-discard baseline incorrectly reported a fifth Linux partition")
     return hashlib.sha256(data).hexdigest()
 
 def first_logon_task(script_hash: str) -> str:
