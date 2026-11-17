@@ -25,6 +25,7 @@ from windows_x64_tcg_firstboot import (
     generate_unattend, load_catalog, require, validate_environment,
     witness_powershell,
 )
+from windows_x64_winpe_vga_diagnostic import capture_owned_qemu_vga
 
 PROFILE = "win10_22h2_en_us_x64"
 BUILD = "19045"
@@ -135,7 +136,7 @@ def build_no_target_qemu_args(
         "-drive", f"if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file={iso}",
         "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
         "-serial", f"file:{serial}", "-boot", "order=d",
-        "-monitor", "none",
+        "-monitor", f"unix:{serial.parent / 'initial-installer-hmp.sock'},server,nowait",
     ]
     if mode == "fat12_floppy":
         args += ["-drive", f"if=floppy,format=raw,readonly=on,file={answer}"]
@@ -149,7 +150,9 @@ def build_no_target_qemu_args(
         and all("only_windows" not in arg and "ide-hd" not in arg
                 and "qcow2" not in arg for arg in args)
         and args.count("-boot") == 1
-        and args[args.index("-boot") + 1] == "order=d",
+        and args[args.index("-boot") + 1] == "order=d"
+        and args[args.index("-monitor") + 1]
+            == f"unix:{serial.parent / 'initial-installer-hmp.sock'},server,nowait",
         "WinPE probe must never attach an installable target disk or network",
     )
     return args
@@ -167,6 +170,12 @@ def probe_once(derived_iso: Path, root: Path, mode: str) -> bool:
     args = build_no_target_qemu_args(derived_iso, answer, nvram, serial, mode)
     error = work / "qemu-stderr.log"
     found = False
+    started_at = time.monotonic()
+    observed_vga: list[dict[str, int]] = []
+    # Inspect only bounded boolean firmware/boot-manager witnesses, never
+    # persist guest serial or screenshot payload as a CI artifact.
+    dvd_uefi_seen = False
+    firmware_dvd_timeout_seen = False
     with error.open("xb") as stderr:
         vm = subprocess.Popen(
             args, stdout=subprocess.DEVNULL, stderr=stderr,
@@ -181,6 +190,10 @@ def probe_once(derived_iso: Path, root: Path, mode: str) -> bool:
                     with serial.open("rb") as stream:
                         raw = stream.read(MAX_SERIAL + 1)
                     lines = [line.strip() for line in raw.splitlines()]
+                    dvd_uefi_seen |= b"BdsDxe: starting Boot" in raw and b"DVD-ROM" in raw
+                    firmware_dvd_timeout_seen |= (
+                        b"DVD-ROM" in raw and b"Time out" in raw
+                    )
                     if lines.count(MARKER) > 1:
                         raise LabError("duplicate WinPE answer consumption markers")
                     if MARKER in lines:
@@ -190,13 +203,42 @@ def probe_once(derived_iso: Path, root: Path, mode: str) -> bool:
                         break
                 if vm.poll() is not None:
                     break
-                time.sleep(2)
+                # Privately sample two VGA frames. QEMU screendump PPM is
+                # parsed into five integers and unlinked before returning;
+                # no raw image, OCR, credentials or screen content is logged.
+                elapsed = time.monotonic() - started_at
+                for index, when, name in (
+                    (0, 65, "winpe-vga-early.ppm"),
+                    (1, 165, "winpe-vga-late.ppm"),
+                ):
+                    if elapsed >= when and len(observed_vga) == index:
+                        monitor = work / "initial-installer-hmp.sock"
+                        stats = capture_owned_qemu_vga(monitor, work / name)
+                        observed_vga.append(stats)
+                        print(
+                            "GASLUX_WINPE_" + mode.upper()
+                            + "_PRIVATE_VGA_NUMERIC_" + str(index + 1) + "="
+                            + json.dumps(stats, sort_keys=True),
+                            flush=True,
+                        )
+                time.sleep(1)
         finally:
             if vm.poll() is None:
                 vm.kill()
                 vm.wait(timeout=30)
     print("GASLUX_WINPE_" + mode.upper() + "_ANSWER_MARKER=" + str(int(found)),
           flush=True)
+    print("GASLUX_WINPE_" + mode.upper() + "_UEFI_DVD_START_SEEN="
+          + str(int(dvd_uefi_seen)), flush=True)
+    print("GASLUX_WINPE_" + mode.upper() + "_UEFI_DVD_TIMEOUT_SEEN="
+          + str(int(firmware_dvd_timeout_seen)), flush=True)
+    print("GASLUX_WINPE_" + mode.upper() + "_PRIVATE_VGA_FRAMES="
+          + str(len(observed_vga)), flush=True)
+    print("GASLUX_WINPE_" + mode.upper() + "_PRIVATE_VGA_NUMERIC_CHANGED="
+          + str(int(len(observed_vga) == 2
+                    and observed_vga[0] != observed_vga[1])), flush=True)
+    # Pixels/colour occupancy alone cannot establish WinPE boot or unattend
+    # processing; only the exact COM1 marker can pass the media probe.
     return found
 
 
