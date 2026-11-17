@@ -53,10 +53,21 @@ def check(front, back, plan):
     # No block device is ever accessed or mutated.
     def pread(_fd, _count, offset):
         return front if offset == 0 else back
+    def ioctl(_fd, request, _payload):
+        if request == 0x80081272:
+            return struct.pack("=Q", 128 * 1024**3)
+        if request == 0x1268:
+            return struct.pack("=I", 512)
+        raise AssertionError("unexpected block ioctl")
     with patch.object(Path, "is_block_device", return_value=True), \
+         patch.object(Path, "is_symlink", return_value=False), \
+         patch("os.open", return_value=9), \
+         patch("os.close"), \
+         patch("fcntl.ioctl", side_effect=ioctl), \
          patch("os.pread", side_effect=pread), \
-         patch("os.fstat", return_value=SimpleNamespace(st_mode=stat.S_IFBLK)):
-        return shared.strict_gpt_evidence(Path("/dev/null"), plan)
+         patch("os.fstat", return_value=SimpleNamespace(
+             st_mode=stat.S_IFBLK, st_rdev=123)):
+        return shared.strict_gpt_evidence(Path("/dev/vdb"), plan)
 
 
 class SharedRootOnlySafety(unittest.TestCase):
@@ -66,6 +77,42 @@ class SharedRootOnlySafety(unittest.TestCase):
         self.assertTrue(proof["bothGptCopiesCrcVerified"])
         self.assertTrue(proof["allWindowsAndOwnedLinuxEntriesIdenticalToSignedPlan"])
         self.assertFalse(proof["productionWritesAuthorized"])
+
+    def test_wrong_whole_disk_geometry_fails_before_gpt_reads(self):
+        _, _, plan = fixture()
+        for bytes_count, sector_bytes in (
+            (64 * 1024**3, 512), (128 * 1024**3, 4096),
+        ):
+            def ioctl(_fd, request, _payload):
+                return (struct.pack("=Q", bytes_count)
+                        if request == 0x80081272
+                        else struct.pack("=I", sector_bytes))
+            with self.subTest(size=bytes_count, sector=sector_bytes), \
+                 patch.object(Path, "is_block_device", return_value=True), \
+                 patch.object(Path, "is_symlink", return_value=False), \
+                 patch("os.open", return_value=9), \
+                 patch("os.close"), \
+                 patch("os.fstat", return_value=SimpleNamespace(
+                     st_mode=stat.S_IFBLK, st_rdev=123)), \
+                 patch("fcntl.ioctl", side_effect=ioctl), \
+                 patch("os.pread") as read:
+                with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
+                                            "size/sector bytes"):
+                    shared.strict_gpt_evidence(Path("/dev/vdb"), plan)
+                read.assert_not_called()
+
+    def test_partition_node_or_foreign_disk_rejected_before_open(self):
+        _, _, plan = fixture()
+        with patch.object(Path, "is_block_device", return_value=True), \
+             patch.object(Path, "is_symlink", return_value=False), \
+             patch("os.open") as opened:
+            for bad in ("/dev/vdb5", "/dev/sda", "/dev/nvme0n1",
+                        "/dev/mapper/windows", "/dev/vdb/../sda"):
+                with self.subTest(path=bad), \
+                     self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
+                                            "one whole virtio disk"):
+                    shared.strict_gpt_evidence(Path(bad), plan)
+            opened.assert_not_called()
 
     def test_foreign_fifth_guid_rejected(self):
         front, back, plan = fixture()
