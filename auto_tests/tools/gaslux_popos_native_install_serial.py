@@ -127,9 +127,7 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
         wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=120, start=start)
         sync_start = len(transcript)
         conn.sendall(b"sync\r")
-        wait_for(
-            conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=150, start=sync_start
-        )
+        wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=150, start=sync_start)
         conn.sendall(b"systemctl poweroff -i\r")
         # Keep the console alive until the guest actually closes the socket.
         # EOF alone is NOT a proof: the host must still see QEMU exit 0.
