@@ -17,6 +17,7 @@ on:
     branches:
       - feature/windows-vnc-boot-diagnostics-issue71
       - feature/windows-usb-unattend-kvm-issue71
+      - fix/windows-hmp-readonly-framebuffer-complete-prompt
     paths:
       - .github/workflows/windows-x64-vnc-visual-diagnostics.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py

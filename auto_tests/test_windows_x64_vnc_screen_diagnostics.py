@@ -72,6 +72,47 @@ class WindowsVncScreenDiagnostics(unittest.TestCase):
             )
             self.assertTrue(qemu.killed)
 
+
+    def test_fragmented_hmp_echo_waits_for_terminal_prompt(self):
+        class FakeMonitor:
+            def __init__(self):
+                self.chunks = iter([
+                    b"QEMU 8.2.2 monitor\r\n(qe", b"mu) ",
+                    b"s\x1b[K", b"scr\x1b[K", b"screendump ",
+                    b"/home/runner/work/_temp/owned.ppm\r\n", b"(qemu) ",
+                ])
+            def recv(self, unused_count):
+                return next(self.chunks)
+        qemu = FakeMonitor()
+        self.assertEqual(
+            vm._receive_complete_hmp_reply(qemu, banner=True),
+            b"QEMU 8.2.2 monitor\r\n(qemu) ",
+        )
+        reply = vm._receive_complete_hmp_reply(qemu, banner=False)
+        self.assertTrue(reply.endswith(b"\r\n(qemu) "))
+        self.assertIn(b"screendump ", reply)
+
+    def test_false_midstream_prompt_cannot_end_hmp_reply(self):
+        class FakeMonitor:
+            def __init__(self):
+                self.chunks = iter([
+                    b"(qemu) inside echoed text\r\nstill working",
+                    b"\r\n(qemu) ",
+                ])
+            def recv(self, unused_count):
+                return next(self.chunks)
+        reply = vm._receive_complete_hmp_reply(FakeMonitor(), banner=False)
+        self.assertTrue(reply.endswith(b"\r\n(qemu) "))
+
+    def test_incomplete_or_disconnected_hmp_command_fails_closed(self):
+        class FakeMonitor:
+            def __init__(self):
+                self.chunks = iter([b"screendump file.ppm\r\n(qemu)", b""])
+            def recv(self, unused_count):
+                return next(self.chunks)
+        with self.assertRaisesRegex(vm.LabError, "disconnected"):
+            vm._receive_complete_hmp_reply(FakeMonitor(), banner=False)
+
     def test_no_boot_prompt_never_captures_framebuffer(self):
         with tempfile.TemporaryDirectory() as temp:
             work = pathlib.Path(temp)

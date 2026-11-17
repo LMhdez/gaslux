@@ -423,8 +423,26 @@ def send_first_iso_boot_key_vnc(monitor_path: Path, hold_ms: int = 300) -> None:
         raise LabError("QEMU local RFB failed to deliver initial ISO Return") from exc
 
 
+def _receive_complete_hmp_reply(monitor: socket.socket, *, banner: bool) -> bytes:
+    """Drain fragmented QEMU HMP readline echoes up to the COMPLETE prompt.
+
+    The string '(qemu)' may occur mid-reply, including fragmented terminal
+    echo output. Only a trailing prompt after an LF can terminate a command.
+    """
+    response = bytearray()
+    while len(response) < 65536:
+        fragment = monitor.recv(min(8192, 65536 - len(response)))
+        require(bool(fragment), "QEMU HMP disconnected before complete reply")
+        response.extend(fragment)
+        if response.endswith(b"(qemu) ") and b"\n" in response:
+            if banner:
+                require(b"QEMU" in response, "unexpected HMP banner identity")
+            return bytes(response)
+    raise LabError("QEMU HMP reply exceeded bounded prompt limit")
+
+
 def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
-    """Read-only framebuffer diagnostic; not evidence of Windows boot."""
+    """Read-only framebuffer diagnostic; never evidence of Windows boot."""
     require(os.environ.get("GITHUB_ACTIONS") == "true" and
             os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
             os.environ.get("RUNNER_OS") == "Linux",
@@ -434,48 +452,45 @@ def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
             monitor_path.parent.name.startswith("gaslux-win-x64-") and
             monitor_path.parent.parent == Path("/home/runner/work/_temp"),
             "refusing unowned QEMU diagnostic monitor")
-    require(destination.parent == monitor_path.parent and
+    owner = monitor_path.parent
+    require(owner.is_dir() and not owner.is_symlink() and
+            owner.resolve() == owner and
+            owner.stat().st_uid == os.getuid() and
+            stat.S_IMODE(owner.stat().st_mode) == 0o700,
+            "unsafe QEMU diagnostic owner")
+    require(destination.parent == owner and
             destination.name in ("windows-dvd-90s.ppm", "windows-dvd-180s.ppm") and
-            not destination.exists() and not destination.is_symlink() and
-            stat.S_IMODE(destination.parent.stat().st_mode) == 0o700,
+            not destination.exists() and not destination.is_symlink(),
             "refusing unowned framebuffer destination")
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
-            monitor.settimeout(5)
+            monitor.settimeout(10)
             monitor.connect(str(monitor_path))
-            banner = b""
-            while b"(qemu)" not in banner and len(banner) < 8192:
-                fragment = monitor.recv(8192 - len(banner))
-                require(bool(fragment), "QEMU HMP did not send initial prompt")
-                banner += fragment
-            require(b"(qemu)" in banner, "unexpected QEMU HMP monitor")
-            # HMP screendump only reads the VM display: no input or disk writes.
-            monitor.sendall(f"screendump {destination.name}\n".encode("ascii"))
-            response = b""
-            while b"(qemu)" not in response and len(response) < 32768:
-                fragment = monitor.recv(min(8192, 32768 - len(response)))
-                require(bool(fragment), "QEMU HMP closed during framebuffer request")
-                response += fragment
-            sample = response[-250:].decode("ascii", "replace").replace(
-                str(destination.parent), "<vm>")
-            require(b"(qemu)" in response,
-                    "QEMU HMP incomplete response bytes=" + str(len(response))
-                    + " tail=" + repr(sample))
-            require(b"Error" not in response and b"unknown command" not in response,
-                    "QEMU rejected read-only framebuffer request")
+            _receive_complete_hmp_reply(monitor, banner=True)
+            # Absolute path, bounded and derived exclusively from owned workspace.
+            # QEMU HMP emits an echo in tiny chunks on hosted Ubuntu runners;
+            # NEVER close the socket until the full (qemu) prompt has returned.
+            monitor.sendall(("screendump " + str(destination) + "\n").encode("ascii"))
+            response = _receive_complete_hmp_reply(monitor, banner=False)
+            require(b"screendump" in response and
+                    all(word not in response.lower() for word in (
+                        b"unknown command", b"no graphical console",
+                        b"could not", b"failed to", b"error:")),
+                    "QEMU rejected read-only screenshot command")
         for _ in range(40):
             if destination.is_file() and destination.stat().st_size > 100:
                 break
             time.sleep(.1)
-        hmp_reply = response.decode("ascii", "replace").replace(
-            str(destination.parent), "<vm>")
-        require(destination.is_file() and not destination.is_symlink(),
-                "missing QEMU framebuffer; HMP returned " + repr(hmp_reply[:240]))
+        require(destination.is_file() and not destination.is_symlink() and
+                stat.S_ISREG(destination.stat().st_mode),
+                "QEMU framebuffer missing after completed HMP response")
         require(100 < destination.stat().st_size <= 20 * 1024**2,
                 "unexpected QEMU framebuffer size")
         with destination.open("rb") as stream:
-            require(stream.read(2) == b"P6", "unexpected QEMU framebuffer format")
-        return hashlib.sha256(destination.read_bytes()).hexdigest()
+            require(stream.read(3) in (b"P6\n", b"P6\r"),
+                    "unexpected QEMU framebuffer format")
+        with destination.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha256").hexdigest()
     except (TimeoutError, OSError) as exc:
         raise LabError("QEMU read-only screendump failed") from exc
 
