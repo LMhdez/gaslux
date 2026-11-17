@@ -33,7 +33,7 @@ def main() -> int:
                 "-nodefaults", "-net", "none", "-S",
                 "-display", "vnc=127.0.0.1:79", "-vga", "std",
                 "-monitor", f"unix:{monitor},server,nowait",
-            ], stdout=subprocess.DEVNULL, stderr=stderr)
+            ], cwd=root, stdout=subprocess.DEVNULL, stderr=stderr)
             try:
                 for _ in range(100):
                     if monitor.is_socket():
