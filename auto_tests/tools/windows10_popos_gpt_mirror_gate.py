@@ -29,6 +29,7 @@ WINDOWS_TYPES = (ESP, MSR, BASIC, RECOVERY)
 LINUX_TYPE = "0fc63daf-8483-4772-8e79-3d69d8477de4"
 PARTITION_ENTRY_BYTES = 128
 ROOT_LABEL = "GASLUX-LAB-POP-ROOT"
+POP_ESP_NAME = "GASLUX-LAB-POP-ESP"
 
 
 def _header(window: bytes, offset: int, current: int, alternate: int) -> bytes:
@@ -84,8 +85,8 @@ def _array(header: bytes, front: bytes, back: bytes) -> bytes:
 
 
 def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> dict:
-    """Validate complete GPT mirrors and exact 4-Windows/5-COW-root roles."""
-    require(expected_count in (4, 5), "invalid expected GPT stage count")
+    """Validate 4 Windows GPT entries plus optional owned Pop root or ESP/root."""
+    require(expected_count in (4, 5, 6), "invalid expected GPT stage count")
     total = TOTAL_BYTES // SECTOR
     require(len(front) == WINDOW_BYTES and len(back) == WINDOW_BYTES,
             "truncated GPT windows")
@@ -151,7 +152,9 @@ def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> 
     previous_end = 33
     for index, row in enumerate(rows[:expected_count], 1):
         kind = str(uuid.UUID(bytes_le=row[:16]))
-        expected_type = WINDOWS_TYPES[index - 1] if index <= 4 else LINUX_TYPE
+        expected_type = (WINDOWS_TYPES[index - 1] if index <= 4
+                         else ESP if expected_count == 6 and index == 5
+                         else LINUX_TYPE)
         unique_id = row[16:32]
         start_lba, end_lba, attrs = struct.unpack_from("<QQQ", row, 32)
         require(
@@ -168,7 +171,10 @@ def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> 
         previous_end = end_lba
         name = row[56:128].decode("utf-16-le").split("\0", 1)[0]
         names.append(name)
-        if index == 5:
+        if index == 5 and expected_count == 6:
+            require(name == POP_ESP_NAME and attrs == 0,
+                    "foreign owned Pop ESP name or GPT attributes")
+        elif index >= 5:
             require(name == ROOT_LABEL and attrs == 0,
                     "foreign Linux root name or GPT attributes")
         found.append({
@@ -183,7 +189,9 @@ def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> 
         "diskGuid": str(uuid.UUID(bytes_le=p[56:72])),
         "windowsEntryHex": [row.hex() for row in rows[:4]],
         "windowsPartitions": found[:4],
-        "linuxRoot": found[4] if expected_count == 5 else None,
+        "popEsp": found[4] if expected_count == 6 else None,
+        "linuxRoot": (found[4] if expected_count == 5 else
+                      found[5] if expected_count == 6 else None),
         "mbrSha256": hashlib.sha256(mbr).hexdigest(),
         "protectiveMbrCanonical": canonical,
         "oversizedWindowsPmbrLabOnly": oversized_windows,
