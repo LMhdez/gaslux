@@ -37,6 +37,13 @@ root_uuid="$(blkid -s UUID -o value "$root_device")"
 [[ "$(lsblk -d -n -o NAME,TYPE | awk '$2 == "disk" { print $1 }')" == 'vda' ]] ||
   fatal 'more-than-one-guest-disk'
 
+owned_hook_tool='/usr/local/sbin/gaslux-q4os-owned-hooks-guest'
+owned_hooks=0
+if [[ -s /etc/gaslux-q4os-lab-transaction.id ]]; then
+  [[ -f "$owned_hook_tool" && -x "$owned_hook_tool" ]] ||
+    fatal 'owned-hooks-adapter-not-installed'
+  owned_hooks=1
+fi
 native_loader='/boot/efi/EFI/GasluxQ4OSLab/grubx64.efi'
 boot_fallback='/boot/efi/EFI/BOOT/BOOTX64.EFI'
 state='/var/lib/gaslux-q4os-native-grub.sha256'
@@ -52,6 +59,10 @@ if [[ "$1" == verify-second ]]; then
   [[ -r /proc/cmdline ]] || fatal 'second-kernel-cmdline-unavailable'
   grep -Fq 'BOOT_IMAGE=' /proc/cmdline ||
     fatal 'second-kernel-was-not-started-by-grub'
+  if [[ "$owned_hooks" -eq 1 ]]; then
+    "$owned_hook_tool" verify ||
+      fatal 'transaction-owned-hook-verification-failed'
+  fi
   printf 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_KERNEL=6.12.111+deb13-amd64\n' > /dev/ttyS0
   printf 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=6.10-deb13u1\n' > /dev/ttyS0
   exit 0
@@ -98,6 +109,10 @@ GRUB_DISABLE_OS_PROBER=true
 CFG
 # No NVRAM modification and no --removable. Native Q4OS package writes
 # only into the guest-owned ESP. Do not copy this procedure to a Windows ESP.
+if [[ "$owned_hooks" -eq 1 ]]; then
+  "$owned_hook_tool" hook2 ||
+    fatal 'transaction-owned-hook2-failed'
+fi
 grub-install --target=x86_64-efi --efi-directory=/boot/efi \
   --bootloader-id=GasluxQ4OSLab --no-nvram --recheck > /dev/ttyS0 2>&1 ||
   fatal 'native-grub-install-failed'
@@ -119,8 +134,17 @@ cp -- "$native_loader" "${boot_fallback}.gaslux-next"
 chmod 0644 "${boot_fallback}.gaslux-next"
 mv -f -- "${boot_fallback}.gaslux-next" "$boot_fallback"
 cmp -s "$native_loader" "$boot_fallback" || fatal 'native-loader-copy-failed'
+if [[ "$owned_hooks" -eq 1 ]]; then
+  "$owned_hook_tool" hook3 ||
+    fatal 'transaction-owned-hook3-failed'
+fi
 mkdir -p /var/lib
+sha256sum "$native_loader"mkdir -p /var/lib
 sha256sum "$native_loader" | cut -d' ' -f1 > "$state"
+if [[ "$owned_hooks" -eq 1 ]]; then
+  "$owned_hook_tool" hook5 ||
+    fatal 'transaction-owned-hook5-failed'
+fi
 ln -s /etc/systemd/system/gaslux-q4os-native-second.service \
   /etc/systemd/system/multi-user.target.wants/gaslux-q4os-native-second.service
 rm -f /etc/systemd/system/multi-user.target.wants/gaslux-q4os-native-grub.service
