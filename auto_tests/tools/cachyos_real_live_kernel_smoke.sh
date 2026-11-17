@@ -110,6 +110,17 @@ if [[ "${GASLUX_LIVE_GUEST_PROBE:-0}" == 1 ]]; then
     sha256sum "$lab_script" | awk '{print $1 "  install.sh"}' > "$w/install.sha256"
     mcopy -i "$fat" "$lab_script" ::/install.sh
     mcopy -i "$fat" "$w/install.sha256" ::/install.sha256
+    # Exact reviewed source blobs from the PR34 signed-only pacstrap lab.
+    for guard in strict-pacman pacman-trust; do
+      case "$guard" in
+        strict-pacman) src="$PWD/assets/live/cachyos-strict-pacman.py" ;;
+        pacman-trust) src="$PWD/assets/live/cachyos-pacman-trust.py" ;;
+      esac
+      [[ -f "$src" && ! -L "$src" ]] || { echo "Missing signed-only $guard" >&2; exit 2; }
+      sha256sum "$src" | awk -v file="$guard.py" '{print $1 "  " file}' > "$w/$guard.sha256"
+      mcopy -i "$fat" "$src" "::/$guard.py"
+      mcopy -i "$fat" "$w/$guard.sha256" "::/$guard.sha256"
+    done
     updater="$PWD/auto_tests/tools/cachyos_vm_update_recovery_guest.sh"
     [[ -f "$updater" && ! -L "$updater" ]] || {
       echo 'Missing VM-only update recovery helper' >&2
