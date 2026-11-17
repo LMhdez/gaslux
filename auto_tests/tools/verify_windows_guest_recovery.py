@@ -188,6 +188,7 @@ def validate(doc: Any, phase: str) -> None:
             "RAW disk cannot contain declared partitions",
         )
         partition_guids: set[str] = set()
+        partition_numbers: set[int] = set()
         regions: list[tuple[int, int]] = []
         for part in parts:
             require(type(part) is dict and set(part) == PART_FIELDS, "invalid partition object")
@@ -206,6 +207,11 @@ def validate(doc: Any, phase: str) -> None:
                 and type(part["size"]) is int,
                 "invalid partition geometry type",
             )
+            require(
+                part["number"] not in partition_numbers,
+                "duplicate partition number on the same disk",
+            )
+            partition_numbers.add(part["number"])
             offset, length = part["offset"], part["size"]
             require(
                 offset >= sector
