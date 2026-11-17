@@ -288,9 +288,8 @@ def test_proposal_requires_independent_disk_evidence(vm):
 def test_signed_schema_matches_runtime_and_rejects_install_authority(signed):
     import json
 
-    from jsonschema import Draft202012Validator
-
     from gaslux_q4os_vm_target_plan import _PLAN_FIELDS
+    from jsonschema import Draft202012Validator
 
     _, _, _, proposal, _, _, _ = signed
     schema_path = ROOT / "schemas" / "gaslux-q4os-vm-target-plan.schema.json"
