@@ -1,0 +1,251 @@
+name: CachyOS real Windows shared-root pacstrap (disposable QCOW2 only)
+
+on:
+  push:
+    branches:
+      - feature/cachyos-shared-cow-pacstrap-archiso-issue3
+    paths:
+      - .github/workflows/cachyos-windows10-shared-root-pacstrap.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/tools/cachyos_windows_shared_root_pacstrap.py
+      - auto_tests/tools/cachyos_windows_shared_cow_grant.py
+      - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
+      - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
+      - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
+      - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
+      - auto_tests/tools/cachyos_windows_shared_gpt_raw_audit.py
+      - auto_tests/tools/cachyos_generated_boot_config.py
+      - auto_tests/tools/windows_cachyos_postext4_cow_rollback.py
+      - auto_tests/tools/gaslux-cachyos-shared-root-install.sh
+      - auto_tests/tools/gaslux-cachyos-shared-root-launch.sh
+      - auto_tests/test_cachyos_windows_shared_root_pacstrap.py
+      - auto_tests/test_cachyos_windows_shared_cow_grant.py
+      - auto_tests/test_windows_cachyos_postext4_cow_rollback.py
+      - assets/live/cachyos-strict-pacman.py
+      - assets/live/cachyos-pacman-trust.py
+  pull_request:
+    paths:
+      - .github/workflows/cachyos-windows10-shared-root-pacstrap.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/tools/cachyos_windows_shared_root_pacstrap.py
+      - auto_tests/tools/cachyos_windows_shared_cow_grant.py
+      - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
+      - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
+      - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
+      - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
+      - auto_tests/tools/cachyos_generated_boot_config.py
+      - auto_tests/tools/windows_cachyos_postext4_cow_rollback.py
+      - auto_tests/test_cachyos_windows_shared_root_pacstrap.py
+      - auto_tests/test_cachyos_windows_shared_cow_grant.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cachyos-shared-root-pacstrap-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  static-and-synthetic-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile source and install isolated test utilities
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          python3 -m py_compile \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/tools/cachyos_windows_shared_root_pacstrap.py \
+            auto_tests/tools/cachyos_windows_shared_cow_grant.py \
+            auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py \
+            auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \
+            auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
+            auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py \
+            auto_tests/tools/cachyos_windows_shared_gpt_raw_audit.py \
+            auto_tests/tools/cachyos_generated_boot_config.py \
+            auto_tests/tools/windows_cachyos_postext4_cow_rollback.py \
+            auto_tests/test_cachyos_windows_shared_root_pacstrap.py \
+            auto_tests/test_cachyos_windows_shared_cow_grant.py \
+            auto_tests/test_windows_cachyos_postext4_cow_rollback.py \
+            assets/live/cachyos-strict-pacman.py \
+            assets/live/cachyos-pacman-trust.py
+          bash -n auto_tests/tools/gaslux-cachyos-shared-root-install.sh
+          bash -n auto_tests/tools/gaslux-cachyos-shared-root-launch.sh
+      - name: Run signed grant, GPT, pacman and rollback regression suites
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_root_pacstrap.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_grant.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_cow_rollback.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_windows.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_ext4_only.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_reboot.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_gpt_stage.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_cow_checkpoint.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_handoff.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_guest_probe.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_strict_pacman.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_pacman_trust.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
+          if grep -En '(^|[[:space:]])(sgdisk[[:space:]]+--clear|mkfs\\.|grub-install|efibootmgr[[:space:]]+-c)' auto_tests/tools/cachyos_windows_shared_root_pacstrap.py; then
+            echo 'Unsafe whole-disk, filesystem-format or ESP bootloader mutation in shared-root backend' >&2
+            exit 1
+          fi
+          echo 'PASS: signed grant and synthetic contracts only; the real guest job below is the only pacstrap writer.' >> "$GITHUB_STEP_SUMMARY"
+
+  real-windows10-archiso-pacstrap-and-discard:
+    needs: static-and-synthetic-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 220
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT: I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_GPT_CONSENT: I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY
+      GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT: I_ACCEPT_WINDOWS_GUEST_REBOOT_ON_PRIVATE_GPT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT: I_ACCEPT_EXT4_ONLY_FIFTH_PARTITION_ON_HOSTED_WIN10_COW
+      GASLUX_WINDOWS_POST_EXT4_REBOOT_CONSENT: I_ACCEPT_WINDOWS_FOURTH_GUEST_ON_EXT4_ONLY_QCOW2_COW
+      GASLUX_WINDOWS_POST_EXT4_COW_DISCARD_CONSENT: I_ACCEPT_COW_EXT4_DISCARD_AND_INDEPENDENT_WINDOWS_BASELINE_REBOOT
+      GASLUX_CACHYOS_ARCHISO_READONLY_CONSENT: I_ACCEPT_PINNED_ARCHISO_READONLY_WINDOWS10_QCOW2_COW
+      GASLUX_CACHYOS_SHARED_ROOT_PACSTRAP_CONSENT: I_ACCEPT_CACHYOS_SHARED_ROOT_PACSTRAP_ON_DISPOSABLE_WINDOWS_COW
+      GASLUX_CACHYOS_VERIFIED_ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare genuine Windows KVM and CachyOS Archiso dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 qemu-system-x86 qemu-utils ovmf swtpm gdisk \
+            dosfstools mtools p7zip-full genisoimage \
+            python3-guestfs libguestfs-tools linux-image-generic \
+            grub-efi-amd64-bin grub-common e2fsprogs openssl
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          install -d -m 0700 "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Download pinned official CachyOS 260809 ISO
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          workspace="$(mktemp -d -p "$RUNNER_TEMP" gaslux-pinned-cachyos-XXXXXXXX)"
+          chmod 0700 "$workspace"
+          {
+            printf '%s\t%s\n' 'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' 'https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
+            printf '  dir=%s\n' "$workspace"
+            printf '  out=cachyos.iso\n'
+          } > "$workspace/mirrors.txt"
+          aria2c --input-file="$workspace/mirrors.txt" \
+            --split=8 --min-split-size=32M --max-connection-per-server=8 \
+            --max-concurrent-downloads=1 --continue=true \
+            --file-allocation=none --retry-wait=8 --max-tries=8 \
+            --timeout=45 --connect-timeout=25 \
+            --check-integrity --checksum="sha-256=$GASLUX_CACHYOS_VERIFIED_ISO_SHA256"
+          printf '%s  %s\n' "$GASLUX_CACHYOS_VERIFIED_ISO_SHA256" "$workspace/cachyos.iso" | sha256sum -c --status
+          echo "GASLUX_CACHYOS_VERIFIED_ISO_PATH=$workspace/cachyos.iso" >> "$GITHUB_ENV"
+          echo 'Pinned official CachyOS desktop ISO SHA-256 VERIFIED.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Run Windows 10 fourth boot, signed Archiso pacstrap on fifth ext4, then discard COW
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile win10_22h2_en_us_x64 --accel kvm \
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
+            --prepare-owned-cow-checkpoint \
+            --stage-cachyos-overlay-root-gpt-only \
+            --verify-windows-reboot-with-fifth-gpt \
+            --format-owned-fifth-ext4-only \
+            --verify-windows-reboot-after-ext4 \
+            --run-cachyos-shared-root-pacstrap
+      - name: Independently gate pacstrap, Windows integrity and disposable COW recovery
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path("windows-x64-tcg-evidence")
+          profile = "win10_22h2_en_us_x64"
+          report = json.loads((root / (profile + "-result.json")).read_text())
+          assert report["windowsClientBootVerified"] is True
+          assert report["windowsBootAfterExt4Verified"] is True
+          assert report["cachyosRootPacstrapped"] is True
+          assert report["windowsBootAfterPacstrapOverlayDiscardVerified"] is True
+          for denied in (
+              "cachyosInstalled", "cachyosFirstBootVerified",
+              "sameDiskDualBootVerified", "windowsRecoveryAfterLinuxVerified",
+              "rollbackProven", "productionStorageWritesAuthorized", "releaseEligible",
+          ):
+              assert report[denied] is False, denied
+          pacstrap = json.loads((root / (profile + "-cachyos-shared-root-pacstrap.json")).read_text())
+          assert pacstrap["rootWriteGrantIssued"] is True
+          assert pacstrap["pacstrapExecuted"] is True
+          assert pacstrap["labOnlyPacstrapCompleted"] is True
+          assert pacstrap["cachyosRootPacstrapped"] is True
+          assert pacstrap["nativeCachyOSOsReleaseVerified"] is True
+          assert pacstrap["nativeKernelAndInitramfsPresent"] is True
+          assert pacstrap["strictInstalledPacmanPolicyVerified"] is True
+          assert pacstrap["windowsGptUnchangedAfterPacstrap"] is True
+          assert pacstrap["windowsProtectedHashesUnchangedAfterPacstrap"] is True
+          assert pacstrap["windowsBaseSha256UnchangedAfterPacstrap"] is True
+          assert pacstrap["originalWindowsUefiUnchangedAfterPacstrap"] is True
+          assert pacstrap["windowsEspWritesAllowed"] is False
+          assert pacstrap["efiBootloaderInstalled"] is False
+          assert pacstrap["sameDiskDualBootVerified"] is False
+          discard = json.loads((root / (profile + "-post-pacstrap-cow-discard.json")).read_text())
+          assert discard["ownedExt4OverlayDiscarded"] is True
+          assert discard["windowsBaselineFourGptVerifiedAfterDiscard"] is True
+          assert discard["windowsFifthGuestBootAfterExt4DiscardVerified"] is True
+          assert discard["windowsBcdWinreEspAfterExt4DiscardVerified"] is True
+          assert discard["windowsBackingQcow2Sha256Unchanged"] is True
+          assert discard["originalWindowsUefiUnchangedAfterDiscard"] is True
+          assert discard["windowsInPlaceRecoveryVerified"] is False
+          assert discard["rollbackProven"] is False
+          serial = root / (profile + "-cachyos-root-pacstrap-serial.log")
+          assert serial.is_file() and not serial.is_symlink()
+          raw = serial.read_bytes()
+          assert raw.count(b"GASLUX_SHARED_COW_NATIVE_CACHYOS_PACSTRAP_ROOT_ONLY=1") == 1
+          assert raw.count(b"GASLUX_SHARED_COW_ESP_BOOTLOADER_NOT_INSTALLED=1") == 1
+          assert b"GASLUX_SHARED_COW_ROOT_PACSTRAP_FAILED" not in raw
+          fifth = root / (profile + "-fifth-post-pacstrap-discard-serial.log")
+          assert fifth.is_file() and not fifth.is_symlink()
+          manifest = fifth.with_name(fifth.name + ".sha256")
+          recorded, filename = manifest.read_text().split()
+          assert filename == fifth.name
+          assert recorded == hashlib.sha256(fifth.read_bytes()).hexdigest()
+          assert b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1" in fifth.read_bytes()
+          assert b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1" in fifth.read_bytes()
+          print("PASS: genuine Archiso pacstrap populated the existing fifth ext4 partition on a Windows-backed disposable COW.")
+          print("PASS: Windows GPT/ESP/BCD/WinRE hashes and immutable base stayed unchanged; COW discarded; clean Windows baseline booted.")
+          print("NOT PROVEN: native CachyOS bootloader, first boot, same-disk dual boot, updates, in-place recovery, physical hardware or production safety.")
+          PY
+      - name: Retain only bounded JSON and serial evidence, never ISO, WIM, QCOW2, overlays or private signer
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cachyos-win10-shared-root-pacstrap-cow-evidence
+          path: windows-x64-tcg-evidence/
+          retention-days: 7
+          if-no-files-found: warn
