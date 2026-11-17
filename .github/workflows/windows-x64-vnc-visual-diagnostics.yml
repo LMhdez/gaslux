@@ -2,6 +2,13 @@ name: Experimental Windows 11 official ISO GUI diagnosis (no firstboot claim)
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - feature/windows-x64-vnc-official-dvd-firstboot
+    paths:
+      - .github/workflows/windows-x64-vnc-visual-diagnostics.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_vnc_screen_diagnostics.py
   push:
     branches:
       - feature/windows-vnc-boot-diagnostics-issue71
