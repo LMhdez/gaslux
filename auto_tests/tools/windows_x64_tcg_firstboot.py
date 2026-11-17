@@ -580,9 +580,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     ap.add_argument("--vnc-dvd-enter", action="store_true",
                     help="hosted KVM-only: deliver the original Microsoft DVD prompt Return via loopback RFB")
+    ap.add_argument("--diagnostic-screens", action="store_true",
+                    help="collect GUI evidence from disposable VM; not boot proof")
     args = ap.parse_args(argv)
     if args.vnc_dvd_enter and args.accel != "kvm":
         raise SystemExit("loopback VNC EFI input requires hosted disposable KVM")
+    if args.diagnostic_screens and not (args.vnc_dvd_enter and args.accel == "kvm"):
+        raise SystemExit("GUI screenshots require isolated KVM with owned VNC")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
@@ -688,7 +692,9 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 ok, diagnostic = boot_vm(base, serial, args.boot_timeout,
                                          args.profile, monitor_socket=monitor_path,
-                                         boot_key_transport=("vnc" if args.vnc_dvd_enter else "hmp"))
+                                         boot_key_transport=("vnc" if args.vnc_dvd_enter else "hmp"),
+                                         diagnostic_dir=(workspace if args.diagnostic_screens
+                                                         else None))
                 report["windowsClientBootVerified"] = ok
                 report["diagnostic"] = diagnostic
             finally:
