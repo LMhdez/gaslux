@@ -150,6 +150,62 @@ def download_verified_iso(profile: dict, destination: Path) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
+def derive_no_prompt_uefi_lab_iso(original: Path, derived: Path,
+                                  workspace: Path) -> str:
+    """Rebuild *lab-only* EFI CD from verified official media, avoiding DVD key UI.
+
+    The derivative has a NEW SHA-256. It MUST NOT masquerade as Microsoft's
+    pinned original ISO and MUST NOT be used by the production installer.
+    Both ISO files are ephemeral regular files owned by a hosted CI runner.
+    """
+    require(
+        original.is_file() and not original.is_symlink()
+        and original.parent == workspace
+        and derived.parent == workspace
+        and not derived.exists() and not derived.is_symlink()
+        and workspace.name.startswith("gaslux-win-x64-")
+        and workspace.parent == Path("/home/runner/work/_temp")
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and os.environ.get("GASLUX_WINDOWS_KVM_CONSENT")
+        == "I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY",
+        "derived EFI boot media is forbidden outside an isolated hosted CI lab",
+    )
+    for command in ("7z", "genisoimage"):
+        require(shutil.which(command) is not None,
+                f"lab-only UDF remaster dependency missing: {command}")
+    unpacked = workspace / "unpacked-official-microsoft-iso"
+    require(not unpacked.exists() and not unpacked.is_symlink(),
+            "refusing to reuse an extracted Windows ISO directory")
+    unpacked.mkdir(mode=0o700)
+    subprocess.run(["7z", "x", "-bd", "-y", f"-o{unpacked}", str(original)],
+                   stdout=subprocess.DEVNULL, check=True, timeout=600)
+    require((unpacked / "sources" / "boot.wim").is_file()
+            and ((unpacked / "sources" / "install.wim").is_file()
+                 or (unpacked / "sources" / "install.esd").is_file()),
+            "official Windows ISO Setup boot/install payloads are missing")
+    choices = [
+        p for p in unpacked.rglob("efisys_noprompt.bin")
+        if tuple(name.lower() for name in p.relative_to(unpacked).parts)
+        == ("efi", "microsoft", "boot", "efisys_noprompt.bin")
+        and p.is_file() and not p.is_symlink()
+    ]
+    require(len(choices) == 1 and
+            4_096 <= choices[0].stat().st_size <= 32 * 1024**2,
+            "official ISO has no unique genuine no-prompt UEFI El Torito image")
+    boot_image = choices[0].relative_to(unpacked).as_posix()
+    subprocess.run([
+        "genisoimage", "-quiet", "-udf", "-allow-limited-size",
+        "-iso-level", "3", "-J", "-joliet-long",
+        "-V", "GASLUX_VM_EVAL", "-e", boot_image, "-no-emul-boot",
+        "-o", str(derived), str(unpacked),
+    ], check=True, timeout=900)
+    require(derived.is_file() and not derived.is_symlink()
+            and derived.stat().st_size >= original.stat().st_size // 2,
+            "derived lab UEFI DVD image is missing or unexpectedly truncated")
+    with derived.open("rb") as fd:
+        return hashlib.file_digest(fd, "sha256").hexdigest()
+
+
 def witness_powershell(profile_key: str, build: str) -> str:
     # Runs ONLY at FirstLogon in the installed Windows evaluation client.
     # The test-only local account has no usable remote credentials.
@@ -451,6 +507,9 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--profile", choices=sorted(EXPECTED), required=True)
+    ap.add_argument("--derived-no-prompt", action="store_true",
+                    help="disposable KVM lab ONLY: rebuild Microsoft-sourced UDF "
+                         "with official noprompt UEFI image; never release media")
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
     ap.add_argument("--boot-timeout", type=int, default=6300)
@@ -484,6 +543,20 @@ def main(argv: list[str] | None = None) -> int:
             report.update(isoHashVerified=True, isoSha256=iso_hash,
                           isoSizeBytes=iso_size)
             print("GASLUX_WINDOWS_EVAL_ISO_MICROSOFT_SHA256_VERIFIED=1", flush=True)
+            boot_iso = iso
+            if args.derived_no_prompt:
+                require(args.accel == "kvm",
+                        "no-prompt derived ISO permitted only in isolated hosted KVM")
+                derived = workspace / "derived-microsoft-noprompt-lab.iso"
+                derived_sha256 = derive_no_prompt_uefi_lab_iso(
+                    iso, derived, workspace
+                )
+                report["labDerivedIsoSha256"] = derived_sha256
+                report["labDerivedIsoOnly"] = True
+                report["officialIsoUnmodified"] = True
+                boot_iso = derived
+                print("GASLUX_MICROSOFT_VERIFIED_SOURCE_TO_LAB_NOPROMPT_DERIVATIVE=1",
+                      flush=True)
             xmlfile = workspace / "Autounattend.xml"
             xmlfile.write_bytes(xml)
             guest_ps1 = workspace / "GASLUX.PS1"
@@ -531,7 +604,7 @@ def main(argv: list[str] | None = None) -> int:
                 "-device", "ich9-ahci,id=lab_sata",
                 "-drive", f"if=none,id=only_windows,format=qcow2,file={disk}",
                 "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
-                "-drive", f"if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file={iso}",
+                "-drive", f"if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file={boot_iso}",
                 "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
                 "-drive", f"if=floppy,format=raw,file={floppy}",
                 "-serial", f"file:{serial}",
