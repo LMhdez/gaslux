@@ -8,6 +8,7 @@ This test does NOT prove Windows PE consumes Autounattend or Windows boots.
 from __future__ import annotations
 
 import os
+import re
 import stat
 import sys
 import time
@@ -21,6 +22,9 @@ STAGES = {
     "XML": b"GASLUX_EFI_ANSWER_USB_XML_FOUND=",
     "SCRIPT": b"GASLUX_EFI_ANSWER_USB_SCRIPT_FOUND=",
 }
+# GRUB's UEFI serial terminal may emit CSI cursor/colour controls surrounding
+# otherwise exact output lines; remove only bounded, well-formed terminal CSI.
+ANSI_CSI = re.compile(rb"\\x1b\\[[0-9;?]*[ -/]*[@-~]")
 MAX_SERIAL = 256 * 1024
 
 
@@ -73,7 +77,7 @@ def read_private_serial(path: Path) -> bytes:
 
 def validate_witness(serial: bytes) -> bool:
     """Reject ambiguous or prefixed tokens, and require the whole EFI scan."""
-    lines = [x.strip() for x in serial.splitlines()]
+    lines = [x.strip() for x in ANSI_CSI.sub(b"", serial).splitlines()]
     require(lines.count(READY) <= 1, "ambiguous UEFI answer USB scan")
     require(lines.count(SUCCESS) <= 1, "duplicate UEFI guest visibility witness")
     require(lines.count(FAILURE) <= 1, "duplicate UEFI guest missing-files witness")
