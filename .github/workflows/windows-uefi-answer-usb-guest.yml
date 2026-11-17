@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/windows-uefi-answer-usb-guest.yml
       - auto_tests/tools/windows_uefi_answer_usb_guest.py
+      - auto_tests/test_windows_uefi_answer_usb_guest.py
   workflow_dispatch:
 
 permissions:
@@ -43,6 +44,7 @@ jobs:
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
           python3 -m py_compile auto_tests/tools/windows_uefi_answer_usb_guest.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_uefi_answer_usb_guest.py' -v
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
       - name: Generate real Windows client answer files, read back FAT, boot actual UEFI USB
         shell: bash
