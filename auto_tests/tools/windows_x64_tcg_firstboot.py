@@ -455,14 +455,27 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
             monitor.settimeout(2)
             monitor.connect(str(monitor_path))
-            # HMP emits an initial banner. Consume at most 8 KiB.
-            banner = monitor.recv(8192)
-            require(b"QEMU" in banner or b"(qemu)" in banner,
-                    "unexpected guest monitor protocol banner")
+            # QEMU HMP echoes readline input over multiple recv() fragments.
+            # A single recv can return only the first character. Closing then
+            # may cancel the command while falsely reporting a delivered key.
+            # The complete HMP prompt acknowledges command processing only;
+            # it is NOT proof that Windows started or that firmware received it.
+            def until_prompt() -> bytes:
+                data = bytearray()
+                while len(data) < 131072:
+                    part = monitor.recv(8192)
+                    require(bool(part), "QEMU HMP closed before acknowledging boot key")
+                    data.extend(part)
+                    if b"(qemu) " in data:
+                        return bytes(data)
+                raise LabError("unbounded QEMU HMP boot-key response")
+
+            banner = until_prompt()
+            require(b"QEMU" in banner, "unexpected guest monitor protocol banner")
             monitor.sendall(f"sendkey ret {hold_ms}\n".encode("ascii"))
-            response = monitor.recv(8192)
-            require(b"unknown command" not in response.lower() and
-                    b"error:" not in response.lower(),
+            response = until_prompt().lower()
+            require(b"unknown command" not in response and
+                    b"error:" not in response and b"could not" not in response,
                     "QEMU refused initial ISO boot key")
     except (TimeoutError, OSError) as exc:
         raise LabError("QEMU HMP failed to deliver initial ISO boot key") from exc
