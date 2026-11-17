@@ -29,6 +29,7 @@ from typing import Callable
 from urllib.parse import urlparse
 
 from windows_x64_qemu_host_gate import load_catalog, EXPECTED, OVMF_CODE, OVMF_VARS
+from windows_x64_partitioned_answer_usb import (PartitionedUsbError, build_partitioned_answer)
 
 MAX_ISO_SIZE = 9 * 1024**3
 MIN_ISO_SIZE = 3 * 1024**3
@@ -972,15 +973,14 @@ def main(argv: list[str] | None = None) -> int:
             # guest PowerShell and boot sequence; vary ONLY the guest answer
             # medium from a file-backed FAT12 floppy to a read-only FAT32 USB.
             answer = workspace / "only-disposable-answer-usb.img"
-            require(not answer.exists() and not answer.is_symlink(),
-                    "refusing reused Windows Setup answer media")
-            subprocess.run(["truncate", "-s", "64M", str(answer)], check=True)
-            subprocess.run(["mkfs.vfat", "-F", "32", "-n", "GASLUXCI", str(answer)],
-                           check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(["mcopy", "-i", str(answer), str(xmlfile),
-                            "::/Autounattend.xml"], check=True)
-            subprocess.run(["mcopy", "-i", str(answer), str(guest_ps1),
-                            "::/GASLUX.PS1"], check=True)
+            # Isolate whether native Windows Setup needs a proper FAT32
+            # *partition* instead of the previously unpartitioned superfloppy.
+            # Other VM, ISO, guest account and firstboot gates are unchanged.
+            try:
+                build_partitioned_answer(answer, xmlfile, guest_ps1)
+            except PartitionedUsbError as exc:
+                raise LabError("private MBR/FAT32 answer preparation failed: "
+                               + str(exc)) from None
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
             subprocess.run(["qemu-img", "create", "-f", "qcow2", str(disk), VM_SIZE],
