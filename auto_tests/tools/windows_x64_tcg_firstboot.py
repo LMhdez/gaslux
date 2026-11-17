@@ -26,6 +26,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
+from typing import Callable
 
 from windows_x64_qemu_host_gate import load_catalog, EXPECTED, OVMF_CODE, OVMF_VARS
 
@@ -558,9 +559,78 @@ def build_two_stage_qemu_args(
     return first, second
 
 
+
+def rearm_disposable_swtpm_after_guest_reboot(
+    old_process: subprocess.Popen, workspace: Path,
+) -> subprocess.Popen:
+    """Restart isolated TPM daemon, reloading SAME stage-1 TPM 2.0 state.
+
+    swtpm's socket backend can exit after the first QEMU disconnects. A
+    second QEMU must never inherit an absent socket or a fresh TPM identity.
+    This only operates inside one exclusively owned GitHub runner temp tree.
+    """
+    require(
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and os.environ.get("RUNNER_OS") == "Linux"
+        and os.environ.get("GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT")
+        == "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY"
+        and workspace.is_absolute() and workspace.is_dir()
+        and not workspace.is_symlink() and workspace.resolve() == workspace
+        and workspace.parent == Path("/home/runner/work/_temp")
+        and workspace.name.startswith("gaslux-win-x64-")
+        and workspace.stat().st_uid == os.getuid()
+        and stat.S_IMODE(workspace.stat().st_mode) == 0o700,
+        "second Windows guest TPM state not in owned hosted VM workspace",
+    )
+    state_dir = workspace / "swtpm-state"
+    sock = workspace / "swtpm.sock"
+    require(
+        state_dir.is_dir() and not state_dir.is_symlink()
+        and state_dir.stat().st_uid == os.getuid()
+        and old_process is not None
+        and sock.parent == workspace,
+        "missing original guest TPM state or lifecycle handle",
+    )
+    if old_process.poll() is None:
+        old_process.terminate()
+    try:
+        old_process.wait(timeout=10)
+    except subprocess.TimeoutExpired as exc:
+        old_process.kill()
+        old_process.wait(timeout=10)
+        raise LabError("old disposable TPM process could not shut down cleanly") from exc
+    # This is a VM-created socket under a private path; never remove files
+    # or links owned by another process or from the Windows guest disk.
+    if sock.exists() or sock.is_symlink():
+        require(sock.is_socket() and not sock.is_symlink() and
+                sock.stat().st_uid == os.getuid(),
+                "unsafe stale TPM socket; refusing second guest")
+        sock.unlink()
+    errpath = workspace / "swtpm-second-stderr.log"
+    with errpath.open("xb") as errors:
+        process = subprocess.Popen(
+            ["swtpm", "socket", "--tpm2",
+             "--tpmstate", f"dir={state_dir}",
+             "--ctrl", f"type=unixio,path={sock}",
+             "--flags", "not-need-init"],
+            stdout=subprocess.DEVNULL, stderr=errors,
+        )
+    for _ in range(100):
+        if process.poll() is not None:
+            break
+        if sock.is_socket() and not sock.is_symlink():
+            return process
+        time.sleep(.1)
+    if process.poll() is None:
+        process.terminate()
+        process.wait(timeout=10)
+    raise LabError("second Windows guest has no rearmed TPM 2.0 socket")
+
 def boot_two_stage_windows(
     original_args: list[str], disk: Path, final_serial: Path,
     limit: int, profile_key: str,
+    before_disk_boot: Callable[[], None] | None = None,
 ) -> tuple[bool, str]:
     """DVD Setup stage exits at guest reboot; independently boot OWNED GPT disk.
 
@@ -632,6 +702,8 @@ def boot_two_stage_windows(
         return False, "not enough time for independent installed Windows boot"
     print("GASLUX_WINDOWS_VM_INITIAL_DVD_STAGE_REBOOT_AND_GPT_WRITES_OBSERVED=1",
           flush=True)
+    if before_disk_boot is not None:
+        before_disk_boot()  # Reconnect TPM 2.0 with original state; fail closed.
     # The second VM is constructed without ANY DVD, even if OVMF BootOrder
     # retained an old DVD preference. First Windows client boot must therefore
     # originate from the exact new file-backed GPT target.
@@ -846,8 +918,15 @@ def main(argv: list[str] | None = None) -> int:
                     report["labNoPromptDvdBootProbePassed"] = ok
                     report["windowsClientBootVerified"] = False
                 elif args.two_stage_install_only:
+                    def prepare_second_guest_tpm() -> None:
+                        nonlocal tpm
+                        if tpm is not None:
+                            tpm = rearm_disposable_swtpm_after_guest_reboot(
+                                tpm, workspace,
+                            )
                     ok, diagnostic = boot_two_stage_windows(
                         base, disk, serial, args.boot_timeout, args.profile,
+                        before_disk_boot=prepare_second_guest_tpm,
                     )
                 else:
                     ok, diagnostic = boot_vm(

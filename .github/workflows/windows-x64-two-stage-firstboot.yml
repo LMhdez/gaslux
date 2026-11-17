@@ -5,6 +5,7 @@ on:
     branches:
       - feature/windows-eval-two-stage-disposable-firstboot
       - fix/windows-two-stage-second-guest-evidence
+      - fix/windows-two-stage-swtpm-socket-rearm
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py

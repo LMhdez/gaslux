@@ -158,6 +158,38 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertIn('0 < source.stat().st_size <= max_bytes', source)
         self.assertIn('if not ok:\n                raise LabError(diagnostic)', source)
 
+
+    def test_swtpm_lifecycle_refuses_foreign_workspace_without_touching_process(self):
+        class FakeProcess:
+            def poll(self):
+                raise AssertionError("foreign TPM process must not be inspected")
+        with tempfile.TemporaryDirectory() as d, patch.dict(
+            os.environ,
+            {"GITHUB_ACTIONS": "true",
+             "RUNNER_ENVIRONMENT": "github-hosted",
+             "RUNNER_OS": "Linux",
+             "GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT":
+             "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(VM.LabError, "TPM state not in owned"):
+                VM.rearm_disposable_swtpm_after_guest_reboot(
+                    FakeProcess(), pathlib.Path(d),
+                )
+
+    def test_second_stage_rearms_same_tpm_state_only_when_setup_reboot_proven(self):
+        source = SRC.read_text(encoding="utf-8")
+        self.assertIn("before_disk_boot()  # Reconnect TPM 2.0", source)
+        self.assertIn("tpm = rearm_disposable_swtpm_after_guest_reboot(", source)
+        self.assertIn("tpm, workspace,", source)
+        self.assertIn('"--tpmstate", f"dir={state_dir}"', source)
+        self.assertIn('"--ctrl", f"type=unixio,path={sock}"', source)
+        self.assertIn("state_dir = workspace / \"swtpm-state\"", source)
+        self.assertIn("if sock.exists() or sock.is_symlink():", source)
+        self.assertIn("sock.is_socket() and not sock.is_symlink()", source)
+        self.assertIn("return boot_vm(", source)
+        self.assertIn("windowsClientBootVerified", source)
+
     def test_fake_firmware_markers_not_a_real_firstboot(self):
         code = SRC.read_text()
         self.assertIn("return boot_vm(", code)
