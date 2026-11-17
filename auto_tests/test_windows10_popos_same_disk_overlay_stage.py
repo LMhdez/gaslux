@@ -213,5 +213,77 @@ class OverlayReconciliationTests(unittest.TestCase):
                 COW.validate_after(g, self.before, self.plan)
 
 
+
+class DummyPmbrDisk:
+    def __init__(self, pmbr):
+        self.pmbr = bytearray(pmbr)
+        self.writes = []
+
+    def pread_device(self, device, length, offset):
+        assert (device, length, offset) == ("/dev/sda", 512, 0)
+        return bytes(self.pmbr)
+
+    def pwrite_device(self, device, payload, offset):
+        assert device == "/dev/sda"
+        self.writes.append((offset, bytes(payload)))
+        self.pmbr[offset:offset+len(payload)] = payload
+        return len(payload)
+
+    def sync(self):
+        pass
+
+
+class PmbrCompensationTests(unittest.TestCase):
+    def setUp(self):
+        import struct
+
+        base = bytearray(512)
+        base[510:512] = b"\x55\xaa"
+        base[446+4] = 0xEE
+        struct.pack_into("<I", base, 446+8, 1)
+        struct.pack_into("<I", base, 446+12, 0xFFFFFFFF)
+        self.base = bytes(base)
+
+    def test_reject_all_other_mutations_before_any_write(self):
+        import struct
+
+        for variant in ("bad_size", "foreign_byte", "wrong_before_policy"):
+            case = bytearray(self.base)
+            if variant == "bad_size":
+                struct.pack_into("<I", case, 458, 0xFFFFFFFE)
+            else:
+                struct.pack_into("<I", case, 458, 268435455)
+                if variant == "foreign_byte":
+                    case[442] ^= 1
+            g = DummyPmbrDisk(case)
+            with self.subTest(variant=variant):
+                with self.assertRaises(COW.DiskAuditError):
+                    COW._compensate_normalized_pmbr(
+                        g, self.base,
+                        {"oversizedWindowsPmbrLabOnly": variant != "wrong_before_policy"}
+                    )
+                self.assertEqual(g.writes, [])
+
+    def test_accept_exact_normalized_span_and_restore_original_4_bytes(self):
+        import struct
+
+        case = bytearray(self.base)
+        struct.pack_into("<I", case, 458, 268435455)
+        g = DummyPmbrDisk(case)
+        applied = COW._compensate_normalized_pmbr(
+            g, self.base, {"oversizedWindowsPmbrLabOnly": True}
+        )
+        self.assertTrue(applied)
+        self.assertEqual(g.writes, [(458, b"\xff\xff\xff\xff")])
+        self.assertEqual(g.pread_device("/dev/sda", 512, 0), self.base)
+
+    def test_untouched_pmbr_needs_no_compensation(self):
+        g = DummyPmbrDisk(self.base)
+        self.assertFalse(COW._compensate_normalized_pmbr(
+            g, self.base, {"oversizedWindowsPmbrLabOnly": True}
+        ))
+        self.assertEqual(g.writes, [])
+
+
 if __name__ == "__main__":
     unittest.main()
