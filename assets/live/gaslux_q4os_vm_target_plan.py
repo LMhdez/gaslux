@@ -122,7 +122,7 @@ def _inspect_gpt(fd: int) -> dict:
     entries = [mbr[446 + 16 * i : 446 + 16 * (i + 1)] for i in range(4)]
     _require(entries[0][0] == 0 and entries[0][4] == 0xEE, "Hybrid/nonprotective MBR")
     _require(struct.unpack_from("<I", entries[0], 8)[0] == 1, "Protective MBR start mismatch")
-    _require(struct.unpack_from("<I", entries[0], 12)[0] == 0xFFFFFFFF, "MBR size mismatch")
+    _require(struct.unpack_from("<I", entries[0], 12)[0] == DISK_SECTORS - 1, "MBR size mismatch")
     _require(all(x == bytes(16) for x in entries[1:]), "Foreign MBR partition")
     primary_h = read(1, 1)
     backup_h = read(DISK_SECTORS - 1, 1)
