@@ -1,9 +1,9 @@
 name: Windows ISO lab headless OVMF USB keyboard console smoke (synthetic GRUB only)
 
+# Known failing headless keyboard diagnostic retained for opt-in revalidation.
+# Production Windows evaluation KVM path now tests the separate no-prompt
+# Microsoft-sourced EFI DVD path; no keyboard delivery claim is made.
 on:
-  push:
-    branches:
-      - feature/windows-eval-uefi-usb-keyboard-proof
   workflow_dispatch:
 
 permissions:
