@@ -189,8 +189,22 @@ jobs:
           assert bcd_test['bcdActuallyModifiedInsideOverlay'] is True
           assert bcd_test['overlayDiscardRestoredBaseBcdHash'] is True
           assert bcd_test['windowsBackingImageUnchanged'] is True
+          assert bcd_test['windowsRebootAfterBcdOverlayDiscardVerified'] is True
+          third_serial = folder / (profile + '-thirdboot-serial.log')
+          third_manifest = folder / (profile + '-thirdboot-serial.sha256')
+          assert third_serial.is_file() and not third_serial.is_symlink()
+          assert third_manifest.is_file() and not third_manifest.is_symlink()
+          assert 0 < third_serial.stat().st_size < 2_000_000
+          assert third_manifest.read_text().strip() == (
+              hashlib.sha256(third_serial.read_bytes()).hexdigest() +
+              '  ' + third_serial.name
+          )
+          assert report['thirdWindowsBootSerialSha256'] == hashlib.sha256(
+              third_serial.read_bytes()).hexdigest()
+          assert b'GASLUX_WINDOWS_X64_THIRDBOOT_PASS=1' in set(
+              line.strip() for line in third_serial.read_bytes().splitlines()
+          )
           for guard in ('windowsInPlaceBcdRestorationVerified',
-                        'windowsRebootAfterBcdOverlayDiscardVerified',
                         'storageWritesAuthorized', 'releaseEligible'):
               assert bcd_test[guard] is False
           for guard in ('windowsRebootAfterFaultVerified',
