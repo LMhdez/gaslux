@@ -65,6 +65,8 @@ try {
   if ($LASTEXITCODE -ne 0 -or ($re -join [Environment]::NewLine) -notmatch 'Windows RE status:\s+Enabled') {
     throw 'WinRE is missing or disabled'
   }
+  & schtasks.exe /Delete /F /TN 'GasluxCIThirdBootAudit' | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'could not disarm disposable boot auditor' }
   foreach ($m in @(
     'GASLUX_COW_WIN10_REBOOT_LIVE=1',
     'GASLUX_COW_WIN10_REBOOT_BUILD=19045',
@@ -98,10 +100,9 @@ def first_logon_task(script_hash: str) -> str:
   if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() -ne '__DIGEST__') {
     throw 'copied second boot audit hash mismatch'
   }
-  $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $target + '"')
-  $trigger = New-ScheduledTaskTrigger -AtStartup
-  $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-  Register-ScheduledTask -TaskName 'GasluxCIThirdBootAudit' -Action $action -Trigger $trigger -Principal $principal -Force -ErrorAction Stop | Out-Null
+  $cmd = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\GasluxDisposableCI\GASLUXR.PS1'
+  & schtasks.exe /Create /F /SC ONSTART /TN 'GasluxCIThirdBootAudit' /RU SYSTEM /RL HIGHEST /TR $cmd | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'cannot arm third VM-only Windows startup audit' }
 """.replace('__DIGEST__',script_hash).strip('\n')
 
 def third_guest_args(original: list[str], base: Path, nvram: Path,
@@ -111,6 +112,10 @@ def third_guest_args(original: list[str], base: Path, nvram: Path,
             (base,nvram,overlay,trial_vars,serial)), 'unsafe third guest arguments')
     from windows_x64_tcg_firstboot import build_two_stage_qemu_args
     _, cmd=build_two_stage_qemu_args(original,base.parent/'never-started-dvd-serial.log')
+    floppies=[i for i in range(len(cmd)-1) if cmd[i]=='-drive'
+              and cmd[i+1].startswith('if=floppy,')]
+    require(len(floppies)==1,'ambiguous/unowned third guest floppy')
+    del cmd[floppies[0]:floppies[0]+2]
     def replace(flag: str, before: str, after: str) -> None:
         positions=[i+1 for i in range(len(cmd)-1) if cmd[i]==flag and cmd[i+1]==before]
         require(len(positions)==1,'missing or ambiguous third guest device argument')
@@ -122,7 +127,7 @@ def third_guest_args(original: list[str], base: Path, nvram: Path,
     replace('-serial',f'file:{base.parent/"win-guest-serial.log"}',f'file:{serial}')
     require(cmd.count('-boot')==1 and cmd[cmd.index('-boot')+1]=='order=c'
             and cmd.count('-monitor')==1 and cmd[cmd.index('-monitor')+1]=='none'
-            and all('verified_iso' not in x for x in cmd)
+            and all('verified_iso' not in x and 'if=floppy' not in x for x in cmd)
             and all(str(base) not in x and str(nvram) not in x for x in cmd),
             'third guest may not boot DVD or write Windows backing or original VARS')
     return cmd
@@ -142,7 +147,7 @@ def gpt_windows(image: Path, directory: Path) -> tuple[bytes,bytes]:
 
 def verify_third_windows_boot(original: list[str], base: Path, nvram: Path,
                               geometry: dict, cow: dict, stage: dict,
-                              timeout: int=1200) -> dict:
+                              timeout: int=600) -> dict:
     from windows_cachyos_overlay_gpt_stage import LAB_CONSENT
     require(os.environ.get('GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT')==CONSENT and
             os.environ.get('GASLUX_CACHYOS_OVERLAY_GPT_CONSENT')==LAB_CONSENT and
