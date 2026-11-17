@@ -391,6 +391,38 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def validate_oobe_answer_pass(xml: bytes) -> None:
+    """Fail closed if the installed Windows locale/OOBE pass is incomplete.
+
+    An answer file containing only WinPE locale can install Windows but then
+    leave the OOBE region screen interactive. Never interpret Setup progress
+    as proof that the installed guest applied oobeSystem settings.
+    """
+    root = ET.fromstring(xml)
+    ns = "{urn:schemas-microsoft-com:unattend}"
+    passes = [p for p in root.findall(f"{ns}settings")
+              if p.attrib.get("pass") == "oobeSystem"]
+    require(len(passes) == 1, "missing or ambiguous Windows oobeSystem pass")
+    components = passes[0].findall(f"{ns}component")
+    international = [c for c in components
+                     if c.attrib.get("name") == "Microsoft-Windows-International-Core"]
+    shell = [c for c in components
+             if c.attrib.get("name") == "Microsoft-Windows-Shell-Setup"]
+    require(len(international) == 1 and len(shell) == 1,
+            "missing/duplicate Windows OOBE locale or shell setup")
+    for key in ("InputLocale", "SystemLocale", "UILanguage", "UserLocale"):
+        vals = international[0].findall(f"{ns}{key}")
+        require(len(vals) == 1 and vals[0].text == "en-US",
+                f"Windows OOBE {key} must be set before boot")
+    require(shell[0].find(f"{ns}UserAccounts/{ns}LocalAccounts/{ns}LocalAccount")
+            is not None and
+            shell[0].find(f"{ns}AutoLogon/{ns}Enabled") is not None and
+            shell[0].find(f"{ns}FirstLogonCommands/{ns}SynchronousCommand")
+            is not None, "Windows OOBE requires local CI user, logon and audit")
+    require(not any(element.tag in (f"{ns}SkipMachineOOBE", f"{ns}SkipUserOOBE")
+                    for element in root.iter()),
+            "unsupported Windows OOBE skip directives are prohibited")
+
 
 BOOT_FROM_CD_PROMPT = b"Press any key to boot from CD or DVD"
 WINDOWS11_DVD_BOOT_START = b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM'
@@ -848,6 +880,7 @@ def main(argv: list[str] | None = None) -> int:
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
+    validate_oobe_answer_pass(xml)
     root = ET.fromstring(xml)
     if args.fixture_only:
         print(json.dumps({
