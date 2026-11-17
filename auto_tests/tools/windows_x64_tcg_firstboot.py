@@ -686,10 +686,19 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     # The guest can append and flush its final COM1 bytes
                     # *between* the streaming scan above and proc.poll().
                     # Only an after-exit drain closes that acceptance race.
-                    if not transcript.is_file() or transcript.is_symlink():
-                        return False, (
-                            "missing or untrusted final Windows guest serial evidence"
-                        )
+                    if transcript.is_symlink():
+                        return False, "untrusted final Windows guest serial evidence"
+                    if not transcript.is_file():
+                        # Preserve the existing early-exit diagnosis for QEMU
+                        # failures with NO guest serial at all; neither such
+                        # an exit nor missing evidence can become boot proof.
+                        if witnessed_at is None:
+                            return False, (
+                                f"QEMU exited before installed Windows first-logon "
+                                f"witness (QEMU exit code {rc}; Windows still "
+                                "unverified)"
+                            )
+                        return False, "missing final Windows guest serial evidence"
                     (end_tokens, serial_offset, serial_carry,
                      serial_discarding) = scan_windows_guest_tokens(
                         transcript, serial_offset, serial_carry, serial_discarding,
