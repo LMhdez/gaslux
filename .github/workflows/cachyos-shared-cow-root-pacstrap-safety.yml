@@ -29,6 +29,8 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
           python3 -m py_compile \
             auto_tests/tools/cachyos_windows_shared_root_pacstrap.py \
             auto_tests/test_cachyos_windows_shared_root_pacstrap.py \
