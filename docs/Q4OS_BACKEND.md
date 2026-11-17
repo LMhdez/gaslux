@@ -257,3 +257,29 @@ The guest-only checkpoints are not a production rollback mechanism.
 Full Calamares validation requires a separate, transaction-authenticated,
 disposable Windows/UEFI lab with automated graphical input and post-boot
 recovery checks. Q4OS stays experimental and is not enabled for users.
+
+### Verified disposable owned-hook execution (17 November 2026)
+
+[GitHub Actions run #43987473391](https://github.com/LMhdez/gaslux/actions/runs/43987473391)
+completed **success** on code commit
+`3f1baca1420d79cc17362613031f21093194e8d8`, including the
+verified-source audit, first guest boot, package-owned GRUB installation,
+second installed-root boot and independent official ISO live smoke.
+[The run artifact #14286248031](https://github.com/LMhdez/gaslux/actions/runs/43987473391/artifacts/14286248031)
+was inspected independently. The guest logs contain:
+
+- First boot: `GASLUX_Q4OS_OWNED_HOOK2`, `GASLUX_Q4OS_OWNED_HOOK3`,
+  `GASLUX_Q4OS_OWNED_HOOK5` with the **same transaction UUID**,
+  followed by `GASLUX_Q4OS_NATIVE_GRUB_INSTALLED=6.10-deb13u1`.
+- Second boot: `GASLUX_Q4OS_OWNED_HOOKS_VERIFIED` with the same UUID,
+  `GASLUX_Q4OS_NATIVE_GRUB_SECOND_KERNEL=6.12.111+deb13-amd64`,
+  `GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=6.10-deb13u1` and installed-root
+  identity proof.
+- `installed-result.txt` explicitly confirms that original Calamares
+  hook execution, unsafe APT cleanup, shared EFI mutation and **full
+  Calamares installation were NOT performed**.
+
+This is **a guest-owned hook replacement milestone only**. It does not
+establish a Calamares GUI/job execution, account password provisioning,
+Windows dual boot, upgrade survival or rollback. No stable release gate
+was satisfied.
