@@ -15,7 +15,7 @@ command -v cpio >/dev/null || die 'cpio is missing'
 command -v gzip >/dev/null || die 'gzip is missing'
 [[ -x /usr/bin/python3 ]] || die 'System Python is missing'
 
-kernel_version="${kernel##*-}"
+kernel_version="${kernel##*/vmlinuz-}"
 modules="/lib/modules/$kernel_version"
 [[ -d "$modules" && -s "$modules/modules.dep" ]] || die "Kernel modules are missing for $kernel_version"
 mkdir -m 0700 -p "$rootfs"

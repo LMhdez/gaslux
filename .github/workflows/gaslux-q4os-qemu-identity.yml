@@ -65,7 +65,7 @@ jobs:
             exit 1
           }
           kernel="$(readlink -f "${kernels[-1]}")"
-          kernel_version="${kernel##*-}"
+          kernel_version="${kernel##*/vmlinuz-}"
           [[ -s "$kernel" && -s "/lib/modules/$kernel_version/modules.dep" ]] || {
             echo 'Kernel and matching module tree do not agree' >&2
             exit 1
