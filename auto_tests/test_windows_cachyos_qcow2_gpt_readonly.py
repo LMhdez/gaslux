@@ -230,6 +230,25 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
         with self.assertRaisesRegex(gpt.GeometryError, "protective MBR geometry"):
             gpt.inspect_gpt_windows(bytes(changed), back)
 
+    def test_protective_mbr_diagnostic_records_only_safe_structural_fields(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 8, 2)
+        with self.assertRaisesRegex(
+            gpt.GeometryError,
+            r"start_lba=2, span_lba=268435455, expected_span_lba=268435455",
+        ):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
+    def test_hybrid_mbr_diagnostic_identifies_extra_slot(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        changed[446 + 16 + 4] = 0x07
+        with self.assertRaisesRegex(
+            gpt.GeometryError, r"unexpected_entry_slots=\\(2,\\)"
+        ):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
     def test_protective_mbr_wrong_size_refused(self):
         front, back = create_disk_windows()
         changed = bytearray(front)
