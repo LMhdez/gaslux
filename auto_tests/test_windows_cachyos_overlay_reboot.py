@@ -28,6 +28,7 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
             '-device','ide-hd,drive=only_windows,bus=lab_sata.0',
             '-drive','if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file=/tmp/official.iso',
             '-device','ide-cd,drive=verified_iso,bus=lab_sata.1',
+            '-drive','if=floppy,format=raw,file=/tmp/disposable-answer.img',
             '-serial',f'file:{self.disk.parent/"win-guest-serial.log"}',
             '-monitor','unix:/home/runner/work/_temp/gaslux-win-x64-test/hmp.sock,server,nowait',
             '-boot','order=dc',
@@ -43,6 +44,8 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
         self.assertNotIn('file='+str(self.nvram),packed)
         self.assertNotIn('verified_iso',packed)
         self.assertNotIn('official.iso',packed)
+        self.assertNotIn('if=floppy',packed)
+        self.assertNotIn('disposable-answer.img',packed)
         self.assertIn('order=c',packed)
         self.assertIn('file:'+str(self.serial),packed)
 
@@ -57,8 +60,9 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
         digest='a'*64
         code=boot.first_logon_task(digest)
         self.assertIn("Get-FileHash",code)
-        self.assertIn('New-ScheduledTaskTrigger -AtStartup',code)
-        self.assertIn('Register-ScheduledTask',code)
+        self.assertIn('schtasks.exe /Create',code)
+        self.assertIn('ONSTART',code)
+        self.assertIn('/RU SYSTEM',code)
         self.assertIn(digest,code)
         self.assertIn('GasluxCIThirdBootAudit',code)
         self.assertNotIn('C:\\Windows\\System32\\config\\SYSTEM',code)
@@ -71,7 +75,7 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
         self.assertNotIn('Register-ScheduledTask',default)
         armed=windows.witness_powershell(
             'win10_22h2_en_us_x64','19045',overlay_reboot_script_sha256='a'*64)
-        self.assertIn('Register-ScheduledTask',armed)
+        self.assertIn('schtasks.exe /Create',armed)
         self.assertIn('GASLUX_WINDOWS_X64_BCD_ENUMERATED=1',armed)
 
     def test_guest_script_checks_fifth_partition_bcd_and_winre(self):
@@ -81,6 +85,7 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
             'PartitionNumber -ne 5',
             '24GB','bcdedit.exe','reagentc.exe',
             'Windows RE status:', 'GASLUX_COW_WIN10_REBOOT_FAIL',
+            'schtasks.exe /Delete',
         ):
             self.assertIn(required,script)
 
