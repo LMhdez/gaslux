@@ -161,6 +161,63 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         ):
             self.assertIn(requirement, self.guest)
 
+    def test_installed_repo_set_ignores_order_but_rejects_foreign_and_duplicates(self):
+        # Run the exact fail-closed Python embedded in the VM-only installer.
+        # PR34 strict renderer uses core,extra,cachyos; literal order failed
+        # after real pacstrap in GitHub Actions #44034323601.
+        anchor = 'python3 - "$repos" <<\'PY\' || die'
+        self.assertIn(anchor, self.stage)
+        code = self.stage.split(anchor, 1)[1].split("\nPY\n", 1)[0].split("\n", 1)[1]
+        cases = {
+            "core\nextra\ncachyos": True,
+            "cachyos\ncore\nextra": True,
+            "extra\ncachyos\ncore": True,
+            "core\nextra": False,
+            "core\nextra\ncore": False,
+            "core\nextra\ncachyos\nmultilib": False,
+            "core\nextra\ncachyos\n": True,
+            "core\nextra\ncachyos\n\n": False,
+            "core\nextra\ncachyos ": False,
+            "core\nextra\ncachyos;echo HACKED": False,
+            "": False,
+        }
+        for listed, expected in cases.items():
+            with self.subTest(listed=listed):
+                result = subprocess.run(
+                    ["python3", "-c", code, listed],
+                    capture_output=True, text=True, timeout=5, check=False,
+                )
+                self.assertEqual(result.returncode == 0, expected, result.stderr)
+
+    def test_serial_marker_rejects_substrings_and_foreign_login_prefix(self):
+        # Real QEMU serial showed 'gaslux-cachyos-ci login: MARKER' when agetty
+        # prompt and service output shared a line (Actions #44033013406).
+        # No arbitrary serial substring may satisfy a transaction milestone.
+        anchor = 'if [[ -f "$file" ]] && awk -v marker="$marker" \\'
+        self.assertIn(anchor, self.host)
+        program = self.host.split(anchor, 1)[1].split("'", 2)[1]
+        marker = "GASLUX_VM_UPDATE_APPLIED=1"
+        cases = {
+            marker + "\n": True,
+            "gaslux-cachyos-ci login: " + marker + "\n": True,
+            "gaslux-cachyos-ci login: " + marker + "\r\n": True,
+            "CachyOS login: " + marker + "\n": False,
+            "otherhost login: " + marker + "\n": False,
+            "echo " + marker + "\n": False,
+            "some logged string " + marker + "\n": False,
+            "gaslux-cachyos-ci login: " + marker + "suffix\n": False,
+            marker + " corrupted\n": False,
+            "GASLUX_VM_UPDATE_FAILURE: before marker\n": False,
+        }
+        for transcript, expected in cases.items():
+            with self.subTest(transcript=transcript):
+                result = subprocess.run(
+                    ["awk", "-v", "marker=" + marker, program],
+                    input=transcript, capture_output=True, text=True,
+                    timeout=5, check=False,
+                )
+                self.assertEqual(result.returncode == 0, expected, result.stderr)
+
     def test_native_repo_set_provisioned_without_weak_live_config(self):
         # The pinned ISO's live pacman.conf is NOT sufficient for signed-only
         # pacstrap. Reuse the tested PR34 builder and effective trust guard.
