@@ -96,7 +96,10 @@ jobs:
           bash -n assets/live/libertix-install-main.sh \
             assets/live/libertix-distribution-common.sh \
             assets/live/libertix-install-runtime-common.sh
-          # Only source function definitions; never execute the live disk installer.
+          # Live install runs as root; sudo is required for read-only loop
+          # mounting on GitHub-hosted runners. No live disk installer is run.
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" ZORIN_SHA="$ZORIN_SHA" bash -s <<'GASLUX_REAL_ISO'
+          set -Eeuo pipefail
           source assets/live/libertix-install-runtime-common.sh
           source assets/live/libertix-distribution-common.sh
           preflight_legacy_installer_iso_or_die \
@@ -108,6 +111,7 @@ jobs:
           printf 'PASS: genuine, SHA-pinned Zorin 18.1 ISO passed the production prewrite read-only preflight\n' \
             > "$RUNNER_TEMP/zorin-real/evidence/result.txt"
           echo "NOT TESTED: Windows disk writes, real Zorin installation, Linux boot, Windows boot, update, rollback."
+          GASLUX_REAL_ISO
       - name: Save small integrity evidence, not ISO or user data
         if: always()
         uses: actions/upload-artifact@v4
