@@ -177,12 +177,31 @@ class SharedRootOnlySafety(unittest.TestCase):
             grant_path = root / "grant.json"
             signature = root / "grant.sig"
             plan_path.write_bytes(signed_bytes)
-            # Synthetic immutable control scripts: the grant must bind the
-            # same bytes that the Archiso will later execute from RO media.
-            builder = root / "strict-pacman.py"
-            checker = root / "pacman-trust.py"
-            builder.write_bytes((HERE.parent / "assets/live/cachyos-strict-pacman.py").read_bytes())
-            checker.write_bytes((HERE.parent / "assets/live/cachyos-pacman-trust.py").read_bytes())
+            # Every executable imported or invoked by the guest must be
+            # covered by the detached Ed25519 grant, not just pacman's policy.
+            program_sources = {
+                "cachyos_windows_shared_root_pacstrap.py":
+                    HERE / "tools/cachyos_windows_shared_root_pacstrap.py",
+                "cachyos_windows_shared_archiso_handoff.py":
+                    HERE / "tools/cachyos_windows_shared_archiso_handoff.py",
+                "cachyos_windows_shared_archiso_guest_probe.py":
+                    HERE / "tools/cachyos_windows_shared_archiso_guest_probe.py",
+                "windows_cachyos_qcow2_gpt_readonly.py":
+                    HERE / "tools/windows_cachyos_qcow2_gpt_readonly.py",
+                "strict-pacman.py":
+                    HERE.parent / "assets/live/cachyos-strict-pacman.py",
+                "pacman-trust.py":
+                    HERE.parent / "assets/live/cachyos-pacman-trust.py",
+                "gaslux-install.sh":
+                    HERE / "tools/gaslux-cachyos-shared-root-install.sh",
+                "gaslux-launch.sh":
+                    HERE / "tools/gaslux-cachyos-shared-root-launch.sh",
+            }
+            programs = {}
+            for name, source in program_sources.items():
+                target = root / name
+                target.write_bytes(source.read_bytes())
+                programs[name] = target
             subprocess.run(["openssl", "genpkey", "-algorithm", "Ed25519",
                             "-out", str(private)], check=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -202,8 +221,14 @@ class SharedRootOnlySafety(unittest.TestCase):
                 "hostOverlayBackingProofSha256": "2" * 64,
                 "sourceImageReadOnly": True, "discardableOverlay": True,
                 "windowsEspWritesAllowed": False,
-                "strictPacmanBuilderSha256": hashlib.sha256(builder.read_bytes()).hexdigest(),
-                "pacmanTrustGuardSha256": hashlib.sha256(checker.read_bytes()).hexdigest(),
+                "strictPacmanBuilderSha256": hashlib.sha256(programs["strict-pacman.py"].read_bytes()).hexdigest(),
+                "pacmanTrustGuardSha256": hashlib.sha256(programs["pacman-trust.py"].read_bytes()).hexdigest(),
+                "sharedRootPacstrapSha256": hashlib.sha256(programs["cachyos_windows_shared_root_pacstrap.py"].read_bytes()).hexdigest(),
+                "archisoHandoffVerifierSha256": hashlib.sha256(programs["cachyos_windows_shared_archiso_handoff.py"].read_bytes()).hexdigest(),
+                "archisoGuestProbeSha256": hashlib.sha256(programs["cachyos_windows_shared_archiso_guest_probe.py"].read_bytes()).hexdigest(),
+                "gptReaderSha256": hashlib.sha256(programs["windows_cachyos_qcow2_gpt_readonly.py"].read_bytes()).hexdigest(),
+                "guestInstallScriptSha256": hashlib.sha256(programs["gaslux-install.sh"].read_bytes()).hexdigest(),
+                "guestLaunchScriptSha256": hashlib.sha256(programs["gaslux-launch.sh"].read_bytes()).hexdigest(),
             }
             args = SimpleNamespace(root_write_grant=grant_path,
                                    grant_signature=signature,
@@ -233,21 +258,16 @@ class SharedRootOnlySafety(unittest.TestCase):
                 with self.subTest(field=field), self.assertRaises(
                         shared.SharedDiskHandoffRejected):
                     shared.verify_lab_root_write_grant(args, plan, control_dir=root)
-            # Even a correctly signed grant cannot accept modified policy
-            # executables mounted from a foreign or swapped control image.
+            # Even a correctly signed grant cannot accept modified guest
+            # installer, verifier, GPT reader or package-policy bytes.
             signed(grant)
-            original_builder = builder.read_bytes()
-            builder.write_bytes(original_builder + b"\n# unexpected alteration\n")
-            with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
-                                        "program bytes differ"):
-                shared.verify_lab_root_write_grant(args, plan, control_dir=root)
-            builder.write_bytes(original_builder)
-            original_checker = checker.read_bytes()
-            checker.write_bytes(original_checker + b"\n# unexpected alteration\n")
-            with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
-                                        "program bytes differ"):
-                shared.verify_lab_root_write_grant(args, plan, control_dir=root)
-            checker.write_bytes(original_checker)
+            for name in programs:
+                original = programs[name].read_bytes()
+                programs[name].write_bytes(original + b"\n# unexpected alteration\n")
+                with self.subTest(program=name), self.assertRaisesRegex(
+                        shared.SharedDiskHandoffRejected, "program bytes differ"):
+                    shared.verify_lab_root_write_grant(args, plan, control_dir=root)
+                programs[name].write_bytes(original)
             signed(grant)
             grant_path.write_bytes(grant_path.read_bytes().replace(
                 b'pacstrap-only', b'pacstrap-evil'))
