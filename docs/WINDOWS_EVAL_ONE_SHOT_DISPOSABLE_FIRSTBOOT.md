@@ -71,3 +71,17 @@ References:
 
 GPL-3.0; human review and audit required under `AI_POLICY.md`.
 Generated-by: GPT-6.
+
+## Firmware serial evidence hardening (stacked safety patch)
+
+A separate read-only host guard counts **all** observed EFI DVD
+`BdsDxe: starting Boot#### ...` messages incrementally, including
+hexadecimal Boot#### IDs and records split between serial reads. It no
+longer forgets the initial DVD boot when the most recent 400 KiB of
+Windows Setup serial output no longer contain it. Repeated starts still
+abort the QEMU guest, and firstboot requires exactly one observed DVD
+startup in addition to Windows client guest audit and clean poweroff.
+
+This does not fix the firmware's DVD retry by itself and does not
+constitute Windows firstboot evidence. Synthetic tests do not download
+Microsoft media, install Windows or touch any real disk.
