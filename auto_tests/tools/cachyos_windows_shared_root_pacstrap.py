@@ -263,8 +263,8 @@ def pacstrap_only(args: argparse.Namespace) -> None:
                  "/usr/share/libalpm/scripts/cachyos-branding", "os-release"],
                 timeout=75)
         release = (ROOT / "etc/os-release").read_text(encoding="utf-8")
-        require("ID=cachyos\\n" in release
-                and "ID_LIKE=arch\\n" in release,
+        require("ID=cachyos\n" in release
+                and "ID_LIKE=arch\n" in release,
                 "native CachyOS identity not established by signed branding")
         (ROOT / ".gaslux-lab-root-owner").write_text(
             plan["runId"] + "\n", encoding="ascii")
