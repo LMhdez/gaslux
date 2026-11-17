@@ -1,0 +1,121 @@
+name: Gaslux scheduled integration audit
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+
+concurrency:
+  group: gaslux-integration-audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit-and-test:
+    name: Read-only repository audit and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out scheduled revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: auto_tests/pyproject.toml
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -e ./auto_tests pytest ruff jsonschema
+
+      - name: Validate repository JSON
+        run: |
+          python -m json.tool release-config.json > /dev/null
+          find schemas -type f -name '*.json' -print0 | xargs -0 -r -n1 python -m json.tool > /dev/null
+
+      - name: Compile Python sources
+        run: python -m compileall -q auto_tests/app auto_tests/tests
+
+      - name: Ruff lint
+        run: ruff check auto_tests/app auto_tests/tests
+
+      - name: Ruff format check
+        run: ruff format --check auto_tests/app auto_tests/tests
+
+      - name: Python contract tests
+        run: pytest auto_tests/tests -q
+
+      - name: Check commit whitespace
+        run: git diff --check "${GITHUB_SHA}^" "${GITHUB_SHA}"
+
+      - name: Build repository audit report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-output
+          repo="${GITHUB_REPOSITORY}"
+
+          gh api --paginate --slurp "repos/${repo}/pulls?state=open&per_page=100" \
+            | jq 'add // []' > audit-output/open-pulls.json
+          gh api --paginate --slurp "repos/${repo}/issues?state=open&per_page=100" \
+            | jq '[add // [] | .[] | select(has("pull_request") | not)]' \
+            > audit-output/open-issues.json
+          gh api --paginate --slurp "repos/${repo}/branches?per_page=100" \
+            | jq 'add // []' > audit-output/branches.json
+          gh api "repos/${repo}/actions/runs?per_page=10" \
+            | jq '.workflow_runs // []' > audit-output/recent-workflow-runs.json
+
+          main_sha="$(gh api "repos/${repo}/commits/main" --jq .sha)"
+          dev_sha="$(gh api "repos/${repo}/commits/dev" --jq .sha 2>/dev/null || printf 'branch unavailable')"
+          pr_count="$(jq 'length' audit-output/open-pulls.json)"
+          issue_count="$(jq 'length' audit-output/open-issues.json)"
+          branch_count="$(jq 'length' audit-output/branches.json)"
+
+          {
+            echo "# Gaslux — auditoria periódica"
+            echo
+            echo "- Executado em: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "- Workflow: ${GITHUB_WORKFLOW}"
+            echo "- Evento: ${GITHUB_EVENT_NAME}"
+            echo "- Commit auditado: [${GITHUB_SHA}](https://github.com/${repo}/commit/${GITHUB_SHA})"
+            echo "- main: ${main_sha}"
+            echo "- dev: ${dev_sha}"
+            echo "- Branches: ${branch_count}"
+            echo "- PRs abertas: ${pr_count}"
+            echo "- Issues abertas (excluindo PRs): ${issue_count}"
+            echo
+            echo "## PRs abertas"
+            jq -r '.[] | "- [#\(.number) — \(.title)](\(.html_url))"' audit-output/open-pulls.json
+            echo
+            echo "## Issues abertas"
+            jq -r '.[] | "- [#\(.number) — \(.title)](\(.html_url))"' audit-output/open-issues.json
+            echo
+            echo "## Dez execuções Actions mais recentes"
+            jq -r '.[] | "- [\(.name) #\(.run_number)](\(.html_url)): \(.status) / \(.conclusion // "em execução")"' audit-output/recent-workflow-runs.json
+            echo
+            echo "## Limites"
+            echo "- Auditoria e testes apenas; sem commits, alterações de branches, comentários, criação/fecho de PRs/issues ou merges."
+            echo "- Nenhuma instalação, escrita em disco físico, alteração de partições ou operação de boot é executada."
+            echo "- Os testes desta rotina não substituem CI completa, instalação real, dual boot ou recuperação comprovada."
+          } | tee audit-output/integration-audit.md | tee -a "${GITHUB_STEP_SUMMARY}"
+
+      - name: Preserve audit report and inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaslux-integration-audit-${{ github.run_id }}
+          path: audit-output/
+          if-no-files-found: warn
+          retention-days: 14
