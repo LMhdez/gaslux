@@ -1,0 +1,50 @@
+name: Windows unattended FAT32 USB readback (no VM or ISO)
+
+on:
+  push:
+    branches:
+      - test/windows-unattend-fat-usb-readback
+    paths:
+      - .github/workflows/windows-answer-fat32-readback.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_answer_usb_readback.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-fat32-media-evidence:
+    name: Verify temporary FAT32 answer image and boot safety contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Hosted runner and file-only media requirements
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dosfstools mtools
+          command -v mkfs.vfat
+          command -v mcopy
+          command -v mtype
+      - name: Compile and read back actual synthetic FAT32 files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/test_windows_x64_answer_usb_readback.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_answer_usb_readback.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_two_stage_boot.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_iso_boot_key.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py' -v
+          echo 'PASS: synthetic host-owned FAT32 readback only. No Microsoft ISO, QEMU Windows guest, physical block device, real Windows boot, CachyOS dualboot or rollback.' >> "$GITHUB_STEP_SUMMARY"
