@@ -27,14 +27,16 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          bash -n auto_tests/tools/gaslux_zorin_installed_target_lab.sh
+          bash -n auto_tests/tools/gaslux_zorin_installed_target_lab.sh \
+            auto_tests/tools/gaslux_legacy_installed_target_lab.sh
           if bash auto_tests/tools/gaslux_zorin_installed_target_lab.sh /not-a-real-image "not-a-hash"; then
             echo "::error::Owned disk test accepted bogus ISO credentials"
             exit 1
           fi
           # All physical devices are forbidden; only generated loop files are eligible.
           if grep -Eq '/dev/(sd[a-z]|nvme[0-9]|vd[a-z]|hd[a-z])' \
-              auto_tests/tools/gaslux_zorin_installed_target_lab.sh; then
+              auto_tests/tools/gaslux_zorin_installed_target_lab.sh \
+              auto_tests/tools/gaslux_legacy_installed_target_lab.sh; then
             echo "::error::An actual block-device path was introduced in the lab"
             exit 1
           fi
