@@ -877,6 +877,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="hosted Windows 10 post-FirstLogon ONLY: stage one "
                          "unformatted 24GiB Linux GPT root exclusively on "
                          "private disposable COW overlay; no EFI writes")
+    ap.add_argument("--format-owned-fifth-ext4-only", action="store_true",
+                    help="hosted Windows 10 ONLY: after verified third-boot, "
+                         "format only fifth Linux partition in disposable QCOW2 "
+                         "and checksum every Windows partition; no Linux install")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -916,6 +920,22 @@ def main(argv: list[str] | None = None) -> int:
                 == REBOOT_CONSENT):
             raise SystemExit("Windows reboot with fifth GPT requires explicit "
                              "hosted Windows 10 QCOW2 overlay-only opt-in")
+    if args.format_owned_fifth_ext4_only:
+        from windows_cachyos_overlay_ext4_only import CONSENT as EXT4_CONSENT
+        if not (args.verify_windows_reboot_with_fifth_gpt
+                and args.stage_cachyos_overlay_root_gpt_only
+                and args.prepare_owned_cow_checkpoint
+                and args.two_stage_install_only and args.derived_no_prompt
+                and args.profile == "win10_22h2_en_us_x64"
+                and args.accel == "kvm" and not args.fixture_only
+                and not args.boot_probe_only
+                and os.environ.get("GITHUB_ACTIONS") == "true"
+                and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+                and os.environ.get("GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT")
+                    == EXT4_CONSENT):
+            raise SystemExit(
+                "fifth ext4 requires successful Windows overlay boot, "
+                "hosted KVM, exact profile and separate ext4 consent")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -1187,6 +1207,28 @@ def main(argv: list[str] | None = None) -> int:
                                         third_blob).hexdigest()
                                     print("GASLUX_WINDOWS_COW_FIFTH_GPT_THIRD_BOOT_VERIFIED=1",
                                           flush=True)
+                                    if args.format_owned_fifth_ext4_only:
+                                        from windows_cachyos_overlay_ext4_only import (
+                                            format_owned_fifth,
+                                        )
+                                        ext4 = format_owned_fifth(
+                                            disk, nvram, candidate, cow, staged, third,
+                                        )
+                                        ext4_blob = (json.dumps(
+                                            ext4, indent=2, sort_keys=True
+                                        ) + "\n").encode("utf-8")
+                                        ext4_file = evidence / (
+                                            f"{args.profile}-fifth-ext4-only.json")
+                                        require(not ext4_file.exists() and
+                                                not ext4_file.is_symlink(),
+                                                "refusing reused ext4 proof")
+                                        with ext4_file.open("xb") as out:
+                                            out.write(ext4_blob)
+                                        report["linuxFifthExt4OnlyCandidate"] = True
+                                        report["linuxFifthExt4EvidenceSha256"] = (
+                                            hashlib.sha256(ext4_blob).hexdigest())
+                                        print("GASLUX_CACHYOS_EXT4_ONLY_FIFTH_GPT_VERIFIED=1",
+                                              flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
