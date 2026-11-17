@@ -19,6 +19,8 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 
+from windows_x64_winpe_private_vga import capture_numeric_vga
+
 from windows_x64_tcg_firstboot import (
     LabError, OVMF_CODE, OVMF_VARS,
     derive_no_prompt_uefi_lab_iso, download_verified_iso,
@@ -135,7 +137,7 @@ def build_no_target_qemu_args(
         "-drive", f"if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file={iso}",
         "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
         "-serial", f"file:{serial}", "-boot", "order=d",
-        "-monitor", "none",
+        "-monitor", f"unix:{serial.parent / 'winpe-hmp.sock'},server,nowait",
     ]
     if mode == "fat12_floppy":
         args += ["-drive", f"if=floppy,format=raw,readonly=on,file={answer}"]
@@ -145,7 +147,9 @@ def build_no_target_qemu_args(
             "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
         ]
     require(
-        "-net" in args and args[args.index("-net") + 1] == "none"
+        args[args.index("-monitor") + 1]
+        == f"unix:{serial.parent / 'winpe-hmp.sock'},server,nowait"
+        and "-net" in args and args[args.index("-net") + 1] == "none"
         and all("only_windows" not in arg and "ide-hd" not in arg
                 and "qcow2" not in arg for arg in args)
         and args.count("-boot") == 1
@@ -167,6 +171,8 @@ def probe_once(derived_iso: Path, root: Path, mode: str) -> bool:
     args = build_no_target_qemu_args(derived_iso, answer, nvram, serial, mode)
     error = work / "qemu-stderr.log"
     found = False
+    numeric_frames: list[dict[str, int]] = []
+    latest_serial = b""
     with error.open("xb") as stderr:
         vm = subprocess.Popen(
             args, stdout=subprocess.DEVNULL, stderr=stderr,
@@ -174,12 +180,28 @@ def probe_once(derived_iso: Path, root: Path, mode: str) -> bool:
         try:
             deadline = time.monotonic() + PROBE_SECONDS
             while time.monotonic() < deadline:
+                # Capture only bounded numerical activity at 30s and 150s.
+                # Pixel data are deleted inside capture_numeric_vga(), even
+                # if parsing fails. This cannot establish WinPE execution.
+                elapsed = PROBE_SECONDS - max(0.0, deadline - time.monotonic())
+                if vm.poll() is None:
+                    for ordinal, at_seconds, basename in (
+                        (0, 30, "winpe-vga-early.ppm"),
+                        (1, 150, "winpe-vga-late.ppm"),
+                    ):
+                        if len(numeric_frames) == ordinal and elapsed >= at_seconds:
+                            numeric = capture_numeric_vga(work, basename)
+                            numeric_frames.append(numeric)
+                            print("GASLUX_WINPE_" + mode.upper()
+                                  + "_NUMERIC_VGA_" + str(ordinal + 1) + "="
+                                  + json.dumps(numeric, sort_keys=True), flush=True)
                 if serial.is_file() and not serial.is_symlink():
                     size = serial.stat().st_size
                     require(size <= MAX_SERIAL,
                             "bounded COM1 log exceeded or guest spammed serial")
                     with serial.open("rb") as stream:
                         raw = stream.read(MAX_SERIAL + 1)
+                    latest_serial = raw
                     lines = [line.strip() for line in raw.splitlines()]
                     if lines.count(MARKER) > 1:
                         raise LabError("duplicate WinPE answer consumption markers")
@@ -195,6 +217,16 @@ def probe_once(derived_iso: Path, root: Path, mode: str) -> bool:
             if vm.poll() is None:
                 vm.kill()
                 vm.wait(timeout=30)
+    # Forensic signals contain no guest command output, user data or pixels.
+    # An OVMF DVD boot marker is not Windows Setup/WinPE authentication.
+    print("GASLUX_WINPE_" + mode.upper() + "_FIRMWARE_DVD_STARTED="
+          + str(int(b"BdsDxe: starting Boot" in latest_serial
+                    and b"DVD" in latest_serial)), flush=True)
+    print("GASLUX_WINPE_" + mode.upper() + "_SERIAL_BYTE_COUNT="
+          + str(len(latest_serial)), flush=True)
+    print("GASLUX_WINPE_" + mode.upper() + "_VGA_STATS_CHANGED="
+          + str(int(len(numeric_frames) == 2
+                    and numeric_frames[0] != numeric_frames[1])), flush=True)
     print("GASLUX_WINPE_" + mode.upper() + "_ANSWER_MARKER=" + str(int(found)),
           flush=True)
     return found
