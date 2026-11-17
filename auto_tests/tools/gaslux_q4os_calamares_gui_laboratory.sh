@@ -23,6 +23,12 @@ advance_welcome="${GASLUX_Q4OS_ADVANCE_WELCOME:-no}"
 if [[ "$advance_welcome" == yes && "$launch_installer" != yes ]]; then
   die 'Calamares page navigation requires the verified desktop launcher'
 fi
+advance_location="${GASLUX_Q4OS_ADVANCE_LOCATION:-no}"
+[[ "$advance_location" == yes || "$advance_location" == no ]] ||
+  die 'Unrecognized native Calamares Location navigation mode'
+if [[ "$advance_location" == yes && "$advance_welcome" != yes ]]; then
+  die 'Calamares Location navigation requires SHA-verified Welcome step'
+fi
 [[ "$digest" == '1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d' ]] ||
   die 'Official Q4OS 6.10 r2 SHA-256 is not the independently pinned digest'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
@@ -197,6 +203,8 @@ launcher_clicked=0
 post_launcher_frame=0
 calamares_welcome_next_clicked=0
 calamares_location_frame=0
+calamares_location_next_clicked=0
+calamares_keyboard_frame=0
 
 for tick in $(seq 1 "$max_ticks"); do
   sleep 5
@@ -253,6 +261,19 @@ for tick in $(seq 1 "$max_ticks"); do
                  "$work/vnc-after-installer-icon.png" "$work/vnc-$tick.png"; then
             calamares_location_frame=1
             cp "$work/vnc-$tick.png" "$work/vnc-location-page.png"
+            if [[ "$advance_location" == yes ]]; then
+              python3 "$visual_gate" calamares-location "$work/vnc-location-page.png" ||
+                die 'Unrecognized native Calamares Location screen: navigation refused'
+              # NO partition selection, install confirmation, or further Next.
+              timeout 20s vncdo -s 127.0.0.1:1 move 1002 644 click 1 ||
+                die 'Q4OS Calamares Location Next click failed'
+              calamares_location_next_clicked=1
+            fi
+          elif [[ "$advance_location" == yes && "$calamares_location_next_clicked" -eq 1 && "$calamares_keyboard_frame" -eq 0 ]] &&
+               python3 "$visual_gate" changed-centre \
+                 "$work/vnc-location-page.png" "$work/vnc-$tick.png"; then
+            calamares_keyboard_frame=1
+            cp "$work/vnc-$tick.png" "$work/vnc-keyboard-page.png"
           fi
         fi
       fi
@@ -271,7 +292,9 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
    { [[ "$launch_installer" == no ]] ||
      [[ "$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1 ]]; } &&
    { [[ "$advance_welcome" == no ]] ||
-     [[ "$calamares_welcome_next_clicked" -eq 1 && "$calamares_location_frame" -eq 1 ]]; }; then
+     [[ "$calamares_welcome_next_clicked" -eq 1 && "$calamares_location_frame" -eq 1 ]]; } &&
+   { [[ "$advance_location" == no ]] ||
+     [[ "$calamares_location_next_clicked" -eq 1 && "$calamares_keyboard_frame" -eq 1 ]]; }; then
   echo 'PASS: Q4OS first-run modal and audited graphical desktop transitioned under SHA-bound VNC actions.'
   if [[ "$launch_installer" == yes ]]; then
     echo 'PASS: Q4OS launcher icon was clicked after two-stage image checks and centre changed.'
@@ -279,11 +302,15 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
     if [[ "$advance_welcome" == yes ]]; then
       echo 'PASS: Calamares Welcome verified and its non-destructive Next selected.'
       echo 'NOT PERFORMED: partition choice, user setup, Install confirmation, any Calamares exec job.'
+      if [[ "$advance_location" == yes ]]; then
+        echo 'PASS: Independently SHA-gated Calamares Location Next selected; following screen captured.'
+        echo 'NOT PROVEN: Keyboard screen identity without independent screenshot inspection.'
+      fi
     fi
   fi
   echo "GASLUX_Q4OS_FRAME_COUNT=$frame_count"
   echo 'NOT PROVEN: native Calamares job execution, full installation, Linux/Windows dual boot or rollback.'
 else
   tail -c 5000 "$work/serial.log" >&2 || true
-  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame welcome=$calamares_welcome_next_clicked location=$calamares_location_frame)"
+  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame welcome=$calamares_welcome_next_clicked location=$calamares_location_frame keyboard=$calamares_keyboard_frame)"
 fi

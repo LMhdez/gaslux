@@ -43,6 +43,18 @@ _CALAMARES_NEXT = (
     (955, 619, 1044, 668),
     "c800cc03d280395a9e699e4b6216cb6d3d422c2dd40a54e6ceeca862220ea8e1",
 )
+# Independently matched RGB regions in two authentic Q4OS Location-page QEMU
+# screenshots: Actions #43994316796/#14289276889 and
+# #43994241710/#14289032417. Clocks/desktop outside this exact crop differ.
+# This gate may authorize only one non-destructive Location -> Keyboard Next.
+_CALAMARES_LOCATION_WINDOW = (
+    (128, 118, 1152, 667),
+    "449ed3c2023006430e6a872734e3cd5d0e212515adf9be5bb2165540fb8f0d19",
+)
+_CALAMARES_LOCATION_NEXT = (
+    (961, 626, 1044, 663),
+    "77799468f6fc2ec9dddd531bdcb376865c2176683af6e185fa6095c870ccac60",
+)
 
 
 def _open_verified_screen(path: Path) -> Image.Image | None:
@@ -95,6 +107,17 @@ def verified_native_calamares_welcome(path: Path) -> bool:
     )
 
 
+def verified_native_calamares_location(path: Path) -> bool:
+    """Allow only Location -> Keyboard Next on independently pinned pixels."""
+    screen = _open_verified_screen(path)
+    if screen is None:
+        return False
+    return (
+        _roi_sha(screen, _CALAMARES_LOCATION_WINDOW[0]) == _CALAMARES_LOCATION_WINDOW[1]
+        and _roi_sha(screen, _CALAMARES_LOCATION_NEXT[0]) == _CALAMARES_LOCATION_NEXT[1]
+    )
+
+
 def verified_centre_changed(before: Path, after: Path) -> bool:
     """Taskbar-clock updates alone must never satisfy a GUI transition."""
     previous = _open_verified_screen(before)
@@ -115,6 +138,8 @@ def main() -> int:
         passed = verified_after_close(Path(sys.argv[2]))
     elif mode == "calamares-welcome" and len(sys.argv) == 3:
         passed = verified_native_calamares_welcome(Path(sys.argv[2]))
+    elif mode == "calamares-location" and len(sys.argv) == 3:
+        passed = verified_native_calamares_location(Path(sys.argv[2]))
     elif mode == "changed-centre" and len(sys.argv) == 4:
         passed = verified_centre_changed(Path(sys.argv[2]), Path(sys.argv[3]))
     else:

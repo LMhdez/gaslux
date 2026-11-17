@@ -12,6 +12,8 @@ sys.path.insert(0, str(TOOLS))
 from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     _CALAMARES_NEXT,
     _CALAMARES_WINDOW,
+    _CALAMARES_LOCATION_WINDOW,
+    _CALAMARES_LOCATION_NEXT,
     _EXPECTED_SCREEN,
     _ICON,
     _WELCOME_ALLOWED,
@@ -19,6 +21,7 @@ from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     verified_after_close,
     verified_centre_changed,
     verified_native_calamares_welcome,
+    verified_native_calamares_location,
     verified_q4os_welcome_desktop,
 )
 
@@ -134,3 +137,28 @@ def test_refuse_native_welcome_navigation_when_screen_is_not_pinned(tmp_path):
     )
     assert process.returncode != 0
     assert "REFUSED" in process.stderr
+
+
+def test_real_calamares_location_regions_bound_to_two_independent_qemu_artifacts():
+    assert _CALAMARES_LOCATION_WINDOW == (
+        (128, 118, 1152, 667),
+        "449ed3c2023006430e6a872734e3cd5d0e212515adf9be5bb2165540fb8f0d19",
+    )
+    assert _CALAMARES_LOCATION_NEXT == (
+        (961, 626, 1044, 663),
+        "77799468f6fc2ec9dddd531bdcb376865c2176683af6e185fa6095c870ccac60",
+    )
+
+
+def test_refuse_location_next_when_screenshot_unknown_or_tampered(tmp_path):
+    fake = tmp_path / "unknown-location.png"
+    Image.new("RGB", (1280, 800), "black").save(fake)
+    assert not verified_native_calamares_location(fake)
+    result = subprocess.run(
+        [sys.executable, str(GATE), "calamares-location", str(fake)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "REFUSED" in result.stderr
