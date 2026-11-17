@@ -89,6 +89,29 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertNotIn("mkfs.ext4", source)
         self.assertNotIn("sgdisk", source)
 
+    def test_installed_root_configuration_uses_real_newlines(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / "etc").mkdir()
+            with patch.object(mint.subprocess, "run") as run:
+                mint.write_target_configuration(
+                    target, "12345678-1234-4234-8234-123456789abc")
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_args_list[0].kwargs["input"],
+                             "UUID=12345678-1234-4234-8234-123456789abc / ext4 defaults 0 1\n")
+            self.assertEqual(run.call_args_list[1].kwargs["input"], "GASLUXMINT\n")
+
+    def test_installed_root_configuration_rejects_invalid_uuid(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / "etc").mkdir()
+            with patch.object(mint.subprocess, "run") as run:
+                with self.assertRaisesRegex(mint.MintOverlayError, "invalid Mint root"):
+                    mint.write_target_configuration(target, "not-a-uuid")
+            run.assert_not_called()
+
     def test_success_returns_four_windows_partition_hashes(self):
         fake = FakeGuest()
         with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
