@@ -68,7 +68,7 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
     def test_missing_iso_fails_closed(self):
         with tempfile.TemporaryDirectory() as d:
             args = synthetic_args(d)
-            pos = args.index("-drive", 8)
+            pos = args.index("if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file=/tmp/derived.iso") - 1
             del args[pos:pos + 2]
             with self.assertRaises(VM.LabError):
                 VM.build_two_stage_qemu_args(args, pathlib.Path(d) / "before.log")
