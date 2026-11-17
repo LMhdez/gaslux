@@ -790,11 +790,33 @@ def diagnose_stalled_windows_stage(
                   flush=True)
 
 
+def first_stage_dvd_key_ready(
+    observed: bytes, dvd_started_at: float | None, now: float,
+    require_serial_prompt: bool,
+) -> bool:
+    """Only key the original Win10 DVD while its real COM1 prompt is live.
+
+    A 1-second UEFI handoff heuristic can fire before Microsoft's prompt
+    appears or after it has timed out. The official Windows 10 ISO really
+    reports its prompt on COM1. Other profiles retain the previous bounded
+    UEFI handoff heuristic until their prompt behavior is independently shown.
+    """
+    if dvd_started_at is None or now < dvd_started_at:
+        return False
+    if (b"No bootable option or device was found." in observed
+            or b"DVD-ROM" in observed and b"Time out" in observed):
+        return False
+    if require_serial_prompt:
+        return BOOT_FROM_CD_PROMPT in observed
+    return now - dvd_started_at >= 1
+
+
 def boot_two_stage_windows(
     original_args: list[str], disk: Path, final_serial: Path,
     limit: int, profile_key: str,
     restart_tpm: Callable[[], None] | None = None,
     inspect_cached_answer: Callable[[Path], None] | None = None,
+    require_serial_prompt: bool = False,
 ) -> tuple[bool, str]:
     """DVD Setup stage exits at guest reboot; independently boot OWNED GPT disk.
 
@@ -816,6 +838,8 @@ def boot_two_stage_windows(
     )
     require(profile_key != "win11_26h2_en_us_x64" or restart_tpm is not None,
             "Windows 11 second stage requires a fresh owned TPM 2.0 listener")
+    require(not require_serial_prompt or profile_key == "win10_22h2_en_us_x64",
+            "COM1 prompt mode is proven only for original Windows 10 ISO")
     initial_serial = final_serial.parent / "initial-dvd-guest-serial.log"
     require(not initial_serial.exists() and not final_serial.exists(),
             "VM serial evidence path was reused")
@@ -851,19 +875,27 @@ def boot_two_stage_windows(
                         dvd_started_at = time.monotonic()
                     if dvd_start_count > 1:
                         return False, "initial Windows Setup retried the DVD boot"
-                    # A single acknowledged QEMU HMP key may advance the
-                    # VGA-only Microsoft DVD prompt. It is not Windows proof.
-                    if (not dvd_key_sent and dvd_started_at is not None
-                            and time.monotonic() - dvd_started_at >= 1):
-                        send_first_iso_boot_key(expected_monitor, hold_ms=6000)
-                        dvd_key_sent = True
-                        print("GASLUX_WINDOWS_STAGE1_DVD_HMP_KEY_SENT=1",
-                              flush=True)
                     if (b"No bootable option or device was found." in observed
                             or b"DVD-ROM" in observed
                             and b"Time out" in observed):
                         return False, "initial Windows Setup UEFI DVD boot failed"
-                time.sleep(2)
+                    # Windows 10 original ISO reports its *live* key prompt
+                    # on COM1; never send a premature handoff-only key.
+                    # No key is sent if firmware already reported a timeout.
+                    if (not dvd_key_sent and first_stage_dvd_key_ready(
+                            observed, dvd_started_at, time.monotonic(),
+                            require_serial_prompt)):
+                        send_first_iso_boot_key(expected_monitor, hold_ms=6000)
+                        dvd_key_sent = True
+                        if require_serial_prompt:
+                            print("GASLUX_WINDOWS_STAGE1_SERIAL_CD_PROMPT_OBSERVED=1",
+                                  flush=True)
+                        print("GASLUX_WINDOWS_STAGE1_DVD_HMP_KEY_SENT=1",
+                              flush=True)
+                # Respond quickly while the original Windows 10 prompt is
+                # live; the prior 2-second polling can miss its short window.
+                time.sleep(0.1 if require_serial_prompt and not dvd_key_sent
+                           else 2)
             if proc.poll() is None:
                 first_stage_stalled = True
             elif proc.returncode != 0:
@@ -1189,6 +1221,10 @@ def main(argv: list[str] | None = None) -> int:
                         restart_tpm=(restart_guest_tpm if args.profile.startswith("win11")
                                      else None),
                         inspect_cached_answer=inspect_guest_panther,
+                        require_serial_prompt=(
+                            args.official_original_iso
+                            and args.profile == "win10_22h2_en_us_x64"
+                        ),
                     )
                 else:
                     ok, diagnostic = boot_vm(
