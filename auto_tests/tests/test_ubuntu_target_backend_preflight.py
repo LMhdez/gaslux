@@ -154,9 +154,7 @@ def _execute_mock_main(
     invocation = 'main "$@"\n'
     assert source.count(helper) == 1 and source.endswith(invocation)
     definitions = source.replace(helper, "", 1).removesuffix(invocation)
-    stubs = "\n".join(
-        f"{name}() {{ printf '%s\\n' '{name}'; }}" for name in ORIGINAL_STEPS
-    )
+    stubs = "\n".join(f"{name}() {{ printf '%s\\n' '{name}'; }}" for name in ORIGINAL_STEPS)
     env = os.environ.copy()
     env.update(
         LIBERTIX_FIRMWARE_MODE=firmware,
@@ -182,12 +180,8 @@ def _execute_mock_main(
 )
 @pytest.mark.parametrize("firmware", ["bios", "uefi"])
 @pytest.mark.parametrize("backend", [None, "debian-squashfs"])
-def test_mocked_legacy_main_preserves_every_original_action(
-    distro, os_id, firmware, backend
-):
-    result = _execute_mock_main(
-        distro=distro, os_id=os_id, backend=backend, firmware=firmware
-    )
+def test_mocked_legacy_main_preserves_every_original_action(distro, os_id, firmware, backend):
+    result = _execute_mock_main(distro=distro, os_id=os_id, backend=backend, firmware=firmware)
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == ORIGINAL_STEPS
 
@@ -203,12 +197,8 @@ def test_mocked_legacy_main_preserves_every_original_action(
         ("mint", "linuxmint", "system76"),
     ],
 )
-def test_mocked_unsupported_main_never_runs_any_target_action(
-    distro, os_id, backend
-):
-    result = _execute_mock_main(
-        distro=distro, os_id=os_id, backend=backend, firmware="uefi"
-    )
+def test_mocked_unsupported_main_never_runs_any_target_action(distro, os_id, backend):
+    result = _execute_mock_main(distro=distro, os_id=os_id, backend=backend, firmware="uefi")
     assert result.returncode == 2
     assert result.stdout == ""
     assert "legacy" in result.stderr.lower()
