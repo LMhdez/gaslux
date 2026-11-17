@@ -557,6 +557,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--boot-probe-only", action="store_true",
                     help="lab-only: stop after a short OVMF no-prompt DVD check "
                          "and always keep installed Windows proof false")
+    ap.add_argument("--two-stage-install-only", action="store_true",
+                    help="EXPERIMENTAL hosted KVM: install from DVD in stage 1, "
+                         "then start a fresh disk-only guest with no DVD")
     ap.add_argument("--one-shot-install-only", action="store_true",
                     help="EXPERIMENTAL hosted KVM only: initial no-prompt DVD "
                          "then hard disk on reboot, with repeat-DVD abort")
@@ -571,7 +574,14 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
-    if args.one_shot_install_only:
+    if args.two_stage_install_only:
+        if not (args.derived_no_prompt and not args.boot_probe_only
+                and not args.one_shot_install_only and args.accel == "kvm"
+                and os.environ.get("GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT")
+                == "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY"):
+            raise SystemExit("two-stage Windows lab installation requires "
+                             "separate hosted KVM consent and no-prompt DVD")
+    elif args.one_shot_install_only:
         if not (args.derived_no_prompt and not args.boot_probe_only
                 and args.accel == "kvm" and
                 os.environ.get("GASLUX_WINDOWS_ONE_SHOT_INSTALL_CONSENT")
@@ -710,6 +720,10 @@ def main(argv: list[str] | None = None) -> int:
                     ok, diagnostic = probe_no_prompt_uefi_dvd(base, serial)
                     report["labNoPromptDvdBootProbePassed"] = ok
                     report["windowsClientBootVerified"] = False
+                elif args.two_stage_install_only:
+                    ok, diagnostic = boot_two_stage_windows(
+                        base, disk, serial, args.boot_timeout, args.profile,
+                    )
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
