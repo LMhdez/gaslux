@@ -12,7 +12,8 @@ sys.path.insert(0, str(TOOLS))
 from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     _EXPECTED_SCREEN,
     _ICON,
-    _WELCOME,
+    _WELCOME_ALLOWED,
+    _WELCOME_BOX,
     verified_after_close,
     verified_centre_changed,
     verified_q4os_welcome_desktop,
@@ -27,9 +28,10 @@ def test_visual_gate_binds_pinned_two_regions_and_1280x800_shape():
         (0, 0, 150, 160),
         "8503ab83390ec86930429be2620e8e96189a562e0e152bf0f7c1a58e5f425083",
     )
-    assert _WELCOME == (
-        (300, 70, 975, 600),
+    assert _WELCOME_BOX == (300, 70, 975, 600)
+    assert _WELCOME_ALLOWED == (
         "2d0d73d6ca27275d1dc716fef1965df06f12296c03a9dbdccb49cec106fc3d39",
+        "525c8efc637b680933499b7ad2dae4d26cd4d8ca9aad0a94e6c077df929738e7",
     )
 
 
