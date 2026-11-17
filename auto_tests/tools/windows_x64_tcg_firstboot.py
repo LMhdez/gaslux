@@ -418,6 +418,22 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
         raise LabError("QEMU HMP failed to deliver initial ISO boot key") from exc
 
 
+DVD_FIRMWARE_START = re.compile(
+    rb'BdsDxe: starting Boot[0-9A-Fa-f]{4} "UEFI QEMU DVD-ROM'
+)
+DVD_START_CARRY_BYTES = 96
+
+
+def scan_dvd_firmware_starts(chunk: bytes, carry: bytes = b"") -> tuple[int, bytes]:
+    """Count complete UEFI DVD startups despite chunk boundaries and long logs."""
+    require(len(carry) <= DVD_START_CARRY_BYTES, "invalid DVD scanner state")
+    data = carry + chunk
+    count = sum(
+        match.end() > len(carry) for match in DVD_FIRMWARE_START.finditer(data)
+    )
+    return count, data[-DVD_START_CARRY_BYTES:]
+
+
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
             reject_repeated_dvd_boot: bool = False) -> tuple[bool, str]:
@@ -447,27 +463,43 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     witnessed_at: float | None = None
     initial_cd_key_sent = False
     win11_dvd_started_at: float | None = None
+    dvd_scan_offset = 0
+    dvd_scan_carry = b""
+    dvd_start_count = 0
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
             while time.monotonic() - started < limit:
                 if transcript.is_file():
                     with transcript.open("rb") as source:
-                        source.seek(max(0, transcript.stat().st_size - 400_000))
+                        serial_end = source.seek(0, os.SEEK_END)
+                        if reject_repeated_dvd_boot:
+                            if serial_end < dvd_scan_offset:
+                                return False, "guest serial log truncated during DVD boot"
+                            source.seek(dvd_scan_offset)
+                            while dvd_scan_offset < serial_end:
+                                chunk = source.read(
+                                    min(65536, serial_end - dvd_scan_offset)
+                                )
+                                if not chunk:
+                                    return False, "guest serial log changed while scanning"
+                                hits, dvd_scan_carry = scan_dvd_firmware_starts(
+                                    chunk, dvd_scan_carry
+                                )
+                                dvd_start_count += hits
+                                dvd_scan_offset += len(chunk)
+                        # The bounded tail is for the normal guest-side witness.
+                        # DVD retries use the complete, incremental firmware scan.
+                        source.seek(max(0, serial_end - 400_000))
                         serial_data = source.read(400_000)
                         lines = {
                             line.strip() for line in serial_data.splitlines()
                         }
-                    if reject_repeated_dvd_boot:
-                        dvd_starts = re.findall(
-                            rb'BdsDxe: starting Boot[0-9]{4} "UEFI QEMU DVD-ROM',
-                            serial_data,
+                    if reject_repeated_dvd_boot and dvd_start_count > 1:
+                        return False, (
+                            "firmware retried one-shot Microsoft DVD after "
+                            "initial startup; abort disposable VM"
                         )
-                        if len(dvd_starts) > 1:
-                            return False, (
-                                "firmware retried one-shot Microsoft DVD after "
-                                "initial startup; abort disposable VM"
-                            )
                     if monitor_socket is not None and not initial_cd_key_sent:
                         if BOOT_FROM_CD_PROMPT in serial_data:
                             send_first_iso_boot_key(monitor_socket)
@@ -496,6 +528,10 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                 rc = proc.poll()
                 if rc is not None:
                     if witnessed_at is not None and rc == 0:
+                        if reject_repeated_dvd_boot and dvd_start_count != 1:
+                            return False, (
+                                "one-shot UEFI DVD startup was not observed exactly once"
+                            )
                         return True, "installed Windows client audit and clean VM poweroff verified"
                     if witnessed_at is not None:
                         return False, "QEMU exited abnormally after Windows audit"
