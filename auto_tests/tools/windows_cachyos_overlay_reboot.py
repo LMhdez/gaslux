@@ -68,9 +68,12 @@ try {
   } else { throw 'unexpected GPT partition count' }
   $windows = Get-Partition -DriveLetter C
   if ($windows.DiskNumber -ne 0 -or $windows.PartitionNumber -ne 3 -or
-      $recovery[0].PartitionNumber -ne 4 -or
+      $recovery[0].PartitionNumber -ne 4) {
+    throw 'Windows or Recovery partition changed order'
+  }
+  if ($parts.Count -eq 5 -and
       $linux[0].Offset -lt ($recovery[0].Offset + $recovery[0].Size)) {
-    throw 'Windows or Linux partition changed order'
+    throw 'Linux root overlaps the Windows Recovery partition'
   }
   if (-not (Test-Path 'C:\Windows\System32\winload.efi')) { throw 'Windows bootloader missing' }
   $bcd = & bcdedit.exe /enum '{bootmgr}' 2>&1
