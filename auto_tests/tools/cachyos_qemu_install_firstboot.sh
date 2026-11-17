@@ -102,6 +102,7 @@ if not lines[i].endswith('\n'): raise SystemExit('Kernel line lacks newline')
 flags=(
     ' systemd.mount-extra=LABEL=GASLUXCTL:/run/gaslux-control:vfat:ro,exec'
     ' systemd.run=/run/gaslux-control/gaslux-launch.sh'
+    ' systemd.mask=serial-getty@ttyS0.service'
     ' systemd.wants=kernel-command-line.service'
     ' systemd.run_success_action=none systemd.run_failure_action=none'
 )
@@ -268,7 +269,7 @@ wait "$vm_pid"
 boot_rc=$?
 set -e
 vm_pid=''
-if ! grep -E "^GASLUX_VM_FIRSTBOOT_PASS:$run_id:$root_uuid:[0-9].*cachyos" \
+if ! grep -aE "(^|[[:space:]])GASLUX_VM_FIRSTBOOT_PASS:$run_id:$root_uuid:[0-9].*cachyos" \
      "$w/firstboot-serial.log"; then
   echo "FAILED: installed root did not verify first boot; QEMU=$boot_rc"
   tail -c 7000 "$w/firstboot-serial.log" || true

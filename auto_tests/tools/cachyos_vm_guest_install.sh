@@ -2,7 +2,8 @@
 # VM-only genuine CachyOS Archiso -> pacstrap -> EFI GRUB -> installed first boot.
 # Never call from the Windows installer. Never accepts physical disk paths.
 set -Eeuo pipefail
-exec >/dev/ttyS0 2>&1
+# Output is mediated by the supervising systemd journal+console service.
+# Never open ttyS0 directly: agetty/vhangup can revoke that descriptor.
 trap 'rc=$?; if (( rc != 0 )); then echo "GASLUX_VM_INSTALL_FAILED:exit=$rc:line=$LINENO"; fi; sync' EXIT
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 echo 'GASLUX_VM_INSTALL_BEGIN'
@@ -147,7 +148,8 @@ mkdir -p /mnt/target/usr/local/libexec
 cat > /mnt/target/usr/local/libexec/gaslux-lab-firstboot-check <<'FIRSTBOOT'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-exec >/dev/ttyS0 2>&1
+# Output is mediated by the supervising systemd journal+console service.
+# Never open ttyS0 directly: agetty/vhangup can revoke that descriptor.
 trap 'rc=$?; if (( rc != 0 )); then echo "GASLUX_VM_FIRSTBOOT_FAILED:exit=$rc"; fi' EXIT
 # shellcheck source=/dev/null
 source /etc/gaslux-lab-firstboot.env

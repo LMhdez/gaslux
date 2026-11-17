@@ -73,6 +73,10 @@ jobs:
           assert 'systemd.wants=kernel-command-line.service' in host
           assert 'systemd.mount-extra=LABEL=GASLUXCTL:/run/gaslux-control:vfat:ro,exec' in host
           assert 'systemd.run=/run/gaslux-control/gaslux-launch.sh' in host
+          assert 'systemd.mask=serial-getty@ttyS0.service' in host
+          assert 'exec >/dev/ttyS0 2>&1' not in guest
+          assert 'StandardOutput=journal+console' in guest
+          assert '(<' not in guest[:100] or 'pacstrap -K /mnt/target' in guest
           assert 'mcopy -i "$w/control.raw" "$launch" ::/gaslux-launch.sh' in host
           assert 'systemd-run --no-block --unit=gaslux-vm-install' in launcher
           assert '--property=TimeoutStartSec=infinity' in launcher
