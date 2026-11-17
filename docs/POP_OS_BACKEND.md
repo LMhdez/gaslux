@@ -227,3 +227,23 @@ The experiment uses a new Linux-only QEMU disk, not Windows partitions. It is
 not a production authorization, shared-ESP integrity guarantee, Windows dual
 boot, Windows recovery, update, or uninstall proof. Those tests remain blocked
 pending a signed production transaction and disposable Windows VMs.
+
+## Independent native full-install mock-Windows isolation (experimental)
+
+A disposable GitHub Actions QEMU/OVMF test can install the verified native
+Pop!_OS 24.04 system onto a virtual disk containing **mock** Windows ESP
+(FAT) and Windows data (NTFS), and a **separate** owned Pop ESP/root.
+The System76 native CLI receives only the Pop ESP as `reuse` and Pop root
+as `ext4`. It must not select the mock Windows partitions.
+
+An independent host-side, read-only auditor validates primary/backup GPT
+checksums, byte-identical non-root GPT entries, protective MBR, and the
+SHA-256 of **every byte** of the mock Windows ESP and NTFS both after native
+installation and after a separate OVMF first boot without the live ISO.
+Installed boot must report the reconciled root PARTUUID. Failure blocks
+the lab CI job; test evidence does not authorize production disk writes.
+
+The mock EFI file is deliberately *not* a Windows executable. No installed
+Windows, WinRE, BCD, BitLocker, Windows boot, dual boot, update, uninstall,
+or rollback is tested by this lab. It is separate from the Linux-only
+first-boot test, which remains unchanged.
