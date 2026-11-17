@@ -1,0 +1,41 @@
+name: CachyOS signed same-disk Archiso plan (read-only; no install)
+
+on:
+  push:
+    branches: [feature/cachyos-win10-shared-disk-signed-archiso-contract]
+    paths:
+      - .github/workflows/cachyos-windows-shared-archiso-contract.yml
+      - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
+      - auto_tests/test_cachyos_windows_shared_archiso_handoff.py
+      - auto_tests/tools/windows_cachyos_overlay_gpt_stage.py
+      - auto_tests/test_windows_cachyos_overlay_gpt_stage.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signature-and-layout-failclosed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: No disk writes; verify source and test-only signature trust chain
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          openssl version
+          python3 -m py_compile \
+            auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
+            auto_tests/test_cachyos_windows_shared_archiso_handoff.py
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_windows_shared_archiso_handoff.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_cachyos_overlay_gpt_stage.py' -v
+          printf '%s\n' 'Only source-bound Ed25519 verification and GPT contract regressions: no Archiso guest, pacstrap, partition formatting, Windows recovery or dual boot.' >> "$GITHUB_STEP_SUMMARY"
