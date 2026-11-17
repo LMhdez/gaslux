@@ -216,7 +216,10 @@ def inspect_gpt_windows(front: bytes, back: bytes,
             "linuxWriteAuthorized": False,
             "recoveryAndOwnershipProofRequired": True,
         },
-        # Fingerprint the exact bounded windows used for this read-only observation.\n        # Not an attestation or authorization for a subsequent disk mutation.\n        "gptAuditWindowsSha256": hashlib.sha256(front + back).hexdigest(),\n        "diskGuidSha256": hashlib.sha256(primary[56:72]).hexdigest(),
+        # Fingerprint the exact bounded windows used for this read-only observation.
+        # Not an attestation or authorization for a subsequent disk mutation.
+        "gptAuditWindowsSha256": hashlib.sha256(front + back).hexdigest(),
+        "diskGuidSha256": hashlib.sha256(primary[56:72]).hexdigest(),
         "windowsGuestOriginAuthenticated": False,
         "windowsBootVerified": False,
         "windowsBcdWinreRestorationVerified": False,
