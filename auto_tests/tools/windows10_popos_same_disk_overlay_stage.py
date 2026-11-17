@@ -8,6 +8,8 @@ It does NOT install Linux, boot Windows after staging, or authorize production.
 from __future__ import annotations
 
 from contextlib import closing
+import hashlib
+import struct
 
 import json
 import os
@@ -219,6 +221,37 @@ def validate_after(g, before: dict, plan: dict) -> dict:
     }
 
 
+
+def _compensate_normalized_pmbr(g, original: bytes, before: dict) -> bool:
+    """Restore ONLY the 4-byte Windows-saturated PMBR span in a COW guest.
+
+    libguestfs partition writes may normalize that one field. Never repair
+    unexpected MBR mutations, never write an actual Windows image. The caller
+    has already verified that g sees ONLY the owned child overlay.
+    """
+    current = g.pread_device("/dev/sda", SECTOR, 0)
+    require(type(original) is bytes and len(original) == SECTOR
+            and type(current) is bytes and len(current) == SECTOR,
+            "invalid baseline or staged PMBR sector")
+    if current == original:
+        return False
+    expected = 128 * GIB // SECTOR - 1
+    require(
+        before["oversizedWindowsPmbrLabOnly"] is True
+        and original[:458] == current[:458]
+        and original[462:] == current[462:]
+        and struct.unpack_from("<I", original, 458)[0] == 0xFFFFFFFF
+        and struct.unpack_from("<I", current, 458)[0] == expected,
+        "unexpected MBR mutation: refuse any repair beyond known lab normalization",
+    )
+    # 4-byte compensating write to a disposable QCOW2 overlay only.
+    written = g.pwrite_device("/dev/sda", original[458:462], 458)
+    require(written == 4, "compensating four-byte PMBR write incomplete")
+    g.sync()
+    require(g.pread_device("/dev/sda", SECTOR, 0) == original,
+            "compensating MBR restoration could not be verified")
+    return True
+
 def stage_owned_overlay(base: Path, evidence: Path) -> dict:
     overlay = base.parent / "gaslux-pop-stage.qcow2"
     require_lab_owned(base, overlay, evidence)
@@ -238,6 +271,10 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
         g.launch()
         layout = inspect_layout(g)
         before = _windows_witness(g, 4)
+        original_pmbr = g.pread_device("/dev/sda", SECTOR, 0)
+        require(type(original_pmbr) is bytes and len(original_pmbr) == SECTOR
+                and hashlib.sha256(original_pmbr).hexdigest() == crc_before["mbrSha256"],
+                "independent PMBR hash and libguestfs snapshot disagree")
     plan = candidate_plan(layout)
     # An explicit same-directory QCOW2 COW child; no raw disk/loop/nbd target.
     subprocess.run([
@@ -270,6 +307,7 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
             g.part_set_gpt_type("/dev/sda", 5, LINUX_GPT)
             g.part_set_name("/dev/sda", 5, ROOT_LABEL)
             g.sync()
+            compensated = _compensate_normalized_pmbr(g, original_pmbr, crc_before)
         # Independent host-level GPT CRC reconciliation AFTER changing only
         # overlay GPT. This must pass in addition to guestfs Windows witnesses.
         crc_after = capture_owned_qcow2(overlay, expected_count=5)
@@ -279,6 +317,7 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
             g.launch()
             result = validate_after(g, before, plan)
         result["primaryAndBackupGptCrcVerifiedAfterStage"] = True
+        result["ownedOverlayPmbrFourByteCompensationApplied"] = compensated
         result["windowsProtectiveMbrCanonical"] = crc_before["protectiveMbrCanonical"]
         result["windowsOversizedProtectiveMbrLabOnly"] = crc_before[
             "oversizedWindowsPmbrLabOnly"
