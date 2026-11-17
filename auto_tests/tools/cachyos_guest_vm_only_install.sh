@@ -44,6 +44,17 @@ def flag(k):
 if flag('SecureBoot')!=0 or flag('SetupMode')!=1:
     raise SystemExit('no-key OVMF state mismatch')
 PY
+# The reviewed PR34 strict-policy tools are copied from checkout to this
+# ephemeral FAT volume with independent SHA-256 evidence. Refuse replacement
+# or execution of unchecked scripts before any guest disk mutation.
+[[ -d /run/gaslux-lab && ! -L /run/gaslux-lab ]] || die 'lab control mount absent'
+for guard in strict-pacman pacman-trust; do
+  [[ -f "/run/gaslux-lab/$guard.py" && ! -L "/run/gaslux-lab/$guard.py" &&
+     -f "/run/gaslux-lab/$guard.sha256" && ! -L "/run/gaslux-lab/$guard.sha256" ]] ||
+    die "missing trusted VM-only $guard tool"
+  (cd /run/gaslux-lab && sha256sum --check --status "$guard.sha256") ||
+    die "VM-only $guard source hash mismatch"
+done
 [[ -L "$LINK" ]] || die 'unique virtio target serial not found'
 disk="$(readlink -f -- "$LINK")"
 [[ -b "$disk" && "$disk" == /dev/vd? ]] || die 'unexpected target disk'
@@ -90,9 +101,23 @@ pacman-key --gpgdir "$TARGET/etc/pacman.d/gnupg" --list-keys \
   882DCFE48E2051D48E2562ABF3B607488DB35A47 >/dev/null ||
   die 'CachyOS repository signing key absent from trusted ISO keyring'
 echo 'GASLUX_LAB_OFFICIAL_KEYRING_POPULATED=1'
-# Minimal, REAL CachyOS packages from official live pacman repos, with
-# pacman's signature verification unchanged. NOT a finished desktop installer.
-pacstrap -K "$TARGET" \
+# Native Arch/CachyOS signed-key setup has completed; generate the pinned,
+# HTTPS-only strict repository policy on the guest's /run tmpfs. Never inherit
+# live ISO's weak effective signing policy for the actual pacstrap transaction.
+strict_dir="/run/gaslux-pacman-$TX"
+python3 /run/gaslux-lab/strict-pacman.py --root / --run-id "$TX" --prepare-vm ||
+  die 'signed-only pacman renderer rejected pinned live Archiso'
+[[ -s "$strict_dir/pacman-install.conf" &&
+   -s "$strict_dir/pacman-target.conf" ]] || die 'strict pacman configs missing'
+python3 /run/gaslux-lab/pacman-trust.py --config "$strict_dir/pacman-install.conf" ||
+  die 'weak or unknown effective pacman signature trust'
+grep -Fxq 'LocalFileSigLevel = Required TrustedOnly' "$strict_dir/pacman-install.conf" ||
+  die 'local file signature policy missing'
+grep -Fxq 'RemoteFileSigLevel = Required TrustedOnly' "$strict_dir/pacman-install.conf" ||
+  die 'remote file signature policy missing'
+echo 'GASLUX_LAB_STRICT_SIGNED_ONLY_POLICY_PASS=1'
+# Minimal native CachyOS installation. Never copy the Archiso live rootfs.
+pacstrap -K -C "$strict_dir/pacman-install.conf" "$TARGET" \
   base linux-cachyos-lts mkinitcpio grub efibootmgr \
   cachyos-keyring cachyos-mirrorlist cachyos-settings cachyos-hooks \
   sudo e2fsprogs dosfstools python
@@ -114,36 +139,18 @@ fi
 arch-chroot "$TARGET" pacman -Q cachyos-hooks linux-cachyos-lts >/dev/null ||
   die 'native CachyOS branding/kernel packages not installed'
 echo 'GASLUX_LAB_OFFICIAL_BRANDING_VERIFIED=1'
-# pacstrap uses the VERIFIED live ISO repository configuration for its
-# one-time install, but does not provision the same enabled repositories in
-# the installed system. Build a strict, lab-only installed configuration from
-# mirror lists shipped by native, pacman-signature-verified packages.
-# Do NOT copy the live ISO pacman.conf: its repo overrides may be more lenient.
+# Reuse the identical, reviewed signing policy and HTTPS mirror filter for
+# the installed system. Only the three allowlisted signed native repos exist.
 for mirror in mirrorlist cachyos-mirrorlist; do
-  [[ -s "$TARGET/etc/pacman.d/$mirror" &&
-     ! -L "$TARGET/etc/pacman.d/$mirror" ]] ||
-    die "signed native mirror list missing: $mirror"
+  [[ -s "$strict_dir/$mirror" && ! -L "$strict_dir/$mirror" ]] ||
+    die "strict verified $mirror missing"
+  install -m 0644 "$strict_dir/$mirror" "$TARGET/etc/pacman.d/$mirror"
+  cmp -s "$strict_dir/$mirror" "$TARGET/etc/pacman.d/$mirror" ||
+    die "installed $mirror was altered"
 done
-cat > "$TARGET/etc/pacman.conf" <<'PACMAN'
-[options]
-Architecture = auto
-CheckSpace
-SigLevel = Required DatabaseOptional TrustedOnly
-LocalFileSigLevel = Required TrustedOnly
-RemoteFileSigLevel = Required TrustedOnly
-
-[cachyos]
-SigLevel = Required DatabaseOptional TrustedOnly
-Include = /etc/pacman.d/cachyos-mirrorlist
-
-[core]
-SigLevel = Required DatabaseOptional TrustedOnly
-Include = /etc/pacman.d/mirrorlist
-
-[extra]
-SigLevel = Required DatabaseOptional TrustedOnly
-Include = /etc/pacman.d/mirrorlist
-PACMAN
+install -m 0644 "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf"
+cmp -s "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf" ||
+  die 'installed pacman config changed after copy'
 # Refuse any drift from the three signed native repositories.
 [[ "$(arch-chroot "$TARGET" pacman-conf --repo-list)" == "$(printf '%s\n' cachyos core extra)" ]] ||
   die 'installed repo set does not match signed CachyOS/core/extra policy'
