@@ -139,6 +139,11 @@ def prepare_postboot_cow(
         "-b", str(disk), str(overlay),
     ])
     owned_regular(overlay, checkpoint, OVERLAY_NAME)
+    # Keep the future writable trial image private even if qemu-img honors a
+    # permissive default umask; never change the Windows source permissions.
+    overlay.chmod(0o600)
+    require(stat.S_IMODE(overlay.stat().st_mode) == 0o600,
+            "disposable overlay not private")
     overlay_info = json.loads(run_qemu([
         "qemu-img", "info", "-f", "qcow2", "--output=json", str(overlay),
     ]).stdout)
