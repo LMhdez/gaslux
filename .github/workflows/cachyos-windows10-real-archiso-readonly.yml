@@ -4,11 +4,14 @@ on:
   push:
     branches:
       - test/cachyos-win10-real-archiso-readonly-issue3
+      - test/cachyos-win10-archiso-windows-hashes-ro-issue3
     paths:
       - .github/workflows/cachyos-windows10-real-archiso-readonly.yml
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_archiso_readonly_host.sh
       - auto_tests/tools/cachyos_windows_archiso_live_guest_readonly.sh
+      - auto_tests/tools/cachyos_windows_archiso_protected_files_guest.py
+      - auto_tests/test_cachyos_windows_archiso_protected_files_guest.py
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_cachyos_windows_archiso_readonly_lab.py
       - auto_tests/tools/cachyos_generated_boot_config.py
@@ -36,6 +39,8 @@ jobs:
             auto_tests/tools/windows_x64_tcg_firstboot.py \
             auto_tests/tools/cachyos_generated_boot_config.py \
             auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \
+            auto_tests/tools/cachyos_windows_archiso_protected_files_guest.py \
+            auto_tests/test_cachyos_windows_archiso_protected_files_guest.py \
             auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py \
             auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
             auto_tests/tools/cachyos_windows_shared_gpt_raw_audit.py \
@@ -43,6 +48,7 @@ jobs:
           bash -n auto_tests/tools/cachyos_windows_archiso_readonly_host.sh
           bash -n auto_tests/tools/cachyos_windows_archiso_live_guest_readonly.sh
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_archiso_readonly_lab.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_archiso_protected_files_guest.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_guest_probe.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_handoff.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_gpt_raw_audit.py' -v
