@@ -18,6 +18,9 @@ from cachyos_windows_shared_archiso_handoff import (
     SharedDiskHandoffRejected, SERIAL, SECTOR_BYTES, VIRTUAL_BYTES,
     validate_plan, verify, require,
 )
+from cachyos_windows_shared_gpt_raw_audit import (
+    inspect_bound_gpt_windows, read_guest_disk_windows_readonly,
+)
 
 
 def valid_mountpoints(value: Any) -> bool:
@@ -166,7 +169,18 @@ def main() -> int:
                 "unable to read bounded block topology from guest")
         disk = json.loads(lsblk.stdout)
         verdict = validate_lsblk_readonly(plan, disk)
-        print(json.dumps({**signed, **verdict}, sort_keys=True))
+        matched = [x for x in disk["blockdevices"] if
+                   type(x) is dict and x.get("serial") == SERIAL and
+                   x.get("type") == "disk"]
+        require(len(matched) == 1,
+                "cannot bind a unique guest disk to signed preflight")
+        primary, backup = read_guest_disk_windows_readonly(
+            Path(matched[0]["path"]))
+        raw_gpt = inspect_bound_gpt_windows(primary, backup, plan)
+        require(raw_gpt["pacstrapAuthorized"] is False
+                and raw_gpt["storageWritesAuthorized"] is False,
+                "raw guest GPT inspector claimed storage write authority")
+        print(json.dumps({**signed, **verdict, **raw_gpt}, sort_keys=True))
     except (OSError, ValueError, KeyError, TypeError,
             subprocess.TimeoutExpired) as error:
         print(json.dumps({
