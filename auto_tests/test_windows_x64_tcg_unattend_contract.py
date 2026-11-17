@@ -104,8 +104,11 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
         # COM1 may merge several WriteLine records into a single frame.
         # Require exact audit tokens (and the full Windows build), never
         # substrings or prefix-only matches; RC=0 remains mandatory.
-        self.assertIn("tokens = set(serial_data.split())", source)
-        self.assertIn("required.issubset(tokens) and build_line in tokens", source)
+        self.assertIn("scan_windows_guest_tokens(", source)
+        self.assertIn("seen_proofs.update(tokens.intersection(required | {build_line}))", source)
+        self.assertIn("required.issubset(seen_proofs) and build_line in seen_proofs", source)
+        self.assertIn("end >= offset", source)
+        self.assertNotIn("tokens = set(serial_data.split())", source)
         self.assertIn("token.startswith(FAILURE.encode())", source)
         self.assertIn("witnessed_at is not None and rc == 0", source)
         self.assertIn("reject_repeated_dvd_boot", source)
