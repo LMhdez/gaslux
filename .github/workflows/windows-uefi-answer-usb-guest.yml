@@ -98,7 +98,17 @@ jobs:
           echo GASLUX_EFI_ANSWER_USB_LABEL_FOUND=$label_found
           echo GASLUX_EFI_ANSWER_USB_XML_FOUND=$xml_found
           echo GASLUX_EFI_ANSWER_USB_SCRIPT_FOUND=$script_found
-          if [ "$label_found" = "1" ] && [ "$xml_found" = "1" ] && [ "$script_found" = "1" ]; then
+          # GRUB's rescue scripting does not support POSIX shell && in
+          # condition lists reliably. Use nested GRUB "if" statements.
+          set all_found=0
+          if [ "$label_found" = "1" ]; then
+            if [ "$xml_found" = "1" ]; then
+              if [ "$script_found" = "1" ]; then
+                set all_found=1
+              fi
+            fi
+          fi
+          if [ "$all_found" = "1" ]; then
             echo GASLUX_EFI_ANSWER_USB_FILES_VISIBLE=1
           else
             echo GASLUX_EFI_ANSWER_USB_FILES_MISSING=1
