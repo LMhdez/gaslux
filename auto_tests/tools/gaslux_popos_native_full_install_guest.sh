@@ -22,16 +22,16 @@ findmnt -rn -M /run/gaslux-pop-lab -o OPTIONS | tr , '\n' | grep -qx ro ||
 
 # Firmware must be virtual UEFI with Secure Boot known to be disabled.
 [[ -d /sys/firmware/efi/efivars ]] || fail 'guest did not enter UEFI mode'
-shopt -s nullglob
-secure=("/sys/firmware/efi/efivars"/SecureBoot-*)
-setup=("/sys/firmware/efi/efivars"/SetupMode-*)
-[[ "${#secure[@]}" == 1 && "${#setup[@]}" == 1 ]] ||
-  fail 'missing or ambiguous EFI SecureBoot/SetupMode firmware state'
-[[ "$(stat -c '%s' "${secure[0]}")" == 5 &&
-   "$(stat -c '%s' "${setup[0]}")" == 5 ]] ||
+secure=/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c
+setup=/sys/firmware/efi/efivars/SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c
+[[ -f "$secure" && ! -L "$secure" && -f "$setup" && ! -L "$setup" ]] ||
+  fail 'missing or untrusted EFI SecureBoot/SetupMode firmware variables'
+# efivarfs reports special-file metadata; read the exact five bytes instead
+# of relying on stat(2) sizes.
+[[ "$(wc -c < "$secure")" == 5 && "$(wc -c < "$setup")" == 5 ]] ||
   fail 'invalid EFI security variable lengths'
-secure_value="$(od -An -tu1 -j4 -N1 "${secure[0]}" | tr -d '[:space:]')"
-setup_value="$(od -An -tu1 -j4 -N1 "${setup[0]}" | tr -d '[:space:]')"
+secure_value="$(od -An -tu1 -j4 -N1 "$secure" | tr -d '[:space:]')"
+setup_value="$(od -An -tu1 -j4 -N1 "$setup" | tr -d '[:space:]')"
 [[ "$secure_value" == 0 && "$setup_value" == 1 ]] ||
   fail 'Secure Boot enabled or EFI SetupMode not keyless'
 printf 'GASLUX_POP_VM_SECUREBOOT_DISABLED_SETUPMODE_1=1\n' > /dev/ttyS0
