@@ -82,6 +82,33 @@ class DisplayProbeTests(unittest.TestCase):
             self.assertTrue((evidence / result["file"]).is_file())
             self.assertNotIn(b"sendkey", b"".join(fake.messages))
 
+    def test_partial_hmp_echo_must_be_drained_before_socket_close(self):
+        class FragmentedQemu:
+            def __init__(self):
+                self.parts = iter([
+                    b"QEMU 8.2 monitor\r\n",
+                    b"(qemu) ",
+                    b"s\x1b[K",
+                    b"screendump /tmp/test.ppm\r\n",
+                    b"(qemu) ",
+                ])
+            def recv(self, count):
+                return next(self.parts)
+        hmp = FragmentedQemu()
+        first = probe.read_hmp_prompt(hmp)
+        self.assertIn(b"(qemu) ", first)
+        second = probe.read_hmp_prompt(hmp)
+        self.assertIn(b"screendump /tmp/test.ppm", second)
+        self.assertTrue(second.endswith(b"(qemu) "))
+
+    def test_hmp_disconnect_fails_closed(self):
+        class ClosedQemu:
+            def recv(self, count):
+                return b"QEMU 8.2 monitor\r\n" if not hasattr(self, "read") else b""
+            read = True
+        with self.assertRaisesRegex(probe.ProbeError, "disconnected"):
+            probe.read_hmp_prompt(ClosedQemu())
+
     def test_no_ci_authorization_rejects_execution(self):
         with tempfile.TemporaryDirectory() as temp:
             with patch.dict(os.environ, {}, clear=True):
