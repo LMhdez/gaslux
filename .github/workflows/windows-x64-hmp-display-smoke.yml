@@ -61,9 +61,17 @@ jobs:
           with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
               s.settimeout(10)
               s.connect(str(hmp))
-              print(f"{mode}: HMP banner {s.recv(2000)!r}")
+              def receive_prompt():
+                  buffer=b""
+                  while len(buffer)<16384:
+                      part=s.recv(4096)
+                      if not part: break
+                      buffer+=part
+                      if b"(qemu) " in buffer: return buffer
+                  raise RuntimeError("HMP prompt absent: "+repr(buffer[-2000:]))
+              print(f"{mode}: HMP banner {receive_prompt()!r}")
               s.sendall(("screendump "+str(out)+"\n").encode())
-              response=s.recv(2000)
+              response=receive_prompt()
               print(f"{mode}: HMP response {response!r}")
           for _ in range(50):
               if out.is_file() and out.stat().st_size>16: break
