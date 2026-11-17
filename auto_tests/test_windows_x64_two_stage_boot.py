@@ -100,7 +100,7 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertNotIn("-no-reboot", second)
         self.assertEqual(first[first.index("-boot") + 1], "order=d")
         self.assertEqual(second[second.index("-boot") + 1], "order=c")
-        self.assertEqual(first[first.index("-monitor") + 1], "none")
+        self.assertEqual(first[first.index("-monitor") + 1], f"unix:{d}/hmp.sock,server,nowait")
         self.assertEqual(second[second.index("-monitor") + 1], "none")
         self.assertIn("/tmp/derived.iso", " ".join(first))
         self.assertNotIn("/tmp/derived.iso", " ".join(second))
@@ -252,6 +252,19 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertIn('source.is_file() and not source.is_symlink()', source)
         self.assertIn('0 < source.stat().st_size <= max_bytes', source)
         self.assertIn('if not ok:\n                raise LabError(diagnostic)', source)
+
+    def test_initial_dvd_hmp_only_first_guest_with_full_ack(self):
+        source = SRC.read_text(encoding="utf-8")
+        self.assertIn('expected_monitor = final_serial.parent / "initial-installer-hmp.sock"', source)
+        self.assertIn('send_first_iso_boot_key(expected_monitor, hold_ms=6000)', source)
+        self.assertIn('dvd_key_sent = True', source)
+        self.assertIn("def until_prompt() -> bytes:", source)
+        self.assertIn("QEMU HMP closed before acknowledging boot key", source)
+        self.assertIn('if args is second:', source)
+        self.assertIn('args[args.index("-monitor") + 1] = "none"', source)
+        self.assertIn('first_stage_stalled = True', source)
+        self.assertIn('diagnose_stalled_windows_stage(', source)
+        self.assertNotIn('response = monitor.recv(8192)', source)
 
     def test_fake_firmware_markers_not_a_real_firstboot(self):
         code = SRC.read_text()
