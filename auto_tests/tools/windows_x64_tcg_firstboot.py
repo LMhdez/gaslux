@@ -516,6 +516,130 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                 proc.wait(timeout=30)
 
 
+def build_two_stage_qemu_args(
+    original: list[str], initial_serial: Path,
+) -> tuple[list[str], list[str]]:
+    """Return independent VM arguments: DVD first, then strictly disk-only."""
+    first = list(original)
+    second = list(original)
+    require(first.count("-boot") == 1 and first.count("-serial") == 1
+            and first.count("-monitor") == 1,
+            "ambiguous QEMU VM boot/serial/monitor options")
+    for args, boot, serial in (
+        (first, "order=d", initial_serial),
+        (second, "order=c", Path(original[original.index("-serial") + 1][5:])),
+    ):
+        args[args.index("-boot") + 1] = boot
+        args[args.index("-serial") + 1] = "file:" + str(serial)
+        # Neither VM uses headless HMP keyboard injection. No stale QEMU
+        # Unix monitor socket can be inherited between guests.
+        args[args.index("-monitor") + 1] = "none"
+    dvd_ids = (
+        ("-drive", "if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file="),
+        ("-device", "ide-cd,drive=verified_iso,bus=lab_sata.1"),
+    )
+    for flag, pattern in dvd_ids:
+        matches = [
+            i for i in range(len(second) - 1)
+            if second[i] == flag and second[i + 1].startswith(pattern)
+        ]
+        require(len(matches) == 1, "missing/ambiguous disposable ISO device")
+        i = matches[0]
+        del second[i:i + 2]
+    first.append("-no-reboot")
+    require(
+        all("verified_iso" not in arg for arg in second)
+        and all(not (arg.startswith("file=") and arg.endswith(".iso")) for arg in second)
+        and "order=c" in second
+        and "order=d" in first,
+        "second-stage Windows VM still exposes the installer DVD",
+    )
+    return first, second
+
+
+def boot_two_stage_windows(
+    original_args: list[str], disk: Path, final_serial: Path,
+    limit: int, profile_key: str,
+) -> tuple[bool, str]:
+    """DVD Setup stage exits at guest reboot; independently boot OWNED GPT disk.
+
+    The first VM uses QEMU -no-reboot; the second has NO DVD and keeps the
+    same disposable QCOW2, private OVMF variables and answer-file floppy.
+    Neither a reboot nor disk activity proves a Windows installation. Only
+    the existing inside-Windows first-logon witness plus a clean guest
+    poweroff can return True.
+    """
+    require(
+        disk.is_file() and not disk.is_symlink()
+        and disk.parent == final_serial.parent
+        and disk.parent.name.startswith("gaslux-win-x64-")
+        and disk.parent.parent == Path("/home/runner/work/_temp")
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and os.environ.get("GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT")
+        == "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY",
+        "two-stage Windows guest has unowned disk or missing hosted consent",
+    )
+    initial_serial = final_serial.parent / "initial-dvd-guest-serial.log"
+    require(not initial_serial.exists() and not final_serial.exists(),
+            "VM serial evidence path was reused")
+    first, second = build_two_stage_qemu_args(original_args, initial_serial)
+    initial_allocated = disk.stat().st_blocks * 512
+    first_deadline = min(3000, max(900, limit - 800))
+    started = time.monotonic()
+    stage1_error = final_serial.parent / "first-qemu-stderr.log"
+    with stage1_error.open("xb") as err:
+        proc = subprocess.Popen(first, stdout=subprocess.DEVNULL, stderr=err)
+        try:
+            while time.monotonic() - started < first_deadline:
+                if proc.poll() is not None:
+                    break
+                if initial_serial.is_file():
+                    observed = initial_serial.read_bytes()[-400_000:]
+                    dvd_loads = re.findall(
+                        rb'BdsDxe: starting Boot[0-9]{4} "UEFI QEMU DVD-ROM',
+                        observed,
+                    )
+                    if len(dvd_loads) > 1:
+                        return False, "initial Windows Setup retried the DVD boot"
+                    if (b"No bootable option or device was found." in observed
+                            or b"DVD-ROM" in observed
+                            and b"Time out" in observed):
+                        return False, "initial Windows Setup UEFI DVD boot failed"
+                time.sleep(2)
+            if proc.poll() is None:
+                return False, "Windows Setup did not reboot its first owned VM"
+            if proc.returncode != 0:
+                return False, "QEMU exited abnormally during first Windows Setup stage"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=30)
+    if not initial_serial.is_file():
+        return False, "missing first-stage UEFI DVD serial evidence"
+    first_trace = initial_serial.read_bytes()[-400_000:]
+    if len(re.findall(
+        rb'BdsDxe: starting Boot[0-9]{4} "UEFI QEMU DVD-ROM', first_trace
+    )) != 1:
+        return False, "first-stage UEFI DVD did not start exactly once"
+    # Only a newly created CI-owned QCOW2 was writable. Reject guest resets
+    # before meaningful Windows disk provisioning was observed. Allocated
+    # bytes are a staging heuristic, NOT a Windows installation proof.
+    if disk.stat().st_blocks * 512 <= initial_allocated + 256 * 1024**2:
+        return False, "first Windows guest reset without staging target GPT/OS data"
+    remaining = limit - int(time.monotonic() - started)
+    if remaining < 600:
+        return False, "not enough time for independent installed Windows boot"
+    print("GASLUX_WINDOWS_VM_INITIAL_DVD_STAGE_REBOOT_AND_GPT_WRITES_OBSERVED=1",
+          flush=True)
+    # The second VM is constructed without ANY DVD, even if OVMF BootOrder
+    # retained an old DVD preference. First Windows client boot must therefore
+    # originate from the exact new file-backed GPT target.
+    return boot_vm(
+        second, final_serial, remaining, profile_key,
+        monitor_socket=None, reject_repeated_dvd_boot=True,
+    )
+
+
 def probe_no_prompt_uefi_dvd(args: list[str], serial: Path,
                              seconds: int = 120) -> tuple[bool, str]:
     """Observe only OVMF's DVD bootloader handoff, never infer installed Windows.
