@@ -208,6 +208,33 @@ class SharedRootOnlySafety(unittest.TestCase):
             subprocess.run(["openssl", "pkey", "-in", str(private),
                             "-pubout", "-out", str(pub)], check=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            checkpoint_doc = {
+                "schemaVersion": 1, "runId": plan["runId"],
+                "bootNonce": plan["bootNonce"],
+                "windowsBaseSha256": "3" * 64,
+                "windowsPartitionFileHashes": plan["windowsHashes"],
+                "snapshotIndependentlyRestorable": False,
+                "overlayDiscardAndWindowsBaselineRebootRequired": True,
+                "windowsRecoveryAfterLinuxVerified": False,
+                "productionRollbackVerified": False,
+            }
+            backing_doc = {
+                "schemaVersion": 1, "runId": plan["runId"],
+                "base": {"name": "only-disposable-windows-target.qcow2",
+                         "sha256": "3" * 64, "mode": 0o400, "readonly": True},
+                "overlay": {"name": "cachyos-unwritten-trial-overlay.qcow2",
+                            "backingFilename": "/tmp/only-disposable-windows-target.qcow2",
+                            "mode": 0o600, "backingFormat": "qcow2",
+                            "virtualSizeBytes": 128 * 1024**3},
+                "overlayBackingChainVerified": True,
+                "overlayDiscardable": True,
+                "onlyTrialOverlayMayBeGuestWritable": True,
+                "windowsEspWritesAllowed": False,
+            }
+            checkpoint_file = root / "host-checkpoint.json"
+            backing_file = root / "host-overlay-backing-proof.json"
+            checkpoint_file.write_bytes(shared.canonical(checkpoint_doc))
+            backing_file.write_bytes(shared.canonical(backing_doc))
             grant = {
                 "schemaVersion": 1, "labOnly": True,
                 "operation": "pacstrap-only-preexisting-fifth-ext4",
@@ -217,8 +244,8 @@ class SharedRootOnlySafety(unittest.TestCase):
                 "rootPartuuid": plan["partitions"][4]["uniqueGuid"],
                 "rootFsUuid": plan["rootFsUuid"],
                 "sourceWindowsGptSha256": plan["gptWindowsSha256"],
-                "hostCheckpointSha256": "1" * 64,
-                "hostOverlayBackingProofSha256": "2" * 64,
+                "hostCheckpointSha256": hashlib.sha256(checkpoint_file.read_bytes()).hexdigest(),
+                "hostOverlayBackingProofSha256": hashlib.sha256(backing_file.read_bytes()).hexdigest(),
                 "sourceImageReadOnly": True, "discardableOverlay": True,
                 "windowsEspWritesAllowed": False,
                 "strictPacmanBuilderSha256": hashlib.sha256(programs["strict-pacman.py"].read_bytes()).hexdigest(),
@@ -242,6 +269,13 @@ class SharedRootOnlySafety(unittest.TestCase):
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             signed(grant)
             shared.verify_lab_root_write_grant(args, plan, control_dir=root)
+            # Host checkpoint documents are part of the signed grant, not
+            # unverified hash-shaped placeholders.
+            original_checkpoint = checkpoint_file.read_bytes()
+            checkpoint_file.write_bytes(original_checkpoint + b" ")
+            with self.assertRaises(shared.SharedDiskHandoffRejected):
+                shared.verify_lab_root_write_grant(args, plan, control_dir=root)
+            checkpoint_file.write_bytes(original_checkpoint)
             # A correct detached signature is insufficient if any scope
             # or host-checkpoint statement is changed and then re-signed.
             for field, wrong in (
