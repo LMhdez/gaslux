@@ -254,15 +254,20 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
         else:
             child(part, "Extend", "true")
     modify = child(disk, "ModifyPartitions")
-    for n, fs, label in ((1, "FAT32", "GASLUXCIESP"),
-                         (3, "NTFS", "GASLUXWIN"),
-                         (4, "NTFS", "GASLUXWINRE")):
+    # Microsoft Unattend: Order is the SEQUENTIAL *modification index*,
+    # not PartitionID. Skip the MSR partition (which cannot be modified)
+    # without leaving an Order gap.
+    for order, (partition_id, fs, label) in enumerate(
+        ((1, "FAT32", "GASLUXCIESP"),
+         (3, "NTFS", "GASLUXWIN"),
+         (4, "NTFS", "GASLUXWINRE")), start=1
+    ):
         part = child(modify, "ModifyPartition", attrs={f"{{{wcm}}}action": "add"})
-        child(part, "Order", str(n))
-        child(part, "PartitionID", str(n))
+        child(part, "Order", str(order))
+        child(part, "PartitionID", str(partition_id))
         child(part, "Format", fs)
         child(part, "Label", label)
-        if n == 4:
+        if partition_id == 4:
             # Microsoft's mandatory Windows Recovery Tools GPT partition ID.
             # Do not invent unsupported unattend GPT attributes; only
             # Windows Setup may populate this disposable recovery volume.
