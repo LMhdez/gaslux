@@ -21,7 +21,8 @@ LAST = TOTAL - 1
 GUID = uuid.uuid5(uuid.NAMESPACE_URL, "gaslux-synthetic-disposable-gpt").bytes_le
 
 
-def create_disk_windows(part_types=None, overlap=False, small_free=False):
+def create_disk_windows(part_types=None, overlap=False, small_free=False,
+                        duplicate_partition_guid=False):
     types = list(part_types or gpt.TYPES)
     data = bytearray(128 * 128)
     sizes = (260, 16, 73728, 1536, 2048)
@@ -36,8 +37,9 @@ def create_disk_windows(part_types=None, overlap=False, small_free=False):
         last = first + length - 1
         off = i * 128
         data[off:off+16] = uuid.UUID(typ).bytes_le
+        identity = 0 if duplicate_partition_guid and i == 1 else i
         data[off+16:off+32] = uuid.uuid5(
-            uuid.NAMESPACE_URL, "gaslux synthetic partition " + str(i)
+            uuid.NAMESPACE_URL, "gaslux synthetic partition " + str(identity)
         ).bytes_le
         struct.pack_into("<QQ", data, off+32, first, last)
         start = last + 1
@@ -58,6 +60,8 @@ def create_disk_windows(part_types=None, overlap=False, small_free=False):
     back = bytearray(gpt.WINDOW_BYTES)
     front[510:512] = b"\x55\xaa"
     front[446+4] = 0xee
+    # Full valid 128-GiB Windows protective MBR: LBA 1 through final LBA.
+    struct.pack_into("<II", front, 446+8, 1, TOTAL-1)
     front[512:1024] = header(1, LAST, 2)
     front[2*512:34*512] = data
     back[(2048-33)*512:(2048-1)*512] = data
@@ -109,6 +113,52 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
         front, back = create_disk_windows(part_types=list(gpt.TYPES) + [gpt.TYPES[2]])
         with self.assertRaisesRegex(gpt.GeometryError, "foreign fifth"):
             gpt.inspect_gpt_windows(front, back)
+
+    def test_duplicate_partition_guid_refused_despite_valid_crc(self):
+        front, back = create_disk_windows(duplicate_partition_guid=True)
+        with self.assertRaisesRegex(gpt.GeometryError, "duplicate Windows GPT"):
+            gpt.inspect_gpt_windows(front, back)
+
+    def test_protective_mbr_wrong_start_lba_refused(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 8, 2)
+        with self.assertRaisesRegex(gpt.GeometryError, "protective MBR geometry"):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
+    def test_protective_mbr_wrong_size_refused(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, TOTAL - 4096)
+        with self.assertRaisesRegex(gpt.GeometryError, "protective MBR geometry"):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
+    def test_protective_mbr_active_flag_refused(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        changed[446] = 0x80
+        with self.assertRaisesRegex(gpt.GeometryError, "protective MBR geometry"):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
+    def test_first_usable_gpt_lba_shift_refused_with_valid_crc(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<Q", changed, 512 + 40, 2048)
+        changed[512 + 16:512 + 20] = b"\x00" * 4
+        crc = binascii.crc32(changed[512:512 + 92]) & 0xffffffff
+        struct.pack_into("<I", changed, 512 + 16, crc)
+        with self.assertRaisesRegex(gpt.GeometryError, "header addresses"):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
+    def test_last_usable_gpt_lba_truncated_with_valid_crc(self):
+        front, back = create_disk_windows()
+        changed = bytearray(back)
+        struct.pack_into("<Q", changed, len(changed) - 512 + 48, TOTAL - 2048)
+        changed[-512 + 16:-512 + 20] = b"\x00" * 4
+        crc = binascii.crc32(changed[-512:-512 + 92]) & 0xffffffff
+        struct.pack_into("<I", changed, len(changed) - 512 + 16, crc)
+        with self.assertRaisesRegex(gpt.GeometryError, "header addresses"):
+            gpt.inspect_gpt_windows(front, bytes(changed))
 
     def test_mbr_hybrid_partition_refused(self):
         front, back = create_disk_windows()
