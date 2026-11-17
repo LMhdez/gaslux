@@ -16,6 +16,7 @@ import os
 import re
 import stat
 import subprocess
+import uuid
 from pathlib import Path
 
 from windows10_popos_gpt_mirror_gate import (
@@ -321,6 +322,12 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
                 and hashlib.sha256(original_pmbr).hexdigest() == crc_before["mbrSha256"],
                 "independent PMBR hash and libguestfs snapshot disagree")
     plan = candidate_plan(layout)
+    # An independent ESP for systemd-boot must NOT reuse Windows EFI.
+    # Read-only proposal only: it is NOT created or formatted by this stage.
+    from windows10_popos_independent_esp_plan import propose_owned_esp_root
+    separate_esp_plan = propose_owned_esp_root(
+        layout, crc_before, uuid.uuid4(), uuid.uuid4(),
+    )
     # An explicit same-directory QCOW2 COW child; no raw disk/loop/nbd target.
     subprocess.run([
         "qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
@@ -361,6 +368,8 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
             g.add_drive_opts(str(overlay), readonly=1, format="qcow2")
             g.launch()
             result = validate_after(g, before, plan)
+        result["independentPopEspRootReadOnlyProposal"] = separate_esp_plan
+        result["independentPopEspRootCreatedInCOWOverlay"] = False
         result["primaryAndBackupGptCrcVerifiedAfterStage"] = True
         result["ownedOverlayPmbrFourByteCompensationApplied"] = compensated == 4
         result["ownedOverlayPmbrSevenByteCompensationApplied"] = compensated == 7
