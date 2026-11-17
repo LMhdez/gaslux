@@ -192,6 +192,13 @@ jobs:
           print("Nonblank guest screenshot only; not Anaconda execution proof")
           PY
             tesseract "$image" stdout 2>/dev/null > "bazzite-evidence/screen-$phase-ocr.txt" || :
+            if (( phase >= 2 )); then
+              if ! grep -Fq "Welcome. Let's install Bazzite now." "bazzite-evidence/screen-$phase-ocr.txt"; then
+                echo "Native Bazzite installer welcome screen not confirmed at observation phase $phase" >&2
+                exit 1
+              fi
+              echo "Native Bazzite installer UI confirmed at phase $phase; no target disk attached."
+            fi
             if (( phase == 1 )); then
               # Only the observed 1280x800 Bazzite live desktop is eligible.
               if ! grep -qi 'Bazzite Portal' "bazzite-evidence/screen-1-ocr.txt"; then
@@ -208,7 +215,7 @@ jobs:
               "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 48 40 click 1 pause 0.2 click 1
             fi
           done
-          echo 'NO AUTOMATIC INSTALLATION PROOF: assess post-click screenshots; no target disk attached.' > bazzite-evidence/guest-result.txt
+          echo 'Native Bazzite installer welcome UI observed by OCR at phases 2 and 3. No target disk, no installation, and no automated partitioning proof.' > bazzite-evidence/guest-result.txt
       - name: Publish limited read-only evidence (never ISO or private NVRAM)
         if: always()
         uses: actions/upload-artifact@v4
