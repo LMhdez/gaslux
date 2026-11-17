@@ -53,7 +53,9 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
                                     NS)
                 self.assertIsNotNone(command)
                 self.assertIn("powershell.exe", command.text)
-                self.assertIn("-File A:\\GASLUX.PS1", command.text)
+                self.assertIn("Get-Volume -FileSystemLabel GASLUXCI", command.text)
+                self.assertIn("GASLUX.PS1", command.text)
+                self.assertNotIn("-File A:", command.text)
                 self.assertNotIn("-EncodedCommand", command.text)
                 self.assertLess(len(command.text), 240,
                                 "first logon command must not hit setup length limit")
@@ -77,10 +79,13 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn('"windowsClientBootVerified": false', proc.stdout)
 
-    def test_firstlogon_script_is_floppy_only_and_has_valid_serial_constructor(self):
+    def test_firstlogon_script_comes_from_single_usb_label_with_serial_constructor(self):
         src = SRC.read_text()
         self.assertIn('guest_ps1 = workspace / "GASLUX.PS1"', src)
         self.assertIn('"::/GASLUX.PS1"', src)
+        self.assertIn('only-disposable-answer-usb.img', src)
+        self.assertIn('"usb-storage,drive=lab_unattend,bus=lab_usb.0"', src)
+        self.assertIn('readonly=on,file={usb}', src)
         self.assertIn("firstLogonScriptSha256", src)
         self.assertIn("[System.IO.Ports.SerialPort]::new(", 
                       module.witness_powershell("win10_22h2_en_us_x64", "19045"))
@@ -94,7 +99,7 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
         for value in ("q35,accel=tcg,smm=on", "only-disposable-windows-target.qcow2",
                       "fif=none", "if=none,id=only_windows", "if=pflash",
                       "GASLUX_WINDOWS_TCG_CONSENT", "GASLUX_WINDOWS_EVIDENCE",
-                      "GITHUB_REPOSITORY", "if=floppy", "swtpm",
+                      "GITHUB_REPOSITORY", "usb-storage", "swtpm",
                       "MicrosoftOnlyRedirect", "digest.hexdigest() == expected",
                       "Get-CimInstance", "Win32_OperatingSystem"):
             if value == "fif=none":
