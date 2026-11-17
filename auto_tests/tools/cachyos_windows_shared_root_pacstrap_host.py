@@ -160,7 +160,7 @@ def _create_boot_config(
         " systemd.run=/run/gaslux-control/gaslux-launch.sh"
         " systemd.mask=serial-getty@ttyS0.service"
         " systemd.wants=kernel-command-line.service"
-        " systemd.run_success_action=none systemd.run_failure_action=none"
+        " systemd.run_success_action=none systemd.run_failure_action=poweroff"
         " gaslux.run=" + run_id
         + " gaslux.nonce=" + nonce
         + " gaslux.plan_sha256=" + plan_sha
