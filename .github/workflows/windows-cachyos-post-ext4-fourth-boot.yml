@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/windows10-cachyos-post-ext4-fourth-boot
+      - test/mint22-windows10-cow-firstboot
     paths:
       - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -27,6 +28,8 @@ on:
       - auto_tests/test_windows_cachyos_postext4_windows.py
       - auto_tests/tools/windows_cachyos_ext4_synthetic_guestfs.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
+      - auto_tests/tools/windows_mint_overlay_root.py
+      - auto_tests/test_windows_mint_overlay_root.py
   workflow_dispatch:
 
 permissions:
@@ -49,7 +52,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
-          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/tools/windows_mint_overlay_root.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py auto_tests/test_windows_cachyos_cow_checkpoint.py
@@ -73,7 +76,8 @@ jobs:
               test_windows_cachyos_overlay_gpt_stage.py \
               test_windows_cachyos_overlay_reboot.py \
               test_windows_cachyos_overlay_ext4_only.py \
-              test_windows_cachyos_postext4_windows.py; do
+              test_windows_cachyos_postext4_windows.py \\
+              test_windows_mint_overlay_root.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
       - name: Prove physical-host-safe swtpm listener restart with same private NV directory
