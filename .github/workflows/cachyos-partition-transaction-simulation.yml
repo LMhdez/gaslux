@@ -27,6 +27,8 @@ jobs:
           test "${GITHUB_ACTIONS}" = true
           test "${RUNNER_ENVIRONMENT}" = github-hosted
           test "${GITHUB_REPOSITORY}" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
           python3 -m py_compile auto_tests/tools/cachyos_partition_transaction_simulation.py auto_tests/test_cachyos_partition_transaction_simulation.py
           python3 -m unittest discover -s auto_tests -p test_cachyos_partition_transaction_simulation.py -v
           python3 -m unittest discover -s auto_tests -p test_windows_cachyos_qcow2_gpt_readonly.py -v
