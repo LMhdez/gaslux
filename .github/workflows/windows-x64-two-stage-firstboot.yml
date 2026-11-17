@@ -165,6 +165,18 @@ jobs:
           assert baseline['candidateWindowsGptPrimaryAndBackupConsistent'] is True
           assert len(baseline['windowsPartitions']) == 4
           assert baseline['unallocatedAfterWindowsBytes'] >= 40 * 1024**3
+          observed = baseline['observedPostWindowsFreeExtent']
+          assert observed['readOnlyObservation'] is True
+          assert observed['partitionCreated'] is False
+          assert observed['linuxWriteAuthorized'] is False
+          assert observed['recoveryAndOwnershipProofRequired'] is True
+          assert observed['alignmentBytes'] == 1024 * 1024
+          assert observed['firstLba'] % 2048 == 0
+          assert (observed['lastLba'] + 1) % 2048 == 0
+          assert observed['firstLba'] > baseline['windowsPartitions'][-1]['lastLba']
+          assert observed['lastLba'] <= baseline['virtualDiskBytes'] // baseline['sectorBytes'] - 34
+          assert observed['lengthBytes'] == (observed['lastLba'] - observed['firstLba'] + 1) * baseline['sectorBytes']
+          assert observed['lengthBytes'] >= 40 * 1024**3
           for status in ('releaseEligible', 'storageWritesAuthorized',
                          'windowsBootVerified', 'sameDiskDualBootVerified',
                          'windowsBcdWinreRestorationVerified'):
