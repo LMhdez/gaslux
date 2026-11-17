@@ -1,0 +1,114 @@
+name: Windows 10 post-overlay real-guest artifact recheck (read-only)
+on:
+  push:
+    branches: [test/windows10-post-overlay-reboot-verify]
+    paths:
+      - .github/workflows/windows-post-overlay-evidence-recheck.yml
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  cross-check-pinned-real-windows-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch SHA-pinned real Windows KVM evidence with read-only Actions token
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          mkdir -m 700 -p "$RUNNER_TEMP/gaslux-post-overlay-evidence"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/14345876516" > "$RUNNER_TEMP/gaslux-post-overlay-evidence/metadata.json"
+          python3 - "$RUNNER_TEMP/gaslux-post-overlay-evidence/metadata.json" <<'PY'
+          import json, pathlib, sys
+          d=json.loads(pathlib.Path(sys.argv[1]).read_text())
+          r=d.get('workflow_run',{})
+          assert d['id']==14345876516 and d['expired'] is False
+          assert d['name']=='windows-genuine-two-stage-firstboot-win10_22h2_en_us_x64'
+          assert r['id']==44119708536 and r['head_repository_id']==1460159259
+          assert r['head_sha']=='36154a5632443413b7dc7b27fd66a416895e8292'
+          assert d['digest']=='sha256:5f6918f7ebab3753031ecdf58f841d89a5e264b066faccb4eac49eb78a30896e'
+          PY
+          gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/14345876516/zip" \
+            > "$RUNNER_TEMP/gaslux-post-overlay-evidence/guest-evidence.zip"
+          printf '%s  %s\n' \
+            '5f6918f7ebab3753031ecdf58f841d89a5e264b066faccb4eac49eb78a30896e' \
+            "$RUNNER_TEMP/gaslux-post-overlay-evidence/guest-evidence.zip" | sha256sum --check
+      - name: Verify real Windows guest first/second/third COM1 evidence against current source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - "$RUNNER_TEMP/gaslux-post-overlay-evidence/guest-evidence.zip" <<'PY'
+          import hashlib, json, pathlib, sys, zipfile, tempfile
+          sys.path.insert(0,'auto_tests/tools')
+          import windows_cachyos_readonly_baseline_gate as gate
+          profile='win10_22h2_en_us_x64'
+          archive=pathlib.Path(sys.argv[1])
+          expected={profile+s for s in (
+            '-result.json', '-serial.log', '-serial.sha256',
+            '-initial-dvd-serial.log', '-initial-dvd-serial.sha256',
+            '-post-overlay-serial.log', '-post-overlay-serial.sha256',
+            '-gpt-readonly-candidate.json',
+          )}
+          with tempfile.TemporaryDirectory(prefix='gaslux-verified-') as tmp:
+            root=pathlib.Path(tmp)
+            with zipfile.ZipFile(archive) as z:
+              names=z.namelist()
+              assert len(names)==len(set(names)) and set(names)==expected, names
+              for info in z.infolist():
+                assert not info.is_dir() and info.file_size<=100_000
+                (root/info.filename).write_bytes(z.read(info))
+            data=lambda suffix:(root/(profile+suffix)).read_bytes()
+            report=json.loads(data('-result.json'),
+                              object_pairs_hook=gate.unique_keys)
+            result=gate.evaluate(profile,report,data('-serial.log'),
+                                 data('-serial.sha256'),
+                                 data('-initial-dvd-serial.log'),
+                                 data('-initial-dvd-serial.sha256'))
+            assert result['candidateWindowsFirstbootDocumentsConsistent'] is True
+            assert result['storageWritesAuthorized'] is False
+            assert result['windowsBcdWinreRestorationVerified'] is False
+            assert report['windowsPostOverlayBootVerified'] is True
+            overlay=report['disposableOverlayExperiment']
+            assert all(overlay[k] is True for k in (
+              'overlayFaultRejected','overlayDiscarded',
+              'backingWindowsGptUnchanged',
+              'windowsRebootAfterFaultVerified',
+              'windowsBcdWinreReobservedAfterDiscard'))
+            assert all(overlay[k] is False for k in (
+              'storageWritesAuthorized','releaseEligible','linuxInstalled',
+              'dualBootVerified','windowsBcdWinreRestorationVerified'))
+            post=data('-post-overlay-serial.log')
+            post_digest=hashlib.sha256(post).hexdigest()
+            assert post_digest==report['windowsPostOverlaySerialSha256']
+            assert data('-post-overlay-serial.sha256').decode('ascii').strip()==(
+              post_digest+'  '+profile+'-post-overlay-serial.log')
+            lines=set(line.strip() for line in post.splitlines())
+            expected_markers={
+              b'GASLUX_WINDOWS_X64_BOOT_BUILD=19045',
+              b'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1',
+              b'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1',
+              b'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1',
+              b'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1',
+              b'GASLUX_WINDOWS_X64_WINRE_ENABLED=1',
+              b'GASLUX_WINDOWS_X64_POST_OVERLAY_BOOT_VERIFIED=win10_22h2_en_us_x64',
+            }
+            assert expected_markers.issubset(lines)
+            assert not any(b'GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL' in ln for ln in lines)
+            baseline=json.loads(data('-gpt-readonly-candidate.json'))
+            assert baseline['candidateWindowsGptPrimaryAndBackupConsistent'] is True
+            assert baseline['storageWritesAuthorized'] is False
+            print('PASS: pinned real Windows 10 first/second/third guest COM1, script SHA, BCD/WinRE and GPT read-only documents')
+          PY
+          printf '%s\n' 'Real Windows 10 evidence rechecked. No Linux, disk writes, Windows restore or dual boot proved.' >> "$GITHUB_STEP_SUMMARY"
