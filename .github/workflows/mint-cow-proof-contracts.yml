@@ -57,7 +57,7 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_OS" = Linux
-          test "$GITHUB_REPOSITORY" = LMHdez/gaslux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           test "$(id -u)" -ne 0
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
