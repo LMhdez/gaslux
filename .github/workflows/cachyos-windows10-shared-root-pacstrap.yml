@@ -27,14 +27,14 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
-          python3 -m py_compile \\
-            auto_tests/tools/cachyos_windows_shared_root_pacstrap.py \\
-            auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py \\
-            auto_tests/tools/cachyos_windows_shared_cow_grant.py \\
-            auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \\
-            auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py \\
-            auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \\
-            auto_tests/tools/cachyos_generated_boot_config.py \\
+          python3 -m py_compile \
+            auto_tests/tools/cachyos_windows_shared_root_pacstrap.py \
+            auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py \
+            auto_tests/tools/cachyos_windows_shared_cow_grant.py \
+            auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
+            auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py \
+            auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \
+            auto_tests/tools/cachyos_generated_boot_config.py \
             auto_tests/tools/windows_cachyos_postext4_cow_rollback.py
           bash -n auto_tests/tools/gaslux-cachyos-shared-root-launch.sh
           bash -n auto_tests/tools/gaslux-cachyos-shared-root-install.sh
@@ -166,19 +166,19 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           iso_dir="$(mktemp -d -p "$RUNNER_TEMP" gaslux-pinned-cachyos-XXXXXX)"
-          printf '%s\\t%s\\n' \\
-            'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' \\
-            'https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' \\
+          printf '%s\t%s\n' \
+            'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' \
+            'https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' \
             > "$iso_dir/iso-mirrors.txt"
-          printf '  dir=%s\\n  out=cachyos.iso\\n' "$iso_dir" >> "$iso_dir/iso-mirrors.txt"
-          aria2c --input-file="$iso_dir/iso-mirrors.txt" \\
-            --split=8 --min-split-size=32M --max-connection-per-server=8 \\
-            --max-concurrent-downloads=1 --continue=true \\
-            --file-allocation=none --retry-wait=8 --max-tries=8 \\
-            --timeout=45 --connect-timeout=25 --check-integrity=true \\
+          printf '  dir=%s\n  out=cachyos.iso\n' "$iso_dir" >> "$iso_dir/iso-mirrors.txt"
+          aria2c --input-file="$iso_dir/iso-mirrors.txt" \
+            --split=8 --min-split-size=32M --max-connection-per-server=8 \
+            --max-concurrent-downloads=1 --continue=true \
+            --file-allocation=none --retry-wait=8 --max-tries=8 \
+            --timeout=45 --connect-timeout=25 --check-integrity=true \
             --checksum="sha-256=$ISO_SHA256"
           iso="$iso_dir/cachyos.iso"
-          printf '%s  %s\\n' "$ISO_SHA256" "$iso" | sha256sum --check
+          printf '%s  %s\n' "$ISO_SHA256" "$iso" | sha256sum --check
           test "$(stat -c '%s' "$iso")" -gt 5000000000
           echo "GASLUX_CACHYOS_VERIFIED_ISO_PATH=$iso" >> "$GITHUB_ENV"
           echo "GASLUX_CACHYOS_VERIFIED_ISO_SHA256=$ISO_SHA256" >> "$GITHUB_ENV"
@@ -201,7 +201,7 @@ jobs:
             --stage-cachyos-overlay-root-gpt-only \
             --verify-windows-reboot-with-fifth-gpt \
             --format-owned-fifth-ext4-only \
-            --verify-windows-reboot-after-ext4 \\
+            --verify-windows-reboot-after-ext4 \
             --run-cachyos-shared-root-pacstrap
           echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
       # Never run this candidate check unless the exact existing Windows 10
