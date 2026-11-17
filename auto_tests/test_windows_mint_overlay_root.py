@@ -81,6 +81,8 @@ class MintOverlayContracts(unittest.TestCase):
 
     def test_native_grub_and_release_claims_are_never_enabled_by_harness(self):
         source = (Path(mint.__file__)).read_text(encoding="utf-8")
+        self.assertIn('"mintSquashfsRootCopiedToWindowsCOWPartition5": True', source)
+        self.assertNotIn('"mintInstalledIntoWindowsCOWPartition5": True', source)
         self.assertIn('"nativeGrubDualBootVerified": False', source)
         self.assertIn('"sameDiskDualBootVerified": False', source)
         self.assertIn('"updatesVerified": False', source)
