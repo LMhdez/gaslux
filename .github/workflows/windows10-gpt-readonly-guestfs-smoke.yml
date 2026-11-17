@@ -1,0 +1,57 @@
+name: Synthetic Windows-like GPT/EFI/NTFS read-only inspector (NO Windows)
+on:
+  push:
+    branches:
+      - test/windows10-postboot-gpt-readonly-audit
+    paths:
+      - .github/workflows/windows10-gpt-readonly-guestfs-smoke.yml
+      - auto_tests/tools/windows10_synthetic_gpt_guestfs_smoke.py
+      - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+      - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
+      - auto_tests/tools/windows_x64_libguestfs_kernel.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-file-backed-gpt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Confirm native negative tests before any synthetic QCOW2 write
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          python3 -m py_compile auto_tests/tools/windows10_synthetic_gpt_guestfs_smoke.py
+          python3 -m py_compile auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+          bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_installed_gpt_ro_audit.py' -v
+      - name: Install disposable guestfs appliance and complete generic kernel
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-utils python3-guestfs libguestfs-tools linux-image-generic
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+      - name: Prove GPT/EFI/BCD and Windows-like NTFS checks on synthetic QCOW2
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          timeout --kill-after=10s 480s python3 \
+            auto_tests/tools/windows10_synthetic_gpt_guestfs_smoke.py
+          echo 'PASS: guestfs API inspected a self-created, private synthetic GPT/NTFS QCOW2 read-only.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NO Windows installed boot, Windows EFI/BCD provenance, Linux coexistence or recovery was executed.' >> "$GITHUB_STEP_SUMMARY"
