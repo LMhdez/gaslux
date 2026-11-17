@@ -12,6 +12,10 @@ on:
       - auto_tests/tools/cachyos_vm_install_launch.sh
       - auto_tests/tools/cachyos_generated_boot_config.py
       - assets/live/cachyos-stage-target.sh
+      - assets/live/cachyos-strict-pacman.py
+      - assets/live/cachyos-pacman-trust.py
+      - auto_tests/test_cachyos_strict_pacman.py
+      - auto_tests/test_cachyos_pacman_trust.py
       - auto_tests/test_cachyos_stage_target_safety.py
 
 permissions:
@@ -32,7 +36,8 @@ jobs:
           bash -n auto_tests/tools/cachyos_vm_guest_install.sh
           bash -n auto_tests/tools/cachyos_vm_install_launch.sh
           bash -n auto_tests/tools/cachyos_qemu_install_firstboot.sh
-          python3 -m unittest auto_tests.test_cachyos_stage_target_safety auto_tests.test_cachyos_generated_boot -v
+          python3 -m py_compile assets/live/cachyos-strict-pacman.py assets/live/cachyos-pacman-trust.py
+          python3 -m unittest auto_tests.test_cachyos_stage_target_safety auto_tests.test_cachyos_generated_boot auto_tests.test_cachyos_strict_pacman auto_tests.test_cachyos_pacman_trust -v
       - name: Guard that the lab does not target any physical disk
         run: |
           set -Eeuo pipefail
@@ -62,7 +67,16 @@ jobs:
           assert 'GASLUX_VM_FIRSTBOOT_PASS:' in host and guest
           assert 'systemd-detect-virt --vm' in guest
           assert 'bash /run/gaslux-control/stage.sh --validate-target' in guest
-          assert 'pacstrap -K /mnt/target' in guest
+          assert 'pacstrap -K -C "$strict_dir/pacman-install.conf" /mnt/target' in guest
+          assert 'pacstrap -K /mnt/target' not in guest
+          assert 'GASLUX_VM_SIGNED_ONLY_POLICY_PASS' in guest
+          assert 'GASLUX_VM_SIGNED_ONLY_INSTALLED_POLICY_PASS' in guest
+          assert 'cachyos-strict-pacman.py' in host and 'cachyos-pacman-trust.py' in host
+          assert 'mcopy -i "$w/control.raw" "$strict_builder" ::/strict-pacman.py' in host
+          assert 'mcopy -i "$w/control.raw" "$pacman_trust" ::/pacman-trust.py' in host
+          assert 'SigLevel = Never' not in guest
+          assert '--skippgpcheck' not in guest
+          assert 'cmp -s "$strict_dir/pacman-target.conf" /mnt/target/etc/pacman.conf' in guest
           assert 'systemctl is-active --quiet pacman-init.service' in guest
           assert 'systemctl is-failed --quiet pacman-init.service' in guest
           assert 'journalctl -b -u pacman-init.service' in guest

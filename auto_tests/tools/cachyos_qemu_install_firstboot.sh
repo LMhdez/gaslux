@@ -65,14 +65,22 @@ mkfs.vfat -F 32 -n GASLUXESP "$w/esp.raw" >/dev/null
 truncate -s 64M "$w/control.raw"
 mkfs.vfat -F 32 -n GASLUXCTL "$w/control.raw" >/dev/null
 stage=assets/live/cachyos-stage-target.sh
+strict_builder=assets/live/cachyos-strict-pacman.py
+pacman_trust=assets/live/cachyos-pacman-trust.py
 guest=auto_tests/tools/cachyos_vm_guest_install.sh
 launch=auto_tests/tools/cachyos_vm_install_launch.sh
 [[ -f "$launch" ]] || { echo 'VM-only systemd launch helper missing'; exit 2; }
+[[ -f "$strict_builder" && -f "$pacman_trust" ]] ||
+  { echo 'Maintainer-supplied strict pacman renderer and trust guard missing'; exit 2; }
 stage_hash="$(sha256sum "$stage" | awk '{print $1}')"
-printf 'RUN_ID=%q\nROOT_UUID=%q\nSTAGE_SHA256=%q\n' \
-  "$run_id" "$root_uuid" "$stage_hash" > "$w/lab.env"
+strict_hash="$(sha256sum "$strict_builder" | awk '{print $1}')"
+trust_hash="$(sha256sum "$pacman_trust" | awk '{print $1}')"
+printf 'RUN_ID=%q\nROOT_UUID=%q\nSTAGE_SHA256=%q\nSTRICT_SHA256=%q\nTRUST_SHA256=%q\n' \
+  "$run_id" "$root_uuid" "$stage_hash" "$strict_hash" "$trust_hash" > "$w/lab.env"
 mcopy -i "$w/control.raw" "$w/lab.env" ::/lab.env
 mcopy -i "$w/control.raw" "$stage" ::/stage.sh
+mcopy -i "$w/control.raw" "$strict_builder" ::/strict-pacman.py
+mcopy -i "$w/control.raw" "$pacman_trust" ::/pacman-trust.py
 mcopy -i "$w/control.raw" "$guest" ::/gaslux-run.sh
 mcopy -i "$w/control.raw" "$launch" ::/gaslux-launch.sh
 sudo mount -o ro,loop "$iso" "$w/iso-mounted"

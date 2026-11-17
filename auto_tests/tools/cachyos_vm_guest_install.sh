@@ -25,9 +25,15 @@ source /run/gaslux-control/lab.env
 [[ "$RUN_ID" =~ ^gaslux-vm-[a-f0-9]{16}$ ]] || exit 13
 [[ "$ROOT_UUID" =~ ^[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}$ ]] || exit 14
 [[ "$STAGE_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 15
+[[ "$STRICT_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 45
+[[ "$TRUST_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 46
 printf '%s  /run/gaslux-control/stage.sh\n' "$STAGE_SHA256" | sha256sum --check --status || {
   echo 'Stage script hash differs from pinned lab content'; exit 16;
 }
+printf '%s  /run/gaslux-control/strict-pacman.py\n' "$STRICT_SHA256" | sha256sum --check --status ||
+  { echo 'Signed-only policy renderer has invalid SHA-256'; exit 47; }
+printf '%s  /run/gaslux-control/pacman-trust.py\n' "$TRUST_SHA256" | sha256sum --check --status ||
+  { echo 'Pacman trust policy guard has invalid SHA-256'; exit 48; }
 # systemd-run's generated service can race with udev on live Archiso.
 # Wait for all guest-owned virtio block devices before checking ownership.
 echo 'GASLUX_VM_WAIT_DISK_DEVICE_DISCOVERY'
@@ -101,13 +107,40 @@ for keyring in archlinux cachyos; do
 done
 echo 'GASLUX_VM_NETWORK_KEYRING_READY'
 set +x
+# The authentic pinned CachyOS ISO has an inadequate effective package
+# signature policy. Never use its pacman.conf as the install policy.
+# Reuse the signed-only, HTTPS-filtering builder from experimental PR #27.
+echo 'GASLUX_VM_SIGNED_ONLY_PREPARE_BEGIN'
+strict_dir="/run/gaslux-pacman-$RUN_ID"
+python3 /run/gaslux-control/strict-pacman.py --root / --run-id "$RUN_ID" --prepare-vm ||
+  { echo 'GASLUX_VM_STRICT_PACMAN_RENDER_FAILED'; exit 49; }
+[[ -s "$strict_dir/pacman-install.conf" && -s "$strict_dir/pacman-target.conf" ]] ||
+  { echo 'GASLUX_VM_STRICT_PACMAN_FILES_MISSING'; exit 50; }
+python3 /run/gaslux-control/pacman-trust.py --config "$strict_dir/pacman-install.conf" ||
+  { echo 'GASLUX_VM_STRICT_PACMAN_TRUST_REJECTED'; exit 51; }
+grep -Fxq 'LocalFileSigLevel = Required TrustedOnly' "$strict_dir/pacman-install.conf" ||
+  { echo 'GASLUX_VM_LOCAL_SIGNATURE_POLICY_REJECTED'; exit 52; }
+grep -Fxq 'RemoteFileSigLevel = Required TrustedOnly' "$strict_dir/pacman-install.conf" ||
+  { echo 'GASLUX_VM_REMOTE_SIGNATURE_POLICY_REJECTED'; exit 53; }
+echo 'GASLUX_VM_SIGNED_ONLY_POLICY_PASS'
 echo 'GASLUX_VM_PACSTRAP_BEGIN'
-# Genuine package installation. Do not copy the live squashfs filesystem.
-# Minimal kernel/userspace only: this is NOT the full desktop product.
-pacstrap -K /mnt/target \
+# Genuine signed-only package installation. Never copy live squashfs rootfs,
+# inherit the weak live pacman.conf, or bypass package signatures.
+pacstrap -K -C "$strict_dir/pacman-install.conf" /mnt/target \
   base linux-cachyos mkinitcpio grub efibootmgr \
   cachyos-keyring cachyos-mirrorlist cachyos-settings cachyos-hooks \
   pacman e2fsprogs dosfstools
+# Persist the same strict signing policy and filtered HTTPS mirror lists.
+# The installed OS must NOT inherit the weaker ISO package configuration.
+for name in mirrorlist cachyos-mirrorlist; do
+  install -m 0644 "$strict_dir/$name" "/mnt/target/etc/pacman.d/$name"
+  cmp -s "$strict_dir/$name" "/mnt/target/etc/pacman.d/$name" || exit 54
+done
+install -m 0644 "$strict_dir/pacman-target.conf" /mnt/target/etc/pacman.conf
+cmp -s "$strict_dir/pacman-target.conf" /mnt/target/etc/pacman.conf || exit 55
+grep -Fxq 'SigLevel = Required DatabaseOptional TrustedOnly' /mnt/target/etc/pacman.conf ||
+  { echo 'GASLUX_VM_TARGET_PACKAGE_SIGNATURE_POLICY_REJECTED'; exit 56; }
+echo 'GASLUX_VM_SIGNED_ONLY_INSTALLED_POLICY_PASS'
 [[ -s /mnt/target/boot/vmlinuz-linux-cachyos ]] || {
   echo 'CachyOS pacstrap did not create a kernel'; exit 21;
 }
