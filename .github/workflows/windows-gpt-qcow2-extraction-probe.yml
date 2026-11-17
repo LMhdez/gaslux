@@ -46,3 +46,20 @@ jobs:
                   assert f.read_bytes() == bytes(expected), n
           print("Only bounded blank QCOW2 extraction verified. No Windows, Linux, boot or disk writes.")
           PY
+          # Populate only the FIRST/LAST 4 KiB of the owned disposable virtual image.
+          qemu-io -f qcow2 -c 'write -P 0x5a 0 4096' -c 'write -P 0xa5 137438949376 4096' "$p/blank.qcow2"
+          qemu-img dd -f qcow2 -O raw bs=512 count=2048 skip=0 "if=$p/blank.qcow2" "of=$p/allocated-front.raw"
+          qemu-img dd -f qcow2 -O raw bs=512 skip=268433408 "if=$p/blank.qcow2" "of=$p/allocated-back.raw"
+          python3 - "$p" <<'PY'
+          from pathlib import Path
+          import sys
+          p = Path(sys.argv[1])
+          first = (p / "allocated-front.raw").read_bytes()
+          last = (p / "allocated-back.raw").read_bytes()
+          assert len(first) == len(last) == 1048576
+          assert first[:4096] == bytes([0x5a]) * 4096
+          assert last[-4096:] == bytes([0xa5]) * 4096
+          assert first[4096:] == bytes(len(first) - 4096)
+          assert last[:-4096] == bytes(len(last) - 4096)
+          print("PASS: bounded extraction on populated disposable QCOW2")
+          PY
