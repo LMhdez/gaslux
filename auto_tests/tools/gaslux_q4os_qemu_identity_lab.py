@@ -527,7 +527,12 @@ def run_lab(
             overlay_after == checkpoint["overlayImageSparseSha256Before"],
             "Read-only QEMU overlay changed during guest boot",
         )
-        subprocess.run(["qemu-img", "check", str(overlay)], check=True, capture_output=True, timeout=60)
+        subprocess.run(
+            ["qemu-img", "check", str(overlay)],
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
         _verify_plan(workspace, plan_dir)
         checkpoint.update(
             {
