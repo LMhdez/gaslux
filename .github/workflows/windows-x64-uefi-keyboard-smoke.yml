@@ -1,0 +1,95 @@
+name: Diskless QEMU OVMF keyboard delivery capability (no Windows ISO)
+on:
+  push:
+    branches: [feature/windows-x64-uefi-dvd-visual-diagnostics]
+    paths: [.github/workflows/windows-x64-uefi-keyboard-smoke.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  keyboard-to-ovmf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 13
+    strategy:
+      fail-fast: false
+      matrix:
+        display: [headless, unix-vnc]
+        keyboard: [ps2, usb]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Confirm one HMP key reaches diskless OVMF
+        env:
+          MODE: ${{ matrix.display }}
+          KEYBOARD: ${{ matrix.keyboard }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true && test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 ovmf
+          w="$(mktemp -d -p "$RUNNER_TEMP" gaslux-kbd-ovmf-XXXXXX)"
+          trap 'rm -rf -- "$w"' EXIT
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd "$w/vars.fd"
+          display=(-display none)
+          keyboard=()
+          if [[ "$MODE" == unix-vnc ]]; then display=(-vnc "unix:$w/vnc.sock"); fi
+          if [[ "$KEYBOARD" == usb ]]; then keyboard=(-device qemu-xhci -device usb-kbd); fi
+          qemu-system-x86_64 -machine q35,accel=tcg,smm=on -cpu qemu64 -m 1024 -smp 1 \
+            -global driver=cfi.pflash01,property=secure,value=on \
+            -vga std -net none -serial "file:$w/serial.log" \
+            -monitor "unix:$w/hmp.sock,server,nowait" \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd \
+            -drive "if=pflash,format=raw,file=$w/vars.fd" \
+            "${display[@]}" "${keyboard[@]}" >"$w/out" 2>"$w/err" &
+          pid=$!
+          set +e
+          python3 - "$w" "$MODE" "$KEYBOARD" <<'PY'
+          import hashlib,pathlib,socket,sys,time
+          w,mode,keyboard=pathlib.Path(sys.argv[1]),sys.argv[2],sys.argv[3]
+          sock=w/'hmp.sock'
+          for _ in range(120):
+              if sock.is_socket():break
+              time.sleep(.25)
+          if not sock.is_socket():raise SystemExit('FAIL: no HMP')
+          time.sleep(15)
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as h:
+              h.settimeout(20);h.connect(str(sock))
+              def prompt():
+                  data=b''
+                  while len(data)<131072:
+                      part=h.recv(4096)
+                      if not part:raise RuntimeError('HMP disconnected')
+                      data+=part
+                      if b'(qemu) ' in data:return data
+                  raise RuntimeError('HMP no prompt')
+              prompt()
+              def snap(name):
+                  target=w/(name+'.ppm')
+                  h.sendall(('screendump '+str(target)+'\n').encode())
+                  response=prompt()
+                  if b'Error:' in response:raise RuntimeError('HMP error')
+                  for _ in range(60):
+                      if target.is_file() and target.stat().st_size>1000:break
+                      time.sleep(.1)
+                  if not target.is_file():raise RuntimeError('HMP no screenshot')
+                  with target.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+              before=snap('before');time.sleep(3);stable=snap('stable')
+              h.sendall(b'sendkey ret 120\n')
+              response=prompt()
+              time.sleep(3)
+              after=snap('after')
+              print('GASLUX_OVMF_KEYBOARD_RESULT mode=',mode,'keyboard=',keyboard,
+                    'before=',before,'stable=',stable,'after=',after,
+                    'was_stable=',before==stable,'changed_after_key=',stable!=after,flush=True)
+              if before != stable:raise SystemExit('FAIL: unstable firmware baseline')
+              if stable == after:raise SystemExit('FAIL: key not observed by firmware display')
+          PY
+          rc=$?
+          set -e
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          echo "GASLUX_KEYBOARD_GATE mode=$MODE keyboard=$KEYBOARD result=$rc" >> "$GITHUB_STEP_SUMMARY"
+          if (( rc != 0 )); then tail -c 2500 "$w/serial.log" || true; cat "$w/err"; exit "$rc"; fi
+          echo 'Diskless OVMF accepted HMP Enter; no Windows OS tested' >> "$GITHUB_STEP_SUMMARY"
