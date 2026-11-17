@@ -461,7 +461,8 @@ def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
 
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
-            boot_key_transport: str = "hmp") -> tuple[bool, str]:
+            boot_key_transport: str = "hmp",
+            diagnostic_dir: Path | None = None) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -493,6 +494,8 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     witnessed_at: float | None = None
     initial_cd_key_sent = False
     win11_dvd_started_at: float | None = None
+    initial_cd_key_at: float | None = None
+    captured_times: set[int] = set()
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
