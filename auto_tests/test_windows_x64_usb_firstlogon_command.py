@@ -52,8 +52,8 @@ class USBFirstLogonCommandContracts(unittest.TestCase):
                 self.assertEqual(command, generated)
                 self.assertIn(sha256, command)
                 self.assertLess(len(command), 240)
-                self.assertIn("Get-Volume -FileSystemLabel GASLUXCI", command)
-                self.assertIn("if($v.Count-ne 1){throw}", command)
+                self.assertIn("Get-Volume -FileSystemL GASLUXCI", command)
+                self.assertIn("if(@($v).Count-ne 1){throw}", command)
                 self.assertIn("Get-FileHash $p", command)
                 self.assertIn(";&$p\"", command)
                 self.assertIn("-NoP -EP Bypass -C", command)
@@ -108,7 +108,7 @@ class USBFirstLogonCommandContracts(unittest.TestCase):
     def test_reject_duplicate_ambiguous_missing_volume_or_hash(self):
         for profile, build in PROFILES:
             cmd = VM.usb_firstlogon_command(profile, build)
-            self.assertIn("if($v.Count-1){throw}", cmd)
+            self.assertIn("if(@($v).Count-ne 1){throw}", cmd)
             self.assertIn("if((Get-FileHash $p).Hash-ne '", cmd)
             self.assertIn("'){throw};&$p\"", cmd)
             self.assertEqual(cmd.count("GASLUXCI"), 1)
