@@ -93,11 +93,18 @@ def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> 
     require(mbr[510:512] == b"\x55\xaa", "invalid protective MBR")
     parts_mbr = [mbr[446 + i * 16 : 462 + i * 16] for i in range(4)]
     start, count = struct.unpack_from("<II", parts_mbr[0], 8)
+    # Real Windows 10 Setup was independently observed in PR #131 to use
+    # 0xFFFFFFFF on this 128-GiB image. This is NONCANONICAL (expected
+    # 268435455); permit only in the disposable COW laboratory, NEVER as
+    # production disk-write authorization. Both GPT CRC mirrors, identity,
+    # partition ownership, and exact unchanged PMBR are still mandatory.
+    canonical = count == min(total - 1, 0xFFFFFFFF)
+    oversized_windows = total - 1 < 0xFFFFFFFF and count == 0xFFFFFFFF
     protective = (
         parts_mbr[0][0] == 0
         and parts_mbr[0][4] == 0xEE
         and start == 1
-        and count == min(total - 1, 0xFFFFFFFF)
+        and (canonical or oversized_windows)
         and all(not any(x) for x in parts_mbr[1:])
     )
     if not protective:
@@ -178,6 +185,8 @@ def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> 
         "windowsPartitions": found[:4],
         "linuxRoot": found[4] if expected_count == 5 else None,
         "mbrSha256": hashlib.sha256(mbr).hexdigest(),
+        "protectiveMbrCanonical": canonical,
+        "oversizedWindowsPmbrLabOnly": oversized_windows,
         "firstUsableLba": struct.unpack_from("<Q", p, 40)[0],
         "lastUsableLba": struct.unpack_from("<Q", p, 48)[0],
         "primaryAndBackupCrcVerified": True,
@@ -236,7 +245,8 @@ def reconcile_windows_and_root(before: dict, after: dict, plan: dict) -> None:
     )
     for key in (
         "diskGuid", "windowsEntryHex", "windowsPartitions",
-        "mbrSha256", "firstUsableLba", "lastUsableLba",
+        "mbrSha256", "protectiveMbrCanonical", "oversizedWindowsPmbrLabOnly",
+        "firstUsableLba", "lastUsableLba",
     ):
         require(before[key] == after[key], f"foreign GPT identity changed: {key}")
     linux = after["linuxRoot"]
