@@ -19,7 +19,10 @@ import stat
 import time
 
 PROFILES = ("win10_22h2_en_us_x64", "win11_26h2_en_us_x64")
-LABELS = ("00-dvd", "01-setup", "02-later")
+# The 03-05 labels are reserved for the separate, long Windows firstboot
+# observer. Each file is still a bounded read-only screenshot, not boot proof.
+LABELS = ("00-dvd", "01-setup", "02-later",
+          "03-firstboot-early", "04-firstboot-middle", "05-firstboot-late")
 RUNNER_ROOT = Path("/home/runner/work/_temp")
 MAX_PPM_BYTES = 16 * 1024 * 1024
 
