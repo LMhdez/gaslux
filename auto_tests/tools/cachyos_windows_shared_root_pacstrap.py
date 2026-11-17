@@ -62,16 +62,64 @@ def execute(argv: list[str], *, timeout: int = 60) -> str:
 
 
 def sha_file(path: Path) -> str:
-    require(path.is_file() and not path.is_symlink(),
-            "missing protected Windows source")
-    h = hashlib.sha256()
-    with path.open("rb", buffering=0) as f:
-        while True:
-            buf = f.read(1024 * 1024)
-            if not buf:
-                break
-            h.update(buf)
-    return h.hexdigest()
+    """Hash a regular file through directory FDs, never following any symlink.
+
+    Traversal is anchored at / and each component is opened with O_NOFOLLOW.
+    This prevents a Windows junction/symlink or swapped intermediate directory
+    from redirecting the prewrite evidence outside the RO-mounted partition.
+    """
+    require(isinstance(path, Path) and path.is_absolute()
+            and all(part not in ("", ".", "..") for part in path.parts[1:])
+            and len(path.parts) > 1,
+            "invalid protected file path")
+    directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY
+                        | os.O_CLOEXEC | os.O_NOFOLLOW)
+    try:
+        for component in path.parts[1:-1]:
+            next_dir = os.open(component, os.O_RDONLY | os.O_DIRECTORY
+                               | os.O_NOFOLLOW | os.O_CLOEXEC,
+                               dir_fd=directory)
+            os.close(directory)
+            directory = next_dir
+        fd = os.open(path.parts[-1], os.O_RDONLY | os.O_NOFOLLOW
+                     | os.O_CLOEXEC, dir_fd=directory)
+        try:
+            require(stat.S_ISREG(os.fstat(fd).st_mode),
+                    "protected Windows source is not a regular file")
+            digest = hashlib.sha256()
+            while True:
+                data = os.read(fd, 1024 * 1024)
+                if not data:
+                    break
+                digest.update(data)
+            return digest.hexdigest()
+        finally:
+            os.close(fd)
+    finally:
+        os.close(directory)
+
+
+def verify_mounted_source(
+    mountpoint: Path, expected: Path, filesystem: str, *,
+    readonly: bool, run=execute,
+) -> None:
+    """A mount type alone is insufficient: prove device and options as well."""
+    require(mountpoint.is_absolute() and expected.is_absolute(),
+            "nonabsolute protected mount identity")
+    origin = run(["findmnt", "-n", "-M", str(mountpoint),
+                  "-o", "SOURCE"]).strip()
+    observed_type = run(["findmnt", "-n", "-M", str(mountpoint),
+                         "-o", "FSTYPE"]).strip()
+    options = set(run(["findmnt", "-n", "-M", str(mountpoint),
+                       "-o", "OPTIONS"]).strip().split(","))
+    expected_flags = {"ro", "nosuid", "nodev", "noexec"} if readonly else {
+        "rw", "nosuid", "nodev",
+    }
+    require(origin == str(expected)
+            and observed_type == filesystem
+            and expected_flags.issubset(options)
+            and not ({"rw"} if readonly else {"ro"}) & options,
+            "mount source, filesystem or access flags differ from signed target")
 
 
 def strict_gpt_evidence(
@@ -163,9 +211,8 @@ def protected_files_readonly(disk: Path, plan: dict[str, Any]) -> None:
             execute(["mount", "-t", mount_type,
                      "-o", "ro,nosuid,nodev,noexec", str(source), temp])
             try:
-                mount_info = execute(["findmnt", "-n", "-M", temp, "-o", "OPTIONS"])
-                require("ro" in mount_info.split(","),
-                        "Windows partition not mounted read-only")
+                verify_mounted_source(Path(temp), source, mount_type,
+                                      readonly=True)
                 candidate = Path(temp) / filename.lstrip("/")
                 digest = sha_file(candidate)
                 require(SHA.fullmatch(digest) is not None
@@ -377,8 +424,7 @@ def pacstrap_only(args: argparse.Namespace) -> None:
     execute(["mount", "-t", "ext4", "-o", "rw,nosuid,nodev",
              str(root_partition), str(ROOT)])
     try:
-        require(execute(["findmnt", "-n", "-M", str(ROOT), "-o", "FSTYPE"]).strip()
-                == "ext4", "installed root unexpectedly not ext4")
+        verify_mounted_source(ROOT, root_partition, "ext4", readonly=False)
         require(not (ROOT / "etc/os-release").exists()
                 and set(x.name for x in ROOT.iterdir()) <= {"lost+found"},
                 "pre-existing OS or foreign root content")
