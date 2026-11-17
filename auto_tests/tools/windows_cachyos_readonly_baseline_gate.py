@@ -100,9 +100,12 @@ def evaluate(profile: str, report: dict, serial: bytes,
     require(matching is not None and
             matching.group(1) == hashlib.sha256(serial).hexdigest(),
             "Windows serial SHA256 does not match owned evidence manifest")
-    # The actual installed Windows FirstLogon witness writes one marker per
-    # serial line. A textual marker alone is not proof of the guest's origin.
-    lines = serial.decode("utf-8", errors="replace").splitlines()
+    # The genuine Windows FirstLogon writer sends separate COM1 WriteLine
+    # calls, but QEMU/serial may coalesce them onto one line. Match exact,
+    # whitespace-delimited, bounded tokens across ALL supplied evidence,
+    # like the fail-closed incremental firstboot reader in PR #93. An echoed
+    # marker or forged log/manifest is NOT authenticated guest provenance.
+    tokens = [t.decode("ascii", errors="replace") for t in serial.split()]
     markers = (
         "GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=" + profile,
         "GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
@@ -114,11 +117,15 @@ def evaluate(profile: str, report: dict, serial: bytes,
         catalog["profiles"][profile]["expectedWindowsBuildPrefix"],
     )
     for marker in markers:
-        require(lines.count(marker) == 1,
+        require(tokens.count(marker) == 1,
                 "missing/ambiguous installed client witness: " + marker)
-    require(all(not line.startswith("GASLUX_WINDOWS_X64_BOOT_BUILD=")
-                or line == markers[-1] for line in lines),
-            "ambiguous Windows build witness")
+    # Detect conflicting names/values even when a valid token is also present.
+    for marker in markers:
+        key = marker.split("=", 1)[0] + "="
+        require(sum(t.startswith(key) for t in tokens) == 1,
+                "ambiguous Windows witness field: " + key)
+    require(not any(t.startswith("GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL")
+                    for t in tokens), "Windows firstlogon audit failed")
     # Never promote a self-reported, SHA-hashed text document to an
     # authenticated Windows guest, safe disk mutation or product release.
     return {
