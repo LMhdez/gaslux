@@ -16,6 +16,8 @@ on:
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
       - auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
+      - auto_tests/tools/windows10_popos_gpt_mirror_gate.py
+      - auto_tests/test_windows10_popos_gpt_mirror_gate.py
       - auto_tests/test_windows10_popos_same_disk_overlay_stage.py
       - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
@@ -48,11 +50,13 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m py_compile auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
           python3 -m py_compile auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_gpt_mirror_gate.py
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_installed_gpt_ro_audit.py \
               test_windows10_popos_same_disk_overlay_stage.py \
+              test_windows10_popos_gpt_mirror_gate.py \
               test_windows_x64_noprompt_one_shot.py \
               test_windows_x64_derived_noprompt.py \
               test_windows_x64_kvm_opt_in.py \
