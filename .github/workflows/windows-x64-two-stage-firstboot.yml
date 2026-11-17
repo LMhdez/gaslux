@@ -10,11 +10,13 @@ on:
       - fix/windows-eval-oobe-international-pass
       - test/windows-floppy-proven-setup-firstlogon-fix
       - test/windows10-postboot-gpt-readonly-audit
+      - test/windows11-postboot-gpt-readonly-audit
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
       - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
+      - auto_tests/test_windows11_floppy_control.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
       - auto_tests/test_windows_x64_two_stage_boot.py
       - auto_tests/test_windows_x64_swtpm_reconnect.py
@@ -48,6 +50,7 @@ jobs:
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_installed_gpt_ro_audit.py \
+              test_windows11_floppy_control.py \
               test_windows_x64_noprompt_one_shot.py \
               test_windows_x64_derived_noprompt.py \
               test_windows_x64_kvm_opt_in.py \
@@ -76,11 +79,11 @@ jobs:
       fail-fast: false
       matrix:
         profile:
-          # Historical 44048550209 reached installed Windows 10 Boot Manager
-          # with floppy media, but guest PowerShell collapsed the 7 markers.
-          # Re-run this EXACT former installation path after correcting only
-          # marker-array semantics. Do not imply support for Windows 11.
-          - win10_22h2_en_us_x64
+          # Replay the Windows 11 26H2 FAT12 / derived DVD firstboot
+          # verified in Actions #44094951108, adding only the inherited
+          # read-only libguestfs offline check after clean guest shutdown.
+          # FAT12 is strictly a historical disposable-VM control.
+          - win11_26h2_en_us_x64
     env:
       PYTHONUNBUFFERED: '1'
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
@@ -124,7 +127,7 @@ jobs:
             --profile "${{ matrix.profile }}" --accel kvm \
             --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
             --audit-installed-gpt-readonly
-          echo 'PASS: Windows 10 installed guest, clean shutdown, then separate read-only libguestfs GPT/ESP/BCD/NTFS inspection.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'PASS: Windows 11 installed guest, clean shutdown, then separate read-only libguestfs GPT/ESP/BCD/NTFS inspection.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Windows+CachyOS dualboot, WinRE/BCD RESTORATION and rollback NOT verified; no storage writes authorized.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()

@@ -15,6 +15,8 @@ assert SPEC and SPEC.loader
 AUDIT = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(AUDIT)
 
+WIN10 = "win10_22h2_en_us_x64"
+WIN11 = "win11_26h2_en_us_x64"
 MIB = 1024**2
 GIB = 1024**3
 
@@ -79,11 +81,11 @@ class OfflineWindowsDiskAuditTests(unittest.TestCase):
         g = MockGuestFS()
         transform(g)
         with self.assertRaisesRegex(AUDIT.DiskAuditError, expected):
-            AUDIT.inspect_layout(g)
+            AUDIT.inspect_layout(g, WIN10)
 
     def test_valid_layout_with_real_file_paths_still_claims_no_dualboot(self):
         g = MockGuestFS()
-        report = AUDIT.inspect_layout(g)
+        report = AUDIT.inspect_layout(g, WIN10)
         self.assertEqual(report["partitionCount"], 4)
         self.assertEqual(g.mounts, ["/dev/sda1", "/dev/sda3"])
         self.assertTrue(report["espBootManagerPresent"])
@@ -92,6 +94,41 @@ class OfflineWindowsDiskAuditTests(unittest.TestCase):
                      "winReRecoveryAfterLinuxVerified", "storageWritesAuthorized"):
             self.assertIs(report[flag], False)
         self.assertIn('"stable": false', AUDIT.encode_report(report))
+
+    def test_windows11_profile_is_bound_to_readonly_gpt_evidence(self):
+        g = MockGuestFS()
+        report = AUDIT.inspect_layout(g, WIN11)
+        self.assertEqual(report["profile"], WIN11)
+        self.assertEqual(g.mounts, ["/dev/sda1", "/dev/sda3"])
+        for flag in ("sameDiskDualBootVerified", "stable",
+                     "winReRecoveryAfterLinuxVerified", "storageWritesAuthorized"):
+            self.assertIs(report[flag], False)
+        self.assertIn('"profile": "win11_26h2_en_us_x64"',
+                      AUDIT.encode_report(report))
+
+    def test_unknown_profile_rejected_before_disk_reads(self):
+        class ForbiddenGuest:
+            def list_devices(self):
+                raise AssertionError("disk accessed for unsupported profile")
+        with self.assertRaisesRegex(AUDIT.DiskAuditError, "unsupported Windows"):
+            AUDIT.inspect_layout(ForbiddenGuest(), "win12_untrusted")
+
+    def test_windows11_audit_opt_in_does_not_accept_fixture(self):
+        import importlib.util
+        import sys
+        source = TOOLS / "windows_x64_tcg_firstboot.py"
+        spec = importlib.util.spec_from_file_location("windows11_audit_optin", source)
+        assert spec and spec.loader
+        old_path = list(sys.path)
+        try:
+            sys.path.insert(0, str(TOOLS))
+            vm = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(vm)
+        finally:
+            sys.path[:] = old_path
+        with self.assertRaisesRegex(SystemExit, "requires genuine Windows 10/11"):
+            vm.main(["--profile", WIN11, "--fixture-only",
+                     "--audit-installed-gpt-readonly"])
 
     def test_mbr_is_rejected(self):
         self.assert_rejected(

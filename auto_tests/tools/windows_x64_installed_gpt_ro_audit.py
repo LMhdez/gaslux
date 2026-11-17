@@ -18,6 +18,7 @@ MSR = "e3c9e316-0b5c-4db8-817d-f92df00215ae"
 BASIC = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
 RECOVERY = "de94bba4-06d1-4d40-a16a-bfd50179d6ac"
 TYPES = (ESP, MSR, BASIC, RECOVERY)
+SUPPORTED_PROFILES = frozenset(("win10_22h2_en_us_x64", "win11_26h2_en_us_x64"))
 GUID = re.compile(r"[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\Z")
 
 
@@ -53,8 +54,9 @@ def require_owned_qcow2(path: Path) -> None:
     )
 
 
-def inspect_layout(g) -> dict:
-    """Only libguestfs read methods; strict four-role Windows 10 GPT layout."""
+def inspect_layout(g, profile: str) -> dict:
+    """Only libguestfs read methods; strict four-role Windows client GPT layout."""
+    require(profile in SUPPORTED_PROFILES, "unsupported Windows GPT audit profile")
     disks = g.list_devices()
     require(disks == ["/dev/sda"], "unexpected disk count or device identity")
     device = disks[0]
@@ -116,7 +118,7 @@ def inspect_layout(g) -> dict:
     return {
         "schemaVersion": 1,
         "source": "gaslux-host-libguestfs-readonly-after-verified-firstboot",
-        "profile": "win10_22h2_en_us_x64",
+        "profile": profile,
         "diskVirtualSizeBytes": total,
         "partitionCount": 4,
         "partitions": found,
@@ -132,7 +134,8 @@ def inspect_layout(g) -> dict:
     }
 
 
-def inspect_owned_disk(path: Path) -> dict:
+def inspect_owned_disk(path: Path, profile: str) -> dict:
+    require(profile in SUPPORTED_PROFILES, "unsupported Windows GPT audit profile")
     require_owned_qcow2(path)
     # Lazy import: no dependency on libguestfs for pure no-ISO unit tests.
     try:
@@ -146,7 +149,7 @@ def inspect_owned_disk(path: Path) -> dict:
             # No block device or backing file accepted, explicitly pin format.
             g.add_drive_opts(str(path), readonly=1, format="qcow2")
             g.launch()
-            report = inspect_layout(g)
+            report = inspect_layout(g, profile)
         finally:
             g.close()
     except RuntimeError:

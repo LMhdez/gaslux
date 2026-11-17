@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - test/windows10-postboot-gpt-readonly-audit
+      - test/windows11-postboot-gpt-readonly-audit
     paths:
       - .github/workflows/windows10-gpt-readonly-guestfs-smoke.yml
       - auto_tests/tools/windows10_synthetic_gpt_guestfs_smoke.py

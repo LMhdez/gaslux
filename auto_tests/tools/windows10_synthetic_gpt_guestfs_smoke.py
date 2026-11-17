@@ -79,8 +79,9 @@ def exercise() -> None:
             g.umount_all()
         finally:
             g.close()
-        report = inspect_owned_disk(disk)
-        require(report["partitionCount"] == 4 and
+        report = inspect_owned_disk(disk, "win10_22h2_en_us_x64")
+        require(report["profile"] == "win10_22h2_en_us_x64" and
+                report["partitionCount"] == 4 and
                 report["espBootManagerPresent"] is True and
                 report["espBcdPresent"] is True and
                 report["ntfsWindowsLoaderPresent"] is True and

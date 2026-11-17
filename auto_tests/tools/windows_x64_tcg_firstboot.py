@@ -862,19 +862,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
     ap.add_argument("--audit-installed-gpt-readonly", action="store_true",
-                    help="Windows 10 hosted KVM ONLY: after verified client shutdown, "
+                    help="Windows 10/11 hosted KVM ONLY: after verified client shutdown, "
                          "inspect the owned installed QCOW2 via read-only libguestfs")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
     if args.audit_installed_gpt_readonly and not (
-        args.profile == "win10_22h2_en_us_x64"
+        args.profile in ("win10_22h2_en_us_x64", "win11_26h2_en_us_x64")
         and args.two_stage_install_only
         and args.accel == "kvm"
         and not args.fixture_only
     ):
-        raise SystemExit("offline installed GPT audit requires genuine Windows 10 "
+        raise SystemExit("offline installed GPT audit requires genuine Windows 10/11 "
                          "two-stage hosted KVM firstboot")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
@@ -1046,7 +1046,7 @@ def main(argv: list[str] | None = None) -> int:
                         from windows_x64_installed_gpt_ro_audit import (
                             inspect_owned_disk, encode_report,
                         )
-                        snapshot = inspect_owned_disk(disk)
+                        snapshot = inspect_owned_disk(disk, args.profile)
                         require(evidence.is_dir() and not evidence.is_symlink()
                                 and evidence.resolve() == evidence
                                 and evidence.name == "windows-x64-tcg-evidence",
