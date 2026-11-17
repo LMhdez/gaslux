@@ -1,0 +1,41 @@
+name: Mint COW boot evidence contracts
+
+on:
+  push:
+    branches:
+      - test/mint-cow-proof-validation
+    paths:
+      - .github/workflows/mint-cow-proof-contracts.yml
+      - auto_tests/tools/validate_mint_cow_boot_evidence.py
+      - auto_tests/test_windows_mint_cow_boot_evidence.py
+  pull_request:
+    branches:
+      - test/mint22-windows10-cow-firstboot
+    paths:
+      - .github/workflows/mint-cow-proof-contracts.yml
+      - auto_tests/tools/validate_mint_cow_boot_evidence.py
+      - auto_tests/test_windows_mint_cow_boot_evidence.py
+      - auto_tests/tools/windows_mint_overlay_root.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_mint_overlay_root.py
+      - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile Mint evidence validator and tests
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/validate_mint_cow_boot_evidence.py auto_tests/test_windows_mint_cow_boot_evidence.py
+      - name: Run fail-closed Mint evidence tests
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p 'test_windows_mint_cow_boot_evidence.py' -v
