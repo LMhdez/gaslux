@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 
 TOOLS = pathlib.Path(__file__).resolve().parent / "tools"
 sys.path.insert(0, str(TOOLS))
@@ -135,7 +136,9 @@ class OfficialISOBootPromptTests(unittest.TestCase):
         ]
         with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
             pathlib.Path, "is_symlink", return_value=False
-        ), patch.object(vm.socket, "socket", return_value=sock):
+        ), patch.object(vm, "require_owned_hmp_socket"), patch.object(
+            vm.socket, "socket", return_value=sock
+        ):
             vm.send_first_iso_boot_key(safe)
         self.assertEqual(sock.recv.call_count, 5)
         sock.sendall.assert_called_once_with(b"sendkey ret 300\n")
@@ -149,7 +152,9 @@ class OfficialISOBootPromptTests(unittest.TestCase):
         sock.recv.side_effect = [b"QEMU monitor\r\n(qemu) ", b"s\x1b[K", b""]
         with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
             pathlib.Path, "is_symlink", return_value=False
-        ), patch.object(vm.socket, "socket", return_value=sock):
+        ), patch.object(vm, "require_owned_hmp_socket"), patch.object(
+            vm.socket, "socket", return_value=sock
+        ):
             with self.assertRaisesRegex(vm.LabError, "closed before acknowledging"):
                 vm.send_first_iso_boot_key(safe)
 
@@ -165,7 +170,9 @@ class OfficialISOBootPromptTests(unittest.TestCase):
         ]
         with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
             pathlib.Path, "is_symlink", return_value=False
-        ), patch.object(vm.socket, "socket", return_value=sock):
+        ), patch.object(vm, "require_owned_hmp_socket"), patch.object(
+            vm.socket, "socket", return_value=sock
+        ):
             with self.assertRaisesRegex(vm.LabError, "refused"):
                 vm.send_first_iso_boot_key(safe)
 
@@ -179,12 +186,76 @@ class OfficialISOBootPromptTests(unittest.TestCase):
                                  b"sendkey ret 300\r\n(qemu) "]
         with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
             pathlib.Path, "is_symlink", return_value=False
-        ), patch.object(vm.socket, "socket", return_value=sock) as maker:
+        ), patch.object(vm, "require_owned_hmp_socket"), patch.object(
+            vm.socket, "socket", return_value=sock
+        ) as maker:
             vm.send_first_iso_boot_key(safe)
         maker.assert_called_once_with(vm.socket.AF_UNIX, vm.socket.SOCK_STREAM)
         sock.connect.assert_called_once_with(str(safe))
         sock.sendall.assert_called_once_with(b"sendkey ret 300\n")
         sock.settimeout.assert_called_once_with(2)
+
+    def test_owned_hmp_socket_requires_private_directory_and_ownership(self):
+        safe = pathlib.Path(
+            "/home/runner/work/_temp/gaslux-win-x64-probe/initial-installer-hmp.sock"
+        )
+        owner = vm.os.getuid()
+        def check(path, directory_uid=owner, directory_mode=0o700,
+                  socket_uid=owner, symlink_folder=False,
+                  resolved_folder=None):
+            def fake_stat(self, **_):
+                if self == path.parent:
+                    return SimpleNamespace(
+                        st_uid=directory_uid,
+                        st_mode=vm.stat.S_IFDIR | directory_mode,
+                    )
+                if self == path:
+                    return SimpleNamespace(
+                        st_uid=socket_uid,
+                        st_mode=vm.stat.S_IFSOCK | 0o600,
+                    )
+                raise AssertionError("unexpected stat target")
+            with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
+                pathlib.Path, "is_dir", return_value=True
+            ), patch.object(
+                pathlib.Path, "is_symlink",
+                autospec=True,
+                side_effect=lambda self: symlink_folder and self == path.parent,
+            ), patch.object(
+                pathlib.Path, "resolve",
+                autospec=True,
+                side_effect=lambda self: (resolved_folder if
+                                          self == path.parent and
+                                          resolved_folder is not None else self),
+            ), patch.object(pathlib.Path, "stat", autospec=True, side_effect=fake_stat):
+                vm.require_owned_hmp_socket(path)
+
+        check(safe)
+        for kwargs in (
+            {"directory_uid": owner + 1},
+            {"directory_mode": 0o755},
+            {"directory_mode": 0o777},
+            {"socket_uid": owner + 1},
+            {"symlink_folder": True},
+            {"resolved_folder": pathlib.Path("/tmp/escaped-gaslux-ci")},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(vm.LabError, "unowned QEMU monitor"):
+                    check(safe, **kwargs)
+        with self.assertRaisesRegex(vm.LabError, "unowned QEMU monitor"):
+            check(safe.with_name("foreign-process.sock"))
+
+    def test_no_socket_connection_when_private_directory_is_invalid(self):
+        monitor = pathlib.Path(
+            "/home/runner/work/_temp/gaslux-win-x64-unknown/initial-installer-hmp.sock"
+        )
+        with patch.object(pathlib.Path, "is_dir", return_value=False), patch.object(
+            vm.socket, "socket"
+        ) as socket_factory:
+            with self.assertRaisesRegex(vm.LabError, "unowned QEMU monitor"):
+                vm.send_first_iso_boot_key(monitor)
+        socket_factory.assert_not_called()
+
 
 
 if __name__ == "__main__":
