@@ -79,6 +79,7 @@ jobs:
                           time.sleep(.1)
                       assert hmp.is_socket(), "HMP socket never started"
                       send_first_iso_boot_key(hmp)
+                      send_first_iso_boot_key(hmp, hold_ms=6000)
                       assert p.poll() is None, "QEMU crashed after HMP sendkey"
                       print("GASLUX_REAL_QEMU_HMP_ENTER_KEY_PASS=1")
                   finally:
