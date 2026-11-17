@@ -19,6 +19,8 @@ on:
       - auto_tests/tools/cachyos_guest_vm_only_install.sh
       - auto_tests/tools/cachyos_vm_update_recovery_guest.sh
       - auto_tests/tools/cachyos_qemu_update_rollback.sh
+      - assets/live/cachyos-strict-pacman.py
+      - assets/live/cachyos-pacman-trust.py
       - auto_tests/test_cachyos_qemu_update_rollback_contract.py
       - auto_tests/tools/cachyos_signed_grub_vm_config.py
       - auto_tests/tools/cachyos_live_guest_serial.py
@@ -47,6 +49,7 @@ jobs:
           bash -n auto_tests/tools/cachyos_guest_vm_only_install.sh
           bash -n auto_tests/tools/cachyos_vm_update_recovery_guest.sh
           bash -n auto_tests/tools/cachyos_qemu_update_rollback.sh
+          python3 -m py_compile assets/live/cachyos-strict-pacman.py assets/live/cachyos-pacman-trust.py
           python3 -m unittest auto_tests.test_cachyos_qemu_update_rollback_contract -v
       - name: Install ISO verification prerequisites
         shell: bash
