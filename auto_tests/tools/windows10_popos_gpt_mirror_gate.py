@@ -93,14 +93,35 @@ def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> 
     require(mbr[510:512] == b"\x55\xaa", "invalid protective MBR")
     parts_mbr = [mbr[446 + i * 16 : 462 + i * 16] for i in range(4)]
     start, count = struct.unpack_from("<II", parts_mbr[0], 8)
-    require(
+    protective = (
         parts_mbr[0][0] == 0
         and parts_mbr[0][4] == 0xEE
         and start == 1
         and count == min(total - 1, 0xFFFFFFFF)
-        and all(not any(x) for x in parts_mbr[1:]),
-        "hybrid/nonprotective MBR or foreign partitions",
+        and all(not any(x) for x in parts_mbr[1:])
     )
+    if not protective:
+        # Only 4 harmless MBR partition-table descriptors, never sector data
+        # or Windows bytes. Observe actual Microsoft Setup geometry before
+        # deciding whether any narrower compatibility allowance is warranted.
+        diagnostic = [
+            {
+                "slot": i + 1,
+                "status": entry[0],
+                "type": entry[4],
+                "firstLba": struct.unpack_from("<I", entry, 8)[0],
+                "sectorCount": struct.unpack_from("<I", entry, 12)[0],
+                "nonzero": bool(any(entry)),
+            }
+            for i, entry in enumerate(parts_mbr)
+        ]
+        print(
+            "GASLUX_POP_PROTECTIVE_MBR_DIAGNOSTIC="
+            + json.dumps({"expectedSectorCount": min(total - 1, 0xFFFFFFFF),
+                          "slots": diagnostic}, sort_keys=True),
+            flush=True,
+        )
+        raise DiskAuditError("hybrid/nonprotective MBR or foreign partitions")
     p = _header(front, SECTOR, 1, total - 1)
     b = _header(back, WINDOW_BYTES - SECTOR, total - 1, 1)
     require(
