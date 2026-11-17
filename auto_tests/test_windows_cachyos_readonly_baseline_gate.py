@@ -46,7 +46,9 @@ def synthetic(profile="win11_26h2_en_us_x64"):
         "dualBootVerified": False,
         "winReAndBcdRecovered": False,
         "stable": False,
-        "firstLogonScriptSha256": hashlib.sha256((\n            GATE.witness_powershell(profile, build) + "\\n"\n        ).encode("utf-8")).hexdigest(),
+        "firstLogonScriptSha256": hashlib.sha256((
+            GATE.witness_powershell(profile, build) + "\n"
+        ).encode("utf-8")).hexdigest(),
         "labDerivedIsoSha256": "b" * 64,
         "initialDvdGuestSerialSha256": "c" * 64,
     }
