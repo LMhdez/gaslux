@@ -605,9 +605,12 @@ def build_two_stage_qemu_args(
     ):
         args[args.index("-boot") + 1] = boot
         args[args.index("-serial") + 1] = "file:" + str(serial)
-        # Neither VM uses headless HMP keyboard injection. No stale QEMU
-        # Unix monitor socket can be inherited between guests.
-        args[args.index("-monitor") + 1] = "none"
+        # Stage 1 must retain its private HMP socket: the genuine Microsoft
+        # DVD has a VGA-only "Press any key" prompt. Without a key, Windows
+        # Setup never starts even though OVMF reports DVD handoff. Stage 2
+        # has NO monitor and NO DVD.
+        if args is second:
+            args[args.index("-monitor") + 1] = "none"
     dvd_ids = (
         ("-drive", "if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file="),
         ("-device", "ide-cd,drive=verified_iso,bus=lab_sata.1"),
@@ -772,7 +775,14 @@ def boot_two_stage_windows(
     require(not initial_serial.exists() and not final_serial.exists(),
             "VM serial evidence path was reused")
     first, second = build_two_stage_qemu_args(original_args, initial_serial)
+    monitor_spec = original_args[original_args.index("-monitor") + 1]
+    expected_monitor = final_serial.parent / "initial-installer-hmp.sock"
+    require(monitor_spec == f"unix:{expected_monitor},server,nowait"
+            and not expected_monitor.exists() and not expected_monitor.is_symlink(),
+            "first-stage DVD key requires fresh owned HMP socket")
     initial_allocated = disk.stat().st_blocks * 512
+    dvd_key_sent = False
+    dvd_started_at: float | None = None
     dvd_scan_offset = 0
     dvd_scan_carry = b""
     dvd_start_count = 0
@@ -791,15 +801,31 @@ def boot_two_stage_windows(
                         initial_serial, dvd_scan_offset, dvd_scan_carry,
                     )
                     dvd_start_count += found
+                    if dvd_start_count == 1 and dvd_started_at is None:
+                        dvd_started_at = time.monotonic()
                     if dvd_start_count > 1:
                         return False, "initial Windows Setup retried the DVD boot"
+                    # OVMF's DVD handoff precedes the Microsoft bootloader's
+                    # VGA-only key prompt. Send exactly ONE 6s held Enter
+                    # after a short delay; HMP success is NOT guest boot proof.
+                    if (not dvd_key_sent and dvd_started_at is not None
+                            and time.monotonic() - dvd_started_at >= 1):
+                        send_first_iso_boot_key(expected_monitor, hold_ms=6000)
+                        dvd_key_sent = True
+                        print("GASLUX_WINDOWS_STAGE1_DVD_HMP_KEY_SENT=1",
+                              flush=True)
                     if (b"No bootable option or device was found." in observed
                             or b"DVD-ROM" in observed
                             and b"Time out" in observed):
                         return False, "initial Windows Setup UEFI DVD boot failed"
                 time.sleep(2)
             if proc.poll() is None:
-                return False, "Windows Setup did not reboot its first owned VM"
+                allocated = max(0, disk.stat().st_blocks * 512 - initial_allocated)
+                print("GASLUX_WINDOWS_STAGE1_QCOW2_ALLOCATED_MIB="
+                      + str(allocated // (1024 * 1024)), flush=True)
+                return False, ("Windows Setup did not reboot its first owned VM"
+                               + (" after one DVD boot key" if dvd_key_sent
+                                  else " without DVD boot key"))
             if proc.returncode != 0:
                 return False, "QEMU exited abnormally during first Windows Setup stage"
         finally:
