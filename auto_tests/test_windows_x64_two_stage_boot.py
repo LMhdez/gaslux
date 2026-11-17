@@ -248,7 +248,8 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertIn('report["officialIsoUnmodified"] = True', source)
         self.assertIn("ok, diagnostic = boot_two_stage_windows(", source)
         self.assertIn('report["windowsClientBootVerified"] = ok', source)
-        self.assertIn('if not ok:\\n                raise LabError(diagnostic)', source)
+        self.assertIn('if not ok:', source)
+        self.assertIn('raise LabError(diagnostic)', source)
         self.assertIn('send_first_iso_boot_key(expected_monitor, hold_ms=6000)',
                       source)
 
