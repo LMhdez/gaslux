@@ -2,10 +2,11 @@ name: CachyOS Windows recovery evidence (read-only contract)
 on:
   push:
     branches:
+      - dev
       - feature/cachyos-windows-recovery-evidence
   pull_request:
     branches:
-      - feature/signed-distro-capabilities-v2
+      - dev
   workflow_dispatch:
 
 permissions:
