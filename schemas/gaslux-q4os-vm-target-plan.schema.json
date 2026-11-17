@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/gaslux-q4os-vm-target-plan.schema.json",
+  "title": "Gaslux Q4OS disposable VM target read-only proposal (NOT installation authority)",
+  "description": "Experimental only; no Calamares, partition, Windows ESP or rollback write capability.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "distributionId": {
+      "const": "q4os"
+    },
+    "backend": {
+      "const": "q4os-native"
+    },
+    "firmwareLayout": {
+      "const": "uefi/gpt"
+    },
+    "sourceKind": {
+      "const": "native-live-calamares"
+    },
+    "isoSha256": {
+      "const": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
+    },
+    "diskSizeBytes": {
+      "const": 34359738368
+    },
+    "sectorBytes": {
+      "const": 512
+    },
+    "espName": {
+      "const": "GASLUX-LAB-ESP"
+    },
+    "espStartLba": {
+      "const": 2048
+    },
+    "espEndLba": {
+      "const": 1050623
+    },
+    "rootName": {
+      "const": "GASLUX-Q4OS-ROOT"
+    },
+    "rootStartLba": {
+      "const": 1050624
+    },
+    "rootEndLba": {
+      "const": 67106815
+    },
+    "rootFilesystem": {
+      "const": "ext4"
+    },
+    "operation": {
+      "const": "read-only-plan"
+    },
+    "guestOnly": {
+      "const": true
+    },
+    "installationAuthorized": {
+      "const": false
+    },
+    "calamaresJobsAuthorized": {
+      "const": false
+    },
+    "windowsEspWritesAuthorized": {
+      "const": false
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{12,100}$"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "diskGuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$"
+    },
+    "espGuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$"
+    },
+    "gptPrimarySha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gptBackupSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "vmFileDeviceId": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "vmFileInode": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "backend",
+    "calamaresJobsAuthorized",
+    "diskGuid",
+    "diskSizeBytes",
+    "distributionId",
+    "espEndLba",
+    "espGuid",
+    "espName",
+    "espStartLba",
+    "firmwareLayout",
+    "gptBackupSha256",
+    "gptPrimarySha256",
+    "guestOnly",
+    "installationAuthorized",
+    "isoSha256",
+    "nonce",
+    "operation",
+    "rootEndLba",
+    "rootFilesystem",
+    "rootName",
+    "rootStartLba",
+    "runId",
+    "schemaVersion",
+    "sectorBytes",
+    "sourceKind",
+    "vmFileDeviceId",
+    "vmFileInode",
+    "windowsEspWritesAuthorized"
+  ]
+}
