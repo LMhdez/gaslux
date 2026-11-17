@@ -396,6 +396,9 @@ def run_shared_root_pacstrap(
     before_base_sha = _sha(base)
     before_base_identity = qcow2_file_identity(base)
     before_nvram_sha = _sha(nvram)
+    before_iso_image_sha = _sha(iso_image)
+    before_control_sha = _sha(control)
+    before_boot_efi_sha = _sha(boot_efi)
     serial = workspace / "cachyos-shared-root-pacstrap-serial.log"
     stderr = workspace / "cachyos-shared-root-pacstrap-qemu-stderr.log"
     require(not serial.exists() and not serial.is_symlink()
@@ -457,6 +460,20 @@ def run_shared_root_pacstrap(
         "qemu-img", "info", "-f", "qcow2", "--output=json", str(overlay),
     ])
     require(post_info.returncode == 0, "cannot inspect post-pacstrap Windows COW overlay")
+    try:
+        post_info_doc = json.loads(post_info.stdout)
+    except ValueError as error:
+        raise SharedRootPacstrapError("invalid post-pacstrap QCOW2 info") from error
+    require(post_info_doc.get("format") == "qcow2"
+            and post_info_doc.get("virtual-size") == VIRTUAL_BYTES
+            and post_info_doc.get("backing-filename") == str(base)
+            and post_info_doc.get("backing-filename-format") == "qcow2",
+            "post-pacstrap COW backing chain no longer identifies the immutable Windows base")
+    _owned(overlay, base.parent / CHECKPOINT_DIR, OVERLAY_NAME, mode=0o600)
+    require(_sha(iso_image) == before_iso_image_sha
+            and _sha(control) == before_control_sha
+            and _sha(boot_efi) == before_boot_efi_sha,
+            "read-only ISO, control or EFI media changed during Archiso guest")
     post_qemu_check = _run(["qemu-img", "check", "-f", "qcow2", str(overlay)],
                            timeout=300)
     require(post_qemu_check.returncode == 0
@@ -480,6 +497,8 @@ def run_shared_root_pacstrap(
         **grant_status,
         **root_status,
         "cachyosRootPacstrapped": True,
+        "pacstrapExecuted": True,
+        "labOnlyPacstrapCompleted": True,
         "cachyosInstalled": False,
         "cachyosFirstBootVerified": False,
         "windowsGptUnchangedAfterPacstrap": True,
