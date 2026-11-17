@@ -9,6 +9,7 @@ on:
       - feature/q4os-native-grub-reboot-lab
       - feature/q4os-native-hook-source-audit
       - feature/q4os-owned-hook-guest-lab
+      - feature/q4os-calamares-transaction-profile-lab
     paths:
       - '.github/workflows/gaslux-q4os-official-iso.yml'
       - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
@@ -16,6 +17,8 @@ on:
       - 'auto_tests/tests/test_q4os_calamares_probe.py'
       - 'assets/live/gaslux_q4os_calamares_policy.py'
       - 'assets/live/gaslux_q4os_hook_policy.py'
+      - 'assets/live/gaslux_q4os_calamares_inert_profile.py'
+      - 'auto_tests/tests/test_q4os_calamares_inert_profile.py'
       - 'auto_tests/tests/test_q4os_calamares_policy.py'
       - 'auto_tests/tools/gaslux_q4os_installed_root_lab.sh'
       - 'auto_tests/tests/test_q4os_installed_root_lab.py'
@@ -156,6 +159,45 @@ jobs:
               raise SystemExit('Native Q4OS source inspection must never execute hooks')
           PY
           echo 'Q4OS scripts and module descriptors checked as inert ISO-origin evidence.'
+      - name: Build fail-closed Q4OS native 29-job Calamares profile from verified ISO
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PYTHONPATH=assets/live GITHUB_ACTIONS=true python3 \
+            assets/live/gaslux_q4os_calamares_inert_profile.py \
+            "$RUNNER_TEMP/gaslux-q4os/evidence" \
+            > "$RUNNER_TEMP/gaslux-q4os/evidence/calamares-profile-report.log"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'gaslux-q4os/evidence'
+          profile = root / 'calamares-inert-profile'
+          audit = json.loads((profile / 'profile-audit.json').read_text())
+          assert audit['nativeExecJobsCount'] == 29
+          assert audit['nativeFullExecOrderVerified']
+          assert audit['installationAuthorized'] is False
+          assert audit['profileActivationAuthorized'] is False
+          assert audit['calamaresJobEngineExecuted'] is False
+          assert audit['windowsEspWriteAuthorized'] is False
+          assert audit['firmwareNvramWriteAuthorized'] is False
+          assert audit['diskWrites'] == 0
+          boot = yaml.safe_load(
+              (profile / 'etc/calamares/modules/bootloader.conf').read_text()
+          )
+          assert boot['installEFIFallback'] is False
+          assert boot['grubInstall'] == '/bin/false'
+          assert boot['efiBootMgr'] == '/bin/false'
+          for name in ('q4oshook2', 'q4oshook3', 'q4oshook5'):
+              desc = yaml.safe_load(
+                  (profile / f'usr/lib/calamares/modules/{name}/module.desc').read_text()
+              )
+              assert desc['command'] == '/bin/false'
+          print('PASS: native 29-job graph audited and all risk-bearing commands blocked.')
+          print('NOT TESTED: genuine full Calamares job-engine execution or Windows dual boot.')
+          PY
       - name: Fetch native Debian 13 EFI GRUB package through signed APT metadata (lab only)
         shell: bash
         run: |
