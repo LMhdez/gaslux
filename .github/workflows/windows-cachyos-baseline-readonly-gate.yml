@@ -8,6 +8,7 @@ on:
       - .github/workflows/windows-cachyos-baseline-readonly-gate.yml
       - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
       - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+      - docs/WINDOWS_CACHYOS_READONLY_BASELINE_GATE.md
   workflow_dispatch:
 
 permissions:
@@ -22,7 +23,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Compile and execute 27 client evidence regressions and Microsoft ISO contracts
+      - name: Compile and run 34 fail-closed candidate tests plus Microsoft ISO authority contracts
         shell: bash
         run: |
           set -Eeuo pipefail
