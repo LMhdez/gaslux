@@ -26,9 +26,7 @@ from gaslux_popos_native_mock_windows_gpt_reconcile import (
 
 _BYTES = (WINDOWS_ESP_END - WINDOWS_ESP_START + 1) * SECTOR_SIZE
 _REQUIRED = frozenset({"boot/bootmgfw.efi", "boot/bcd"})
-_SNAPSHOT_KEYS = frozenset(
-    {"version", "diskGuid", "espPartuuid", "espSha256", "windowsFiles"}
-)
+_SNAPSHOT_KEYS = frozenset({"version", "diskGuid", "espPartuuid", "espSha256", "windowsFiles"})
 
 
 def _owned_image(image: Path) -> None:
@@ -49,11 +47,7 @@ def _owned_image(image: Path) -> None:
     ):
         raise GptRefusal("Not a strictly owned disposable VM raw disk")
     info = image.lstat()
-    if (
-        not stat.S_ISREG(info.st_mode)
-        or info.st_size != DISK_SIZE
-        or info.st_nlink != 1
-    ):
+    if not stat.S_ISREG(info.st_mode) or info.st_size != DISK_SIZE or info.st_nlink != 1:
         raise GptRefusal("Unexpected VM disk type, capacity or hardlink count")
 
 
