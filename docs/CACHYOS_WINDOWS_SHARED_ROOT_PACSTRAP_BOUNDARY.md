@@ -72,3 +72,31 @@ installation tests only with authorized, snapshotted disposable VMs.
 
 **Issue #3 remains open. Do not merge without human review under
 `AI_POLICY.md`, `AGENTS.md` where present, and GPL-3.0.**
+
+## Additional trust integration — 17 November 2026
+
+The lab-only root candidate now uses the same **canonical full primary+backup
+GPT windows SHA-256** as the authenticated PR #165 / PR #173 handoff. It does
+not reinterpret the signed `gptWindowsSha256` field as a digest of only the
+first four GPT records.
+
+The proven policy components from experimental PR #34 are reused unchanged:
+`assets/live/cachyos-strict-pacman.py` renders an explicit, HTTPS-only
+per-repository configuration on private `/run` tmpfs and
+`assets/live/cachyos-pacman-trust.py` checks the effective package-signature
+policy with `pacman-conf`. The candidate now requires these programs on the
+read-only Archiso control volume, refuses a writable control mount and runs
+`pacstrap -K -C <strict-config>` **only after** the independent Ed25519
+laboratory root-write grant, disk and Windows-content checks. It also installs
+the exact signed-only target pacman.conf and filtered mirrorlists into the
+owned Linux filesystem and compares their bytes.
+
+[GitHub Actions #44156154606](https://github.com/LMhdez/gaslux/actions/runs/44156154606)
+on exact HEAD `68b91dc6177a4a368ae68d136f83ac6b34aa098b` completed
+**SUCCESS — 89 contract/negative tests, zero failures**. This job never boots
+Archiso or runs pacstrap. A real signed host grant bound to recoverable
+Windows COW provenance, protected script digest and irreversible-stage
+checkpoint still has to be integrated; the launcher must not be activated
+before that evidence, installed-root postchecks, dual-boot and rollback
+are independently demonstrated. No production write or release authorization
+is implied.
