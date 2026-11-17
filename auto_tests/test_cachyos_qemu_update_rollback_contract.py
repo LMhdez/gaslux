@@ -129,7 +129,7 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         # installer, not a weaker duplicate implementation.
         anchor = '  python3 - "$repo" "$level" <<\'PY\' || die'
         self.assertIn(anchor, self.stage)
-        code = self.stage.split(anchor, 1)[1].split("\\nPY\\n", 1)[0].split("\\n", 1)[1]
+        code = self.stage.split(anchor, 1)[1].split("\nPY\n", 1)[0].split("\n", 1)[1]
         accepted = (
             'Required DatabaseOptional TrustedOnly',
             'PackageRequired DatabaseOptional TrustedOnly',
