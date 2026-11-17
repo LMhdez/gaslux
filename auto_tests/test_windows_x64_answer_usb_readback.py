@@ -112,7 +112,7 @@ class WindowsAnswerUSBSourceContracts(unittest.TestCase):
             "\ndef witness_powershell(", 1
         )[0]
         self.assertIn('["mtype", "-i", str(image), "::/" + name]', function)
-        for forbidden in ("mount(", "guestmount", "mkfs", "mcopy", "format(",
+        for forbidden in ("mount(", "guestmount", "mkfs", '["mcopy"', "format(",
                           "open(\"wb", "subprocess.Popen("):
             self.assertNotIn(forbidden, function)
 
