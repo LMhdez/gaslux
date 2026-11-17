@@ -683,6 +683,49 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             witnessed_at = time.monotonic()
                 rc = proc.poll()
                 if rc is not None:
+                    # The guest can append and flush its final COM1 bytes
+                    # *between* the streaming scan above and proc.poll().
+                    # Only an after-exit drain closes that acceptance race.
+                    if not transcript.is_file() or transcript.is_symlink():
+                        return False, (
+                            "missing or untrusted final Windows guest serial evidence"
+                        )
+                    (end_tokens, serial_offset, serial_carry,
+                     serial_discarding) = scan_windows_guest_tokens(
+                        transcript, serial_offset, serial_carry, serial_discarding,
+                    )
+                    if any(t.startswith(FAILURE.encode()) for t in end_tokens):
+                        return False, (
+                            "installed Windows explicitly rejected firstboot audit"
+                        )
+                    seen_proofs.update(end_tokens.intersection(required | {build_line}))
+                    if reject_repeated_dvd_boot:
+                        # A final QEMU firmware reboot is not a guest shutdown,
+                        # even if all Windows audit tokens were emitted earlier.
+                        (end_dvd_hits, dvd_offset, dvd_carry, _) = (
+                            scan_two_stage_dvd_serial(
+                                transcript, dvd_offset, dvd_carry,
+                            )
+                        )
+                        dvd_start_count += end_dvd_hits
+                        if dvd_start_count > 1:
+                            return False, (
+                                "firmware retried one-shot Microsoft DVD after "
+                                "initial startup; abort disposable VM"
+                            )
+                        (end_bm_hits, bootmgr_offset, bootmgr_carry, _) = (
+                            scan_two_stage_dvd_serial(
+                                transcript, bootmgr_offset, bootmgr_carry,
+                                WINDOWS_BOOT_MANAGER_START,
+                            )
+                        )
+                        bootmgr_start_count += end_bm_hits
+                        if bootmgr_start_count > 1:
+                            return False, (
+                                "installed Windows rebooted after first-logon "
+                                "audit rather than powering off; Windows still "
+                                "unverified"
+                            )
                     # EOF is a valid final token boundary only after the guest
                     # process exited. Never accept an incomplete running token.
                     if serial_carry and not serial_discarding:
