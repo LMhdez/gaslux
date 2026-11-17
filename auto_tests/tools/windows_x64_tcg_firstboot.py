@@ -576,6 +576,29 @@ def build_two_stage_qemu_args(
     require(first.count("-boot") == 1 and first.count("-serial") == 1
             and first.count("-monitor") == 1,
             "ambiguous QEMU VM boot/serial/monitor options")
+    # Stage 2 must receive only our answer volume plus the installed disk.
+    # Refuse legacy floppies (not reliably enumerated by Windows UEFI), a
+    # writable answer volume, or any second/unrecognised answer device.
+    answer_drives = [
+        original[i + 1] for i in range(len(original) - 1)
+        if original[i] == "-drive" and
+        original[i + 1].startswith("if=none,id=lab_unattend,")
+    ]
+    answer_devices = [
+        original[i + 1] for i in range(len(original) - 1)
+        if original[i] == "-device" and
+        original[i + 1].startswith("usb-storage,drive=lab_unattend,")
+    ]
+    require(
+        len(answer_drives) == 1 and
+        answer_drives[0].startswith(
+            "if=none,id=lab_unattend,format=raw,readonly=on,file="
+        ) and
+        answer_drives[0].endswith("/only-disposable-answer-usb.img") and
+        answer_devices == ["usb-storage,drive=lab_unattend,bus=lab_usb.0"] and
+        not any("if=floppy" in arg for arg in original),
+        "two-stage Windows lab requires unique read-only owned USB answer",
+    )
     for args, boot, serial in (
         (first, "order=d", initial_serial),
         (second, "order=c", Path(original[original.index("-serial") + 1][5:])),
