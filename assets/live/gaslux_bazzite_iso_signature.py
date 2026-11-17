@@ -61,7 +61,6 @@ def verify_bazzite_iso_blob(
     firmware: str,
     partition_style: str,
     secure_boot_enabled: bool,
-    cosign_binary: str | None = None,
 ) -> dict:
     """Fail closed on unsupported layout, missing pins or unsigned media.
 
@@ -87,13 +86,13 @@ def verify_bazzite_iso_blob(
     if signature != iso.with_name(iso.name + ".sig"):
         raise ProbeRefusal("Signature must match the exact ISO filename")
     key_data = _read_small_file(pubkey, 16384)
-    _read_small_file(signature, 16384)
+    signature_data = _read_small_file(signature, 16384)
     if hashlib.sha256(key_data).hexdigest() != trusted_key_sha256:
         raise ProbeRefusal("Upstream signing-key digest mismatch")
 
     verified = verify_iso_header_and_hash(str(iso), expected_iso_size, expected_iso_sha256)
 
-    program = cosign_binary or shutil.which("cosign")
+    program = shutil.which("cosign")
     if not program or not Path(program).is_absolute() or not Path(program).is_file():
         raise ProbeRefusal("Trusted Cosign verifier is missing")
     try:
@@ -118,6 +117,12 @@ def verify_bazzite_iso_blob(
     if result.returncode != 0:
         raise ProbeRefusal("Bazzite ISO detached signature is invalid")
 
+    # Refuse ordinary replacement or mutation while Cosign reopened input files.
+    if (
+        _read_small_file(pubkey, 16384) != key_data
+        or _read_small_file(signature, 16384) != signature_data
+    ):
+        raise ProbeRefusal("Signing key or detached signature changed during Cosign")
     # A second complete read catches ordinary mutation/replacement during Cosign.
     again = verify_iso_header_and_hash(str(iso), expected_iso_size, expected_iso_sha256)
     if again != verified:
