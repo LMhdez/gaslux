@@ -3,9 +3,12 @@ on:
   push:
     branches:
       - test/windows10-postboot-gpt-readonly-audit
+      - test/windows10-popos-same-disk-overlay-stage
     paths:
       - .github/workflows/windows10-gpt-readonly-guestfs-smoke.yml
       - auto_tests/tools/windows10_synthetic_gpt_guestfs_smoke.py
+      - auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
+      - auto_tests/test_windows10_popos_same_disk_overlay_stage.py
       - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
       - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
@@ -33,6 +36,8 @@ jobs:
           test "$RUNNER_TEMP" = /home/runner/work/_temp
           python3 -m py_compile auto_tests/tools/windows10_synthetic_gpt_guestfs_smoke.py
           python3 -m py_compile auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows10_popos_same_disk_overlay_stage.py' -v
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_installed_gpt_ro_audit.py' -v
       - name: Install disposable guestfs appliance and complete generic kernel
@@ -46,12 +51,16 @@ jobs:
           source auto_tests/tools/windows_x64_libguestfs_kernel.sh
       - name: Prove GPT/EFI/BCD and Windows-like NTFS checks on synthetic QCOW2
         shell: bash
+        env:
+          GASLUX_RUN_SYNTHETIC_POP_OVERLAY_STAGE: '1'
+          GASLUX_WIN10_POP_OVERLAY_CONSENT: I_ACCEPT_GITHUB_ONLY_QCOW2_COPY_ON_WRITE_LINUX_ROOT_STAGE
         run: |
           set -Eeuo pipefail
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_TEMP" = /home/runner/work/_temp
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           timeout --kill-after=10s 480s python3 \
             auto_tests/tools/windows10_synthetic_gpt_guestfs_smoke.py
-          echo 'PASS: guestfs API inspected a self-created, private synthetic GPT/NTFS QCOW2 read-only.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'NO Windows installed boot, Windows EFI/BCD provenance, Linux coexistence or recovery was executed.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'PASS: guestfs API inspected a self-created synthetic GPT/NTFS QCOW2 and staged unformatted Pop root in a disposable COW overlay.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NO Windows OS, installed Pop, boot after staging, working dual boot or WinRE recovery was executed.' >> "$GITHUB_STEP_SUMMARY"
