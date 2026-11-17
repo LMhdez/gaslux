@@ -162,6 +162,7 @@ class SharedDiskGateTests(unittest.TestCase):
         for key, value in (
             ("index", 4), ("firstLba", 60000001), ("lastLba", 99999999),
             ("lengthBytes", 1), ("remainingUnallocatedAfterLinuxBytes", 0),
+            ("remainingUnallocatedAfterLinuxBytes", "999999999999999999999"),
             ("typeGuid", gate.TYPES[0]), ("uniqueGuid", "00000000-0000-0000-0000-000000000000"),
         ):
             with self.subTest(key=key):
