@@ -1,0 +1,89 @@
+name: Windows ISO QEMU HMP one-key smoke (no Windows ISO, no disk)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-x64-tcg-winre-recovery-baseline
+    paths:
+      - .github/workflows/windows-x64-qemu-hmp-smoke.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_iso_boot_key.py
+
+permissions:
+  contents: read
+
+jobs:
+  real-qemu-hmp-socket-key:
+    name: Actual GitHub QEMU/KVM one-shot boot key injection, no guest OS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify mock negative tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_iso_boot_key.py'
+      - name: Install virtual firmware and QEMU monitor implementation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
+      - name: Send one initial ISO key into real paused QEMU HMP socket
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test -c /dev/kvm
+          test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          python3 - <<'PY'
+          import os, shutil, subprocess, sys, tempfile, time
+          from pathlib import Path
+          sys.path.insert(0, "auto_tests/tools")
+          from windows_x64_tcg_firstboot import send_first_iso_boot_key
+          assert os.environ["RUNNER_TEMP"] == "/home/runner/work/_temp"
+          with tempfile.TemporaryDirectory(
+              prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]
+          ) as t:
+              w = Path(t)
+              varfile = w / "vars.fd"
+              shutil.copyfile("/usr/share/OVMF/OVMF_VARS_4M.fd", varfile)
+              hmp = w / "initial-installer-hmp.sock"
+              args = [
+                  "qemu-system-x86_64",
+                  "-machine", "q35,accel=kvm,smm=on",
+                  "-global", "driver=cfi.pflash01,property=secure,value=on",
+                  "-cpu", "host", "-smp", "2", "-m", "1024",
+                  "-display", "none", "-vga", "std", "-S",
+                  "-monitor", f"unix:{hmp},server,nowait",
+                  "-serial", "null", "-net", "none",
+                  "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd",
+                  "-drive", f"if=pflash,format=raw,file={varfile}",
+              ]
+              with (w / "qemu.err").open("xb") as stderr:
+                  p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=stderr)
+                  try:
+                      for i in range(80):
+                          if hmp.is_socket():
+                              break
+                          if p.poll() is not None:
+                              raise RuntimeError("QEMU exited before HMP socket")
+                          time.sleep(.1)
+                      assert hmp.is_socket(), "HMP socket never started"
+                      send_first_iso_boot_key(hmp)
+                      assert p.poll() is None, "QEMU crashed after HMP sendkey"
+                      print("GASLUX_REAL_QEMU_HMP_ENTER_KEY_PASS=1")
+                  finally:
+                      if p.poll() is None:
+                          p.terminate()
+                          p.wait(timeout=15)
+          PY
+          echo 'Real QEMU HMP key injection PASS (NO Windows client or recovery tested).' >> "$GITHUB_STEP_SUMMARY"
