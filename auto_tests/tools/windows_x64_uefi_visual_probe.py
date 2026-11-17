@@ -73,6 +73,22 @@ def find_monitor(timeout_seconds: int = 900) -> Path:
     raise ProbeError("verified ISO QEMU monitor never appeared")
 
 
+def read_hmp_prompt(hmp: socket.socket) -> bytes:
+    """Drain HMP's readline echo until a complete new (qemu) prompt.
+
+    A single recv() returns only the first echoed character on QEMU 8.2.
+    Closing the connection there can cancel the pending screendump.
+    """
+    response = bytearray()
+    while len(response) < 131072:
+        chunk = hmp.recv(8192)
+        require(bool(chunk), "QEMU monitor disconnected before command completed")
+        response.extend(chunk)
+        if b"(qemu) " in response:
+            return bytes(response)
+    raise ProbeError("QEMU HMP response exceeded bounded prompt limit")
+
+
 def snapshot(monitor: Path, evidence: Path, profile: str, label: str) -> dict:
     validate_monitor_path(monitor)
     require(profile in PROFILES and label in LABELS, "invalid screenshot label")
@@ -86,13 +102,14 @@ def snapshot(monitor: Path, evidence: Path, profile: str, label: str) -> dict:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as hmp:
         hmp.settimeout(10)
         hmp.connect(str(monitor))
-        banner = hmp.recv(8192)
-        require(b"QEMU" in banner or b"(qemu)" in banner,
-                "unexpected QEMU monitor banner")
+        banner = read_hmp_prompt(hmp)
+        require(b"QEMU" in banner, "unexpected QEMU monitor banner")
         hmp.sendall(("screendump " + str(temp) + "\n").encode("ascii"))
-        response = hmp.recv(8192).lower()
-        require(b"unknown command" not in response and b"error:" not in response,
-                "QEMU screendump failed")
+        response = read_hmp_prompt(hmp).lower()
+        require(all(term not in response for term in (
+                    b"unknown command", b"error:", b"no graphical console",
+                    b"failed to", b"could not")),
+                "QEMU screendump failed; see bounded QEMU HMP diagnostic")
     for _ in range(25):
         if temp.is_file() and temp.stat().st_size > 16:
             break
