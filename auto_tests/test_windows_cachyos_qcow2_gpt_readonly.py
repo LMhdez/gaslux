@@ -236,6 +236,22 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
         )
         self.assertFalse(modified["storageWritesAuthorized"])
 
+        # Also bind the primary 1-MiB window: its unused padding may change
+        # without changing either GPT CRC or the read-only extent geometry.
+        changed_primary = bytearray(front)
+        changed_primary[gpt.WINDOW_BYTES - 1] ^= 1
+        modified_primary = gpt.inspect_gpt_windows(bytes(changed_primary), back)
+        self.assertEqual(
+            modified_primary["observedPostWindowsFreeExtent"],
+            report["observedPostWindowsFreeExtent"],
+        )
+        self.assertNotEqual(
+            modified_primary["gptAuditWindowsSha256"],
+            report["gptAuditWindowsSha256"],
+        )
+        self.assertFalse(modified_primary["storageWritesAuthorized"])
+        self.assertFalse(modified_primary["releaseEligible"])
+
     def test_noncanonical_windows_pmbr_does_not_authorize_observed_extent(self):
         front, back = create_disk_windows()
         changed = bytearray(front)
