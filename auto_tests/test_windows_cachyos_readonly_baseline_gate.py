@@ -553,5 +553,42 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
             self.assertNotIn(forbidden, source)
 
 
+    def test_exact_checked_out_third_boot_auditor_hash_accepted_only_win10(self):
+        from windows_cachyos_overlay_reboot import guest_reboot_script
+        report, serial, manifest = synthetic("win10_22h2_en_us_x64")
+        extra_digest = hashlib.sha256(
+            (guest_reboot_script() + "\n").encode("utf-8")
+        ).hexdigest()
+        report["thirdBootAuditorScriptSha256"] = extra_digest
+        report["firstLogonScriptSha256"] = hashlib.sha256((
+            GATE.witness_powershell(
+                report["profile"], "19045",
+                overlay_reboot_script_sha256=extra_digest,
+            ) + "\n"
+        ).encode("utf-8")).hexdigest()
+        result = self.exercise(report, serial, manifest)
+        self.assertTrue(result["candidateWindowsFirstbootDocumentsConsistent"])
+        self.assertFalse(result["storageWritesAuthorized"])
+        self.assertFalse(result["sameDiskDualBootVerified"])
+
+    def test_forged_third_boot_hash_cannot_authorize_candidate(self):
+        report, serial, manifest = synthetic("win10_22h2_en_us_x64")
+        report["thirdBootAuditorScriptSha256"] = "0"*64
+        with self.assertRaisesRegex(GATE.BaselineGateError,
+                                    "checked-out Windows third-boot auditor"):
+            self.exercise(report, serial, manifest)
+
+    def test_win11_cannot_claim_win10_only_third_boot_auditor(self):
+        from windows_cachyos_overlay_reboot import guest_reboot_script
+        report, serial, manifest = synthetic("win11_26h2_en_us_x64")
+        report["thirdBootAuditorScriptSha256"] = hashlib.sha256((
+            guest_reboot_script() + "\n"
+        ).encode("utf-8")).hexdigest()
+        with self.assertRaisesRegex(GATE.BaselineGateError,
+                                    "checked-out Windows third-boot auditor"):
+            self.exercise(report, serial, manifest)
+
+
+
 if __name__ == "__main__":
     unittest.main()

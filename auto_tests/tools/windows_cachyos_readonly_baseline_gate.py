@@ -112,11 +112,23 @@ def evaluate(profile: str, report: dict, serial: bytes,
     else:
         require("labDerivedIsoSha256" not in report,
                 "unaltered original Windows ISO cannot claim a derived hash")
-    # Bind the Windows guest audit script to the checked-out source itself,
-    # rather than accepting an arbitrary syntactically valid SHA256. This
-    # independently catches an altered FirstLogon audit payload.
+    # Bind both allowed FirstLogon variants to checked-out source code.
+    # A third-boot task is NEVER trusted merely because its hash is present
+    # in the report: recompute the exact guest auditor from our own source.
+    # No other extensions, profiles, or arbitrary payload hashes are accepted.
+    guest_task_digest = report.get("thirdBootAuditorScriptSha256")
+    if guest_task_digest is not None:
+        from windows_cachyos_overlay_reboot import guest_reboot_script
+        require(profile == "win10_22h2_en_us_x64" and
+                type(guest_task_digest) is str and
+                SHA256.fullmatch(guest_task_digest) is not None and
+                guest_task_digest == hashlib.sha256(
+                    (guest_reboot_script() + "\n").encode("utf-8")
+                ).hexdigest(),
+                "unknown or mismatched checked-out Windows third-boot auditor")
     generated = witness_powershell(
         profile, catalog["profiles"][profile]["expectedWindowsBuildPrefix"],
+        overlay_reboot_script_sha256=guest_task_digest,
     ) + "\n"
     require(
         report["firstLogonScriptSha256"] ==
