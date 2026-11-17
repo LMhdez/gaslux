@@ -76,9 +76,8 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         self.assertFalse(result["rollbackVerified"])
 
     def test_rejects_missing_serial_login(self):
-        (self.directory / "mint-same-windows-cow-serial.log").write_bytes(
-            SERIAL.replace(b"GASLUXMINT login:", b""))
-        with self.assertRaisesRegex(validator.MintBootEvidenceError, "serial log SHA-256"):
+        self._replace_serial(SERIAL.replace(b"GASLUXMINT login:", b""))
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "serial login prompt"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
     def test_rejects_serial_root_uuid_mismatch_even_with_updated_hashes(self):
