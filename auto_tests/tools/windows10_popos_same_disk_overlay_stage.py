@@ -236,14 +236,40 @@ def _compensate_normalized_pmbr(g, original: bytes, before: dict) -> bool:
     if current == original:
         return False
     expected = 128 * GIB // SECTOR - 1
-    require(
+    # A genuine Windows QCOW2 may expose a different PMBR mutation from
+    # the one seen in synthetic tests. Observe it BEFORE attempting any
+    # compensation; offsets/hashes and the 16-byte PMBR entry are metadata,
+    # not a dump of the Windows bootstrap code.
+    allowed = (
         before["oversizedWindowsPmbrLabOnly"] is True
         and original[:458] == current[:458]
         and original[462:] == current[462:]
         and struct.unpack_from("<I", original, 458)[0] == 0xFFFFFFFF
-        and struct.unpack_from("<I", current, 458)[0] == expected,
-        "unexpected MBR mutation: refuse any repair beyond known lab normalization",
+        and struct.unpack_from("<I", current, 458)[0] == expected
     )
+    if not allowed:
+        changed = [i for i in range(SECTOR) if original[i] != current[i]]
+        print(
+            "GASLUX_POP_PMBR_COMPENSATION_REFUSAL="
+            + json.dumps(
+                {
+                    "changedByteCount": len(changed),
+                    "changedByteOffsetsFirst32": changed[:32],
+                    "baselineMbrSha256": hashlib.sha256(original).hexdigest(),
+                    "stagedMbrSha256": hashlib.sha256(current).hexdigest(),
+                    "baselineProtectiveEntry": original[446:462].hex(),
+                    "stagedProtectiveEntry": current[446:462].hex(),
+                    "canonicalSectorCount": expected,
+                    "oversizedWindowsPmbrLabOnly":
+                        before.get("oversizedWindowsPmbrLabOnly") is True,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        raise DiskAuditError(
+            "unexpected MBR mutation: refuse any repair beyond known lab normalization"
+        )
     # 4-byte compensating write to a disposable QCOW2 overlay only.
     written = g.pwrite_device("/dev/sda", original[458:462], 458)
     require(written == 4, "compensating four-byte PMBR write incomplete")

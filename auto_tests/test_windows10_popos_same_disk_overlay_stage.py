@@ -277,6 +277,34 @@ class PmbrCompensationTests(unittest.TestCase):
         self.assertEqual(g.writes, [(458, b"\xff\xff\xff\xff")])
         self.assertEqual(g.pread_device("/dev/sda", 512, 0), self.base)
 
+    def test_mbr_refusal_reports_bounded_offsets_without_writing(self):
+        import contextlib
+        import io
+        import json
+        import struct
+
+        candidate = bytearray(self.base)
+        struct.pack_into("<I", candidate, 458, 268435455)
+        candidate[440] ^= 1  # A foreign Windows disk-signature mutation.
+        disk = DummyPmbrDisk(candidate)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(COW.DiskAuditError, "unexpected MBR mutation"):
+                COW._compensate_normalized_pmbr(
+                    disk, self.base, {"oversizedWindowsPmbrLabOnly": True}
+                )
+        self.assertEqual(disk.writes, [])
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        prefix = "GASLUX_POP_PMBR_COMPENSATION_REFUSAL="
+        self.assertTrue(lines[0].startswith(prefix))
+        details = json.loads(lines[0][len(prefix):])
+        self.assertEqual(details["changedByteOffsetsFirst32"], [440, 461])
+        self.assertEqual(details["changedByteCount"], 2)
+        self.assertEqual(details["baselineProtectiveEntry"], self.base[446:462].hex())
+        self.assertEqual(details["stagedProtectiveEntry"], candidate[446:462].hex())
+        self.assertNotIn(self.base.hex(), output.getvalue())
+
     def test_untouched_pmbr_needs_no_compensation(self):
         g = DummyPmbrDisk(self.base)
         self.assertFalse(COW._compensate_normalized_pmbr(
