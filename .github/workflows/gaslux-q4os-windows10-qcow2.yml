@@ -19,7 +19,7 @@ permissions:
 jobs:
   windows10-uefi-gpt:
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,11 +32,14 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl
-          [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
-            echo 'KVM is required; refusing an unbounded TCG Windows installation' >&2
-            exit 1
-          }
           sudo modprobe nbd max_part=8
+          if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
+            printf 'GASLUX_WIN10_ACCEL=kvm\n' >> "$GITHUB_ENV"
+            echo 'Windows lab accelerator: KVM'
+          else
+            printf 'GASLUX_WIN10_ACCEL=tcg\n' >> "$GITHUB_ENV"
+            echo 'Windows lab accelerator: TCG (extended timeout)'
+          fi
 
       - name: Download Microsoft Windows 10 Enterprise Evaluation 22H2 and verify official SHA-256
         shell: bash
@@ -141,9 +144,16 @@ jobs:
           serial="$work/windows10-qemu-serial.log"
           qemu_log="$work/windows10-qemu-process.log"
           [[ -s "$code" && -s "$vars" && -s "$iso" && -s "$answer" ]]
+          if [[ "$GASLUX_WIN10_ACCEL" == kvm ]]; then
+            machine='q35,accel=kvm'
+            cpu='host'
+          else
+            machine='q35,accel=tcg,thread=multi'
+            cpu='max'
+          fi
           set +e
-          timeout --signal=TERM --kill-after=30s 7200s qemu-system-x86_64 \
-            -no-user-config -machine q35,accel=kvm -cpu host -smp 4 -m 6144 \
+          timeout --signal=TERM --kill-after=60s 18000s qemu-system-x86_64 \
+            -no-user-config -machine "$machine" -cpu "$cpu" -smp 4 -m 6144 \
             -rtc base=utc -display none -vga std \
             -serial "file:$serial" -monitor none -net none \
             -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
@@ -240,7 +250,7 @@ jobs:
             "bcdVerified": true,
             "firstLogonVerified": true,
             "networkAttached": false,
-            "qemuKvm": true,
+            "qemuAccelerator": "$GASLUX_WIN10_ACCEL",
             "evaluationLicense": true
           }
           JSON
