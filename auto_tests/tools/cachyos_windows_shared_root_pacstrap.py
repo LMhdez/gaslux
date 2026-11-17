@@ -44,7 +44,7 @@ WIN_FILES = (
     (4, "/Recovery/WindowsRE/Winre.wim", "winreImageSha256"),
 )
 LAB_CONSENT = "I_ACCEPT_SIGNED_CACHYOS_ROOT_ONLY_IN_DISPOSABLE_QEMU_COW"
-SHA = re.compile(r"[a-f0-9]{64}\\Z")
+SHA = re.compile(r"[a-f0-9]{64}\Z")
 
 
 def require(ok: bool, why: str) -> None:
@@ -93,7 +93,7 @@ def strict_gpt_evidence(
     finally:
         os.close(fd)
     require(len(front) == len(back) == WINDOW_BYTES
-            and front[510:512] == b"\\x55\\xaa", "missing bounded GPT/PMBR")
+            and front[510:512] == b"\x55\xaa", "missing bounded GPT/PMBR")
     records = [front[446+i*16:446+(i+1)*16] for i in range(4)]
     pmbr = records[0]
     expected_size = VIRTUAL_BYTES // SECTOR - 1
@@ -241,7 +241,7 @@ def pacstrap_only(args: argparse.Namespace) -> None:
                 and (ROOT / "usr/share/libalpm/scripts/cachyos-branding").is_file(),
                 "signed native kernel/CachyOS branding packages absent")
         (ROOT / ".gaslux-lab-root-owner").write_text(
-            plan["runId"] + "\\n", encoding="ascii")
+            plan["runId"] + "\n", encoding="ascii")
         os.sync()
     finally:
         execute(["umount", str(ROOT)])
