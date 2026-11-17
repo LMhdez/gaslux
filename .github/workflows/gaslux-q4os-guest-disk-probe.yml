@@ -40,7 +40,7 @@ jobs:
           import json
           from jsonschema import validate
           schema = json.load(open("schemas/gaslux-q4os-guest-disk-report.schema.json", encoding="utf-8"))
-          item = {"schemaVersion":1,"runId":"q4os-ci-example-12345678","nonce":"0123456789abcdef0123456789abcdef","device":"/dev/vda","serial":"GASLUXQ4OS-0123456789ABCDEF0123","sizeBytes":34359738368,"logicalSectorBytes":512,"physicalSectorBytes":512,"diskGuid":"a1234567-1111-4111-8111-abcdefabcdef","partitions":[{"number":1,"startLba":2048,"endLba":1050623,"typeGuid":"c12a7328-f81f-11d2-ba4b-00a0c93ec93b","partGuid":"12345678-1234-4123-8123-123456789abc","label":"GASLUX-LAB-ESP","filesystem":"vfat"}],"readOnlyProbe":True,"writeAttempted":False}
+          item = {"schemaVersion":1,"runId":"q4os-ci-example-12345678","nonce":"0123456789abcdef0123456789abcdef","device":"/dev/vda","serial":"GQ4OS-0123456789ABCD","sizeBytes":34359738368,"logicalSectorBytes":512,"physicalSectorBytes":512,"diskGuid":"a1234567-1111-4111-8111-abcdefabcdef","partitions":[{"number":1,"startLba":2048,"endLba":1050623,"typeGuid":"c12a7328-f81f-11d2-ba4b-00a0c93ec93b","partGuid":"12345678-1234-4123-8123-123456789abc","label":"GASLUX-LAB-ESP","filesystem":"vfat"}],"readOnlyProbe":True,"writeAttempted":False}
           validate(instance=item, schema=schema)
           print("Q4OS guest identity JSON Schema: PASS")
           PY

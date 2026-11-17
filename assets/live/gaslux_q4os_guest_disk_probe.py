@@ -9,15 +9,15 @@ from typing import Any
 
 from gaslux_q4os_vm_target_plan import Q4osPlanRefusal
 
-_PREFIX = "GASLUXQ4OS-"
+_PREFIX = "GQ4OS-"
 _DEVICE = re.compile(r"/dev/vd[a-z]+\Z")
 _ESP_TYPE = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
 
 
 def expected_virtio_serial(plan: dict[str, Any]) -> str:
-    """Derive a per-run serial; never use a Linux device node as identity."""
+    """Derive a 20-byte virtio serial; never use a Linux device node as identity."""
     material = (plan["runId"] + "\0" + plan["nonce"]).encode("ascii")
-    return _PREFIX + hashlib.sha256(material).hexdigest()[:20].upper()
+    return _PREFIX + hashlib.sha256(material).hexdigest()[:14].upper()
 
 
 def _refuse(ok: bool, reason: str) -> None:
@@ -44,18 +44,9 @@ def validate_guest_disk_report(
         raise Q4osPlanRefusal("Malformed guest identity JSON") from exc
     _refuse(isinstance(data, dict), "Guest report must be an object")
     fields = {
-        "schemaVersion",
-        "runId",
-        "nonce",
-        "device",
-        "serial",
-        "sizeBytes",
-        "logicalSectorBytes",
-        "physicalSectorBytes",
-        "diskGuid",
-        "partitions",
-        "readOnlyProbe",
-        "writeAttempted",
+        "schemaVersion", "runId", "nonce", "device", "serial", "sizeBytes",
+        "logicalSectorBytes", "physicalSectorBytes", "diskGuid", "partitions",
+        "readOnlyProbe", "writeAttempted",
     }
     _refuse(set(data) == fields, "Guest report fields differ from contract")
     _refuse(data["schemaVersion"] == 1, "Unsupported guest report schema")
@@ -80,25 +71,15 @@ def validate_guest_disk_report(
         "Probe is not read-only",
     )
     parts = data["partitions"]
-    _refuse(
-        isinstance(parts, list) and len(parts) == 1,
-        "Unexpected guest partition count",
-    )
+    _refuse(isinstance(parts, list) and len(parts) == 1, "Unexpected guest partition count")
     esp = parts[0]
     expected = {
-        "number",
-        "startLba",
-        "endLba",
-        "typeGuid",
-        "partGuid",
-        "label",
-        "filesystem",
+        "number", "startLba", "endLba", "typeGuid", "partGuid", "label", "filesystem",
     }
     _refuse(isinstance(esp, dict) and set(esp) == expected, "Malformed guest ESP record")
     _refuse(esp["number"] == 1, "Unexpected ESP partition number")
     _refuse(
-        esp["startLba"] == plan["espStartLba"]
-        and esp["endLba"] == plan["espEndLba"],
+        esp["startLba"] == plan["espStartLba"] and esp["endLba"] == plan["espEndLba"],
         "Guest ESP geometry mismatch",
     )
     try:

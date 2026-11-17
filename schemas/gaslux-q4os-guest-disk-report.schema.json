@@ -9,7 +9,7 @@
     "runId": {"type": "string", "minLength": 12, "maxLength": 100},
     "nonce": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
     "device": {"type": "string", "pattern": "^/dev/vd[a-z]+$", "description": "Diagnostic only; never used as identity."},
-    "serial": {"type": "string", "pattern": "^GASLUXQ4OS-[A-F0-9]{20}$"},
+    "serial": {"type": "string", "pattern": "^GQ4OS-[A-F0-9]{14}$"},
     "sizeBytes": {"const": 34359738368},
     "logicalSectorBytes": {"const": 512},
     "physicalSectorBytes": {"enum": [512, 4096]},

@@ -57,9 +57,7 @@ def report():
 
 
 def verify(item=None, raw=None):
-    payload = (
-        canonical_guest_json(report() if item is None else item) if raw is None else raw
-    )
+    payload = canonical_guest_json(report() if item is None else item) if raw is None else raw
     return validate_guest_disk_report(
         payload, plan=PLAN, expected_serial=expected_virtio_serial(PLAN)
     )
@@ -68,9 +66,7 @@ def verify(item=None, raw=None):
 def test_valid_observation_is_identity_only():
     result = verify()
     assert result["guestDiskIdentityVerified"] is True
-    assert result["guestReportSha256"] == hashlib.sha256(
-        canonical_guest_json(report())
-    ).hexdigest()
+    assert result["guestReportSha256"] == hashlib.sha256(canonical_guest_json(report())).hexdigest()
     for flag in (
         "installationAuthorized",
         "diskWritesAuthorized",
@@ -84,7 +80,7 @@ def test_valid_observation_is_identity_only():
 @pytest.mark.parametrize(
     "key,value",
     [
-        ("serial", "GASLUXQ4OS-WRONG"),
+        ("serial", "GQ4OS-WRONG"),
         ("sizeBytes", 1),
         ("logicalSectorBytes", 4096),
         ("diskGuid", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
@@ -134,4 +130,6 @@ def test_extra_partition_duplicate_key_and_oversize_refused():
 
 def test_serial_changes_with_run_nonce():
     other = dict(PLAN, nonce="f" * 32)
-    assert expected_virtio_serial(other) != expected_virtio_serial(PLAN)
+    serial = expected_virtio_serial(other)
+    assert serial != expected_virtio_serial(PLAN)
+    assert len(serial.encode("ascii")) == 20

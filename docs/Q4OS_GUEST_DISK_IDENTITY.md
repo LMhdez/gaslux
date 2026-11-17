@@ -1,6 +1,6 @@
 # Q4OS guest-visible disk identity — read-only gate
 
-This contract follows the signed host-file GPT proposal. It derives a per-run virtio serial from the plan run ID and nonce, then checks the guest-observed serial, exact capacity, logical sector size, GPT disk GUID and the single ESP's GUID, type, label, geometry and filesystem.
+This contract follows the signed host-file GPT proposal. It derives a per-run virtio serial of exactly 20 ASCII bytes (the virtio-blk serial field limit) from the plan run ID and nonce, then checks the guest-observed serial, exact capacity, logical sector size, GPT disk GUID and the single ESP's GUID, type, label, geometry and filesystem.
 
 The `/dev/vdX` path is diagnostic only and is never used as identity. Reports are bounded to 16 KiB and duplicate/unknown fields, stale run/nonce, extra partitions and mismatches are rejected. The result is an identity observation, not an authorization token.
 
