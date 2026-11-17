@@ -102,3 +102,35 @@ def test_unknown_gui_mode_refused_before_disk_mutation(tmp_path):
     )
     assert result.returncode != 0
     assert "Unrecognized Q4OS GUI launch laboratory mode" in result.stderr
+
+
+def test_calamares_welcome_to_location_is_source_gated_and_never_installs():
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'advance_welcome="${GASLUX_Q4OS_ADVANCE_WELCOME:-no}"' in source
+    assert "Calamares page navigation requires the verified desktop launcher" in source
+    assert 'python3 "$visual_gate" calamares-welcome "$work/vnc-after-installer-icon.png"' in source
+    assert "move 1002 644 click 1" in source
+    assert "vnc-location-page.png" in source
+    assert '"$calamares_welcome_next_clicked" -eq 1 && "$calamares_location_frame" -eq 1' in source
+    assert "NOT PERFORMED: partition choice, user setup, Install confirmation" in source
+    assert "calamares -d" not in source
+    assert "mkfs." not in source
+
+
+def test_welcome_next_opt_in_requires_exact_gui_launcher_mode(tmp_path):
+    iso = tmp_path / "fake.iso"
+    iso.write_bytes(b"synthetic")
+    env = os.environ.copy()
+    env["GASLUX_Q4OS_GRAPHICS_LAB_ONLY"] = "1"
+    env["GITHUB_ACTIONS"] = "true"
+    env["GASLUX_Q4OS_LAUNCH_INSTALLER"] = "no"
+    env["GASLUX_Q4OS_ADVANCE_WELCOME"] = "yes"
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "q4os", str(iso), "0" * 64],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Calamares page navigation requires the verified desktop launcher" in result.stderr
