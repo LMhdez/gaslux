@@ -140,7 +140,7 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
                     )
                     self.assertIn("-no-reboot", args)
                     if mode == "fat32_usb":
-                        self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0", args)
+                        self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on", args)
                         self.assertIn(
                             "if=none,id=lab_unattend,format=raw,readonly=on,file="
                             + str(root / "answer.img"), args)
@@ -167,6 +167,30 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
         self.assertIn('GASLUX_WINDOWS_WINPE_PROBE_CONSENT', source)
         self.assertIn('CI_CONSENT = "I_ACCEPT_DISPOSABLE_WINPE_NO_TARGET_DISK"', source)
         self.assertIn('validate_environment(root, "kvm")', source)
+
+    def test_only_fat32_usb_has_explicit_removable_scsi_inquiry_bit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = {}
+            for mode in PROBE.MODES:
+                args[mode] = PROBE.build_no_target_qemu_args(
+                    root / "derived.iso", root / "answer.img",
+                    root / "vars.fd", root / "serial.log", mode,
+                )
+            self.assertEqual(
+                args["fat32_usb"].count(
+                    "usb-storage,drive=lab_unattend,bus=lab_usb.0,removable=on"
+                ), 1,
+            )
+            self.assertFalse(
+                any("usb-storage" in x for x in args["fat12_floppy"])
+            )
+            for mode in PROBE.MODES:
+                self.assertNotIn("qcow2", " ".join(args[mode]))
+                self.assertNotIn("ide-hd", " ".join(args[mode]))
+                self.assertIn("-no-reboot", args[mode])
+                self.assertEqual(args[mode][args[mode].index("-net") + 1],
+                                 "none")
 
     def test_numeric_vga_never_promotes_windows_or_linux_evidence(self):
         source = SOURCE.read_text(encoding="utf-8")
