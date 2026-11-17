@@ -884,6 +884,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verify-windows-reboot-after-ext4", action="store_true",
                     help="only hosted Windows 10 QCOW2 after fifth-root ext4: "
                          "fourth Windows guest, BCD/WinRE and ext4 UUID audit")
+    ap.add_argument("--verify-cachyos-archiso-readonly", action="store_true",
+                    help="VM-only: after verified Windows fourth boot, boot a "
+                         "genuine pinned CachyOS Archiso with Windows QCOW2 "
+                         "attached read-only; no pacstrap")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -956,6 +960,25 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(
                 "fourth Windows guest after fifth ext4 needs hosted CI "
                 "and separate consent; no Linux installation allowed")
+    if args.verify_cachyos_archiso_readonly:
+        from cachyos_windows_shared_archiso_handoff import ISO_SHA256
+        if not (args.verify_windows_reboot_after_ext4
+                and args.format_owned_fifth_ext4_only
+                and args.profile == "win10_22h2_en_us_x64"
+                and args.accel == "kvm"
+                and not args.fixture_only and not args.boot_probe_only
+                and os.environ.get("GITHUB_ACTIONS") == "true"
+                and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+                and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
+                and os.environ.get("GASLUX_CACHYOS_ARCHISO_READONLY_CONSENT")
+                    == "I_ACCEPT_PINNED_ARCHISO_READONLY_WINDOWS10_QCOW2_COW"
+                and os.environ.get("GASLUX_CACHYOS_VERIFIED_ISO_SHA256")
+                    == ISO_SHA256
+                and os.environ.get("GASLUX_CACHYOS_VERIFIED_ISO_PATH", "")
+                    .endswith("/cachyos.iso")):
+            raise SystemExit("read-only Windows+CachyOS Archiso requires "
+                             "pinned official ISO, real Windows fourth boot "
+                             "and separate hosted VM-only consent")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -1272,6 +1295,41 @@ def main(argv: list[str] | None = None) -> int:
                                                 hashlib.sha256(fourth_bytes).hexdigest())
                                             print("GASLUX_WINDOWS_FOURTH_BOOT_POST_EXT4_VERIFIED=1",
                                                   flush=True)
+                                            if args.verify_cachyos_archiso_readonly:
+                                                from windows_cachyos_cow_checkpoint import (
+                                                    CHECKPOINT_DIR, OVERLAY_NAME,
+                                                )
+                                                from cachyos_windows_shared_archiso_handoff import (
+                                                    ISO_SHA256,
+                                                )
+                                                require(
+                                                    fourth.get("windowsBootAfterExt4Verified")
+                                                        is True
+                                                    and fourth.get("windowsBcdWinreEspAfterExt4Verified")
+                                                        is True
+                                                    and ext4.get("rootFilesystem", {}).get(
+                                                        "filesystemType") == "ext4",
+                                                    "Archiso preflight requires verified Windows "
+                                                    "fourth boot and owned ext4")
+                                                overlay = disk.parent / CHECKPOINT_DIR / OVERLAY_NAME
+                                                subprocess.run([
+                                                    "bash",
+                                                    "auto_tests/tools/cachyos_windows_archiso_readonly_host.sh",
+                                                    os.environ["GASLUX_CACHYOS_VERIFIED_ISO_PATH"],
+                                                    ISO_SHA256, str(overlay),
+                                                    ext4["rootFilesystem"]["filesystemUuid"],
+                                                    staged["linuxRoot"]["uniqueGuid"],
+                                                    str(evidence),
+                                                ], check=True, timeout=1600)
+                                                report["cachyosArchisoSignedReadOnlyProofVerified"] = True
+                                                report["cachyosInstalled"] = False
+                                                report["sameDiskDualBootVerified"] = False
+                                                report["storageWritesAuthorized"] = False
+                                                report["releaseEligible"] = False
+                                                print(
+                                                    "GASLUX_WINDOWS10_GENUINE_ARCHISO_READONLY_PROVEN=1",
+                                                    flush=True,
+                                                )
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
