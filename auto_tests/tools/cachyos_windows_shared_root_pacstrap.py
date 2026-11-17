@@ -365,10 +365,18 @@ def verify_lab_root_write_grant(
             and backing_doc.get("overlayDiscardable") is True
             and backing_doc.get("onlyTrialOverlayMayBeGuestWritable") is True
             and backing_doc.get("windowsEspWritesAllowed") is False
-            and backing_doc.get("base", {}).get("readonly") is True
-            and backing_doc.get("overlay", {}).get("mode") == 0o600
-            and backing_doc.get("overlay", {}).get("backingFormat") == "qcow2"
-            and backing_doc.get("overlay", {}).get("virtualSizeBytes") == VIRTUAL_BYTES,
+            and type(backing_doc.get("base")) is dict
+            and type(backing_doc.get("overlay")) is dict
+            and backing_doc["base"].get("name") == "only-disposable-windows-target.qcow2"
+            and backing_doc["base"].get("readonly") is True
+            and backing_doc["base"].get("mode") == 0o400
+            and backing_doc["base"].get("sha256") == checkpoint_doc.get("windowsBaseSha256")
+            and backing_doc["overlay"].get("name") == "cachyos-unwritten-trial-overlay.qcow2"
+            and Path(backing_doc["overlay"].get("backingFilename", "")).name
+                == "only-disposable-windows-target.qcow2"
+            and backing_doc["overlay"].get("mode") == 0o600
+            and backing_doc["overlay"].get("backingFormat") == "qcow2"
+            and backing_doc["overlay"].get("virtualSizeBytes") == VIRTUAL_BYTES,
             "host checkpoint or COW backing proof differs from signed root grant")
     outcome = subprocess.run([
         "openssl", "pkeyutl", "-verify", "-pubin", "-inkey",
