@@ -31,7 +31,8 @@ def synthetic_args(tmp):
         "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
         "-drive", "if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file=/tmp/derived.iso",
         "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
-        "-drive", "if=floppy,format=raw,file=/tmp/autounattend.img",
+        "-drive", "if=none,id=lab_unattend,format=raw,readonly=on,file=/tmp/only-disposable-answer-usb.img",
+        "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
         "-serial", f"file:{tmp}/win-guest-serial.log",
         "-boot", "order=c,once=d",
     ]
@@ -106,9 +107,50 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertNotIn("verified_iso", " ".join(second))
         self.assertNotIn("ide-cd,", " ".join(second))
         self.assertIn("only_windows", " ".join(second))
-        self.assertIn("autounattend.img", " ".join(second))
+        self.assertIn("only-disposable-answer-usb.img", " ".join(second))
+        self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0", " ".join(second))
+        self.assertNotIn("if=floppy", " ".join(second))
         self.assertNotEqual(first[first.index("-serial") + 1],
                             second[second.index("-serial") + 1])
+
+    def test_missing_or_writable_answer_usb_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            original = synthetic_args(d)
+            ans = next(x for x in original if x.startswith(
+                "if=none,id=lab_unattend,"))
+            for replacement in (
+                ans.replace("readonly=on,", ""),
+                ans.replace("only-disposable-answer-usb.img", "foreign-usb.img"),
+            ):
+                with self.subTest(replacement=replacement):
+                    modified = list(original)
+                    modified[modified.index(ans)] = replacement
+                    with self.assertRaisesRegex(VM.LabError, "read-only owned USB"):
+                        VM.build_two_stage_qemu_args(
+                            modified, pathlib.Path(d) / "first.log")
+            modified = [x for x in original
+                        if not x.startswith("usb-storage,drive=lab_unattend,")]
+            with self.assertRaisesRegex(VM.LabError, "read-only owned USB"):
+                VM.build_two_stage_qemu_args(
+                    modified, pathlib.Path(d) / "first.log")
+
+    def test_two_stage_removable_answer_has_unique_label_and_oobe_defaults(self):
+        for profile, build in (("win10_22h2_en_us_x64", "19045"),
+                               ("win11_26h2_en_us_x64", "26300")):
+            with self.subTest(profile=profile):
+                xml = VM.generate_unattend(
+                    profile, build, removable_answer=True)
+                VM.validate_oobe_answer_pass(xml)
+                root = VM.ET.fromstring(xml)
+                commands = [e.text for e in root.iter()
+                            if e.tag.endswith("}CommandLine")]
+                self.assertEqual(len(commands), 1)
+                self.assertIn("Get-Volume -FileSystemLabel GASLUXCI",
+                              commands[0])
+                self.assertIn("$v.Count -ne 1", commands[0])
+                self.assertIn("GASLUX.PS1", commands[0])
+                self.assertNotIn("-File A:", commands[0])
+                self.assertLess(len(commands[0]), 240)
 
     def test_duplicate_iso_device_fails_closed(self):
         with tempfile.TemporaryDirectory() as d:
