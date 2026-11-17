@@ -610,6 +610,70 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                 proc.wait(timeout=30)
 
 
+def boot_installed_windows_third_time(
+    original_args: list[str], workspace: Path, profile_key: str,
+    timeout_seconds: int = 900,
+) -> bool:
+    """Third independent disk-only Windows guest after overlay discard.
+
+    Only the Windows-installed startup task can emit the third-boot proof.
+    Neither a QEMU exit code nor OVMF Boot Manager text is sufficient.
+    """
+    require(profile_key == "win10_22h2_en_us_x64"
+            and os.environ.get("GASLUX_WINDOWS_THIRDBOOT_TEST")
+                == "I_ACCEPT_THIRD_WINDOWS_KVM_BOOT"
+            and workspace.parent == Path("/home/runner/work/_temp")
+            and workspace.name.startswith("gaslux-win-x64-")
+            and workspace.stat().st_uid == os.getuid()
+            and stat.S_IMODE(workspace.stat().st_mode) == 0o700,
+            "third Windows guest requires owned hosted VM and consent")
+    serial = workspace / "thirdboot-windows-serial.log"
+    require(not serial.exists() and not serial.is_symlink(),
+            "third boot serial reused")
+    _, third = build_two_stage_qemu_args(
+        original_args, workspace / "discarded-unused-first-serial.log")
+    require("-boot" in third and third[third.index("-boot") + 1] == "order=c"
+            and all("verified_iso" not in token for token in third),
+            "third guest is not strictly disk-only")
+    third[third.index("-serial") + 1] = "file:" + str(serial)
+    required = {
+        b"GASLUX_WINDOWS_X64_THIRDBOOT_BUILD=19045",
+        b"GASLUX_WINDOWS_X64_THIRDBOOT_BCD_OK=1",
+        b"GASLUX_WINDOWS_X64_THIRDBOOT_WINRE_OK=1",
+        b"GASLUX_WINDOWS_X64_THIRDBOOT_PASS=1",
+    }
+    error_path = workspace / "thirdboot-qemu-stderr.log"
+    start = time.monotonic()
+    witnessed = False
+    with error_path.open("xb") as stderr:
+        proc = subprocess.Popen(third, stdout=subprocess.DEVNULL, stderr=stderr)
+        try:
+            while time.monotonic() - start < timeout_seconds:
+                if serial.is_file():
+                    require(not serial.is_symlink()
+                            and serial.stat().st_size <= 2_000_000,
+                            "unbounded or foreign third guest serial")
+                    with serial.open("rb") as transcript:
+                        tokens = set(line.strip() for line in transcript.read().splitlines())
+                    if b"GASLUX_WINDOWS_X64_THIRDBOOT_FAIL=1" in tokens:
+                        raise LabError("installed Windows third boot rejected BCD/WinRE")
+                    if required.issubset(tokens):
+                        witnessed = True
+                ret = proc.poll()
+                if ret is not None:
+                    require(ret == 0 and witnessed,
+                            "third Windows VM exited without genuine guest proof and shutdown")
+                    print("GASLUX_WINDOWS_THIRD_BOOT_AFTER_OVERLAY_DISCARD_PASS=1",
+                          flush=True)
+                    return True
+                time.sleep(2)
+            raise LabError("third Windows guest did not audit and shut down")
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=30)
+
+
 def build_two_stage_qemu_args(
     original: list[str], initial_serial: Path,
 ) -> tuple[list[str], list[str]]:
@@ -1103,6 +1167,11 @@ def main(argv: list[str] | None = None) -> int:
                                     and not overlay_result["storageWritesAuthorized"],
                                     "Windows overlay isolation experiment failed")
                             report["disposableOverlayExperiment"] = overlay_result
+                            if os.environ.get("GASLUX_WINDOWS_THIRDBOOT_TEST"):
+                                require(boot_installed_windows_third_time(
+                                    base, workspace, args.profile),
+                                    "third independent Windows guest not verified")
+                                report["windowsRebootAfterOverlayDiscardVerified"] = True
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
