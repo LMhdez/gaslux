@@ -128,20 +128,24 @@ class PacmanTrustTests(unittest.TestCase):
             POLICY.assess(Path("etc/pacman.conf"), run=self.runner)
 
     def test_vm_guest_must_refuse_weak_config_before_pacstrap(self):
-        # PR #34 runs a separate VM-only guest launcher; it does not call
-        # the production-isolated stage --install command from PR #27.
-        guest = (ROOT / "auto_tests/tools/cachyos_vm_guest_install.sh").read_text()
-        safety = 'bash /run/gaslux-control/stage.sh --validate-target'
-        builder = '--prepare-vm'
-        trusted = 'python3 /run/gaslux-control/pacman-trust.py --config'
-        install = 'pacstrap -K -C "$strict_dir/pacman-install.conf" /mnt/target'
-        self.assertLess(guest.index(safety), guest.index(builder))
-        self.assertLess(guest.index(builder), guest.index(trusted))
-        self.assertLess(guest.index(trusted), guest.index(install))
-        self.assertIn('cmp -s "$strict_dir/pacman-target.conf"', guest)
-        self.assertIn('install -m 0644 "$strict_dir/pacman-target.conf"', guest)
-        self.assertNotIn('pacstrap -K /mnt/target', guest)
-        self.assertNotIn('install -m 0644 /etc/pacman.conf', guest)
+        # The PR #171 root-only backend reuses PR #34's strict policy
+        # renderer and trust guard, not PR #34's empty-disk guest launcher.
+        guest = (ROOT / "auto_tests/tools/cachyos_windows_shared_root_pacstrap.py").read_text()
+        install = guest.split("def pacstrap_only(args:", 1)[1]
+        self.assertLess(
+            install.index("verify_lab_root_write_grant(args, plan)"),
+            install.index("strict_folder = prepare_signed_only_pacman(plan)"))
+        self.assertLess(
+            install.index("strict_folder = prepare_signed_only_pacman(plan)"),
+            install.index('execute(["mount", "-t", "ext4"'))
+        self.assertLess(
+            install.index('execute(["mount", "-t", "ext4"'),
+            install.index('execute(["pacstrap", "-K", "-C", str(strict_config)'))
+        self.assertIn('"python3", str(verifier), "--config", str(config)', guest)
+        self.assertIn('"--prepare-vm"', guest)
+        self.assertIn('shutil.copyfile(strict_folder / "pacman-target.conf"', guest)
+        self.assertNotIn('execute(["pacstrap", "-K", str(ROOT)', guest)
+        self.assertNotIn('SigLevel = Never', guest)
 
     def test_no_trust_bypass_in_guard(self):
         raw = SOURCE.read_text()
