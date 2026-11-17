@@ -6,7 +6,7 @@
 
 - `main`: [`3eb74c6e`](https://github.com/LMhdez/gaslux/commit/3eb74c6e1f609319fe8ee706dd152c09f466dd44).
 - `dev`: [`34d50646`](https://github.com/LMhdez/gaslux/commit/34d50646783498000eb13dbaf8a63220e63ff719) — 96 commits à frente de `main`, 0 atrás no snapshot.
-- 149 PRs abertas (todas draft); 2 issues abertas (#3 e #71), 168 branches na primeira leitura; 14 PRs integradas e 2 fechadas sem merge.
+- 154 PRs abertas (todas draft); 2 issues abertas (#3 e #71), 168 branches na primeira leitura; 14 PRs integradas e 2 fechadas sem merge.
 - CI do HEAD `dev`: seis check runs concluídos com sucesso, apenas contratos/fixtures e verificações não destrutivas.
 - Catálogo estável (`release-config.json`): Mint 22.3 e Zorin 18.1. Os outros quatro backends continuam bloqueados.
 
@@ -14,12 +14,12 @@
 
 | Backend | Base em dev | PRs relevantes | Bloqueio até estabilidade |
 |---|---|---|---|
-| Linux Mint | Backend Debian/Ubuntu legado; gate seguro | Regressões `dev` | Validação real por firmware/layout e recuperação |
-| Zorin OS | Backend Debian/Ubuntu legado; gate seguro | Regressões `dev` | Validação real por firmware/layout e recuperação |
-| CachyOS | Archiso experimental | #34 #36 #159 #161 #162 #165 #166 | Archiso/pacstrap real com Windows no mesmo disco, Linux+Windows boots, updates e rollback (#3, #71) |
+| Linux Mint | Backend Debian/Ubuntu legado; gate seguro | Regressões `dev`, #169 | Validação real por firmware/layout e recuperação |
+| Zorin OS | Backend Debian/Ubuntu legado; gate seguro | Regressões `dev`, #167 #169 | Validação real por firmware/layout e recuperação |
+| CachyOS | Archiso experimental | #34 #36 #159 #161 #162 #165 #166 #170 #171 | Archiso/pacstrap real com Windows no mesmo disco, Linux+Windows boots, updates e rollback (#3, #71) |
 | Pop!_OS | Preflight System76 não mutável | #20 #38 #39 #47 #50 #61 #63 | distinst nativo, proteção ESP, boot Windows+Linux, recuperação |
 | Q4OS | Preflight de ISO nativa | #35 #37 #40 #44 #45 #49 #52 #55 #59 | Calamares nativo, Windows+Linux, recuperação |
-| Bazzite | Preflight Fedora Atomic | Contratos `dev` | Só UEFI/GPT; BIOS/MBR rejeitado antes de escrita; Atomic dual boot e rollback por provar |
+| Bazzite | Preflight Fedora Atomic | Contratos `dev`, #172 | Só UEFI/GPT; BIOS/MBR rejeitado antes de escrita; Atomic dual boot e rollback por provar |
 
 ## Disposição
 
@@ -184,12 +184,17 @@ A dependência é a `base.ref` real de cada PR aberta. Quando o nome coincide co
 | [#165 — CachyOS: Ed25519 signed Windows five-partition Archiso handoff, fail closed before pacstrap](https://github.com/LMhdez/gaslux/pull/165) | CachyOS | Bloquear | [#161](https://github.com/LMhdez/gaslux/pull/161) | `feature/cachyos-win10-shared-disk-signed-archiso-contract` |
 | [#166 — test(cachyos): reject unsafe shared-Windows Archiso target before pacstrap](https://github.com/LMhdez/gaslux/pull/166) | CachyOS | Bloquear | [#161](https://github.com/LMhdez/gaslux/pull/161) | `test/windows10-cachyos-shared-archiso-preflight` |
 | [#167 — fix(zorin): validate signed Mint/Zorin ISO and rootfs before Linux partition writes](https://github.com/LMhdez/gaslux/pull/167) | Mint/Zorin | Corrigir | `dev` | `fix/zorin-mint-prewrite-iso-identity` |
+| [#168 — integration(draft): promote vetted dev contracts with global PR dependency board](https://github.com/LMhdez/gaslux/pull/168) | Windows/VM/common | Consolidar | `main` | `integration/dev-main-contracts-20261117` |
+| [#169 — fix(mint): exact squashfs capability paths with Mint/Zorin regressions](https://github.com/LMhdez/gaslux/pull/169) | Mint/Zorin | Corrigir | `dev` | `fix/mint-squashfs-exact-capabilities` |
+| [#170 — fix(cachyos): fail closed on foreign virtio partition paths and geometry in Archiso preflight](https://github.com/LMhdez/gaslux/pull/170) | CachyOS | Corrigir | [#165](https://github.com/LMhdez/gaslux/pull/165) | `fix/cachyos-archiso-virtio-disk-boundary-issue3` |
+| [#171 — feat(cachyos): guarded root-only native pacstrap candidate for Windows-shared COW disk](https://github.com/LMhdez/gaslux/pull/171) | CachyOS | Bloquear | [#165](https://github.com/LMhdez/gaslux/pull/165) | `feature/cachyos-shared-cow-root-pacstrap-only` |
+| [#172 — security(bazzite): fail-closed live ISO detached-signature gate (synthetic CI only)](https://github.com/LMhdez/gaslux/pull/172) | Bazzite | Corrigir | `dev` | `feature/bazzite-iso-blob-trust-gate` |
 
 ## Roteiro de integração
 
-1. Rever os 96 commits da `dev` como proposta única de promoção, validar isolamento de catálogos e manter o merge em espera.
+1. Rever os 96 commits da `dev` como proposta única de promoção em #168, validar isolamento de catálogos e manter o merge em espera. **Antes de integrar o backend legado**, reconciliar #167 e #169, confirmar dependências reais e executar regressões Mint/Zorin no mesmo HEAD.
 2. Comparar diferenças de patches/commits (merge-base, `rev-list --cherry-pick`, patch IDs) das cadeias de testes Windows, COM1, OVMF, FAT12/32, QCOW2 e ext4; preservar resultados.
-3. Cruzar #165/#166 com #159/#161/#162/#163 e provas independentes #34/#36, sem somar testes separados como se fossem um dual boot comprovado.
+3. Cruzar #165/#166/#170/#171 com #159/#161/#162/#163 e provas independentes #34/#36, sem somar testes separados como se fossem um dual boot comprovado; #170 e #171 dependem diretamente de #165. Bloquear escrita pacstrap em disco partilhado sem provas completas.
 4. Manter Pop!_OS/Q4OS/Bazzite separados em implementação; partilhar contratos de disco, recuperação, assinatura e transação.
 5. Exigir testes C#/.NET, Pester, pytest/ruff, Bash/ShellCheck, schemas/assinaturas e VMs descartáveis; nenhum teste de escrita em discos físicos.
 6. Manter issues [#3](https://github.com/LMhdez/gaslux/issues/3) e [#71](https://github.com/LMhdez/gaslux/issues/71) abertas até evidência completa de Windows e Linux, updates, rollback, reinstalação e remoção.
@@ -202,8 +207,17 @@ A dependência é a `base.ref` real de cada PR aberta. Quando o nome coincide co
 
 ## Contagens por grupo e disposição
 
-CachyOS: 53; Windows/VM/common: 73; Pop!_OS: 13; Q4OS: 9; Mint/Zorin: 1.
-Corrigir: 83; Consolidar: 49; Bloquear: 17.
+CachyOS: 55; Windows/VM/common: 74 (inclui #168); Pop!_OS: 13; Q4OS: 9; Mint/Zorin: 2; Bazzite: 1.
+Corrigir: 86; Consolidar: 50; Bloquear: 18.
+
+## Delta desta auditoria (17/11/2026)
+
+- Estado GitHub verificado: **154 PRs abertas, todas draft**, com 148 bases em branches intermédias e 6 apontadas diretamente a `main` ou `dev`. Não assumir que a ordem numérica corresponde à ordem de integração.
+- Entradas acrescentadas: #168 (PR integradora, ainda draft), #169 (regressão Mint/Zorin), #170 (identidade de partições CachyOS), #171 (pacstrap em QCOW2 partilhado, bloqueado) e #172 (assinatura ISO Bazzite; testes apenas sintéticos). #167 já figurava na triagem anterior.
+- #167 e #169 são complementares, não automaticamente equivalentes. Examinar patches e validar regressões comuns antes de propor promoção de `dev` para `main`.
+- #170 e #171 são filhas de #165; preservar isolamento experimental. #172 não comprova instalação Bazzite nem modifica a elegibilidade de firmware/partições.
+- As issues #3 e #71 continuam bloqueios reais. Nenhuma PR foi encerrada ou integrada no âmbito desta atualização documental.
+- CI observado com resultados mistos e execuções em curso nas PRs recentes; não usar resultados de um SHA diferente como critério de merge.
 
 O inventário é um snapshot. Revalidar contagens, bases, hashes e CI antes de cada intervenção.
 
