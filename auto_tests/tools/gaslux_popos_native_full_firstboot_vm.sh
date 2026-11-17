@@ -23,10 +23,17 @@ for binary in qemu-system-x86_64 grub-mkstandalone mkfs.vfat mcopy mmd \
   sgdisk dd timeout sudo sha256sum python3 setfacl; do
   command -v "$binary" >/dev/null || die "Missing disposable VM tool: $binary"
 done
-[[ -c /dev/kvm ]] || die 'GitHub runner KVM acceleration unavailable'
-sudo setfacl -m "u:$(id -un):rw" /dev/kvm
-[[ -r /dev/kvm && -w /dev/kvm ]] ||
-  die 'Hosted runner KVM access not granted; do not use unbounded TCG fallback'
+# Runner /dev/kvm permissions can be reset between independent QEMU
+# processes. Revalidate and regrant the runner-only ACL before EACH VM.
+# Never fall back to TCG: that would make this first-boot claim unbounded.
+prepare_hosted_kvm() {
+  [[ -c /dev/kvm ]] || die 'Hosted runner KVM device unavailable'
+  sudo setfacl -m "u:$(id -un):rw" /dev/kvm ||
+    die 'Could not grant runner KVM permission'
+  [[ -r /dev/kvm && -w /dev/kvm ]] ||
+    die 'Hosted runner KVM access denied; no TCG fallback'
+}
+prepare_hosted_kvm
 
 work="$(mktemp -d "$RUNNER_TEMP/gaslux-pop-native-full-XXXXXX")"
 guest=''
@@ -216,6 +223,9 @@ printf 'GASLUX_POP_NATIVE_DISTINST_FULL_INSTALL_ON_QEMU=1\n'
 
 # The SECOND QEMU has NO lab EFI disk and NO live ISO. Only the native Pop disk
 # and fresh OVMF NVRAM are attached; GRUB cannot supply the first boot.
+# Some hosted runners revoke a user-specific /dev/kvm ACL after the first
+# QEMU exits; reacquire it on this disposable runner, then fail closed.
+prepare_hosted_kvm
 timeout --kill-after=10s 360s qemu-system-x86_64 \
   -machine q35,accel=kvm -cpu host -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \

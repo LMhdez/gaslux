@@ -29,6 +29,14 @@ def test_native_install_is_isolated_to_explicit_hosted_kvm_lab():
     assert "accel=kvm" in run
     assert "-net none" in run
     assert "sudo setfacl" in run
+    # The KVM ACL may be lost after installation QEMU exits. Both launches
+    # must independently revalidate /dev/kvm before attempting to boot.
+    assert run.count("prepare_hosted_kvm") == 3
+    first, second = run.split("# The SECOND QEMU has NO lab EFI disk and NO live ISO.")
+    assert "prepare_hosted_kvm" in first
+    assert "prepare_hosted_kvm" in second.split("qemu-system-x86_64", maxsplit=1)[0]
+    assert "no TCG fallback" in run
+
     assert 'truncate -s 32G "$target"' in run
     assert "GASLUX-OWNED-ESP" in run
     assert "GASLUX-OWNED-ROOT" in run
