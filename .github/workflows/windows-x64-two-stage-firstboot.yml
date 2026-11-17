@@ -16,6 +16,7 @@ on:
       - fix/cachyos-qcow2-read-consistency-issue3
       - test/cachyos-same-disk-readonly-extent-gate
       - test/windows10-cachyos-disposable-overlay-recovery
+      - test/windows10-overlay-efi-bcd-guestfs-evidence
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -28,6 +29,8 @@ on:
       - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
       - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
       - auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
+      - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+      - auto_tests/tools/windows_x64_libguestfs_kernel.sh
   workflow_dispatch:
 
 permissions:
@@ -52,7 +55,8 @@ jobs:
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
-          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+          bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_noprompt_one_shot.py \
@@ -95,6 +99,7 @@ jobs:
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
       GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
       GASLUX_WINDOWS_OVERLAY_TEST: I_ACCEPT_NEW_QCOW2_OVERLAY_ONLY
+      GASLUX_WINDOWS_GUESTFS_TEST: I_ACCEPT_READONLY_FILESYSTEM_AUDIT
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -111,7 +116,8 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
-            p7zip-full genisoimage
+            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
@@ -171,6 +177,7 @@ jobs:
           assert overlay['overlayFaultRejected'] is True
           assert overlay['overlayDiscarded'] is True
           assert overlay['backingWindowsGptUnchanged'] is True
+          assert overlay['offlineEspBcdWinreHashesUnchanged'] is True
           for guard in ('windowsRebootAfterFaultVerified',
                         'windowsBcdWinreRestorationVerified', 'linuxInstalled',
                         'dualBootVerified', 'storageWritesAuthorized', 'releaseEligible'):
