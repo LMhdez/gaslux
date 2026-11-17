@@ -14,6 +14,7 @@ on:
       - fix/windows10-gpt-protective-mbr-unique-guids
       - fix/windows-gpt-qcow2-window-extraction-probe
       - fix/cachyos-qcow2-read-consistency-issue3
+      - test/windows10-cachyos-owned-cow-checkpoint
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -25,6 +26,8 @@ on:
       - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
       - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
       - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/tools/windows_cachyos_cow_checkpoint.py
+      - auto_tests/test_windows_cachyos_cow_checkpoint.py
   workflow_dispatch:
 
 permissions:
@@ -50,6 +53,7 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py auto_tests/test_windows_cachyos_cow_checkpoint.py
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_noprompt_one_shot.py \
@@ -60,7 +64,8 @@ jobs:
               test_windows_x64_winre_baseline_contract.py \
               test_windows_x64_qemu_host_gate.py \
               test_windows_cachyos_readonly_baseline_gate.py \
-              test_windows_cachyos_qcow2_gpt_readonly.py; do
+              test_windows_cachyos_qcow2_gpt_readonly.py \
+              test_windows_cachyos_cow_checkpoint.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
       - name: Prove physical-host-safe swtpm listener restart with same private NV directory
@@ -91,6 +96,7 @@ jobs:
       PYTHONUNBUFFERED: '1'
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
       GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT: I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -119,7 +125,8 @@ jobs:
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
             --profile "${{ matrix.profile }}" --accel kvm \
-            --derived-no-prompt --two-stage-install-only --boot-timeout 4800
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
+            --prepare-owned-cow-checkpoint
           echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
       # Never run this candidate check unless the exact existing Windows 10
       # DVD+FAT12 unattended install has rebooted and passed its firstlogon
@@ -172,6 +179,37 @@ jobs:
           print('NO Linux install, disk writes, dual boot or rollback acceptance')
           PY
           echo 'PASS: read-only primary+backup GPT candidate layout; no Windows+CachyOS authorization' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify COW checkpoint evidence follows real Windows boot + read-only GPT
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - "$GITHUB_WORKSPACE/windows-x64-tcg-evidence" "${{ matrix.profile }}" <<'PY'
+          import hashlib, json, pathlib, sys
+          folder = pathlib.Path(sys.argv[1])
+          profile = sys.argv[2]
+          result = json.loads((folder/(profile+'-result.json')).read_text())
+          path = folder/(profile+'-cow-checkpoint-candidate.json')
+          assert path.is_file() and not path.is_symlink()
+          assert 100 < path.stat().st_size < 10000
+          cow = json.loads(path.read_text())
+          assert result['windowsClientBootVerified'] is True
+          assert result['readOnlyGptGeometryCandidate'] is True
+          assert result['cowCheckpointCandidatePrepared'] is True
+          assert result['cowCheckpointCandidateSha256'] == hashlib.sha256(
+              path.read_bytes()).hexdigest()
+          assert cow['candidateWindowsCowCheckpointPrepared'] is True
+          assert cow['trialOverlayInitiallyMatchesWindows'] is True
+          assert cow['windowsBaselineUnchangedDuringCheckpoint'] is True
+          for field in ('snapshotIndependentlyRestorable',
+                        'windowsRebootAfterOverlayVerified',
+                        'windowsRecoveryAfterLinuxVerified',
+                        'sameDiskDualBootVerified', 'storageWritesAuthorized',
+                        'releaseEligible'):
+              assert cow[field] is False
+          print('PASS: post-Windows COW candidate and private OVMF variables')
+          print('NO independent backup, dual boot, Windows recovery or write approval')
+          PY
+          echo 'PASS: owned postboot overlay candidate; original Windows disk + UEFI baseline not overwritten' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
