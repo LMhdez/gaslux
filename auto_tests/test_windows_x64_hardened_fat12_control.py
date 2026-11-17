@@ -215,5 +215,92 @@ class HardenedFat12Control(unittest.TestCase):
 
 
 
+    def test_win11_immediate_local_shutdown_not_restart(self):
+        guest = vm.witness_powershell("win11_26h2_en_us_x64", "26300")
+        self.assertIn('& "$env:WINDIR\\System32\\shutdown.exe" /p /f', guest)
+        self.assertNotIn('shutdown.exe" /r', guest)
+        self.assertIn("@($serialProof).Count -ne 7", guest)
+        self.assertIn("reagentc /info", guest)
+
+    def test_win10_historical_shutdown_command_unchanged(self):
+        guest = vm.witness_powershell("win10_22h2_en_us_x64", "19045")
+        self.assertIn('& "$env:WINDIR\\System32\\shutdown.exe" /s /f /t 0',
+                      guest)
+        self.assertNotIn('shutdown.exe" /p /f', guest)
+
+    def test_repeated_windows_boot_manager_rejects_even_with_full_witness(self):
+        import unittest.mock
+        from pathlib import Path
+        class FakeQemu:
+            def poll(self): return 0
+            def kill(self): raise AssertionError("already stopped")
+            def wait(self, timeout): return 0
+        guest = b" ".join([
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300",
+            b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+            b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+            b"GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64",
+        ]) + b"\n"
+        boot = b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+        with tempfile.TemporaryDirectory() as root:
+            serial = Path(root) / "serial.log"
+            serial.write_bytes(boot + guest + boot)
+            with patch.object(vm.subprocess, "Popen", return_value=FakeQemu()):
+                success, msg = vm.boot_vm(
+                    ["qemu-system-x86_64"], serial, 60,
+                    "win11_26h2_en_us_x64",
+                    reject_repeated_dvd_boot=True,
+                )
+            self.assertFalse(success)
+            self.assertIn("rebooted after first-logon", msg)
+
+    def test_single_windows_boot_manager_with_full_proof_still_accepted(self):
+        from pathlib import Path
+        class FakeQemu:
+            def poll(self): return 0
+            def kill(self): raise AssertionError("already stopped")
+            def wait(self, timeout): return 0
+        with tempfile.TemporaryDirectory() as root:
+            serial = Path(root) / "serial.log"
+            serial.write_bytes(
+                b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+                b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300 "
+                b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1 "
+                b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1 "
+                b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1 "
+                b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1 "
+                b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1 "
+                b"GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64\n"
+            )
+            with patch.object(vm.subprocess, "Popen", return_value=FakeQemu()):
+                success, msg = vm.boot_vm(
+                    ["qemu-system-x86_64"], serial, 60,
+                    "win11_26h2_en_us_x64",
+                    reject_repeated_dvd_boot=True,
+                )
+            self.assertTrue(success, msg)
+
+    def test_split_windows_boot_manager_marker_detected_after_long_serial(self):
+        from pathlib import Path
+        marker = b'BdsDxe: starting Boot0AF3 "Windows Boot Manager"'
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "serial.log"
+            path.write_bytes(marker[:23])
+            n1, offset, carry, _ = vm.scan_two_stage_dvd_serial(
+                path, 0, b"", vm.WINDOWS_BOOT_MANAGER_START,
+            )
+            self.assertEqual(n1, 0)
+            with path.open("ab") as stream:
+                stream.write(marker[23:] + b"\n" + b"X" * 500_000 + marker)
+            n2, offset, carry, _ = vm.scan_two_stage_dvd_serial(
+                path, offset, carry, vm.WINDOWS_BOOT_MANAGER_START,
+            )
+            self.assertEqual(n2, 2)
+
+
+
 if __name__ == "__main__":
     unittest.main()
