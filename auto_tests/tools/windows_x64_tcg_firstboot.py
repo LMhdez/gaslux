@@ -867,6 +867,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stage-pop-linux-root-overlay", action="store_true",
                     help="VM-only after verified Windows 10: stage UNFORMATTED Pop "
                          "GPT root in discarded COW overlay, never base QCOW2")
+    ap.add_argument("--stage-pop-independent-esp-root-overlay", action="store_true",
+                    help="VM-only after verified Windows 10: stage TWO new UNFORMATTED "
+                         "Pop GPT partitions in throwaway COW only")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -879,6 +882,22 @@ def main(argv: list[str] | None = None) -> int:
     ):
         raise SystemExit("offline installed GPT audit requires genuine Windows 10 "
                          "two-stage hosted KVM firstboot")
+    if (args.stage_pop_linux_root_overlay
+            and args.stage_pop_independent_esp_root_overlay):
+        raise SystemExit("refuse mutually exclusive Pop COW staging modes")
+    if args.stage_pop_independent_esp_root_overlay and not (
+        args.audit_installed_gpt_readonly
+        and args.two_stage_install_only
+        and args.profile == "win10_22h2_en_us_x64"
+        and args.accel == "kvm"
+        and not args.fixture_only
+        and os.environ.get("GASLUX_WIN10_POP_OVERLAY_CONSENT")
+        == "I_ACCEPT_GITHUB_ONLY_QCOW2_COPY_ON_WRITE_LINUX_ROOT_STAGE"
+        and os.environ.get("GASLUX_WIN10_POP_PAIR_COW_CONSENT")
+        == "I_ACCEPT_ONLY_DISPOSABLE_WIN10_POP_ESP_ROOT_QCOW2"
+    ):
+        raise SystemExit("Pop independent ESP/root COW stage requires a "
+                         "separate hosted Win10 read-only audit and explicit consent")
     if args.stage_pop_linux_root_overlay and not (
         args.audit_installed_gpt_readonly
         and args.two_stage_install_only
@@ -930,6 +949,8 @@ def main(argv: list[str] | None = None) -> int:
         report["installedGptReadOnlyVerified"] = False
     if args.stage_pop_linux_root_overlay:
         report["sameDiskLinuxPartitionCreatedInCOWOverlay"] = False
+    if args.stage_pop_independent_esp_root_overlay:
+        report["ownedPopEspAndRootGptEntriesStagedInCOW"] = False
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
@@ -1086,6 +1107,20 @@ def main(argv: list[str] | None = None) -> int:
                                 "unsafe Windows/Pop overlay staging result",
                             )
                             report["sameDiskLinuxPartitionCreatedInCOWOverlay"] = True
+                        if args.stage_pop_independent_esp_root_overlay:
+                            from windows10_popos_independent_esp_root_stage import (
+                                stage_owned_esp_root,
+                            )
+                            pair_proof = stage_owned_esp_root(disk, evidence)
+                            require(
+                                pair_proof["ownedPopEspAndRootGptEntriesStagedInCOW"]
+                                and pair_proof["windowsBackingQcow2Sha256Unchanged"]
+                                and pair_proof["windowsEspBcdWinreNtfsWitnessUnchanged"]
+                                and not pair_proof["sameDiskDualBootVerified"]
+                                and not pair_proof["productionInstallationAuthorized"],
+                                "unsafe Pop/Windows independent ESP/root COW proof",
+                            )
+                            report["ownedPopEspAndRootGptEntriesStagedInCOW"] = True
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,

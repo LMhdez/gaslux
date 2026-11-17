@@ -5,13 +5,16 @@ on:
       - test/windows10-postboot-gpt-readonly-audit
       - test/windows10-popos-same-disk-overlay-stage
       - test/windows10-popos-independent-esp-root-gate
+      - test/windows10-popos-owned-esp-root-cow-stage
     paths:
       - .github/workflows/windows10-gpt-readonly-guestfs-smoke.yml
       - auto_tests/tools/windows10_synthetic_gpt_guestfs_smoke.py
       - auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
       - auto_tests/tools/windows10_popos_gpt_mirror_gate.py
       - auto_tests/tools/windows10_popos_independent_esp_plan.py
+      - auto_tests/tools/windows10_popos_independent_esp_root_stage.py
       - auto_tests/test_windows10_popos_independent_esp_plan.py
+      - auto_tests/test_windows10_popos_independent_esp_root_stage.py
       - auto_tests/test_windows10_popos_gpt_mirror_gate.py
       - auto_tests/test_windows10_popos_same_disk_overlay_stage.py
       - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
@@ -44,9 +47,11 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
           python3 -m py_compile auto_tests/tools/windows10_popos_gpt_mirror_gate.py
           python3 -m py_compile auto_tests/tools/windows10_popos_independent_esp_plan.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_independent_esp_root_stage.py
           python3 -m unittest discover -s auto_tests -p 'test_windows10_popos_same_disk_overlay_stage.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows10_popos_gpt_mirror_gate.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows10_popos_independent_esp_plan.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows10_popos_independent_esp_root_stage.py' -v
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_installed_gpt_ro_audit.py' -v
       - name: Install disposable guestfs appliance and complete generic kernel

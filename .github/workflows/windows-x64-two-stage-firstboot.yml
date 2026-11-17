@@ -12,6 +12,7 @@ on:
       - test/windows10-postboot-gpt-readonly-audit
       - test/windows10-popos-same-disk-overlay-stage
       - test/windows10-popos-independent-esp-root-gate
+      - test/windows10-popos-owned-esp-root-cow-stage
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -19,7 +20,9 @@ on:
       - auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
       - auto_tests/tools/windows10_popos_gpt_mirror_gate.py
       - auto_tests/tools/windows10_popos_independent_esp_plan.py
+      - auto_tests/tools/windows10_popos_independent_esp_root_stage.py
       - auto_tests/test_windows10_popos_independent_esp_plan.py
+      - auto_tests/test_windows10_popos_independent_esp_root_stage.py
       - auto_tests/test_windows10_popos_gpt_mirror_gate.py
       - auto_tests/test_windows10_popos_same_disk_overlay_stage.py
       - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
@@ -55,6 +58,7 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
           python3 -m py_compile auto_tests/tools/windows10_popos_gpt_mirror_gate.py
           python3 -m py_compile auto_tests/tools/windows10_popos_independent_esp_plan.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_independent_esp_root_stage.py
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
@@ -62,6 +66,7 @@ jobs:
               test_windows10_popos_same_disk_overlay_stage.py \
               test_windows10_popos_gpt_mirror_gate.py \
               test_windows10_popos_independent_esp_plan.py \
+              test_windows10_popos_independent_esp_root_stage.py \
               test_windows_x64_noprompt_one_shot.py \
               test_windows_x64_derived_noprompt.py \
               test_windows_x64_kvm_opt_in.py \
@@ -100,6 +105,7 @@ jobs:
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
       GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
       GASLUX_WIN10_POP_OVERLAY_CONSENT: I_ACCEPT_GITHUB_ONLY_QCOW2_COPY_ON_WRITE_LINUX_ROOT_STAGE
+      GASLUX_WIN10_POP_PAIR_COW_CONSENT: I_ACCEPT_ONLY_DISPOSABLE_WIN10_POP_ESP_ROOT_QCOW2
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -138,9 +144,9 @@ jobs:
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
             --profile "${{ matrix.profile }}" --accel kvm \
             --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
-            --audit-installed-gpt-readonly --stage-pop-linux-root-overlay
-          echo 'PASS: Windows 10 installed guest and independent GPT/ESP/BCD/NTFS inspection, followed by an unformatted Pop root partition in a disposable QCOW2 overlay.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Pop is not installed; no Windows boot after partition stage, no dual boot, WinRE/BCD RESTORATION or rollback verified; no production disk writes authorized.' >> "$GITHUB_STEP_SUMMARY"
+            --audit-installed-gpt-readonly --stage-pop-independent-esp-root-overlay
+          echo 'PASS: Genuine Win10 installed and GPT/ESP/BCD/NTFS audited; TWO unformatted transaction-owned Pop ESP/root GPT entries staged only in a separate QEMU QCOW2 COW.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Pop has NOT been installed or booted; Windows post-stage reboot, dual boot, WinRE/BCD recovery and production writes remain unverified and unauthorized.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
