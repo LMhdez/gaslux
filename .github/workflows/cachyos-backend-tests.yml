@@ -18,6 +18,7 @@ on:
     branches:
       - main
       - feature/cachyos-preflight
+      - feature/cachyos-qemu-pacstrap-firstboot
   workflow_dispatch:
 
 permissions:
