@@ -62,7 +62,7 @@ def baseline():
         "runId": "vm-run-12345",
         "capturedAt": "2026-11-16T15:00:00+00:00",
         "computerName": "DISPOSABLE-WIN11",
-        "windowsVersion": "10.0.22631.0",
+        "windowsVersion": "10.0.22631",
         "windowsProductType": 1,
         "windowsBootTime": "2026-11-16T14:00:00+00:00",
         "windowsDiskId": system["id"],
