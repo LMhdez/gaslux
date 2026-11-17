@@ -130,7 +130,7 @@ jobs:
           set -Eeuo pipefail
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
-            --profile "${{ matrix.profile }}" --accel kvm --vnc-dvd-enter --boot-timeout 4800
+            --profile "${{ matrix.profile }}" --accel kvm --vnc-dvd-enter --diagnostic-screens --boot-timeout 4800
           echo 'Real installed Windows x64 client audit and clean guest shutdown verified; Linux dual boot and Windows rollback NOT tested.' >> "$GITHUB_STEP_SUMMARY"
       - name: Archive only guest serial, SHA256 and verification JSON (never ISO/QCOW2/TPM)
         if: always()
