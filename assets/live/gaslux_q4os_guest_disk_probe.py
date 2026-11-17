@@ -59,7 +59,10 @@ def validate_guest_disk_report(
         "writeAttempted",
     }
     _refuse(set(data) == fields, "Guest report fields differ from contract")
-    _refuse(type(data["schemaVersion"]) is int and data["schemaVersion"] == 1, "Unsupported guest report schema")
+    _refuse(
+        type(data["schemaVersion"]) is int and data["schemaVersion"] == 1,
+        "Unsupported guest report schema",
+    )
     _refuse(
         data["runId"] == plan["runId"] and data["nonce"] == plan["nonce"],
         "Run/nonce mismatch",
