@@ -1,4 +1,4 @@
-name: Microsoft evaluation Windows 10 UEFI no-prompt boot probe (lab only)
+name: Microsoft evaluation Windows 10/11 UEFI no-prompt boot probe (lab only)
 
 on:
   push:
@@ -33,7 +33,13 @@ jobs:
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py'
 
   genuine-sha-pinned-original-iso-lab-boot:
-    name: Original verified Microsoft Eval ISO, derived UDF EFI boot only
+    name: Original verified Microsoft ${{ matrix.profile }} ISO, derived UDF EFI boot only
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - win10_22h2_en_us_x64
+          - win11_26h2_en_us_x64
     needs: deny-unsafe-media-and-boot-proofs
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -61,20 +67,20 @@ jobs:
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
           mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
-      - name: Verify official Windows 10 ISO, build ephemeral UDF no-prompt EFI and probe QEMU
+      - name: Verify original Microsoft ISO, build ephemeral UDF no-prompt EFI and probe QEMU
         shell: bash
         run: |
           set -Eeuo pipefail
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
-            --profile win10_22h2_en_us_x64 \
+            --profile "${{ matrix.profile }}" \
             --accel kvm --derived-no-prompt --boot-probe-only --boot-timeout 300
           echo 'UEFI DVD boot probe only, with separate derivative SHA256. NO installed Windows firstboot or dualboot.' >> "$GITHUB_STEP_SUMMARY"
       - name: Archive serial logs and negative boot report only (never ISO, QCOW2 or WIM)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: windows-evaluation-derived-noprompt-boot-diagnostics
+          name: windows-evaluation-derived-noprompt-${{ matrix.profile }}-diagnostics
           path: windows-x64-tcg-evidence/
           retention-days: 7
           if-no-files-found: warn
