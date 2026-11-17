@@ -199,9 +199,24 @@ class SharedRootOnlySafety(unittest.TestCase):
                 shared.pacstrap_only(args)
             command.assert_not_called()
 
+    def test_unsigned_or_rw_pacman_control_cannot_authorize_root_mount(self):
+        plan = signed_fixture()
+        with patch.object(Path, "is_dir", return_value=True), \
+             patch.object(Path, "is_symlink", return_value=False), \
+             patch.object(shared, "execute", return_value="rw,relatime") as runner:
+            with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
+                                        "read-only"):
+                shared.prepare_signed_only_pacman(plan)
+            # Fail before invoking a renderer, pacman-conf, mount, or pacstrap.
+            self.assertEqual(runner.call_count, 1)
+            self.assertEqual(runner.call_args.args[0][0], "findmnt")
+
     def test_backend_writes_only_native_root_never_installs_bootloader(self):
         source = (HERE / "tools/cachyos_windows_shared_root_pacstrap.py").read_text()
-        self.assertIn('"pacstrap", "-K", str(ROOT)', source)
+        self.assertIn('"pacstrap", "-K", "-C", str(strict_config), str(ROOT)', source)
+        self.assertIn("prepare_signed_only_pacman(plan)", source)
+        self.assertIn('"python3", str(verifier), "--config", str(config)', source)
+        self.assertNotIn("SigLevel = Never", source)
         self.assertIn('protected_files_readonly(disk, plan)', source)
         self.assertIn('strict_gpt_evidence(disk, plan)', source)
         self.assertIn('GASLUX_SHARED_COW_ESP_BOOTLOADER_NOT_INSTALLED', source)
