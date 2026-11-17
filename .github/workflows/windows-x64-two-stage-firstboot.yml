@@ -114,7 +114,9 @@ jobs:
             --profile "$PROFILE" \
             --result "$PROOF/$PROFILE-result.json" \
             --serial "$PROOF/$PROFILE-serial.log" \
-            --serial-sha256 "$PROOF/$PROFILE-serial.sha256"
+            --serial-sha256 "$PROOF/$PROFILE-serial.sha256" \
+            --initial-dvd-serial "$PROOF/$PROFILE-initial-dvd-serial.log" \
+            --initial-dvd-serial-sha256 "$PROOF/$PROFILE-initial-dvd-serial.sha256"
           echo 'Read-only candidate consistency only; DOES NOT authorize CachyOS disk writes, prove dual boot or Windows recovery.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
