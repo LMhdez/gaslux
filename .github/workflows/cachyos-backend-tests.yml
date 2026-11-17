@@ -14,6 +14,7 @@ on:
       - feature/cachyos-signed-grub-qemu-execution
       - feature/cachyos-qemu-pacstrap-firstboot
       - feature/cachyos-windows-transaction-readonly-bridge
+      - feature/cachyos-windows-guest-evidence-binding
   pull_request:
     branches:
       - main
@@ -55,6 +56,8 @@ jobs:
             assets/live/cachyos-archiso-handoff.py \
             auto_tests/tools/cachyos_release_gate.py \
             auto_tests/tools/cachyos_windows_transaction_bridge.py \
+            auto_tests/tools/cachyos_windows_guest_evidence_binding.py \
+            auto_tests/tools/verify_windows_guest_recovery.py \
             auto_tests/tools/cachyos_lab_readiness.py \
             auto_tests/tools/cachyos_live_guest_serial.py \
             assets/live/cachyos-uefi-lab.py \
