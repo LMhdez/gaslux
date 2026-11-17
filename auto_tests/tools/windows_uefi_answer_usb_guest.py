@@ -24,7 +24,7 @@ STAGES = {
 }
 # GRUB's UEFI serial terminal may emit CSI cursor/colour controls surrounding
 # otherwise exact output lines; remove only bounded, well-formed terminal CSI.
-ANSI_CSI = re.compile(rb"\\x1b\\[[0-9;?]*[ -/]*[@-~]")
+ANSI_CSI = re.compile(rb"\x1b\[[0-9;?]*[ -/]*[@-~]")
 MAX_SERIAL = 256 * 1024
 
 
