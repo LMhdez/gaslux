@@ -1,0 +1,31 @@
+name: Windows firstlogon COM1 marker array native PowerShell contract (no guest)
+on:
+  push:
+    branches:
+      - fix/windows-firstlogon-serial-line-witness-contract
+    paths:
+      - .github/workflows/windows-firstlogon-serial-line-contract.yml
+      - auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-powershell-no-guest:
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Generate real firstlogon PowerShell without Windows guest, parse and evaluate markers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -c "import sys;from pathlib import Path;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import witness_powershell;Path('auto_tests/powershell/win-firstlogon-source.ps1').write_text(witness_powershell('win10_22h2_en_us_x64','19045') + chr(10),encoding='utf-8')"
+          if ($LASTEXITCODE -ne 0) { throw 'Generated PowerShell guest script failed' }
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell 5.1 emitted concatenated markers' }
+          & pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell 7 emitted concatenated markers' }
+          'Only lexical/array semantics checked, NOT a real Windows firstboot.' | Out-File $env:GITHUB_STEP_SUMMARY -Append
