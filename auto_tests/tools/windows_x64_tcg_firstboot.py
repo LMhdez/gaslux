@@ -279,10 +279,11 @@ def usb_firstlogon_command(profile_key: str, build: str) -> str:
     sha256 = hashlib.sha256(payload).hexdigest()
     command = (
         'powershell -NoP -EP Bypass -C "'
-        '$v=Get-Volume -FileSystemLabel GASLUXCI;'
-        # A single volume is mandatory; other/missing labels fail closed.
-        # Powershell's PATH-resolved .exe keeps this under the Setup limit.
-        'if($v.Count-ne 1){throw};'
+        '$v=Get-Volume -FileSystemL GASLUXCI;'
+        # The array count rejects 0 or multiple matches even in PS 5.1.
+        # -FileSystemL uniquely abbreviates Get-Volume -FileSystemLabel.
+        # The PATH-resolved PowerShell command stays below 240 characters.
+        'if(@($v).Count-ne 1){throw};'
         "$p=$v.DriveLetter+':\\GASLUX.PS1';"
         "if((Get-FileHash $p).Hash-ne '" + sha256 + "'){throw};&$p\""
     )
