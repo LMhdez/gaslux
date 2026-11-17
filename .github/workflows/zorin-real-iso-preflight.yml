@@ -9,19 +9,21 @@ on:
       - 'assets/live/libertix-distribution-common.sh'
       - 'assets/live/libertix-install-runtime-common.sh'
       - 'release-config.json'
+      - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
   pull_request:
     paths:
       - '.github/workflows/zorin-real-iso-preflight.yml'
       - 'assets/live/libertix-distribution-common.sh'
       - 'assets/live/libertix-install-runtime-common.sh'
       - 'release-config.json'
+      - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: zorin-official-readonly-${{ github.ref }}
+  group: zorin-official-readonly-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -60,13 +62,14 @@ jobs:
           )
           print("Zorin release-config matches upstream 18.1 Core checksum and size")
           PY
-      - name: Install read-only inspection utilities
+      - name: Install read-only ISO and disposable QEMU/OVMF tools
         shell: bash
         run: |
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            aria2 squashfs-tools util-linux
+            aria2 squashfs-tools util-linux qemu-system-x86 ovmf grub-common \
+            grub-efi-amd64-bin mtools dosfstools gdisk
       - name: Download exact official mirror bytes into runner scratch
         shell: bash
         env:
@@ -112,6 +115,17 @@ jobs:
             > "$RUNNER_TEMP/zorin-real/evidence/result.txt"
           echo "NOT TESTED: Windows disk writes, real Zorin installation, Linux boot, Windows boot, update, rollback."
           GASLUX_REAL_ISO
+      - name: Boot real Zorin Casper kernel in isolated QEMU/OVMF guest (no Windows disk)
+        shell: bash
+        env:
+          ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/zorin-real/evidence/guest
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            zorin "$RUNNER_TEMP/zorin-real/zorin.iso" "$ZORIN_SHA"
+          echo "NOT TESTED: installed Zorin, Windows co-boot, updates, uninstall and recovery."
       - name: Save small integrity evidence, not ISO or user data
         if: always()
         uses: actions/upload-artifact@v4
