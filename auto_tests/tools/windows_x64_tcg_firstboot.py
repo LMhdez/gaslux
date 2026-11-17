@@ -983,24 +983,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
-    if args.audit_installed_gpt_readonly and not (
-        args.profile in ("win10_22h2_en_us_x64", "win11_26h2_en_us_x64")
-        and args.two_stage_install_only
-        and args.accel == "kvm"
-        and not args.fixture_only
-    ):
-        raise SystemExit("offline installed GPT audit requires genuine Windows 10/11 "
-                         "two-stage hosted KVM firstboot")
-    if args.audit_primary_backup_gpt_readonly and not (
-        args.profile == "win11_26h2_en_us_x64"
-        and args.audit_installed_gpt_readonly
-        and args.two_stage_install_only
-        and args.accel == "kvm"
-        and args.derived_no_prompt
-        and not args.fixture_only
-    ):
-        raise SystemExit("primary/backup GPT audit requires genuine Windows 11 "
-                         "two-stage KVM and independent libguestfs proof")
     if args.stage_cachyos_win11_root_gpt_overlay_only and not (
         args.profile == "win11_26h2_en_us_x64"
         and args.two_stage_install_only and args.derived_no_prompt
@@ -1026,6 +1008,24 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("Windows 11 fifth GPT overlay requires all distinct "
                          "hosted-VM consents and proven Windows firstboot, "
                          "both read-only GPT audits and no real disk writes")
+    if args.audit_installed_gpt_readonly and not (
+        args.profile in ("win10_22h2_en_us_x64", "win11_26h2_en_us_x64")
+        and args.two_stage_install_only
+        and args.accel == "kvm"
+        and not args.fixture_only
+    ):
+        raise SystemExit("offline installed GPT audit requires genuine Windows 10/11 "
+                         "two-stage hosted KVM firstboot")
+    if args.audit_primary_backup_gpt_readonly and not (
+        args.profile == "win11_26h2_en_us_x64"
+        and args.audit_installed_gpt_readonly
+        and args.two_stage_install_only
+        and args.accel == "kvm"
+        and args.derived_no_prompt
+        and not args.fixture_only
+    ):
+        raise SystemExit("primary/backup GPT audit requires genuine Windows 11 "
+                         "two-stage KVM and independent libguestfs proof")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
