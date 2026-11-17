@@ -419,7 +419,8 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
 
 
 def boot_vm(args: list[str], transcript: Path, limit: int,
-            profile_key: str, monitor_socket: Path | None = None) -> tuple[bool, str]:
+            profile_key: str, monitor_socket: Path | None = None,
+            reject_repeated_dvd_boot: bool = False) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -457,6 +458,16 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                         lines = {
                             line.strip() for line in serial_data.splitlines()
                         }
+                    if reject_repeated_dvd_boot:
+                        dvd_starts = re.findall(
+                            rb'BdsDxe: starting Boot[0-9]{4} "UEFI QEMU DVD-ROM',
+                            serial_data,
+                        )
+                        if len(dvd_starts) > 1:
+                            return False, (
+                                "firmware retried one-shot Microsoft DVD after "
+                                "initial startup; abort disposable VM"
+                            )
                     if monitor_socket is not None and not initial_cd_key_sent:
                         if BOOT_FROM_CD_PROMPT in serial_data:
                             send_first_iso_boot_key(monitor_socket)
@@ -496,7 +507,8 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     time.monotonic() - witnessed_at > 600
                 ):
                     return False, "installed Windows reported audit but did not power off cleanly"
-                time.sleep(0.1 if monitor_socket is not None and not initial_cd_key_sent else 10)
+                time.sleep(0.1 if monitor_socket is not None and not initial_cd_key_sent
+                           else (1 if reject_repeated_dvd_boot else 10))
             return False, "timed out before verified Windows guest audit and shutdown"
         finally:
             if proc.poll() is None:
@@ -545,6 +557,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--boot-probe-only", action="store_true",
                     help="lab-only: stop after a short OVMF no-prompt DVD check "
                          "and always keep installed Windows proof false")
+    ap.add_argument("--one-shot-install-only", action="store_true",
+                    help="EXPERIMENTAL hosted KVM only: initial no-prompt DVD "
+                         "then hard disk on reboot, with repeat-DVD abort")
     ap.add_argument("--derived-no-prompt", action="store_true",
                     help="disposable KVM lab ONLY: rebuild Microsoft-sourced UDF "
                          "with official noprompt UEFI image; never release media")
@@ -556,9 +571,16 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
-    if args.derived_no_prompt and not args.boot_probe_only:
-        raise SystemExit("derived no-prompt DVD requires probe-only until safe "
-                         "DVD detachment before first Windows reboot is proven")
+    if args.one_shot_install_only:
+        if not (args.derived_no_prompt and not args.boot_probe_only
+                and args.accel == "kvm" and
+                os.environ.get("GASLUX_WINDOWS_ONE_SHOT_INSTALL_CONSENT")
+                == "I_ACCEPT_DISPOSABLE_GITHUB_KVM_INITIAL_DVD_ONLY"):
+            raise SystemExit("one-shot Windows lab installation requires explicit "
+                             "hosted KVM consent, no-prompt media and one-time DVD boot")
+    elif args.derived_no_prompt and not args.boot_probe_only:
+        raise SystemExit("derived no-prompt DVD requires probe-only unless the "
+                         "separate hosted VM one-shot installation gate is approved")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
@@ -648,7 +670,10 @@ def main(argv: list[str] | None = None) -> int:
                 "-drive", f"if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file={boot_iso}",
                 "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
                 "-serial", f"file:{serial}",
-                "-boot", "order=dc",
+                # QEMU's documented 'once=d' gives DVD priority on initial
+                # startup only. Subsequent reboots must use the owned QCOW2.
+                "-boot", ("order=c,once=d" if args.one_shot_install_only
+                          else "order=dc"),
             ]
             # The lab DVD probe MUST NOT expose a writable target disk,
             # unattend answer file, or any other guest storage. Its ONLY
@@ -686,8 +711,12 @@ def main(argv: list[str] | None = None) -> int:
                     report["labNoPromptDvdBootProbePassed"] = ok
                     report["windowsClientBootVerified"] = False
                 else:
-                    ok, diagnostic = boot_vm(base, serial, args.boot_timeout,
-                                         args.profile, monitor_socket=monitor_path)
+                    ok, diagnostic = boot_vm(
+                        base, serial, args.boot_timeout, args.profile,
+                        monitor_socket=(None if args.one_shot_install_only
+                                        else monitor_path),
+                        reject_repeated_dvd_boot=args.one_shot_install_only,
+                    )
                 if not args.boot_probe_only:
                     report["windowsClientBootVerified"] = ok
                 report["diagnostic"] = diagnostic
