@@ -281,6 +281,76 @@ class SharedRootOnlySafety(unittest.TestCase):
             self.assertEqual(runner.call_count, 1)
             self.assertEqual(runner.call_args.args[0][0], "findmnt")
 
+    def test_protected_windows_hash_refuses_intermediate_and_final_symlinks(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-ro-hash-") as tmp:
+            root = Path(tmp)
+            (root / "Windows" / "System32").mkdir(parents=True)
+            trusted = root / "Windows" / "System32" / "winload.efi"
+            trusted.write_bytes(b"verified-owned-windows-file")
+            good = hashlib.sha256(trusted.read_bytes()).hexdigest()
+            self.assertEqual(shared.sha_file(trusted), good)
+
+            # Final symlink to an existing file is refused, even if its
+            # target bytes would match the signed digest.
+            trusted.unlink()
+            other = root / "other.bin"
+            other.write_bytes(b"verified-owned-windows-file")
+            trusted.symlink_to(other)
+            with self.assertRaises(OSError):
+                shared.sha_file(trusted)
+            trusted.unlink()
+
+            # Intermediary symlink cannot redirect the traversal into
+            # another directory with an identically named file.
+            original_dir = root / "Windows"
+            original_dir.rename(root / "RealWindows")
+            (root / "Windows").symlink_to(root / "RealWindows", target_is_directory=True)
+            with self.assertRaises(OSError):
+                shared.sha_file(root / "Windows" / "System32" / "winload.efi")
+
+    def test_signed_partition_mount_rejects_foreign_source_and_unsafe_options(self):
+        point = Path("/run/gaslux-cow-test")
+        device = Path("/dev/vdb3")
+        for readonly, expected_options in (
+            (True, "ro,nosuid,nodev,noexec,relatime"),
+            (False, "rw,nosuid,nodev,relatime"),
+        ):
+            def check(*, observed_source="/dev/vdb3", observed_type="ntfs3",
+                      options=expected_options):
+                def fake_run(argv):
+                    self.assertEqual(argv[:4], ["findmnt", "-n", "-M",
+                                                str(point)])
+                    return {"SOURCE": observed_source,
+                            "FSTYPE": observed_type,
+                            "OPTIONS": options}[argv[-1]]
+                shared.verify_mounted_source(
+                    point, device, "ntfs3", readonly=readonly, run=fake_run)
+
+            with self.subTest(readonly=readonly):
+                check()
+                for mutation in (
+                    {"observed_source": "/dev/vdc3"},
+                    {"observed_source": "/dev/vdb4"},
+                    {"observed_type": "ext4"},
+                    {"options": "rw,nosuid,nodev,noexec"},
+                    {"options": "ro,nosuid,nodev,noexec"} if not readonly
+                        else {"options": "ro,relatime"},
+                ):
+                    with self.subTest(mutation=mutation), \
+                         self.assertRaisesRegex(
+                             shared.SharedDiskHandoffRejected,
+                             "mount source, filesystem or access flags"):
+                        check(**mutation)
+
+    def test_source_protection_is_required_on_both_mount_paths(self):
+        source = (HERE / "tools/cachyos_windows_shared_root_pacstrap.py").read_text()
+        self.assertIn("verify_mounted_source(Path(temp), source, mount_type,",
+                      source)
+        self.assertIn('verify_mounted_source(ROOT, root_partition, "ext4", readonly=False)',
+                      source)
+        self.assertIn("os.O_NOFOLLOW", source)
+        self.assertIn("dir_fd=directory", source)
+
     def test_backend_writes_only_native_root_never_installs_bootloader(self):
         source = (HERE / "tools/cachyos_windows_shared_root_pacstrap.py").read_text()
         self.assertIn('"pacstrap", "-K", "-C", str(strict_config), str(ROOT)', source)
