@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Disposable QEMU/OVMF real live-kernel smoke for Pop!_OS, Q4OS and Zorin.
+# Disposable QEMU/OVMF live-kernel smoke for Pop!_OS, Q4OS, Zorin and Mint.
 # Real ISO stays read-only on an emulated optical or virtio device. This neither
 # installs a target OS nor starts a Windows VM.
 set -Eeuo pipefail
 
 die() { printf '%s\n' "GASLUX_LIVE_BOOT_ERROR: $*" >&2; exit 1; }
-[[ $# -eq 3 ]] || die 'Usage: gaslux_candidate_live_boot.sh popos|q4os|zorin ISO PINNED_SHA256'
+[[ $# -eq 3 ]] || die 'Usage: gaslux_candidate_live_boot.sh popos|q4os|zorin|mint ISO PINNED_SHA256'
 distro="$1"
 iso="$(realpath -e "$2")"
 digest="$3"
-[[ "$distro" == popos || "$distro" == q4os || "$distro" == zorin ]] || die 'Unknown backend'
+[[ "$distro" == popos || "$distro" == q4os || "$distro" == zorin || "$distro" == mint ]] || die 'Unknown backend'
 [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || die 'Missing pinned sha256'
 [[ -f "$iso" && ! -L "$iso" ]] || die 'Refuse symlink/non-regular ISO'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
@@ -57,11 +57,11 @@ if [[ "$distro" == popos ]]; then
   kernel="$prefix/vmlinuz.efi"
   initrd="$prefix/initrd.gz"
   boot="boot=casper live-media-path=/$prefix"
-elif [[ "$distro" == zorin ]]; then
+elif [[ "$distro" == zorin || "$distro" == mint ]]; then
   # The exact kernel/initrd naming varies by Ubuntu/Casper image build.
   # Discover both only within the verified ISO's top-level casper directory.
   # Ambiguous or missing candidates fail before creating any VM boot media.
-  [[ -d "$work/iso-root/casper" ]] || die 'Pinned Zorin ISO has no Casper directory'
+  [[ -d "$work/iso-root/casper" ]] || die 'Pinned Mint/Zorin ISO has no Casper directory'
   mapfile -t kernels < <(
     find -L "$work/iso-root/casper" -mindepth 1 -maxdepth 1 -type f \
       \( -name vmlinuz -o -name vmlinuz.efi \) -printf '%f\n' | sort
@@ -73,10 +73,10 @@ elif [[ "$distro" == zorin ]]; then
       -printf '%f\n' | sort
   )
   if [[ "${#kernels[@]}" -ne 1 || "${#initrds[@]}" -ne 1 ]]; then
-    echo 'Pinned Zorin Casper kernel/initramfs candidates:' >&2
+    echo 'Pinned Mint/Zorin Casper kernel/initramfs candidates:' >&2
     find "$work/iso-root/casper" -mindepth 1 -maxdepth 1 \
       \( -name '*vmlinuz*' -o -name '*initrd*' \) -printf '%f\n' >&2
-    die 'Pinned Zorin ISO has missing or ambiguous kernel/initramfs files'
+    die 'Pinned Mint/Zorin ISO has missing or ambiguous kernel/initramfs files'
   fi
   kernel="casper/${kernels[0]}"
   initrd="casper/${initrds[0]}"
@@ -154,10 +154,10 @@ dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc
 
 # OVMF exposes the owned ESP as virtio. Some hybrid Casper ISOs are not
 # enumerated by stand-alone GRUB when attached through the legacy IDE CD-ROM.
-# Present Zorin's pinned ISO as a second, strictly read-only virtio device
+# Present Mint/Zorin pinned ISO as a second, strictly read-only virtio device
 # while leaving the older Pop/Q4OS lab media modes unchanged.
 iso_drive=(-cdrom "$iso")
-if [[ "$distro" == zorin ]]; then
+if [[ "$distro" == zorin || "$distro" == mint ]]; then
   iso_drive=(
     -drive "if=none,id=labiso,format=raw,readonly=on,file=$iso"
     -device virtio-blk-pci,drive=labiso,bootindex=2
