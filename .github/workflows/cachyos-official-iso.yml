@@ -19,6 +19,7 @@ on:
       - auto_tests/tools/cachyos_guest_vm_only_install.sh
       - auto_tests/tools/cachyos_vm_update_recovery_guest.sh
       - auto_tests/tools/cachyos_qemu_update_rollback.sh
+      - auto_tests/test_cachyos_qemu_update_rollback_contract.py
       - auto_tests/tools/cachyos_signed_grub_vm_config.py
       - auto_tests/tools/cachyos_live_guest_serial.py
       - auto_tests/tools/cachyos_live_guest_readonly_probe.sh
@@ -38,6 +39,15 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      - name: Verify disposable update/rollback contracts before ISO download
+        if: github.ref_name == 'feature/cachyos-qemu-updates-snapshot-recovery'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/cachyos_guest_vm_only_install.sh
+          bash -n auto_tests/tools/cachyos_vm_update_recovery_guest.sh
+          bash -n auto_tests/tools/cachyos_qemu_update_rollback.sh
+          python3 -m unittest auto_tests.test_cachyos_qemu_update_rollback_contract -v
       - name: Install ISO verification prerequisites
         shell: bash
         run: |
