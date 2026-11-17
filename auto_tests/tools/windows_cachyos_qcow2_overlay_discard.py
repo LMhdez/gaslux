@@ -70,6 +70,16 @@ def overlay_trial(base: Path) -> dict:
     owned_base(base)
     identity = qcow2_file_identity(base)
     original = inspect_owned_qcow2(base)
+    if os.environ.get("GASLUX_WINDOWS_GUESTFS_TEST") != "I_ACCEPT_READONLY_FILESYSTEM_AUDIT":
+        raise GeometryError("missing explicit read-only filesystem audit consent")
+    from windows_x64_installed_gpt_ro_audit import inspect_owned_disk
+    original_fs = inspect_owned_disk(base)
+    require(original_fs["recoveryGptPartitionPresent"] is True
+            and original_fs["winreImageOnRecoveryPresent"] is True
+            and all(original_fs.get(field) for field in (
+                "espBootManagerSha256", "espBcdSha256",
+                "windowsLoaderSha256", "winreImageSha256")),
+            "Windows EFI/BCD/WinRE offline hash baseline absent")
     require(original["candidateWindowsGptPrimaryAndBackupConsistent"] is True
             and original["storageWritesAuthorized"] is False
             and original["sameDiskDualBootVerified"] is False,
@@ -113,9 +123,14 @@ def overlay_trial(base: Path) -> dict:
         require_unchanged_qcow2(base, identity)
         again = inspect_owned_qcow2(base)
         require(again == original, "Windows backing GPT evidence not restored")
+        after_fs = inspect_owned_disk(base)
+        require(after_fs == original_fs,
+                "Windows EFI/BCD/WinRE read-only audit changed after overlay discard")
     print("GASLUX_WINDOWS_QCOW2_OVERLAY_PRIMARY_GPT_CORRUPTION_REJECTED=1",
           flush=True)
     print("GASLUX_WINDOWS_QCOW2_OVERLAY_DISCARD_BASE_WINDOWS_GPT_UNCHANGED=1",
+          flush=True)
+    print("GASLUX_WINDOWS_QCOW2_OVERLAY_ESP_BCD_WINRE_HASHES_UNCHANGED=1",
           flush=True)
     print("GASLUX_WINDOWS_QCOW2_OVERLAY_BCD_WINRE_REBOOT_NOT_TESTED=1",
           flush=True)
@@ -123,6 +138,7 @@ def overlay_trial(base: Path) -> dict:
         "overlayFaultRejected": True,
         "overlayDiscarded": True,
         "backingWindowsGptUnchanged": True,
+        "offlineEspBcdWinreHashesUnchanged": True,
         "windowsRebootAfterFaultVerified": False,
         "windowsBcdWinreRestorationVerified": False,
         "linuxInstalled": False,
