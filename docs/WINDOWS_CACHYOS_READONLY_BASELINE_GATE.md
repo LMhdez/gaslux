@@ -39,3 +39,39 @@ GPL-3.0; AI_POLICY.md review required. Generated-by: GPT-6.
 The Windows guest's independent PowerShell serial writes may be coalesced onto a single COM1 line. The candidate gate accepts each marker as an exact bounded whitespace-delimited token (at most 256 characters), including multiple adjacent known tokens on a line. It rejects arbitrary prompt/echo prefixes mixed into audit lines, glued markers, duplicates, conflicting values, absent required markers and the FIRSTBOOT_FAIL family even if the failure occurs more than 400 KiB before the success witnesses. This reflects the observed issues addressed in PRs #90 and #93. The result remains **candidate document consistency only** and no guest provenance or writing permission is granted.
 
 At commit `305e288` the dedicated no-ISO CI run #44056001264 passed 27 candidate gate regressions and 11 Microsoft ISO contract tests. No actual installed Windows, Linux dual boot or recovery was executed by this workflow. Earlier intermediate runs failed because one negative test still expected the old error string; the source guard itself correctly rejected the fake prompt. Consult the exact-HEAD Actions run for the final result.
+
+## 17 November 2026: real Windows evidence and stronger candidate checks
+
+The completed Windows 10/11 **failed** official-ISO workflow
+[#44048550209](https://github.com/LMhdez/gaslux/actions/runs/44048550209)
+is useful for isolating the original host-side COM1 parsing defect.
+Downloaded [Windows 10 archive #14312953039](https://github.com/LMhdez/gaslux/actions/runs/44048550209/artifacts/14312953039)
+and [Windows 11 archive #14313808220](https://github.com/LMhdez/gaslux/actions/runs/44048550209/artifacts/14313808220)
+both have a matching serial SHA-256 manifest. In each raw second-guest
+serial, **all seven** expected client markers were present as exact
+whitespace-delimited tokens on one line: client profile, build,
+ProductType=1, GPT/ESP, Recovery GPT, WinRE enabled and BCD enumeration.
+Neither contained a FirstLogon failure token. Both QEMU jobs returned
+code 0; the **old host parser** nevertheless reported the Windows client
+unverified because it expected one marker per line. The workflow
+conclusion is still **FAILURE**, and must not be changed retrospectively.
+
+By contrast, the [Windows 11 serial archive #14316291836](https://github.com/LMhdez/gaslux/actions/runs/44044462226/artifacts/14316291836)
+from [run #44044462226](https://github.com/LMhdez/gaslux/actions/runs/44044462226)
+has a valid SHA-256 but **none** of the seven Windows audit tokens; it
+timed out after entering Windows Boot Manager. A Windows Boot Manager
+firmware event is not a first-logon proof.
+
+The later native Windows scanner in PRs #90/#93/#94 already addresses
+COM1 coalescing and bounded token acceptance. This candidate gate
+additionally requires exactly the **seven profile-specific tokens**,
+rejects unknown or conflicting tokens and compares the reported
+FirstLogon PowerShell script SHA-256 with the file generated from the
+**current checked-out source**. It also requires the exact diagnostic
+indicating both in-guest audit and clean QEMU shutdown; QEMU exit code
+zero alone cannot satisfy the gate. Positive candidate documents still
+never authenticate an actual guest or authorize any Linux installation.
+
+Candidate-gate unit CI passing does not substitute for a fresh SUCCESS
+real-Microsoft-ISO Windows 10/11 QEMU run with these corrected checks,
+much less same-QCOW2 dual boot or Windows recovery.
