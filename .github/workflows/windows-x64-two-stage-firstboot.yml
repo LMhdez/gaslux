@@ -14,6 +14,7 @@ on:
       - fix/windows10-gpt-protective-mbr-unique-guids
       - fix/windows-gpt-qcow2-window-extraction-probe
       - fix/cachyos-qcow2-read-consistency-issue3
+      - test/cachyos-same-disk-readonly-extent-gate
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
