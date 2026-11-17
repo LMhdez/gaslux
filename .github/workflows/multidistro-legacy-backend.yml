@@ -49,6 +49,14 @@ jobs:
           PYTHONPATH: auto_tests
         run: python -m pytest -q auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_release_metadata.py
 
+      - name: Exercise legacy Mint/Zorin backend order with mocked actions
+        run: |
+          bash -n assets/live/configure-target-main.sh
+          python -m compileall -q auto_tests/tests/test_ubuntu_target_backend_preflight.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/tests/test_ubuntu_target_backend_preflight.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_ubuntu_target_backend_preflight.py
+          python -m pytest -q auto_tests/tests/test_ubuntu_target_backend_preflight.py
+
   windows-contracts:
     runs-on: windows-2022
     steps:
