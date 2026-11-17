@@ -107,4 +107,7 @@ pacman -Q linux-cachyos-lts grub base cachyos-hooks >/dev/null ||
 printf '%s\n' lab-real-iso-signed-20261116 > /var/lib/gaslux-ci/update-complete
 sync
 printf 'GASLUX_VM_UPDATE_APPLIED=1\n' > /dev/ttyS0
-systemctl --no-block reboot || fail 'guest reboot failed'
+# An update success marker is not permission for the host to cut power.
+# Finish guest filesystem writes cleanly before testing the updated boot.
+printf 'GASLUX_VM_UPDATE_CLEAN_SHUTDOWN_REQUESTED=1\n' > /dev/ttyS0
+systemctl --no-block poweroff || fail 'guest clean shutdown request failed'
