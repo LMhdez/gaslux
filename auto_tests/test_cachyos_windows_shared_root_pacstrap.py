@@ -190,9 +190,9 @@ class SharedRootOnlySafety(unittest.TestCase):
     def test_pacstrap_never_called_without_separate_write_grant(self):
         args = SimpleNamespace()
         with patch.object(shared, "guest_plan",
-                          return_value=(signed_fixture(), Path("/dev/null"))), \\
+                          return_value=(signed_fixture(), Path("/dev/null"))), \
              patch.object(shared, "verify_lab_root_write_grant",
-                          side_effect=shared.SharedDiskHandoffRejected("no grant")), \\
+                          side_effect=shared.SharedDiskHandoffRejected("no grant")), \
              patch.object(shared, "execute") as command:
             with self.assertRaisesRegex(shared.SharedDiskHandoffRejected, "no grant"):
                 shared.pacstrap_only(args)
