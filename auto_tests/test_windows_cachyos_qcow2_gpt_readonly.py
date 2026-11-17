@@ -185,6 +185,53 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
                     "windowsBcdWinreRestorationVerified"):
             self.assertIs(result[key], False)
 
+    def test_post_windows_aligned_extent_is_observation_not_write_authority(self):
+        front, back = create_disk_windows()
+        report = gpt.inspect_gpt_windows(front, back)
+        extent = report["observedPostWindowsFreeExtent"]
+        self.assertTrue(extent["readOnlyObservation"])
+        self.assertFalse(extent["partitionCreated"])
+        self.assertFalse(extent["linuxWriteAuthorized"])
+        self.assertTrue(extent["recoveryAndOwnershipProofRequired"])
+        self.assertFalse(report["storageWritesAuthorized"])
+        self.assertFalse(report["releaseEligible"])
+        self.assertFalse(report["sameDiskDualBootVerified"])
+        self.assertGreaterEqual(extent["lengthBytes"], 40 * 1024**3)
+
+    def test_post_windows_extent_exact_alignment_and_no_overlap(self):
+        front, back = create_disk_windows()
+        report = gpt.inspect_gpt_windows(front, back)
+        extent = report["observedPostWindowsFreeExtent"]
+        windows_end = report["windowsPartitions"][-1]["lastLba"]
+        final_usable = gpt.VIRTUAL_BYTES // gpt.SECTOR - 34
+        self.assertGreater(extent["firstLba"], windows_end)
+        self.assertLessEqual(extent["lastLba"], final_usable)
+        self.assertEqual(extent["firstLba"] % 2048, 0)
+        self.assertEqual((extent["lastLba"] + 1) % 2048, 0)
+        self.assertEqual(
+            extent["lengthBytes"],
+            (extent["lastLba"] - extent["firstLba"] + 1) * gpt.SECTOR,
+        )
+
+    def test_noncanonical_windows_pmbr_does_not_authorize_observed_extent(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xFFFFFFFF)
+        report = gpt.inspect_gpt_windows(bytes(changed), back)
+        self.assertFalse(report["protectiveMbrCanonical"])
+        self.assertFalse(report["observedPostWindowsFreeExtent"]["linuxWriteAuthorized"])
+        self.assertFalse(report["storageWritesAuthorized"])
+
+    def test_post_windows_extent_cannot_be_derived_from_foreign_partition(self):
+        front, back = create_disk_windows(part_types=list(gpt.TYPES) + [gpt.TYPES[2]])
+        with self.assertRaisesRegex(gpt.GeometryError, "foreign fifth"):
+            gpt.inspect_gpt_windows(front, back)
+
+    def test_post_windows_extent_refuses_recovery_near_disk_end(self):
+        front, back = create_disk_windows(small_free=True)
+        with self.assertRaisesRegex(gpt.GeometryError, "insufficient"):
+            gpt.inspect_gpt_windows(front, back)
+
     def test_primary_header_crc_tamper_refused(self):
         front, back = create_disk_windows()
         b = bytearray(front)
