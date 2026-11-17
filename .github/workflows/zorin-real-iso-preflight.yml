@@ -1,0 +1,301 @@
+name: Mint/Zorin official ISO and SquashFS prewrite proofs (read-only)
+
+on:
+  push:
+    branches:
+      - fix/zorin-mint-prewrite-iso-identity
+    paths:
+      - '.github/workflows/zorin-real-iso-preflight.yml'
+      - 'assets/live/libertix-distribution-common.sh'
+      - 'assets/live/libertix-install-runtime-common.sh'
+      - 'release-config.json'
+      - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
+  pull_request:
+    paths:
+      - '.github/workflows/zorin-real-iso-preflight.yml'
+      - 'assets/live/libertix-distribution-common.sh'
+      - 'assets/live/libertix-install-runtime-common.sh'
+      - 'release-config.json'
+      - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zorin-official-readonly-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  verified-zorin-iso-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Assert official Zorin 18.1 Core identity and disk budget
+        shell: bash
+        env:
+          ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+          ZORIN_BYTES: '3909091328'
+          ZORIN_SOURCE: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          cfg = json.loads(Path("release-config.json").read_text(encoding="utf-8"))
+          zorin = [item for item in cfg["distributions"] if item["id"] == "zorin"]
+          assert len(zorin) == 1, "Zorin release identity is missing or ambiguous"
+          release = zorin[0]
+          assert release["osReleaseId"] == "zorin"
+          assert release["name"] == "Zorin OS 18.1 Core"
+          assert release["isoInstallerSha256"] == os.environ["ZORIN_SHA"]
+          assert release["isoInstallerSizeBytes"] == int(os.environ["ZORIN_BYTES"])
+          assert release["isoInstaller"] == os.environ["ZORIN_SOURCE"]
+          assert shutil.disk_usage(os.environ["RUNNER_TEMP"]).free > 6 * 1024 ** 3, (
+              "Not enough runner scratch space to verify the complete ISO safely"
+          )
+          print("Zorin release-config matches upstream 18.1 Core checksum and size")
+          PY
+      - name: Install read-only ISO and disposable QEMU/OVMF tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 squashfs-tools util-linux qemu-system-x86 ovmf grub-common \
+            grub-efi-amd64-bin mtools dosfstools gdisk
+      - name: Download exact official mirror bytes into runner scratch
+        shell: bash
+        env:
+          ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+          ZORIN_SOURCE: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+          ZORIN_BYTES: '3909091328'
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/zorin-real/evidence"
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=4 --retry-wait=10 --connect-timeout=30 --timeout=60 \
+            --check-integrity=true --checksum="sha-256=$ZORIN_SHA" \
+            --dir="$RUNNER_TEMP/zorin-real" --out=zorin.iso "$ZORIN_SOURCE"
+          test -f "$RUNNER_TEMP/zorin-real/zorin.iso"
+          test ! -L "$RUNNER_TEMP/zorin-real/zorin.iso"
+          test "$(stat -c %s "$RUNNER_TEMP/zorin-real/zorin.iso")" = "$ZORIN_BYTES"
+          printf '%s  %s\n' "$ZORIN_SHA" "$RUNNER_TEMP/zorin-real/zorin.iso" | sha256sum -c -
+          printf 'source=%s\nbytes=%s\nsha256=%s\n' \
+            "$ZORIN_SOURCE" "$ZORIN_BYTES" "$ZORIN_SHA" \
+            > "$RUNNER_TEMP/zorin-real/evidence/source.txt"
+      - name: Run actual Gaslux read-only Mint/Zorin prewrite guard on Zorin ISO
+        shell: bash
+        env:
+          ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+        run: |
+          set -Eeuo pipefail
+          bash -n assets/live/libertix-install-main.sh \
+            assets/live/libertix-distribution-common.sh \
+            assets/live/libertix-install-runtime-common.sh
+          # Live install runs as root; sudo is required for read-only loop
+          # mounting on GitHub-hosted runners. No live disk installer is run.
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" ZORIN_SHA="$ZORIN_SHA" bash -s <<'GASLUX_REAL_ISO'
+          set -Eeuo pipefail
+          source assets/live/libertix-install-runtime-common.sh
+          source assets/live/libertix-distribution-common.sh
+          preflight_legacy_installer_iso_or_die \
+            "$RUNNER_TEMP/zorin-real/zorin.iso" "$ZORIN_SHA" zorin zorin
+          if findmnt -rn -M /mnt/libertix-iso-preflight >/dev/null 2>&1; then
+            echo "::error::Read-only ISO preflight leaked a mount"
+            exit 1
+          fi
+          printf 'PASS: genuine, SHA-pinned Zorin 18.1 ISO passed the production prewrite read-only preflight\n' \
+            > "$RUNNER_TEMP/zorin-real/evidence/result.txt"
+          echo "NOT TESTED: Windows disk writes, real Zorin installation, Linux boot, Windows boot, update, rollback."
+          GASLUX_REAL_ISO
+      - name: Boot real Zorin Casper kernel in isolated QEMU/OVMF guest (no Windows disk)
+        shell: bash
+        env:
+          ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/zorin-real/evidence/guest
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            zorin "$RUNNER_TEMP/zorin-real/zorin.iso" "$ZORIN_SHA"
+          echo "NOT TESTED: installed Zorin, Windows co-boot, updates, uninstall and recovery."
+      - name: Save small integrity evidence, not ISO or user data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zorin-181-official-readonly-preflight
+          path: ${{ runner.temp }}/zorin-real/evidence/
+          if-no-files-found: warn
+          retention-days: 14
+
+  real-squashfs-fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install actual SquashFS tooling
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends squashfs-tools
+      - name: Execute production validation on real Mint/Zorin SquashFS fixtures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source assets/live/libertix-distribution-common.sh
+          dir="$(mktemp -d)"
+          trap 'rm -rf -- "$dir"' EXIT
+          for distro in mint zorin; do
+            case "$distro" in mint) os_id=linuxmint ;; zorin) os_id=zorin ;; esac
+            base="$dir/$distro"
+            mkdir -p "$base/tree/etc" "$base/tree/var/lib/dpkg" \
+              "$base/tree/usr/sbin" "$base/tree/usr/bin"
+            printf 'ID=%s\nID_LIKE="ubuntu debian"\n' "$os_id" > "$base/tree/etc/os-release"
+            printf 'Package: base-files\n' > "$base/tree/var/lib/dpkg/status"
+            for name in update-grub update-initramfs; do
+              printf '#!/bin/sh\nexit 0\n' > "$base/tree/usr/sbin/$name"
+            done
+            printf '#!/bin/sh\nexit 0\n' > "$base/tree/usr/bin/lsinitramfs"
+            chmod +x "$base/tree/usr/sbin/"* "$base/tree/usr/bin/lsinitramfs"
+            mksquashfs "$base/tree" "$base/valid.squashfs" \
+              -noappend -processors 2 -comp gzip >/dev/null
+            assert_distribution_rootfs_compatible_or_die "$base/valid.squashfs" "$os_id"
+            if assert_distribution_rootfs_compatible_or_die "$base/valid.squashfs" wrong-id; then
+              echo "::error::Accepted wrong OS identity"
+              exit 1
+            fi
+            rm "$base/tree/usr/sbin/update-grub"
+            mksquashfs "$base/tree" "$base/missing.squashfs" \
+              -noappend -processors 2 -comp gzip >/dev/null
+            if assert_distribution_rootfs_compatible_or_die "$base/missing.squashfs" "$os_id"; then
+              echo "::error::Accepted missing target capability"
+              exit 1
+            fi
+          done
+          echo 'PASS: actual SquashFS tools accept Mint/Zorin fixtures and reject mismatches'
+
+  official-mint-iso-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      MINT_SHA: a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4
+      MINT_BYTES: '3091660800'
+      MINT_SOURCE: https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require exact stable catalog Mint identity and enough scratch space
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          catalog = json.loads(Path("release-config.json").read_text())
+          matches = [entry for entry in catalog["distributions"] if entry["id"] == "mint"]
+          assert len(matches) == 1, "Mint catalog ID ambiguous"
+          mint = matches[0]
+          assert mint["name"] == "Linux Mint 22.3 Cinnamon"
+          assert mint["osReleaseId"] == "linuxmint"
+          assert mint["isoInstaller"] == os.environ["MINT_SOURCE"]
+          assert mint["isoInstallerSha256"] == os.environ["MINT_SHA"]
+          assert mint["isoInstallerSizeBytes"] == int(os.environ["MINT_BYTES"])
+          assert shutil.disk_usage("/tmp").free > 5 * 1024**3
+          print("Mint pinned release identity and free scratch space verified")
+          PY
+      - name: Install read-only inspection dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends aria2 squashfs-tools util-linux
+      - name: Download full official Mint ISO and verify pinned SHA-256 and bytes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/mint223/evidence
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=4 --retry-wait=10 --connect-timeout=30 --timeout=90 \
+            --check-integrity=true --checksum="sha-256=$MINT_SHA" \
+            --dir=/tmp/mint223 --out=mint.iso "$MINT_SOURCE"
+          test -f /tmp/mint223/mint.iso
+          test ! -L /tmp/mint223/mint.iso
+          test "$(stat -c %s /tmp/mint223/mint.iso)" = "$MINT_BYTES"
+          printf '%s  %s\n' "$MINT_SHA" /tmp/mint223/mint.iso | sha256sum -c -
+          printf 'source=%s\nbytes=%s\nsha256=%s\n' \
+            "$MINT_SOURCE" "$MINT_BYTES" "$MINT_SHA" > /tmp/mint223/evidence/source.txt
+      - name: Verify actual Mint filesystem.squashfs without installing or writing to targets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n assets/live/libertix-distribution-common.sh assets/live/libertix-install-runtime-common.sh
+          sudo env MINT_SHA="$MINT_SHA" bash -s <<'CHECK_REAL_MINT'
+          set -Eeuo pipefail
+          source assets/live/libertix-distribution-common.sh
+          source assets/live/libertix-install-runtime-common.sh
+          verify_file_sha256 /tmp/mint223/mint.iso "$MINT_SHA"
+          mkdir -p /tmp/mint223/iso
+          cleanup() {
+            if findmnt -rn -M /tmp/mint223/iso >/dev/null 2>&1; then
+              umount /tmp/mint223/iso
+            fi
+          }
+          trap cleanup EXIT
+          mount -t iso9660 -o ro,loop,nosuid,nodev,noexec /tmp/mint223/mint.iso /tmp/mint223/iso
+          rootfs="$(resolve_distribution_rootfs_or_die /tmp/mint223/iso)"
+          assert_distribution_rootfs_compatible_or_die "$rootfs" linuxmint
+          if assert_distribution_rootfs_compatible_or_die "$rootfs" zorin; then
+            echo "::error::Accepted Mint ISO payload as Zorin"
+            exit 1
+          fi
+          printf '%s\n' \
+            'PASS: genuine pinned Linux Mint 22.3 ISO accepted by production SquashFS capability guard' \
+            'NOT TESTED: installation, Linux/Windows boot, updates, uninstall or rollback' \
+            > /tmp/mint223/evidence/result.txt
+          CHECK_REAL_MINT
+          if findmnt -rn -M /tmp/mint223/iso >/dev/null 2>&1; then
+            echo "::error::Read-only Mint ISO mount was not released"
+            exit 1
+          fi
+      - name: Exercise consolidated Mint/Zorin prewrite guard on actual Mint ISO
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Execute the exact combined PR source; no cross-branch fetch or test-only bypass.
+          sudo env MINT_SHA="$MINT_SHA" bash -s <<'PREWRITE'
+          set -Eeuo pipefail
+          source assets/live/libertix-install-runtime-common.sh
+          source assets/live/libertix-distribution-common.sh
+          cleanup() {
+            if findmnt -rn -M /mnt/libertix-iso-preflight >/dev/null 2>&1; then
+              umount /mnt/libertix-iso-preflight
+            fi
+          }
+          trap cleanup EXIT
+          if preflight_legacy_installer_iso_or_die /tmp/mint223/mint.iso "$MINT_SHA" zorin zorin; then
+            echo "::error::Mint media was incorrectly accepted as Zorin"
+            exit 1
+          fi
+          preflight_legacy_installer_iso_or_die /tmp/mint223/mint.iso "$MINT_SHA" mint linuxmint
+          if findmnt -rn -M /mnt/libertix-iso-preflight >/dev/null 2>&1; then
+            echo "::error::Prewrite ISO mount leaked"
+            exit 1
+          fi
+          printf '%s\n' 'PASS: consolidated Mint/Zorin guard accepts only the genuine Mint ISO identity' >> /tmp/mint223/evidence/result.txt
+          PREWRITE
+      - name: Publish only small text evidence, never ISO or disk images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mint-223-actual-iso-readonly-proof
+          path: /tmp/mint223/evidence/
+          if-no-files-found: warn
+          retention-days: 14
