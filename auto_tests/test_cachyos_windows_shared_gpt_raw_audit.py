@@ -186,7 +186,9 @@ class RealReadOnlyGptWindowsTests(unittest.TestCase):
             self.assertEqual((front, back), (payload, payload))
             self.assertEqual(pread.call_count, 2)
             self.assertEqual(opener.call_args.args[0], Path("/dev/vdb"))
-            self.assertTrue(opener.call_args.args[1] & inspect.os.O_RDONLY == 0)
+            flags = opener.call_args.args[1]
+            self.assertEqual(flags & (inspect.os.O_WRONLY | inspect.os.O_RDWR), 0)
+            self.assertNotEqual(flags & inspect.os.O_NOFOLLOW, 0)
 
     def test_real_host_files_and_character_devices_not_accepted(self):
         with self.assertRaisesRegex(
