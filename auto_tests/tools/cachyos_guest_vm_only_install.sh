@@ -143,7 +143,15 @@ Include = /etc/pacman.d/mirrorlist
 SigLevel = Required DatabaseOptional
 Include = /etc/pacman.d/mirrorlist
 PACMAN
-[[ "$(arch-chroot "$TARGET" pacman-conf --repo-list)" == 
+# Refuse any drift from the three signed native repositories.
+[[ "$(arch-chroot "$TARGET" pacman-conf --repo-list)" == "$(printf '%s\n' cachyos core extra)" ]] ||
+  die 'installed repo set does not match signed CachyOS/core/extra policy'
+for repo in cachyos core extra; do
+  [[ "$(arch-chroot "$TARGET" pacman-conf --repo "$repo" SigLevel)" == 'Required DatabaseOptional' ]] ||
+    die "installed $repo repository package-signature policy is not mandatory"
+done
+echo 'GASLUX_LAB_SIGNED_INSTALLED_REPOS_CONFIGURED=1'
+[[ -s "$TARGET/boot/vmlinuz-linux-cachyos-lts" ]] || die 'kernel missing'
 mkdir -p "$TARGET/boot/efi"
 mount "$esp" "$TARGET/boot/efi"
 cat > "$TARGET/etc/fstab" <<EOF
