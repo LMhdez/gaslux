@@ -71,5 +71,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          evidence="$GITHUB_WORKSPACE/windows-x64-winpe-no-target-evidence"
+          test ! -e "$evidence" && test ! -L "$evidence"
+          mkdir -m 700 "$evidence"
+          export GASLUX_WINDOWS_EVIDENCE="$evidence"
           python3 auto_tests/tools/windows_x64_winpe_answer_probe.py
           echo 'If passed: real WinPE consumed XML on both disposable answer devices with NO target disk. No Windows installed-client boot, BCD/WinRE, CachyOS or rollback proven.' >> "$GITHUB_STEP_SUMMARY"
