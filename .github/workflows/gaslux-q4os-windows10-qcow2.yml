@@ -96,11 +96,13 @@ jobs:
                     <CreatePartitions>
                       <CreatePartition wcm:action="add"><Order>1</Order><Type>EFI</Type><Size>100</Size></CreatePartition>
                       <CreatePartition wcm:action="add"><Order>2</Order><Type>MSR</Type><Size>16</Size></CreatePartition>
-                      <CreatePartition wcm:action="add"><Order>3</Order><Type>Primary</Type><Extend>true</Extend></CreatePartition>
+                      <CreatePartition wcm:action="add"><Order>3</Order><Type>Primary</Type><Size>47000</Size></CreatePartition>
+                      <CreatePartition wcm:action="add"><Order>4</Order><Type>Primary</Type><Size>1024</Size></CreatePartition>
                     </CreatePartitions>
                     <ModifyPartitions>
                       <ModifyPartition wcm:action="add"><Order>1</Order><PartitionID>1</PartitionID><Format>FAT32</Format><Label>System</Label></ModifyPartition>
                       <ModifyPartition wcm:action="add"><Order>2</Order><PartitionID>3</PartitionID><Format>NTFS</Format><Label>Windows</Label><Letter>C</Letter></ModifyPartition>
+                      <ModifyPartition wcm:action="add"><Order>3</Order><PartitionID>4</PartitionID><Format>NTFS</Format><Label>Windows RE</Label><Letter>R</Letter><TypeID>DE94BBA4-06D1-4D40-A16A-BFD50179D6AC</TypeID><GPTAttributes>0x8000000000000001</GPTAttributes></ModifyPartition>
                     </ModifyPartitions>
                   </Disk>
                 </DiskConfiguration>
@@ -124,7 +126,7 @@ jobs:
                 <OOBE><HideEULAPage>true</HideEULAPage><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE><NetworkLocation>Work</NetworkLocation><ProtectYourPC>3</ProtectYourPC><SkipMachineOOBE>true</SkipMachineOOBE><SkipUserOOBE>true</SkipUserOOBE></OOBE>
                 <UserAccounts><LocalAccounts><LocalAccount wcm:action="add"><Name>GasluxLab</Name><Group>Administrators</Group><Password><Value>$password</Value><PlainText>true</PlainText></Password></LocalAccount></LocalAccounts></UserAccounts>
                 <AutoLogon><Password><Value>$password</Value><PlainText>true</PlainText></Password><Enabled>true</Enabled><LogonCount>1</LogonCount><Username>GasluxLab</Username></AutoLogon>
-                <FirstLogonCommands><SynchronousCommand wcm:action="add"><Order>1</Order><Description>Write Gaslux first-logon evidence and power off</Description><CommandLine>cmd.exe /c "mkdir C:\GasluxEvidence &amp; echo GASLUX_WINDOWS_FIRST_LOGON=PASS &gt; C:\GasluxEvidence\first-logon.txt &amp; shutdown /s /t 20"</CommandLine><RequiresUserInput>false</RequiresUserInput></SynchronousCommand></FirstLogonCommands>
+                <FirstLogonCommands><SynchronousCommand wcm:action="add"><Order>1</Order><Description>Write Gaslux first-logon evidence and power off</Description><CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; New-Item -Force -ItemType Directory 'R:\Recovery\WindowsRE' | Out-Null; Copy-Item 'C:\Windows\System32\Recovery\Winre.wim' 'R:\Recovery\WindowsRE\Winre.wim' -Force; reagentc.exe /setreimage /path 'R:\Recovery\WindowsRE'; if ($LASTEXITCODE -ne 0) { exit 31 }; reagentc.exe /enable; if ($LASTEXITCODE -ne 0) { exit 32 }; reagentc.exe /info | Out-File 'C:\GasluxEvidence\winre-info.txt'; if ((Get-Content 'C:\GasluxEvidence\winre-info.txt' -Raw) -notmatch 'Enabled') { exit 33 }; 'GASLUX_WINDOWS_FIRST_LOGON=PASS' | Set-Content 'C:\GasluxEvidence\first-logon.txt'; shutdown.exe /s /t 20"</CommandLine><RequiresUserInput>false</RequiresUserInput></SynchronousCommand></FirstLogonCommands>
               </component>
             </settings>
           </unattend>
