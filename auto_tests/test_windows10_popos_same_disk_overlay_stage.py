@@ -305,6 +305,53 @@ class PmbrCompensationTests(unittest.TestCase):
         self.assertEqual(details["stagedProtectiveEntry"], candidate[446:462].hex())
         self.assertNotIn(self.base.hex(), output.getvalue())
 
+    def test_exact_observed_microsoft_chs_and_count_normalization_is_bounded(self):
+        import struct
+
+        baseline = bytearray(self.base)
+        baseline[451:454] = b"\xfe\x7f\x44"
+        staged = bytearray(baseline)
+        staged[451:454] = b"\xff\xff\xff"
+        struct.pack_into("<I", staged, 458, 268435455)
+        disk = DummyPmbrDisk(staged)
+        repaired = COW._compensate_normalized_pmbr(
+            disk, bytes(baseline), {"oversizedWindowsPmbrLabOnly": True}
+        )
+        self.assertEqual(repaired, 7)
+        self.assertEqual(disk.writes, [
+            (451, b"\xfe\x7f\x44"),
+            (458, b"\xff\xff\xff\xff"),
+        ])
+        self.assertEqual(disk.pread_device("/dev/sda", 512, 0), bytes(baseline))
+
+    def test_unknown_chs_or_extra_mbr_mutation_is_still_refused(self):
+        import contextlib
+        import io
+        import struct
+
+        baseline = bytearray(self.base)
+        baseline[451:454] = b"\xfe\x7f\x44"
+        for kind in ("wrong_chs", "extra_signature", "wrong_source_chs"):
+            with self.subTest(kind=kind):
+                original = bytearray(baseline)
+                changed = bytearray(original)
+                changed[451:454] = b"\xff\xff\xff"
+                struct.pack_into("<I", changed, 458, 268435455)
+                if kind == "wrong_chs":
+                    changed[452] = 0
+                elif kind == "extra_signature":
+                    changed[440] ^= 1
+                else:
+                    original[452] = 0
+                disk = DummyPmbrDisk(changed)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    with self.assertRaises(COW.DiskAuditError):
+                        COW._compensate_normalized_pmbr(
+                            disk, bytes(original),
+                            {"oversizedWindowsPmbrLabOnly": True},
+                        )
+                self.assertEqual(disk.writes, [])
+
     def test_untouched_pmbr_needs_no_compensation(self):
         g = DummyPmbrDisk(self.base)
         self.assertFalse(COW._compensate_normalized_pmbr(

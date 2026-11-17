@@ -223,7 +223,7 @@ def validate_after(g, before: dict, plan: dict) -> dict:
 
 
 def _compensate_normalized_pmbr(g, original: bytes, before: dict) -> bool:
-    """Restore ONLY the 4-byte Windows-saturated PMBR span in a COW guest.
+    """Restore only a proven 4- or 7-byte PMBR normalization in a COW guest.
 
     libguestfs partition writes may normalize that one field. Never repair
     unexpected MBR mutations, never write an actual Windows image. The caller
@@ -240,9 +240,20 @@ def _compensate_normalized_pmbr(g, original: bytes, before: dict) -> bool:
     # the one seen in synthetic tests. Observe it BEFORE attempting any
     # compensation; offsets/hashes and the 16-byte PMBR entry are metadata,
     # not a dump of the Windows bootstrap code.
+    # Microsoft Win10 Setup on this *disposable 128-GiB guest* produced
+    # end-CHS FE 7F 44. libguestfs also changes it to FF FF FF while
+    # normalizing the PMBR size to the canonical count. Only those two
+    # independently observed byte patterns are eligible for COW repair.
+    chs_same = original[451:454] == current[451:454]
+    chs_known = (
+        original[451:454] == b"\xfe\x7f\x44"
+        and current[451:454] == b"\xff\xff\xff"
+    )
     allowed = (
         before["oversizedWindowsPmbrLabOnly"] is True
-        and original[:458] == current[:458]
+        and original[:451] == current[:451]
+        and (chs_same or chs_known)
+        and original[454:458] == current[454:458]
         and original[462:] == current[462:]
         and struct.unpack_from("<I", original, 458)[0] == 0xFFFFFFFF
         and struct.unpack_from("<I", current, 458)[0] == expected
@@ -270,13 +281,21 @@ def _compensate_normalized_pmbr(g, original: bytes, before: dict) -> bool:
         raise DiskAuditError(
             "unexpected MBR mutation: refuse any repair beyond known lab normalization"
         )
-    # 4-byte compensating write to a disposable QCOW2 overlay only.
-    written = g.pwrite_device("/dev/sda", original[458:462], 458)
-    require(written == 4, "compensating four-byte PMBR write incomplete")
+    # Only the disposable child overlay is writable. Any short write or
+    # postwrite mismatch discards it; the genuine Windows QCOW2 backing stays
+    # read-only. Restore exactly the known CHS bytes (if changed) and count.
+    restored = 0
+    if not chs_same:
+        require(g.pwrite_device("/dev/sda", original[451:454], 451) == 3,
+                "compensating three-byte PMBR CHS write incomplete")
+        restored += 3
+    require(g.pwrite_device("/dev/sda", original[458:462], 458) == 4,
+            "compensating four-byte PMBR count write incomplete")
+    restored += 4
     g.sync()
     require(g.pread_device("/dev/sda", SECTOR, 0) == original,
             "compensating MBR restoration could not be verified")
-    return True
+    return restored
 
 def stage_owned_overlay(base: Path, evidence: Path) -> dict:
     overlay = base.parent / "gaslux-pop-stage.qcow2"
@@ -343,7 +362,9 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
             g.launch()
             result = validate_after(g, before, plan)
         result["primaryAndBackupGptCrcVerifiedAfterStage"] = True
-        result["ownedOverlayPmbrFourByteCompensationApplied"] = compensated
+        result["ownedOverlayPmbrFourByteCompensationApplied"] = compensated == 4
+        result["ownedOverlayPmbrSevenByteCompensationApplied"] = compensated == 7
+        result["ownedOverlayPmbrRestoredByteCount"] = compensated
         result["windowsProtectiveMbrCanonical"] = crc_before["protectiveMbrCanonical"]
         result["windowsOversizedProtectiveMbrLabOnly"] = crc_before[
             "oversizedWindowsPmbrLabOnly"
