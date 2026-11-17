@@ -1,0 +1,71 @@
+name: Windows x64 GitHub hosted KVM permissions and API probe (no disks)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-x64-tcg-winre-recovery-baseline
+    paths:
+      - .github/workflows/windows-x64-kvm-permission-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-real-kvm:
+    name: Distinguish missing KVM from GitHub runner group permissions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Probe /dev/kvm safely on GitHub-hosted disposable x64 runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "$GITHUB_ACTIONS" != true || "$RUNNER_OS" != Linux ||
+                "$RUNNER_ENVIRONMENT" != github-hosted ||
+                "$GITHUB_REPOSITORY" != LMhdez/gaslux ||
+                "$(uname -m)" != x86_64 ]]; then
+            echo "::error::KVM probe forbidden outside the dedicated hosted Linux x64 CI"
+            exit 1
+          fi
+          if [[ ! -c /dev/kvm || -L /dev/kvm ]]; then
+            echo "::error::/dev/kvm absent or unsafe: real KVM cannot run"
+            exit 1
+          fi
+          echo 'KVM character device exists on disposable hosted runner.'
+          # Read-only host kernel API diagnostic, without creating a QEMU disk.
+          echo 'Root KVM capability:'
+          sudo -n python3 - <<'PY'
+          import fcntl, os
+          fd = os.open("/dev/kvm", os.O_RDWR | os.O_CLOEXEC)
+          try:
+              version = fcntl.ioctl(fd, 0xAE00, 0)
+              if version != 12:
+                  raise SystemExit("unsupported KVM API version")
+              vmfd = fcntl.ioctl(fd, 0xAE01, 0)
+              os.close(vmfd)
+              print("Root KVM_GET_API_VERSION=12 and KVM_CREATE_VM=success")
+          finally:
+              os.close(fd)
+          PY
+          # GitHub documents group permission setup for accelerated emulators.
+          # Make /dev/kvm accessible only to the current ephemeral runner's
+          # group; do not chmod 666 and never change any real disk.
+          sudo -n chgrp "$(id -gn)" /dev/kvm
+          sudo -n chmod g+rw /dev/kvm
+          python3 - <<'PY'
+          import fcntl, os
+          fd = os.open("/dev/kvm", os.O_RDWR | os.O_CLOEXEC)
+          try:
+              assert fcntl.ioctl(fd, 0xAE00, 0) == 12
+              vmfd = fcntl.ioctl(fd, 0xAE01, 0)
+              os.close(vmfd)
+              print("GASLUX_HOSTED_KVM_KERNEL_VM_CREATE_PASS=1")
+          finally:
+              os.close(fd)
+          PY
+          {
+            echo 'KVM device exists, kernel VM_CREATE succeeded for root and runner user.'
+            echo 'Only transient RAM-backed KVM instance tested; NO Windows client installed or booted.'
+            echo 'No host disk writes, QEMU disk, guest firmware, BCD or EFI changes.'
+          } >> "$GITHUB_STEP_SUMMARY"
