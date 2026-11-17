@@ -73,6 +73,36 @@ def reconcile_owned_pair(before: dict, after: dict, plan: dict) -> None:
         )
 
 
+def _write_exact_owned_partition(g, p: dict) -> None:
+    """Write only the explicitly planned VM partition and bind its PARTUUID.
+
+    libguestfs/sgdisk otherwise generates a new random partition GUID; that
+    must never be mistaken for the transaction-owned GUID in the plan.
+    """
+    require(
+        type(p) is dict and p.get("index") in (5, 6)
+        and p.get("formatRequested") is False
+        and isinstance(p.get("uniqueGuid"), str)
+        and isinstance(p.get("name"), str)
+        and isinstance(p.get("typeGuid"), str)
+        and type(p.get("startSector")) is int
+        and type(p.get("endSector")) is int
+        and p["endSector"] > p["startSector"],
+        "untrusted Pop-owned GPT entry before VM write",
+    )
+    n = p["index"]
+    g.part_add("/dev/sda", "p", p["startSector"], p["endSector"])
+    g.part_set_gpt_type("/dev/sda", n, p["typeGuid"])
+    g.part_set_gpt_guid("/dev/sda", n, p["uniqueGuid"])
+    g.part_set_name("/dev/sda", n, p["name"])
+    require(
+        str(g.part_get_gpt_type("/dev/sda", n)).lower() == p["typeGuid"]
+        and str(g.part_get_gpt_guid("/dev/sda", n)).lower() == p["uniqueGuid"]
+        and str(g.part_get_name("/dev/sda", n)) == p["name"],
+        "native guestfs failed to apply exact transaction-owned Pop GUID/type/name",
+    )
+
+
 def stage_owned_esp_root(base: Path, evidence: Path) -> dict:
     """Stage ONLY two unformatted owned GPT entries after genuine Windows boot."""
     overlay = base.parent / "gaslux-pop-stage.qcow2"
@@ -135,11 +165,7 @@ def stage_owned_esp_root(base: Path, evidence: Path) -> dict:
             require(_windows_witness(g, 4) == windows_before,
                     "new Pop COW did not match genuine Windows baseline")
             for proposed in plan["partitions"]:
-                number = proposed["index"]
-                g.part_add("/dev/sda", "p", proposed["startSector"],
-                           proposed["endSector"])
-                g.part_set_gpt_type("/dev/sda", number, proposed["typeGuid"])
-                g.part_set_name("/dev/sda", number, proposed["name"])
+                _write_exact_owned_partition(g, proposed)
             g.sync()
             # libguestfs normalizes observed Microsoft PMBR CHS/count.
             # Restore only the previously proven allowlisted 4 or 7 bytes,

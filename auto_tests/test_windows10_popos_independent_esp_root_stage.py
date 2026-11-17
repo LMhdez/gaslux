@@ -56,6 +56,73 @@ def staged_fixture():
     return front, back, bytes(f), bytes(b), original, after, plan
 
 
+class DummyOwnedPartitionGuest:
+    def __init__(self):
+        self.entries = {}
+        self.calls = []
+
+    def part_add(self, device, kind, start, end):
+        assert (device, kind) == ("/dev/sda", "p")
+        self.calls.append(("part_add", start, end))
+
+    def part_set_gpt_type(self, device, n, value):
+        self.entries.setdefault(n, {})["type"] = value
+        self.calls.append(("part_set_gpt_type", n, value))
+
+    def part_set_gpt_guid(self, device, n, value):
+        self.entries.setdefault(n, {})["guid"] = value
+        self.calls.append(("part_set_gpt_guid", n, value))
+
+    def part_set_name(self, device, n, value):
+        self.entries.setdefault(n, {})["name"] = value
+
+    def part_get_gpt_type(self, device, n):
+        return self.entries[n]["type"]
+
+    def part_get_gpt_guid(self, device, n):
+        return self.entries[n]["guid"]
+
+    def part_get_name(self, device, n):
+        return self.entries[n]["name"]
+
+
+class ExactOwnedGuidWriterTests(unittest.TestCase):
+    def test_both_pop_entries_receive_the_proposed_unique_guids(self):
+        from windows10_popos_independent_esp_root_stage import (
+            _write_exact_owned_partition,
+        )
+        _, _, _, _, _, _, plan = staged_fixture()
+        disk = DummyOwnedPartitionGuest()
+        for part in plan["partitions"]:
+            _write_exact_owned_partition(disk, part)
+        applied = [x for x in disk.calls if x[0] == "part_set_gpt_guid"]
+        self.assertEqual(applied, [
+            ("part_set_gpt_guid", p["index"], p["uniqueGuid"])
+            for p in plan["partitions"]
+        ])
+
+    def test_foreign_partition_number_refused_before_any_write(self):
+        from windows10_popos_independent_esp_root_stage import (
+            _write_exact_owned_partition,
+        )
+        _, _, _, _, _, _, plan = staged_fixture()
+        foreign = {**plan["partitions"][0], "index": 7}
+        disk = DummyOwnedPartitionGuest()
+        with self.assertRaises(DiskAuditError):
+            _write_exact_owned_partition(disk, foreign)
+        self.assertEqual(disk.calls, [])
+
+    def test_guid_readback_mismatch_fails_after_writing_only_private_guest(self):
+        from windows10_popos_independent_esp_root_stage import (
+            _write_exact_owned_partition,
+        )
+        _, _, _, _, _, _, plan = staged_fixture()
+        disk = DummyOwnedPartitionGuest()
+        disk.part_get_gpt_guid = lambda device, n: str(uuid.uuid4())
+        with self.assertRaises(DiskAuditError):
+            _write_exact_owned_partition(disk, plan["partitions"][0])
+
+
 class PopOwnedPairStageContracts(unittest.TestCase):
     def test_crc_and_entire_windows_pmbr_unchanged_with_two_owned_entries(self):
         f0, b0, f1, b1, before, after, plan = staged_fixture()
