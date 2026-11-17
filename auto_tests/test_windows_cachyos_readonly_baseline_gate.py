@@ -75,6 +75,64 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
         self.assertIs(got["storageWritesAuthorized"], False)
         self.assertTrue(got["pinnedMicrosoftIsoDigestMatched"])
 
+    def test_actual_com1_markers_coalesced_on_same_line_are_accepted_as_documents(self):
+        report, serial, _ = synthetic()
+        first, *markers = serial.splitlines()
+        coalesced = first + b"\n" + b" ".join(markers) + b"\n"
+        manifest = (hashlib.sha256(coalesced).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        proof = self.exercise(report, coalesced, manifest)
+        self.assertTrue(proof["candidateWindowsFirstbootDocumentsConsistent"])
+        self.assertIs(proof["windowsBootVerified"], False)
+        self.assertIs(proof["storageWritesAuthorized"], False)
+
+    def test_coalesced_markers_without_whitespace_cannot_be_forged(self):
+        report, serial, _ = synthetic()
+        serial = serial.replace(
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1\nGASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+        )
+        manifest = (hashlib.sha256(serial).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        with self.assertRaises(GATE.BaselineGateError):
+            self.exercise(report, serial, manifest)
+
+    def test_repeated_coalesced_audit_token_rejected(self):
+        report, serial, _ = synthetic()
+        serial = serial.replace(
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1\n",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1 GASLUX_WINDOWS_X64_WINRE_ENABLED=1\n",
+        )
+        manifest = (hashlib.sha256(serial).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "ambiguous"):
+            self.exercise(report, serial, manifest)
+
+    def test_conflicting_build_audit_token_rejected_even_with_valid_one(self):
+        report, serial, _ = synthetic()
+        serial += b"GASLUX_WINDOWS_X64_BOOT_BUILD=19045\n"
+        manifest = (hashlib.sha256(serial).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "ambiguous"):
+            self.exercise(report, serial, manifest)
+
+    def test_failure_early_in_over_400kb_serial_is_never_lost(self):
+        report, serial, _ = synthetic()
+        serial = (b"GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL_STAGE=WinRE\n" +
+                  b"firmware-debug " * 42000 + b"\n" + serial)
+        manifest = (hashlib.sha256(serial).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "firstboot failure"):
+            self.exercise(report, serial, manifest)
+
+    def test_oversized_audit_token_rejected_before_consistency_claim(self):
+        report, serial, _ = synthetic()
+        serial += b"GASLUX_WINDOWS_X64_UNEXPECTED=" + b"A" * 300 + b"\n"
+        manifest = (hashlib.sha256(serial).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "oversized"):
+            self.exercise(report, serial, manifest)
+
     def test_wrong_profile_rejected(self):
         report, serial, manifest = synthetic()
         with self.assertRaises(GATE.BaselineGateError):
