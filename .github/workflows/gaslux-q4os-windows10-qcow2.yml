@@ -197,7 +197,7 @@ jobs:
             sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
           }
           trap cleanup EXIT
-          sudo qemu-nbd --connect=/dev/nbd0 --format=qcow2 "$image"
+          sudo qemu-nbd --read-only --connect=/dev/nbd0 --format=qcow2 "$image"
           sudo udevadm settle
           sudo sgdisk --verify /dev/nbd0
           lsblk -nrpo NAME,PARTTYPE /dev/nbd0
@@ -272,5 +272,5 @@ jobs:
             ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2
             ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-qcow2.sha256
             ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-install-manifest.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
