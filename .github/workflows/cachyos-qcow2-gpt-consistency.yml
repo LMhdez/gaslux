@@ -1,7 +1,7 @@
 name: CachyOS issue 3 QCOW2 GPT consistency guard (no Windows)
 on:
   push:
-    branches: [fix/cachyos-qcow2-read-consistency-issue3, test/cachyos-same-disk-readonly-extent-gate]
+    branches: [fix/cachyos-qcow2-read-consistency-issue3, test/cachyos-same-disk-readonly-extent-gate, fix/cachyos-gpt-evidence-digest-issue3]
     paths:
       - .github/workflows/cachyos-qcow2-gpt-consistency.yml
       - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
