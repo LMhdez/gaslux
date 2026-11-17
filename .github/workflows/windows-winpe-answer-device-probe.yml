@@ -7,6 +7,7 @@ on:
       - fix/windows-winpe-diskless-answer-probe-no-install-directives
       - fix/windows-winpe-setup-runsynchronous-schema-valid
       - diag/windows-winpe-diskless-private-vga-numeric
+      - test/windows-winpe-explicit-removable-usb-rmb
     paths:
       - .github/workflows/windows-winpe-answer-device-probe.yml
       - auto_tests/tools/windows_x64_winpe_answer_probe.py
@@ -75,7 +76,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf p7zip-full genisoimage \
             dosfstools mtools
-      - name: Probe two FAT12/USB WinPE guests, numeric VGA/serial only, NO disk/OOBE
+      - name: Compare FAT12 vs explicitly removable FAT32 USB in WinPE (numeric only)
         shell: bash
         run: |
           set -Eeuo pipefail
