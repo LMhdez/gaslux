@@ -141,7 +141,7 @@ class WindowsGuestBindingTests(unittest.TestCase):
             self.check()
 
     def test_esp_partition_moved_rejected(self):
-        self.before["disks"][0]["partitions"][0]["offset"] += GIB
+        self.before["disks"][0]["partitions"][0]["offset"] += 100 * 1024 ** 2
         with self.assertRaisesRegex(MODULE.BridgeError, "ESP"):
             self.check()
 
@@ -193,7 +193,7 @@ class WindowsGuestBindingTests(unittest.TestCase):
             "gptType": MODULE.LINUX_DATA_TYPE, "isBoot": False,
             "isSystem": False,
         })
-        with self.assertRaises(MODULE.BridgeError):
+        with self.assertRaisesRegex(MODULE.GUEST.EvidenceError, "shrink region"):
             self.check()
 
     def test_rollback_exact_partition_restoration_consistency(self):
