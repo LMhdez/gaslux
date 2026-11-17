@@ -66,7 +66,7 @@ class OverlayIsolationGuards(unittest.TestCase):
 
     def test_read_windows_rejects_truncated_gpt_window(self):
         with patch.object(lab, "bounded_qcow2_dd_command", return_value=["fake"]), \
-             patch.object(lab.subprocess, "run", return_value=None):
+             patch.object(lab.subprocess, "run", side_effect=lambda *_a, **_kw: (self.root / "front.raw").write_bytes(b"short")):
             with self.assertRaises(lab.GeometryError):
                 lab.read_windows(self.disk, self.root)
 
