@@ -15,24 +15,46 @@ import os
 from pathlib import Path
 
 import yaml
-
 from gaslux_q4os_calamares_policy import CalamaresRefusal, _yaml
 from gaslux_q4os_hook_policy import audit_q4os_native_hooks
 
-OFFICIAL_ISO_SHA256 = "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
+OFFICIAL_ISO_SHA256 = (
+    "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
+)
 JOBS = (
-    "partition", "mount", "unpackfs", "luksbootkeyfile", "dpkg-unsafe-io",
-    "sources-media", "machineid", "fstab", "locale", "keyboard",
-    "localecfg", "users", "displaymanager", "networkcfg", "hwclock",
-    "services-systemd", "q4oshook2", "bootloader-config", "grubcfg",
-    "bootloader", "q4oshook3", "packages", "plymouthcfg", "initramfscfg",
-    "initramfs", "q4oshook5", "dpkg-unsafe-io-undo",
-    "sources-media-unmount", "umount",
+    "partition",
+    "mount",
+    "unpackfs",
+    "luksbootkeyfile",
+    "dpkg-unsafe-io",
+    "sources-media",
+    "machineid",
+    "fstab",
+    "locale",
+    "keyboard",
+    "localecfg",
+    "users",
+    "displaymanager",
+    "networkcfg",
+    "hwclock",
+    "services-systemd",
+    "q4oshook2",
+    "bootloader-config",
+    "grubcfg",
+    "bootloader",
+    "q4oshook3",
+    "packages",
+    "plymouthcfg",
+    "initramfscfg",
+    "initramfs",
+    "q4oshook5",
+    "dpkg-unsafe-io-undo",
+    "sources-media-unmount",
+    "umount",
 )
 NATIVE_HOOKS = ("q4oshook2", "q4oshook3", "q4oshook5")
 EXPECTED_VIEWS = (
-    ["welcome", "locale", "keyboard", "packagechooser",
-     "partition", "users", "summary"],
+    ["welcome", "locale", "keyboard", "packagechooser", "partition", "users", "summary"],
     ["finished"],
 )
 
