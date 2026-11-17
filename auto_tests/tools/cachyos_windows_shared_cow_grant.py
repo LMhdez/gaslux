@@ -135,13 +135,13 @@ def _verify_plan_signature(plan_path: Path, signature_path: Path,
     ], timeout=20)
     require(verify.returncode == 0, "host rejected the signed plan")
     pub_from_private = _run([
-        "openssl", "pkey", "-in", str(private_key), "-pubout", "-outform", "DER",
+        "openssl", "pkey", "-in", str(private_key), "-pubout",
     ], timeout=20)
-    pub_der = _run([
-        "openssl", "pkey", "-pubin", "-in", str(public_key), "-outform", "DER",
+    pub_from_public = _run([
+        "openssl", "pkey", "-pubin", "-in", str(public_key), "-pubout",
     ], timeout=20)
-    require(pub_from_private.returncode == 0 and pub_der.returncode == 0
-            and pub_from_private.stdout == pub_der.stdout,
+    require(pub_from_private.returncode == 0 and pub_from_public.returncode == 0
+            and pub_from_private.stdout == pub_from_public.stdout,
             "ephemeral Ed25519 private/public key pair does not match")
     return plan
 
