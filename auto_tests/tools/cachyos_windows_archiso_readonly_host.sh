@@ -78,6 +78,7 @@ mcopy -i "$w/control.raw" "$w/handoff/plan.sig" ::/plan.sig
 mcopy -i "$w/control.raw" "$w/handoff/public.pem" ::/public.pem
 mcopy -i "$w/control.raw" auto_tests/tools/cachyos_windows_archiso_live_guest_readonly.sh ::/gaslux-readonly.sh
 mcopy -i "$w/control.raw" auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py ::/probe.py
+mcopy -i "$w/control.raw" auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py ::/cachyos_windows_shared_archiso_guest_probe.py
 mcopy -i "$w/control.raw" auto_tests/tools/cachyos_windows_archiso_protected_files_guest.py ::/protected.py
 mcopy -i "$w/control.raw" auto_tests/tools/cachyos_windows_shared_archiso_handoff.py ::/cachyos_windows_shared_archiso_handoff.py
 mcopy -i "$w/control.raw" auto_tests/tools/cachyos_windows_shared_gpt_raw_audit.py ::/cachyos_windows_shared_gpt_raw_audit.py
