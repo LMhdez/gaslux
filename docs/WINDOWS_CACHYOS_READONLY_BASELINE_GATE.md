@@ -75,3 +75,11 @@ never authenticate an actual guest or authorize any Linux installation.
 Candidate-gate unit CI passing does not substitute for a fresh SUCCESS
 real-Microsoft-ISO Windows 10/11 QEMU run with these corrected checks,
 much less same-QCOW2 dual boot or Windows recovery.
+
+## Both VM-stage COM1 manifests must be bound (experimental)
+
+The candidate gate now requires **both** the first Microsoft DVD/Setup-stage COM1 evidence and the second disk-only Windows-client COM1 evidence, with their separately archived SHA-256 manifests. The first-stage COM1 bytes must agree with `initialDvdGuestSerialSha256` in the result JSON, must match the exact profile-prefixed first-stage manifest filename, and must contain **exactly one** documented OVMF UEFI DVD startup. The first-stage file must be nonempty and at most **2,000,000 bytes**, matching the preexisting CI archiver's retained-evidence limit. The second-stage digest, full Windows client audit and clean VM exit remain independently mandatory.
+
+The added CLI arguments are `--initial-dvd-serial` and `--initial-dvd-serial-sha256`, taking the existing `<profile>-initial-dvd-serial.log` and `<profile>-initial-dvd-serial.sha256` artifacts from the **same** disposable GitHub runner. Missing, symlinked, nonregular, oversized, inconsistent or repeated DVD-start evidence fails closed. No source ISO, QCOW2 or credential is uploaded.
+
+This cross-check improves **internal consistency only**. The records and SHA-256 manifests are still controlled by the laboratory; it does not independently authenticate guest provenance or prove installed Windows, CachyOS dual boot, EFI/BCD/WinRE restoration or recovery. All corresponding product approval flags remain false. This code never opens block devices or authorizes disk writes.
