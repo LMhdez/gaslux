@@ -99,7 +99,7 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
             "ID=cachyos", "ID_LIKE=arch",
             "lab-real-iso-signed-20261116",
             "01234567-89ab-cdef-0123-456789abcdef",
-            "pacman-conf --repo", "PackageOptional", "TrustAll",
+            "pacman-conf --repo", "TrustedOnly", "PackageRequired",
             "pacman -Syu --noconfirm linux-cachyos-lts grub",
             "mkinitcpio -P", "grub-script-check",
             "GASLUX_VM_UPDATE_APPLIED=1",
