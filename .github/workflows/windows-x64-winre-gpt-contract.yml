@@ -26,6 +26,7 @@ jobs:
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_qemu_host_gate.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_winre_baseline_contract.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py'
           echo 'PASS: unsigned/synthetic WinRE evidence cannot certify Windows recovery.' >> "$GITHUB_STEP_SUMMARY"
           echo 'No Windows client VM installed or booted in this workflow.' >> "$GITHUB_STEP_SUMMARY"
 
