@@ -1,0 +1,32 @@
+name: CachyOS issue 3 QCOW2 GPT consistency guard (no Windows)
+on:
+  push:
+    branches: [fix/cachyos-qcow2-read-consistency-issue3]
+    paths:
+      - .github/workflows/cachyos-qcow2-gpt-consistency.yml
+      - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reject-mutating-qcow2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Run fail-closed mutation guards and real sparse QCOW2 read tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+          python3 -m unittest discover -s auto_tests -p test_windows_cachyos_qcow2_gpt_readonly.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_cachyos_readonly_baseline_gate.py -v
+          printf '%s\n' 'Synthetic mutation guards plus QCOW2 sparse-file reads only. No Windows/CachyOS OS installed, no dual boot or rollback.' >> "$GITHUB_STEP_SUMMARY"
