@@ -68,6 +68,14 @@ def write_target_configuration(target: Path, root_uuid: str) -> None:
     )
 
 
+def guestmount_command(overlay: Path, target: Path) -> list[str]:
+    """Mount the stopped COW through FUSE for the runner with kernel permission checks."""
+    return [
+        "sudo", "guestmount", "-a", str(overlay), "-m", "/dev/sda5",
+        "--rw", "-o", "allow_other,default_permissions", str(target),
+    ]
+
+
 def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
     import guestfs
 
@@ -199,8 +207,7 @@ def install_mint_root_and_boot(
         unpacked.mkdir(mode=0o700)
         run(["sudo", "unsquashfs", "-f", "-processors", "2", "-d", str(unpacked), str(rootfs)],
             timeout=900, capture=False)
-        run(["sudo", "guestmount", "-a", str(overlay), "-m", "/dev/sda5",
-             "--rw", str(target)], timeout=120)
+        run(guestmount_command(overlay, target), timeout=120)
         guest_mounted = True
         run(["sudo", "cp", "-a", str(unpacked) + "/.", str(target) + "/"],
             timeout=1200, capture=False)
