@@ -207,6 +207,56 @@ def derive_no_prompt_uefi_lab_iso(original: Path, derived: Path,
         return hashlib.file_digest(fd, "sha256").hexdigest()
 
 
+def verify_owned_answer_usb_image(
+    image: Path, expected_xml: bytes, expected_script: bytes,
+) -> None:
+    """Read back the *actual* isolated FAT32 setup USB before running QEMU.
+
+    Generating correct XML in memory does not establish that WinPE can see
+    the same files on the image attached to the first Windows VM. Require
+    exact bytes and names, not simply successful mcopy return codes.
+    This checks media consistency, NOT actual Windows Setup consumption.
+    """
+    directory = image.parent
+    require(
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("RUNNER_OS") == "Linux"
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and image.is_absolute()
+        and image.name == "only-disposable-answer-usb.img"
+        and directory.parent == Path("/home/runner/work/_temp")
+        and directory.name.startswith("gaslux-win-x64-")
+        and directory.is_dir()
+        and not directory.is_symlink()
+        and directory.resolve() == directory
+        and directory.stat().st_uid == os.getuid()
+        and stat.S_IMODE(directory.stat().st_mode) == 0o700
+        and image.is_file()
+        and not image.is_symlink()
+        and image.stat().st_uid == os.getuid()
+        and image.stat().st_size == 64 * 1024**2,
+        "refusing to inspect unowned or malformed Windows answer USB image",
+    )
+    require(
+        0 < len(expected_xml) <= 256 * 1024
+        and 0 < len(expected_script) <= 256 * 1024,
+        "invalid size for Windows unattended answer payload",
+    )
+    for name, expected in (
+        ("Autounattend.xml", expected_xml),
+        ("GASLUX.PS1", expected_script),
+    ):
+        # mtype reads the FAT image directly without ever mounting a volume,
+        # opening a physical block device or executing the guest script.
+        retrieved = subprocess.run(
+            ["mtype", "-i", str(image), "::/" + name],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            check=True, timeout=30,
+        ).stdout
+        require(retrieved == expected,
+                "Windows answer USB payload differs from pinned host source: " + name)
+
+
 def witness_powershell(profile_key: str, build: str) -> str:
     # Runs ONLY at FirstLogon in the installed Windows evaluation client.
     # The test-only local account has no usable remote credentials.
@@ -1047,6 +1097,12 @@ def main(argv: list[str] | None = None) -> int:
                             "::/Autounattend.xml"], check=True)
             subprocess.run(["mcopy", "-i", str(answer), str(guest_ps1),
                             "::/GASLUX.PS1"], check=True)
+            if args.two_stage_install_only:
+                verify_owned_answer_usb_image(
+                    answer, xml, guest_ps1.read_bytes(),
+                )
+                print("GASLUX_WINDOWS_ANSWER_USB_READBACK_VERIFIED=1",
+                      flush=True)
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
             subprocess.run(["qemu-img", "create", "-f", "qcow2", str(disk), VM_SIZE],
