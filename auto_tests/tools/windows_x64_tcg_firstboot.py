@@ -627,13 +627,15 @@ def main(argv: list[str] | None = None) -> int:
                 encoding="utf-8")
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
-            floppy = workspace / "unattend-floppy.img"
-            subprocess.run(["truncate", "-s", "1440K", str(floppy)], check=True)
-            subprocess.run(["mkfs.vfat", "-F", "12", "-n", "GASLUXCI", str(floppy)],
+            usb = workspace / "only-disposable-answer-usb.img"
+            require(not usb.exists() and not usb.is_symlink(),
+                    "refusing reused Windows Setup answer volume")
+            subprocess.run(["truncate", "-s", "64M", str(usb)], check=True)
+            subprocess.run(["mkfs.vfat", "-F", "32", "-n", "GASLUXCI", str(usb)],
                            check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(["mcopy", "-i", str(floppy), str(xmlfile),
+            subprocess.run(["mcopy", "-i", str(usb), str(xmlfile),
                             "::/Autounattend.xml"], check=True)
-            subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps1),
+            subprocess.run(["mcopy", "-i", str(usb), str(guest_ps1),
                             "::/GASLUX.PS1"], check=True)
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
@@ -668,7 +670,11 @@ def main(argv: list[str] | None = None) -> int:
                 "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
                 "-drive", f"if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file={iso}",
                 "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
-                "-drive", f"if=floppy,format=raw,file={floppy}",
+                # Windows Setup searches removable USB roots for Autounattend.xml.
+                # The virtual FAT32 control image is never backed by a host disk.
+                "-drive", f"if=none,id=lab_unattend,format=raw,readonly=on,file={usb}",
+                "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
+
                 "-serial", f"file:{serial}",
                 "-boot", "order=dc",
             ]
