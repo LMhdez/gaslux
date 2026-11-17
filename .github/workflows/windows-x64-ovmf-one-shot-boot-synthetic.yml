@@ -1,0 +1,51 @@
+name: QEMU OVMF one-shot DVD then disk UEFI reboot (synthetic only)
+
+on:
+  push:
+    branches:
+      - feature/windows-eval-noprompt-disposable-firstboot
+    paths:
+      - .github/workflows/windows-x64-ovmf-one-shot-boot-synthetic.yml
+      - auto_tests/tools/windows_x64_one_shot_ovmf_smoke.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove-one-shot-uefi:
+    name: Actual KVM OVMF DVD GRUB reboot then disk GRUB without DVD retry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Restrict to hosted VM and install isolated synthetic EFI media tooling
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          bash -n auto_tests/tools/windows_x64_one_shot_ovmf_smoke.sh
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 ovmf grub-efi-amd64-bin grub-common grub-pc-bin \
+            xorriso dosfstools mtools shellcheck
+          shellcheck -S warning auto_tests/tools/windows_x64_one_shot_ovmf_smoke.sh
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+      - name: Require two independent actual UEFI GRUB guest boot markers in correct order
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash auto_tests/tools/windows_x64_one_shot_ovmf_smoke.sh
+          {
+            echo 'Only synthetic GRUB EFI media booted: DVD once, then FAT disk after UEFI reboot.'
+            echo 'This is NOT proof of Windows Setup, Windows client firstboot or BCD recovery.'
+            echo 'All files and OVMF variables were discarded on a hosted runner.'
+          } >> "$GITHUB_STEP_SUMMARY"
