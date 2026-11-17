@@ -100,6 +100,18 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
     for field in false_fields:
         require(proof.get(field) is False, f"Mint proof overstates an untested capability: {field}")
 
+    partition_hashes = proof.get("windowsPartitionSha256")
+    require(type(partition_hashes) is list and len(partition_hashes) == 4
+            and all(type(value) is str
+                    and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+                    for value in partition_hashes),
+            "Mint proof must retain all four Windows partition SHA-256 digests")
+    for field in ("windowsBackingQcow2Sha256", "windowsOriginalNvramSha256",
+                  "windowsOvmfTrialVarsSha256"):
+        require(type(proof.get(field)) is str
+                and re.fullmatch(r"[0-9a-f]{64}", proof[field]) is not None,
+                f"Mint proof is missing a valid baseline digest: {field}")
+
     # Reject the old misleading name rather than silently accepting evidence
     # that calls a copied live SquashFS root a complete Mint installation.
     require("mintInstalledIntoWindowsCOWPartition5" not in proof,
@@ -131,6 +143,9 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
             "Windows report lacks the truthful Mint SquashFS staging flag")
     require(report.get("mintFirstBootFromSameWindowsCowVerified") is True,
             "Windows report lacks the Mint firstboot flag")
+    require(report.get("windowsBootAfterMintRootVerified") is True
+            and report.get("sameDiskBothOperatingSystemsBootVerified") is True,
+            "Windows report lacks the independent Windows reboot after Mint root boot")
     require(report.get("mintCowEvidenceSha256") == proof_hash,
             "Windows report does not bind the exact Mint proof JSON")
     require(report.get("nativeGrubDualBootVerified") is False
