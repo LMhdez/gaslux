@@ -1281,7 +1281,7 @@ def main(argv: list[str] | None = None) -> int:
                                                 ext4_proof=ext4, iso=args.mint_iso,
                                                 evidence=evidence,
                                             )
-                                            report["mintInstalledIntoWindowsCow"] = True
+                                            report["mintSquashfsRootCopiedIntoWindowsCow"] = True
                                             report["mintFirstBootFromSameWindowsCowVerified"] = True
                                             report["mintCowEvidenceSha256"] = hashlib.sha256(
                                                 (evidence / "mint-same-windows-cow.json").read_bytes()
