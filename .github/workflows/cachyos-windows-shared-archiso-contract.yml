@@ -9,6 +9,8 @@ on:
       - auto_tests/test_cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
       - auto_tests/test_cachyos_windows_shared_archiso_guest_probe.py
+      - auto_tests/tools/cachyos_windows_shared_gpt_raw_audit.py
+      - auto_tests/test_cachyos_windows_shared_gpt_raw_audit.py
       - auto_tests/tools/windows_cachyos_overlay_gpt_stage.py
       - auto_tests/test_windows_cachyos_overlay_gpt_stage.py
   workflow_dispatch:
@@ -37,11 +39,15 @@ jobs:
             auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
             auto_tests/test_cachyos_windows_shared_archiso_handoff.py \
             auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py \
-            auto_tests/test_cachyos_windows_shared_archiso_guest_probe.py
+            auto_tests/test_cachyos_windows_shared_archiso_guest_probe.py \
+            auto_tests/tools/cachyos_windows_shared_gpt_raw_audit.py \
+            auto_tests/test_cachyos_windows_shared_gpt_raw_audit.py
           python3 -m unittest discover -s auto_tests \
             -p 'test_cachyos_windows_shared_archiso_handoff.py' -v
           python3 -m unittest discover -s auto_tests \
             -p 'test_cachyos_windows_shared_archiso_guest_probe.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_windows_shared_gpt_raw_audit.py' -v
           python3 -m unittest discover -s auto_tests \
             -p 'test_windows_cachyos_overlay_gpt_stage.py' -v
           printf '%s\n' 'Only source-bound Ed25519 verification and GPT contract regressions: no Archiso guest, pacstrap, partition formatting, Windows recovery or dual boot.' >> "$GITHUB_STEP_SUMMARY"
