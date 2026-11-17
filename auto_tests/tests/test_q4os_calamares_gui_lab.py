@@ -68,3 +68,38 @@ def test_only_new_disposable_disk_is_visible_to_qemu():
     assert "-net none" in source
     assert "-drive file=/dev/" not in source
     assert "GASLUX_Q4OS_GRAPHICS_LAB_ONLY" in source
+
+
+
+def test_desktop_installer_icon_launch_is_separately_exact_image_gated():
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert (
+        "expected_desktop='231a01a5e394937808d71080dbb4f1a8e9da3bc52e61d80e2e5cdebce8d638d7'"
+        in source
+    )
+    assert 'launch_installer="${GASLUX_Q4OS_LAUNCH_INSTALLER:-no}"' in source
+    assert '"$current" == "$expected_desktop"' in source
+    assert 'move 948 93 click 1 pause 1 move 57 39 click 1 pause 0.3 click 1' in source
+    assert "GASLUX_Q4OS_PINNED_DESKTOP_LAUNCHER_VERIFIED" in source
+    assert "vnc-after-installer-icon.png" in source
+    assert '"$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1' in source
+    assert "NOT PROVEN: Calamares executable actually started" in source
+    assert "calamares -d" not in source
+
+
+def test_unknown_gui_mode_refused_before_disk_mutation(tmp_path):
+    iso = tmp_path / "fake.iso"
+    iso.write_bytes(b"synthetic")
+    env = os.environ.copy()
+    env["GASLUX_Q4OS_GRAPHICS_LAB_ONLY"] = "1"
+    env["GASLUX_Q4OS_LAUNCH_INSTALLER"] = "untrusted"
+    env["GITHUB_ACTIONS"] = "true"
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "q4os", str(iso), "0" * 64],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Unrecognized Q4OS GUI launch laboratory mode" in result.stderr
