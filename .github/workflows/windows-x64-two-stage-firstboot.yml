@@ -14,6 +14,7 @@ on:
       - test/windows-panther-real-ntfs-readonly-fixture
       - diag/windows-stage1-timeout-offline-panther
       - fix/windows-stage1-hmp-ack-and-timeout-diagnostics
+      - test/windows-official-iso-direct-two-stage-kvm
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -147,14 +148,14 @@ jobs:
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
           mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
-      - name: Validate official SHA, disposable first DVD Setup, detach DVD and independently firstboot Windows
+      - name: Compare original SHA-pinned Microsoft ISO without remaster, then disk-only installed boot
         shell: bash
         run: |
           set -Eeuo pipefail
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
             --profile "${{ matrix.profile }}" --accel kvm \
-            --derived-no-prompt --two-stage-install-only --boot-timeout 4800
+            --official-original-iso --two-stage-install-only --boot-timeout 4800
           echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
