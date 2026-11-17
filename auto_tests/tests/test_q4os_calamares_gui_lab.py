@@ -70,7 +70,6 @@ def test_only_new_disposable_disk_is_visible_to_qemu():
     assert "GASLUX_Q4OS_GRAPHICS_LAB_ONLY" in source
 
 
-
 def test_desktop_installer_icon_launch_is_separately_exact_image_gated():
     source = SCRIPT.read_text(encoding="utf-8")
     assert (
@@ -79,7 +78,7 @@ def test_desktop_installer_icon_launch_is_separately_exact_image_gated():
     )
     assert 'launch_installer="${GASLUX_Q4OS_LAUNCH_INSTALLER:-no}"' in source
     assert '"$current" == "$expected_desktop"' in source
-    assert 'move 948 93 click 1 pause 1 move 57 39 click 1 pause 0.3 click 1' in source
+    assert "move 948 93 click 1 pause 1 move 57 39 click 1 pause 0.3 click 1" in source
     assert "GASLUX_Q4OS_PINNED_DESKTOP_LAUNCHER_VERIFIED" in source
     assert "vnc-after-installer-icon.png" in source
     assert '"$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1' in source
