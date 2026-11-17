@@ -39,6 +39,22 @@ disks="$(lsblk -dn -o NAME,TYPE |
   fail 'native systemd-boot missing'
 [[ -s /boot/efi/EFI/BOOT/BOOTX64.EFI ]] ||
   fail 'fallback EFI loader missing'
+# A second ESP is not automatically a second OS entry in systemd-boot. Do
+# not mistake preservation of the mock Windows ESP for a working boot menu.
+# This is a read-only observation of the INSTALLED Pop OS, not a simulated
+# menu and not a positive Windows boot claim.
+[[ "$(readlink -e "$by_id-part1")" != "$(readlink -e "$by_id-part3")" ]] ||
+  fail 'isolated mock Windows ESP unexpectedly shares Pop ESP'
+[[ ! -e /boot/efi/EFI/Microsoft/Boot/bootmgfw.efi ]] ||
+  fail 'unexpected foreign Windows loader in independently owned Pop ESP'
+command -v bootctl >/dev/null || fail 'installed systemd bootctl absent'
+menu="$(LC_ALL=C bootctl --no-pager --esp-path=/boot/efi list 2>&1)" ||
+  fail 'installed systemd-boot entry enumeration failed'
+[[ -n "$menu" ]] || fail 'installed boot menu enumeration empty'
+if grep -Eqi '(^|[^a-z0-9_-])auto-windows([^a-z0-9_-]|$)' <<< "$menu"; then
+  fail 'Windows auto-boot menu entry unexpectedly present on separate Pop ESP'
+fi
+printf 'GASLUX_POP_SEPARATE_ESP_WINDOWS_MENU_ABSENT=1\n' > /dev/ttyS0
 [[ ! -e /run/gaslux-pop-lab/probe.sh && ! -e /cdrom/casper/filesystem.squashfs ]] ||
   fail 'live source still mounted'
 printf 'GASLUX_POP_NATIVE_FIRSTBOOT_OS_ID=pop\n' > /dev/ttyS0

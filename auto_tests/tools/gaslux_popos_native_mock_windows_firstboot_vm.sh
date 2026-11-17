@@ -315,6 +315,8 @@ for _ in $(seq 1 290); do
        grep -Eq '^GASLUX_POP_NATIVE_FIRSTBOOT_KERNEL=[^[:space:]]+$' \
         "$work/installed.normalized.log" &&
        grep -Fxq "GASLUX_POP_NATIVE_FIRSTBOOT_ROOT_PARTUUID=$expected_partuuid" \
+        "$work/installed.normalized.log" &&
+       grep -Fxq "GASLUX_POP_SEPARATE_ESP_WINDOWS_MENU_ABSENT=1" \
         "$work/installed.normalized.log"; then
       verified=1
       break
@@ -361,4 +363,5 @@ PY
   die 'Installed first boot unexpectedly changed the reconciled root PARTUUID'
 printf 'GASLUX_POP_NATIVE_FIRSTBOOT_WITHOUT_LIVE_ISO=1\n'
 printf 'GASLUX_POP_MOCK_WINDOWS_PROTECTED_THROUGH_FIRSTBOOT=1\n'
+printf 'GASLUX_POP_SEPARATE_ESP_WINDOWS_MENU_ABSENT=1\n'
 printf 'NOT TESTED: actual Windows 10/11 boot, BCD, WinRE, real dual boot, upgrades, rollback.\n'

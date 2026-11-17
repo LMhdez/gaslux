@@ -12,6 +12,7 @@ on:
       - feature/popos-native-full-install-firstboot-ovmf
       - feature/popos-native-gpt-firstboot-reconcile
       - feature/popos-native-mock-windows-firstboot-isolation
+      - feature/popos-separated-esp-windows-entry-gate
       - feature/bazzite-atomic-preflight
       - feature/q4os-native-preflight
   pull_request:

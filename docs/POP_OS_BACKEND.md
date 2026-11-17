@@ -247,3 +247,30 @@ The mock EFI file is deliberately *not* a Windows executable. No installed
 Windows, WinRE, BCD, BitLocker, Windows boot, dual boot, update, uninstall,
 or rollback is tested by this lab. It is separate from the Linux-only
 first-boot test, which remains unchanged.
+
+
+## Independently owned ESP: boot-menu evidence barrier (experimental)
+
+The authenticated official Pop 24.04 install and second QEMU boot on
+PR #63 used **two EFI system partitions**. Its mock Windows ESP was
+read-only to the native installer; its separate Pop ESP contained native
+`systemd-boot`. This protects mock Windows bytes but does **not** prove
+a usable Windows item in Pop's boot menu. Upstream systemd-boot reads
+entries on its own ESP (see
+https://github.com/systemd/systemd/blob/main/docs/BOOT.md); a second
+ESP cannot be assumed to be automatically discovered.
+
+The next QEMU-only experiment executes `bootctl list` from the **actual
+installed Pop system** on its second independent boot. It must show no
+`auto-windows` entry when Pop's ESP has no Windows EFI loader; this
+publishes the intentionally negative
+`GASLUX_POP_SEPARATE_ESP_WINDOWS_MENU_ABSENT=1` marker. If enumeration
+fails or contradicts the expected topology, the guest and host tests
+refuse to mark the observation successful. The installed boot and
+whole-volume mock Windows hashes remain mandatory.
+
+**No real Windows Boot Manager is installed in this fixture.** Do not
+convert a successful negative menu observation into a dual-boot claim.
+Any future solution must verify the real Windows 10/11 firmware boot
+entry and Windows installed boot, BCD, WinRE, immutable foreign EFI
+files, kernel/boot updates and rollback on snapshotted VM disks.
