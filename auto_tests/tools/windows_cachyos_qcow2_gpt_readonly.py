@@ -76,8 +76,11 @@ def header_at(data: bytes, offset: int, current: int,
     require(binascii.crc32(header) & 0xffffffff == recorded_crc,
             "GPT header CRC mismatch")
     this_lba, backup_lba, first, last = struct.unpack_from("<QQQQ", raw, 24)
+    # This laboratory uses a fixed 128-record GPT (32 sectors) on an
+    # exactly 128 GiB, 512-byte-sector Windows disk. Reject truncated or
+    # shifted usable ranges even if an attacker recomputes both header CRCs.
     require(this_lba == current and backup_lba == backup and
-            first >= 34 and last < total_lbas - 1 and first < last,
+            first == 34 and last == total_lbas - 34,
             "unexpected GPT header addresses")
     require(raw[56:72] != b"\x00" * 16,
             "missing GPT disk identity")
@@ -94,10 +97,19 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     require(front[510:512] == b"\x55\xaa",
             "invalid protective MBR signature")
     entries_mbr = [front[446 + 16*i:446 + 16*(i+1)] for i in range(4)]
-    require(entries_mbr[0][4] == 0xEE and
-            all(not any(entry) for entry in entries_mbr[1:]),
-            "hybrid or nonprotective MBR is forbidden")
     total = disk_bytes // SECTOR
+    # A mere 0xEE type byte does not establish a protective MBR. In
+    # particular, a forged zero-length/shifted entry must not certify a
+    # disk for subsequent Linux partition planning. This fixed-size lab
+    # fits the protective MBR's 32-bit sector-count field exactly.
+    require(
+        entries_mbr[0][0] == 0
+        and entries_mbr[0][4] == 0xEE
+        and struct.unpack_from("<II", entries_mbr[0], 8) ==
+            (1, min(total - 1, 0xffffffff))
+        and all(not any(entry) for entry in entries_mbr[1:]),
+        "hybrid or invalid protective MBR geometry",
+    )
     primary = header_at(front, SECTOR, 1, total - 1, total)
     backup = header_at(back, WINDOW_BYTES - SECTOR, total - 1, 1, total)
     require(primary[56:72] == backup[56:72] and
@@ -116,6 +128,7 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     first_usable, last_usable = struct.unpack_from("<QQ", primary, 40)
     spans = []
     result_parts = []
+    unique_partition_guids: set[bytes] = set()
     for i in range(128):
         rec = p_entries[i*128:(i+1)*128]
         if not any(rec[:16]):
@@ -124,8 +137,12 @@ def inspect_gpt_windows(front: bytes, back: bytes,
         require(i < 4, "foreign fifth GPT partition detected")
         typ = str(uuid.UUID(bytes_le=rec[:16]))
         require(typ == TYPES[i], "unexpected Windows GPT partition type/order")
-        require(rec[16:32] != b"\x00" * 16,
+        unique_guid = rec[16:32]
+        require(unique_guid != b"\x00" * 16,
                 "missing unique Windows GPT partition GUID")
+        require(unique_guid not in unique_partition_guids,
+                "duplicate Windows GPT partition identity")
+        unique_partition_guids.add(unique_guid)
         start, end = struct.unpack_from("<QQ", rec, 32)
         require(first_usable <= start <= end <= last_usable and
                 start >= 2048 and start % 2048 == 0,
@@ -177,6 +194,8 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
             not disk.parent.is_symlink() and
             not disk.is_symlink() and disk.is_file() and
             stat.S_ISREG(disk.stat().st_mode) and
+            disk.stat().st_uid == os.getuid() and
+            disk.stat().st_nlink == 1 and
             disk.parent.stat().st_uid == os.getuid() and
             stat.S_IMODE(disk.parent.stat().st_mode) == 0o700,
             "unowned or unsafe Windows QCOW2 path")
