@@ -12,6 +12,7 @@ on:
       - test/windows10-proven-floppy-cachyos-readonly-gate
       - test/windows10-gpt-primary-backup-readonly-evidence
       - fix/windows10-gpt-protective-mbr-unique-guids
+      - fix/windows-gpt-qcow2-window-extraction-probe
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
