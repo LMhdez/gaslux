@@ -32,8 +32,13 @@ def evidence(tmp_path):
                 "sequence": [
                     {
                         "show": [
-                            "welcome", "locale", "keyboard", "packagechooser",
-                            "partition", "users", "summary",
+                            "welcome",
+                            "locale",
+                            "keyboard",
+                            "packagechooser",
+                            "partition",
+                            "users",
+                            "summary",
                         ]
                     },
                     {"exec": list(JOBS)},
@@ -95,8 +100,11 @@ def evidence(tmp_path):
             command, timeout = _NATIVE_DESCRIPTORS[desc_name]
             payload = yaml.safe_dump(
                 {
-                    "type": "job", "name": desc_name, "interface": "process",
-                    "command": command, "timeout": timeout,
+                    "type": "job",
+                    "name": desc_name,
+                    "interface": "process",
+                    "command": command,
+                    "timeout": timeout,
                 }
             ).encode()
         else:
@@ -128,22 +136,16 @@ def test_inert_profile_preserves_full_native_graph_and_blocks_all_risky_writers(
     assert report["calamaresJobEngineExecuted"] is False
     assert report["diskWrites"] == 0
     directory = evidence / "calamares-inert-profile"
-    boot = yaml.safe_load(
-        (directory / "etc/calamares/modules/bootloader.conf").read_text()
-    )
+    boot = yaml.safe_load((directory / "etc/calamares/modules/bootloader.conf").read_text())
     assert boot["efiBootLoader"] == "grub"
     assert boot["efiBootloaderId"] == "GasluxQ4OSLab"
     assert boot["installEFIFallback"] is False
     for binary in ("grubInstall", "grubMkconfig", "efiBootMgr"):
         assert boot[binary] == "/bin/false"
-    packages = yaml.safe_load(
-        (directory / "etc/calamares/modules/packages.conf").read_text()
-    )
+    packages = yaml.safe_load((directory / "etc/calamares/modules/packages.conf").read_text())
     assert packages["operations"] == []
     assert packages["skip_if_no_internet"] is True
-    settings = yaml.safe_load(
-        (directory / "etc/calamares/settings.conf").read_text()
-    )
+    settings = yaml.safe_load((directory / "etc/calamares/settings.conf").read_text())
     assert settings["sequence"][1]["exec"] == list(JOBS)
     for hook in ("q4oshook2", "q4oshook3", "q4oshook5"):
         descriptor = yaml.safe_load(
