@@ -82,12 +82,18 @@ def _create_synthetic_q4os_disk(workspace, *, extra=False, esp_name="GASLUX-LAB-
         crc = zlib.crc32(table)
         disk_guid = uuid.UUID("a1234567-1111-4111-8111-abcdefabcdef")
         primary = _gpt_header(
-            current=1, alternate=DISK_SECTORS - 1, entries_lba=2,
-            entry_crc=crc, disk_guid=disk_guid,
+            current=1,
+            alternate=DISK_SECTORS - 1,
+            entries_lba=2,
+            entry_crc=crc,
+            disk_guid=disk_guid,
         )
         backup = _gpt_header(
-            current=DISK_SECTORS - 1, alternate=1, entries_lba=DISK_SECTORS - 33,
-            entry_crc=crc, disk_guid=disk_guid,
+            current=DISK_SECTORS - 1,
+            alternate=1,
+            entries_lba=DISK_SECTORS - 33,
+            entry_crc=crc,
+            disk_guid=disk_guid,
         )
         fp.seek(512)
         fp.write(primary)
@@ -121,16 +127,28 @@ def signed(vm):
     )
     payload = propose_read_only_plan(evidence, run_id=RUN_ID, nonce=NONCE)
 
-    def verify(*, plan=None, raw=None, sig=None, key=None, fingerprint=None, nonce=NONCE,
-               run_id=RUN_ID, independent=None):
+    def verify(
+        *,
+        plan=None,
+        raw=None,
+        sig=None,
+        key=None,
+        fingerprint=None,
+        nonce=NONCE,
+        run_id=RUN_ID,
+        independent=None,
+    ):
         if raw is None:
             raw = canonical_json(payload if plan is None else plan)
         if sig is None:
             sig = private.sign(b"GASLUX-Q4OS-VM-READONLY-TARGET-V1\n" + raw)
         return verify_signed_read_only_plan(
-            raw, sig, public if key is None else key,
-            trusted_public_key_sha256=(hashlib.sha256(public).hexdigest()
-                                       if fingerprint is None else fingerprint),
+            raw,
+            sig,
+            public if key is None else key,
+            trusted_public_key_sha256=(
+                hashlib.sha256(public).hexdigest() if fingerprint is None else fingerprint
+            ),
             independently_expected_run_id=run_id,
             independently_expected_nonce=nonce,
             evidence=evidence if independent is None else independent,
@@ -155,16 +173,26 @@ def test_valid_signed_proposal_never_authorizes_writes(signed):
     assert evidence["diskGuid"] == payload["diskGuid"]
 
 
-@pytest.mark.parametrize("key,value", [
-    ("distributionId", "popos"), ("backend", "system76"),
-    ("firmwareLayout", "bios/mbr"), ("isoSha256", "f" * 64),
-    ("installationAuthorized", True), ("guestOnly", False),
-    ("windowsEspWritesAuthorized", True), ("calamaresJobsAuthorized", True),
-    ("operation", "install"), ("rootEndLba", True),
-    ("espEndLba", ESP_END + 1), ("rootStartLba", ESP_END),
-    ("diskGuid", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
-    ("gptPrimarySha256", "f" * 64), ("rootFilesystem", "btrfs"),
-])
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("distributionId", "popos"),
+        ("backend", "system76"),
+        ("firmwareLayout", "bios/mbr"),
+        ("isoSha256", "f" * 64),
+        ("installationAuthorized", True),
+        ("guestOnly", False),
+        ("windowsEspWritesAuthorized", True),
+        ("calamaresJobsAuthorized", True),
+        ("operation", "install"),
+        ("rootEndLba", True),
+        ("espEndLba", ESP_END + 1),
+        ("rootStartLba", ESP_END),
+        ("diskGuid", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+        ("gptPrimarySha256", "f" * 64),
+        ("rootFilesystem", "btrfs"),
+    ],
+)
 def test_even_re_signed_unsafe_manifest_is_rejected(signed, key, value):
     _, _, _, payload, _, _, verify = signed
     altered = dict(payload, **{key: value})
@@ -197,8 +225,11 @@ def test_duplicate_properties_noncanonical_and_extra_property_refused(signed):
 
 def test_replay_and_independent_digest_mismatch_refused(signed):
     _, _, evidence, _, _, _, verify = signed
-    for kwargs in ({"run_id": "another-run-12345678"}, {"nonce": "a" * 32},
-                   {"independent": dict(evidence, gptBackupSha256="0" * 64)}):
+    for kwargs in (
+        {"run_id": "another-run-12345678"},
+        {"nonce": "a" * 32},
+        {"independent": dict(evidence, gptBackupSha256="0" * 64)},
+    ):
         with pytest.raises(Q4osPlanRefusal):
             verify(**kwargs)
 
