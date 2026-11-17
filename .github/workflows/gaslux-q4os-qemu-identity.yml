@@ -64,10 +64,18 @@ jobs:
             echo 'No installed Linux kernel image is available' >&2
             exit 1
           }
-          kernel="$(readlink -f "${kernels[-1]}")"
-          kernel_version="${kernel##*/vmlinuz-}"
-          [[ -s "$kernel" && -s "/lib/modules/$kernel_version/modules.dep" ]] || {
+          kernel_source="$(readlink -f "${kernels[-1]}")"
+          kernel_version="${kernel_source##*/vmlinuz-}"
+          [[ -s "$kernel_source" && -s "/lib/modules/$kernel_version/modules.dep" ]] || {
             echo 'Kernel and matching module tree do not agree' >&2
+            exit 1
+          }
+          kernel_dir="$RUNNER_TEMP/q4os-kernel-$GITHUB_RUN_ID"
+          mkdir -m 0700 -p "$kernel_dir"
+          kernel="$kernel_dir/vmlinuz-$kernel_version"
+          sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" "$kernel_source" "$kernel"
+          [[ -r "$kernel" && ! -L "$kernel" ]] || {
+            echo 'Runner-owned kernel copy is not readable' >&2
             exit 1
           }
           printf 'GASLUX_Q4OS_QEMU_KERNEL=%s\n' "$kernel" >> "$GITHUB_ENV"

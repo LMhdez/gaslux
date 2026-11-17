@@ -327,7 +327,10 @@ def _run_qemu(
             deadline = time.monotonic() + 45
             while time.monotonic() < deadline:
                 if process.poll() is not None:
-                    raise Q4osQemuLabRefusal("QEMU exited before creating its report socket")
+                    detail = qemu_log.read_text(encoding="utf-8", errors="replace")[-2000:]
+                    raise Q4osQemuLabRefusal(
+                        "QEMU exited before creating its report socket: " + detail.strip()
+                    )
                 if socket_path.exists():
                     mode = socket_path.lstat().st_mode
                     if stat.S_ISSOCK(mode):
