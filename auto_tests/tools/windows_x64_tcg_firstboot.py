@@ -17,6 +17,7 @@ import os
 import platform
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -326,8 +327,41 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+
+BOOT_FROM_CD_PROMPT = b"Press any key to boot from CD or DVD"
+
+
+def send_first_iso_boot_key(monitor_path: Path) -> None:
+    """Exactly one QEMU HMP Enter keystroke, to boot the official ISO initially.
+
+    Never send subsequent keys: Windows Setup must reboot autonomously from
+    the installed disk. The local Unix HMP socket belongs to the fresh
+    0700-permission GitHub-hosted VM temporary directory, never the network.
+    """
+    require(monitor_path.is_absolute() and monitor_path.is_socket() and
+            not monitor_path.is_symlink() and
+            monitor_path.parent.name.startswith("gaslux-win-x64-") and
+            monitor_path.parent.parent == Path("/home/runner/work/_temp"),
+            "refusing boot input through an unowned QEMU monitor socket")
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
+            monitor.settimeout(2)
+            monitor.connect(str(monitor_path))
+            # HMP emits an initial banner. Consume at most 8 KiB.
+            banner = monitor.recv(8192)
+            require(b"QEMU" in banner or b"(qemu)" in banner,
+                    "unexpected guest monitor protocol banner")
+            monitor.sendall(b"sendkey ret 300\n")
+            response = monitor.recv(8192)
+            require(b"unknown command" not in response.lower() and
+                    b"error:" not in response.lower(),
+                    "QEMU refused initial ISO boot key")
+    except (TimeoutError, OSError) as exc:
+        raise LabError("QEMU HMP failed to deliver initial ISO boot key") from exc
+
+
 def boot_vm(args: list[str], transcript: Path, limit: int,
-            profile_key: str) -> tuple[bool, str]:
+            profile_key: str, monitor_socket: Path | None = None) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -352,6 +386,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                   build_by_profile[profile_key]).encode()
     started = time.monotonic()
     witnessed_at: float | None = None
+    initial_cd_key_sent = False
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
@@ -359,9 +394,16 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                 if transcript.is_file():
                     with transcript.open("rb") as source:
                         source.seek(max(0, transcript.stat().st_size - 400_000))
+                        serial_data = source.read(400_000)
                         lines = {
-                            line.strip() for line in source.read(400_000).splitlines()
+                            line.strip() for line in serial_data.splitlines()
                         }
+                    if (monitor_socket is not None and not initial_cd_key_sent and
+                            BOOT_FROM_CD_PROMPT in serial_data):
+                        send_first_iso_boot_key(monitor_socket)
+                        initial_cd_key_sent = True
+                        print("GASLUX_VM_INITIAL_OFFICIAL_ISO_BOOT_KEY_SENT=1",
+                              flush=True)
                     if any(line.startswith(FAILURE.encode()) for line in lines):
                         return False, "installed Windows explicitly rejected firstboot audit"
                     if required.issubset(lines) and any(
@@ -376,11 +418,14 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     if witnessed_at is not None:
                         return False, "QEMU exited abnormally after Windows audit"
                     return False, "QEMU exited before installed Windows first-logon witness"
+                if (monitor_socket is not None and not initial_cd_key_sent and
+                        time.monotonic() - started > 300):
+                    return False, "official ISO did not reach UEFI boot prompt"
                 if witnessed_at is not None and (
                     time.monotonic() - witnessed_at > 600
                 ):
                     return False, "installed Windows reported audit but did not power off cleanly"
-                time.sleep(10)
+                time.sleep(0.1 if monitor_socket is not None and not initial_cd_key_sent else 10)
             return False, "timed out before verified Windows guest audit and shutdown"
         finally:
             if proc.poll() is None:
@@ -449,6 +494,9 @@ def main(argv: list[str] | None = None) -> int:
             nvram = workspace / "ovmf-variables.fd"
             shutil.copyfile(OVMF_VARS, nvram)
             serial = workspace / "win-guest-serial.log"
+            monitor_path = workspace / "initial-installer-hmp.sock"
+            require(not monitor_path.exists() and not monitor_path.is_symlink(),
+                    "refusing existing QEMU control socket")
             base = [
                 "qemu-system-x86_64", "-machine",
                 ("q35,accel=kvm,smm=on" if args.accel == "kvm"
@@ -457,7 +505,7 @@ def main(argv: list[str] | None = None) -> int:
                 "-cpu", ("host" if args.accel == "kvm" else "max"),
                 "-smp", "2", "-m", "4096",
                 "-display", "none", "-vga", "std",
-                "-monitor", "none", "-net", "none",
+                "-monitor", f"unix:{monitor_path},server,nowait", "-net", "none",
                 "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
                 "-drive", f"if=pflash,format=raw,file={nvram}",
                 "-device", "ich9-ahci,id=lab_sata",
@@ -491,7 +539,8 @@ def main(argv: list[str] | None = None) -> int:
                              "-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
                              "-device", "tpm-tis,tpmdev=tpm0"])
             try:
-                ok, diagnostic = boot_vm(base, serial, args.boot_timeout, args.profile)
+                ok, diagnostic = boot_vm(base, serial, args.boot_timeout,
+                                         args.profile, monitor_socket=monitor_path)
                 report["windowsClientBootVerified"] = ok
                 report["diagnostic"] = diagnostic
             finally:
