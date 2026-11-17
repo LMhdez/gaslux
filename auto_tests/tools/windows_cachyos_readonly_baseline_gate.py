@@ -20,6 +20,8 @@ from windows_x64_tcg_firstboot import witness_powershell
 
 MAX_REPORT = 65536
 MAX_SERIAL = 16 * 1024 * 1024
+# Host archiver retains first-stage DVD serial only when <= 2,000,000 bytes.
+MAX_INITIAL_SERIAL = 2_000_000
 MAX_MANIFEST = 512
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 DVD_START = re.compile(rb'BdsDxe: starting Boot[0-9A-Fa-f]{4} "UEFI QEMU DVD-ROM')
@@ -58,7 +60,8 @@ def unique_keys(pairs: list[tuple[str, object]]) -> dict:
 
 
 def evaluate(profile: str, report: dict, serial: bytes,
-             manifest: bytes) -> dict[str, object]:
+             manifest: bytes, initial_serial: bytes,
+             initial_manifest: bytes) -> dict[str, object]:
     """Cross-check supplied two-stage evidence; never authorize any writing."""
     catalog = load_catalog()
     require(profile in EXPECTED and profile in catalog["profiles"],
@@ -103,6 +106,28 @@ def evaluate(profile: str, report: dict, serial: bytes,
         hashlib.sha256(generated.encode("utf-8")).hexdigest(),
         "Windows FirstLogon script SHA256 differs from checked-out witness",
     )
+    require(0 < len(initial_serial) <= MAX_INITIAL_SERIAL,
+            "missing or oversized initial Windows DVD serial")
+    # The original Windows two-stage host owns this first-stage log and
+    # records its SHA-256 in the same JSON that names the second-stage guest.
+    # Cross-check the actual archived bytes, rather than merely accepting an
+    # arbitrary syntactically valid report digest.
+    first_digest = hashlib.sha256(initial_serial).hexdigest()
+    require(first_digest == report["initialDvdGuestSerialSha256"],
+            "initial DVD serial SHA256 differs from Windows report")
+    try:
+        first_manifest_text = initial_manifest.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise BaselineGateError("invalid initial DVD serial manifest") from error
+    first_filename = profile + "-initial-dvd-serial.log"
+    first_match = re.fullmatch(
+        r"([0-9a-f]{64})  " + re.escape(first_filename) + r"\n?",
+        first_manifest_text,
+    )
+    require(first_match is not None and first_match.group(1) == first_digest,
+            "initial DVD serial SHA256 differs from evidence manifest")
+    require(len(DVD_START.findall(initial_serial)) == 1,
+            "initial DVD stage must show exactly one UEFI DVD startup")
     require(len(serial) > 0 and len(serial) <= MAX_SERIAL,
             "empty or oversized installed Windows serial")
     require(not DVD_START.search(serial),
@@ -165,6 +190,8 @@ def evaluate(profile: str, report: dict, serial: bytes,
         "candidateWindowsFirstbootDocumentsConsistent": True,
         "pinnedMicrosoftIsoDigestMatched": True,
         "secondStageDvdStartAbsent": True,
+        "initialDvdSerialManifestVerified": True,
+        "firstStageSingleDvdStartObserved": True,
         "serialManifestVerified": True,
         "windowsGuestOriginAuthenticated": False,
         "windowsBootVerified": False,
@@ -181,6 +208,8 @@ def main() -> int:
     parser.add_argument("--result", required=True, type=Path)
     parser.add_argument("--serial", required=True, type=Path)
     parser.add_argument("--serial-sha256", required=True, type=Path)
+    parser.add_argument("--initial-dvd-serial", required=True, type=Path)
+    parser.add_argument("--initial-dvd-serial-sha256", required=True, type=Path)
     args = parser.parse_args()
     try:
         result = json.loads(read_regular(args.result, MAX_REPORT),
@@ -189,6 +218,8 @@ def main() -> int:
             args.profile, result,
             read_regular(args.serial, MAX_SERIAL),
             read_regular(args.serial_sha256, MAX_MANIFEST),
+            read_regular(args.initial_dvd_serial, MAX_INITIAL_SERIAL),
+            read_regular(args.initial_dvd_serial_sha256, MAX_MANIFEST),
         )
     except (BaselineGateError, OSError, ValueError, TypeError, KeyError,
             json.JSONDecodeError) as error:
