@@ -94,6 +94,11 @@ jobs:
           import re
           from pathlib import Path
           log = Path(os.environ["RUNNER_TEMP"], "windows-dvd-diagnostic.log").read_text()
+          for line in log.splitlines():
+              if line.startswith(("GASLUX_VM_SCREEN_DIAGNOSTIC_FAILED:",
+                                  "GASLUX_WINDOWS_X64_TCG_LAB_FAILURE:",
+                                  "GASLUX_VM_INITIAL_OFFICIAL_")):
+                  print(line)
           result = json.loads(Path(os.environ["GASLUX_WINDOWS_EVIDENCE"],
                                    "win11_26h2_en_us_x64-result.json").read_text())
           if not result.get("isoHashVerified"):
