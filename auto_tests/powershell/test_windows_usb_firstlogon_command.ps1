@@ -86,12 +86,18 @@ try {
     }
 
     $script:volumes = @([pscustomobject]@{DriveLetter = 'Z'})
-    Set-Content -LiteralPath $ScriptFile -Encoding ascii -Value '# synthetic tampered script never executed'
+    $originalBytes = [IO.File]::ReadAllBytes([IO.Path]::GetFullPath($ScriptFile))
     try {
-        $null = Invoke-Expression ($preflight + ';$p')
-        throw 'FAIL: modified script hash was accepted'
-    } catch {
-        if ($_.Exception.Message -match '^FAIL:') { throw }
+        Set-Content -LiteralPath $ScriptFile -Encoding ascii -Value '# synthetic tampered script never executed'
+        try {
+            $null = Invoke-Expression ($preflight + ';$p')
+            throw 'FAIL: modified script hash was accepted'
+        } catch {
+            if ($_.Exception.Message -match '^FAIL:') { throw }
+        }
+    } finally {
+        # Repeatable PS5.1 + PS7 verification must not inherit altered media.
+        [IO.File]::WriteAllBytes([IO.Path]::GetFullPath($ScriptFile), $originalBytes)
     }
     Write-Output 'PASS: native Windows PS5.1/PS7 checks real SHA256 on temporary file and fails closed for missing/duplicate label and tampering. No guest disk.'
 } finally {
