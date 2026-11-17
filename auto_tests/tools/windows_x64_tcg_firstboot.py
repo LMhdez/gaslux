@@ -260,7 +260,8 @@ Start-Sleep -Seconds 2
         "__MARKER__", MARKER).strip()
 
 
-def generate_unattend(profile_key: str, build: str) -> bytes:
+def generate_unattend(profile_key: str, build: str,
+                      removable_answer: bool = False) -> bytes:
     # Windows Setup owns disk partitioning, but can only see the ONE new
     # file-backed QCOW2 and its read-only installer ISO/floppy. Never a host disk.
     ns = "urn:schemas-microsoft-com:unattend"
@@ -384,9 +385,18 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     child(command, "Description", "Gaslux first boot serial verification")
     # FirstLogonCommands must remain short. Base64-encoding a full witness
     # makes the setup XML command longer than Windows command-line limits.
-    # Only a hash-checked, VM-exclusive floppy is available to Windows.
-    child(command, "CommandLine", "powershell.exe -NoProfile -NonInteractive "
-          "-ExecutionPolicy Bypass -File A:\\GASLUX.PS1")
+    if removable_answer:
+        # The removable FAT32 VM-only answer volume can have any drive letter.
+        # Only run the signed-independent guest audit from ONE labelled volume.
+        child(command, "CommandLine",
+              "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass "
+              "-Command \"$v=@(Get-Volume -FileSystemLabel GASLUXCI|? DriveLetter);"
+              "if($v.Count -ne 1){exit 20};"
+              "& ($v[0].DriveLetter + ':\\GASLUX.PS1')\"")
+    else:
+        # Original floppy path retained outside experimental two-stage runs.
+        child(command, "CommandLine", "powershell.exe -NoProfile -NonInteractive "
+              "-ExecutionPolicy Bypass -File A:\\GASLUX.PS1")
     child(command, "RequiresUserInput", "false")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -879,7 +889,10 @@ def main(argv: list[str] | None = None) -> int:
                          "separate hosted VM one-shot installation gate is approved")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
-    xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
+    xml = generate_unattend(
+        args.profile, profile["expectedWindowsBuildPrefix"],
+        removable_answer=args.two_stage_install_only,
+    )
     validate_oobe_answer_pass(xml)
     root = ET.fromstring(xml)
     if args.fixture_only:
@@ -928,13 +941,23 @@ def main(argv: list[str] | None = None) -> int:
                 encoding="utf-8")
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
-            floppy = workspace / "unattend-floppy.img"
-            subprocess.run(["truncate", "-s", "1440K", str(floppy)], check=True)
-            subprocess.run(["mkfs.vfat", "-F", "12", "-n", "GASLUXCI", str(floppy)],
-                           check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(["mcopy", "-i", str(floppy), str(xmlfile),
+            if args.two_stage_install_only:
+                answer = workspace / "only-disposable-answer-usb.img"
+                require(not answer.exists() and not answer.is_symlink(),
+                        "refusing reused Windows Setup answer volume")
+                subprocess.run(["truncate", "-s", "64M", str(answer)], check=True)
+                subprocess.run(["mkfs.vfat", "-F", "32", "-n", "GASLUXCI", str(answer)],
+                               check=True, stdout=subprocess.DEVNULL)
+            else:
+                answer = workspace / "unattend-floppy.img"
+                require(not answer.exists() and not answer.is_symlink(),
+                        "refusing reused Windows Setup answer volume")
+                subprocess.run(["truncate", "-s", "1440K", str(answer)], check=True)
+                subprocess.run(["mkfs.vfat", "-F", "12", "-n", "GASLUXCI", str(answer)],
+                               check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["mcopy", "-i", str(answer), str(xmlfile),
                             "::/Autounattend.xml"], check=True)
-            subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps1),
+            subprocess.run(["mcopy", "-i", str(answer), str(guest_ps1),
                             "::/GASLUX.PS1"], check=True)
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
@@ -979,8 +1002,17 @@ def main(argv: list[str] | None = None) -> int:
                 base.extend([
                     "-drive", f"if=none,id=only_windows,format=qcow2,file={disk}",
                     "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
-                    "-drive", f"if=floppy,format=raw,file={floppy}",
                 ])
+                if args.two_stage_install_only:
+                    # Read-only, file-backed FAT32 USB: never a host block device.
+                    # It remains attached in both stages; only the DVD detaches.
+                    base.extend([
+                        "-drive",
+                        f"if=none,id=lab_unattend,format=raw,readonly=on,file={answer}",
+                        "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
+                    ])
+                else:
+                    base.extend(["-drive", f"if=floppy,format=raw,file={answer}"])
             tpm = None
             if args.profile.startswith("win11"):
                 require(shutil.which("swtpm") is not None, "Windows 11 requires TPM 2.0")
