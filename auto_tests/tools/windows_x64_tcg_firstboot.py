@@ -395,16 +395,16 @@ def send_first_iso_boot_key_vnc(monitor_path: Path, hold_ms: int = 300) -> None:
         with socket.create_connection(("127.0.0.1", 5979), timeout=5) as conn:
             conn.settimeout(5)
             version = receive_exact(conn, 12)
-            require(version == b"RFB 003.008\\n", "unexpected RFB protocol")
+            require(version == b"RFB 003.008\n", "unexpected RFB protocol")
             conn.sendall(version)
             count = receive_exact(conn, 1)[0]
             require(0 < count <= 8, "invalid RFB security option count")
             options = receive_exact(conn, count)
             require(1 in options, "RFB loopback security negotiation refused")
-            conn.sendall(b"\\x01")  # RFB SecurityType None (localhost only).
-            require(receive_exact(conn, 4) == b"\\x00" * 4,
+            conn.sendall(b"\x01")  # RFB SecurityType None (localhost only).
+            require(receive_exact(conn, 4) == b"\x00" * 4,
                     "RFB security negotiation failed")
-            conn.sendall(b"\\x01")  # shared framebuffer session
+            conn.sendall(b"\x01")  # shared framebuffer session
             server_init = receive_exact(conn, 24)
             name_length = struct.unpack(">I", server_init[20:24])[0]
             require(0 < name_length <= 1024, "unexpected RFB desktop identity")
