@@ -9,7 +9,7 @@ The main branch inherits Libertix's Windows WPF/.NET 4.8 setup, signed release c
 
 The existing source discovery under assets/live/libertix-distribution-common.sh requires one filesystem.squashfs with dpkg/update-grub/update-initramfs capabilities. That is not a general installer interface.
 
-Experimental CachyOS draft work exists in feature branches (CachyOS preflight, target provisioning, EFI/GRUB staging, Archiso handoff), and issue #3 tracks production release blockers. Those experiments do **not** prove a bootable CachyOS installation or Windows recovery. Keep production CachyOS disabled.
+Experimental CachyOS work exists in feature branches, including reports of pacstrap and an installed Linux first boot inside disposable QEMU/OVMF guests. This does **not** demonstrate Windows 10/11 dual boot, updates, complete rollback, or production stability. Issue #3 tracks the release blockers. Keep production CachyOS disabled.
 
 ## 2. Proposed compatibility matrix
 
