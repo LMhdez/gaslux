@@ -110,6 +110,56 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertNotEqual(first[first.index("-serial") + 1],
                             second[second.index("-serial") + 1])
 
+
+    def test_win11_immediate_poweroff_reuses_previously_proven_control(self):
+        win11 = VM.witness_powershell("win11_26h2_en_us_x64", "26300")
+        win10 = VM.witness_powershell("win10_22h2_en_us_x64", "19045")
+        self.assertIn('& "$env:WINDIR\\System32\\shutdown.exe" /p /f', win11)
+        self.assertIn('& "$env:WINDIR\\System32\\shutdown.exe" /s /f /t 0', win10)
+        self.assertNotIn('shutdown.exe" /r', win11)
+
+    def test_second_windows_boot_manager_is_rejected_even_with_full_proof(self):
+        class ExitQemu:
+            def poll(self):
+                return 0
+            def kill(self):
+                raise AssertionError("already stopped")
+            def wait(self, timeout):
+                return 0
+        boot = b'BdsDxe: starting Boot0003 "Windows Boot Manager"\\r\\n'
+        proof = b"\\n".join([
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300",
+            b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+            b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+            b"GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64",
+        ]) + b"\\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            serial = pathlib.Path(tmp) / "serial.log"
+            serial.write_bytes(boot + proof + boot)
+            with patch.object(VM.subprocess, "Popen", return_value=ExitQemu()):
+                ok, why = VM.boot_vm(["qemu-system-x86_64"], serial, 30,
+                                      "win11_26h2_en_us_x64",
+                                      reject_repeated_dvd_boot=True)
+            self.assertFalse(ok)
+            self.assertIn("rebooted after first-logon", why)
+
+    def test_incremental_windows_boot_manager_detection_spans_400k(self):
+        signature = b'BdsDxe: starting Boot0AF3 "Windows Boot Manager"'
+        with tempfile.TemporaryDirectory() as tmp:
+            serial = pathlib.Path(tmp) / "serial.log"
+            serial.write_bytes(signature[:25])
+            n, off, carry, _ = VM.scan_two_stage_dvd_serial(
+                serial, 0, b"", VM.WINDOWS_BOOT_MANAGER_START)
+            self.assertEqual(n, 0)
+            with serial.open("ab") as stream:
+                stream.write(signature[25:] + b"x" * 500_000 + signature)
+            hits, off, carry, _ = VM.scan_two_stage_dvd_serial(
+                serial, off, carry, VM.WINDOWS_BOOT_MANAGER_START)
+            self.assertEqual(hits, 2)
+
     def test_duplicate_iso_device_fails_closed(self):
         with tempfile.TemporaryDirectory() as d:
             args = synthetic_args(d)

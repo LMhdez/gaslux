@@ -262,9 +262,15 @@ try {
   if ($ser) { $ser.Close(); $ser.Dispose() }
 }
 Start-Sleep -Seconds 2
-& "$env:WINDIR\System32\shutdown.exe" /s /f /t 0
+# Isolated Windows 11 OOBE may restart after a scheduled normal shutdown.
+# Use immediate local poweroff only in this disposable KVM guest; still
+# require QEMU's actual clean exit and forbid any second Boot Manager start.
+& "$env:WINDIR\System32\shutdown.exe" __LAB_POWEROFF_ARGS__
 '''.replace("__BUILD__", build).replace("__PROFILE__", profile_key).replace(
-        "__MARKER__", MARKER).strip()
+        "__MARKER__", MARKER).replace(
+        "__LAB_POWEROFF_ARGS__",
+        "/p /f" if profile_key == "win11_26h2_en_us_x64" else "/s /f /t 0",
+    ).strip()
 
 
 def generate_unattend(profile_key: str, build: str) -> bytes:
@@ -494,6 +500,10 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     witnessed_at: float | None = None
     initial_cd_key_sent = False
     win11_dvd_started_at: float | None = None
+    # Firmware replay evidence must survive COM1 tails exceeding 400 KiB.
+    bootmgr_offset = 0
+    bootmgr_carry = b""
+    bootmgr_start_count = 0
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
@@ -514,6 +524,20 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             return False, (
                                 "firmware retried one-shot Microsoft DVD after "
                                 "initial startup; abort disposable VM"
+                            )
+                    if reject_repeated_dvd_boot:
+                        (bm_hits, bootmgr_offset, bootmgr_carry, _) = (
+                            scan_two_stage_dvd_serial(
+                                transcript, bootmgr_offset, bootmgr_carry,
+                                WINDOWS_BOOT_MANAGER_START,
+                            )
+                        )
+                        bootmgr_start_count += bm_hits
+                        if bootmgr_start_count > 1:
+                            return False, (
+                                "installed Windows rebooted after first-logon "
+                                "audit rather than powering off; Windows still "
+                                "unverified"
                             )
                     if monitor_socket is not None and not initial_cd_key_sent:
                         if BOOT_FROM_CD_PROMPT in serial_data:
@@ -676,23 +700,32 @@ def restart_owned_swtpm_for_second_guest(
 DVD_FIRMWARE_START = re.compile(
     rb'BdsDxe: starting Boot[0-9A-Fa-f]{4} "UEFI QEMU DVD-ROM'
 )
+WINDOWS_BOOT_MANAGER_START = re.compile(
+    rb'BdsDxe: starting Boot[0-9A-Fa-f]{4} "Windows Boot Manager"'
+)
 DVD_SCAN_CARRY_BYTES = 96
 
 
-def scan_dvd_firmware_starts(chunk: bytes, carry: bytes = b"") -> tuple[int, bytes]:
-    """Count full DVD boot markers even when firmware splits them across writes."""
+def scan_dvd_firmware_starts(
+    chunk: bytes, carry: bytes = b"",
+    boot_pattern: re.Pattern[bytes] = DVD_FIRMWARE_START,
+) -> tuple[int, bytes]:
+    """Count only allowlisted complete firmware events across split reads."""
     require(len(carry) <= DVD_SCAN_CARRY_BYTES, "invalid firmware scanner carry")
+    require(boot_pattern in (DVD_FIRMWARE_START, WINDOWS_BOOT_MANAGER_START),
+            "unsupported firmware event pattern")
     data = carry + chunk
     found = sum(
-        match.end() > len(carry) for match in DVD_FIRMWARE_START.finditer(data)
+        match.end() > len(carry) for match in boot_pattern.finditer(data)
     )
     return found, data[-DVD_SCAN_CARRY_BYTES:]
 
 
 def scan_two_stage_dvd_serial(
     path: Path, offset: int, carry: bytes,
+    boot_pattern: re.Pattern[bytes] = DVD_FIRMWARE_START,
 ) -> tuple[int, int, bytes, bytes]:
-    """Incrementally scan *all* stage-one UEFI DVD starts, plus a bounded tail.
+    """Incrementally scan *all* allowlisted UEFI starts, plus bounded tail.
 
     Never use only the last 400 KiB to decide whether firmware reentered
     setup. No side effects except reading the disposable guest serial file.
@@ -709,7 +742,7 @@ def scan_two_stage_dvd_serial(
         while offset < end:
             chunk = stream.read(min(65536, end - offset))
             require(bool(chunk), "first Windows serial changed during scan")
-            hits, carry = scan_dvd_firmware_starts(chunk, carry)
+            hits, carry = scan_dvd_firmware_starts(chunk, carry, boot_pattern)
             count += hits
             offset += len(chunk)
         stream.seek(max(0, end - 400_000))
