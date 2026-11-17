@@ -49,8 +49,7 @@ def validate_lsblk_readonly(plan: dict, observed: Any) -> dict[str, bool]:
             type(disk.get("log-sec")) is int and
             disk["log-sec"] == SECTOR_BYTES and
             isinstance(disk.get("path"), str) and
-            disk["path"].startswith("/dev/") and
-            not any(c.isspace() for c in disk["path"]),
+            re.fullmatch(r"/dev/vd[a-z]{1,2}", disk["path"]) is not None,
             "unexpected guest-reported block device geometry")
     children = disk.get("children")
     require(type(children) is list and len(children) == 5,
