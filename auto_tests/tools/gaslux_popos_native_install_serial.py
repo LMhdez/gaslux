@@ -23,6 +23,12 @@ RESULT = re.compile(
     rb"(?m)^GASLUX_POP_NATIVE_(?:FULL_INSTALL_COMPLETED=1|INSTALL_FAILURE: [^\r\n]+)\r?\n"
 )
 SUCCESS = re.compile(rb"(?m)^GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1\r?\n")
+PRECHECK_RESULT = re.compile(
+    rb"(?m)^GASLUX_POP_NATIVE_(?:INSTALL_PREFLIGHT_OK=1|INSTALL_FAILURE: [^\r\n]+)\r?\n"
+)
+START_RESULT = re.compile(
+    rb"(?m)^GASLUX_POP_NATIVE_(?:INSTALL_DISTINST_STARTED=1|INSTALL_FAILURE: [^\r\n]+)\r?\n"
+)
 
 
 def connect(path: Path) -> socket.socket:
@@ -75,6 +81,14 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
         )
         start = len(transcript)
         conn.sendall(command.encode("ascii"))
+        wait_for(conn, transcript, PRECHECK_RESULT, timeout_seconds=120, start=start)
+        if b"GASLUX_POP_NATIVE_INSTALL_FAILURE:" in normalized(bytes(transcript[start:])):
+            raise GuestProbeError("native install guest refused preflight")
+        print("GASLUX_POP_NATIVE_INSTALL_GUEST_PREFLIGHT_VERIFIED=1", flush=True)
+        wait_for(conn, transcript, START_RESULT, timeout_seconds=60, start=start)
+        if b"GASLUX_POP_NATIVE_INSTALL_FAILURE:" in normalized(bytes(transcript[start:])):
+            raise GuestProbeError("native installer not invoked after preflight")
+        print("GASLUX_POP_NATIVE_DISTINST_INVOCATION_CONFIRMED=1", flush=True)
         wait_for(conn, transcript, RESULT, timeout_seconds=1500, start=start)
         output = normalized(bytes(transcript[start:]))
         if not SUCCESS.search(output):

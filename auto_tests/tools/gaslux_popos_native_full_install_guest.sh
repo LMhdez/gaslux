@@ -78,10 +78,12 @@ squashfs="${roots[0]}"
 remove="${squashfs%/*}/filesystem.manifest-remove"
 [[ -s "$squashfs" && -s "$remove" ]] ||
   fail 'Pop signed installation source/manifest absent'
+printf 'GASLUX_POP_NATIVE_INSTALL_PREFLIGHT_OK=1\n' > /dev/ttyS0
 
 log="$(mktemp -p /run -t gaslux-native-distinst.XXXXXX)"
 # The actual native System76 installer performs extraction, target configuration
 # and systemd-boot. No --test, no --new-table or --modify-boot, no host disk.
+printf 'GASLUX_POP_NATIVE_INSTALL_DISTINST_STARTED=1\n' > /dev/ttyS0
 if ! timeout --kill-after=15s 1500s /usr/bin/distinst \
   --no-efi-vars \
   --squashfs "$squashfs" --remove "$remove" \

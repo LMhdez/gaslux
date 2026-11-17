@@ -6,7 +6,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests/tools"))
-from gaslux_popos_native_install_serial import RESULT, SUCCESS  # noqa: E402
+from gaslux_popos_native_install_serial import (  # noqa: E402
+    PRECHECK_RESULT,
+    RESULT,
+    START_RESULT,
+    SUCCESS,
+)
 
 WORKFLOW = ROOT / ".github/workflows/gaslux-popos-official-iso.yml"
 RUNNER = ROOT / "auto_tests/tools/gaslux_popos_native_full_firstboot_vm.sh"
@@ -65,6 +70,8 @@ def test_real_distinst_not_test_mode_and_only_linux_owned_disk():
     assert "EFI/systemd/systemd-bootx64.efi" in source
     assert "EFI/BOOT/BOOTX64.EFI" in source
     assert "GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1" in source
+    assert "GASLUX_POP_NATIVE_INSTALL_PREFLIGHT_OK=1" in source
+    assert "GASLUX_POP_NATIVE_INSTALL_DISTINST_STARTED=1" in source
     invocation = source.split("1500s /usr/bin/distinst", maxsplit=1)[1].split(
         '> "$log"', maxsplit=1
     )[0]
@@ -97,6 +104,10 @@ def test_serial_proof_does_not_accept_shell_echo_or_failed_install():
     assert SUCCESS.search(b"\nGASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1\r\n")
     assert not RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_FAILURE: ")
     assert RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_FAILURE: missing firmware\n")
+    assert PRECHECK_RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_PREFLIGHT_OK=1\n")
+    assert START_RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_DISTINST_STARTED=1\n")
+    assert PRECHECK_RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_FAILURE: missing EFI\n")
+    assert not START_RESULT.search(b"echo GASLUX_POP_NATIVE_INSTALL_DISTINST_STARTED=1")
     assert not SUCCESS.search(b"echo GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1")
     assert RESULT.search(b"\nGASLUX_POP_NATIVE_INSTALL_FAILURE: disk validation\r\n")
     assert re.fullmatch(r"[a-f0-9]{64}", "b" * 64)
