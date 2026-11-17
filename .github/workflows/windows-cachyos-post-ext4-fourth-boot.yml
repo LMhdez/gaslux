@@ -1,0 +1,414 @@
+name: Windows 10 fourth boot after fifth ext4 (COW only)
+
+on:
+  push:
+    branches:
+      - test/windows10-cachyos-post-ext4-fourth-boot
+    paths:
+      - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_two_stage_boot.py
+      - auto_tests/test_windows_x64_swtpm_reconnect.py
+      - auto_tests/test_windows_x64_tcg_unattend_contract.py
+      - auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/tools/windows_cachyos_cow_checkpoint.py
+      - auto_tests/test_windows_cachyos_cow_checkpoint.py
+      - auto_tests/tools/windows_cachyos_overlay_gpt_stage.py
+      - auto_tests/test_windows_cachyos_overlay_gpt_stage.py
+      - auto_tests/tools/windows_cachyos_overlay_reboot.py
+      - auto_tests/test_windows_cachyos_overlay_reboot.py
+      - auto_tests/tools/windows_cachyos_overlay_ext4_only.py
+      - auto_tests/test_windows_cachyos_overlay_ext4_only.py
+      - auto_tests/tools/windows_cachyos_postext4_windows.py
+      - auto_tests/test_windows_cachyos_postext4_windows.py
+      - auto_tests/tools/windows_cachyos_ext4_synthetic_guestfs.py
+      - auto_tests/tools/windows_x64_libguestfs_kernel.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-host-and-proof-contracts:
+    name: All Windows client and two-stage destructive-replay guards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: No media, no guest, fail-closed unit and Linux portability tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py auto_tests/test_windows_cachyos_cow_checkpoint.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_gpt_stage.py auto_tests/test_windows_cachyos_overlay_gpt_stage.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_reboot.py auto_tests/test_windows_cachyos_overlay_reboot.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_ext4_only.py auto_tests/test_windows_cachyos_overlay_ext4_only.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_postext4_windows.py auto_tests/test_windows_cachyos_postext4_windows.py
+          bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          for name in \
+              test_windows_x64_two_stage_boot.py \
+              test_windows_x64_noprompt_one_shot.py \
+              test_windows_x64_derived_noprompt.py \
+              test_windows_x64_kvm_opt_in.py \
+              test_windows_x64_clean_poweroff_gate.py \
+              test_windows_x64_tcg_unattend_contract.py \
+              test_windows_x64_winre_baseline_contract.py \
+              test_windows_x64_qemu_host_gate.py \
+              test_windows_cachyos_readonly_baseline_gate.py \
+              test_windows_cachyos_qcow2_gpt_readonly.py \
+              test_windows_cachyos_cow_checkpoint.py \
+              test_windows_cachyos_overlay_gpt_stage.py \
+              test_windows_cachyos_overlay_reboot.py \
+              test_windows_cachyos_overlay_ext4_only.py \
+              test_windows_cachyos_postext4_windows.py; do
+            python3 -m unittest discover -s auto_tests -p "$name" -v
+          done
+      - name: Prove physical-host-safe swtpm listener restart with same private NV directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends swtpm
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_swtpm_reconnect.py' -v
+          echo 'Real swtpm Unix listener reconnected with same temporary NV directory; no Windows boot proven.' >> "$GITHUB_STEP_SUMMARY"
+
+  synthetic-guestfs-fifth-ext4:
+    name: Real libguestfs fifth-ext4 on isolated synthetic raw image (NO Windows)
+    needs: verify-host-and-proof-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GASLUX_SYNTHETIC_EXT4_CONSENT: I_ACCEPT_SYNTHETIC_RAW_FILE_FIFTH_EXT4_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare disposable private guestfs appliance and synthetic GPT tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gdisk python3-guestfs libguestfs-tools linux-image-generic
+      - name: Verify ext4 and all four SHA256 digests with REAL guestfs, without any Windows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 auto_tests/tools/windows_cachyos_ext4_synthetic_guestfs.py
+          echo 'Synthetic guestfs fifth ext4 real API PASS; ZERO Windows/Linux install/boot/rollback claims.' >> "$GITHUB_STEP_SUMMARY"
+
+  genuine-client-two-stage-firstboot:
+    name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
+    needs: [verify-host-and-proof-contracts, synthetic-guestfs-fifth-ext4]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          # Historical 44048550209 reached installed Windows 10 Boot Manager
+          # with floppy media, but guest PowerShell collapsed the 7 markers.
+          # Re-run this EXACT former installation path after correcting only
+          # marker-array semantics. Do not imply support for Windows 11.
+          - win10_22h2_en_us_x64
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT: I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_GPT_CONSENT: I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY
+      GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT: I_ACCEPT_WINDOWS_GUEST_REBOOT_ON_PRIVATE_GPT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT: I_ACCEPT_EXT4_ONLY_FIFTH_PARTITION_ON_HOSTED_WIN10_COW
+      GASLUX_WINDOWS_POST_EXT4_REBOOT_CONSENT: I_ACCEPT_WINDOWS_FOURTH_GUEST_ON_EXT4_ONLY_QCOW2_COW
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require hosted KVM and prepare isolated Windows/ISO UDF tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
+            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Select complete private libguestfs appliance kernel (never replace host kernel)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 -c 'import guestfs; print("PASS: guestfs binding available, only QCOW2 file attachment allowed")'
+      - name: Validate official SHA, disposable first DVD Setup, detach DVD and independently firstboot Windows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile "${{ matrix.profile }}" --accel kvm \
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
+            --prepare-owned-cow-checkpoint \
+            --stage-cachyos-overlay-root-gpt-only \
+            --verify-windows-reboot-with-fifth-gpt \
+            --format-owned-fifth-ext4-only \
+            --verify-windows-reboot-after-ext4
+          echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
+      # Never run this candidate check unless the exact existing Windows 10
+      # DVD+FAT12 unattended install has rebooted and passed its firstlogon
+      # ESP/BCD/WinRE audit with clean Windows poweroff. It cannot authorize
+      # any Linux disk mutation, even when it prints success.
+      - name: Cross-check first DVD and installed Windows 10 COM1 SHA manifests (READ-ONLY)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          PROFILE="${{ matrix.profile }}"
+          test "$PROFILE" = win10_22h2_en_us_x64
+          PROOF="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            --profile "$PROFILE" \
+            --result "$PROOF/$PROFILE-result.json" \
+            --serial "$PROOF/$PROFILE-serial.log" \
+            --serial-sha256 "$PROOF/$PROFILE-serial.sha256" \
+            --initial-dvd-serial "$PROOF/$PROFILE-initial-dvd-serial.log" \
+            --initial-dvd-serial-sha256 "$PROOF/$PROFILE-initial-dvd-serial.sha256"
+          echo 'PASS: same-run Windows 10 candidate document consistency only. No independent provenance authentication, Windows+Linux same-disk install or recovery; no storage write permitted.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify offline GPT primary/backup candidate document (no Linux disk writes)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PROFILE="${{ matrix.profile }}"
+          PROOF="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 - "$PROOF" "$PROFILE" <<'PY'
+          import hashlib, json, pathlib, sys
+          folder, profile = pathlib.Path(sys.argv[1]), sys.argv[2]
+          disk_layout = folder / (profile + '-gpt-readonly-candidate.json')
+          report_path = folder / (profile + '-result.json')
+          assert disk_layout.is_file() and not disk_layout.is_symlink()
+          assert 100 < disk_layout.stat().st_size < 32768
+          report = json.loads(report_path.read_text())
+          baseline = json.loads(disk_layout.read_text())
+          assert report['windowsClientBootVerified'] is True
+          assert report['readOnlyGptGeometryCandidate'] is True
+          assert report['readOnlyGptGeometryEvidenceSha256'] == hashlib.sha256(
+              disk_layout.read_bytes()).hexdigest()
+          assert baseline['candidateWindowsGptPrimaryAndBackupConsistent'] is True
+          assert len(baseline['windowsPartitions']) == 4
+          assert baseline['unallocatedAfterWindowsBytes'] >= 40 * 1024**3
+          for status in ('releaseEligible', 'storageWritesAuthorized',
+                         'windowsBootVerified', 'sameDiskDualBootVerified',
+                         'windowsBcdWinreRestorationVerified'):
+              assert baseline[status] is False
+          print('PASS: offline QCOW2 GPT primary/backup CRC and partition geometry')
+          print('NO Linux install, disk writes, dual boot or rollback acceptance')
+          PY
+          echo 'PASS: read-only primary+backup GPT candidate layout; no Windows+CachyOS authorization' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify COW checkpoint evidence follows real Windows boot + read-only GPT
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - "$GITHUB_WORKSPACE/windows-x64-tcg-evidence" "${{ matrix.profile }}" <<'PY'
+          import hashlib, json, pathlib, sys
+          folder = pathlib.Path(sys.argv[1])
+          profile = sys.argv[2]
+          result = json.loads((folder/(profile+'-result.json')).read_text())
+          path = folder/(profile+'-cow-checkpoint-candidate.json')
+          assert path.is_file() and not path.is_symlink()
+          assert 100 < path.stat().st_size < 10000
+          cow = json.loads(path.read_text())
+          assert result['windowsClientBootVerified'] is True
+          assert result['readOnlyGptGeometryCandidate'] is True
+          assert result['cowCheckpointCandidatePrepared'] is True
+          assert result['cowCheckpointCandidateSha256'] == hashlib.sha256(
+              path.read_bytes()).hexdigest()
+          assert cow['candidateWindowsCowCheckpointPrepared'] is True
+          assert cow['trialOverlayInitiallyMatchesWindows'] is True
+          assert cow['windowsBaselineUnchangedDuringCheckpoint'] is True
+          for field in ('snapshotIndependentlyRestorable',
+                        'windowsRebootAfterOverlayVerified',
+                        'windowsRecoveryAfterLinuxVerified',
+                        'sameDiskDualBootVerified', 'storageWritesAuthorized',
+                        'releaseEligible'):
+              assert cow[field] is False
+          print('PASS: post-Windows COW candidate and private OVMF variables')
+          print('NO independent backup, dual boot, Windows recovery or write approval')
+          PY
+          echo 'PASS: owned postboot overlay candidate; original Windows disk + UEFI baseline not overwritten' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify Windows 10 baseline and fifth Linux GPT entry only in COW evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - "$GITHUB_WORKSPACE/windows-x64-tcg-evidence" "${{ matrix.profile }}" <<'PY'
+          import hashlib, json, pathlib, sys
+          d = pathlib.Path(sys.argv[1])
+          profile = sys.argv[2]
+          report = json.loads((d/(profile+'-result.json')).read_text())
+          base = json.loads((d/(profile+'-gpt-readonly-candidate.json')).read_text())
+          cow = json.loads((d/(profile+'-cow-checkpoint-candidate.json')).read_text())
+          stage_file = d/(profile+'-linux-overlay-gpt-candidate.json')
+          assert stage_file.is_file() and not stage_file.is_symlink()
+          assert 100 < stage_file.stat().st_size < 32768
+          stage = json.loads(stage_file.read_text())
+          assert report['windowsClientBootVerified'] is True
+          assert report['readOnlyGptGeometryCandidate'] is True
+          assert report['cowCheckpointCandidatePrepared'] is True
+          assert report['linuxOverlayGptRootCandidatePrepared'] is True
+          assert report['linuxOverlayGptRootCandidateSha256'] == hashlib.sha256(
+              stage_file.read_bytes()).hexdigest()
+          assert base['candidateWindowsGptPrimaryAndBackupConsistent'] is True
+          assert cow['candidateWindowsCowCheckpointPrepared'] is True
+          assert stage['overlayGptLinuxRootEntryPrepared'] is True
+          assert stage['onlyDisposableOverlayModified'] is True
+          assert stage['windowsPartitionEntriesUnchanged'] is True
+          assert stage['bothGptMirrorsAfterStageVerified'] is True
+          assert stage['windowsBackingQcow2Unchanged'] is True
+          assert stage['windowsUefiVariablesUnchanged'] is True
+          assert stage['linuxRoot']['index'] == 5
+          assert stage['linuxRoot']['lengthBytes'] == 24*1024**3
+          assert stage['linuxRoot']['firstLba'] > base['windowsPartitions'][3]['lastLba']
+          assert stage['linuxRoot']['remainingUnallocatedAfterLinuxBytes'] >= 16*1024**3
+          for flag in ('linuxRootFilesystemFormatted', 'cachyosInstalled',
+                       'cachyosFirstBootVerified',
+                       'windowsBootAfterOverlayMutationVerified',
+                       'windowsRecoveryAfterLinuxVerified', 'rollbackProven',
+                       'sameDiskDualBootVerified', 'storageWritesAuthorized',
+                       'releaseEligible'):
+              assert stage[flag] is False, flag
+          print('PASS: real installed Windows 10 and GPT mirror audited BEFORE COW Linux root staging')
+          print('NO CachyOS boot, shared-ESP mutation, Windows re-boot after overlay, or rollback proof')
+          PY
+          echo 'PASS: actual Windows 10 guest plus 24GiB unformatted fifth GPT entry staged only in COW; NO dual boot claims' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify Windows boots from fifth-GPT overlay with guest BCD/WinRE/ESP audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - "$GITHUB_WORKSPACE/windows-x64-tcg-evidence" "${{ matrix.profile }}" <<'PY'
+          import hashlib,json,pathlib,sys
+          folder=pathlib.Path(sys.argv[1]); profile=sys.argv[2]
+          require=lambda ok,msg: ok or (_ for _ in ()).throw(AssertionError(msg))
+          report=json.loads((folder/(profile+'-result.json')).read_text())
+          proof_path=folder/(profile+'-third-overlay-boot.json')
+          require(proof_path.is_file() and not proof_path.is_symlink(),'missing third boot proof')
+          proof=json.loads(proof_path.read_text())
+          require(report.get('windowsClientBootVerified') is True,'first Windows boot missing')
+          require(report.get('windowsBootAfterLinuxGptOverlayVerified') is True,'third boot missing')
+          require(report.get('thirdBootBcdWinreEspVerified') is True,'third guest audit missing')
+          require(report.get('thirdBootProofSha256')==hashlib.sha256(
+              proof_path.read_bytes()).hexdigest(),'third boot proof hash mismatch')
+          for k in ('windowsBootAfterOverlayMutationVerified',
+                    'guestBcdWinreEspAfterOverlayVerified',
+                    'windowsGuestShutdownAfterOverlayVerified',
+                    'fifthGptUnchangedAfterGuestBoot',
+                    'windowsBackingUnchangedAfterGuestBoot',
+                    'originalUefiVarsUnchangedAfterGuestBoot'):
+              require(proof.get(k) is True,'missing proof: '+k)
+          for k in ('cachyosInstalled','cachyosFirstBootVerified',
+                    'windowsRecoveryAfterLinuxVerified','rollbackProven',
+                    'sameDiskDualBootVerified','storageWritesAuthorized',
+                    'releaseEligible'):
+              require(proof.get(k) is False,'false stable/dualboot claim: '+k)
+          serial=folder/(profile+'-third-boot-serial.log')
+          require(serial.is_file() and serial.stat().st_size<512000,
+                  'third Windows serial not archived')
+          require(hashlib.sha256(serial.read_bytes()).hexdigest()==
+                  proof['thirdBootGuestSerialSha256'],'third Windows COM1 hash mismatch')
+          print('PASS: independently booted genuine Windows 10 on COW fifth GPT')
+          print('NO installed CachyOS, Linux firstboot or rollback has been proved')
+          PY
+          echo 'Third Windows guest boot + BCD/WinRE/ESP audit VERIFIED; Linux install/dualboot/rollback remain UNTESTED' >> "$GITHUB_STEP_SUMMARY"
+      - name: Assert fourth partition Windows partition hashes and fifth root ext4 evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - "$GITHUB_WORKSPACE/windows-x64-tcg-evidence" "${{ matrix.profile }}" <<'PY'
+          import hashlib,json,pathlib,sys
+          d=pathlib.Path(sys.argv[1]); name=sys.argv[2]
+          report=json.loads((d/(name+'-result.json')).read_text())
+          f=d/(name+'-fifth-ext4-only.json')
+          assert f.is_file() and not f.is_symlink()
+          data=f.read_bytes()
+          proof=json.loads(data)
+          assert report['windowsClientBootVerified'] is True
+          assert report['windowsBootAfterLinuxGptOverlayVerified'] is True
+          assert report['linuxFifthExt4OnlyCandidate'] is True
+          assert report['linuxFifthExt4EvidenceSha256']==hashlib.sha256(data).hexdigest()
+          assert proof['onlyOwnedOverlayFifthPartitionFormatted'] is True
+          assert proof['linuxRootFilesystemFormatted'] is True
+          assert proof['rootFilesystem']['filesystemType']=='ext4'
+          assert proof['rootFilesystem']['allFourWindowsPartitionSha256Unchanged'] is True
+          assert len(proof['rootFilesystem']['windowsFourPartitionSha256'])==4
+          assert proof['rootFilesystem']['gptMirrorsByteIdenticalAfterExt4'] is True
+          assert proof['windowsBackingQcow2UnchangedAfterExt4'] is True
+          assert proof['windowsOriginalUefiUnchangedAfterExt4'] is True
+          for k in ('windowsBootAfterExt4Verified','cachyosInstalled','cachyosFirstBootVerified',
+                    'windowsRecoveryAfterLinuxVerified','rollbackProven',
+                    'sameDiskDualBootVerified','storageWritesAuthorized','releaseEligible'):
+              assert proof[k] is False,k
+          print('PASS: guestfs formatted only fifth Linux root; all four full Windows partition SHA-256 digests identical')
+          print('NO Linux installed/booted, Windows boot after ext4, rollback or stability')
+          PY
+          echo 'Fifth Linux root ext4 staged ONLY in disposable COW after Windows boot; Linux install/dualboot/recovery UNTESTED' >> "$GITHUB_STEP_SUMMARY"
+      - name: Check fourth independent Windows boot after ext4 with BCD WinRE and exact root UUID
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - "$GITHUB_WORKSPACE/windows-x64-tcg-evidence" "${{ matrix.profile }}" <<'PY'
+          import hashlib,json,pathlib,sys
+          d=pathlib.Path(sys.argv[1]); name=sys.argv[2]
+          result=json.loads((d/(name+'-result.json')).read_text())
+          f=d/(name+'-fourth-post-ext4.json')
+          assert f.is_file() and not f.is_symlink()
+          proof=json.loads(f.read_text())
+          assert result.get('windowsBootAfterExt4Verified') is True
+          assert result.get('fourthPostExt4EvidenceSha256')==hashlib.sha256(f.read_bytes()).hexdigest()
+          for flag in ('windowsBootAfterExt4Verified',
+                       'windowsBcdWinreEspAfterExt4Verified','fourthGuestCleanShutdownVerified',
+                       'fifthExt4UuidSurvivedWindowsBoot','windowsGptUnchangedAfterExt4Boot',
+                       'windowsBackingUnchangedAfterExt4Boot',
+                       'originalWindowsUefiUnchangedAfterExt4Boot'):
+              assert proof[flag] is True,flag
+          fourth=d/(name+'-fourth-boot-serial.log')
+          assert fourth.is_file() and not fourth.is_symlink()
+          assert hashlib.sha256(fourth.read_bytes()).hexdigest()==proof['fourthGuestSerialSha256']
+          for flag in ('cachyosInstalled','cachyosFirstBootVerified',
+                       'windowsRecoveryAfterLinuxVerified','rollbackProven',
+                       'sameDiskDualBootVerified','storageWritesAuthorized','releaseEligible'):
+              assert proof[flag] is False,flag
+          print('PASS: fourth Windows 10 guest boot after ext4, ESP/BCD/WinRE, unchanged root UUID')
+          print('NO Linux installed, Linux boot, updates or recovery after Linux proven')
+          PY
+      - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-genuine-two-stage-firstboot-${{ matrix.profile }}
+          path: windows-x64-tcg-evidence/
+          retention-days: 7
+          if-no-files-found: warn

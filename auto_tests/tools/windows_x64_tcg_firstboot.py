@@ -881,6 +881,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="hosted Windows 10 ONLY: after verified third-boot, "
                          "format only fifth Linux partition in disposable QCOW2 "
                          "and checksum every Windows partition; no Linux install")
+    ap.add_argument("--verify-windows-reboot-after-ext4", action="store_true",
+                    help="only hosted Windows 10 QCOW2 after fifth-root ext4: "
+                         "fourth Windows guest, BCD/WinRE and ext4 UUID audit")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -936,6 +939,23 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(
                 "fifth ext4 requires successful Windows overlay boot, "
                 "hosted KVM, exact profile and separate ext4 consent")
+    if args.verify_windows_reboot_after_ext4:
+        from windows_cachyos_postext4_windows import CONSENT as FOURTH_CONSENT
+        if not (args.format_owned_fifth_ext4_only
+                and args.verify_windows_reboot_with_fifth_gpt
+                and args.stage_cachyos_overlay_root_gpt_only
+                and args.prepare_owned_cow_checkpoint
+                and args.two_stage_install_only and args.derived_no_prompt
+                and args.profile == "win10_22h2_en_us_x64"
+                and args.accel == "kvm" and not args.fixture_only
+                and not args.boot_probe_only
+                and os.environ.get("GITHUB_ACTIONS") == "true"
+                and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+                and os.environ.get("GASLUX_WINDOWS_POST_EXT4_REBOOT_CONSENT")
+                    == FOURTH_CONSENT):
+            raise SystemExit(
+                "fourth Windows guest after fifth ext4 needs hosted CI "
+                "and separate consent; no Linux installation allowed")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -1229,6 +1249,29 @@ def main(argv: list[str] | None = None) -> int:
                                             hashlib.sha256(ext4_blob).hexdigest())
                                         print("GASLUX_CACHYOS_EXT4_ONLY_FIFTH_GPT_VERIFIED=1",
                                               flush=True)
+                                        if args.verify_windows_reboot_after_ext4:
+                                            from windows_cachyos_postext4_windows import (
+                                                verify_windows_post_ext4,
+                                            )
+                                            fourth = verify_windows_post_ext4(
+                                                base, disk, nvram, candidate,
+                                                cow, staged, third, ext4,
+                                            )
+                                            fourth_bytes = (
+                                                json.dumps(fourth, sort_keys=True, indent=2)
+                                                + "\n").encode("utf-8")
+                                            fourth_path = evidence / (
+                                                f"{args.profile}-fourth-post-ext4.json")
+                                            require(not fourth_path.exists() and
+                                                    not fourth_path.is_symlink(),
+                                                    "refusing reused Windows fourth proof")
+                                            with fourth_path.open("xb") as out:
+                                                out.write(fourth_bytes)
+                                            report["windowsBootAfterExt4Verified"] = True
+                                            report["fourthPostExt4EvidenceSha256"] = (
+                                                hashlib.sha256(fourth_bytes).hexdigest())
+                                            print("GASLUX_WINDOWS_FOURTH_BOOT_POST_EXT4_VERIFIED=1",
+                                                  flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
@@ -1250,6 +1293,8 @@ def main(argv: list[str] | None = None) -> int:
                         ("qemu-stderr.log", "second-qemu-stderr", 256_000),
                         ("third-overlay-windows-serial.log", "third-boot-serial", 512_000),
                         ("third-overlay-qemu-stderr.log", "third-boot-qemu-stderr", 256_000),
+                        ("fourth-post-ext4-windows-serial.log", "fourth-boot-serial", 512_000),
+                        ("fourth-post-ext4-qemu-stderr.log", "fourth-boot-qemu-stderr", 256_000),
                     ):
                         source = workspace / source_name
                         if (source.is_file() and not source.is_symlink()
