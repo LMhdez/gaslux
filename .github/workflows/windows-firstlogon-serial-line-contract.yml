@@ -22,12 +22,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          python -c "import sys;from pathlib import Path;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import witness_powershell;Path('auto_tests/powershell/win-firstlogon-source.ps1').write_text(witness_powershell('win10_22h2_en_us_x64','19045') + chr(10),encoding='utf-8')"
-          if ($LASTEXITCODE -ne 0) { throw 'Generated PowerShell guest script failed' }
-          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'PowerShell 5.1 emitted concatenated markers' }
-          & pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'PowerShell 7 emitted concatenated markers' }
+          foreach ($profile in @('win10_22h2_en_us_x64', 'win11_26h2_en_us_x64')) {
+            $build = if ($profile -eq 'win10_22h2_en_us_x64') { '19045' } else { '26300' }
+            python -c "import sys;from pathlib import Path;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import witness_powershell;Path('auto_tests/powershell/win-firstlogon-source.ps1').write_text(witness_powershell(sys.argv[1],sys.argv[2]) + chr(10),encoding='utf-8')" $profile $build
+            if ($LASTEXITCODE -ne 0) { throw 'Generated PowerShell guest script failed' }
+            & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1 -Profile $profile
+            if ($LASTEXITCODE -ne 0) { throw "PowerShell 5.1 malformed $profile markers" }
+            & pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1 -Profile $profile
+            if ($LASTEXITCODE -ne 0) { throw "PowerShell 7 malformed $profile markers" }
+          }
           'Only lexical/array semantics checked, NOT a real Windows firstboot.' | Out-File $env:GITHUB_STEP_SUMMARY -Append
 
   ubuntu-pwsh-no-guest:
@@ -42,16 +45,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           command -v pwsh
-          python3 - <<'PY'
-          from pathlib import Path
-          import sys
-          sys.path.insert(0,'auto_tests/tools')
-          from windows_x64_tcg_firstboot import witness_powershell
-          Path('auto_tests/powershell/win-firstlogon-source.ps1').write_text(
-              witness_powershell('win10_22h2_en_us_x64','19045') + '\n',
-              encoding='utf-8',
-          )
-          PY
-          pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+          for profile in win10_22h2_en_us_x64 win11_26h2_en_us_x64; do
+            if [[ "$profile" == win10_22h2_en_us_x64 ]]; then build=19045; else build=26300; fi
+            python3 -c "import sys;from pathlib import Path;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import witness_powershell;Path('auto_tests/powershell/win-firstlogon-source.ps1').write_text(witness_powershell(sys.argv[1],sys.argv[2]) + chr(10),encoding='utf-8')" "$profile" "$build"
+            pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1 -Profile "$profile"
+          done
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py'
           echo 'PASS: marker element semantics in local PowerShell; no Windows guest boot' >> "$GITHUB_STEP_SUMMARY"
