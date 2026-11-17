@@ -37,6 +37,23 @@ def require(ok: bool, explanation: str) -> None:
         raise GuestUSBError(explanation)
 
 
+def validate_append_only_serial_snapshot(
+    initial: os.stat_result, latest: os.stat_result, data: bytes,
+) -> None:
+    """QEMU may append while we read; truncation or identity change is unsafe."""
+    require(
+        stat.S_ISREG(initial.st_mode)
+        and stat.S_ISREG(latest.st_mode)
+        and initial.st_dev == latest.st_dev
+        and initial.st_ino == latest.st_ino
+        and initial.st_uid == os.getuid()
+        and latest.st_uid == os.getuid()
+        and 0 <= initial.st_size <= latest.st_size <= MAX_SERIAL
+        and len(data) == initial.st_size,
+        "UEFI serial changed identity, truncated or exceeded bound during read",
+    )
+
+
 def read_private_serial(path: Path) -> bytes:
     root = path.parent
     require(
@@ -66,10 +83,12 @@ def read_private_serial(path: Path) -> bytes:
                 and info.st_uid == os.getuid()
                 and info.st_size <= MAX_SERIAL,
                 "UEFI serial changed identity during read")
+        # Snapshot the prefix that existed at fstat time. The guest may
+        # legitimately append more bytes while read() is running; read only
+        # that initial prefix, then verify append-only size and stable inode.
         with os.fdopen(os.dup(fd), "rb") as serial:
-            result = serial.read(MAX_SERIAL + 1)
-        require(len(result) == info.st_size,
-                "UEFI serial grew or truncated during read")
+            result = serial.read(info.st_size)
+        validate_append_only_serial_snapshot(info, os.fstat(fd), result)
         return result
     finally:
         os.close(fd)
