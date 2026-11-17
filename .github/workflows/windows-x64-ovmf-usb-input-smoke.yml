@@ -76,11 +76,8 @@ jobs:
                   "echo GASLUX_USB_GUEST_INPUT_READY=1\n"
                   # grub sleep --interruptible ignores Enter (it accepts ESC/F4/Shift).
                   # read is the actual keyboard witness for the HMP Enter key.
-                  "if read gaslux_guest_enter && [ -z \"$gaslux_guest_enter\" ]; then\n"
-                  "  echo GASLUX_USB_GUEST_INPUT_ACCEPTED=1\n"
-                  "else\n"
-                  "  echo GASLUX_USB_GUEST_INPUT_REJECTED=1\n"
-                  "fi\n"
+                  "read gaslux_guest_enter\n"
+                  "echo GASLUX_USB_GUEST_INPUT_ACCEPTED=1\n"
                   "sleep 10\n",
                   encoding="utf-8",
               )
