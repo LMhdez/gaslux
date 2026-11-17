@@ -35,8 +35,12 @@ class MintCowBootEvidenceTests(unittest.TestCase):
             "mintSquashfsRootCopiedToWindowsCOWPartition5": True,
             "mintFirstBootFromSameWindowsCOWVerified": True,
             "windowsFourPartitionSha256Unchanged": True,
+            "windowsPartitionSha256": ["a" * 64, "b" * 64, "c" * 64, "d" * 64],
             "windowsBackingQcow2Unchanged": True,
+            "windowsBackingQcow2Sha256": "e" * 64,
             "windowsOriginalNvramUnchanged": True,
+            "windowsOriginalNvramSha256": "f" * 64,
+            "windowsOvmfTrialVarsSha256": "1" * 64,
             "mintSerialSha256": hashlib.sha256(SERIAL).hexdigest(),
             "nativeGrubDualBootVerified": False,
             "sameDiskDualBootVerified": False,
@@ -59,6 +63,8 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         report = {
             "mintSquashfsRootCopiedIntoWindowsCow": True,
             "mintFirstBootFromSameWindowsCowVerified": True,
+            "windowsBootAfterMintRootVerified": True,
+            "sameDiskBothOperatingSystemsBootVerified": True,
             "mintCowEvidenceSha256": hashlib.sha256(proof_bytes).hexdigest(),
             "nativeGrubDualBootVerified": False,
             "sameDiskDualBootVerified": False,
@@ -90,6 +96,20 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         self.proof["nativeGrubDualBootVerified"] = True
         self._write_evidence()
         with self.assertRaisesRegex(validator.MintBootEvidenceError, "overstates"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def test_rejects_missing_windows_partition_hashes(self):
+        self.proof["windowsPartitionSha256"] = ["a" * 64, "b" * 64]
+        self._write_evidence()
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "four Windows partition"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def test_rejects_report_without_windows_reboot_after_mint(self):
+        report_path = self.directory / f"{PROFILE}-result.json"
+        report = json.loads(report_path.read_text())
+        report["windowsBootAfterMintRootVerified"] = False
+        report_path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "independent Windows reboot"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
     def test_rejects_wrong_pinned_iso(self):
