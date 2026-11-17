@@ -207,9 +207,13 @@ def derive_no_prompt_uefi_lab_iso(original: Path, derived: Path,
         return hashlib.file_digest(fd, "sha256").hexdigest()
 
 
-def witness_powershell(profile_key: str, build: str) -> str:
-    # Runs ONLY at FirstLogon in the installed Windows evaluation client.
-    # The test-only local account has no usable remote credentials.
+def witness_powershell(profile_key: str, build: str,
+                       overlay_reboot_script_sha256: str | None = None) -> str:
+    # Only the opt-in hosted Windows 10 lab arms a startup audit.
+    provision = ""
+    if overlay_reboot_script_sha256 is not None:
+        from windows_cachyos_overlay_reboot import first_logon_task
+        provision = first_logon_task(overlay_reboot_script_sha256)
     return r'''
 $ErrorActionPreference = 'Stop'
 $ser = $null
@@ -239,6 +243,7 @@ try {
   $winre = & reagentc /info 2>&1
   $winreOk = ($LASTEXITCODE -eq 0 -and (($winre -join "`n") -match 'Windows RE status:\s+Enabled'))
   if (-not $winreOk) { throw 'WinRE is missing, disabled or unverifiable' }
+__OVERLAY_REBOOT_PROVISION__
   $serialProof = @(
     ('GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber)
     'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1'
@@ -264,7 +269,8 @@ try {
 Start-Sleep -Seconds 2
 & "$env:WINDIR\System32\shutdown.exe" /s /f /t 0
 '''.replace("__BUILD__", build).replace("__PROFILE__", profile_key).replace(
-        "__MARKER__", MARKER).strip()
+        "__MARKER__", MARKER).replace(
+        "__OVERLAY_REBOOT_PROVISION__", provision).strip()
 
 
 def generate_unattend(profile_key: str, build: str) -> bytes:
@@ -865,6 +871,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="Windows 10 hosted KVM ONLY, after genuine installed "
                          "firstboot/GPT audit: create disposable COW overlay "
                          "with private OVMF VARS checkpoint; no Linux writes")
+    ap.add_argument("--verify-windows-reboot-with-fifth-gpt", action="store_true",
+                    help="hosted Windows 10 ONLY: audit third VM boot from COW fifth GPT")
     ap.add_argument("--stage-cachyos-overlay-root-gpt-only", action="store_true",
                     help="hosted Windows 10 post-FirstLogon ONLY: stage one "
                          "unformatted 24GiB Linux GPT root exclusively on "
@@ -897,6 +905,17 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(
                 "CachyOS GPT staging requires explicit Windows postboot "
                 "COW checkpoint, hosted VM-only consent, and no filesystem writes")
+    if args.verify_windows_reboot_with_fifth_gpt:
+        from windows_cachyos_overlay_reboot import CONSENT as REBOOT_CONSENT
+        if not (args.stage_cachyos_overlay_root_gpt_only
+                and args.prepare_owned_cow_checkpoint
+                and args.two_stage_install_only and args.derived_no_prompt
+                and args.profile == "win10_22h2_en_us_x64"
+                and args.accel == "kvm"
+                and os.environ.get("GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT")
+                == REBOOT_CONSENT):
+            raise SystemExit("Windows reboot with fifth GPT requires explicit "
+                             "hosted Windows 10 QCOW2 overlay-only opt-in")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -961,9 +980,17 @@ def main(argv: list[str] | None = None) -> int:
             xmlfile = workspace / "Autounattend.xml"
             xmlfile.write_bytes(xml)
             guest_ps1 = workspace / "GASLUX.PS1"
+            reboot_script = None
+            reboot_hash = None
+            if args.verify_windows_reboot_with_fifth_gpt:
+                from windows_cachyos_overlay_reboot import guest_reboot_script
+                reboot_script = (guest_reboot_script() + "\n").encode("utf-8")
+                reboot_hash = hashlib.sha256(reboot_script).hexdigest()
+                report["thirdBootAuditorScriptSha256"] = reboot_hash
             guest_ps1.write_text(
                 witness_powershell(args.profile,
-                                   profile["expectedWindowsBuildPrefix"]) + "\n",
+                                   profile["expectedWindowsBuildPrefix"],
+                                   overlay_reboot_script_sha256=reboot_hash) + "\n",
                 encoding="utf-8")
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
@@ -975,6 +1002,12 @@ def main(argv: list[str] | None = None) -> int:
                             "::/Autounattend.xml"], check=True)
             subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps1),
                             "::/GASLUX.PS1"], check=True)
+            if reboot_script is not None:
+                reboot_file = workspace / "GASLUXR.PS1"
+                require(not reboot_file.exists(), "refusing existing third auditor")
+                reboot_file.write_bytes(reboot_script)
+                subprocess.run(["mcopy", "-i", str(floppy), str(reboot_file),
+                                "::/GASLUXR.PS1"], check=True)
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
             subprocess.run(["qemu-img", "create", "-f", "qcow2", str(disk), VM_SIZE],
@@ -1132,6 +1165,28 @@ def main(argv: list[str] | None = None) -> int:
                                 )
                                 print("GASLUX_CACHYOS_COW_GPT_ROOT_STAGED_ONLY=1",
                                       flush=True)
+                                if args.verify_windows_reboot_with_fifth_gpt:
+                                    from windows_cachyos_overlay_reboot import (
+                                        verify_third_windows_boot,
+                                    )
+                                    third = verify_third_windows_boot(
+                                        base, disk, nvram, candidate, cow, staged)
+                                    third_blob = (
+                                        json.dumps(third, indent=2, sort_keys=True)
+                                        + "\n").encode("utf-8")
+                                    third_file = evidence / (
+                                        f"{args.profile}-third-overlay-boot.json")
+                                    require(not third_file.exists() and
+                                            not third_file.is_symlink(),
+                                            "refusing reused third Windows boot proof")
+                                    with third_file.open("xb") as out:
+                                        out.write(third_blob)
+                                    report["windowsBootAfterLinuxGptOverlayVerified"] = True
+                                    report["thirdBootBcdWinreEspVerified"] = True
+                                    report["thirdBootProofSha256"] = hashlib.sha256(
+                                        third_blob).hexdigest()
+                                    print("GASLUX_WINDOWS_COW_FIFTH_GPT_THIRD_BOOT_VERIFIED=1",
+                                          flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
@@ -1151,6 +1206,8 @@ def main(argv: list[str] | None = None) -> int:
                         ("initial-dvd-guest-serial.log", "initial-dvd-serial", 2_000_000),
                         ("first-qemu-stderr.log", "initial-qemu-stderr", 256_000),
                         ("qemu-stderr.log", "second-qemu-stderr", 256_000),
+                        ("third-overlay-windows-serial.log", "third-boot-serial", 512_000),
+                        ("third-overlay-qemu-stderr.log", "third-boot-qemu-stderr", 256_000),
                     ):
                         source = workspace / source_name
                         if (source.is_file() and not source.is_symlink()
