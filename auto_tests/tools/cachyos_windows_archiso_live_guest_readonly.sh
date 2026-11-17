@@ -34,5 +34,29 @@ if (( result != 0 )) || ! grep -Fq '"actualPrimaryBackupGptCrcAndWindowsPartitio
     systemctl --no-block poweroff || true
     exit 3
 fi
+# Independently validate EFI, BCD, Windows loader and WinRE inside Archiso.
+# No actual Windows mount is writable. Missing ntfs3/dirty NTFS is a failure.
+test -r /run/gaslux-control/protected.py
+set +e
+python3 /run/gaslux-control/protected.py \
+    --plan /run/gaslux-control/plan.json \
+    --signature /run/gaslux-control/plan.sig \
+    --public-key /run/gaslux-control/public.pem \
+    --expected-run-id "$RUN_ID" \
+    --expected-root-uuid "$ROOT_UUID" \
+    > /run/gaslux-archiso-protected.json 2>&1
+protected_rc=$?
+set -e
+cat /run/gaslux-archiso-protected.json
+if (( protected_rc != 0 )) || \
+   ! grep -Fq '"realWindowsEspBcdLoaderWinreGuestHashesVerified": true' /run/gaslux-archiso-protected.json || \
+   ! grep -Fq '"guestWindowsMountsReadOnlyVerified": true' /run/gaslux-archiso-protected.json || \
+   ! grep -Fq '"storageWritesAuthorized": false' /run/gaslux-archiso-protected.json || \
+   ! grep -Fq '"pacstrapAuthorized": false' /run/gaslux-archiso-protected.json; then
+    echo 'GASLUX_WIN10_ARCHISO_PROTECTED_WINDOWS_READONLY_FAILED'
+    systemctl --no-block poweroff || true
+    exit 4
+fi
+echo 'GASLUX_WIN10_ARCHISO_PROTECTED_WINDOWS_READONLY_PASS'
 printf 'GASLUX_WIN10_ARCHISO_READONLY_PASS:%s:%s\n' "$RUN_ID" "$ROOT_UUID"
 systemctl --no-block poweroff
