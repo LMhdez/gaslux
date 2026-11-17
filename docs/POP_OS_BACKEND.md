@@ -188,3 +188,16 @@ The independently verified native-agent digest is instead stored as an exact
 65-byte SHA-256 line in the temporary QEMU FAT control disk and is included in
 the hash manifest checked by the guest before the native writer runs. This is
 strictly lab-only; it does not establish a production handoff or Windows proof.
+
+## Native install shutdown/second-boot transition
+
+Actions [#43988375734](https://github.com/LMhdez/gaslux/actions/runs/43988375734)
+completed the real `distinst` installation and logged native `kernelstub`
+bootloader configuration, but failed the host's clean-poweroff gate before
+starting the second VM. The guest controller previously closed its serial
+connection immediately after sending the shutdown command, even though the
+interactive shell might not yet have regained its prompt. The revised
+controller waits for the shell prompt, confirms completion of a separate
+`sync`, sends normal `systemctl poweroff -i` and keeps the socket open until
+guest disconnection. Disconnection is NOT trusted as success: the QEMU process
+must still exit with code 0 and installed first boot remains a separate check.

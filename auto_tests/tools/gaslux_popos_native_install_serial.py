@@ -119,9 +119,36 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
         output = normalized(bytes(transcript[start:]))
         if not SUCCESS.search(output):
             raise GuestProbeError("native installer reported an explicit failure")
-        # Installer committed filesystems, installed bootloader and unmounted
-        # its targets. Gracefully shut down before restarting from target only.
-        conn.sendall(b"sync && systemctl poweroff -i\r")
+        # Installer emits its success marker BEFORE the interactive shell
+        # returns to its prompt. Do not close the QEMU serial socket with a
+        # shutdown command still queued as input to the running installer.
+        # The HOST separately requires QEMU's clean exit code and boots again
+        # with neither the ISO nor the temporary control disk.
+        wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=120, start=start)
+        sync_start = len(transcript)
+        conn.sendall(b"sync\r")
+        wait_for(
+            conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=150, start=sync_start
+        )
+        conn.sendall(b"systemctl poweroff -i\r")
+        # Keep the console alive until the guest actually closes the socket.
+        # EOF alone is NOT a proof: the host must still see QEMU exit 0.
+        deadline = time.monotonic() + 150
+        while time.monotonic() < deadline:
+            conn.settimeout(2.0)
+            try:
+                chunk = conn.recv(16384)
+            except TimeoutError:
+                continue
+            except ConnectionResetError:
+                break
+            if not chunk:
+                break
+            transcript.extend(chunk)
+            if len(transcript) > 12000000:
+                raise GuestProbeError("shutdown transcript exceeded safety bound")
+        else:
+            raise GuestProbeError("native guest did not close serial after poweroff")
 
 
 def main() -> int:
