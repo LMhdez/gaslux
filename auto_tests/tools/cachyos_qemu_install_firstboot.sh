@@ -13,6 +13,7 @@ printf '%s  %s\n' "$hash" "$iso" | sha256sum -c --status || exit 1
 for tool in sgdisk losetup mkfs.ext4 mkfs.vfat debugfs grub-mkstandalone grub-script-check qemu-system-x86_64 mcopy mmd python3 timeout; do
   command -v "$tool" >/dev/null || { echo "Missing $tool"; exit 2; }
 done
+[[ -c /dev/urandom ]] || { echo 'Required host kernel entropy device unavailable'; exit 2; }
 w="$(mktemp -d -t gaslux-private-install-XXXXXXXX)"
 loop=''
 mounted_iso=0
@@ -180,7 +181,11 @@ run_live_guest() {
     -smp 2 -m 6144 -display none -monitor none -no-reboot -boot order=c \
     -drive if=pflash,format=raw,readonly=on,file="$code" \
     -drive if=pflash,format=raw,file="$w/nvram-live.fd" \
-    -device qemu-xhci \
+    # Provide host kernel entropy through a dedicated virtio RNG to avoid
+  # starving guest pacman-key initialization; no host disks are attached.
+  -object rng-random,id=gasluxrng0,filename=/dev/urandom \
+  -device virtio-rng-pci,rng=gasluxrng0 \
+  -device qemu-xhci \
     -drive if=none,id=liveefi,format=raw,file="$w/liveboot.raw",readonly=on \
     -device usb-storage,drive=liveefi \
     -drive if=none,id=source,format=raw,file="$w/iso.raw",readonly=on \
@@ -257,6 +262,10 @@ timeout --kill-after=5s 900s qemu-system-x86_64 \
   -smp 2 -m 4096 -display none -monitor none -no-reboot -boot order=c \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
   -drive if=pflash,format=raw,file="$w/nvram-installed.fd" \
+  # Provide host kernel entropy through a dedicated virtio RNG to avoid
+  # starving guest pacman-key initialization; no host disks are attached.
+  -object rng-random,id=gasluxrng0,filename=/dev/urandom \
+  -device virtio-rng-pci,rng=gasluxrng0 \
   -device qemu-xhci \
   -drive if=none,id=installedefi,format=raw,file="$w/esp.raw" \
   -device usb-storage,drive=installedefi \
