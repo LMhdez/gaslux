@@ -6,7 +6,7 @@
 
 - `main`: [`3eb74c6e`](https://github.com/LMhdez/gaslux/commit/3eb74c6e1f609319fe8ee706dd152c09f466dd44).
 - `dev`: [`34d50646`](https://github.com/LMhdez/gaslux/commit/34d50646783498000eb13dbaf8a63220e63ff719) — 96 commits à frente de `main`, 0 atrás no snapshot.
-- 154 PRs abertas (todas draft); 2 issues abertas (#3 e #71), 168 branches na primeira leitura; 14 PRs integradas e 3 fechadas sem merge.
+- 157 PRs abertas (todas draft); 2 issues abertas (#3 e #71); 14 PRs integradas e 5 fechadas sem merge. As 168 branches referem-se apenas à leitura inicial.
 - CI do HEAD `dev`: seis check runs concluídos com sucesso, apenas contratos/fixtures e verificações não destrutivas.
 - Catálogo estável (`release-config.json`): Mint 22.3 e Zorin 18.1. Os outros quatro backends continuam bloqueados.
 
@@ -14,12 +14,12 @@
 
 | Backend | Base em dev | PRs relevantes | Bloqueio até estabilidade |
 |---|---|---|---|
-| Linux Mint | Backend Debian/Ubuntu legado; gate seguro | Regressões `dev`, #169 | Validação real por firmware/layout e recuperação |
-| Zorin OS | Backend Debian/Ubuntu legado; gate seguro | Regressões `dev`, #167 #169 | Validação real por firmware/layout e recuperação |
-| CachyOS | Archiso experimental | #34 #36 #159 #161 #162 #165 #166 #170 #171 | Archiso/pacstrap real com Windows no mesmo disco, Linux+Windows boots, updates e rollback (#3, #71) |
-| Pop!_OS | Preflight System76 não mutável | #20 #38 #39 #47 #50 #61 #63 | distinst nativo, proteção ESP, boot Windows+Linux, recuperação |
+| Linux Mint | Backend Debian/Ubuntu legado; gate seguro | #167 #175 (absorveu #169/#174) | Validação real por firmware/layout e recuperação |
+| Zorin OS | Backend Debian/Ubuntu legado; gate seguro | #167 #175 #176 | Validação real por firmware/layout e recuperação |
+| CachyOS | Archiso experimental | #34 #36 #159 #161 #162 #165 #166 #170 #171 #173 | Archiso/pacstrap real com Windows no mesmo disco, Linux+Windows boots, updates e rollback (#3, #71) |
+| Pop!_OS | Preflight System76 não mutável | #20 #38 #39 #47 #50 #61 #63 #177 #178 | distinst nativo, proteção ESP, boot Windows+Linux, recuperação |
 | Q4OS | Preflight de ISO nativa | #35 #37 #40 #44 #45 #49 #52 #55 #59 | Calamares nativo, Windows+Linux, recuperação |
-| Bazzite | Preflight Fedora Atomic | Contratos `dev`, #172 | Só UEFI/GPT; BIOS/MBR rejeitado antes de escrita; Atomic dual boot e rollback por provar |
+| Bazzite | Preflight Fedora Atomic | Contratos `dev`, #175 (absorveu #172) | Só UEFI/GPT; BIOS/MBR rejeitado antes de escrita; Atomic dual boot e rollback por provar |
 
 ## Disposição
 
@@ -187,8 +187,11 @@ A dependência é a `base.ref` real de cada PR aberta. Quando o nome coincide co
 | [#168 — integration(draft): promote vetted dev contracts with global PR dependency board](https://github.com/LMhdez/gaslux/pull/168) | Windows/VM/common | Consolidar | `main` | `integration/dev-main-contracts-20261117` |
 | [#170 — fix(cachyos): fail closed on foreign virtio partition paths and geometry in Archiso preflight](https://github.com/LMhdez/gaslux/pull/170) | CachyOS | Corrigir | [#165](https://github.com/LMhdez/gaslux/pull/165) | `fix/cachyos-archiso-virtio-disk-boundary-issue3` |
 | [#171 — feat(cachyos): guarded root-only native pacstrap candidate for Windows-shared COW disk](https://github.com/LMhdez/gaslux/pull/171) | CachyOS | Bloquear | [#165](https://github.com/LMhdez/gaslux/pull/165) | `feature/cachyos-shared-cow-root-pacstrap-only` |
-| [#172 — security(bazzite): fail-closed live ISO detached-signature gate (synthetic CI only)](https://github.com/LMhdez/gaslux/pull/172) | Bazzite | Corrigir | `dev` | `feature/bazzite-iso-blob-trust-gate` |
 | [#173 — test(cachyos): boot signed Archiso read-only against real Windows 10 QCOW2](https://github.com/LMhdez/gaslux/pull/173) | CachyOS | Bloquear | [#170](https://github.com/LMhdez/gaslux/pull/170) | `test/cachyos-win10-real-archiso-readonly-issue3` |
+| [#175 — integration(draft): Mint/Zorin prewrite + live proofs and Bazzite ISO trust](https://github.com/LMhdez/gaslux/pull/175) | Windows/VM/common | Consolidar | `dev` | `integration/mint-zorin-bazzite-guards-20261117` |
+| [#176 — test(zorin): genuine ISO installed-root firstboot on disposable GPT/OVMF disk](https://github.com/LMhdez/gaslux/pull/176) | Mint/Zorin | Bloquear | [#167](https://github.com/LMhdez/gaslux/pull/167) | `test/zorin181-installed-root-ovmf-lab` |
+| [#177 — test(popos): derive separate owned ESP/root from real Windows GPT without writes](https://github.com/LMhdez/gaslux/pull/177) | Pop!_OS | Bloquear | [#134](https://github.com/LMhdez/gaslux/pull/134) | `test/windows10-popos-independent-esp-root-gate` |
+| [#178 — test(popos): stage separate ESP and root on genuine Win10 disposable QCOW2 (GPT only)](https://github.com/LMhdez/gaslux/pull/178) | Pop!_OS | Bloquear | [#177](https://github.com/LMhdez/gaslux/pull/177) | `test/windows10-popos-owned-esp-root-cow-stage` |
 
 ## Roteiro de integração
 
@@ -207,8 +210,8 @@ A dependência é a `base.ref` real de cada PR aberta. Quando o nome coincide co
 
 ## Contagens por grupo e disposição
 
-CachyOS: 56; Windows/VM/common: 74 (inclui #168); Pop!_OS: 13; Q4OS: 9; Mint/Zorin: 1; Bazzite: 1.
-Corrigir: 85; Consolidar: 50; Bloquear: 19.
+CachyOS: 56; Windows/VM/common: 75 (inclui #168 e #175); Pop!_OS: 15; Q4OS: 9; Mint/Zorin: 2; Bazzite: 0 (trabalho agora em #175).
+Corrigir: 84; Consolidar: 51; Bloquear: 22.
 
 ## Delta desta auditoria (17/11/2026)
 
@@ -228,5 +231,13 @@ O inventário é um snapshot. Revalidar contagens, bases, hashes e CI antes de c
 - Contagem de PRs abertas mantém-se **154** (uma fechada e outra criada); destas, **149** têm bases em branches intermédias e **5** apontam diretamente para `main`/`dev`. Issues abertas: #3 e #71.
 - A primeira prova combinada [#44141260953](https://github.com/LMhdez/gaslux/actions/runs/44141260953) encontrou falha de enumeração ótica GRUB no live Zorin; **resolvida no harness de laboratório**. No HEAD [`6b3b3d90`](https://github.com/LMhdez/gaslux/commit/6b3b3d90b7ec3d4d7910dd835d10a17cee91bbf6), a [Action #44141951845](https://github.com/LMhdez/gaslux/actions/runs/44141951845) passou os 3 jobs: ISO Mint, ISO Zorin com login série do *live* em QEMU/OVMF e fixtures SquashFS reais. Também passaram os [contratos WPF/C#/Pester/Python](https://github.com/LMhdez/gaslux/actions/runs/44141951218), [recuperação Windows fixtures](https://github.com/LMhdez/gaslux/actions/runs/44141951446), [CachyOS fixtures](https://github.com/LMhdez/gaslux/actions/runs/44141951210) e [media probes](https://github.com/LMhdez/gaslux/actions/runs/44141951193). **Não demonstra instalação real nem dual boot, atualizações, rollback ou desinstalação.**
 - Não foram efetuados merges, promoção ao catálogo estável nem operações em discos físicos.
+
+## Seguimento do integrador — batch de PRs #175 (17/11/2026)
+
+- [#175](https://github.com/LMhdez/gaslux/pull/175), **draft → `dev`**, HEAD [`dd755200`](https://github.com/LMhdez/gaslux/commit/dd755200a64a2b540b4776579e90a13818ca5017) integrou **#167 + #172 + #174** em 11 ficheiros, sem alterar catálogo assinado ou ativar Bazzite.
+- **7/7 GitHub Actions SUCCESS no mesmo HEAD:** [Mint 22.3 live/OVMF #44147851503](https://github.com/LMhdez/gaslux/actions/runs/44147851503), [Zorin 18.1 live + ISOs/SquashFS #44147851404](https://github.com/LMhdez/gaslux/actions/runs/44147851404), [Bazzite Cosign sintético #44147851375](https://github.com/LMhdez/gaslux/actions/runs/44147851375), [C#/WPF/Pester/Python #44147851545](https://github.com/LMhdez/gaslux/actions/runs/44147851545), [Win recovery #44147851401](https://github.com/LMhdez/gaslux/actions/runs/44147851401), [CachyOS/Windows contracts #44147851456](https://github.com/LMhdez/gaslux/actions/runs/44147851456), [media probes #44147851459](https://github.com/LMhdez/gaslux/actions/runs/44147851459).
+- [#172](https://github.com/LMhdez/gaslux/pull/172) e [#174](https://github.com/LMhdez/gaslux/pull/174) **fechadas sem merge** após validação da integração e verificação de que não tinham PRs descendentes abertas. [#167](https://github.com/LMhdez/gaslux/pull/167) mantém-se aberta enquanto [#176](https://github.com/LMhdez/gaslux/pull/176) depender dessa branch; não fechar a #167 sem reavaliar dependências.
+- Novas dependências: [#176](https://github.com/LMhdez/gaslux/pull/176) (Zorin installed-root em VM, não Windows dual boot), [#177](https://github.com/LMhdez/gaslux/pull/177) e [#178](https://github.com/LMhdez/gaslux/pull/178) (Pop!_OS e Windows QCOW2; trabalho experimental). **Não absorvidas neste batch.**
+- Snapshot atual: **157 PRs abertas, todas draft; 152 empilhadas e 5 diretas a `dev`/`main`**; 2 issues abertas (#3 e #71). Continua não demonstrada a instalação Mint/Zorin/Bazzite em dual boot real no mesmo disco Windows, atualizações, desinstalação ou rollback completo. Sem merge em `dev`/`main` por ausência de revisão humana.
 
 Generated-by: GPT-6
