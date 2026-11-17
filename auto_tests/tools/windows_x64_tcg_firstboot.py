@@ -438,6 +438,30 @@ BOOT_FROM_CD_PROMPT = b"Press any key to boot from CD or DVD"
 WINDOWS11_DVD_BOOT_START = b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM'
 
 
+def require_owned_hmp_socket(monitor_path: Path) -> None:
+    """Permit DVD keyboard input only through the CI-owned private QEMU HMP.
+
+    A path with the expected name is insufficient: an unrelated process
+    could place a socket under a similarly named public directory.
+    """
+    workspace = monitor_path.parent
+    require(
+        monitor_path.is_absolute()
+        and monitor_path.name == "initial-installer-hmp.sock"
+        and workspace.name.startswith("gaslux-win-x64-")
+        and workspace.parent == Path("/home/runner/work/_temp")
+        and workspace.is_dir()
+        and not workspace.is_symlink()
+        and workspace.resolve() == workspace
+        and workspace.stat().st_uid == os.getuid()
+        and stat.S_IMODE(workspace.stat().st_mode) == 0o700
+        and monitor_path.is_socket()
+        and not monitor_path.is_symlink()
+        and monitor_path.stat().st_uid == os.getuid(),
+        "refusing boot input through an unowned QEMU monitor socket",
+    )
+
+
 def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
     """Exactly one QEMU HMP Enter keystroke, to boot the official ISO initially.
 
@@ -446,11 +470,7 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
     0700-permission GitHub-hosted VM temporary directory, never the network.
     """
     require(hold_ms in (300, 6000), "unapproved firmware boot-key duration")
-    require(monitor_path.is_absolute() and monitor_path.is_socket() and
-            not monitor_path.is_symlink() and
-            monitor_path.parent.name.startswith("gaslux-win-x64-") and
-            monitor_path.parent.parent == Path("/home/runner/work/_temp"),
-            "refusing boot input through an unowned QEMU monitor socket")
+    require_owned_hmp_socket(monitor_path)
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
             monitor.settimeout(2)
