@@ -61,7 +61,8 @@ def unique_keys(pairs: list[tuple[str, object]]) -> dict:
 
 def evaluate(profile: str, report: dict, serial: bytes,
              manifest: bytes, initial_serial: bytes,
-             initial_manifest: bytes) -> dict[str, object]:
+             initial_manifest: bytes, *,
+             overlay_reboot_audit: bool = False) -> dict[str, object]:
     """Cross-check supplied two-stage evidence; never authorize any writing."""
     catalog = load_catalog()
     require(profile in EXPECTED and profile in catalog["profiles"],
@@ -115,9 +116,31 @@ def evaluate(profile: str, report: dict, serial: bytes,
     # Bind the Windows guest audit script to the checked-out source itself,
     # rather than accepting an arbitrary syntactically valid SHA256. This
     # independently catches an altered FirstLogon audit payload.
-    generated = witness_powershell(
-        profile, catalog["profiles"][profile]["expectedWindowsBuildPrefix"],
-    ) + "\n"
+    build = catalog["profiles"][profile]["expectedWindowsBuildPrefix"]
+    if overlay_reboot_audit:
+        # This mode is strictly confined to the Windows 10 fifth-GPT CI.
+        # Bind both guest scripts to checked-out source, never trust a
+        # self-reported hash as an authorization to replace the original audit.
+        from windows_cachyos_overlay_reboot import guest_reboot_script
+        require(profile == "win10_22h2_en_us_x64",
+                "overlay audit cannot target another Windows profile")
+        reboot_hash = hashlib.sha256(
+            (guest_reboot_script() + "\n").encode("utf-8")).hexdigest()
+        require(report.get("thirdBootAuditorScriptSha256") == reboot_hash
+                and report.get("windowsBootAfterLinuxGptOverlayVerified") is True
+                and report.get("thirdBootBcdWinreEspVerified") is True
+                and type(report.get("thirdBootProofSha256")) is str
+                and SHA256.fullmatch(report["thirdBootProofSha256"]) is not None,
+                "third Windows boot audit is not bound to checked-out source")
+        generated = witness_powershell(
+            profile, build, overlay_reboot_script_sha256=reboot_hash,
+        ) + "\n"
+    else:
+        require("thirdBootAuditorScriptSha256" not in report
+                and report.get("windowsBootAfterLinuxGptOverlayVerified") is not True
+                and report.get("thirdBootBcdWinreEspVerified") is not True,
+                "third boot requires an explicitly authorized candidate gate")
+        generated = witness_powershell(profile, build) + "\n"
     require(
         report["firstLogonScriptSha256"] ==
         hashlib.sha256(generated.encode("utf-8")).hexdigest(),
@@ -247,8 +270,19 @@ def main() -> int:
     parser.add_argument("--serial-sha256", required=True, type=Path)
     parser.add_argument("--initial-dvd-serial", required=True, type=Path)
     parser.add_argument("--initial-dvd-serial-sha256", required=True, type=Path)
+    parser.add_argument("--verify-owned-overlay-third-boot", action="store_true",
+                        help="Windows10 hosted CI only: require checked-out third "
+                             "auditor digest; never authorize production disk writes")
     args = parser.parse_args()
     try:
+        if args.verify_owned_overlay_third_boot:
+            from windows_cachyos_overlay_reboot import CONSENT as REBOOT_CONSENT
+            require(os.environ.get("GITHUB_ACTIONS") == "true" and
+                    os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux" and
+                    os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
+                    os.environ.get("GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT")
+                    == REBOOT_CONSENT,
+                    "cannot enable third Windows audit outside disposable CI")
         result = json.loads(read_regular(args.result, MAX_REPORT),
                             object_pairs_hook=unique_keys)
         proof = evaluate(
@@ -257,6 +291,7 @@ def main() -> int:
             read_regular(args.serial_sha256, MAX_MANIFEST),
             read_regular(args.initial_dvd_serial, MAX_INITIAL_SERIAL),
             read_regular(args.initial_dvd_serial_sha256, MAX_MANIFEST),
+            overlay_reboot_audit=args.verify_owned_overlay_third_boot,
         )
     except (BaselineGateError, OSError, ValueError, TypeError, KeyError,
             json.JSONDecodeError) as error:
