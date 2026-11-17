@@ -31,21 +31,55 @@ root_mounted=0
 esp_mounted=0
 iso_mounted=0
 chroot_mounted=0
+# NEVER recursively delete an owned workspace while any of its paths
+# contain a host mount (including bind-mounted /dev, proc or sysfs).
+# On failure the runner can reclaim it after teardown; our script must not
+# traverse external filesystems through a leaked guest mount.
+lab_mounts_remaining() {
+  local target
+  while IFS= read -r target; do
+    case "$target" in
+      "$work"/*) echo "ACTIVE_LAB_MOUNT=$target" >&2; return 0 ;;
+    esac
+  done < <(findmnt -rn -o TARGET)
+  return 1
+}
+
+release_chroot_mounts_or_die() {
+  local attempt path still=0
+  for attempt in $(seq 1 12); do
+    still=0
+    for path in "$work/target/dev/pts" "$work/target/dev" \
+      "$work/target/proc" "$work/target/sys"; do
+      if findmnt -rn -M "$path" >/dev/null 2>&1; then
+        sudo umount "$path" 2>/dev/null || still=1
+      fi
+    done
+    [[ "$still" -eq 0 ]] && {
+      for path in "$work/target/dev/pts" "$work/target/dev" \
+        "$work/target/proc" "$work/target/sys"; do
+        findmnt -rn -M "$path" >/dev/null 2>&1 && still=1
+      done
+    }
+    [[ "$still" -eq 0 ]] && return 0
+    sleep 1
+  done
+  echo 'GASLUX_ZORIN_INSTALLED_LAB_ERROR: could not release chroot mounts' >&2
+  return 1
+}
+
 cleanup() {
   if [[ -n "$qemu" ]]; then
     kill "$qemu" 2>/dev/null || true
     wait "$qemu" 2>/dev/null || true
   fi
   if [[ "$chroot_mounted" -eq 1 ]]; then
-    sudo umount "$work/target/dev/pts" 2>/dev/null || true
-    sudo umount "$work/target/dev" 2>/dev/null || true
-    sudo umount "$work/target/proc" 2>/dev/null || true
-    sudo umount "$work/target/sys" 2>/dev/null || true
+    release_chroot_mounts_or_die || true
   fi
   [[ "$esp_mounted" -eq 1 ]] && sudo umount "$work/esp" 2>/dev/null || true
   [[ "$root_mounted" -eq 1 ]] && sudo umount "$work/target" 2>/dev/null || true
   [[ "$iso_mounted" -eq 1 ]] && sudo umount "$work/iso" 2>/dev/null || true
-  if [[ -n "$loop" ]]; then sudo losetup -d "$loop" 2>/dev/null || true; fi
+
   if [[ -n "${GASLUX_ZORIN_INSTALLED_EVIDENCE:-}" ]]; then
     mkdir -p "$GASLUX_ZORIN_INSTALLED_EVIDENCE"
     for name in serial.log grub.cfg installed-check.txt disk-layout.txt; do
@@ -55,7 +89,22 @@ cleanup() {
     (cd "$GASLUX_ZORIN_INSTALLED_EVIDENCE" &&
       sha256sum ./* > evidence.sha256) 2>/dev/null || true
   fi
-  rm -rf -- "$work"
+
+  # Mandatory mount-table check precedes both loop detach and directory
+  # deletion. Refuse deletion if any mount, including nested binds, persists.
+  if lab_mounts_remaining; then
+    echo '::error::Owned Zorin lab still has active mounts. Never deleting it.' >&2
+    return 0
+  fi
+  if [[ -n "$loop" ]]; then
+    sudo losetup -d "$loop" 2>/dev/null || {
+      echo '::error::Owned loop image could not be detached; preserving workspace.' >&2
+      return 0
+    }
+  fi
+  [[ "$work" == "$RUNNER_TEMP"/gaslux-zorin-installed-* && ! -L "$work" ]] ||
+    return 0
+  sudo rm -rf --one-file-system -- "$work"
 }
 trap cleanup EXIT
 
@@ -126,11 +175,13 @@ EOF
 echo GASLUXZORIN | sudo tee "$work/target/etc/hostname" >/dev/null
 
 # Native initramfs must reference the actual installed ext4 root, not Casper.
+# Set cleanup ownership before the first mount so partial mount failures
+# are also safely released without traversing a host bind filesystem.
+chroot_mounted=1
 sudo mount -t proc proc "$work/target/proc"
 sudo mount -t sysfs sysfs "$work/target/sys"
 sudo mount --bind /dev "$work/target/dev"
 sudo mount --bind /dev/pts "$work/target/dev/pts"
-chroot_mounted=1
 sudo chroot "$work/target" /usr/bin/env -u CASPER_GENERATE_UUID \
   update-initramfs -u -k "$version" ||
   die 'Target initramfs rebuild failed; cannot treat Casper initrd as installed'
@@ -140,10 +191,9 @@ sudo chroot "$work/target" lsinitramfs "/boot/initrd.img-$version" > "$work/init
 if grep -Eq '(^|/)(conf/conf.d/default-boot-to-casper.conf|conf/conf.d/live-initrd.conf|conf/uuid.conf)$' "$work/initrd-files.txt"; then
   die 'Installed initramfs is configured to boot back to Casper'
 fi
-sudo umount "$work/target/dev/pts"
-sudo umount "$work/target/dev"
-sudo umount "$work/target/proc"
-sudo umount "$work/target/sys"
+sync
+sudo udevadm settle --timeout=20 || true
+release_chroot_mounts_or_die || die 'Native target mounts remained busy after initramfs rebuild'
 chroot_mounted=0
 
 sudo mount -t vfat "$esp_part" "$work/esp"
