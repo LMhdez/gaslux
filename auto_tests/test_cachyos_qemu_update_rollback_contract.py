@@ -93,6 +93,29 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         ):
             self.assertIn(requirement, self.host)
 
+    def test_recovery_never_boots_writable_baseline_qcow2(self):
+        # A guest can update journal/filesystem state merely by booting.
+        # Recovery proof must use a disposable COW overlay and then prove
+        # that the baseline remained byte-identical after that boot.
+        self.assertNotIn('launch "$base" BASELINE', self.host)
+        region = self.host.split('recovered="$w/recovered-overlay.qcow2"', 1)[1]
+        steps = (
+            'make_overlay "$recovered"',
+            'launch "$recovered" BASELINE',
+            "require_marker \"$w/recovered-baseline-serial.log\" 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1'",
+            'stop_vm',
+            'assert_base_unchanged',
+            'rm -- "$recovered"',
+            'assert_base_unchanged',
+            "GASLUX_QCOW2_BASELINE_RECOVERY_BOOT_VERIFIED=1",
+        )
+        prev = -1
+        for step in steps:
+            with self.subTest(step=step):
+                at = region.index(step)
+                self.assertGreater(at, prev)
+                prev = at
+
     def test_update_requires_installed_kernel_root_and_trusted_packages(self):
         for requirement in (
             "GASLUX_CI_UPDATE", "opt/gaslux/ci-mode/raw",
