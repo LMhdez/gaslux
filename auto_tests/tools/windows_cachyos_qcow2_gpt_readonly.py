@@ -102,13 +102,25 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     # particular, a forged zero-length/shifted entry must not certify a
     # disk for subsequent Linux partition planning. This fixed-size lab
     # fits the protective MBR's 32-bit sector-count field exactly.
+    protective_start, protective_span = struct.unpack_from(
+        "<II", entries_mbr[0], 8,
+    )
+    protective_boot = entries_mbr[0][0]
+    protective_type = entries_mbr[0][4]
+    expected_span = min(total - 1, 0xffffffff)
+    extra_slots = tuple(i + 2 for i, entry in enumerate(entries_mbr[1:])
+                        if any(entry))
     require(
-        entries_mbr[0][0] == 0
-        and entries_mbr[0][4] == 0xEE
-        and struct.unpack_from("<II", entries_mbr[0], 8) ==
-            (1, min(total - 1, 0xffffffff))
-        and all(not any(entry) for entry in entries_mbr[1:]),
-        "hybrid or invalid protective MBR geometry",
+        protective_boot == 0
+        and protective_type == 0xEE
+        and protective_start == 1
+        and protective_span == expected_span
+        and not extra_slots,
+        "hybrid or invalid protective MBR geometry: "
+        f"boot={protective_boot}, type=0x{protective_type:02x}, "
+        f"start_lba={protective_start}, span_lba={protective_span}, "
+        f"expected_span_lba={expected_span}, "
+        f"unexpected_entry_slots={extra_slots}",
     )
     primary = header_at(front, SECTOR, 1, total - 1, total)
     backup = header_at(back, WINDOW_BYTES - SECTOR, total - 1, 1, total)
