@@ -82,7 +82,7 @@ def test_desktop_launcher_requires_pixel_attestations_and_closed_welcome():
     assert "GASLUX_Q4OS_PINNED_DESKTOP_LAUNCHER_VERIFIED" in source
     assert "vnc-after-installer-icon.png" in source
     assert '"$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1' in source
-    assert "NOT PROVEN: Calamares executable actually started" in source
+    assert "NOT PROVEN: Calamares GUI identity unless screenshot is independently reviewed." in source
     assert "calamares -d" not in source
 
 
@@ -114,7 +114,12 @@ def test_calamares_welcome_to_location_is_source_gated_and_never_installs():
     assert '"$calamares_welcome_next_clicked" -eq 1 && "$calamares_location_frame" -eq 1' in source
     assert "NOT PERFORMED: partition choice, user setup, Install confirmation" in source
     assert "calamares -d" not in source
-    assert "mkfs." not in source
+    # Only the temporary lab-created FAT32 ESP may be formatted; no Linux root.
+    assert 'mkfs.vfat -F 32 -n GASLUXLAB "$work/efi-part.img"' in source
+    assert "mkfs.ext4" not in source
+    assert "mkfs.xfs" not in source
+    assert "mkfs.btrfs" not in source
+    assert "mkfs.ntfs" not in source
 
 
 def test_welcome_next_opt_in_requires_exact_gui_launcher_mode(tmp_path):
