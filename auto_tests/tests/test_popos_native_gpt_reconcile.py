@@ -11,9 +11,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests/tools"))
 from gaslux_popos_native_gpt_reconcile import (  # noqa: E402
-    GptRefusal,
     ROOT_FIRST,
     ROOT_LAST,
+    GptRefusal,
     reconcile_linux_only,
 )
 
