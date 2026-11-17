@@ -556,6 +556,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
+    if args.derived_no_prompt and not args.boot_probe_only:
+        raise SystemExit("derived no-prompt DVD requires probe-only until safe "
+                         "DVD detachment before first Windows reboot is proven")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
@@ -642,14 +645,20 @@ def main(argv: list[str] | None = None) -> int:
                 "-device", "qemu-xhci,id=lab_usb",
                 "-device", "usb-kbd,bus=lab_usb.0",
                 "-device", "ich9-ahci,id=lab_sata",
-                "-drive", f"if=none,id=only_windows,format=qcow2,file={disk}",
-                "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
                 "-drive", f"if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file={boot_iso}",
                 "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
-                "-drive", f"if=floppy,format=raw,file={floppy}",
                 "-serial", f"file:{serial}",
                 "-boot", "order=dc",
             ]
+            # The lab DVD probe MUST NOT expose a writable target disk,
+            # unattend answer file, or any other guest storage. Its ONLY
+            # attached medium is a read-only Microsoft-sourced DVD.
+            if not args.boot_probe_only:
+                base.extend([
+                    "-drive", f"if=none,id=only_windows,format=qcow2,file={disk}",
+                    "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
+                    "-drive", f"if=floppy,format=raw,file={floppy}",
+                ])
             tpm = None
             if args.profile.startswith("win11"):
                 require(shutil.which("swtpm") is not None, "Windows 11 requires TPM 2.0")
