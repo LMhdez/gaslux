@@ -1175,6 +1175,14 @@ def main(argv: list[str] | None = None) -> int:
                                         and not bcd_result["storageWritesAuthorized"],
                                         "Windows-only BCD overlay rollback failed")
                                 report["disposableBcdOverlayExperiment"] = bcd_result
+                            if os.environ.get("GASLUX_WINDOWS_LINUX_GPT_COW_CONSENT"):
+                                from windows_cachyos_real_windows_gpt_cow_transaction import trial
+                                linux_gpt = trial(disk)
+                                require(linux_gpt["windowsBaseGptEspBcdWinreUnchanged"]
+                                        and linux_gpt["interruptedGptAdditionRolledBackByDiscard"]
+                                        and not linux_gpt["storageWritesAuthorized"],
+                                        "Windows Linux GPT COW experiment not verified")
+                                report["disposableLinuxGptOverlayExperiment"] = linux_gpt
                             if os.environ.get("GASLUX_WINDOWS_THIRDBOOT_TEST"):
                                 require(boot_installed_windows_third_time(
                                     base, workspace, args.profile),
