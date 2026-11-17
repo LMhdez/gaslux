@@ -375,11 +375,22 @@ def send_first_iso_boot_key_vnc(monitor_path: Path, hold_ms: int = 300) -> None:
             os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
             os.environ.get("RUNNER_OS") == "Linux",
             "VNC firmware input restricted to hosted GitHub VM laboratory")
-    require(monitor_path.is_absolute() and monitor_path.is_socket() and
-            not monitor_path.is_symlink() and
-            monitor_path.parent.name.startswith("gaslux-win-x64-") and
-            monitor_path.parent.parent == Path("/home/runner/work/_temp"),
+    owned = monitor_path.parent
+    require(monitor_path.is_absolute() and
+            monitor_path.name == "initial-installer-hmp.sock" and
+            monitor_path.is_socket() and not monitor_path.is_symlink() and
+            owned.parent == Path("/home/runner/work/_temp") and
+            owned.name.startswith("gaslux-win-x64-") and
+            owned.is_dir() and not owned.is_symlink() and
+            owned.resolve() == owned and
+            owned.stat().st_uid == os.getuid() and
+            stat.S_IMODE(owned.stat().st_mode) == 0o700 and
+            monitor_path.stat().st_uid == os.getuid(),
             "refusing VNC input for an unowned QEMU monitor")
+    vnc_path = owned / "initial-installer-vnc.sock"
+    require(vnc_path.is_socket() and not vnc_path.is_symlink() and
+            vnc_path.stat().st_uid == os.getuid(),
+            "refusing input to foreign or missing QEMU VNC socket")
 
     def receive_exact(conn, count: int) -> bytes:
         result = b""
@@ -391,9 +402,11 @@ def send_first_iso_boot_key_vnc(monitor_path: Path, hold_ms: int = 300) -> None:
         return result
 
     try:
-        # 5979 is QEMU display :79. No Internet, VNC listener is loopback-only.
-        with socket.create_connection(("127.0.0.1", 5979), timeout=5) as conn:
+        # Authenticated via the same 0700 owned directory as the HMP monitor.
+        # No TCP listener, fixed port, or shared host VNC instance is trusted.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
             conn.settimeout(5)
+            conn.connect(str(vnc_path))
             version = receive_exact(conn, 12)
             require(version == b"RFB 003.008\n", "unexpected RFB protocol")
             conn.sendall(version)
@@ -583,7 +596,6 @@ def main(argv: list[str] | None = None) -> int:
                 "-global", "driver=cfi.pflash01,property=secure,value=on",
                 "-cpu", ("host" if args.accel == "kvm" else "max"),
                 "-smp", "2", "-m", "4096",
-                "-display", ("vnc=127.0.0.1:79" if args.vnc_dvd_enter else "none"),
                 "-vga", "std",
                 "-monitor", f"unix:{monitor_path},server,nowait", "-net", "none",
                 "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
@@ -602,6 +614,10 @@ def main(argv: list[str] | None = None) -> int:
                 "-serial", f"file:{serial}",
                 "-boot", "order=dc",
             ]
+            if args.vnc_dvd_enter:
+                base.extend(["-vnc", f"unix:{workspace / 'initial-installer-vnc.sock'}"])
+            else:
+                base.extend(["-display", "none"])
             tpm = None
             if args.profile.startswith("win11"):
                 require(shutil.which("swtpm") is not None, "Windows 11 requires TPM 2.0")
