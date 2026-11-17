@@ -1,0 +1,75 @@
+name: Real Microsoft WinPE FAT12 vs FAT32 answer auto-discovery (NO target disk)
+
+on:
+  push:
+    branches:
+      - diag/windows-winpe-answer-device-probe
+    paths:
+      - .github/workflows/windows-winpe-answer-device-probe.yml
+      - auto_tests/tools/windows_x64_winpe_answer_probe.py
+      - auto_tests/test_windows_x64_winpe_answer_probe.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-guest-safety:
+    name: No-guest WinPE answer discovery and no-target-disk contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Assert WinPE probe has no Windows target or physical device
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile \
+            auto_tests/tools/windows_x64_winpe_answer_probe.py \
+            auto_tests/test_windows_x64_winpe_answer_probe.py \
+            auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_winpe_answer_probe.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_usb_firstlogon_command.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_derived_iso_usb_ab.py' -v
+          echo 'Only no-guest safety contracts: no Windows install, no host disk, no release gate.' >> "$GITHUB_STEP_SUMMARY"
+
+  real-windows-pe-no-target:
+    name: Genuine Windows 10 WinPE FAT12/floppy vs FAT32/USB witness without target disk
+    needs: no-guest-safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_WINPE_PROBE_CONSENT: I_ACCEPT_DISPOSABLE_WINPE_NO_TARGET_DISK
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require GitHub hosted KVM, verified ISO extraction and FAT media tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf p7zip-full genisoimage \
+            dosfstools mtools
+      - name: Probe only Windows PE answer consumption, never install onto disk
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_x64_winpe_answer_probe.py
+          echo 'If passed: real WinPE consumed XML on both disposable answer devices with NO target disk. No Windows installed-client boot, BCD/WinRE, CachyOS or rollback proven.' >> "$GITHUB_STEP_SUMMARY"
