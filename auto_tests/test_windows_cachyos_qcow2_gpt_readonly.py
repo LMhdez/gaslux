@@ -21,7 +21,8 @@ LAST = TOTAL - 1
 GUID = uuid.uuid5(uuid.NAMESPACE_URL, "gaslux-synthetic-disposable-gpt").bytes_le
 
 
-def create_disk_windows(part_types=None, overlap=False, small_free=False):
+def create_disk_windows(part_types=None, overlap=False, small_free=False,
+                        duplicate_guid=False):
     types = list(part_types or gpt.TYPES)
     data = bytearray(128 * 128)
     sizes = (260, 16, 73728, 1536, 2048)
@@ -36,8 +37,9 @@ def create_disk_windows(part_types=None, overlap=False, small_free=False):
         last = first + length - 1
         off = i * 128
         data[off:off+16] = uuid.UUID(typ).bytes_le
+        unique_index = 0 if duplicate_guid and i == 3 else i
         data[off+16:off+32] = uuid.uuid5(
-            uuid.NAMESPACE_URL, "gaslux synthetic partition " + str(i)
+            uuid.NAMESPACE_URL, "gaslux synthetic partition " + str(unique_index)
         ).bytes_le
         struct.pack_into("<QQ", data, off+32, first, last)
         start = last + 1
@@ -58,6 +60,7 @@ def create_disk_windows(part_types=None, overlap=False, small_free=False):
     back = bytearray(gpt.WINDOW_BYTES)
     front[510:512] = b"\x55\xaa"
     front[446+4] = 0xee
+    struct.pack_into("<II", front, 446+8, 1, TOTAL-1)
     front[512:1024] = header(1, LAST, 2)
     front[2*512:34*512] = data
     back[(2048-33)*512:(2048-1)*512] = data
@@ -108,6 +111,18 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
     def test_foreign_fifth_gpt_partition_refused_even_with_valid_crc(self):
         front, back = create_disk_windows(part_types=list(gpt.TYPES) + [gpt.TYPES[2]])
         with self.assertRaisesRegex(gpt.GeometryError, "foreign fifth"):
+            gpt.inspect_gpt_windows(front, back)
+
+    def test_mbr_ee_without_full_protective_span_rejected(self):
+        front, back = create_disk_windows()
+        corrupted = bytearray(front)
+        struct.pack_into("<I", corrupted, 446+12, 1024)
+        with self.assertRaisesRegex(gpt.GeometryError, "nonprotective"):
+            gpt.inspect_gpt_windows(bytes(corrupted), back)
+
+    def test_duplicate_partition_guid_refused_with_valid_mirror_crcs(self):
+        front, back = create_disk_windows(duplicate_guid=True)
+        with self.assertRaisesRegex(gpt.GeometryError, "duplicated unique"):
             gpt.inspect_gpt_windows(front, back)
 
     def test_mbr_hybrid_partition_refused(self):
