@@ -16,6 +16,11 @@ from pathlib import Path
 SUCCESS = b"GASLUX_EFI_ANSWER_USB_FILES_VISIBLE=1"
 FAILURE = b"GASLUX_EFI_ANSWER_USB_FILES_MISSING=1"
 READY = b"GASLUX_EFI_ANSWER_USB_SCAN_STARTED=1"
+STAGES = {
+    "LABEL": b"GASLUX_EFI_ANSWER_USB_LABEL_FOUND=",
+    "XML": b"GASLUX_EFI_ANSWER_USB_XML_FOUND=",
+    "SCRIPT": b"GASLUX_EFI_ANSWER_USB_SCRIPT_FOUND=",
+}
 MAX_SERIAL = 256 * 1024
 
 
@@ -67,19 +72,34 @@ def read_private_serial(path: Path) -> bytes:
 
 
 def validate_witness(serial: bytes) -> bool:
-    """Only whole, unique guest lines count; not arbitrary console substrings."""
+    """Reject ambiguous or prefixed tokens, and require the whole EFI scan."""
     lines = [x.strip() for x in serial.splitlines()]
     require(lines.count(READY) <= 1, "ambiguous UEFI answer USB scan")
     require(lines.count(SUCCESS) <= 1, "duplicate UEFI guest visibility witness")
-    require(FAILURE not in lines, "UEFI guest could not see answer USB files")
+    require(lines.count(FAILURE) <= 1, "duplicate UEFI guest missing-files witness")
+    allowed = {READY, SUCCESS, FAILURE}
+    observed: dict[str, int] = {}
+    for stage, prefix in STAGES.items():
+        fields = [line for line in lines if line.startswith(prefix)]
+        require(len(fields) <= 1, "ambiguous UEFI answer USB " + stage)
+        if fields:
+            require(fields[0] in (prefix + b"0", prefix + b"1"),
+                    "nonboolean UEFI answer USB " + stage)
+            observed[stage] = int(fields[0][-1:])
+            allowed.add(fields[0])
     require(not any(
-        b"GASLUX_EFI_ANSWER_USB_" in line
-        and line not in (READY, SUCCESS, FAILURE)
+        b"GASLUX_EFI_ANSWER_USB_" in line and line not in allowed
         for line in lines
     ), "unrecognized or prefixed UEFI answer USB witness")
+    require(FAILURE not in lines, "UEFI guest could not see answer USB files")
     if SUCCESS in lines:
         require(READY in lines and lines.index(READY) < lines.index(SUCCESS),
                 "UEFI answer visibility was claimed before guest scan")
+        require(observed == {"LABEL": 1, "XML": 1, "SCRIPT": 1},
+                "UEFI answer USB visibility lacks independently observed files")
+        for stage, prefix in STAGES.items():
+            require(lines.index(prefix + b"1") < lines.index(SUCCESS),
+                    "UEFI answer USB " + stage + " emitted after success")
         return True
     return False
 
