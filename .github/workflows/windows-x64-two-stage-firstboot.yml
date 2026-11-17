@@ -11,6 +11,7 @@ on:
       - fix/windows-two-stage-removable-oobe-answer
       - test/windows-two-stage-offline-panther-cache-evidence
       - fix/windows-panther-guestfs-kernel-appliance
+      - test/windows-panther-real-ntfs-readonly-fixture
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
