@@ -84,6 +84,10 @@ def prepare_linux_gpt_rehearsal(disk: Path, nvram: Path,
             and geometry.get("releaseEligible") is False
             and len(geometry.get("windowsPartitions", [])) == 4,
             "real installed Windows GPT candidate absent or unsafe")
+    ext4_consent = os.environ.get("GASLUX_CACHYOS_ROOT_EXT4_COW_CONSENT")
+    require(ext4_consent in (None,
+            "I_ACCEPT_ONLY_OWNED_FIFTH_EXT4_IN_THROWAWAY_QCOW2"),
+            "unknown ext4 COW-only format consent")
     windows_files = inspect_owned_disk(disk)
     require(windows_files["partitionCount"] == 4 and
             windows_files["espBootManagerPresent"] and
@@ -118,6 +122,19 @@ def prepare_linux_gpt_rehearsal(disk: Path, nvram: Path,
             staged.get("linuxRootFilesystemFormatted") is False and
             staged.get("storageWritesAuthorized") is False,
             "partition stage falsely claimed installed Linux or write authorization")
+    ext4_trial = None
+    if ext4_consent:
+        from windows10_cachyos_owned_ext4_cow import format_fifth_ext4_only_in_cow
+        ext4_trial = format_fifth_ext4_only_in_cow(
+            disk, nvram, geometry, staged, windows_files)
+        require(
+            ext4_trial.get("linuxRootExt4FormattedInDiscardableCOW") is True and
+            ext4_trial.get("onlyOwnedFifthPartitionFormatted") is True and
+            ext4_trial.get("windowsEfiBcdUnchangedInsideOverlay") is True and
+            ext4_trial.get("windowsBackingQcow2Unchanged") is True and
+            ext4_trial.get("cachyosInstalled") is False and
+            ext4_trial.get("storageWritesAuthorized") is False,
+            "ext4 target COW format evidence not trustworthy")
     linux_overlay = checkpoint / OVERLAY_NAME
     validate_overlay(disk, linux_overlay, OVERLAY_NAME)
     require(qcow2_file_identity(disk) == initial_identity and
@@ -160,6 +177,7 @@ def prepare_linux_gpt_rehearsal(disk: Path, nvram: Path,
         "originalIdentity": initial_identity,
         "originalWindowsHashes": windows_files,
         "linuxPartition": staged["linuxRoot"],
+        "rootExt4Trial": ext4_trial,
         "windowsBootAfterLinuxPartitionDiscardVerified": False,
         "storageWritesAuthorized": False,
         "releaseEligible": False,
@@ -232,6 +250,11 @@ def verify_after_independent_windows_boot(
         "linuxPartitionGuid": staged["linuxPartition"]["uniqueGuid"],
         "linuxPartitionLengthBytes": 24 * 1024**3,
         "linuxRootFilesystemFormatted": False,
+        "linuxRootExt4TrialPerformedOnlyOnDiscardedOverlay":
+            staged.get("rootExt4Trial") is not None,
+        "linuxRootExt4TrialUuid": (
+            staged["rootExt4Trial"]["rootUuid"]
+            if staged.get("rootExt4Trial") is not None else None),
         "cachyosInstalled": False,
         "windowsBootAfterLinuxPartitionDiscardVerified": True,
         "windowsEspBcdWinreBaseHashesUnchanged": True,
