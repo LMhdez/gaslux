@@ -6,8 +6,18 @@
 distribution_squashfs_path_exists() {
     local rootfs="$1" path="$2"
 
+    # Require the complete listed pathname, not an unrelated prefix/suffix.
+    # In -ll output, ordinary files end in the pathname; symlinks instead
+    # include "pathname -> destination". A substring grep accepts lookalikes.
+    # Consume the full listing so pipefail also notices an unsquashfs error.
     unsquashfs -ll "$rootfs" "$path" 2>/dev/null |
-        grep -Fq "squashfs-root/$path"
+        awk -v expected="squashfs-root/$path" '
+            $1 ~ /^-/ && $NF == expected { found = 1 }
+            $1 ~ /^l/ && NF >= 3 && $(NF - 2) == expected && $(NF - 1) == "->" {
+                found = 1
+            }
+            END { exit !found }
+        '
 }
 
 read_distribution_os_release_value() {
