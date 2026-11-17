@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/gaslux-q4os-guest-disk-report.schema.json",
+  "title": "Q4OS guest-visible disk identity report (read-only; no install authority)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "runId": {"type": "string", "minLength": 12, "maxLength": 100},
+    "nonce": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "device": {"type": "string", "pattern": "^/dev/vd[a-z]+$", "description": "Diagnostic only; never used as identity."},
+    "serial": {"type": "string", "pattern": "^GASLUXQ4OS-[A-F0-9]{20}$"},
+    "sizeBytes": {"const": 34359738368},
+    "logicalSectorBytes": {"const": 512},
+    "physicalSectorBytes": {"enum": [512, 4096]},
+    "diskGuid": {"type": "string", "format": "uuid"},
+    "partitions": {"type": "array", "minItems": 1, "maxItems": 1, "items": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "number": {"const": 1}, "startLba": {"const": 2048}, "endLba": {"const": 1050623},
+        "typeGuid": {"const": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"},
+        "partGuid": {"type": "string", "format": "uuid"},
+        "label": {"const": "GASLUX-LAB-ESP"}, "filesystem": {"const": "vfat"}
+      },
+      "required": ["number", "startLba", "endLba", "typeGuid", "partGuid", "label", "filesystem"]
+    }},
+    "readOnlyProbe": {"const": true},
+    "writeAttempted": {"const": false}
+  },
+  "required": ["schemaVersion", "runId", "nonce", "device", "serial", "sizeBytes",
+    "logicalSectorBytes", "physicalSectorBytes", "diskGuid", "partitions",
+    "readOnlyProbe", "writeAttempted"]
+}
