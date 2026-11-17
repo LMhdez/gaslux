@@ -47,7 +47,6 @@ jobs:
       ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
       ZORIN_BYTES: '3909091328'
       ZORIN_URL: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
-      GASLUX_ZORIN_INSTALLED_EVIDENCE: ${{ runner.temp }}/zorin-installed-evidence
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -94,6 +93,8 @@ jobs:
           printf '%s  %s\n' "$ZORIN_SHA" "$iso" | sha256sum --check --status
       - name: Extract installed Zorin into exclusively owned GPT/ext4 and require disk-only login
         shell: bash
+        env:
+          GASLUX_ZORIN_INSTALLED_EVIDENCE: ${{ runner.temp }}/zorin-installed-evidence
         run: |
           set -Eeuo pipefail
           bash -n auto_tests/tools/gaslux_zorin_installed_target_lab.sh
@@ -104,6 +105,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: zorin-181-disposable-installed-root-evidence
-          path: ${{ env.GASLUX_ZORIN_INSTALLED_EVIDENCE }}/
+          path: ${{ runner.temp }}/zorin-installed-evidence/
           if-no-files-found: warn
           retention-days: 14
