@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import stat
 import subprocess
 import tempfile
@@ -222,9 +223,13 @@ def install_mint_root_and_boot(
         serial = evidence / "mint-same-windows-cow-serial.log"
         require(not serial.exists() and not serial.is_symlink(),
                 "refusing reused Mint boot evidence")
+        monitor = temp / "mint-qemu-monitor.sock"
+        require(not monitor.exists() and not monitor.is_symlink(),
+                "refusing reused Mint QEMU monitor socket")
         qemu = subprocess.Popen([
             "qemu-system-x86_64", "-machine", "q35,accel=kvm", "-cpu", "host",
-            "-smp", "2", "-m", "4096", "-display", "none", "-monitor", "none",
+            "-smp", "2", "-m", "4096", "-display", "none",
+            "-monitor", f"unix:{monitor},server,nowait",
             "-net", "none", "-no-reboot", "-drive",
             f"if=none,id=windows-cow,format=qcow2,file={overlay}",
             "-device", "virtio-blk-pci,drive=windows-cow,bootindex=1",
@@ -246,6 +251,28 @@ def install_mint_root_and_boot(
                 time.sleep(3)
             else:
                 raise MintOverlayError("Mint same-COW firstboot timed out")
+            monitor_deadline = time.monotonic() + 30
+            channel = None
+            while time.monotonic() < monitor_deadline:
+                if monitor.exists() and monitor.is_socket():
+                    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    channel.connect(str(monitor))
+                    break
+                time.sleep(0.5)
+            require(channel is not None, "Mint QEMU monitor did not become available")
+            try:
+                channel.recv(4096)
+                channel.sendall(b"system_powerdown\\n")
+            finally:
+                channel.close()
+            try:
+                qemu.wait(timeout=90)
+            except subprocess.TimeoutExpired as exc:
+                raise MintOverlayError("Mint guest did not complete ACPI poweroff") from exc
+            require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after guest poweroff")
+            shutdown_log = serial.read_bytes()
+            require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
+                    "Mint guest did not emit a shutdown witness")
         finally:
             if qemu.poll() is None:
                 qemu.terminate()
