@@ -164,6 +164,29 @@ class OneShotHostedWindowsLabTests(unittest.TestCase):
             self.assertFalse(ok)
             self.assertIn("startup was not observed exactly once", reason)
 
+    def test_windows_build_prefix_is_not_sufficient_firstboot_witness(self):
+        with tempfile.TemporaryDirectory() as temp:
+            serial = pathlib.Path(temp) / "win-serial.log"
+            serial.write_bytes(
+                b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM\n'
+                b'GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win10_22h2_en_us_x64\n'
+                b'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1\n'
+                b'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1\n'
+                b'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1\n'
+                b'GASLUX_WINDOWS_X64_WINRE_ENABLED=1\n'
+                b'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1\n'
+                b'GASLUX_WINDOWS_X64_BOOT_BUILD=190450\n'
+            )
+            guest = FakeGuest()
+            guest.rc = 0
+            with patch.object(vm.subprocess, "Popen", return_value=guest):
+                ok, reason = vm.boot_vm(
+                    ["qemu-system-x86_64"], serial, 400,
+                    "win10_22h2_en_us_x64", reject_repeated_dvd_boot=True,
+                )
+            self.assertFalse(ok)
+            self.assertIn("before installed Windows first-logon witness", reason)
+
     def test_only_once_dvd_boot_and_hosted_vm_storage_source(self):
         source = SRC.read_text()
         self.assertIn('"-boot", ("order=c,once=d" if args.one_shot_install_only',
