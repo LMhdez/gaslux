@@ -114,6 +114,7 @@ jobs:
           persist-credentials: false
       - name: Require hosted KVM and prepare isolated Windows/ISO UDF tools
         shell: bash
+        timeout-minutes: 16
         run: |
           set -Eeuo pipefail
           test "$GITHUB_ACTIONS" = true
@@ -121,10 +122,25 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           test "$(uname -m)" = x86_64
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          # A previous runner remained in dependency setup >20 minutes, with
+          # the Windows VM not even started. Bound package access before any
+          # target media/Windows disk exists and report the stalled phase.
+          trap 'rc=$?; if (( rc != 0 )); then
+            echo "GASLUX_HOSTED_KVM_DEPENDENCY_SETUP_FAILED=1" >&2;
+            echo "FAIL: owned hosted runner KVM prerequisite installation; no Windows guest launched" >> "$GITHUB_STEP_SUMMARY";
+          fi' EXIT
+          echo "GASLUX_HOSTED_KVM_APT_UPDATE_BEGIN=1"
+          timeout --signal=TERM --kill-after=15s 300s sudo apt-get update -qq \
+            -o Acquire::Retries=2 -o Acquire::http::Timeout=40 \
+            -o Acquire::https::Timeout=40
+          echo "GASLUX_HOSTED_KVM_APT_INSTALL_BEGIN=1"
+          timeout --signal=TERM --kill-after=15s 600s sudo env DEBIAN_FRONTEND=noninteractive \
+            apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=60 -o Acquire::Retries=2 \
+            -o Acquire::http::Timeout=40 -o Acquire::https::Timeout=40 \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
             p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic
+          echo "GASLUX_HOSTED_KVM_PREREQUISITES_INSTALLED=1"
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
