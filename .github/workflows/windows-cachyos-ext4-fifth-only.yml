@@ -23,6 +23,7 @@ on:
       - auto_tests/test_windows_cachyos_overlay_reboot.py
       - auto_tests/tools/windows_cachyos_overlay_ext4_only.py
       - auto_tests/test_windows_cachyos_overlay_ext4_only.py
+      - auto_tests/tools/windows_cachyos_ext4_synthetic_guestfs.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
   workflow_dispatch:
 
@@ -81,9 +82,38 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_swtpm_reconnect.py' -v
           echo 'Real swtpm Unix listener reconnected with same temporary NV directory; no Windows boot proven.' >> "$GITHUB_STEP_SUMMARY"
 
+  synthetic-guestfs-fifth-ext4:
+    name: Real libguestfs fifth-ext4 on isolated synthetic raw image (NO Windows)
+    needs: verify-host-and-proof-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GASLUX_SYNTHETIC_EXT4_CONSENT: I_ACCEPT_SYNTHETIC_RAW_FILE_FIFTH_EXT4_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare disposable private guestfs appliance and synthetic GPT tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gdisk python3-guestfs libguestfs-tools linux-image-generic
+      - name: Verify ext4 and all four SHA256 digests with REAL guestfs, without any Windows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 auto_tests/tools/windows_cachyos_ext4_synthetic_guestfs.py
+          echo 'Synthetic guestfs fifth ext4 real API PASS; ZERO Windows/Linux install/boot/rollback claims.' >> "$GITHUB_STEP_SUMMARY"
+
   genuine-client-two-stage-firstboot:
     name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
-    needs: verify-host-and-proof-contracts
+    needs: [verify-host-and-proof-contracts, synthetic-guestfs-fifth-ext4]
     runs-on: ubuntu-24.04
     timeout-minutes: 85
     strategy:
