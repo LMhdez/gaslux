@@ -255,6 +255,9 @@ def issue_root_write_grant(
             and checkpoint_dir.stat().st_uid == os.getuid()
             and stat.S_IMODE(checkpoint_dir.stat().st_mode) == 0o700,
             "overlay does not belong to the private Windows COW checkpoint")
+    require(all(path.parent == workspace for path in
+                (plan_path, plan_signature, public_key, private_key)),
+            "plan and ephemeral signer must remain inside the private handoff directory")
     base_stat = _owned_regular(base, base.parent, BASE_NAME, 0o400)
     overlay_stat = _owned_regular(overlay, checkpoint_dir, OVERLAY_NAME, 0o600)
     _owned_regular(nvram, base.parent, NVARS_NAME)
