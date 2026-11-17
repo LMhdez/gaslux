@@ -188,8 +188,23 @@ jobs:
           print("Nonblank guest screenshot only; not Anaconda execution proof")
           PY
             tesseract "$image" stdout 2>/dev/null > "bazzite-evidence/screen-$phase-ocr.txt" || :
+            if (( phase == 1 )); then
+              # Only the observed 1280x800 Bazzite live desktop is eligible.
+              if ! grep -qi 'Bazzite Portal' "bazzite-evidence/screen-1-ocr.txt"; then
+                echo 'Live desktop not recognized; refusing scripted input' >&2
+                exit 1
+              fi
+              python3 - "$image" <<'PY'
+          from PIL import Image
+          import sys
+          current = Image.open(sys.argv[1])
+          assert (current.width, current.height) == (1280, 800), "Unexpected UI geometry"
+          PY
+              echo 'Read-only VNC: activate visible Install to Hard Drive desktop icon at (48,40)' | tee bazzite-evidence/installer-launch-attempt.txt
+              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 48 40 click 1 pause 0.2 click 1
+            fi
           done
-          echo 'NO AUTOMATIC INSTALLER PROOF: review screenshots and serial log; no target disk attached.' > bazzite-evidence/guest-result.txt
+          echo 'NO AUTOMATIC INSTALLATION PROOF: assess post-click screenshots; no target disk attached.' > bazzite-evidence/guest-result.txt
       - name: Publish limited read-only evidence (never ISO or private NVRAM)
         if: always()
         uses: actions/upload-artifact@v4
