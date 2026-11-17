@@ -90,6 +90,15 @@ def check_before_against_plan(
             "Windows ESP identity does not match collector")
     require(len({w["guid"], e["guid"], recovery["guid"]}) == 3,
             "Windows boot, recovery and system partitions must be independent")
+    # Even correctly placed ESP and NTFS extents are unsafe if another GPT
+    # partition also claims Windows boot or firmware system ownership.
+    require(
+        sum(part["isBoot"] for part in guest_disk["partitions"]) == 1
+        and sum(part["isSystem"] for part in guest_disk["partitions"]) == 1
+        and w["isSystem"] is False
+        and e["isBoot"] is False,
+        "Windows target disk has ambiguous boot/system partition flags",
+    )
     return guest_disk
 
 
@@ -132,6 +141,10 @@ def check_target_geometry(
         ("size", "finalSizeBytes"))) and installed["gptType"] == LINUX_DATA_TYPE,
         "Linux partition does not match the Windows transaction-owned extent")
     require(installed["guid"] not in old, "Linux partition reused foreign GPT identity")
+    require(
+        installed["isBoot"] is False and installed["isSystem"] is False,
+        "transaction-owned Linux root partition must not claim Windows boot/system flags",
+    )
 
 
 def evaluate_guest_binding(
