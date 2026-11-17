@@ -138,6 +138,26 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
                         1000, "win10_22h2_en_us_x64",
                     )
 
+    def test_early_second_guest_exit_reports_qemu_code_not_windows_boot(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(
+            VM.subprocess, "Popen"
+        ) as popen:
+            popen.return_value.poll.return_value = 17
+            ok, diagnostic = VM.boot_vm(
+                ["qemu-system-x86_64"], pathlib.Path(d) / "second-serial.log",
+                30, "win11_26h2_en_us_x64", monitor_socket=None,
+            )
+        self.assertFalse(ok)
+        self.assertIn("QEMU exit code 17", diagnostic)
+        self.assertIn("Windows still unverified", diagnostic)
+
+    def test_second_stage_stderr_is_retained_without_any_guest_boot_claim(self):
+        source = SRC.read_text(encoding="utf-8")
+        self.assertIn('("qemu-stderr.log", "second-qemu-stderr", 256_000)', source)
+        self.assertIn('source.is_file() and not source.is_symlink()', source)
+        self.assertIn('0 < source.stat().st_size <= max_bytes', source)
+        self.assertIn('if not ok:\n                raise LabError(diagnostic)', source)
+
     def test_fake_firmware_markers_not_a_real_firstboot(self):
         code = SRC.read_text()
         self.assertIn("return boot_vm(", code)
