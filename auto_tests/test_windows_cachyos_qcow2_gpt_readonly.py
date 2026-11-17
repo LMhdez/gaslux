@@ -249,6 +249,48 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
         ):
             gpt.inspect_gpt_windows(bytes(changed), back)
 
+    def test_oversized_windows_pmbr_is_readonly_candidate_not_write_permission(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xFFFFFFFF)
+        report = gpt.inspect_gpt_windows(bytes(changed), back)
+        self.assertTrue(report["candidateWindowsGptPrimaryAndBackupConsistent"])
+        self.assertFalse(report["protectiveMbrCanonical"])
+        self.assertTrue(report["protectiveMbrOversizedWindowsLabException"])
+        self.assertIs(report["storageWritesAuthorized"], False)
+        self.assertIs(report["releaseEligible"], False)
+        self.assertIs(report["sameDiskDualBootVerified"], False)
+
+    def test_canonical_pmbr_does_not_raise_oversize_flag(self):
+        front, back = create_disk_windows()
+        report = gpt.inspect_gpt_windows(front, back)
+        self.assertTrue(report["protectiveMbrCanonical"])
+        self.assertFalse(report["protectiveMbrOversizedWindowsLabException"])
+
+    def test_near_oversized_pmbr_remains_rejected(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xFFFFFFFE)
+        with self.assertRaisesRegex(gpt.GeometryError, "protective MBR geometry"):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
+    def test_oversized_pmbr_cannot_mask_hybrid(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xFFFFFFFF)
+        changed[446 + 16 + 4] = 0x07
+        with self.assertRaisesRegex(gpt.GeometryError, "unexpected_entry_slots"):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
+    def test_oversized_pmbr_does_not_bypass_backup_gpt_crc(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xFFFFFFFF)
+        damaged = bytearray(back)
+        damaged[-512 + 48] ^= 1
+        with self.assertRaisesRegex(gpt.GeometryError, "CRC mismatch"):
+            gpt.inspect_gpt_windows(bytes(changed), bytes(damaged))
+
     def test_protective_mbr_wrong_size_refused(self):
         front, back = create_disk_windows()
         changed = bytearray(front)
