@@ -1,0 +1,162 @@
+name: Q4OS QEMU guest identity and read-only recovery checkpoint
+
+on:
+  push:
+    branches:
+      - feature/q4os-qemu-identity-transport
+    paths:
+      - '.github/workflows/gaslux-q4os-qemu-identity.yml'
+      - '.github/workflows/gaslux-q4os-guest-disk-probe.yml'
+      - 'assets/live/gaslux_q4os_guest_disk_probe.py'
+      - 'auto_tests/tools/gaslux_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tools/q4os_guest_identity_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_identity_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_guest_disk_probe.py'
+      - 'auto_tests/tests/test_q4os_qemu_identity_lab.py'
+      - 'schemas/gaslux-q4os-guest-disk-report.schema.json'
+      - 'docs/Q4OS_QEMU_GUEST_IDENTITY_LAB.md'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-qemu-identity.yml'
+      - '.github/workflows/gaslux-q4os-guest-disk-probe.yml'
+      - 'assets/live/gaslux_q4os_guest_disk_probe.py'
+      - 'auto_tests/tools/gaslux_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tools/q4os_guest_identity_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_identity_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_guest_disk_probe.py'
+      - 'auto_tests/tests/test_q4os_qemu_identity_lab.py'
+      - 'schemas/gaslux-q4os-guest-disk-report.schema.json'
+      - 'docs/Q4OS_QEMU_GUEST_IDENTITY_LAB.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  q4os-qemu-identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install QEMU, disposable kernel and initramfs tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils linux-image-generic busybox-static kmod cpio \
+            gdisk dosfstools python3 acl
+          python -m pip install 'pytest>=9,<10' 'cryptography>=46,<51' \
+            'jsonschema>=4,<5' 'ruff>=0.8,<1'
+          if [[ -c /dev/kvm ]]; then
+            sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
+          fi
+          mapfile -t kernels < <(find -L /boot -maxdepth 1 -type f \
+            -name 'vmlinuz-*' -print | sort -V)
+          [[ ${#kernels[@]} -gt 0 ]] || {
+            echo 'No installed Linux kernel image is available' >&2
+            exit 1
+          }
+          kernel="$(readlink -f "${kernels[-1]}")"
+          kernel_version="${kernel##*-}"
+          [[ -s "$kernel" && -s "/lib/modules/$kernel_version/modules.dep" ]] || {
+            echo 'Kernel and matching module tree do not agree' >&2
+            exit 1
+          }
+          printf 'GASLUX_Q4OS_QEMU_KERNEL=%s\n' "$kernel" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_QEMU_KERNEL_VERSION=%s\n' "$kernel_version" >> "$GITHUB_ENV"
+          if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+            echo 'QEMU accelerator: KVM'
+          else
+            echo 'QEMU accelerator: TCG fallback'
+          fi
+
+      - name: Compile, lint and test guest parser, HMAC and GPT refusal contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q \
+            assets/live/gaslux_q4os_guest_disk_probe.py \
+            auto_tests/tools/q4os_guest_identity_agent.py \
+            auto_tests/tools/gaslux_q4os_qemu_identity_lab.py \
+            auto_tests/tests/test_q4os_guest_disk_probe.py \
+            auto_tests/tests/test_q4os_qemu_identity_lab.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            assets/live/gaslux_q4os_guest_disk_probe.py \
+            auto_tests/tools/q4os_guest_identity_agent.py \
+            auto_tests/tools/gaslux_q4os_qemu_identity_lab.py \
+            auto_tests/tests/test_q4os_guest_disk_probe.py \
+            auto_tests/tests/test_q4os_qemu_identity_lab.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            assets/live/gaslux_q4os_guest_disk_probe.py \
+            auto_tests/tools/q4os_guest_identity_agent.py \
+            auto_tests/tools/gaslux_q4os_qemu_identity_lab.py \
+            auto_tests/tests/test_q4os_guest_disk_probe.py \
+            auto_tests/tests/test_q4os_qemu_identity_lab.py
+          python -m pytest -q \
+            auto_tests/tests/test_q4os_guest_disk_probe.py \
+            auto_tests/tests/test_q4os_qemu_identity_lab.py
+
+      - name: Create one signed 32-GiB synthetic Q4OS UEFI/GPT target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ "$GITHUB_ACTIONS" == true && -d "$RUNNER_TEMP" ]] || exit 1
+          work="$(mktemp -d -p "$RUNNER_TEMP" gaslux-q4os-qemu-XXXXXXXX)"
+          plan_dir="$RUNNER_TEMP/q4os-qemu-plan-${GITHUB_RUN_ID}"
+          evidence="$RUNNER_TEMP/q4os-qemu-evidence-${GITHUB_RUN_ID}"
+          [[ ! -e "$plan_dir" && ! -L "$plan_dir" ]] || exit 1
+          [[ ! -e "$evidence" && ! -L "$evidence" ]] || exit 1
+          printf 'GASLUX_Q4OS_QEMU_WORK=%s\n' "$work" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_QEMU_PLAN=%s\n' "$plan_dir" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_QEMU_EVIDENCE=%s\n' "$evidence" >> "$GITHUB_ENV"
+          truncate -s 32G "$work/efi-disk.img"
+          sgdisk --zap-all --new=1:2048:+512M --typecode=1:EF00 \
+            --change-name=1:GASLUX-LAB-ESP "$work/efi-disk.img" >/dev/null
+          truncate -s 512M "$work/efi-part.img"
+          mkfs.vfat -F 32 -n GASLUXLAB "$work/efi-part.img" >/dev/null
+          dd if="$work/efi-part.img" of="$work/efi-disk.img" \
+            bs=1M seek=1 conv=notrunc,sparse status=none
+          sgdisk --verify "$work/efi-disk.img"
+          python auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py "$work" "$plan_dir"
+          printf 'GASLUX_Q4OS_QEMU_FIXTURE=one-private-32GiB-GPT-image\n'
+
+      - name: Build minimal read-only guest initramfs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_q4os_identity_initramfs.sh
+          bash auto_tests/tools/gaslux_q4os_identity_initramfs.sh \
+            "$GASLUX_Q4OS_QEMU_KERNEL" \
+            "$GASLUX_Q4OS_QEMU_WORK/guest-rootfs" \
+            "$GASLUX_Q4OS_QEMU_WORK/guest-initramfs.cpio.gz"
+
+      - name: Boot QEMU, bind virtio serial, authenticate report and verify checkpoint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/tools/gaslux_q4os_qemu_identity_lab.py \
+            "$GASLUX_Q4OS_QEMU_WORK" \
+            "$GASLUX_Q4OS_QEMU_PLAN" \
+            "$GASLUX_Q4OS_QEMU_EVIDENCE" \
+            "$GASLUX_Q4OS_QEMU_KERNEL" \
+            "$GASLUX_Q4OS_QEMU_WORK/guest-initramfs.cpio.gz"
+
+      - name: Preserve signed plan, QEMU serial, authenticated identity and checkpoint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-qemu-virtio-identity-readonly-checkpoint
+          path: |
+            ${{ runner.temp }}/q4os-qemu-plan-${{ github.run_id }}/
+            ${{ runner.temp }}/q4os-qemu-evidence-${{ github.run_id }}/
+          if-no-files-found: warn
+          retention-days: 7

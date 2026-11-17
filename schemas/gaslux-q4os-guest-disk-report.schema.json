@@ -5,32 +5,121 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "schemaVersion": {"type": "integer", "const": 1},
-    "runId": {"type": "string", "minLength": 12, "maxLength": 100},
-    "nonce": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
-    "device": {"type": "string", "pattern": "^/dev/vd[a-z]+$", "description": "Diagnostic only; never used as identity."},
-    "serial": {"type": "string", "pattern": "^GQ4OS-[A-F0-9]{14}$"},
-    "sizeBytes": {"type": "integer", "const": 34359738368},
-    "logicalSectorBytes": {"type": "integer", "const": 512},
-    "physicalSectorBytes": {"type": "integer", "enum": [512, 4096]},
-    "diskGuid": {"type": "string", "format": "uuid"},
-    "partitions": {"type": "array", "minItems": 1, "maxItems": 1, "items": {
-      "type": "object", "additionalProperties": false,
-      "properties": {
-        "number": {"type": "integer", "const": 1},
-        "startLba": {"type": "integer", "const": 2048},
-        "endLba": {"type": "integer", "const": 1050623},
-        "typeGuid": {"type": "string", "const": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"},
-        "partGuid": {"type": "string", "format": "uuid"},
-        "label": {"type": "string", "const": "GASLUX-LAB-ESP"},
-        "filesystem": {"type": "string", "const": "vfat"}
-      },
-      "required": ["number", "startLba", "endLba", "typeGuid", "partGuid", "label", "filesystem"]
-    }},
-    "readOnlyProbe": {"type": "boolean", "const": true},
-    "writeAttempted": {"type": "boolean", "const": false}
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 100
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "device": {
+      "type": "string",
+      "pattern": "^/dev/vd[a-z]+$",
+      "description": "Diagnostic only; never used as identity."
+    },
+    "serial": {
+      "type": "string",
+      "pattern": "^GQ4OS-[A-F0-9]{14}$"
+    },
+    "sizeBytes": {
+      "type": "integer",
+      "const": 34359738368
+    },
+    "logicalSectorBytes": {
+      "type": "integer",
+      "const": 512
+    },
+    "physicalSectorBytes": {
+      "type": "integer",
+      "enum": [
+        512,
+        4096
+      ]
+    },
+    "diskGuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "partitions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "number": {
+            "type": "integer",
+            "const": 1
+          },
+          "startLba": {
+            "type": "integer",
+            "const": 2048
+          },
+          "endLba": {
+            "type": "integer",
+            "const": 1050623
+          },
+          "typeGuid": {
+            "type": "string",
+            "const": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+          },
+          "partGuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string",
+            "const": "GASLUX-LAB-ESP"
+          },
+          "filesystem": {
+            "type": "string",
+            "const": "vfat"
+          }
+        },
+        "required": [
+          "number",
+          "startLba",
+          "endLba",
+          "typeGuid",
+          "partGuid",
+          "label",
+          "filesystem"
+        ]
+      }
+    },
+    "readOnlyProbe": {
+      "type": "boolean",
+      "const": true
+    },
+    "writeAttempted": {
+      "type": "boolean",
+      "const": false
+    },
+    "blockDeviceReadOnly": {
+      "type": "boolean",
+      "const": true
+    }
   },
-  "required": ["schemaVersion", "runId", "nonce", "device", "serial", "sizeBytes",
-    "logicalSectorBytes", "physicalSectorBytes", "diskGuid", "partitions",
-    "readOnlyProbe", "writeAttempted"]
+  "required": [
+    "schemaVersion",
+    "runId",
+    "nonce",
+    "device",
+    "serial",
+    "sizeBytes",
+    "logicalSectorBytes",
+    "physicalSectorBytes",
+    "diskGuid",
+    "partitions",
+    "blockDeviceReadOnly",
+    "readOnlyProbe",
+    "writeAttempted"
+  ]
 }

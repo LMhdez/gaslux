@@ -55,6 +55,7 @@ def validate_guest_disk_report(
         "physicalSectorBytes",
         "diskGuid",
         "partitions",
+        "blockDeviceReadOnly",
         "readOnlyProbe",
         "writeAttempted",
     }
@@ -90,8 +91,10 @@ def validate_guest_disk_report(
     )
     _refuse(data["diskGuid"] == plan["diskGuid"], "Guest GPT disk GUID mismatch")
     _refuse(
-        data["readOnlyProbe"] is True and data["writeAttempted"] is False,
-        "Probe is not read-only",
+        data["blockDeviceReadOnly"] is True
+        and data["readOnlyProbe"] is True
+        and data["writeAttempted"] is False,
+        "Guest block device or probe is not read-only",
     )
     parts = data["partitions"]
     _refuse(isinstance(parts, list) and len(parts) == 1, "Unexpected guest partition count")
@@ -128,9 +131,11 @@ def validate_guest_disk_report(
         "schemaVersion": 1,
         "guestDiskIdentityVerified": True,
         "guestReportSha256": hashlib.sha256(raw).hexdigest(),
+        "observedDevice": data["device"],
         "observedSerial": data["serial"],
         "observedDiskGuid": data["diskGuid"],
         "observedEspGuid": esp["partGuid"],
+        "blockDeviceReadOnly": True,
         "readOnlyProbe": True,
         "installationAuthorized": False,
         "diskWritesAuthorized": False,

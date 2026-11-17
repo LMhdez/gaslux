@@ -52,6 +52,7 @@ def report():
                 "filesystem": "vfat",
             }
         ],
+        "blockDeviceReadOnly": True,
         "readOnlyProbe": True,
         "writeAttempted": False,
     }
@@ -87,6 +88,7 @@ def test_valid_observation_is_identity_only():
         ("diskGuid", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
         ("runId", "replayed-run-123456"),
         ("nonce", "f" * 32),
+        ("blockDeviceReadOnly", False),
         ("readOnlyProbe", False),
         ("writeAttempted", True),
         ("device", "/dev/sda"),
