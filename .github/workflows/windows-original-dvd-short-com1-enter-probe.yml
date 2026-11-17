@@ -1,0 +1,57 @@
+name: Original Microsoft Windows 10 DVD COM1 Enter timing (NO guest disk)
+on:
+  push:
+    branches:
+      - test/windows-original-dvd-short-com1-enter-probe
+    paths:
+      - .github/workflows/windows-original-dvd-short-com1-enter-probe.yml
+      - auto_tests/tools/windows_x64_original_dvd_com1_probe.py
+      - auto_tests/test_windows_x64_original_dvd_com1_probe.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diskless-original-microsoft-dvd:
+    name: SHA-pinned original Win10 ISO, real QEMU KVM OVMF COM1 Enter, NO disk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_ORIGINAL_DVD_PROBE_CONSENT: I_ACCEPT_GITHUB_HOSTED_KVM_ORIGINAL_WIN10_DVD_ONLY_NO_DISK
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Run negative diskless input/ownership contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile auto_tests/tools/windows_x64_original_dvd_com1_probe.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_original_dvd_com1_probe.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_two_stage_boot.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_iso_boot_key.py' -v
+      - name: Install only VM/ISO tools after fail-closed negative tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf dosfstools mtools
+      - name: Compare 300ms and 6000ms Enter on exact original Microsoft Win10 DVD
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/windows-original-dvd-no-disk-evidence"
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-original-dvd-no-disk-evidence"
+          python3 auto_tests/tools/windows_x64_original_dvd_com1_probe.py
+          echo 'DVD-only EFI timing experiment. No HDD, WinPE Setup completion, Windows client boot, WinRE/BCD, Linux, dual boot, or rollback tested.' >> "$GITHUB_STEP_SUMMARY"
