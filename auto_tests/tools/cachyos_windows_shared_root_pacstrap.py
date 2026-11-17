@@ -372,7 +372,8 @@ def verify_lab_root_write_grant(
             and backing_doc["base"].get("mode") == 0o400
             and backing_doc["base"].get("sha256") == checkpoint_doc.get("windowsBaseSha256")
             and backing_doc["overlay"].get("name") == "cachyos-unwritten-trial-overlay.qcow2"
-            and Path(backing_doc["overlay"].get("backingFilename", "")).name
+            and type(backing_doc["overlay"].get("backingFilename")) is str
+            and Path(backing_doc["overlay"]["backingFilename"]).name
                 == "only-disposable-windows-target.qcow2"
             and backing_doc["overlay"].get("mode") == 0o600
             and backing_doc["overlay"].get("backingFormat") == "qcow2"
