@@ -196,6 +196,26 @@ class WindowsGuestBindingTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.GUEST.EvidenceError, "shrink region"):
             self.check()
 
+    def test_windows_shrink_cannot_leave_unowned_gap(self):
+        self.after["disks"][0]["partitions"][1]["size"] = 179 * GIB
+        with self.assertRaisesRegex(MODULE.BridgeError, "exact authorized shrink"):
+            self.check()
+
+    def test_zero_length_or_oversize_windows_shrink_rejected(self):
+        self.after["disks"][0]["partitions"][1]["size"] = 180 * GIB + GIB
+        with self.assertRaises(MODULE.GUEST.EvidenceError):
+            self.check()
+
+    def test_duplicate_partition_number_rejected_even_with_distinct_guids(self):
+        self.before["disks"][0]["partitions"][2]["number"] = 2
+        with self.assertRaisesRegex(MODULE.GUEST.EvidenceError, "duplicate partition number"):
+            self.check()
+
+    def test_wrong_partition_number_in_after_observation_is_not_accepted(self):
+        self.after["disks"][0]["partitions"][2]["number"] = 4
+        with self.assertRaisesRegex(MODULE.GUEST.EvidenceError, "duplicate partition number"):
+            self.check()
+
     def test_rollback_exact_partition_restoration_consistency(self):
         self.after = copy.deepcopy(self.before)
         self.after["phase"] = "rollback"
