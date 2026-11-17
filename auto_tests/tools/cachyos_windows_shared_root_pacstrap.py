@@ -418,12 +418,16 @@ def pacstrap_only(args: argparse.Namespace) -> None:
     require(execute(["blkid", "-s", "UUID", "-o", "value",
                      str(root_partition)]).strip().lower() ==
             plan["rootFsUuid"], "existing ext4 UUID not owned by transaction")
+    require(ROOT.parent == Path("/mnt") and ROOT.parent.is_dir()
+            and not ROOT.parent.is_symlink()
+            and not ROOT.exists() and not ROOT.is_symlink(),
+            "root mount target already exists or escapes the Archiso /mnt tree")
+    ROOT.mkdir(mode=0o700, parents=False, exist_ok=False)
     require(ROOT.is_dir() and not ROOT.is_symlink()
             and ROOT.stat().st_uid == 0
             and stat.S_IMODE(ROOT.stat().st_mode) == 0o700
-            and ROOT.parent == Path("/mnt")
             and not any(ROOT.iterdir()),
-            "root mount target not empty, private or root-owned")
+            "new root mount target not empty, private or root-owned")
     for tool in ("pacstrap", "arch-chroot", "mount", "umount",
                  "nm-online", "systemctl", "udevadm"):
         require(subprocess.run(["which", tool], stdout=subprocess.DEVNULL,
