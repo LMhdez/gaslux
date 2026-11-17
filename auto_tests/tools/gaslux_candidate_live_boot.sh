@@ -68,7 +68,8 @@ elif [[ "$distro" == zorin ]]; then
   )
   mapfile -t initrds < <(
     find -L "$work/iso-root/casper" -mindepth 1 -maxdepth 1 -type f \
-      \( -name initrd -o -name initrd.img -o -name initrd.lz -o -name initrd.gz \) \
+      \( -name initrd -o -name initrd.img -o -name initrd.lz -o -name initrd.gz \
+        -o -name initrd.zstd \) \
       -printf '%f\n' | sort
   )
   if [[ "${#kernels[@]}" -ne 1 || "${#initrds[@]}" -ne 1 ]]; then
