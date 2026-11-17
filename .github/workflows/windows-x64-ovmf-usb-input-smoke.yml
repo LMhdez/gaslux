@@ -73,7 +73,7 @@ jobs:
                   "terminal_output serial\n"
                   "terminal_input console\n"
                   "echo GASLUX_USB_GUEST_INPUT_READY=1\n"
-                  "read key\n"
+                  "sleep --interruptible 60\n"
                   "echo GASLUX_USB_GUEST_INPUT_ACCEPTED=1\n"
                   "sleep 10\n",
                   encoding="utf-8",
@@ -107,7 +107,7 @@ jobs:
                   args, stderr=err, stdout=subprocess.DEVNULL
               )
               try:
-                  deadline = time.monotonic() + 120
+                  deadline = time.monotonic() + 45
                   ready = False
                   injected = False
                   accepted = False
@@ -123,7 +123,9 @@ jobs:
                           accepted = True
                           break
                       if ready and not injected and hmp.is_socket():
+                          print("GASLUX_SYNTHETIC_OVMF_HMP_KEY_REQUEST=1", flush=True)
                           send_first_iso_boot_key(hmp)
+                          print("GASLUX_SYNTHETIC_OVMF_HMP_KEY_ACCEPTED=1", flush=True)
                           injected = True
                       time.sleep(.15)
                   if not ready or not injected or not accepted:
