@@ -167,7 +167,7 @@ fi
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
 echo "GASLUX_GUEST_INITRD=$initrd"
-# No host block devices are attached. ISO is emulated read-only CD-ROM.
+# No host block devices are attached. ISO uses an immutable guest media device.
 timeout --kill-after=5s 320s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
