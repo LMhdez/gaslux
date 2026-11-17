@@ -976,6 +976,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
+    # Never let an original-media comparison silently fall back to a derived
+    # image, a probe, a one-shot run, or fixture-only shortcut.
+    if args.official_original_iso and (
+        not args.two_stage_install_only or args.derived_no_prompt
+        or args.boot_probe_only or args.one_shot_install_only
+        or args.fixture_only
+    ):
+        raise SystemExit("original Microsoft ISO requires exclusive "
+                         "hosted two-stage KVM mode")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
