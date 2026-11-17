@@ -114,6 +114,160 @@ fi
 arch-chroot "$TARGET" pacman -Q cachyos-hooks linux-cachyos-lts >/dev/null ||
   die 'native CachyOS branding/kernel packages not installed'
 echo 'GASLUX_LAB_OFFICIAL_BRANDING_VERIFIED=1'
+# pacstrap uses the VERIFIED live ISO repository configuration for its
+# one-time install, but does not provision the same enabled repositories in
+# the installed system. Build a strict, lab-only installed configuration from
+# mirror lists shipped by native, pacman-signature-verified packages.
+# Do NOT copy the live ISO pacman.conf: its repo overrides may be more lenient.
+for mirror in mirrorlist cachyos-mirrorlist; do
+  [[ -s "$TARGET/etc/pacman.d/$mirror" &&
+     ! -L "$TARGET/etc/pacman.d/$mirror" ]] ||
+    die "signed native mirror list missing: $mirror"
+done
+cat > "$TARGET/etc/pacman.conf" <<'PACMAN'
+[options]
+Architecture = auto
+CheckSpace
+SigLevel = Required DatabaseOptional
+LocalFileSigLevel = Required
+
+[cachyos]
+SigLevel = Required DatabaseOptional
+Include = /etc/pacman.d/cachyos-mirrorlist
+
+[core]
+SigLevel = Required DatabaseOptional
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+SigLevel = Required DatabaseOptional
+Include = /etc/pacman.d/mirrorlist
+PACMAN
+[[ "$(arch-chroot "$TARGET" pacman-conf --repo-list)" == 
+mkdir -p "$TARGET/boot/efi"
+mount "$esp" "$TARGET/boot/efi"
+cat > "$TARGET/etc/fstab" <<EOF
+# Gaslux disposable QEMU only, transaction $TX
+UUID=$ROOT_UUID / ext4 defaults 0 1
+UUID=AB12-CD34 /boot/efi vfat umask=0077 0 2
+EOF
+printf '%s\n' gaslux-cachyos-ci > "$TARGET/etc/hostname"
+printf '%s\n' LANG=en_US.UTF-8 > "$TARGET/etc/locale.conf"
+grep -qx 'en_US.UTF-8 UTF-8' "$TARGET/etc/locale.gen" ||
+  printf '%s\n' 'en_US.UTF-8 UTF-8' >> "$TARGET/etc/locale.gen"
+arch-chroot "$TARGET" locale-gen
+arch-chroot "$TARGET" ln -sfn /usr/share/zoneinfo/Etc/UTC /etc/localtime
+arch-chroot "$TARGET" useradd -m -s /bin/bash gasluxtest
+arch-chroot "$TARGET" passwd -l gasluxtest
+arch-chroot "$TARGET" mkinitcpio -P
+[[ -s "$TARGET/boot/initramfs-linux-cachyos-lts.img" ]] || die 'initramfs missing'
+mkdir -p "$TARGET/etc/default/grub.d"
+cat > "$TARGET/etc/default/grub.d/95-gaslux-ci.cfg" <<'EOF'
+GRUB_TIMEOUT=2
+GRUB_TIMEOUT_STYLE=menu
+GRUB_DISABLE_OS_PROBER=true
+GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0,115200n8 console=tty0 systemd.unit=multi-user.target"
+EOF
+# No NVRAM writes. --removable installs EFI fallback ONLY on VM ESP.
+arch-chroot "$TARGET" grub-install --target=x86_64-efi \
+  --efi-directory=/boot/efi --bootloader-id=GasluxLab \
+  --no-nvram --removable --recheck
+arch-chroot "$TARGET" grub-mkconfig -o /boot/grub/grub.cfg
+arch-chroot "$TARGET" grub-script-check /boot/grub/grub.cfg
+[[ -s "$TARGET/boot/efi/EFI/BOOT/BOOTX64.EFI" ]] || die 'EFI GRUB absent'
+grep -Fq vmlinuz-linux-cachyos-lts "$TARGET/boot/grub/grub.cfg" ||
+  die 'GRUB lacks installed kernel'
+# The proof executes only after rebooting into the INSTALLED system. The
+# second VM has exactly the target disk: no Archiso image or boot FAT.
+mkdir -p "$TARGET/usr/local/sbin" "$TARGET/etc/systemd/system"
+cat > "$TARGET/usr/local/sbin/gaslux-ci-firstboot-audit" <<'AUDIT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+fail() { printf 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_FAIL: %s\n' "$*" >/dev/ttyS0; exit 1; }
+case "$(systemd-detect-virt --vm)" in kvm|qemu) ;; *) fail 'not QEMU' ;; esac
+[[ -d /sys/firmware/efi/efivars ]] || fail 'not UEFI'
+grep -qx ID=cachyos /etc/os-release || fail 'not installed CachyOS'
+[[ ! -e /run/archiso ]] || fail 'unexpected live Archiso'
+[[ "$(findmnt -rn -M / -o FSTYPE)" == ext4 ]] || fail 'not installed ext4 root'
+source="$(findmnt -rn -M / -o SOURCE)"
+[[ "$(blkid -s UUID -o value "$source")" == 01234567-89ab-cdef-0123-456789abcdef ]] ||
+  fail 'wrong installed root UUID'
+[[ "$(cat /.libertix-stage-owner)" == lab-real-iso-signed-20261116 ]] ||
+  fail 'owner missing'
+[[ "$(findmnt -rn -M /boot/efi -o FSTYPE)" == vfat ]] || fail 'ESP not mounted'
+[[ -s /boot/efi/EFI/BOOT/BOOTX64.EFI ]] || fail 'GRUB EFI missing'
+[[ -s /boot/vmlinuz-linux-cachyos-lts &&
+   -s /boot/initramfs-linux-cachyos-lts.img ]] || fail 'kernel/initrd missing'
+pacman -Q linux-cachyos-lts grub base >/dev/null || fail 'pacman database invalid'
+id gasluxtest >/dev/null || fail 'lab user missing'
+[[ "$(uname -r)" == *cachyos* ]] || fail 'incorrect running kernel'
+printf 'GASLUX_INSTALLED_CACHYOS_ROOT_UUID=01234567-89ab-cdef-0123-456789abcdef\n' >/dev/ttyS0
+printf 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1\n' >/dev/ttyS0
+AUDIT
+chmod 0755 "$TARGET/usr/local/sbin/gaslux-ci-firstboot-audit"
+cat > "$TARGET/etc/systemd/system/gaslux-ci-firstboot.service" <<'UNIT'
+[Unit]
+Description=Gaslux disposable installed CachyOS first-boot verification
+After=local-fs.target
+ConditionVirtualization=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/gaslux-ci-firstboot-audit
+TimeoutStartSec=40
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+arch-chroot "$TARGET" systemctl enable gaslux-ci-firstboot.service
+# This separate lab feature installs a disabled-by-default update test service
+# into the disposable VM. It does NOTHING unless QEMU fw_cfg contains the
+# exact, host-provided update phase marker. Not a product update mechanism.
+[[ -f /run/gaslux-lab/update.sh && ! -L /run/gaslux-lab/update.sh &&
+   -f /run/gaslux-lab/update.sha256 && ! -L /run/gaslux-lab/update.sha256 ]] ||
+  die 'missing isolated test updater from signed QEMU boot volume'
+(cd /run/gaslux-lab && sha256sum --check update.sha256) ||
+  die 'update guest script failed SHA-256 verification'
+install -m 0755 /run/gaslux-lab/update.sh "$TARGET/usr/local/sbin/gaslux-ci-vm-update"
+mkdir -p "$TARGET/etc/systemd/network"
+cat > "$TARGET/etc/systemd/network/20-gaslux-disposable-qemu.network" <<'NET'
+[Match]
+Name=en*
+
+[Network]
+DHCP=ipv4
+NET
+[[ -f "$TARGET/usr/lib/systemd/system/systemd-networkd.service" &&
+   -f "$TARGET/usr/lib/systemd/system/systemd-resolved.service" ]] ||
+  die 'native systemd network services missing from minimal target'
+arch-chroot "$TARGET" systemctl enable systemd-networkd systemd-resolved
+ln -sfn /run/systemd/resolve/stub-resolv.conf "$TARGET/etc/resolv.conf"
+cat > "$TARGET/etc/systemd/system/gaslux-ci-vm-update.service" <<'UNIT'
+[Unit]
+Description=Gaslux QEMU-only signed pacman/GRUB update fault injection
+After=gaslux-ci-firstboot.service network-online.target
+Wants=gaslux-ci-firstboot.service network-online.target
+ConditionVirtualization=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/gaslux-ci-vm-update
+TimeoutStartSec=40min
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+arch-chroot "$TARGET" systemctl enable gaslux-ci-vm-update.service
+sync
+echo 'GASLUX_LAB_TARGET_INSTALLED=1'
+echo 'GASLUX_LAB_WINDOWS_RECOVERY_NOT_TESTED=1'
+cachyos\ncore\nextra' ]] ||
+  die 'installed repo set does not match signed CachyOS/core/extra policy'
+for repo in cachyos core extra; do
+  [[ "$(arch-chroot "$TARGET" pacman-conf --repo "$repo" SigLevel)" == 'Required DatabaseOptional' ]] ||
+    die "installed $repo repository package-signature policy is not mandatory"
+done
+echo 'GASLUX_LAB_SIGNED_INSTALLED_REPOS_CONFIGURED=1'
 [[ -s "$TARGET/boot/vmlinuz-linux-cachyos-lts" ]] || die 'kernel missing'
 mkdir -p "$TARGET/boot/efi"
 mount "$esp" "$TARGET/boot/efi"
