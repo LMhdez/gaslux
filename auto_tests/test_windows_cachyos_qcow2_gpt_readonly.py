@@ -223,6 +223,16 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
         with self.assertRaisesRegex(gpt.GeometryError, "duplicate Windows GPT"):
             gpt.inspect_gpt_windows(front, back)
 
+    def test_actual_windows_saturated_pmbr_count_is_readonly_candidate_only(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xffffffff)
+        proof = gpt.inspect_gpt_windows(bytes(changed), back)
+        self.assertTrue(proof["candidateWindowsGptPrimaryAndBackupConsistent"])
+        for denied in ("storageWritesAuthorized", "releaseEligible",
+                       "sameDiskDualBootVerified", "windowsBootVerified"):
+            self.assertIs(proof[denied], False)
+
     def test_protective_mbr_wrong_start_lba_refused(self):
         front, back = create_disk_windows()
         changed = bytearray(front)
