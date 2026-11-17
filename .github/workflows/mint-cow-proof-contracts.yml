@@ -49,6 +49,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          set -x
+          trap 'rc=$?; echo "FUSE smoke failed at line ${LINENO} (exit ${rc})" >&2; exit "$rc"' ERR
+          printf 'GITHUB_ACTIONS=%s RUNNER_ENVIRONMENT=%s RUNNER_OS=%s GITHUB_REPOSITORY=%s UID=%s\\n' \
+            "${GITHUB_ACTIONS:-missing}" "${RUNNER_ENVIRONMENT:-missing}" \
+            "${RUNNER_OS:-missing}" "${GITHUB_REPOSITORY:-missing}" "$(id -u)"
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_OS" = Linux
@@ -58,6 +63,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils libguestfs-tools linux-image-generic fuse3
           source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          sudo modprobe fuse
           test -c /dev/fuse && test ! -L /dev/fuse
           if ! sudo grep -Eq '^[[:space:]]*user_allow_other([[:space:]]|$)' /etc/fuse.conf; then
             printf 'user_allow_other\n' | sudo tee -a /etc/fuse.conf >/dev/null
