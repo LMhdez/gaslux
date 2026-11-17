@@ -105,7 +105,16 @@ def evaluate(profile: str, report: dict, serial: bytes,
     # whitespace-delimited, bounded tokens across ALL supplied evidence,
     # like the fail-closed incremental firstboot reader in PR #93. An echoed
     # marker or forged log/manifest is NOT authenticated guest provenance.
-    tokens = [t.decode("ascii", errors="replace") for t in serial.split()]
+    tokens: list[str] = []
+    for line in serial.decode("ascii", errors="replace").splitlines():
+        fields = line.split()
+        if any("GASLUX_WINDOWS_X64_" in field for field in fields):
+            # Permit many adjacent audit markers on ONE line, but not an
+            # arbitrary shell echo/login prompt or text that prefixes one.
+            require(all(field.startswith("GASLUX_WINDOWS_X64_") and
+                        len(field) <= 256 for field in fields),
+                    "unexpected prefix or oversized Windows serial witness")
+            tokens.extend(fields)
     markers = (
         "GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=" + profile,
         "GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
