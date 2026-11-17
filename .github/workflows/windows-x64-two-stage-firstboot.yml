@@ -11,6 +11,7 @@ on:
       - test/windows-floppy-proven-setup-firstlogon-fix
       - test/windows-derived-iso-usb-fat32-controlled-ab
       - test/windows10-fat32-usb-partitioned-mbr-setup
+      - test/windows10-partitioned-fat32-usb-explicit-removable
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
