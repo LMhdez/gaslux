@@ -44,6 +44,30 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def write_target_configuration(target: Path, root_uuid: str) -> None:
+    import uuid
+
+    try:
+        canonical_uuid = str(uuid.UUID(root_uuid))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise MintOverlayError("invalid Mint root filesystem UUID") from exc
+    require(target.is_dir() and not target.is_symlink(),
+            "Mint target mount is not a real directory")
+    etc = target / "etc"
+    require(etc.is_dir() and not etc.is_symlink(),
+            "Mint target /etc is missing or unsafe")
+    subprocess.run(
+        ["sudo", "tee", str(etc / "fstab")],
+        input=f"UUID={canonical_uuid} / ext4 defaults 0 1\\n",
+        check=True, text=True, stdout=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["sudo", "tee", str(etc / "hostname")],
+        input="GASLUXMINT\\n", check=True, text=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+
 def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
     import guestfs
 
@@ -189,13 +213,7 @@ def install_mint_root_and_boot(
         version = kernel.name.removeprefix("vmlinuz-")
         require((unpacked / "lib/modules" / version).is_dir(),
                 "Mint target kernel modules are missing")
-        fstab = unpacked / "etc/fstab"
-        subprocess.run(["sudo", "tee", str(target / "etc/fstab")],
-                       input=f"UUID={root_uuid} / ext4 defaults 0 1\n",
-                       check=True, text=True, stdout=subprocess.DEVNULL)
-        subprocess.run(["sudo", "tee", str(target / "etc/hostname")],
-                       input="GASLUXMINT\n", check=True, text=True,
-                       stdout=subprocess.DEVNULL)
+        write_target_configuration(target, root_uuid)
         run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
         run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
         run(["sudo", "mount", "--bind", "/dev/pts", str(target / "dev/pts")])
