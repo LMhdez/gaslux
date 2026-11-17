@@ -5,17 +5,23 @@ on:
   pull_request:
     branches:
       - feature/windows-x64-vnc-official-dvd-firstboot
-    paths:
-      - .github/workflows/windows-x64-vnc-visual-diagnostics.yml
-      - auto_tests/tools/windows_x64_tcg_firstboot.py
-      - auto_tests/test_windows_x64_vnc_screen_diagnostics.py
-  push:
-    branches:
       - feature/windows-vnc-boot-diagnostics-issue71
     paths:
       - .github/workflows/windows-x64-vnc-visual-diagnostics.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_vnc_screen_diagnostics.py
+      - auto_tests/test_windows_x64_usb_answer_contract.py
+      - auto_tests/test_windows_x64_tcg_unattend_contract.py
+  push:
+    branches:
+      - feature/windows-vnc-boot-diagnostics-issue71
+      - feature/windows-usb-unattend-kvm-issue71
+    paths:
+      - .github/workflows/windows-x64-vnc-visual-diagnostics.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_vnc_screen_diagnostics.py
+      - auto_tests/test_windows_x64_usb_answer_contract.py
+      - auto_tests/test_windows_x64_tcg_unattend_contract.py
 
 permissions:
   contents: read
@@ -35,6 +41,9 @@ jobs:
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_vnc_screen_diagnostics.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_iso_boot_key.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_usb_answer_contract.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_winre_baseline_contract.py'
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
   disposable-guest-screen:
     needs: safety
