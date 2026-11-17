@@ -7,13 +7,21 @@ fail() {
   printf 'GASLUX_POP_NATIVE_INSTALL_FAILURE: %s\n' "$*" > /dev/ttyS0
   exit 1
 }
-[[ $# -eq 1 && "$1" =~ ^[0-9a-f]{64}$ ]] || fail 'missing pinned distinst sha'
+[[ $# -eq 0 ]] || fail 'unexpected guest installer arguments'
+trusted_hash_file=/run/gaslux-pop-lab/agent.sha256
+[[ -f "$trusted_hash_file" && ! -L "$trusted_hash_file" ]] ||
+  fail 'host-pinned native agent digest missing on lab control disk'
+[[ "$(wc -c < "$trusted_hash_file")" == 65 ]] ||
+  fail 'malformed host-pinned native agent digest file'
+trusted_hash="$(tr -d '\r\n' < "$trusted_hash_file")"
+[[ "$trusted_hash" =~ ^[0-9a-f]{64}$ ]] ||
+  fail 'malformed pinned native agent digest'
 [[ "$(id -u)" == 0 ]] || fail 'guest root shell required'
 case "$(systemd-detect-virt --vm)" in qemu|kvm) ;; *) fail 'not virtual machine' ;; esac
 . /etc/os-release
 [[ "${ID:-}" == pop && "${VERSION_ID:-}" == 24.04 ]] || fail 'wrong live OS identity'
 [[ -f /usr/bin/distinst && ! -L /usr/bin/distinst ]] || fail 'native agent missing'
-[[ "$(sha256sum /usr/bin/distinst | awk '{print $1}')" == "$1" ]] ||
+[[ "$(sha256sum /usr/bin/distinst | awk '{print $1}')" == "$trusted_hash" ]] ||
   fail 'native distinst digest differs from authenticated ISO'
 [[ "$(findmnt -rn -M /run/gaslux-pop-lab -o FSTYPE)" == vfat ]] ||
   fail 'lab command media not FAT'

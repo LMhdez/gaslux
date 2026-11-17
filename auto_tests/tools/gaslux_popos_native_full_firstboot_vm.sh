@@ -130,6 +130,10 @@ mcopy -i "$work/control-esp.img" \
   auto_tests/tools/gaslux_popos_native_full_install_guest.sh ::/install.sh
 mcopy -i "$work/control-esp.img" \
   auto_tests/tools/gaslux_popos_native_firstboot_guest.sh ::/firstboot.sh
+# Bind the trusted native agent hash to the same SHA-checked read-only control
+# disk, not a long shell command sent during kernel/startup console activity.
+printf '%s\n' "$agent" > "$work/agent.sha256"
+mcopy -i "$work/control-esp.img" "$work/agent.sha256" ::/agent.sha256
 (
   cd auto_tests/tools
   sha256sum gaslux_popos_native_full_install_guest.sh \
@@ -137,6 +141,7 @@ mcopy -i "$work/control-esp.img" \
 ) | sed -e 's/gaslux_popos_native_full_install_guest.sh/install.sh/' \
         -e 's/gaslux_popos_native_firstboot_guest.sh/firstboot.sh/' \
     > "$work/lab.sha256"
+printf '%s  agent.sha256\n' "$(sha256sum "$work/agent.sha256" | awk '{print $1}')" >> "$work/lab.sha256"
 mcopy -i "$work/control-esp.img" "$work/lab.sha256" ::/lab.sha256
 dd if="$work/control-esp.img" of="$work/lab-efi.raw" \
   bs=1M seek=1 conv=notrunc status=none

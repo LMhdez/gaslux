@@ -175,3 +175,16 @@ periodic tails of the authenticated native `distinst` log to the serial
 transcript. These are diagnostic messages, not boot or recovery proofs.
 A separate explicit native exit code and independent installed-system
 boot markers remain mandatory; timeouts fail closed.
+
+## Full-install serial input corruption (verified root cause)
+
+A failed guest trace from [Actions #43983951909](https://github.com/LMhdez/gaslux/actions/runs/43983951909)
+showed the installer controller starting as soon as systemd's early root debug
+shell appeared. Kernel and service messages were still being emitted and the
+long shell command acquired duplicated characters in its mount path and hash.
+The controller now waits for `Startup finished in`, completes short
+individually acknowledged mount/hash stages and invokes just `bash install.sh`.
+The independently verified native-agent digest is instead stored as an exact
+65-byte SHA-256 line in the temporary QEMU FAT control disk and is included in
+the hash manifest checked by the guest before the native writer runs. This is
+strictly lab-only; it does not establish a production handoff or Windows proof.

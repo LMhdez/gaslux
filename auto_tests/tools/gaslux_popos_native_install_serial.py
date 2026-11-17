@@ -59,7 +59,16 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
             re.compile(rb"Linux version|systemd\[1\]"),
             timeout_seconds=180,
         )
-        wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=240)
+        # The debug shell appears early, while kernel/systemd messages still
+        # disrupt long serial commands. Require completed live userspace boot
+        # before sending ANY filesystem/installer commands.
+        wait_for(
+            conn,
+            transcript,
+            re.compile(rb"Startup finished in"),
+            timeout_seconds=300,
+        )
+        wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=60)
         # Serial debug shells may temporarily lose characters during the noisy
         # live startup. Repeat a nonce-like challenge, never trust a prompt.
         for attempt in range(10):
@@ -72,15 +81,34 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
                     raise
                 continue
             break
-        command = (
-            "mkdir -p /run/gaslux-pop-lab && "
-            "mount -t vfat -o ro /dev/disk/by-label/GASLUXLAB "
-            "/run/gaslux-pop-lab && "
-            "cd /run/gaslux-pop-lab && sha256sum -c lab.sha256 && "
-            "bash install.sh " + digest + "\r"
+        # Short, sequential commands prevent the long compound installer
+        # invocation from being corrupted by late boot console output. Each
+        # stage must emit a distinct line after its previous command succeeded.
+        stages = (
+            (
+                "mkdir -p /run/gaslux-pop-lab && "
+                "echo GASLUX_POP_LAB_DIR_READY=1",
+                re.compile(rb"(?m)^GASLUX_POP_LAB_DIR_READY=1\r?$"),
+            ),
+            (
+                "mount -L GASLUXLAB -o ro /run/gaslux-pop-lab && "
+                "echo GASLUX_POP_LAB_MOUNT_READY=1",
+                re.compile(rb"(?m)^GASLUX_POP_LAB_MOUNT_READY=1\r?$"),
+            ),
+            (
+                "cd /run/gaslux-pop-lab && sha256sum -c lab.sha256 && "
+                "echo GASLUX_POP_LAB_CONTROL_VERIFIED=1",
+                re.compile(rb"(?m)^GASLUX_POP_LAB_CONTROL_VERIFIED=1\r?$"),
+            ),
         )
+        for command, marker in stages:
+            marker_start = len(transcript)
+            conn.sendall((command + "\r").encode("ascii"))
+            wait_for(conn, transcript, marker, timeout_seconds=55, start=marker_start)
+        # SHA-256 lives in the authenticated read-only VM control disk; never
+        # type a 64-byte hash through the boot console.
         start = len(transcript)
-        conn.sendall(command.encode("ascii"))
+        conn.sendall(b"bash install.sh\r")
         wait_for(conn, transcript, PRECHECK_RESULT, timeout_seconds=120, start=start)
         if b"GASLUX_POP_NATIVE_INSTALL_FAILURE:" in normalized(bytes(transcript[start:])):
             raise GuestProbeError("native install guest refused preflight")

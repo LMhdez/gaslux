@@ -37,6 +37,15 @@ def test_native_install_is_isolated_to_explicit_hosted_kvm_lab():
     assert "GASLUX_POP_NATIVE_FULL_INSTALL_GUEST_PROVEN" not in run
     assert "sha256sum -c --status" in run
     assert "GASLUX_POP_NATIVE_FIRSTBOOT_WITHOUT_LIVE_ISO=1" in run
+    assert '::/agent.sha256' in run
+    assert "agent.sha256" in RUNNER.read_text(encoding="utf-8")
+    controller = (ROOT / "auto_tests/tools/gaslux_popos_native_install_serial.py").read_text(
+        encoding="utf-8"
+    )
+    assert "Startup finished in" in controller
+    assert "GASLUX_POP_LAB_MOUNT_READY=1" in controller
+    assert "GASLUX_POP_LAB_CONTROL_VERIFIED=1" in controller
+    assert 'conn.sendall(b"bash install.sh\\r")' in controller
 
 
 def test_second_vm_has_only_native_installed_disk():
@@ -72,6 +81,7 @@ def test_real_distinst_not_test_mode_and_only_linux_owned_disk():
     assert "GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1" in source
     assert "GASLUX_POP_NATIVE_INSTALL_PREFLIGHT_OK=1" in source
     assert "GASLUX_POP_NATIVE_INSTALL_DISTINST_STARTED=1" in source
+    assert "agent.sha256" in source
     assert "GASLUX_POP_NATIVE_INSTALL_DIAGNOSTIC_TAIL_BEGIN" in source
     assert "tail -n 6" in source
     assert 'wait "$native_pid" || native_rc="$?"' in source
