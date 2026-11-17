@@ -41,11 +41,34 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
                 self.assertEqual(command.find("u:WillReboot", NS).text, "Never")
                 self.assertEqual(command.find("u:Path", NS).text,
                                  "cmd.exe /c echo GASLUX_WINPE_AUTOANSWER_ACTUALLY_CONSUMED=1>COM1")
-                self.assertEqual(
-                    setup[0].find("u:DiskConfiguration/u:Disk/u:WillWipeDisk", NS).text,
-                    "true",
-                )
+                self.assertIsNone(setup[0].find("u:DiskConfiguration", NS))
+                self.assertIsNone(setup[0].find("u:ImageInstall", NS))
+                self.assertIsNone(setup[0].find("u:UserData", NS))
                 self.assertNotIn("dualBootVerified", xml.decode("utf-8"))
+
+    def test_real_unattend_disk_and_oobe_operations_never_reach_diskless_xml(self):
+        """A no-target guest must not receive DiskID=0 or installer writes."""
+        for mode in PROBE.MODES:
+            with self.subTest(mode=mode):
+                xml = PROBE.build_winpe_witness_xml(mode)
+                root = ET.fromstring(xml)
+                passes = root.findall("u:settings", NS)
+                self.assertEqual(len(passes), 1)
+                self.assertEqual(passes[0].attrib["pass"], "windowsPE")
+                for forbidden in (
+                    "DiskConfiguration", "ImageInstall", "DiskID",
+                    "WillWipeDisk", "InstallTo", "FirstLogonCommands",
+                    "LocalAccounts", "UserData",
+                ):
+                    self.assertEqual(
+                        root.findall(".//u:" + forbidden, NS), [],
+                        "diskless Windows PE probe cannot contain " + forbidden,
+                    )
+                self.assertEqual(
+                    len(root.findall(
+                        ".//u:RunSynchronous/u:RunSynchronousCommand", NS
+                    )), 1
+                )
 
     def test_probe_persisted_only_as_vm_serial_never_release_state(self):
         source = SOURCE.read_text(encoding="utf-8")
