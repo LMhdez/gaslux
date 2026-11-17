@@ -2,7 +2,7 @@ name: CachyOS signed same-disk Archiso plan (read-only; no install)
 
 on:
   push:
-    branches: [feature/cachyos-win10-shared-disk-signed-archiso-contract]
+    branches: [feature/cachyos-win10-shared-disk-signed-archiso-contract, fix/cachyos-archiso-virtio-disk-boundary-issue3]
     paths:
       - .github/workflows/cachyos-windows-shared-archiso-contract.yml
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
