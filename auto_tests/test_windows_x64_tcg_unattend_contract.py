@@ -148,12 +148,17 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
         for value in ("q35,accel=tcg,smm=on", "only-disposable-windows-target.qcow2",
                       "fif=none", "if=none,id=only_windows", "if=pflash",
                       "GASLUX_WINDOWS_TCG_CONSENT", "GASLUX_WINDOWS_EVIDENCE",
-                      "GITHUB_REPOSITORY", "if=floppy", "swtpm",
+                      "GITHUB_REPOSITORY", "if=none,id=lab_unattend", "swtpm",
                       "MicrosoftOnlyRedirect", "digest.hexdigest() == expected",
                       "Get-CimInstance", "Win32_OperatingSystem"):
             if value == "fif=none":
                 continue
             self.assertIn(value, code)
+        # The controlled A/B mode deliberately switches FAT12 floppy to
+        # one file-backed, read-only FAT32 USB. Preserve host-disk bans.
+        self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0", code)
+        self.assertIn("readonly=on,file={answer}", code)
+        self.assertNotIn("if=floppy,format=raw", code)
         for banned in ("if=ide,file=/dev/", "if=none,file=/dev/",
                        "file=/dev/sda", "file=/dev/nvme",
                        "--skippgpcheck", "bcdedit /delete",
