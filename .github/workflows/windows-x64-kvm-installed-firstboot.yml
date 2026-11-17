@@ -1,0 +1,135 @@
+name: Windows 10/11 official x64 evaluation native QEMU/KVM installed firstboot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-x64-tcg-winre-recovery-baseline
+    paths:
+      - .github/workflows/windows-x64-kvm-installed-firstboot.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_kvm_opt_in.py
+      - auto_tests/test_windows_x64_clean_poweroff_gate.py
+      - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-kvm-preflight:
+    name: Native KVM Q35/OVMF and safe Python contract gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Refuse untrusted hosts, run contract tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_qemu_host_gate.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_winre_baseline_contract.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_kvm_opt_in.py'
+      - name: Install QEMU, matched OVMF firmware and host-side FAT tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools
+      - name: Enable only ephemeral hosted-runner group access to KVM
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test -c /dev/kvm
+          test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+      - name: Smoke actual native QEMU/KVM Q35+OVMF startup, no guest OS
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          w="$(mktemp -d -p "$RUNNER_TEMP" gaslux-kvm-preflight-XXXXXX)"
+          trap 'rm -rf -- "$w"' EXIT
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd "$w/vars.fd"
+          qemu-img create -f qcow2 "$w/only-ci-disk.qcow2" 128G >/dev/null
+          set +e
+          timeout -s TERM -k 3 8s qemu-system-x86_64 \
+            -machine q35,accel=kvm,smm=on \
+            -global driver=cfi.pflash01,property=secure,value=on \
+            -cpu host -smp 2 -m 4096 \
+            -display none -vga std -monitor none -net none -serial null -S \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd \
+            -drive "if=pflash,format=raw,file=$w/vars.fd" \
+            -device ich9-ahci,id=lab_sata \
+            -drive "if=none,id=only_windows,format=qcow2,file=$w/only-ci-disk.qcow2" \
+            -device ide-hd,drive=only_windows,bus=lab_sata.0 \
+            >"$w/qemu-stdout.log" 2>"$w/qemu-stderr.log"
+          rc=$?
+          set -e
+          if [[ "$rc" != 124 ]]; then
+            cat "$w/qemu-stderr.log"
+            echo "::error::Native QEMU/KVM refused Q35/OVMF guest device graph, exit=$rc"
+            exit 1
+          fi
+          echo 'Native KVM QEMU guest initialized and remained alive; no Windows OS booted.' >> "$GITHUB_STEP_SUMMARY"
+
+  official-eval-native-kvm:
+    name: Native firstboot Windows x64 client ${{ matrix.profile }} (real ISO/WinRE)
+    needs: isolated-kvm-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - win10_22h2_en_us_x64
+          - win11_26h2_en_us_x64
+    env:
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install only ephemeral hosted Linux VM tooling
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_OS" = Linux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools
+          test -c /dev/kvm
+          test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Download SHA256-verified original Microsoft ISO and install to NEW QCOW2 via KVM
+        shell: bash
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: |
+          set -Eeuo pipefail
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile "${{ matrix.profile }}" --accel kvm --boot-timeout 4800
+          echo 'Real installed Windows x64 client audit and clean guest shutdown verified; Linux dual boot and Windows rollback NOT tested.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive only guest serial, SHA256 and verification JSON (never ISO/QCOW2/TPM)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-x64-native-kvm-${{ matrix.profile }}
+          path: windows-x64-tcg-evidence/
+          retention-days: 7
+          if-no-files-found: warn
