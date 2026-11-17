@@ -1,0 +1,59 @@
+name: CachyOS shared-Windows GPT Archiso prewrite contracts (no VM writes)
+
+on:
+  push:
+    branches:
+      - test/windows10-cachyos-shared-archiso-preflight
+    paths:
+      - .github/workflows/cachyos-win10-shared-archiso-preflight.yml
+      - auto_tests/tools/windows_cachyos_archiso_shared_disk_gate.py
+      - auto_tests/test_windows_cachyos_archiso_shared_disk_gate.py
+      - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/tools/windows_cachyos_overlay_gpt_stage.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-shared-disk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prove no Pacstrap, disk or EFI mutation by preflight
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          python3 -m py_compile \
+            auto_tests/tools/windows_cachyos_archiso_shared_disk_gate.py \
+            auto_tests/test_windows_cachyos_archiso_shared_disk_gate.py
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_cachyos_archiso_shared_disk_gate.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_cachyos_overlay_gpt_stage.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_cachyos_overlay_ext4_only.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_cachyos_postext4_windows.py' -v
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("auto_tests/tools/windows_cachyos_archiso_shared_disk_gate.py")
+          source=p.read_text()
+          assert 'archisoWriteAuthorized": False' in source
+          assert 'handoffAuthenticated": False' in source
+          assert 'pacstrapExecuted": False' in source
+          assert 'sameDiskDualBootVerified": False' in source
+          assert 'storageWritesAuthorized": False' in source
+          assert 'releaseEligible": False' in source
+          assert 'def candidate(' in source
+          assert 'if __name__ == "__main__":' in source
+          assert 'subprocess' not in source and 'guestfs.GuestFS' not in source
+          assert 'mkfs(' not in source and 'sgdisk --clear' not in source
+          print('PASS: read-only Archiso prewrite candidate is intentionally NOT an authorization')
+          PY
+          echo 'Candidate only: Windows+CachyOS same-disk Archiso live verified=false; pacstrap=false; rollback=false' >> "$GITHUB_STEP_SUMMARY"
