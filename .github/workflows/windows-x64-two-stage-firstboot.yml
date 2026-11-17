@@ -15,6 +15,7 @@ on:
       - diag/windows-stage1-timeout-offline-panther
       - fix/windows-stage1-hmp-ack-and-timeout-diagnostics
       - test/windows-official-iso-direct-two-stage-kvm
+      - fix/windows-original-iso-com1-prompt-timing
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -120,8 +121,9 @@ jobs:
       fail-fast: false
       matrix:
         profile:
+          # This branch isolates the proven Windows 10 original ISO COM1
+          # CD prompt timing. Windows 11 is independently running in PR #108.
           - win10_22h2_en_us_x64
-          - win11_26h2_en_us_x64
     env:
       PYTHONUNBUFFERED: '1'
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
