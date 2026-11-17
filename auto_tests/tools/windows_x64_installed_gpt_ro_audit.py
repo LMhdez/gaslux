@@ -20,6 +20,7 @@ RECOVERY = "de94bba4-06d1-4d40-a16a-bfd50179d6ac"
 TYPES = (ESP, MSR, BASIC, RECOVERY)
 GUID = re.compile(r"[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\Z")
 
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\\Z")
 
 class DiskAuditError(ValueError):
     pass
@@ -103,6 +104,8 @@ def inspect_layout(g) -> dict:
                 "Windows EFI Boot Manager file absent from ESP")
         require(g.is_file("/EFI/Microsoft/Boot/BCD"),
                 "Windows boot configuration BCD absent from ESP")
+        esp_efi_sha = g.checksum("sha256", "/EFI/Microsoft/Boot/bootmgfw.efi")
+        esp_bcd_sha = g.checksum("sha256", "/EFI/Microsoft/Boot/BCD")
     finally:
         g.umount_all()
     g.mount_ro("/dev/sda3", "/")
@@ -111,8 +114,23 @@ def inspect_layout(g) -> dict:
                 "Windows loader missing from NTFS operating system")
         require(g.is_file("/Windows/System32/config/SYSTEM"),
                 "installed Windows registry system hive absent")
+        windows_loader_sha = g.checksum("sha256", "/Windows/System32/winload.efi")
     finally:
         g.umount_all()
+    g.mount_ro("/dev/sda4", "/")
+    try:
+        paths = ("/Recovery/WindowsRE/Winre.wim",
+                 "/Recovery/WindowsRE/winre.wim",
+                 "/WindowsRE/Winre.wim")
+        image = next((p for p in paths if g.is_file(p)), None)
+        require(image is not None,
+                "WinRE image missing from Windows Recovery partition")
+        winre_sha = g.checksum("sha256", image)
+    finally:
+        g.umount_all()
+    require(all(SHA256_PATTERN.fullmatch(value) for value in
+                (esp_efi_sha, esp_bcd_sha, windows_loader_sha, winre_sha)),
+            "invalid offline EFI/BCD/WinRE digest")
     return {
         "schemaVersion": 1,
         "source": "gaslux-host-libguestfs-readonly-after-verified-firstboot",
@@ -125,6 +143,11 @@ def inspect_layout(g) -> dict:
         "ntfsWindowsLoaderPresent": True,
         "ntfsWindowsSystemHivePresent": True,
         "recoveryGptPartitionPresent": True,
+        "espBootManagerSha256": esp_efi_sha,
+        "espBcdSha256": esp_bcd_sha,
+        "windowsLoaderSha256": windows_loader_sha,
+        "winreImageSha256": winre_sha,
+        "winreImageOnRecoveryPresent": True,
         "winReRecoveryAfterLinuxVerified": False,
         "sameDiskDualBootVerified": False,
         "storageWritesAuthorized": False,
