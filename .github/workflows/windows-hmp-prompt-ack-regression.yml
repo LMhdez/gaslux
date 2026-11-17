@@ -4,10 +4,13 @@ on:
     branches:
       - fix/windows-two-stage-hmp-full-ack
       - security/windows-owned-hmp-socket-gate
+      - diag/windows-stage1-private-vga-telemetry
     paths:
       - .github/workflows/windows-hmp-prompt-ack-regression.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_iso_boot_key.py
+      - auto_tests/tools/windows_x64_vga_diagnostic.py
+      - auto_tests/test_windows_x64_vga_diagnostic.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,10 +26,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/tools/windows_x64_vga_diagnostic.py auto_tests/test_windows_x64_vga_diagnostic.py
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_iso_boot_key.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_two_stage_boot.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_vga_diagnostic.py' -v
           python3 - <<'PY'
           from pathlib import Path
           source=Path('auto_tests/tools/windows_x64_tcg_firstboot.py').read_text()
@@ -76,6 +80,7 @@ jobs:
           import pathlib,sys,time
           sys.path.insert(0,'auto_tests/tools')
           from windows_x64_tcg_firstboot import send_first_iso_boot_key
+          from windows_x64_vga_diagnostic import capture_owned_qemu_vga
           sock=pathlib.Path(sys.argv[1])
           for _ in range(80):
               if sock.is_socket():break
@@ -83,5 +88,9 @@ jobs:
           if not sock.is_socket():raise SystemExit('no owned QEMU HMP socket')
           send_first_iso_boot_key(sock)
           print('GASLUX_QEMU_HMP_COMMAND_ACK_ONLY=1')
+          stats=capture_owned_qemu_vga(sock, sock.parent / 'diskless-vga-test.ppm')
+          print('GASLUX_QEMU_HMP_VGA_NUMERIC=' + str(stats))
+          assert stats['width'] > 0 and stats['height'] > 0
+          assert not (sock.parent / 'diskless-vga-test.ppm').exists()
           print('NO Windows media, target disk, Windows boot, dual boot or recovery tested')
           PY
