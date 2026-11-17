@@ -11,6 +11,8 @@ on:
       - 'Libertix.Tests/**'
       - 'Libertix.csproj'
       - 'assets/live/configure-target-main.sh'
+      - 'assets/live/libertix-install-main.sh'
+      - 'assets/live/libertix-distribution-common.sh'
       - 'auto_tests/tests/test_ubuntu_target_backend_preflight.py'
       - 'Scripts/modules/Libertix.InstallationPlan.psm1'
       - 'PowerShell.Tests/InstallationContracts.Tests.ps1'
@@ -40,7 +42,7 @@ jobs:
         run: python -m pip install -r auto_tests/requirements-dev.txt
       - name: Python syntax and lint
         run: |
-          bash -n assets/live/configure-target-main.sh
+          bash -n assets/live/configure-target-main.sh assets/live/libertix-install-main.sh assets/live/libertix-distribution-common.sh
           python -m compileall -q assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py
           python -m ruff check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py
           python -m ruff format --check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py
@@ -51,7 +53,7 @@ jobs:
 
       - name: Exercise legacy Mint/Zorin backend order with mocked actions
         run: |
-          bash -n assets/live/configure-target-main.sh
+          bash -n assets/live/configure-target-main.sh assets/live/libertix-install-main.sh assets/live/libertix-distribution-common.sh
           python -m compileall -q auto_tests/tests/test_ubuntu_target_backend_preflight.py
           python -m ruff check --config auto_tests/pyproject.toml auto_tests/tests/test_ubuntu_target_backend_preflight.py
           python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_ubuntu_target_backend_preflight.py

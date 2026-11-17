@@ -86,3 +86,50 @@ assert_distribution_rootfs_compatible_or_die() {
 
     echo "Distribution payload verified: ID=$actual_id ID_LIKE=${id_like:-none} rootfs=$rootfs"
 }
+
+# Recheck the pinned ISO and its actual Ubuntu-family payload before any live
+# resize, wipefs or mkfs operation. The later verification before extraction is
+# intentionally retained to reject media changed after this read-only check.
+preflight_legacy_installer_iso_or_die() {
+    local iso_path="$1" expected_sha="$2" distribution_id="$3" expected_os_id="$4"
+    local mountpoint="/mnt/libertix-iso-preflight" rootfs="" validated=false
+
+    case "$distribution_id:$expected_os_id" in
+        mint:linuxmint|zorin:zorin) ;;
+        *)
+            echo "Legacy ISO preflight rejected an unsupported distribution identity" >&2
+            return 2
+            ;;
+    esac
+
+    verify_file_sha256 "$iso_path" "$expected_sha" || {
+        echo "Legacy ISO preflight rejected the installer SHA-256" >&2
+        return 1
+    }
+
+    mkdir -p "$mountpoint" || return 1
+    if findmnt -rn -M "$mountpoint" >/dev/null 2>&1; then
+        echo "Legacy ISO preflight mountpoint is already in use" >&2
+        return 1
+    fi
+
+    if ! mount -t iso9660 -o ro,loop,nosuid,nodev,noexec "$iso_path" "$mountpoint"; then
+        echo "Legacy ISO preflight could not mount the installer image read-only" >&2
+        return 1
+    fi
+
+    if rootfs="$(resolve_distribution_rootfs_or_die "$mountpoint")" &&
+        assert_distribution_rootfs_compatible_or_die "$rootfs" "$expected_os_id"; then
+        validated=true
+    fi
+
+    if ! umount "$mountpoint"; then
+        echo "Legacy ISO preflight could not release the installer mount" >&2
+        return 1
+    fi
+    if [ "$validated" != true ]; then
+        echo "Legacy ISO preflight rejected the distribution payload" >&2
+        return 1
+    fi
+    echo "Legacy installer ISO and distribution identity verified before Linux partition writes"
+}
