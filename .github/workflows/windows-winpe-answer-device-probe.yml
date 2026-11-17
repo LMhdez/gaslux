@@ -5,6 +5,7 @@ on:
     branches:
       - diag/windows-winpe-answer-device-probe
       - fix/windows-winpe-diskless-answer-probe-no-install-directives
+      - fix/windows-winpe-setup-runsynchronous-schema-valid
     paths:
       - .github/workflows/windows-winpe-answer-device-probe.yml
       - auto_tests/tools/windows_x64_winpe_answer_probe.py
