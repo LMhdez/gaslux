@@ -12,10 +12,10 @@ distribution_squashfs_path_exists() {
     # Consume the full listing so pipefail also notices an unsquashfs error.
     unsquashfs -ll "$rootfs" "$path" 2>/dev/null |
         awk -v expected="squashfs-root/$path" '
-            $1 ~ /^[-l]/ && (
-                $NF == expected ||
-                (NF >= 3 && $(NF - 2) == expected && $(NF - 1) == "->")
-            ) { found = 1 }
+            $1 ~ /^[-l]/ {
+                if ($NF == expected || (NF >= 3 && $(NF - 2) == expected && $(NF - 1) == "->"))
+                    found = 1
+            }
             END { exit !found }
         '
 }
