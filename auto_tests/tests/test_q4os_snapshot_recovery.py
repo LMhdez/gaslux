@@ -171,12 +171,8 @@ def test_restored_gpt_accepts_exact_signed_plan():
         lambda item: item.update(diskGuid="ffffffff-ffff-ffff-ffff-ffffffffffff"),
         lambda item: item["partitions"][0].update(startLba=2049),
         lambda item: item["partitions"][0].update(endLba=1050622),
-        lambda item: item["partitions"][0].update(
-            typeGuid="0fc63daf-8483-4772-8e79-3d69d8477de4"
-        ),
-        lambda item: item["partitions"][0].update(
-            partGuid="ffffffff-ffff-ffff-ffff-ffffffffffff"
-        ),
+        lambda item: item["partitions"][0].update(typeGuid="0fc63daf-8483-4772-8e79-3d69d8477de4"),
+        lambda item: item["partitions"][0].update(partGuid="ffffffff-ffff-ffff-ffff-ffffffffffff"),
         lambda item: item["partitions"][0].update(label="WINDOWS-ESP"),
         lambda item: item["partitions"][0].update(filesystem="ntfs"),
     ],
