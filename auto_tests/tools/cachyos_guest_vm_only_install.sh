@@ -151,9 +151,20 @@ done
 install -m 0644 "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf"
 cmp -s "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf" ||
   die 'installed pacman config changed after copy'
-# Refuse any drift from the three signed native repositories.
-[[ "$(arch-chroot "$TARGET" pacman-conf --repo-list)" == "$(printf '%s\n' cachyos core extra)" ]] ||
+# Refuse any drift from EXACTLY the three signed native repositories.
+# PR34's strict builder emits core, extra, cachyos in that order. Pacman
+# repository order is not a trust property; the old literal comparison
+# rejected a genuine native pacstrap (Actions 44034323601). Reject
+# duplicates, empty lines, whitespace and additional repos fail-closed.
+repos="$(arch-chroot "$TARGET" pacman-conf --repo-list)" ||
+  die 'cannot enumerate installed native pacman repositories'
+python3 - "$repos" <<'PY' ||
   die 'installed repo set does not match signed CachyOS/core/extra policy'
+import sys
+repos = sys.argv[1].splitlines()
+if len(repos) != 3 or set(repos) != {'cachyos', 'core', 'extra'}:
+    raise SystemExit('unexpected, duplicated or missing installed repository')
+PY
 # Pacman-conf reports normalized *effective* signature tokens. Exact
 # string equality falsely rejected a signed install in run 43998900405.
 # Match policy semantics and fail on every unknown/weakening token.
