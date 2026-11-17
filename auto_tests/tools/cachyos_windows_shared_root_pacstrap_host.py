@@ -344,6 +344,7 @@ def run_shared_root_pacstrap(
             shutil.copyfileobj(source, target, length=4 * 1024 * 1024)
             target.flush()
             os.fsync(target.fileno())
+        os.sync()
         require(_sha(storage_iso) == pinned_sha256
                 and storage_iso.stat().st_size == iso_size,
                 "copy into private ISO storage differs from pinned source")
@@ -354,23 +355,30 @@ def run_shared_root_pacstrap(
     require(mount_ro.returncode == 0, "could not remount private ISO storage read-only")
     iso_mount = workspace / "cachyos-iso-mounted"
     iso_mount.mkdir(mode=0o700)
-    mount_iso = _run(["sudo", "mount", "-o", "ro,loop", str(storage_iso), str(iso_mount)])
-    require(mount_iso.returncode == 0, "could not mount the exact stored CachyOS ISO read-only")
+    iso_mounted = False
     try:
+        mount_iso = _run(["sudo", "mount", "-o", "ro,loop", str(storage_iso), str(iso_mount)])
+        require(mount_iso.returncode == 0,
+                "could not mount the exact stored CachyOS ISO read-only")
+        iso_mounted = True
         grub_cfg = _create_boot_config(
             iso=storage_iso, iso_sha256=pinned_sha256, iso_uuid=iso_uuid,
             iso_mount=iso_mount, workspace=workspace, run_id=run_id,
             nonce=nonce, plan_sha=plan_sha, key_sha=key_sha,
         )
     finally:
-        unmount_iso = _run(["sudo", "umount", str(iso_mount)])
-        require(unmount_iso.returncode == 0, "could not release read-only CachyOS ISO mount")
+        if iso_mounted:
+            unmount_iso = _run(["sudo", "umount", str(iso_mount)])
+            require(unmount_iso.returncode == 0,
+                    "could not release read-only CachyOS ISO mount")
         unmount_storage = _run(["sudo", "umount", str(storage_root)])
-        require(unmount_storage.returncode == 0, "could not release read-only ISO storage mount")
+        require(unmount_storage.returncode == 0,
+                "could not release read-only ISO storage mount")
     boot_efi = workspace / "cachyos-liveboot.raw"
     _write_lab_image(boot_efi, 96 * 1024**2, "GASLUXBOOT", "vfat")
-    _run(["mmd", "-i", str(boot_efi), "::/EFI"])
-    _run(["mmd", "-i", str(boot_efi), "::/EFI/BOOT"])
+    for directory in ("::/EFI", "::/EFI/BOOT"):
+        created = _run(["mmd", "-i", str(boot_efi), directory])
+        require(created.returncode == 0, "could not create isolated UEFI fallback directory")
     standalone = workspace / "gaslux-cachyos-bootx64.efi"
     result = _run([
         "grub-mkstandalone", "--format=x86_64-efi", "--output=" + str(standalone),
