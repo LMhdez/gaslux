@@ -106,6 +106,30 @@ class StageTargetSafetyTests(unittest.TestCase):
                 self.assertFalse(any(line.startswith("#") for line in command))
                 self.assertTrue(all(line.endswith("\\") for line in command[:-1]))
 
+    def test_firstboot_services_enabled_only_in_vm_owned_offline_root(self):
+        guest = (
+            Path(__file__).resolve().parents[1]
+            / "auto_tests/tools/cachyos_vm_guest_install.sh"
+        ).read_text()
+        self.assertIn("bash /run/gaslux-control/stage.sh --validate-target", guest)
+        self.assertIn("systemctl --root=/mnt/target enable gaslux-lab-firstboot.service", guest)
+        self.assertIn("systemctl --root=/mnt/target is-enabled --quiet gaslux-lab-firstboot.service", guest)
+        self.assertIn("systemctl --root=/mnt/target enable serial-getty@ttyS0.service", guest)
+        self.assertIn("systemctl --root=/mnt/target is-enabled --quiet serial-getty@ttyS0.service", guest)
+        self.assertNotIn("arch-chroot /mnt/target systemctl enable", guest)
+        self.assertLess(
+            guest.index("bash /run/gaslux-control/stage.sh --validate-target"),
+            guest.index("systemctl --root=/mnt/target enable gaslux-lab-firstboot.service"),
+        )
+        self.assertLess(
+            guest.index("GASLUX_VM_GRUB_CONFIG_PASS"),
+            guest.index("GASLUX_VM_FIRSTBOOT_UNIT_ENABLED"),
+        )
+        self.assertLess(
+            guest.index("GASLUX_VM_SERIAL_UNIT_ENABLED"),
+            guest.index("GASLUX_VM_PACSTRAP_PASS"),
+        )
+
     def test_no_unknown_mode_is_accepted(self):
         result = invoke("--erase-disk", RUN_ID, ROOT_UUID)
         self.assertEqual(result.returncode, 2)
