@@ -68,7 +68,10 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
             re.compile(rb"Startup finished in"),
             timeout_seconds=300,
         )
-        wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=60)
+        # A genuine early root debug shell may have its prompt joined on the
+        # same line as late systemd messages. Do not require a clean prompt
+        # here; the nonce challenge below proves command execution before
+        # ANY install/mount operation is sent.
         # Serial debug shells may temporarily lose characters during the noisy
         # live startup. Repeat a nonce-like challenge, never trust a prompt.
         for attempt in range(10):

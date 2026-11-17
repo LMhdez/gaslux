@@ -43,6 +43,8 @@ def test_native_install_is_isolated_to_explicit_hosted_kvm_lab():
         encoding="utf-8"
     )
     assert "Startup finished in" in controller
+    assert "GASLUX_POP_LIVE_SHELL_READY" in controller
+    assert "wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=60)" not in controller
     assert "GASLUX_POP_LAB_MOUNT_READY=1" in controller
     assert "GASLUX_POP_LAB_CONTROL_VERIFIED=1" in controller
     assert 'conn.sendall(b"bash install.sh\\r")' in controller

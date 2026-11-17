@@ -201,3 +201,14 @@ controller waits for the shell prompt, confirms completion of a separate
 `sync`, sends normal `systemctl poweroff -i` and keeps the socket open until
 guest disconnection. Disconnection is NOT trusted as success: the QEMU process
 must still exit with code 0 and installed first boot remains a separate check.
+
+## Debug-shell prompt interleaving in real OVMF guest
+
+The retained serial transcript from [Actions #43989333364](https://github.com/LMhdez/gaslux/actions/runs/43989333364)
+showed the live root debug-shell prompt sharing a line with a late `systemd`
+mount message, so a strict end-of-line prompt regex failed even though
+`Startup finished in` was observed. The installer controller now uses the
+already required nonce-like shell challenge as the sole proof of active shell
+execution before any mount or installer command is sent. The prompt
+requirement after the *completed* native install is retained to prevent a
+premature shutdown. No disk mutation is authorized on missing nonce proof.
