@@ -21,9 +21,15 @@ _EXPECTED_SCREEN = (1280, 800)
 # Exact (x1,y1,x2,y2) and RGB pixel SHA of the desktop Install Q4OS icon.
 _ICON = ((0, 0, 150, 160), "8503ab83390ec86930429be2620e8e96189a562e0e152bf0f7c1a58e5f425083")
 # Exact Q4OS welcome dialogue in the centre of the first-run desktop.
-_WELCOME = (
-    (300, 70, 975, 600),
+_WELCOME_BOX = (300, 70, 975, 600)
+# Both different Q4OS Welcome window positions were visually reviewed:
+# - #43990554360/#14287807199 (Q4OS Welcome top edge y79)
+# - #43991676156/#14288043285 (Q4OS Welcome top edge y71)
+# The full panel moves a few pixels between boots; each allowed variant is
+# pinned to its complete exact RGB crop, never matched by fuzzy resemblance.
+_WELCOME_ALLOWED = (
     "2d0d73d6ca27275d1dc716fef1965df06f12296c03a9dbdccb49cec106fc3d39",
+    "525c8efc637b680933499b7ad2dae4d26cd4d8ca9aad0a94e6c077df929738e7",
 )
 
 
@@ -50,7 +56,10 @@ def verified_q4os_welcome_desktop(path: Path) -> bool:
     screen = _open_verified_screen(path)
     if screen is None:
         return False
-    return all(_roi_sha(screen, box) == expected for box, expected in (_ICON, _WELCOME))
+    return (
+        _roi_sha(screen, _ICON[0]) == _ICON[1]
+        and _roi_sha(screen, _WELCOME_BOX) in _WELCOME_ALLOWED
+    )
 
 
 def verified_after_close(path: Path) -> bool:
@@ -58,7 +67,10 @@ def verified_after_close(path: Path) -> bool:
     screen = _open_verified_screen(path)
     if screen is None:
         return False
-    return _roi_sha(screen, _ICON[0]) == _ICON[1] and _roi_sha(screen, _WELCOME[0]) != _WELCOME[1]
+    return (
+        _roi_sha(screen, _ICON[0]) == _ICON[1]
+        and _roi_sha(screen, _WELCOME_BOX) not in _WELCOME_ALLOWED
+    )
 
 
 def verified_centre_changed(before: Path, after: Path) -> bool:
@@ -67,7 +79,7 @@ def verified_centre_changed(before: Path, after: Path) -> bool:
     current = _open_verified_screen(after)
     if previous is None or current is None:
         return False
-    return _roi_sha(previous, _WELCOME[0]) != _roi_sha(current, _WELCOME[0])
+    return _roi_sha(previous, _WELCOME_BOX) != _roi_sha(current, _WELCOME_BOX)
 
 
 def main() -> int:
