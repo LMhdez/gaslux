@@ -112,8 +112,8 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         prev = -1
         for step in steps:
             with self.subTest(step=step):
-                at = region.index(step)
-                self.assertGreater(at, prev)
+                at = region.find(step, prev + 1)
+                self.assertGreaterEqual(at, 0)
                 prev = at
 
     def test_update_requires_installed_kernel_root_and_trusted_packages(self):
