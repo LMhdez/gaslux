@@ -7,7 +7,10 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import sys
+import os
+import stat
 import unittest
+from types import SimpleNamespace
 
 TOOLS = Path(__file__).resolve().parent / "tools"
 SCRIPT = TOOLS / "windows_uefi_answer_usb_guest.py"
@@ -26,6 +29,42 @@ VALID = READY + LABEL + XML + SCRIPT_OK + SUCCESS
 
 
 class GuestUSBVisibilityTests(unittest.TestCase):
+    def test_serial_append_during_fstat_snapshot_is_accepted(self):
+        # The QEMU guest is still writing COM1. Its file can grow while the
+        # verifier reads a stable prefix. That is not a forgery or truncation.
+        owner = os.getuid()
+        before = SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o600, st_uid=owner,
+            st_size=5, st_dev=4, st_ino=17,
+        )
+        after = SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o600, st_uid=owner,
+            st_size=12, st_dev=4, st_ino=17,
+        )
+        probe.validate_append_only_serial_snapshot(before, after, b"hello")
+
+    def test_serial_shrink_identity_mutation_and_unbounded_growth_rejected(self):
+        owner = os.getuid()
+        before = SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o600, st_uid=owner,
+            st_size=5, st_dev=4, st_ino=17,
+        )
+        for changed in (
+            {"st_size": 4}, {"st_ino": 18},
+            {"st_dev": 5}, {"st_uid": owner + 1},
+            {"st_size": probe.MAX_SERIAL + 1},
+        ):
+            with self.subTest(change=changed):
+                fields = dict(vars(before), **changed)
+                with self.assertRaises(probe.GuestUSBError):
+                    probe.validate_append_only_serial_snapshot(
+                        before, SimpleNamespace(**fields), b"hello"
+                    )
+        with self.assertRaises(probe.GuestUSBError):
+            probe.validate_append_only_serial_snapshot(
+                before, before, b"hell"
+            )
+
     def test_complete_ordered_uefi_witness_accepted_as_lab_only(self):
         self.assertTrue(probe.validate_witness(VALID))
 
