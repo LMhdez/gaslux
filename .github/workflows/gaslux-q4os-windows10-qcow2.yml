@@ -126,7 +126,7 @@ jobs:
                 <OOBE><HideEULAPage>true</HideEULAPage><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE><NetworkLocation>Work</NetworkLocation><ProtectYourPC>3</ProtectYourPC><SkipMachineOOBE>true</SkipMachineOOBE><SkipUserOOBE>true</SkipUserOOBE></OOBE>
                 <UserAccounts><LocalAccounts><LocalAccount wcm:action="add"><Name>GasluxLab</Name><Group>Administrators</Group><Password><Value>$password</Value><PlainText>true</PlainText></Password></LocalAccount></LocalAccounts></UserAccounts>
                 <AutoLogon><Password><Value>$password</Value><PlainText>true</PlainText></Password><Enabled>true</Enabled><LogonCount>1</LogonCount><Username>GasluxLab</Username></AutoLogon>
-                <FirstLogonCommands><SynchronousCommand wcm:action="add"><Order>1</Order><Description>Write Gaslux first-logon evidence and power off</Description><CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "\$ErrorActionPreference='Stop'; New-Item -Force -ItemType Directory 'R:\Recovery\WindowsRE' | Out-Null; Copy-Item 'C:\Windows\System32\Recovery\Winre.wim' 'R:\Recovery\WindowsRE\Winre.wim' -Force; reagentc.exe /setreimage /path 'R:\Recovery\WindowsRE'; if (\$LASTEXITCODE -ne 0) { exit 31 }; reagentc.exe /enable; if (\$LASTEXITCODE -ne 0) { exit 32 }; reagentc.exe /info | Out-File 'C:\GasluxEvidence\winre-info.txt'; if ((Get-Content 'C:\GasluxEvidence\winre-info.txt' -Raw) -notmatch 'Enabled') { exit 33 }; 'GASLUX_WINDOWS_FIRST_LOGON=PASS' | Set-Content 'C:\GasluxEvidence\first-logon.txt'; shutdown.exe /s /t 20"</CommandLine><RequiresUserInput>false</RequiresUserInput></SynchronousCommand></FirstLogonCommands>
+                <FirstLogonCommands><SynchronousCommand wcm:action="add"><Order>1</Order><Description>Write Gaslux first-logon evidence and power off</Description><CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "\$ErrorActionPreference='Stop'; New-Item -Force -ItemType Directory 'R:\Recovery\WindowsRE' | Out-Null; Copy-Item 'C:\Windows\System32\Recovery\Winre.wim' 'R:\Recovery\WindowsRE\Winre.wim' -Force; reagentc.exe /setreimage /path 'R:\Recovery\WindowsRE'; if (\$LASTEXITCODE -ne 0) { exit 31 }; reagentc.exe /enable; if (\$LASTEXITCODE -ne 0) { exit 32 }; reagentc.exe /info | Out-File 'C:\GasluxEvidence\winre-info.txt'; if ((Get-Content 'C:\GasluxEvidence\winre-info.txt' -Raw) -notmatch 'Enabled') { exit 33 }; 'GASLUX_WINDOWS_WINRE=PASS' | Set-Content 'C:\GasluxEvidence\winre-status.txt'; 'GASLUX_WINDOWS_FIRST_LOGON=PASS' | Set-Content 'C:\GasluxEvidence\first-logon.txt'; shutdown.exe /s /t 20"</CommandLine><RequiresUserInput>false</RequiresUserInput></SynchronousCommand></FirstLogonCommands>
               </component>
             </settings>
           </unattend>
@@ -261,10 +261,11 @@ jobs:
           work="$GASLUX_WIN10_WORK"
           image="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
           mount_root="$work/mnt"
-          mkdir -p "$mount_root/windows" "$mount_root/esp"
+          mkdir -p "$mount_root/windows" "$mount_root/esp" "$mount_root/winre"
           cleanup() {
             sudo umount "$mount_root/windows" 2>/dev/null || true
             sudo umount "$mount_root/esp" 2>/dev/null || true
+            sudo umount "$mount_root/winre" 2>/dev/null || true
             sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
           }
           trap cleanup EXIT
@@ -272,20 +273,27 @@ jobs:
           sudo udevadm settle
           sudo sgdisk --verify /dev/nbd0
           lsblk -nrpo NAME,PARTTYPE /dev/nbd0
-          [[ -b /dev/nbd0p1 && -b /dev/nbd0p3 ]]
+          [[ -b /dev/nbd0p1 && -b /dev/nbd0p3 && -b /dev/nbd0p4 ]]
+          sudo sgdisk --info=4 /dev/nbd0 | grep -qi 'DE94BBA4-06D1-4D40-A16A-BFD50179D6AC'
           sudo mount -t vfat -o ro /dev/nbd0p1 "$mount_root/esp"
           sudo mount -t ntfs-3g -o ro,norecover /dev/nbd0p3 "$mount_root/windows"
+          sudo mount -t ntfs-3g -o ro,norecover /dev/nbd0p4 "$mount_root/winre"
           test -s "$mount_root/windows/Windows/System32/winload.efi"
           test -s "$mount_root/esp/EFI/Microsoft/Boot/bootmgfw.efi"
           test -s "$mount_root/esp/EFI/Microsoft/Boot/BCD"
           grep -q 'GASLUX_WINDOWS_FIRST_LOGON=PASS' \
             "$mount_root/windows/GasluxEvidence/first-logon.txt"
+          grep -q 'GASLUX_WINDOWS_WINRE=PASS' \
+            "$mount_root/windows/GasluxEvidence/winre-status.txt"
+          test -s "$mount_root/winre/Recovery/WindowsRE/Winre.wim"
           printf 'GASLUX_WIN10_GPT=PASS\n'
           printf 'GASLUX_WIN10_WINDOWS_ROOT=PASS\n'
           printf 'GASLUX_WIN10_ESP_BOOTMGR_BCD=PASS\n'
           printf 'GASLUX_WIN10_FIRST_LOGON=PASS\n'
+          printf 'GASLUX_WIN10_WINRE=PASS\n'
           sudo umount "$mount_root/windows"
           sudo umount "$mount_root/esp"
+          sudo umount "$mount_root/winre"
           sudo qemu-nbd --disconnect /dev/nbd0
           trap - EXIT
 
@@ -325,6 +333,8 @@ jobs:
             "efiBootManagerVerified": true,
             "bcdVerified": true,
             "firstLogonVerified": true,
+            "winrePartitionVerified": true,
+            "winreEnabledVerified": true,
             "networkAttached": false,
             "qemuAccelerator": "$GASLUX_WIN10_ACCEL",
             "evaluationLicense": true
