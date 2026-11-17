@@ -10,10 +10,10 @@ TOOLS = Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
 
 from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
-    _CALAMARES_LOCATION_NEXT,
-    _CALAMARES_LOCATION_WINDOW,
     _CALAMARES_KEYBOARD_NEXT,
     _CALAMARES_KEYBOARD_WINDOW,
+    _CALAMARES_LOCATION_NEXT,
+    _CALAMARES_LOCATION_WINDOW,
     _CALAMARES_NEXT,
     _CALAMARES_WINDOW,
     _EXPECTED_SCREEN,

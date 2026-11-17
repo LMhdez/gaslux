@@ -185,7 +185,8 @@ def test_keyboard_to_software_is_pixel_gated_without_partition_actions():
     assert 'python3 "$visual_gate" calamares-keyboard "$work/vnc-keyboard-page.png"' in source
     assert "vnc-software-page.png" in source
     assert '"$calamares_keyboard_next_clicked" -eq 1 && "$calamares_software_frame" -eq 1' in source
-    assert "NOT PROVEN: Software screen identity without independent screenshot inspection." in source
+    caveat = "NOT PROVEN: Software screen identity without independent screenshot inspection."
+    assert caveat in source
     assert "NOT PERFORMED: partition choice, user setup, Install confirmation" in source
     assert "mkfs.ext4" not in source
     assert "calamares -d" not in source
