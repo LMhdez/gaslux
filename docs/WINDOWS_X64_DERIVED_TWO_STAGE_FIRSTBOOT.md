@@ -13,7 +13,13 @@ is never an official ISO and cannot be used for release media.
    consent, approved repository and freshly allocated ephemeral workspace.
 2. Download and hash-verify the exact original Microsoft evaluation client ISO.
    Create only a temporary UDF derivative, recording its separate SHA-256.
-3. Start a Q35/OVMF guest with a brand-new 128 GiB **file-backed QCOW2**,
+3. Use Microsoft's supported transient `sources/$OEM$/$/Setup/Scripts`
+   structure to copy the hash-checked guest witness into the installed
+   Windows directory. FirstLogonCommands refers to that installed file,
+   not the removable floppy after setup. See
+   https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/wsim/distribution-shares-and-configuration-sets-overview
+   and https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-shell-setup-firstlogoncommands
+4. Start a Q35/OVMF guest with a brand-new 128 GiB **file-backed QCOW2**,
    Microsoft's temporary derived DVD (read-only), floppy unattended answer
    file and the VM's own variable store. Use **QEMU -no-reboot**. At the first
    reboot, QEMU exits. This alone is not evidence of an installed OS.

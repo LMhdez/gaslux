@@ -109,6 +109,22 @@ class TwoStageSafetyTests(unittest.TestCase):
                     **opts,
                 )
 
+    def test_firstlogon_witness_is_copied_with_oem_only_in_lab(self):
+        from xml.etree import ElementTree as ET
+        xml = VM.generate_unattend(
+            "win10_22h2_en_us_x64", "19045", owned_oem_witness=True
+        )
+        commands = [
+            (node.text or "") for node in ET.fromstring(xml).iter()
+            if node.tag.endswith("CommandLine")
+        ]
+        self.assertEqual(len(commands), 1)
+        self.assertIn(r"C:\Windows\Setup\Scripts\GASLUX.PS1", commands[0])
+        self.assertNotIn(r"A:\GASLUX.PS1", commands[0])
+        source = SOURCE.read_text()
+        self.assertIn('unpacked / "sources" / "$OEM$" / "$"', source)
+        self.assertIn("lab_witness=guest_ps1 if args.lab_install_derived else None", source)
+
     def test_setup_requires_no_reboot_and_non_reused_serial(self):
         with tempfile.TemporaryDirectory() as p:
             serial = Path(p) / "setup.log"
@@ -127,7 +143,7 @@ class TwoStageSafetyTests(unittest.TestCase):
         self.assertIn("labSecondQemuBootMediaDetached", text)
         self.assertIn("monitor_socket=None", text)
         self.assertIn('report["windowsClientBootVerified"] = ok', text)
-        self.assertIn('report["stable"]', text)
+        self.assertIn('"stable": False', text)
         self.assertNotIn('report["stable"] = True', text)
 
 

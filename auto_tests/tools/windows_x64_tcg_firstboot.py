@@ -151,7 +151,8 @@ def download_verified_iso(profile: dict, destination: Path) -> tuple[str, int]:
 
 
 def derive_no_prompt_uefi_lab_iso(original: Path, derived: Path,
-                                  workspace: Path) -> str:
+                                  workspace: Path,
+                                  lab_witness: Path | None = None) -> str:
     """Rebuild *lab-only* EFI CD from verified official media, avoiding DVD key UI.
 
     The derivative has a NEW SHA-256. It MUST NOT masquerade as Microsoft's
@@ -193,6 +194,21 @@ def derive_no_prompt_uefi_lab_iso(original: Path, derived: Path,
             4_096 <= choices[0].stat().st_size <= 32 * 1024**2,
             "official ISO has no unique genuine no-prompt UEFI El Torito image")
     boot_image = choices[0].relative_to(unpacked).as_posix()
+    if lab_witness is not None:
+        # Microsoft's documented $OEM$/$ copy places this in installed
+        # %WINDIR% BEFORE its first logon, when the setup DVD is detached.
+        require(lab_witness == workspace / "GASLUX.PS1"
+                and lab_witness.is_file() and not lab_witness.is_symlink()
+                and 0 < lab_witness.stat().st_size < 32_768,
+                "missing isolated first-logon audit source")
+        oem_root = unpacked / "sources" / "$OEM$" / "$" / "Setup" / "Scripts"
+        require(not oem_root.exists() and not oem_root.is_symlink(),
+                "original ISO unexpectedly includes an OEM Scripts directory")
+        oem_root.mkdir(parents=True)
+        shutil.copyfile(lab_witness, oem_root / "GASLUX.PS1")
+        require(hashlib.sha256((oem_root / "GASLUX.PS1").read_bytes()).digest()
+                == hashlib.sha256(lab_witness.read_bytes()).digest(),
+                "OEM witness changed during lab ISO construction")
     subprocess.run([
         "genisoimage", "-quiet", "-udf", "-allow-limited-size",
         "-iso-level", "3", "-J", "-joliet-long",
@@ -259,7 +275,8 @@ Start-Sleep -Seconds 2
         "__MARKER__", MARKER).strip()
 
 
-def generate_unattend(profile_key: str, build: str) -> bytes:
+def generate_unattend(profile_key: str, build: str,
+                      *, owned_oem_witness: bool = False) -> bytes:
     # Windows Setup owns disk partitioning, but can only see the ONE new
     # file-backed QCOW2 and its read-only installer ISO/floppy. Never a host disk.
     ns = "urn:schemas-microsoft-com:unattend"
@@ -376,9 +393,15 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     child(command, "Description", "Gaslux first boot serial verification")
     # FirstLogonCommands must remain short. Base64-encoding a full witness
     # makes the setup XML command longer than Windows command-line limits.
-    # Only a hash-checked, VM-exclusive floppy is available to Windows.
+    # Lab 2-stage mode copies an identical hash-checked witness into the
+    # installed Windows tree using official Microsoft $OEM$/$ copying.
+    # The first-stage floppy (with Autounattend.xml) must be absent on reboot.
+    if owned_oem_witness:
+        witness_target = r"C:\Windows\Setup\Scripts\GASLUX.PS1"
+    else:
+        witness_target = r"A:\GASLUX.PS1"
     child(command, "CommandLine", "powershell.exe -NoProfile -NonInteractive "
-          "-ExecutionPolicy Bypass -File A:\\GASLUX.PS1")
+          "-ExecutionPolicy Bypass -File " + witness_target)
     child(command, "RequiresUserInput", "false")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -677,7 +700,10 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("two-stage disposable lab needs at least 1800s timeout")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
-    xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
+    xml = generate_unattend(
+        args.profile, profile["expectedWindowsBuildPrefix"],
+        owned_oem_witness=args.lab_install_derived,
+    )
     root = ET.fromstring(xml)
     if args.fixture_only:
         print(json.dumps({
@@ -702,13 +728,21 @@ def main(argv: list[str] | None = None) -> int:
             report.update(isoHashVerified=True, isoSha256=iso_hash,
                           isoSizeBytes=iso_size)
             print("GASLUX_WINDOWS_EVAL_ISO_MICROSOFT_SHA256_VERIFIED=1", flush=True)
+            guest_ps1 = workspace / "GASLUX.PS1"
+            guest_ps1.write_text(
+                witness_powershell(args.profile,
+                                   profile["expectedWindowsBuildPrefix"]) + "\n",
+                encoding="utf-8")
+            report["firstLogonScriptSha256"] = hashlib.sha256(
+                guest_ps1.read_bytes()).hexdigest()
             boot_iso = iso
             if args.derived_no_prompt:
                 require(args.accel == "kvm",
                         "no-prompt derived ISO permitted only in isolated hosted KVM")
                 derived = workspace / "derived-microsoft-noprompt-lab.iso"
                 derived_sha256 = derive_no_prompt_uefi_lab_iso(
-                    iso, derived, workspace
+                    iso, derived, workspace,
+                    lab_witness=guest_ps1 if args.lab_install_derived else None,
                 )
                 report["labDerivedIsoSha256"] = derived_sha256
                 report["labDerivedIsoOnly"] = True
@@ -718,13 +752,6 @@ def main(argv: list[str] | None = None) -> int:
                       flush=True)
             xmlfile = workspace / "Autounattend.xml"
             xmlfile.write_bytes(xml)
-            guest_ps1 = workspace / "GASLUX.PS1"
-            guest_ps1.write_text(
-                witness_powershell(args.profile,
-                                   profile["expectedWindowsBuildPrefix"]) + "\n",
-                encoding="utf-8")
-            report["firstLogonScriptSha256"] = hashlib.sha256(
-                guest_ps1.read_bytes()).hexdigest()
             floppy = workspace / "unattend-floppy.img"
             subprocess.run(["truncate", "-s", "1440K", str(floppy)], check=True)
             subprocess.run(["mkfs.vfat", "-F", "12", "-n", "GASLUXCI", str(floppy)],
