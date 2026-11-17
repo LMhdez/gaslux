@@ -1,0 +1,148 @@
+name: Windows ISO lab headless OVMF USB keyboard console smoke (synthetic GRUB only)
+
+on:
+  push:
+    branches:
+      - feature/windows-eval-uefi-usb-keyboard-proof
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-uefi-usb-keyboard:
+    name: Real QEMU/KVM OVMF receives one key from isolated HMP USB input
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Enforce hosted VM boundaries, compile and regression test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_kvm_opt_in.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_iso_boot_key.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_winre_baseline_contract.py' -v
+      - name: Install QEMU/KVM OVMF and signed-distro unrelated synthetic GRUB ISO tooling
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 ovmf grub-efi-amd64-bin grub-common xorriso mtools
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+      - name: Prove guest UEFI USB keystroke consumption, not only HMP acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import os
+          import shutil
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          from pathlib import Path
+
+          sys.path.insert(0, "auto_tests/tools")
+          from windows_x64_tcg_firstboot import send_first_iso_boot_key
+          assert os.environ["RUNNER_TEMP"] == "/home/runner/work/_temp"
+          assert os.environ["RUNNER_ENVIRONMENT"] == "github-hosted"
+          assert os.environ["GITHUB_REPOSITORY"] == "LMhdez/gaslux"
+          with tempfile.TemporaryDirectory(
+              prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]
+          ) as tmp:
+              work = Path(tmp)
+              root = work / "iso-root"
+              (root / "boot" / "grub").mkdir(parents=True)
+              (root / "boot" / "grub" / "grub.cfg").write_text(
+                  "set timeout=0\n"
+                  "serial --unit=0 --speed=115200\n"
+                  "terminal_output serial\n"
+                  "terminal_input console\n"
+                  "echo GASLUX_USB_GUEST_INPUT_READY=1\n"
+                  "read key\n"
+                  "echo GASLUX_USB_GUEST_INPUT_ACCEPTED=1\n"
+                  "sleep 10\n",
+                  encoding="utf-8",
+              )
+              iso = work / "synthetic-grub-only.iso"
+              subprocess.run(
+                  ["grub-mkrescue", "--xorriso=xorriso", "-o", str(iso), str(root)],
+                  check=True, stdout=subprocess.DEVNULL,
+              )
+              vars_file = work / "ovmf-vars.fd"
+              shutil.copyfile("/usr/share/OVMF/OVMF_VARS_4M.fd", vars_file)
+              hmp = work / "initial-installer-hmp.sock"
+              serial = work / "serial.log"
+              args = [
+                  "qemu-system-x86_64", "-machine", "q35,accel=kvm,smm=on",
+                  "-global", "driver=cfi.pflash01,property=secure,value=on",
+                  "-cpu", "host", "-smp", "2", "-m", "1024",
+                  "-display", "none", "-vga", "std",
+                  "-monitor", f"unix:{hmp},server,nowait", "-net", "none",
+                  "-device", "qemu-xhci,id=lab_usb",
+                  "-device", "usb-kbd,bus=lab_usb.0",
+                  "-device", "ich9-ahci,id=lab_sata",
+                  "-drive", f"if=none,id=lab_iso,media=cdrom,readonly=on,format=raw,file={iso}",
+                  "-device", "ide-cd,drive=lab_iso,bus=lab_sata.1",
+                  "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd",
+                  "-drive", f"if=pflash,format=raw,file={vars_file}",
+                  "-serial", f"file:{serial}", "-boot", "order=d",
+              ]
+              err = (work / "qemu.err").open("xb")
+              p = subprocess.Popen(
+                  args, stderr=err, stdout=subprocess.DEVNULL
+              )
+              try:
+                  deadline = time.monotonic() + 120
+                  ready = False
+                  injected = False
+                  accepted = False
+                  while time.monotonic() < deadline:
+                      if p.poll() is not None:
+                          raise RuntimeError(f"QEMU exited before USB witness: {p.returncode}")
+                      observed = serial.read_bytes() if serial.is_file() else b""
+                      if b"GASLUX_USB_GUEST_INPUT_READY=1" in observed:
+                          ready = True
+                      if b"GASLUX_USB_GUEST_INPUT_ACCEPTED=1" in observed:
+                          if not injected:
+                              raise RuntimeError("GRUB did not block for a real key")
+                          accepted = True
+                          break
+                      if ready and not injected and hmp.is_socket():
+                          send_first_iso_boot_key(hmp)
+                          injected = True
+                      time.sleep(.15)
+                  if not ready or not injected or not accepted:
+                      raise RuntimeError(
+                          "USB keyboard input was not independently received by the guest"
+                      )
+                  print("GASLUX_SYNTHETIC_OVMF_USB_GUEST_ENTER_RECEIVED=1")
+              except Exception:
+                  if serial.is_file():
+                      print(serial.read_bytes()[-10000:].decode(errors="replace"))
+                  raise
+              finally:
+                  if p.poll() is None:
+                      p.kill()
+                  p.wait(timeout=20)
+                  err.close()
+          PY
+          {
+            echo 'PASS: synthetic GRUB EFI guest consumed an HMP Enter via xHCI USB HID.'
+            echo 'No Microsoft Windows ISO was used, no Windows Setup or OS boot verified.'
+            echo 'No physical disks or host EFI/BCD/WinRE were modified.'
+          } >> "$GITHUB_STEP_SUMMARY"
