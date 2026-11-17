@@ -211,6 +211,7 @@ def guest_plan(
 
 def verify_lab_root_write_grant(
     args: argparse.Namespace, plan: dict[str, Any],
+    *, control_dir: Path = Path("/run/gaslux-control"),
 ) -> None:
     """Require a second signed, strictly root-only COW lab grant.
 
@@ -240,6 +241,7 @@ def verify_lab_root_write_grant(
         "rootFsUuid", "sourceWindowsGptSha256", "hostCheckpointSha256",
         "hostOverlayBackingProofSha256", "sourceImageReadOnly",
         "discardableOverlay", "windowsEspWritesAllowed",
+        "strictPacmanBuilderSha256", "pacmanTrustGuardSha256",
     }
     require(type(grant) is dict and set(grant) == expected_keys
             and canonical(grant) == signed_bytes,
@@ -272,6 +274,26 @@ def verify_lab_root_write_grant(
     ], capture_output=True, timeout=20, check=False)
     require(outcome.returncode == 0,
             "Ed25519 root-only COW grant signature rejected")
+    # A signed grant must authenticate the exact control programs that will
+    # build and evaluate pacman's effective trust policy before root writes.
+    # The real guest control medium is attached readonly=on and mounted ro.
+    require(control_dir.is_absolute() and control_dir.is_dir()
+            and not control_dir.is_symlink(),
+            "missing canonical Archiso control directory for script identity")
+    for filename, field in (
+        ("strict-pacman.py", "strictPacmanBuilderSha256"),
+        ("pacman-trust.py", "pacmanTrustGuardSha256"),
+    ):
+        expected = grant[field]
+        require(type(expected) is str and SHA.fullmatch(expected) is not None
+                and expected != "0" * 64,
+                "signed package-policy program hash missing or malformed")
+        source = control_dir / filename
+        require(source.is_file() and not source.is_symlink()
+                and 1024 < source.stat().st_size < 64 * 1024,
+                "signed package-policy program is missing or unexpected")
+        require(sha_file(source) == expected,
+                "signed package-policy program bytes differ from root grant")
 
 
 def prepare_signed_only_pacman(plan: dict[str, Any]) -> Path:
