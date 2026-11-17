@@ -1307,6 +1307,13 @@ def main(argv: list[str] | None = None) -> int:
                                             with fourth_path.open("xb") as out:
                                                 out.write(fourth_bytes)
                                             report["windowsBootAfterExt4Verified"] = True
+                                            if args.install_mint_cow_root:
+                                                report["windowsBootAfterMintRootVerified"] = True
+                                                report["sameDiskBothOperatingSystemsBootVerified"] = True
+                                                report["nativeGrubDualBootVerified"] = False
+                                                report["sameDiskDualBootVerified"] = False
+                                                report["updatesVerified"] = False
+                                                report["rollbackVerified"] = False
                                             report["fourthPostExt4EvidenceSha256"] = (
                                                 hashlib.sha256(fourth_bytes).hexdigest())
                                             print("GASLUX_WINDOWS_FOURTH_BOOT_POST_EXT4_VERIFIED=1",
