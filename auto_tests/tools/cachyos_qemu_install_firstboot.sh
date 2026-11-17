@@ -181,9 +181,7 @@ run_live_guest() {
     -smp 2 -m 6144 -display none -monitor none -no-reboot -boot order=c \
     -drive if=pflash,format=raw,readonly=on,file="$code" \
     -drive if=pflash,format=raw,file="$w/nvram-live.fd" \
-    # Provide host kernel entropy through a dedicated virtio RNG to avoid
-  # starving guest pacman-key initialization; no host disks are attached.
-  -object rng-random,id=gasluxrng0,filename=/dev/urandom \
+    -object rng-random,id=gasluxrng0,filename=/dev/urandom \
   -device virtio-rng-pci,rng=gasluxrng0 \
   -device qemu-xhci \
     -drive if=none,id=liveefi,format=raw,file="$w/liveboot.raw",readonly=on \
@@ -262,8 +260,6 @@ timeout --kill-after=5s 900s qemu-system-x86_64 \
   -smp 2 -m 4096 -display none -monitor none -no-reboot -boot order=c \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
   -drive if=pflash,format=raw,file="$w/nvram-installed.fd" \
-  # Provide host kernel entropy through a dedicated virtio RNG to avoid
-  # starving guest pacman-key initialization; no host disks are attached.
   -object rng-random,id=gasluxrng0,filename=/dev/urandom \
   -device virtio-rng-pci,rng=gasluxrng0 \
   -device qemu-xhci \
