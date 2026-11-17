@@ -174,17 +174,19 @@ if [[ "$qemu_accel" == kvm ]]; then
   if [[ "$launch_installer" == yes ]]; then max_ticks=56; fi
 fi
 # Reproduce the *exact* native Q4OS first-run language prompt captured in
-# independent QEMU Actions #43964633501, artifact #14275594316. All six
-# screenshots had the SAME SHA-256. Click OK ONLY after exact-byte comparison
-# to that previously inspected 1280x800 screenshot. Otherwise ABORT input.
+# QEMU Actions #43964633501, artifact #14275594316. The six captures had
+# the SAME SHA-256; click OK ONLY on an exact-byte match. Otherwise ABORT.
 # This is NOT Calamares; no partition, account or install click is allowed.
 expected_modal='da8d7c7f26051f0962152a99494001960f852f222104cb49be2a9962ef95aac8'
 selected_modal=0
 dismissed_modal=0
-# Independently captured Q4OS desktop and its "Install Q4OS" icon from
-# successful Actions #43990554360, screenshot #14287807199, 1280x800.
-# Never click any installer "Install"/partition/confirmation buttons here.
-expected_desktop='231a01a5e394937808d71080dbb4f1a8e9da3bc52e61d80e2e5cdebce8d638d7'
+# Q4OS desktop source is pinned by TWO stable RGB pixel-crop hashes from
+# Actions #43990554360 (artifact #14287807199). Whole-PNG SHA is unsafe
+# because the clock in the taskbar changes. The gate checks icon + welcome.
+# NEVER click an installer partition/install/confirmation button here.
+visual_gate="$(dirname "$0")/gaslux_q4os_vnc_visual_gate.py"
+[[ -f "$visual_gate" && ! -L "$visual_gate" ]] ||
+  die 'Required SHA-verified Q4OS visual gate is missing'
 launcher_clicked=0
 post_launcher_frame=0
 
@@ -207,16 +209,26 @@ for tick in $(seq 1 "$max_ticks"); do
         elif [[ "$selected_modal" -eq 1 && "$current" != "$expected_modal" ]]; then
           dismissed_modal=1
           cp "$work/vnc-$tick.png" "$work/vnc-after-language.png"
-          if [[ "$launch_installer" == yes && "$launcher_clicked" -eq 0 && "$current" == "$expected_desktop" ]]; then
-            # First click closes the Q4OS welcome window, second *double*
-            # click starts the already verified desktop "Install Q4OS" icon.
-            # Neither of these is a Calamares install/partition confirmation.
+          if [[ "$launch_installer" == yes && "$launcher_clicked" -eq 0 ]] &&
+             python3 "$visual_gate" welcome "$work/vnc-$tick.png"; then
             printf 'GASLUX_Q4OS_PINNED_DESKTOP_LAUNCHER_VERIFIED=1280x800\n'
+            # Do not click the installer while another window obscures it.
+            # Close the known welcome dialogue first, then re-capture and
+            # verify the icon is still present and the welcome is gone.
+            timeout 20s vncdo -s 127.0.0.1:1 move 948 93 click 1 ||
+              die 'Q4OS verified welcome close failed'
+            sleep 2
+            timeout 20s vncdo -s 127.0.0.1:1 capture "$work/vnc-before-icon-click.png" ||
+              die 'Q4OS did not expose a post-welcome screenshot'
+            python3 "$visual_gate" after-close "$work/vnc-before-icon-click.png" ||
+              die 'Q4OS installer icon or post-welcome screen did not pass gate'
             timeout 20s vncdo -s 127.0.0.1:1 \
-              move 948 93 click 1 pause 1 move 57 39 click 1 pause 0.3 click 1 ||
-              die 'SHA-verified native installer desktop icon click failed'
+              move 57 39 click 1 pause 0.3 click 1 ||
+              die 'SHA-verified Q4OS installer desktop icon click failed'
             launcher_clicked=1
-          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 && "$current" != "$expected_desktop" ]]; then
+          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 ]] &&
+               python3 "$visual_gate" changed-centre \
+                 "$work/vnc-before-icon-click.png" "$work/vnc-$tick.png"; then
             post_launcher_frame=1
             cp "$work/vnc-$tick.png" "$work/vnc-after-installer-icon.png"
           fi
@@ -238,7 +250,7 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
      [[ "$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1 ]]; }; then
   echo 'PASS: Q4OS first-run modal and audited graphical desktop transitioned under SHA-bound VNC actions.'
   if [[ "$launch_installer" == yes ]]; then
-    echo 'PASS: audited Install Q4OS desktop ICON was clicked and a subsequent VNC frame changed.'
+    echo 'PASS: Q4OS launcher icon was clicked after two-stage image checks and centre changed.'
     echo 'NOT PROVEN: Calamares executable actually started; screenshot must be reviewed.'
   fi
   echo "GASLUX_Q4OS_FRAME_COUNT=$frame_count"
