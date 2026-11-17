@@ -7,6 +7,7 @@ on:
       - .github/workflows/cachyos-shared-cow-root-pacstrap-safety.yml
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap.py
       - auto_tests/test_cachyos_windows_shared_root_pacstrap.py
+      - docs/CACHYOS_WINDOWS_SHARED_ROOT_PACSTRAP_BOUNDARY.md
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
   workflow_dispatch:
