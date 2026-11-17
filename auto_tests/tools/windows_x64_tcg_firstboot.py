@@ -375,7 +375,9 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
 
 
 def boot_vm(args: list[str], transcript: Path, limit: int,
-            profile_key: str, monitor_socket: Path | None = None) -> tuple[bool, str]:
+            profile_key: str, monitor_socket: Path | None = None,
+            progress_evidence: Path | None = None,
+            progress_frames: list[dict] | None = None) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -402,6 +404,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     witnessed_at: float | None = None
     initial_cd_key_sent = False
     win11_dvd_started_at: float | None = None
+    attempted_progress_frames: set[str] = set()
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
@@ -438,6 +441,33 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     ):
                         if witnessed_at is None:
                             witnessed_at = time.monotonic()
+                # VM-only observational snapshots: no guest command, disk
+                # mutation, or acceptance condition depends on these images.
+                # Capture no more than three milestones. The exact HMP socket
+                # and evidence directory were independently preflighted.
+                if (progress_evidence is not None and monitor_socket is not None
+                        and initial_cd_key_sent):
+                    elapsed = time.monotonic() - started
+                    for due, label in (
+                        (240, "03-firstboot-early"),
+                        (720, "04-firstboot-middle"),
+                        (1500, "05-firstboot-late"),
+                    ):
+                        if elapsed < due or label in attempted_progress_frames:
+                            continue
+                        attempted_progress_frames.add(label)
+                        try:
+                            from windows_x64_uefi_visual_probe import ProbeError, snapshot
+                            frame = snapshot(monitor_socket, progress_evidence,
+                                             profile_key, label)
+                        except (ProbeError, OSError, TimeoutError) as exc:
+                            print(f"GASLUX_WINDOWS_PROGRESS_VGA_FAILED={label}:{type(exc).__name__}",
+                                  flush=True)
+                        else:
+                            if progress_frames is not None:
+                                progress_frames.append(frame)
+                            print(f"GASLUX_WINDOWS_PROGRESS_VGA_SHA256={label}:{frame['sha256']}",
+                                  flush=True)
                 rc = proc.poll()
                 if rc is not None:
                     if witnessed_at is not None and rc == 0:
@@ -466,6 +496,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
     ap.add_argument("--boot-timeout", type=int, default=6300)
+    ap.add_argument("--firstboot-vga", action="store_true",
+                    help="read-only bounded VM display checkpoints; not boot proof")
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
@@ -566,8 +598,29 @@ def main(argv: list[str] | None = None) -> int:
                              "-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
                              "-device", "tpm-tis,tpmdev=tpm0"])
             try:
-                ok, diagnostic = boot_vm(base, serial, args.boot_timeout,
-                                         args.profile, monitor_socket=monitor_path)
+                frames: list[dict] = []
+                ok, diagnostic = boot_vm(
+                    base, serial, args.boot_timeout, args.profile,
+                    monitor_socket=monitor_path,
+                    progress_evidence=evidence if args.firstboot_vga else None,
+                    progress_frames=frames,
+                )
+                if args.firstboot_vga:
+                    report["displayDiagnosticOnly"] = True
+                    report["displayFrameCount"] = len(frames)
+                    if frames:
+                        manifest = evidence / f"{args.profile}-firstboot-vga.json"
+                        require(not manifest.exists() and not manifest.is_symlink(),
+                                "existing VGA diagnostic manifest")
+                        manifest.write_text(json.dumps({
+                            "source": "qemu-hmp-firstboot-progress-diagnostic-v1",
+                            "profile": args.profile,
+                            "diagnosticOnly": True,
+                            "windowsClientBootVerified": False,
+                            "dualBootVerified": False,
+                            "rollbackVerified": False,
+                            "screenshots": frames,
+                        }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
                 report["windowsClientBootVerified"] = ok
                 report["diagnostic"] = diagnostic
             finally:
