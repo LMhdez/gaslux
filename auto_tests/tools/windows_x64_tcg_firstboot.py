@@ -861,10 +861,27 @@ def main(argv: list[str] | None = None) -> int:
                          "with official noprompt UEFI image; never release media")
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
+    ap.add_argument("--prepare-owned-cow-checkpoint", action="store_true",
+                    help="Windows 10 hosted KVM ONLY, after genuine installed "
+                         "firstboot/GPT audit: create disposable COW overlay "
+                         "with private OVMF VARS checkpoint; no Linux writes")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
+    if args.prepare_owned_cow_checkpoint:
+        if not (args.profile == "win10_22h2_en_us_x64"
+                and args.two_stage_install_only
+                and args.derived_no_prompt
+                and args.accel == "kvm"
+                and not args.fixture_only
+                and not args.boot_probe_only
+                and not args.one_shot_install_only
+                and os.environ.get("GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT")
+                == "I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY"):
+            raise SystemExit(
+                "COW checkpoint requires separate hosted Windows 10 KVM "
+                "postboot+read-only-GPT-only consent; no Linux writes")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -1046,6 +1063,32 @@ def main(argv: list[str] | None = None) -> int:
                         report["readOnlyGptGeometryEvidenceSha256"] = (
                             hashlib.sha256(serialized).hexdigest()
                         )
+                        if args.prepare_owned_cow_checkpoint:
+                            # Never stage an overlay before Microsoft client
+                            # firstboot, clean shutdown, and offline GPT pass.
+                            from windows_cachyos_cow_checkpoint import (
+                                prepare_postboot_cow,
+                            )
+                            cow = prepare_postboot_cow(disk, nvram, candidate)
+                            cow_blob = (
+                                json.dumps(cow, sort_keys=True, indent=2)
+                                + "\n"
+                            ).encode("utf-8")
+                            cow_doc = (
+                                evidence /
+                                f"{args.profile}-cow-checkpoint-candidate.json"
+                            )
+                            require(not cow_doc.exists() and
+                                    not cow_doc.is_symlink(),
+                                    "refusing existing COW checkpoint evidence")
+                            with cow_doc.open("xb") as stream:
+                                stream.write(cow_blob)
+                            report["cowCheckpointCandidatePrepared"] = True
+                            report["cowCheckpointCandidateSha256"] = (
+                                hashlib.sha256(cow_blob).hexdigest()
+                            )
+                            print("GASLUX_WINDOWS_COW_CHECKPOINT_CANDIDATE=1",
+                                  flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
