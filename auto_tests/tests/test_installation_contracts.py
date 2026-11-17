@@ -1381,3 +1381,59 @@ def test_state_schema_rejects_contradictory_lifecycle_fields(
 def validate_schema_document(schema_name: str, document: dict[str, object]) -> None:
     schema = json.loads((ROOT / "schemas" / schema_name).read_text(encoding="utf-8"))
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(document)
+
+
+@pytest.mark.parametrize(
+    ("distro_id", "os_release_id"),
+    [
+        ("mint", "zorin"),
+        ("zorin", "linuxmint"),
+        ("cachyos", "cachyos"),
+        ("popos", "pop"),
+        ("bazzite", "bazzite"),
+        ("q4os", "q4os"),
+    ],
+)
+@pytest.mark.parametrize("firmware", ["bios", "uefi"])
+def test_unapproved_backend_is_rejected_before_live_installation(
+    plan_module: ModuleType,
+    distro_id: str,
+    os_release_id: str,
+    firmware: str,
+) -> None:
+    plan = make_plan(firmware, 40)
+    plan["distribution"]["id"] = distro_id
+    plan["distribution"]["osReleaseId"] = os_release_id
+    with pytest.raises(plan_module.PlanValidationError, match="schema validation|backend"):
+        plan_module.validate_plan(plan, require_installer=True)
+
+
+@pytest.mark.parametrize(
+    ("distro_id", "os_release_id"),
+    [
+        ("mint", "linuxmint"),
+        ("zorin", "zorin"),
+    ],
+)
+@pytest.mark.parametrize("firmware", ["bios", "uefi"])
+def test_existing_backend_identity_remains_valid(
+    plan_module: ModuleType,
+    distro_id: str,
+    os_release_id: str,
+    firmware: str,
+) -> None:
+    plan = make_plan(firmware, 40)
+    plan["distribution"]["id"] = distro_id
+    plan["distribution"]["osReleaseId"] = os_release_id
+    plan_module.validate_plan(plan, require_installer=True)
+
+
+def test_signed_release_config_schema_rejects_unknown_legacy_backend() -> None:
+    schema = json.loads((ROOT / "schemas/release-config.schema.json").read_text(encoding="utf-8"))
+    config = json.loads((ROOT / "release-config.json").read_text(encoding="utf-8"))
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    assert validator.is_valid(config)
+    forged = json.loads(json.dumps(config))
+    forged["distributions"][0]["id"] = "bazzite"
+    forged["distributions"][0]["osReleaseId"] = "bazzite"
+    assert not validator.is_valid(forged)

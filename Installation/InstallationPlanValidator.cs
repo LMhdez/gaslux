@@ -231,6 +231,10 @@ namespace Libertix.Installation
                 distribution.OsReleaseId,
                 "distribution.osReleaseId",
                 errors);
+            Require(DistributionBackendPolicy.CanUseLegacyDebianBackend(
+                    distribution.Id, distribution.OsReleaseId),
+                errors,
+                "distribution backend is not enabled in this release.");
             RequireSafeGrubLabel(
                 distribution.GrubDisplayName,
                 "distribution.grubDisplayName",

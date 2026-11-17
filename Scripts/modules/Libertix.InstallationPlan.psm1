@@ -449,6 +449,14 @@ function Assert-LibertixPlanDistribution {
             throw "Installation plan field distribution.$name must be a safe lowercase identifier."
         }
     }
+    # v4/v5 plans are executed only by the already verified Debian/Ubuntu backend.
+    # A new distribution requires a separate, signed backend contract.
+    if (-not (
+        ($distribution.id -ceq 'mint' -and $distribution.osReleaseId -ceq 'linuxmint') -or
+        ($distribution.id -ceq 'zorin' -and $distribution.osReleaseId -ceq 'zorin')
+    )) {
+        throw 'Installation plan distribution backend is not enabled in this release.'
+    }
     if ([string]$distribution.grubDisplayName -notmatch '^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,79}$') {
         throw "Installation plan field distribution.grubDisplayName contains unsupported GRUB label characters."
     }

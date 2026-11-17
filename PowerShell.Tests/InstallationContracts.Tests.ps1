@@ -576,3 +576,29 @@ Describe "Installation state ordering" {
             Should -Throw "*overall progress is invalid*"
     }
 }
+
+
+Describe 'Legacy distribution backend gate' {
+    It 'accepts the two existing backend identities: <DistroId>' -ForEach @(
+        @{ DistroId = 'mint'; OsReleaseId = 'linuxmint' },
+        @{ DistroId = 'zorin'; OsReleaseId = 'zorin' }
+    ) {
+        $plan = New-ValidInstallationPlan
+        $plan.distribution.id = $DistroId
+        $plan.distribution.osReleaseId = $OsReleaseId
+        { Assert-LibertixInstallationPlan -Plan $plan } | Should -Not -Throw
+    }
+
+    It 'rejects an unapproved backend identity: <DistroId>/<OsReleaseId>' -ForEach @(
+        @{ DistroId = 'mint'; OsReleaseId = 'zorin' },
+        @{ DistroId = 'cachyos'; OsReleaseId = 'cachyos' },
+        @{ DistroId = 'popos'; OsReleaseId = 'pop' },
+        @{ DistroId = 'bazzite'; OsReleaseId = 'bazzite' },
+        @{ DistroId = 'q4os'; OsReleaseId = 'q4os' }
+    ) {
+        $plan = New-ValidInstallationPlan
+        $plan.distribution.id = $DistroId
+        $plan.distribution.osReleaseId = $OsReleaseId
+        { Assert-LibertixInstallationPlan -Plan $plan } | Should -Throw '*backend*'
+    }
+}
