@@ -11,7 +11,7 @@ set -Eeuo pipefail
 }
 [[ -c /dev/kvm && ! -L /dev/kvm ]] || exit 2
 for cmd in qemu-system-x86_64 grub-mkrescue grub-mkstandalone \
-           mkfs.vfat mmd mcopy timeout python3; do
+           sgdisk mformat mmd mcopy timeout python3; do
   command -v "$cmd" >/dev/null || exit 2
 done
 [[ "${RUNNER_TEMP:-}" == /home/runner/work/_temp ]] || exit 2
@@ -38,10 +38,15 @@ halt
 GRUB
 grub-mkstandalone -O x86_64-efi -o "$work/BOOTX64.EFI" \
   "boot/grub/grub.cfg=$work/disk.cfg"
-truncate -s 96M "$work/synthetic-disk-fat.img"
-mkfs.vfat -F 32 -n GASLUXVM "$work/synthetic-disk-fat.img" >/dev/null
-mmd -i "$work/synthetic-disk-fat.img" ::/EFI ::/EFI/BOOT
-mcopy -i "$work/synthetic-disk-fat.img" \
+# Model the Windows installation target as a *real GPT with ESP* on
+# a SATA hard drive, never as an unpartitioned removable USB FAT image.
+truncate -s 128M "$work/only-synthetic-gpt-sata.img"
+sgdisk --clear --new=1:2048:+96M --typecode=1:EF00 \
+  "$work/only-synthetic-gpt-sata.img" >/dev/null
+fat_at_esp="$work/only-synthetic-gpt-sata.img@@1048576"
+mformat -i "$fat_at_esp" -F -v GASLUXVM ::
+mmd -i "$fat_at_esp" ::/EFI ::/EFI/BOOT
+mcopy -i "$fat_at_esp" \
   "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
 
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$work/vars.fd"
@@ -53,10 +58,9 @@ timeout -s TERM -k 3 105s qemu-system-x86_64 \
     -display none -vga std -monitor none -net none \
     -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd \
     -drive "if=pflash,format=raw,file=$work/vars.fd" \
-    -device qemu-xhci,id=lab_usb \
-    -drive "if=none,id=synthetic_disk,format=raw,file=$work/synthetic-disk-fat.img" \
-    -device usb-storage,drive=synthetic_disk \
     -device ich9-ahci,id=lab_sata \
+    -drive "if=none,id=synthetic_disk,format=raw,file=$work/only-synthetic-gpt-sata.img" \
+    -device ide-hd,drive=synthetic_disk,bus=lab_sata.0 \
     -drive "if=none,id=synthetic_dvd,media=cdrom,readonly=on,format=raw,file=$work/first-dvd.iso" \
     -device ide-cd,drive=synthetic_dvd,bus=lab_sata.1 \
     -boot order=c,once=d \
