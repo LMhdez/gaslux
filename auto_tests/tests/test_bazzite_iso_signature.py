@@ -15,6 +15,12 @@ from gaslux_bazzite_iso_signature import verify_bazzite_iso_blob  # noqa: E402
 from gaslux_lab_media_probe import ProbeRefusal  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def synthetic_verifier(monkeypatch):
+    # Unit tests mock the Cosign process, never a real upstream signature.
+    monkeypatch.setattr("gaslux_bazzite_iso_signature.shutil.which", lambda name: "/bin/true")
+
+
 @pytest.fixture
 def sample(tmp_path):
     data = bytearray(40 * 2048)
@@ -36,7 +42,6 @@ def sample(tmp_path):
         "firmware": "uefi",
         "partition_style": "gpt",
         "secure_boot_enabled": False,
-        "cosign_binary": "/bin/true",
     }
 
 
@@ -68,7 +73,6 @@ def test_synthetic_positive_is_never_install_authorization(sample):
         {"trusted_key_sha256": "0" * 64},
         {"expected_iso_sha256": "f" * 64},
         {"expected_iso_size": 0},
-        {"cosign_binary": "/does/not/exist/cosign"},
     ],
 )
 def test_fail_closed_negative_cases(sample, change):
@@ -138,6 +142,36 @@ def test_iso_change_during_cosign_is_refused(sample):
     with (
         patch("gaslux_bazzite_iso_signature.subprocess.run", side_effect=replace_iso),
         pytest.raises(ProbeRefusal, match="SHA-256"),
+    ):
+        verify_bazzite_iso_blob(**sample)
+
+
+def test_missing_verifier_fails_closed(sample, monkeypatch):
+    monkeypatch.setattr("gaslux_bazzite_iso_signature.shutil.which", lambda name: None)
+    with pytest.raises(ProbeRefusal, match="verifier is missing"):
+        verify_bazzite_iso_blob(**sample)
+
+
+def test_signature_mutation_during_verification_fails(sample):
+    def replace_signature(*args, **kwargs):
+        sample["signature_path"].write_text("altered", encoding="ascii")
+        return _fake_success()
+
+    with (
+        patch("gaslux_bazzite_iso_signature.subprocess.run", side_effect=replace_signature),
+        pytest.raises(ProbeRefusal, match="changed during Cosign"),
+    ):
+        verify_bazzite_iso_blob(**sample)
+
+
+def test_key_mutation_during_verification_fails(sample):
+    def replace_key(*args, **kwargs):
+        sample["public_key_path"].write_text("altered", encoding="ascii")
+        return _fake_success()
+
+    with (
+        patch("gaslux_bazzite_iso_signature.subprocess.run", side_effect=replace_key),
+        pytest.raises(ProbeRefusal, match="changed during Cosign"),
     ):
         verify_bazzite_iso_blob(**sample)
 
