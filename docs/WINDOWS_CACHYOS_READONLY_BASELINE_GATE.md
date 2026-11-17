@@ -33,3 +33,9 @@ PR #56 already provides read-only Windows guest evidence binding; it does not au
 No real disks, WPF production paths, distribution catalogue, Windows ESP, WinRE, TPM, BCD or firmware NVRAM are modified.
 
 GPL-3.0; AI_POLICY.md review required. Generated-by: GPT-6.
+
+## COM1 marker framing and validation evidence
+
+The Windows guest's independent PowerShell serial writes may be coalesced onto a single COM1 line. The candidate gate accepts each marker as an exact bounded whitespace-delimited token (at most 256 characters), including multiple adjacent known tokens on a line. It rejects arbitrary prompt/echo prefixes mixed into audit lines, glued markers, duplicates, conflicting values, absent required markers and the FIRSTBOOT_FAIL family even if the failure occurs more than 400 KiB before the success witnesses. This reflects the observed issues addressed in PRs #90 and #93. The result remains **candidate document consistency only** and no guest provenance or writing permission is granted.
+
+At commit `305e288` the dedicated no-ISO CI run #44056001264 passed 27 candidate gate regressions and 11 Microsoft ISO contract tests. No actual installed Windows, Linux dual boot or recovery was executed by this workflow. Earlier intermediate runs failed because one negative test still expected the old error string; the source guard itself correctly rejected the fake prompt. Consult the exact-HEAD Actions run for the final result.
