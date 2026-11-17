@@ -347,6 +347,13 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     child(user, "FullName", "Gaslux disposable VM CI")
     child(user, "Organization", "Gaslux Lab - evaluation only")
     oobe = child(root, "settings", attrs={"pass": "oobeSystem"})
+    # The WinPE locale is not inherited by OOBE. Without this separate
+    # International-Core component the installed guest can stop at the
+    # interactive region/keyboard pages, never reaching FirstLogonCommands.
+    # Microsoft: /windows-hardware/customize/desktop/automate-oobe
+    international = component(oobe, "Microsoft-Windows-International-Core")
+    for setting in ("InputLocale", "SystemLocale", "UILanguage", "UserLocale"):
+        child(international, setting, "en-US")
     shell = component(oobe, "Microsoft-Windows-Shell-Setup")
     child(shell, "TimeZone", "UTC")
     conf = child(shell, "OOBE")
