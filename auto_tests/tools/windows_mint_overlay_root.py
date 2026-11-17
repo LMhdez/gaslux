@@ -190,6 +190,7 @@ def install_mint_root_and_boot(
         initrd_copy = temp / "initrd.img"
         run(["sudo", "cp", str(kernel), str(kernel_copy)])
         run(["sudo", "cp", str(initrd), str(initrd_copy)])
+        run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}", str(kernel_copy), str(initrd_copy)])
         kernel_copy.chmod(0o644)
         initrd_copy.chmod(0o644)
         run(["sudo", "guestunmount", str(target)], timeout=120)
@@ -283,6 +284,7 @@ def install_mint_root_and_boot(
                                 check=False, capture_output=True, text=True)
         active = set(mounts.stdout.splitlines()) if mounts.returncode == 0 else {str(target), str(iso_mount)}
         if not guest_mounted and not iso_mounted and str(target) not in active and str(iso_mount) not in active:
-            shutil.rmtree(temp, ignore_errors=True)
+            subprocess.run(["sudo", "rm", "-rf", "--one-file-system", "--", str(temp)],
+                       check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             print("WARNING: preserving Mint COW workspace because a mount remains active")
