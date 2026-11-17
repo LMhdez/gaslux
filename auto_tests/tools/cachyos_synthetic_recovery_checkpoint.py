@@ -37,7 +37,7 @@ def digest(data: bytes) -> str:
 
 
 def validate_root(root: Path) -> Path:
-    require(type(root) is Path and not root.is_symlink(), "unsafe checkpoint root")
+    require(isinstance(root, Path) and not root.is_symlink(), "unsafe checkpoint root")
     require(os.environ.get("GITHUB_ACTIONS") == "true" and
             os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
             os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux",
@@ -117,7 +117,7 @@ def create_synthetic_checkpoint(root: Path, source: Path,
     """
     root = validate_root(root)
     tx, proposal_sha = validate_proposal(proposal)
-    require(type(source) is Path and source.parent == root and
+    require(isinstance(source, Path) and source.parent == root and
             source.name == SOURCE_NAME, "unexpected synthetic checkpoint source")
     input_fd, before = open_readonly_regular(source)
     checkpoint = root / ("checkpoint-" + tx)
