@@ -53,7 +53,7 @@ class USBFirstLogonCommandContracts(unittest.TestCase):
                 self.assertIn(sha256, command)
                 self.assertLess(len(command), 240)
                 self.assertIn("Get-Volume -FileSystemLabel GASLUXCI", command)
-                self.assertIn("if($v.Count-1){throw}", command)
+                self.assertIn("if($v.Count-ne 1){throw}", command)
                 self.assertIn("Get-FileHash $p", command)
                 self.assertIn(";&$p\"", command)
                 self.assertIn("-NoP -EP Bypass -C", command)
