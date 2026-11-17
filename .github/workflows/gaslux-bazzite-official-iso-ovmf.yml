@@ -95,6 +95,13 @@ jobs:
           size=$(stat -c '%s' "$iso")
           sha=$(sha256sum "$iso" | awk '{print $1}')
           [[ "$size" == "$length" ]] || { echo 'ISO download size changed'; exit 1; }
+          # Pinned official signed ISO from ublue-os/bazzite Actions #44121421800.
+          expected_sha='6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5'
+          expected_size='8377878528'
+          if [[ "$sha" != "$expected_sha" || "$size" != "$expected_size" ]]; then
+            echo 'Official stable ISO bytes no longer match pinned upstream build; refusing' >&2
+            exit 1
+          fi
           python3 assets/live/gaslux_bazzite_iso_signature.py \
             --iso "$iso" --signature "$iso.sig" \
             --public-key "$GITHUB_WORKSPACE/assets/keys/bazzite-upstream-cosign.pub" \
@@ -112,7 +119,8 @@ jobs:
           assert obj["detachedSignatureVerified"] is True
           assert obj["installationAuthorized"] is False
           obj["catalogPinAuthorized"] = False
-          obj["PIN_DISCOVERY_ONLY"] = True
+          obj["PIN_DISCOVERY_ONLY"] = False
+          obj["upstreamBuildEvidence"] = "https://github.com/ublue-os/bazzite/actions/runs/44121421800"
           obj["observedIsoSha256"] = sys.argv[1]
           obj["observedIsoSizeBytes"] = int(sys.argv[2])
           obj["installerIdentityVerified"] = False
@@ -144,7 +152,11 @@ jobs:
           guest_mem=4096
           if (( host_kib >= 11*1024*1024 )); then guest_mem=8192; fi
           accel=tcg
-          if [[ -r /dev/kvm && -w /dev/kvm ]]; then accel=kvm; fi
+          if [[ -c /dev/kvm ]]; then
+            # Only the short-lived hosted runner's KVM node is modified.
+            sudo chmod 0666 /dev/kvm
+            if [[ -r /dev/kvm && -w /dev/kvm ]]; then accel=kvm; fi
+          fi
           echo "guest RAM=$guest_mem MiB; mode=$accel; NOT INSTALLATION PROOF" | tee bazzite-evidence/vm-config.txt
           qemu-system-x86_64 \
             -nodefaults -machine "q35,accel=$accel" -cpu max -smp 2 -m "$guest_mem" \
@@ -159,20 +171,25 @@ jobs:
             > bazzite-evidence/qemu-stdout.txt 2> bazzite-evidence/qemu-stderr.txt &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || :; wait "$pid" 2>/dev/null || :' EXIT
-          sleep 150
-          if ! kill -0 "$pid" 2>/dev/null; then
-            echo 'Guest terminated before observation'; exit 1
-          fi
-          "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 capture bazzite-evidence/screen.png
-          python3 - <<'PY'
+          for phase in 1 2 3; do
+            sleep 90
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "Guest exited before observation phase $phase" >&2
+              exit 1
+            fi
+            image="bazzite-evidence/screen-$phase.png"
+            "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 capture "$image"
+            python3 - "$image" <<'PY'
           from PIL import Image
-          image = Image.open("bazzite-evidence/screen.png").convert("RGB")
+          import sys
+          image = Image.open(sys.argv[1]).convert("RGB")
           assert image.width >= 640 and image.height >= 480
           assert len(image.getcolors(maxcolors=1000000) or []) > 2, "Blank EFI console"
-          print("Nonblank guest screen captured; not proof of native installer.")
+          print("Nonblank guest screenshot only; not Anaconda execution proof")
           PY
-          tesseract bazzite-evidence/screen.png stdout 2>/dev/null > bazzite-evidence/screen-ocr.txt || :
-          echo 'NO INSTALLER PROOF: screen requires human inspection; no disk attached.' > bazzite-evidence/guest-result.txt
+            tesseract "$image" stdout 2>/dev/null > "bazzite-evidence/screen-$phase-ocr.txt" || :
+          done
+          echo 'NO AUTOMATIC INSTALLER PROOF: review screenshots and serial log; no target disk attached.' > bazzite-evidence/guest-result.txt
       - name: Publish limited read-only evidence (never ISO or private NVRAM)
         if: always()
         uses: actions/upload-artifact@v4
