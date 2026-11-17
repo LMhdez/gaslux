@@ -2,7 +2,7 @@ name: CachyOS Windows-shared root-only pacstrap safety contracts (NO install)
 
 on:
   push:
-    branches: [feature/cachyos-shared-cow-root-pacstrap-only]
+    branches: [feature/cachyos-shared-cow-root-pacstrap-only, security/cachyos-shared-cow-protected-mount-identity-issue3]
     paths:
       - .github/workflows/cachyos-shared-cow-root-pacstrap-safety.yml
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap.py
