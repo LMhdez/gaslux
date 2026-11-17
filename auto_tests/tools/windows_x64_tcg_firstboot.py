@@ -455,14 +455,27 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
             monitor.settimeout(2)
             monitor.connect(str(monitor_path))
-            # HMP emits an initial banner. Consume at most 8 KiB.
-            banner = monitor.recv(8192)
-            require(b"QEMU" in banner or b"(qemu)" in banner,
-                    "unexpected guest monitor protocol banner")
+            # QEMU HMP echoes readline input over multiple recv() fragments.
+            # A single recv can return only the first character. Closing then
+            # may cancel the command while falsely reporting a delivered key.
+            # The complete HMP prompt acknowledges command processing only;
+            # it is NOT proof that Windows started or that firmware received it.
+            def until_prompt() -> bytes:
+                data = bytearray()
+                while len(data) < 131072:
+                    part = monitor.recv(8192)
+                    require(bool(part), "QEMU HMP closed before acknowledging boot key")
+                    data.extend(part)
+                    if b"(qemu) " in data:
+                        return bytes(data)
+                raise LabError("unbounded QEMU HMP boot-key response")
+
+            banner = until_prompt()
+            require(b"QEMU" in banner, "unexpected guest monitor protocol banner")
             monitor.sendall(f"sendkey ret {hold_ms}\n".encode("ascii"))
-            response = monitor.recv(8192)
-            require(b"unknown command" not in response.lower() and
-                    b"error:" not in response.lower(),
+            response = until_prompt().lower()
+            require(b"unknown command" not in response and
+                    b"error:" not in response and b"could not" not in response,
                     "QEMU refused initial ISO boot key")
     except (TimeoutError, OSError) as exc:
         raise LabError("QEMU HMP failed to deliver initial ISO boot key") from exc
@@ -605,9 +618,12 @@ def build_two_stage_qemu_args(
     ):
         args[args.index("-boot") + 1] = boot
         args[args.index("-serial") + 1] = "file:" + str(serial)
-        # Neither VM uses headless HMP keyboard injection. No stale QEMU
-        # Unix monitor socket can be inherited between guests.
-        args[args.index("-monitor") + 1] = "none"
+        # Stage 1 must retain its private HMP socket: the genuine Microsoft
+        # DVD has a VGA-only "Press any key" prompt. Without a key, Windows
+        # Setup never starts even though OVMF reports DVD handoff. Stage 2
+        # has NO monitor and NO DVD.
+        if args is second:
+            args[args.index("-monitor") + 1] = "none"
     dvd_ids = (
         ("-drive", "if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file="),
         ("-device", "ide-cd,drive=verified_iso,bus=lab_sata.1"),
@@ -804,7 +820,14 @@ def boot_two_stage_windows(
     require(not initial_serial.exists() and not final_serial.exists(),
             "VM serial evidence path was reused")
     first, second = build_two_stage_qemu_args(original_args, initial_serial)
+    monitor_spec = original_args[original_args.index("-monitor") + 1]
+    expected_monitor = final_serial.parent / "initial-installer-hmp.sock"
+    require(monitor_spec == f"unix:{expected_monitor},server,nowait"
+            and not expected_monitor.exists() and not expected_monitor.is_symlink(),
+            "first-stage DVD key requires fresh owned HMP socket")
     initial_allocated = disk.stat().st_blocks * 512
+    dvd_key_sent = False
+    dvd_started_at: float | None = None
     dvd_scan_offset = 0
     dvd_scan_carry = b""
     dvd_start_count = 0
@@ -824,8 +847,18 @@ def boot_two_stage_windows(
                         initial_serial, dvd_scan_offset, dvd_scan_carry,
                     )
                     dvd_start_count += found
+                    if dvd_start_count == 1 and dvd_started_at is None:
+                        dvd_started_at = time.monotonic()
                     if dvd_start_count > 1:
                         return False, "initial Windows Setup retried the DVD boot"
+                    # A single acknowledged QEMU HMP key may advance the
+                    # VGA-only Microsoft DVD prompt. It is not Windows proof.
+                    if (not dvd_key_sent and dvd_started_at is not None
+                            and time.monotonic() - dvd_started_at >= 1):
+                        send_first_iso_boot_key(expected_monitor, hold_ms=6000)
+                        dvd_key_sent = True
+                        print("GASLUX_WINDOWS_STAGE1_DVD_HMP_KEY_SENT=1",
+                              flush=True)
                     if (b"No bootable option or device was found." in observed
                             or b"DVD-ROM" in observed
                             and b"Time out" in observed):
@@ -845,7 +878,9 @@ def boot_two_stage_windows(
         diagnose_stalled_windows_stage(
             disk, proc, initial_allocated, inspect_cached_answer,
         )
-        return False, "Windows Setup did not reboot its first owned VM"
+        return False, ("Windows Setup did not reboot its first owned VM"
+                       + (" after one acknowledged DVD HMP boot key"
+                          if dvd_key_sent else " without DVD HMP boot key"))
     if not initial_serial.is_file():
         return False, "missing first-stage UEFI DVD serial evidence"
     (found, dvd_scan_offset, dvd_scan_carry,
