@@ -96,8 +96,9 @@ class WindowsStalledPantherTests(unittest.TestCase):
         self.assertIn("if first_stage_stalled:", segment)
         self.assertLess(segment.index("proc.wait(timeout=30)"),
                         segment.index("diagnose_stalled_windows_stage("))
-        self.assertIn('return False, "Windows Setup did not reboot its first owned VM"',
-                      segment)
+        self.assertIn('Windows Setup did not reboot its first owned VM', segment)
+        self.assertIn('after one acknowledged DVD HMP boot key', segment)
+        self.assertIn('without DVD HMP boot key', segment)
 
 
 if __name__ == "__main__":
