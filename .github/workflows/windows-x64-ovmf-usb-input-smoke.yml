@@ -1,4 +1,4 @@
-name: Windows ISO lab headless OVMF USB keyboard console smoke (synthetic GRUB only)
+name: Windows ISO lab headless OVMF PS2 keyboard console smoke (synthetic GRUB only)
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   synthetic-uefi-usb-keyboard:
-    name: Real QEMU/KVM OVMF receives one key from isolated HMP USB input
+    name: Real QEMU/KVM OVMF receives one key from isolated HMP PS2 input
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -44,7 +44,7 @@ jobs:
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
-      - name: Prove guest UEFI USB keystroke consumption, not only HMP acceptance
+      - name: Prove guest UEFI PS2 keystroke consumption, not only HMP acceptance
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -98,8 +98,7 @@ jobs:
                   # QEMU -display none can leave headless keyboard routing unproven.
                   "-display", "vnc=127.0.0.1:79", "-vga", "std",
                   "-monitor", f"unix:{hmp},server,nowait", "-net", "none",
-                  "-device", "qemu-xhci,id=lab_usb",
-                  "-device", "usb-kbd,bus=lab_usb.0",
+                  # Keep Q35/OVMF built-in PS/2 keyboard; USB HID is a separate test.
                   "-device", "ich9-ahci,id=lab_sata",
                   "-drive", f"if=none,id=lab_iso,media=cdrom,readonly=on,format=raw,file={iso}",
                   "-device", "ide-cd,drive=lab_iso,bus=lab_sata.1",
@@ -138,7 +137,7 @@ jobs:
                       raise RuntimeError(
                           "USB keyboard input was not independently received by the guest"
                       )
-                  print("GASLUX_SYNTHETIC_OVMF_USB_GUEST_ENTER_RECEIVED=1")
+                  print("GASLUX_SYNTHETIC_OVMF_PS2_GUEST_ENTER_RECEIVED=1")
               except Exception:
                   if serial.is_file():
                       print(serial.read_bytes()[-10000:].decode(errors="replace"))
@@ -150,7 +149,7 @@ jobs:
                   err.close()
           PY
           {
-            echo 'PASS: synthetic GRUB EFI guest consumed an HMP Enter via xHCI USB HID.'
+            echo 'PASS: synthetic GRUB EFI guest consumed an HMP Enter via built-in PS/2.'
             echo 'No Microsoft Windows ISO was used, no Windows Setup or OS boot verified.'
             echo 'No physical disks or host EFI/BCD/WinRE were modified.'
           } >> "$GITHUB_STEP_SUMMARY"
