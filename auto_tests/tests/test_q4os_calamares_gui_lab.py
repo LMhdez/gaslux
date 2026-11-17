@@ -4,11 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 
-SCRIPT = (
-    Path(__file__).resolve().parents[1]
-    / "tools"
-    / "gaslux_q4os_calamares_gui_laboratory.sh"
-)
+SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "gaslux_q4os_calamares_gui_laboratory.sh"
 
 
 def test_graphical_lab_requires_explicit_disposable_actions_authorization(tmp_path):
