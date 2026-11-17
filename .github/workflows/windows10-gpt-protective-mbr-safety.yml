@@ -29,6 +29,13 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          # qemu-img dd count/skip interaction must be reproduced with
+          # QEMU's actual block layer on a fresh sparse 128-GiB QCOW2.
+          # No guest, Microsoft media or physical block device is opened.
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          command -v qemu-img >/dev/null
+          command -v qemu-io >/dev/null
           python3 -m py_compile \
             auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py \
             auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py \
@@ -37,4 +44,4 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_readonly_baseline_gate.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_qemu_host_gate.py' -v
-          echo 'Only synthetic read-only proof checks: NO ISO, VM, target disk, Windows files, Linux installer, dual boot or rollback.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'PASS: CRC/GUID/MBR synthetic regressions and REAL qemu-img/qemu-io scratch QCOW2 tail-read. No ISO, Windows VM, host disk, EFI/BCD writes, Linux installer, dual boot or rollback tested.' >> "$GITHUB_STEP_SUMMARY"
