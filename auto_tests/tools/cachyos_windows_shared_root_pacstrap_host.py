@@ -21,7 +21,7 @@ import time
 import uuid
 from typing import Any
 
-from cachyos_windows_archiso_handoff import ISO_SHA256, SERIAL, VIRTUAL_BYTES
+from cachyos_windows_shared_archiso_handoff import ISO_SHA256, SERIAL, VIRTUAL_BYTES
 from cachyos_windows_archiso_signed_plan_lab import prepare, read_windows_file_hashes
 from cachyos_windows_shared_cow_grant import (
     CONSENT as GRANT_CONSENT, issue_root_write_grant,
