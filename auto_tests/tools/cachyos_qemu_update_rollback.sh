@@ -104,7 +104,7 @@ stop_vm() {
   vm_pid=0
 }
 await_clean_shutdown() {
-  local count="$1" status=0
+  local count="$1" status=0 attempt
   [[ "$vm_pid" =~ ^[0-9]+$ ]] && (( vm_pid > 0 )) ||
     die 'cannot wait for a missing QEMU guest'
   for ((attempt=0; attempt<count; attempt++)); do
