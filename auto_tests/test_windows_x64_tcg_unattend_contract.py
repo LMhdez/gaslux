@@ -103,8 +103,15 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
         for banned in ("if=ide,file=/dev/", "if=none,file=/dev/",
                        "file=/dev/sda", "file=/dev/nvme",
                        "--skippgpcheck", "bcdedit /delete",
-                       "SigLevel = Never", "-accel kvm", "dev/shm/"):
+                       "SigLevel = Never", "dev/shm/"):
             self.assertNotIn(banned, code)
+        # KVM was added by an experimental hosted-runner branch. It is
+        # permitted exclusively with explicit VM-only consent and the
+        # GitHub-hosted /dev/kvm isolation gate; no physical block devices.
+        self.assertIn('GASLUX_WINDOWS_KVM_CONSENT', code)
+        self.assertIn('RUNNER_ENVIRONMENT', code)
+        self.assertIn('I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY', code)
+        self.assertIn('"/dev/kvm"', code)
 
     def test_unexpected_microsoft_redirects_fail_closed(self):
         class Request:
