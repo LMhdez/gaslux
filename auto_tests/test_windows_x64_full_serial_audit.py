@@ -59,7 +59,7 @@ class FullSerialAuditContracts(unittest.TestCase):
 
     def test_proof_earlier_than_400k_is_not_erased(self):
         self.assertTrue(
-            self.boot(PROOFS + b"Firmware debug output\n" * 28000)[0][0]
+            self.boot(PROOFS + b"Firmware debug output\n" * 28000)[0]
         )
 
     def test_earlier_guest_failure_cannot_be_erased_by_later_proof(self):
