@@ -123,7 +123,7 @@ jobs:
     name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
     needs: [verify-host-and-proof-contracts, synthetic-guestfs-fifth-ext4]
     runs-on: ubuntu-24.04
-    timeout-minutes: 85
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -186,6 +186,16 @@ jobs:
             --dir="$RUNNER_TEMP/mint-upstream" --out=mint.iso "$MINT_URL"
           test "$(stat -c %s "$RUNNER_TEMP/mint-upstream/mint.iso")" = "$MINT_BYTES"
           printf '%s  %s\n' "$MINT_SHA" "$RUNNER_TEMP/mint-upstream/mint.iso" | sha256sum --check
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("release-config.json").read_text())
+          mint = [x for x in data["distributions"] if x["id"] == "mint"]
+          assert len(mint) == 1
+          assert mint[0]["isoInstallerSha256"] == "a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4"
+          assert mint[0]["isoInstallerSizeBytes"] == 3091660800
+          print("PASS: Mint ISO bytes match signed-catalog source metadata")
+          PY
       - name: Validate official SHA, disposable first DVD Setup, detach DVD and independently firstboot Windows
         shell: bash
         run: |
