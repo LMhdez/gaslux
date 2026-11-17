@@ -149,4 +149,6 @@ def test_mock_windows_native_install_never_selects_protected_partitions():
     assert "GASLUX_POP_NATIVE_MOCK_WINDOWS_VM:-0" in runner
     assert "-net none" in runner
     assert "owned-gpt-postboot.json" in runner
+    assert "ownedPopEspGptEntryIdentical" in runner
+    assert 'postboot_partuuid" == "$expected_partuuid' in runner
     assert "GASLUX_POP_MOCK_WINDOWS_PROTECTED_THROUGH_FIRSTBOOT=1" in runner

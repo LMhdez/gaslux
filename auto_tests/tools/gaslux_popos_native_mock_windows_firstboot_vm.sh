@@ -21,7 +21,7 @@ printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
 [[ -d "${RUNNER_TEMP:-}" && ! -L "$RUNNER_TEMP" ]] ||
   die 'Expected GitHub disposable runner temporary directory missing'
 for binary in qemu-system-x86_64 grub-mkstandalone mkfs.vfat mcopy mmd \
-  sgdisk dd timeout sudo sha256sum python3 setfacl; do
+  sgdisk dd timeout sudo sha256sum python3 setfacl mkfs.ntfs; do
   command -v "$binary" >/dev/null || die "Missing disposable VM tool: $binary"
 done
 # Runner /dev/kvm permissions can be reset between independent QEMU
@@ -268,7 +268,12 @@ if len(lines) != 2 or lines[0] != "GASLUX_POP_NATIVE_MOCK_WINDOWS_GPT_VERIFIED=1
 proof = json.loads(lines[1])
 if proof.get("productionInstallationAuthorized") is not False:
     raise SystemExit("Lab GPT proof must never authorize production")
-if proof.get("ownedEspGptEntryIdentical") is not True:
+if any(proof.get(key) is not True for key in (
+    "mockWindowsEspBytesIdentical",
+    "mockWindowsNtfsBytesIdentical",
+    "mockWindowsGptEntriesIdentical",
+    "ownedPopEspGptEntryIdentical",
+)):
     raise SystemExit("Owned ESP GPT entry changed during native install")
 value = proof.get("rootPartuuidAfter")
 if type(value) is not str or str(uuid.UUID(value)) != value:
@@ -338,6 +343,22 @@ python3 auto_tests/tools/gaslux_popos_native_mock_windows_gpt_reconcile.py verif
   > "$work/owned-gpt-postboot-proof.txt"
 grep -Fxq 'GASLUX_POP_NATIVE_MOCK_WINDOWS_GPT_VERIFIED=1' \
   "$work/owned-gpt-postboot-proof.txt" || die 'Post-firstboot mock Windows partitions changed'
+postboot_partuuid="$(python3 - "$work/owned-gpt-postboot-proof.txt" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+lines = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 2 or lines[0] != "GASLUX_POP_NATIVE_MOCK_WINDOWS_GPT_VERIFIED=1":
+    raise SystemExit("Invalid post-boot protected-partition evidence")
+proof = json.loads(lines[1])
+if proof.get("productionInstallationAuthorized") is not False:
+    raise SystemExit("Post-boot mock proof must not authorize production")
+print(proof["rootPartuuidAfter"])
+PY
+)"
+[[ "$postboot_partuuid" == "$expected_partuuid" ]] ||
+  die 'Installed first boot unexpectedly changed the reconciled root PARTUUID'
 printf 'GASLUX_POP_NATIVE_FIRSTBOOT_WITHOUT_LIVE_ISO=1\n'
 printf 'GASLUX_POP_MOCK_WINDOWS_PROTECTED_THROUGH_FIRSTBOOT=1\n'
 printf 'NOT TESTED: actual Windows 10/11 boot, BCD, WinRE, real dual boot, upgrades, rollback.\n'
