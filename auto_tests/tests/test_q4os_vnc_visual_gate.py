@@ -10,11 +10,14 @@ TOOLS = Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
 
 from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
+    _CALAMARES_NEXT,
+    _CALAMARES_WINDOW,
     _EXPECTED_SCREEN,
     _ICON,
     _WELCOME_ALLOWED,
     _WELCOME_BOX,
     verified_after_close,
+    verified_native_calamares_welcome,
     verified_centre_changed,
     verified_q4os_welcome_desktop,
 )
@@ -106,3 +109,28 @@ def test_gate_refuses_unknown_command_without_trusting_png(tmp_path):
     )
     assert result.returncode != 0
     assert "unknown Q4OS screenshot guard phase" in result.stderr
+
+
+def test_real_calamares_welcome_exact_regions_pinned_to_two_verified_artifacts():
+    assert _CALAMARES_WINDOW == (
+        (128, 118, 1152, 667),
+        "a451cb2b920944cfa5d80f904446b2ab86d3b4097b66b776abf86b4ffed3dd08",
+    )
+    assert _CALAMARES_NEXT == (
+        (955, 619, 1044, 668),
+        "c800cc03d280395a9e699e4b6216cb6d3d422c2dd40a54e6ceeca862220ea8e1",
+    )
+
+
+def test_refuse_native_welcome_navigation_when_screen_is_not_pinned(tmp_path):
+    fake = tmp_path / "not-calamares.png"
+    Image.new("RGB", (1280, 800), "black").save(fake)
+    assert not verified_native_calamares_welcome(fake)
+    process = subprocess.run(
+        [sys.executable, str(GATE), "calamares-welcome", str(fake)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert process.returncode != 0
+    assert "REFUSED" in process.stderr
