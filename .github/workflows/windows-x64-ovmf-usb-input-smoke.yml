@@ -1,4 +1,4 @@
-name: Windows ISO lab headless OVMF PS2 keyboard console smoke (synthetic GRUB only)
+name: Windows ISO lab loopback VNC EFI keyboard smoke (synthetic GRUB only)
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   synthetic-uefi-usb-keyboard:
-    name: Real QEMU/KVM OVMF receives one key from isolated HMP PS2 input
+    name: Real QEMU/KVM OVMF consumes exactly one loopback VNC Enter
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -44,24 +44,62 @@ jobs:
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
-      - name: Prove guest UEFI PS2 keystroke consumption, not only HMP acceptance
+      - name: Prove guest UEFI keyboard input from private loopback VNC
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
           import os
           import shutil
+          import socket
+          import struct
           import subprocess
           import sys
           import tempfile
           import time
           from pathlib import Path
 
-          sys.path.insert(0, "auto_tests/tools")
-          from windows_x64_tcg_firstboot import send_first_iso_boot_key
           assert os.environ["RUNNER_TEMP"] == "/home/runner/work/_temp"
           assert os.environ["RUNNER_ENVIRONMENT"] == "github-hosted"
           assert os.environ["GITHUB_REPOSITORY"] == "LMhdez/gaslux"
+          def recv_exact(conn, count):
+              data = b""
+              while len(data) < count:
+                  chunk = conn.recv(count - len(data))
+                  if not chunk:
+                      raise RuntimeError("RFB server disconnected early")
+                  data += chunk
+              return data
+
+          def send_loopback_vnc_enter():
+              # No external GUI, HMP key, physical host input, or guest network.
+              # This RFB client only connects to QEMU on localhost port 5979.
+              with socket.create_connection(("127.0.0.1", 5979), timeout=5) as conn:
+                  conn.settimeout(5)
+                  version = recv_exact(conn, 12)
+                  if version != b"RFB 003.008\n":
+                      raise RuntimeError("unexpected RFB protocol version")
+                  conn.sendall(version)
+                  count = recv_exact(conn, 1)[0]
+                  if count == 0 or count > 8:
+                      raise RuntimeError("invalid RFB security choices")
+                  types = recv_exact(conn, count)
+                  if 1 not in types:
+                      raise RuntimeError("unexpected loopback RFB security")
+                  conn.sendall(b"\x01")
+                  if recv_exact(conn, 4) != b"\x00\x00\x00\x00":
+                      raise RuntimeError("RFB security handshake refused")
+                  conn.sendall(b"\x01")
+                  server_init = recv_exact(conn, 24)
+                  desktop_name_len = struct.unpack(">I", server_init[20:24])[0]
+                  if not (0 < desktop_name_len <= 1024):
+                      raise RuntimeError("invalid RFB server identity")
+                  recv_exact(conn, desktop_name_len)
+                  # Exactly one X11 Return keysym down/up (0xFF0D).
+                  conn.sendall(struct.pack(">BBHI", 4, 1, 0, 0xFF0D))
+                  time.sleep(.35)
+                  conn.sendall(struct.pack(">BBHI", 4, 0, 0, 0xFF0D))
+
           with tempfile.TemporaryDirectory(
               prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]
           ) as tmp:
@@ -98,7 +136,7 @@ jobs:
                   # QEMU -display none can leave headless keyboard routing unproven.
                   "-display", "vnc=127.0.0.1:79", "-vga", "std",
                   "-monitor", f"unix:{hmp},server,nowait", "-net", "none",
-                  # Keep Q35/OVMF built-in PS/2 keyboard; USB HID is a separate test.
+                  # Use built-in Q35 PS/2 firmware keyboard; USB needs separate proof.
                   "-device", "ich9-ahci,id=lab_sata",
                   "-drive", f"if=none,id=lab_iso,media=cdrom,readonly=on,format=raw,file={iso}",
                   "-device", "ide-cd,drive=lab_iso,bus=lab_sata.1",
@@ -126,18 +164,18 @@ jobs:
                               raise RuntimeError("GRUB did not block for a real key")
                           accepted = True
                           break
-                      if ready and not injected and hmp.is_socket():
-                          print("GASLUX_SYNTHETIC_OVMF_HMP_KEY_REQUEST=1", flush=True)
-                          time.sleep(.6)  # Allow EFI console to enter its read loop.
-                          send_first_iso_boot_key(hmp, hold_ms=6000)
-                          print("GASLUX_SYNTHETIC_OVMF_HMP_KEY_ACCEPTED=1", flush=True)
+                      if ready and not injected:
+                          print("GASLUX_SYNTHETIC_OVMF_VNC_KEY_REQUEST=1", flush=True)
+                          time.sleep(.6)
+                          send_loopback_vnc_enter()
+                          print("GASLUX_SYNTHETIC_OVMF_VNC_KEY_SENT=1", flush=True)
                           injected = True
                       time.sleep(.15)
                   if not ready or not injected or not accepted:
                       raise RuntimeError(
                           "USB keyboard input was not independently received by the guest"
                       )
-                  print("GASLUX_SYNTHETIC_OVMF_PS2_GUEST_ENTER_RECEIVED=1")
+                  print("GASLUX_SYNTHETIC_OVMF_VNC_GUEST_ENTER_RECEIVED=1")
               except Exception:
                   if serial.is_file():
                       print(serial.read_bytes()[-10000:].decode(errors="replace"))
@@ -149,7 +187,7 @@ jobs:
                   err.close()
           PY
           {
-            echo 'PASS: synthetic GRUB EFI guest consumed an HMP Enter via built-in PS/2.'
+            echo 'PASS: synthetic GRUB EFI guest consumed a loopback-only VNC Enter.'
             echo 'No Microsoft Windows ISO was used, no Windows Setup or OS boot verified.'
             echo 'No physical disks or host EFI/BCD/WinRE were modified.'
           } >> "$GITHUB_STEP_SUMMARY"
