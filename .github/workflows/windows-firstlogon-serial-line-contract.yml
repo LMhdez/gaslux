@@ -29,3 +29,29 @@ jobs:
           & pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
           if ($LASTEXITCODE -ne 0) { throw 'PowerShell 7 emitted concatenated markers' }
           'Only lexical/array semantics checked, NOT a real Windows firstboot.' | Out-File $env:GITHUB_STEP_SUMMARY -Append
+
+  ubuntu-pwsh-no-guest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify native PowerShell 7 element semantics without COM1
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          command -v pwsh
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,'auto_tests/tools')
+          from windows_x64_tcg_firstboot import witness_powershell
+          Path('auto_tests/powershell/win-firstlogon-source.ps1').write_text(
+              witness_powershell('win10_22h2_en_us_x64','19045') + '\n',
+              encoding='utf-8',
+          )
+          PY
+          pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_tcg_unattend_contract.py'
+          echo 'PASS: marker element semantics in local PowerShell; no Windows guest boot' >> "$GITHUB_STEP_SUMMARY"
