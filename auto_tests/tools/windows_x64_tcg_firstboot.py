@@ -452,8 +452,8 @@ def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
             # HMP screendump only reads the VM display: no input or disk writes.
             monitor.sendall(f"screendump {destination.name}\n".encode("ascii"))
             response = b""
-            while b"(qemu)" not in response and len(response) < 8192:
-                fragment = monitor.recv(8192 - len(response))
+            while b"(qemu)" not in response and len(response) < 32768:
+                fragment = monitor.recv(min(8192, 32768 - len(response)))
                 require(bool(fragment), "QEMU HMP closed during framebuffer request")
                 response += fragment
             sample = response[-250:].decode("ascii", "replace").replace(
