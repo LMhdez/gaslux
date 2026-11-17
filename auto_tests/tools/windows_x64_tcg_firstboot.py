@@ -934,6 +934,14 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("derived no-prompt DVD requires probe-only unless the "
                          "separate hosted VM one-shot installation gate is approved")
     overlay_reboot = os.environ.get("GASLUX_WINDOWS_OVERLAY_REBOOT_TEST")
+    require(
+        os.environ.get("GASLUX_CACHYOS_OVERLAY_GPT_CONSENT") in
+        (None, "I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY"),
+        "unknown Linux GPT overlay lab authorization")
+    require(
+        not os.environ.get("GASLUX_CACHYOS_OVERLAY_GPT_CONSENT")
+        or bool(overlay_reboot),
+        "Linux GPT overlay requires independent Windows reboot consent")
     require(overlay_reboot in (None, "I_ACCEPT_HOSTED_WINDOWS_POST_OVERLAY_REBOOT_ONLY"),
             "invalid third-boot experiment consent")
     require(not overlay_reboot or (
@@ -1132,14 +1140,40 @@ def main(argv: list[str] | None = None) -> int:
                                 post_serial = post_dir / "win-post-overlay-serial.log"
                                 third = build_post_overlay_disk_boot_args(
                                     base, post_serial)
+                                linux_gpt_trial = os.environ.get(
+                                    "GASLUX_CACHYOS_OVERLAY_GPT_CONSENT")
+                                if linux_gpt_trial:
+                                    from windows10_cachyos_real_gpt_overlay_rehearsal import (
+                                        prepare_linux_gpt_rehearsal,
+                                        build_post_discard_boot_args,
+                                        verify_after_independent_windows_boot,
+                                    )
+                                    staged_linux_gpt = prepare_linux_gpt_rehearsal(
+                                        disk, nvram, candidate)
+                                    third = build_post_discard_boot_args(
+                                        third, staged_linux_gpt["bootOverlay"],
+                                        staged_linux_gpt["trialVars"])
                                 third_ok, third_diag = boot_vm(
                                     third, post_serial, 900, args.profile,
                                     monitor_socket=None, required_marker=POST_OVERLAY_MARKER)
                                 require(third_ok, "Windows boot after overlay discard failed: "
                                         + third_diag)
-                                # A second independently running Windows guest
-                                # checked its own ESP/BCD/WinRE and shut down
-                                # cleanly. No partition or Linux installer ran.
+                                if linux_gpt_trial:
+                                    linux_proof = verify_after_independent_windows_boot(
+                                        disk, nvram, staged_linux_gpt,
+                                        guest_verified=third_ok)
+                                    require(
+                                        linux_proof[
+                                            "windowsBootAfterLinuxPartitionDiscardVerified"
+                                        ] is True and
+                                        linux_proof["windowsEspBcdWinreBaseHashesUnchanged"]
+                                        is True and
+                                        linux_proof["cachyosInstalled"] is False and
+                                        linux_proof["storageWritesAuthorized"] is False,
+                                        "discarded Linux GPT COW recovery proof failed")
+                                    report["linuxGptOverlayExperiment"] = linux_proof
+                                # Third Windows guest checked its own GPT/ESP/BCD/WinRE
+                                # and shut down normally; no Linux OS installed.
                                 overlay_result["windowsRebootAfterFaultVerified"] = True
                                 overlay_result["windowsBcdWinreReobservedAfterDiscard"] = True
                                 report["windowsPostOverlayBootVerified"] = True
