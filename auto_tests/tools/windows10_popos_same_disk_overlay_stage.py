@@ -7,6 +7,8 @@ It does NOT install Linux, boot Windows after staging, or authorize production.
 """
 from __future__ import annotations
 
+from contextlib import closing
+
 import json
 import os
 import re
@@ -224,7 +226,7 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
 
     # PRECONDITION: host already ran inspect_owned_disk() on the shut-down
     # genuine Windows 10 VM. Independently repeat exact baseline here.
-    with guestfs.GuestFS(python_return_dict=True) as g:
+    with closing(guestfs.GuestFS(python_return_dict=True)) as g:
         g.add_drive_opts(str(base), readonly=1, format="qcow2")
         g.launch()
         layout = inspect_layout(g)
@@ -250,7 +252,7 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
         "unsafe overlay backing chain or invalid owned QCOW2",
     )
     try:
-        with guestfs.GuestFS(python_return_dict=True) as g:
+        with closing(guestfs.GuestFS(python_return_dict=True)) as g:
             # Only the COW overlay is writable. Its base is a format-pinned
             # read-only backing file, and remains outside the guest's writers.
             g.add_drive_opts(str(overlay), readonly=0, format="qcow2")
@@ -261,7 +263,7 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
             g.part_set_gpt_type("/dev/sda", 5, LINUX_GPT)
             g.part_set_name("/dev/sda", 5, ROOT_LABEL)
             g.sync()
-        with guestfs.GuestFS(python_return_dict=True) as g:
+        with closing(guestfs.GuestFS(python_return_dict=True)) as g:
             g.add_drive_opts(str(overlay), readonly=1, format="qcow2")
             g.launch()
             result = validate_after(g, before, plan)
