@@ -1,0 +1,159 @@
+name: Windows 10 genuine disk plus CachyOS Archiso signed read-only audit (VM only)
+
+on:
+  push:
+    branches:
+      - test/cachyos-win10-real-archiso-readonly-issue3
+    paths:
+      - .github/workflows/cachyos-windows10-real-archiso-readonly.yml
+      - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
+      - auto_tests/tools/cachyos_windows_archiso_readonly_host.sh
+      - auto_tests/tools/cachyos_windows_archiso_live_guest_readonly.sh
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_cachyos_windows_archiso_readonly_lab.py
+      - auto_tests/tools/cachyos_generated_boot_config.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-readonly-source-and-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate fail-closed source and all inherited Ed25519/GPT contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/tools/cachyos_generated_boot_config.py \
+            auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \
+            auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py \
+            auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
+            auto_tests/tools/cachyos_windows_shared_gpt_raw_audit.py \
+            auto_tests/test_cachyos_windows_archiso_readonly_lab.py
+          bash -n auto_tests/tools/cachyos_windows_archiso_readonly_host.sh
+          bash -n auto_tests/tools/cachyos_windows_archiso_live_guest_readonly.sh
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_archiso_readonly_lab.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_guest_probe.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_handoff.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_gpt_raw_audit.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_gpt_stage.py' -v
+          echo 'Signed layout and read-only Windows COW source contracts only; no guest launch in this job.' >> "$GITHUB_STEP_SUMMARY"
+
+  real-windows10-and-archiso-readonly:
+    needs: signed-readonly-source-and-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT: I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_GPT_CONSENT: I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY
+      GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT: I_ACCEPT_WINDOWS_GUEST_REBOOT_ON_PRIVATE_GPT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT: I_ACCEPT_EXT4_ONLY_FIFTH_PARTITION_ON_HOSTED_WIN10_COW
+      GASLUX_WINDOWS_POST_EXT4_REBOOT_CONSENT: I_ACCEPT_WINDOWS_FOURTH_GUEST_ON_EXT4_ONLY_QCOW2_COW
+      GASLUX_CACHYOS_ARCHISO_READONLY_CONSENT: I_ACCEPT_PINNED_ARCHISO_READONLY_WINDOWS10_QCOW2_COW
+      GASLUX_CACHYOS_VERIFIED_ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare genuine Windows KVM and Archiso read-only lab dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 qemu-system-x86 qemu-utils ovmf swtpm gdisk \
+            dosfstools mtools p7zip-full genisoimage \
+            python3-guestfs libguestfs-tools linux-image-generic \
+            grub-efi-amd64-bin grub-common e2fsprogs openssl
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Download exact official CachyOS 260809 ISO and verify SHA-256
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          workspace="$(mktemp -d -p "$RUNNER_TEMP" gaslux-pinned-cachyos-XXXXXXXX)"
+          {
+            printf '%s\t%s\n' 'https://mirror.limda.net/cachy/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' 'https://mirror.nju.edu.cn/cachyos/ISO/desktop/260809/cachyos-desktop-linux-260809.iso'
+            printf '  dir=%s\n' "$workspace"
+            printf '  out=cachyos.iso\n'
+          } > "$workspace/mirrors.txt"
+          aria2c --input-file="$workspace/mirrors.txt" \
+            --split=8 --min-split-size=32M --max-connection-per-server=8 \
+            --max-concurrent-downloads=1 --continue=true \
+            --file-allocation=none --retry-wait=8 --max-tries=8 \
+            --timeout=45 --connect-timeout=25 \
+            --check-integrity --checksum="sha-256=$GASLUX_CACHYOS_VERIFIED_ISO_SHA256"
+          printf '%s  %s\n' "$GASLUX_CACHYOS_VERIFIED_ISO_SHA256" "$workspace/cachyos.iso" | sha256sum -c --status
+          echo "GASLUX_CACHYOS_VERIFIED_ISO_PATH=$workspace/cachyos.iso" >> "$GITHUB_ENV"
+          echo 'Pinned official CachyOS desktop ISO SHA-256 VERIFIED; no release catalog changed.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Select private libguestfs kernel and run genuine Windows10 plus Archiso
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile win10_22h2_en_us_x64 --accel kvm \
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
+            --prepare-owned-cow-checkpoint \
+            --stage-cachyos-overlay-root-gpt-only \
+            --verify-windows-reboot-with-fifth-gpt \
+            --format-owned-fifth-ext4-only \
+            --verify-windows-reboot-after-ext4 \
+            --verify-cachyos-archiso-readonly
+          echo 'Pinned genuine Archiso booted with real installed Windows 10 QCOW2 COW READ-ONLY, signed plan/GPT/UUID verified. No pacstrap/EFI writes or dual boot.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Independently gate Windows 10 and read-only Archiso evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("windows-x64-tcg-evidence")
+          profile="win10_22h2_en_us_x64"
+          report=json.loads((root/(profile+"-result.json")).read_text())
+          assert report["windowsClientBootVerified"] is True
+          assert report["windowsBootAfterExt4Verified"] is True
+          assert report["cachyosArchisoSignedReadOnlyProofVerified"] is True
+          for denied in ("cachyosInstalled","sameDiskDualBootVerified",
+                         "storageWritesAuthorized","releaseEligible"):
+              assert report[denied] is False
+          proof=root/"win10-archiso-live-serial.log"
+          manifest=root/"win10-archiso-live-serial.sha256"
+          assert proof.is_file() and not proof.is_symlink()
+          recorded,filename=manifest.read_text().split()
+          assert filename==proof.name
+          assert recorded==hashlib.sha256(proof.read_bytes()).hexdigest()
+          assert b"GASLUX_WIN10_ARCHISO_READONLY_PASS:" in proof.read_bytes()
+          assert b"GASLUX_WIN10_ARCHISO_READONLY_FAILED" not in proof.read_bytes()
+          print("PASS: genuine installed Windows 10 fourth boot and live CachyOS read-only signed guest witness")
+          print("NO Linux installation, Windows EFI writes, kernel updates, same-disk dual boot or rollback proven")
+          PY
+      - name: Retain only bounded JSON/serial evidence, never ISO, WIM, QCOW2 or private signer
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cachyos-win10-real-archiso-readonly-evidence
+          path: windows-x64-tcg-evidence/
+          retention-days: 7
+          if-no-files-found: warn
