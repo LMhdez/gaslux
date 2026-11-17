@@ -30,3 +30,9 @@ The next stage is to use this Windows QCOW2 as a disposable guest target, make a
 - The lab uses KVM only when `/dev/kvm` is present and accessible to the runner.
 - Standard GitHub-hosted runners may not expose nested KVM. In that case the workflow explicitly selects QEMU TCG, uses a five-hour guest-process ceiling and a six-hour job ceiling; it does **not** mark the run successful unless Windows Setup, first interactive logon, clean shutdown, offline GPT/ESP/BCD checks and the self-contained QCOW2 checks all complete.
 - A TCG timeout or resource exhaustion is a failed/incomplete fixture, never a synthetic success. No fallback skips the guest boot or weakens the Windows evidence gates.
+
+## UEFI reset handling — 17 November 2026
+
+The QEMU installer phase now uses `-no-reboot` and a bounded host-side boot-cycle loop. The Windows installation ISO is attached only for the initial Windows PE/setup boot. When Setup requests a reset, QEMU exits to the host; subsequent cycles boot the QCOW2 first, with only the unattended answer media retained. After each guest reset or shutdown, the host mounts the NTFS partition read-only through qemu-nbd and checks for the first-logon marker. The loop fails closed after eight cycles or five hours, and does not treat a QEMU exit alone as success.
+
+This change addresses the previous boot-order hazard where the Windows installer ISO remained the highest-priority boot device after Setup had copied Windows to disk. It is not yet evidence that the guest installation succeeds; the new exact-head Actions run must pass all offline checks and upload its artifact.
