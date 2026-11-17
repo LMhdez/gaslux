@@ -313,6 +313,8 @@ def run_shared_root_pacstrap(
         (handoff / "public.pem", "public.pem"),
         (handoff / "root-write-grant.json", "root-write-grant.json"),
         (handoff / "root-write-grant.sig", "root-write-grant.sig"),
+        (handoff / "host-checkpoint.json", "host-checkpoint.json"),
+        (handoff / "host-overlay-backing-proof.json", "host-overlay-backing-proof.json"),
         (programs["cachyos_windows_shared_root_pacstrap.py"], "cachyos_windows_shared_root_pacstrap.py"),
         (programs["cachyos_windows_shared_archiso_handoff.py"], "cachyos_windows_shared_archiso_handoff.py"),
         (programs["cachyos_windows_shared_archiso_guest_probe.py"], "cachyos_windows_shared_archiso_guest_probe.py"),
