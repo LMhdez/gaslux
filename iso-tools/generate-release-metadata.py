@@ -34,6 +34,72 @@ def _require_string(value: object, name: str, *, maximum: int) -> str:
     return value
 
 
+def validate_distribution_capability(distribution_id: str, os_release_id: str, cap: object) -> None:
+    """Validate capability semantics before signed release metadata is emitted."""
+    expected_keys = {
+        "version",
+        "backend",
+        "source",
+        "firmwareLayouts",
+        "secureBoot",
+        "bootloader",
+        "status",
+        "minimumRamMiB",
+        "minimumDiskGiB",
+    }
+    if not isinstance(cap, dict) or set(cap) != expected_keys or cap["version"] != 1:
+        raise ValueError("invalid distribution capabilities shape/version")
+    profiles = {
+        "mint": ("linuxmint", "debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub"),
+        "zorin": ("zorin", "debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub"),
+        "cachyos": ("cachyos", "archiso-cachyos", "archiso", "unsupported", "grub", "grub"),
+        "popos": ("pop", "system76", "pop-live", "unsupported", "grub", "systemd-boot"),
+        "q4os": ("q4os", "q4os-native", "q4os-native-iso", "unsupported", "grub", "grub"),
+        "bazzite": (
+            "bazzite",
+            "fedora-atomic",
+            "fedora-atomic-iso",
+            "manual-enrollment",
+            "none",
+            "grub",
+        ),
+    }
+    profile = profiles.get(distribution_id)
+    if profile is None or profile[0] != os_release_id:
+        raise ValueError("unknown or contradictory distribution identity")
+    if tuple(cap[key] for key in ("backend", "source", "secureBoot")) != profile[1:4]:
+        raise ValueError("capability backend/source/Secure Boot mismatch")
+    boot = cap["bootloader"]
+    if not isinstance(boot, dict) or set(boot) != {"bios", "uefi"}:
+        raise ValueError("invalid bootloader mapping")
+    if (boot["bios"], boot["uefi"]) != profile[4:]:
+        raise ValueError("capability bootloader mismatch")
+    layouts = cap["firmwareLayouts"]
+    if (
+        not isinstance(layouts, list)
+        or not 1 <= len(layouts) <= 2
+        or any(layout not in {"bios/mbr", "uefi/gpt"} for layout in layouts)
+        or len(layouts) != len(set(layouts))
+        or ("bios/mbr" in layouts and boot["bios"] == "none")
+        or ("uefi/gpt" in layouts and boot["uefi"] == "none")
+        or (distribution_id == "bazzite" and layouts != ["uefi/gpt"])
+        or (distribution_id in {"mint", "zorin"} and layouts != ["bios/mbr", "uefi/gpt"])
+    ):
+        raise ValueError("unsupported firmware/partition capability")
+    if (
+        cap["status"] not in {"released", "lab-only", "unavailable"}
+        or cap["status"] == "released"
+        and distribution_id not in {"mint", "zorin"}
+    ):
+        raise ValueError("experimental backend cannot be released")
+    for key, minimum in (("minimumRamMiB", 1024), ("minimumDiskGiB", 20)):
+        value = cap[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+            raise ValueError(f"capabilities.{key} is invalid")
+    if distribution_id == "bazzite" and cap["minimumDiskGiB"] < 50:
+        raise ValueError("Bazzite minimumDiskGiB cannot be below 50")
+
+
 def load_config(path: Path) -> dict[str, object]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or set(data) != {
@@ -44,7 +110,7 @@ def load_config(path: Path) -> dict[str, object]:
         raise ValueError(
             "release config must contain only schemaVersion, mainRelease and distributions"
         )
-    if data["schemaVersion"] != 1:
+    if data["schemaVersion"] not in {1, 2}:
         raise ValueError("unsupported release config schemaVersion")
 
     main_release = data["mainRelease"]
@@ -78,6 +144,8 @@ def load_config(path: Path) -> dict[str, object]:
         "isoInstallerSizeBytes",
         "sizeInGB",
     }
+    if data["schemaVersion"] == 2:
+        expected_keys.add("capabilities")
     seen_ids: set[str] = set()
     for index, distribution in enumerate(distributions):
         prefix = f"distributions[{index}]"
@@ -87,6 +155,16 @@ def load_config(path: Path) -> dict[str, object]:
         if not IDENTIFIER_PATTERN.fullmatch(distro_id) or distro_id in seen_ids:
             raise ValueError(f"{prefix}.id is invalid or duplicated")
         seen_ids.add(distro_id)
+        if data["schemaVersion"] == 1:
+            if (distro_id, distribution["osReleaseId"]) not in {
+                ("mint", "linuxmint"),
+                ("zorin", "zorin"),
+            }:
+                raise ValueError(f"{prefix} is not an authorized legacy backend")
+        else:
+            validate_distribution_capability(
+                distro_id, distribution["osReleaseId"], distribution["capabilities"]
+            )
         for key, maximum in (
             ("name", 120),
             ("description", 1000),
@@ -198,7 +276,15 @@ def generate_metadata(
 
     configured_distributions = config["distributions"]
     assert isinstance(configured_distributions, list)
-    distributions = [dict(source) for source in configured_distributions]
+    distributions = [
+        dict(source)
+        for source in configured_distributions
+        if channel == "dev"
+        or config["schemaVersion"] == 1
+        or source["capabilities"]["status"] == "released"
+    ]
+    if not distributions:
+        raise ValueError("No released distributions are available for this channel")
 
     def support_artifact(path: Path, file_name: str) -> dict[str, object]:
         artifact = _artifact(path, file_name)
@@ -206,7 +292,7 @@ def generate_metadata(
         return artifact
 
     catalog = {
-        "schemaVersion": 1,
+        "schemaVersion": config["schemaVersion"],
         "artifacts": {
             "wpf": wpf,
             "miniIso": {"bios": bios, "uefi": uefi},

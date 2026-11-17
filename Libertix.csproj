@@ -119,6 +119,7 @@
     <Compile Include="Installation\DistributionCatalogTrust.cs" />
     <Compile Include="Installation\DistributionCatalogLoader.cs" />
     <Compile Include="Installation\DistributionBackendPolicy.cs" />
+    <Compile Include="Installation\DistributionCapabilityPolicy.cs" />
     <Compile Include="Installation\ReleaseMetadata.cs" />
     <Compile Include="Installation\InstallationExecutionState.cs" />
     <Compile Include="Installation\InstallationExecutionLedger.cs" />

@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/distribution-capabilities.schema.json",
+  "title": "Gaslux signed distribution capabilities v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "backend",
+    "source",
+    "firmwareLayouts",
+    "secureBoot",
+    "bootloader",
+    "status",
+    "minimumRamMiB",
+    "minimumDiskGiB"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "backend": {
+      "enum": [
+        "debian-squashfs",
+        "archiso-cachyos",
+        "system76",
+        "q4os-native",
+        "fedora-atomic"
+      ]
+    },
+    "source": {
+      "enum": [
+        "casper-squashfs",
+        "archiso",
+        "pop-live",
+        "q4os-native-iso",
+        "fedora-atomic-iso"
+      ]
+    },
+    "firmwareLayouts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "bios/mbr",
+          "uefi/gpt"
+        ]
+      }
+    },
+    "secureBoot": {
+      "enum": [
+        "ms-shim",
+        "unsupported",
+        "manual-enrollment"
+      ]
+    },
+    "bootloader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bios",
+        "uefi"
+      ],
+      "properties": {
+        "bios": {
+          "enum": [
+            "grub",
+            "none"
+          ]
+        },
+        "uefi": {
+          "enum": [
+            "grub",
+            "systemd-boot",
+            "none"
+          ]
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "released",
+        "lab-only",
+        "unavailable"
+      ]
+    },
+    "minimumRamMiB": {
+      "type": "integer",
+      "minimum": 1024
+    },
+    "minimumDiskGiB": {
+      "type": "integer",
+      "minimum": 20
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "fedora-atomic"
+          }
+        },
+        "required": [
+          "backend"
+        ]
+      },
+      "then": {
+        "properties": {
+          "firmwareLayouts": {
+            "const": [
+              "uefi/gpt"
+            ]
+          },
+          "bootloader": {
+            "properties": {
+              "bios": {
+                "const": "none"
+              },
+              "uefi": {
+                "const": "grub"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "system76"
+          }
+        },
+        "required": [
+          "backend"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bootloader": {
+            "properties": {
+              "uefi": {
+                "const": "systemd-boot"
+              }
+            }
+          },
+          "secureBoot": {
+            "const": "unsupported"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "debian-squashfs"
+          }
+        },
+        "required": [
+          "backend"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source": {
+            "const": "casper-squashfs"
+          },
+          "firmwareLayouts": {
+            "const": [
+              "bios/mbr",
+              "uefi/gpt"
+            ]
+          },
+          "secureBoot": {
+            "const": "ms-shim"
+          },
+          "bootloader": {
+            "properties": {
+              "bios": {
+                "const": "grub"
+              },
+              "uefi": {
+                "const": "grub"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

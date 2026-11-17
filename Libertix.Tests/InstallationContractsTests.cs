@@ -778,6 +778,120 @@ namespace Libertix.Tests
             }
         }
 
+        [TestMethod]
+        public void CatalogV2RejectsUnknownAndDuplicatedCapabilityFields()
+        {
+            var source = JsonNode.Parse(File.ReadAllText(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestData", "catalog.json")));
+            source["schemaVersion"] = 2;
+            foreach (JsonNode distro in source["distributions"].AsArray())
+            {
+                distro["capabilities"] = JsonSerializer.SerializeToNode(
+                    new
+                    {
+                        version = 1,
+                        backend = "debian-squashfs",
+                        source = "casper-squashfs",
+                        firmwareLayouts = new[] { "bios/mbr", "uefi/gpt" },
+                        secureBoot = "ms-shim",
+                        bootloader = new { bios = "grub", uefi = "grub" },
+                        status = "released",
+                        minimumRamMiB = 2048,
+                        minimumDiskGiB = 20
+                    });
+            }
+
+            var parse = typeof(DistributionCatalogLoader).GetMethod(
+                "ParseCatalog",
+                System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic);
+            Assert.IsNotNull(parse);
+            parse.Invoke(null, new object[] { System.Text.Encoding.UTF8.GetBytes(source.ToJsonString()) });
+
+            source["distributions"][0]["capabilities"]["arbitrary"] = true;
+            Assert.ThrowsException<System.Reflection.TargetInvocationException>(() =>
+                parse.Invoke(null, new object[] {
+                    System.Text.Encoding.UTF8.GetBytes(source.ToJsonString()) }));
+
+            source["distributions"][0]["capabilities"].AsObject().Remove("arbitrary");
+            string duplicated = source.ToJsonString().Replace(
+                "\"version\":1",
+                "\"version\":1,\"version\":1");
+            Assert.ThrowsException<System.Reflection.TargetInvocationException>(() =>
+                parse.Invoke(null, new object[] {
+                    System.Text.Encoding.UTF8.GetBytes(duplicated) }));
+        }
+
+        [TestMethod]
+        public void SignedCapabilitiesPreserveExistingMintAndZorinBackends()
+        {
+            foreach (string id in new[] { "mint", "zorin" })
+            {
+                var cap = CreateCapabilities("debian-squashfs", "casper-squashfs",
+                    "ms-shim", "grub", "grub", "released",
+                    "bios/mbr", "uefi/gpt");
+                DistributionCapabilityPolicy.Validate(
+                    id, id == "mint" ? "linuxmint" : "zorin", cap);
+                Assert.IsTrue(DistributionCapabilityPolicy.IsReleased(
+                    id, id == "mint" ? "linuxmint" : "zorin", cap));
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow("cachyos", "cachyos", "archiso-cachyos", "archiso", "unsupported", "grub", "grub")]
+        [DataRow("popos", "pop", "system76", "pop-live", "unsupported", "grub", "systemd-boot")]
+        [DataRow("q4os", "q4os", "q4os-native", "q4os-native-iso", "unsupported", "grub", "grub")]
+        [DataRow("bazzite", "bazzite", "fedora-atomic", "fedora-atomic-iso", "manual-enrollment", "none", "grub")]
+        public void ExperimentalCapabilityNeverEnablesProductionInstaller(
+            string id, string osReleaseId, string backend, string source,
+            string secureBoot, string bios, string uefi)
+        {
+            var cap = CreateCapabilities(backend, source, secureBoot, bios, uefi, "lab-only", "uefi/gpt");
+            DistributionCapabilityPolicy.Validate(id, osReleaseId, cap);
+            Assert.IsFalse(DistributionCapabilityPolicy.IsReleased(id, osReleaseId, cap));
+            cap.Status = "released";
+            Assert.ThrowsException<InvalidOperationException>(
+                () => DistributionCapabilityPolicy.Validate(id, osReleaseId, cap));
+        }
+
+        [TestMethod]
+        public void BazziteRejectsLegacyBiosMbrEvenInLabMetadata()
+        {
+            var cap = CreateCapabilities("fedora-atomic", "fedora-atomic-iso",
+                "manual-enrollment", "none", "grub", "lab-only", "bios/mbr", "uefi/gpt");
+            Assert.ThrowsException<InvalidOperationException>(
+                () => DistributionCapabilityPolicy.Validate("bazzite", "bazzite", cap));
+        }
+
+        [DataTestMethod]
+        [DataRow("debian-squashfs", "fedora-atomic-iso")]
+        [DataRow("fedora-atomic", "casper-squashfs")]
+        public void CapabilityIdentityAndSourceMustAgree(string backend, string source)
+        {
+            var cap = CreateCapabilities(backend, source, "ms-shim", "grub", "grub",
+                "released", "bios/mbr", "uefi/gpt");
+            Assert.ThrowsException<InvalidOperationException>(
+                () => DistributionCapabilityPolicy.Validate("mint", "linuxmint", cap));
+        }
+
+        private static DistributionCapabilityJson CreateCapabilities(
+            string backend, string source, string secureBoot,
+            string bios, string uefi, string status, params string[] layouts)
+        {
+            return new DistributionCapabilityJson
+            {
+                Version = 1,
+                Backend = backend,
+                Source = source,
+                FirmwareLayouts = layouts.ToList(),
+                SecureBoot = secureBoot,
+                Bootloader = new DistributionBootloaderCapabilityJson { Bios = bios, Uefi = uefi },
+                Status = status,
+                MinimumRamMiB = 8192,
+                MinimumDiskGiB = 64
+            };
+        }
+
         private static InstallationPlan CreateSeparateAllocationPlan(bool bios, bool gptAllocation)
         {
             InstallationPlan plan = CreateValidPlan();
