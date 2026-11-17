@@ -106,7 +106,7 @@ jobs:
           assert 'systemctl is-active --quiet pacman-init.service' in guest
           assert 'GASLUX_VM_NETWORK_KEYRING_READY' in guest
           assert 'GASLUX_VM_PACSTRAP_BEGIN' in guest
-          assert guest.index('bash /run/gaslux-control/stage.sh --validate-target') < guest.index('systemctl is-active --quiet pacman-init.service') < guest.index('pacstrap -K /mnt/target')
+          assert guest.index('bash /run/gaslux-control/stage.sh --validate-target') < guest.index('systemctl is-active --quiet pacman-init.service') < guest.index('GASLUX_VM_SIGNED_ONLY_POLICY_PASS') < guest.index('pacstrap -K -C "$strict_dir/pacman-install.conf" /mnt/target')
           assert 'mkdir -p /mnt/target' in guest
           assert 'source /run/gaslux-control/lab.env' in guest
           assert '/dev/vdb1' in guest and '/dev/vdc' in guest
