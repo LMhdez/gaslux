@@ -85,6 +85,13 @@ require_marker() {
   local file="$1" marker="$2" count="$3" seen=0
   for ((i=0;i<count;i++)); do
     sleep 3
+    # An update service may fail while systemd leaves the VM running. Refuse
+    # immediately instead of waiting up to 45 minutes or trusting a late PASS.
+    if [[ -f "$file" ]] && grep -aEq \
+      'GASLUX_VM_UPDATE_FAILURE:|GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_FAIL:' "$file"; then
+      tail -c 10000 "$file" >&2 || true
+      die "guest explicitly rejected VM phase before $marker"
+    fi
     if [[ -f "$file" ]] && awk -v marker="$marker" \
       '{gsub(/\r/, ""); if ($0 == marker) found = 1} END {exit !found}' \
       "$file"; then
