@@ -31,6 +31,19 @@ _WELCOME_ALLOWED = (
     "2d0d73d6ca27275d1dc716fef1965df06f12296c03a9dbdccb49cec106fc3d39",
     "525c8efc637b680933499b7ad2dae4d26cd4d8ca9aad0a94e6c077df929738e7",
 )
+# Official Q4OS Andromeda native Calamares Welcome GUI from two independent
+# successful QEMU runs: #43992830893/#14289030650 and
+# #43992867613/#14287189577. These *two exact* RGB pixel regions
+# verify the actual Calamares welcome+Next button before any wizard input.
+_CALAMARES_WINDOW = (
+    (128, 118, 1152, 667),
+    "a451cb2b920944cfa5d80f904446b2ab86d3b4097b66b776abf86b4ffed3dd08",
+)
+_CALAMARES_NEXT = (
+    (955, 619, 1044, 668),
+    "c800cc03d280395a9e699e4b6216cb6d3d422c2dd40a54e6ceeca862220ea8e1",
+)
+
 
 
 def _open_verified_screen(path: Path) -> Image.Image | None:
@@ -73,6 +86,17 @@ def verified_after_close(path: Path) -> bool:
     )
 
 
+def verified_native_calamares_welcome(path: Path) -> bool:
+    """Allow a single, non-installing Next click only on pinned Calamares Welcome."""
+    screen = _open_verified_screen(path)
+    if screen is None:
+        return False
+    return all(
+        _roi_sha(screen, box) == expected for box, expected in
+        (_CALAMARES_WINDOW, _CALAMARES_NEXT)
+    )
+
+
 def verified_centre_changed(before: Path, after: Path) -> bool:
     """Taskbar-clock updates alone must never satisfy a GUI transition."""
     previous = _open_verified_screen(before)
@@ -91,6 +115,8 @@ def main() -> int:
         passed = verified_q4os_welcome_desktop(Path(sys.argv[2]))
     elif mode == "after-close" and len(sys.argv) == 3:
         passed = verified_after_close(Path(sys.argv[2]))
+    elif mode == "calamares-welcome" and len(sys.argv) == 3:
+        passed = verified_native_calamares_welcome(Path(sys.argv[2]))
     elif mode == "changed-centre" and len(sys.argv) == 4:
         passed = verified_centre_changed(Path(sys.argv[2]), Path(sys.argv[3]))
     else:
