@@ -34,10 +34,10 @@ jobs:
             qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl
           sudo modprobe nbd max_part=8
           if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
-            printf 'GASLUX_WIN10_ACCEL=kvm\\n' >> "$GITHUB_ENV"
+            printf 'GASLUX_WIN10_ACCEL=kvm\n' >> "$GITHUB_ENV"
             echo 'Windows lab accelerator: KVM'
           else
-            printf 'GASLUX_WIN10_ACCEL=tcg\\n' >> "$GITHUB_ENV"
+            printf 'GASLUX_WIN10_ACCEL=tcg\n' >> "$GITHUB_ENV"
             echo 'Windows lab accelerator: TCG (extended timeout)'
           fi
 
