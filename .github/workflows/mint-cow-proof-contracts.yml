@@ -8,6 +8,10 @@ on:
       - .github/workflows/mint-cow-proof-contracts.yml
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
       - auto_tests/test_windows_mint_cow_boot_evidence.py
+      - auto_tests/tools/windows_mint_overlay_root.py
+      - auto_tests/test_windows_mint_overlay_root.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
   pull_request:
     branches:
       - test/mint22-windows10-cow-firstboot
@@ -34,8 +38,10 @@ jobs:
       - name: Compile Mint evidence validator and tests
         run: |
           set -Eeuo pipefail
-          python3 -m py_compile auto_tests/tools/validate_mint_cow_boot_evidence.py auto_tests/test_windows_mint_cow_boot_evidence.py
+          python3 -m py_compile auto_tests/tools/validate_mint_cow_boot_evidence.py auto_tests/test_windows_mint_cow_boot_evidence.py auto_tests/tools/windows_mint_overlay_root.py auto_tests/test_windows_mint_overlay_root.py auto_tests/tools/windows_x64_tcg_firstboot.py
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/mint-cow-proof-contracts.yml"); YAML.parse_file(".github/workflows/windows-cachyos-post-ext4-fourth-boot.yml")'
       - name: Run fail-closed Mint evidence tests
         run: |
           set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p 'test_windows_mint_overlay_root.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_mint_cow_boot_evidence.py' -v
