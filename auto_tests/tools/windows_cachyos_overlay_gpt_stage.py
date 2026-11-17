@@ -205,6 +205,8 @@ def stage_overlay_gpt(
             "unsafe external COW checkpoint directory")
     overlay = checkpoint / OVERLAY_NAME
     owned_regular(overlay, checkpoint, OVERLAY_NAME)
+    require(stat.S_IMODE(overlay.stat().st_mode) == 0o600,
+            "writable COW overlay must be private mode 0600")
     baseline_vars = checkpoint / "windows-ovmf-baseline.fd"
     trial_vars = checkpoint / "trial-ovmf-variables.fd"
     owned_regular(baseline_vars, checkpoint, baseline_vars.name)
