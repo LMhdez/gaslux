@@ -451,9 +451,14 @@ def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
             require(b"(qemu)" in banner, "unexpected QEMU HMP monitor")
             # HMP screendump only reads the VM display: no input or disk writes.
             monitor.sendall(f"screendump {destination}\n".encode("ascii"))
-            response = monitor.recv(8192)
-            require(b"Error:" not in response and b"unknown command" not in response,
-                    "QEMU refused read-only screendump")
+            response = b""
+            while b"(qemu)" not in response and len(response) < 8192:
+                fragment = monitor.recv(8192 - len(response))
+                require(bool(fragment), "QEMU HMP closed during framebuffer request")
+                response += fragment
+            require(b"(qemu)" in response, "QEMU HMP never completed the request")
+            require(b"Error" not in response and b"unknown command" not in response,
+                    "QEMU rejected read-only framebuffer request")
         for _ in range(40):
             if destination.is_file() and destination.stat().st_size > 100:
                 break
