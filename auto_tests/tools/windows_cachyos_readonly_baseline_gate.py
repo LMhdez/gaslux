@@ -100,21 +100,10 @@ def evaluate(profile: str, report: dict, serial: bytes,
     require(matching is not None and
             matching.group(1) == hashlib.sha256(serial).hexdigest(),
             "Windows serial SHA256 does not match owned evidence manifest")
-    # The genuine Windows FirstLogon writer sends separate COM1 WriteLine
-    # calls, but QEMU/serial may coalesce them onto one line. Match exact,
-    # whitespace-delimited, bounded tokens across ALL supplied evidence,
-    # like the fail-closed incremental firstboot reader in PR #93. An echoed
-    # marker or forged log/manifest is NOT authenticated guest provenance.
-    tokens: list[str] = []
-    for line in serial.decode("ascii", errors="replace").splitlines():
-        fields = line.split()
-        if any("GASLUX_WINDOWS_X64_" in field for field in fields):
-            # Permit many adjacent audit markers on ONE line, but not an
-            # arbitrary shell echo/login prompt or text that prefixes one.
-            require(all(field.startswith("GASLUX_WINDOWS_X64_") and
-                        len(field) <= 256 for field in fields),
-                    "unexpected prefix or oversized Windows serial witness")
-            tokens.extend(fields)
+    # Both client builds share five audit fields plus exact build/profile.
+    # Never collect an unbounded set of arbitrary GASLUX_WINDOWS_X64_* tokens:
+    # the native Windows COM1 scanner's PR94 allowlist is an upper bound,
+    # not permission to accept unrecognized names in downstream evidence.
     markers = (
         "GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=" + profile,
         "GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
@@ -125,16 +114,31 @@ def evaluate(profile: str, report: dict, serial: bytes,
         "GASLUX_WINDOWS_X64_BOOT_BUILD=" +
         catalog["profiles"][profile]["expectedWindowsBuildPrefix"],
     )
+    allowed = frozenset(markers)
+    allowed_names = frozenset(marker.split("=", 1)[0] for marker in markers)
+    seen: dict[str, int] = {}
+    # Real COM1 WriteLine calls may coalesce into one line. A bounded, exact
+    # whitespace-delimited witness is acceptable; arbitrary prefixes are not.
+    for line in serial.decode("ascii", errors="replace").splitlines():
+        fields = line.split()
+        if any("GASLUX_WINDOWS_X64_" in field for field in fields):
+            require(all(field.startswith("GASLUX_WINDOWS_X64_") and
+                        len(field) <= 256 for field in fields),
+                    "unexpected prefix or oversized Windows serial witness")
+            for field in fields:
+                if field not in allowed:
+                    name = field.split("=", 1)[0]
+                    if name in allowed_names:
+                        raise BaselineGateError(
+                            "ambiguous Windows witness field: " + name)
+                    raise BaselineGateError(
+                        "unrecognized Windows serial proof token")
+                seen[field] = seen.get(field, 0) + 1
+                require(seen[field] <= 1,
+                        "missing/ambiguous installed client witness: " + field)
     for marker in markers:
-        require(tokens.count(marker) == 1,
+        require(seen.get(marker, 0) == 1,
                 "missing/ambiguous installed client witness: " + marker)
-    # Detect conflicting names/values even when a valid token is also present.
-    for marker in markers:
-        key = marker.split("=", 1)[0] + "="
-        require(sum(t.startswith(key) for t in tokens) == 1,
-                "ambiguous Windows witness field: " + key)
-    require(not any(t.startswith("GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL")
-                    for t in tokens), "Windows firstlogon audit failed")
     # Never promote a self-reported, SHA-hashed text document to an
     # authenticated Windows guest, safe disk mutation or product release.
     return {
