@@ -864,6 +864,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--audit-installed-gpt-readonly", action="store_true",
                     help="Windows 10 hosted KVM ONLY: after verified client shutdown, "
                          "inspect the owned installed QCOW2 via read-only libguestfs")
+    ap.add_argument("--stage-pop-linux-root-overlay", action="store_true",
+                    help="VM-only after verified Windows 10: stage UNFORMATTED Pop "
+                         "GPT root in discarded COW overlay, never base QCOW2")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -876,6 +879,17 @@ def main(argv: list[str] | None = None) -> int:
     ):
         raise SystemExit("offline installed GPT audit requires genuine Windows 10 "
                          "two-stage hosted KVM firstboot")
+    if args.stage_pop_linux_root_overlay and not (
+        args.audit_installed_gpt_readonly
+        and args.two_stage_install_only
+        and args.profile == "win10_22h2_en_us_x64"
+        and args.accel == "kvm"
+        and not args.fixture_only
+        and os.environ.get("GASLUX_WIN10_POP_OVERLAY_CONSENT")
+        == "I_ACCEPT_GITHUB_ONLY_QCOW2_COPY_ON_WRITE_LINUX_ROOT_STAGE"
+    ):
+        raise SystemExit("Pop Linux COW GPT stage requires own hosted-Windows10 "
+                         "post-firstboot readonly audit and opt-in")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -914,6 +928,8 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.audit_installed_gpt_readonly:
         report["installedGptReadOnlyVerified"] = False
+    if args.stage_pop_linux_root_overlay:
+        report["sameDiskLinuxPartitionCreatedInCOWOverlay"] = False
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
@@ -1057,6 +1073,19 @@ def main(argv: list[str] | None = None) -> int:
                         report["installedGptReadOnlyVerified"] = True
                         print("GASLUX_WINDOWS_INSTALLED_GPT_OFFLINE_READONLY_VERIFIED=1",
                               flush=True)
+                        if args.stage_pop_linux_root_overlay:
+                            from windows10_popos_same_disk_overlay_stage import (
+                                stage_owned_overlay,
+                            )
+                            stage_proof = stage_owned_overlay(disk, evidence)
+                            require(
+                                stage_proof["sameDiskLinuxPartitionCreatedInCOWOverlay"]
+                                and stage_proof["windowsOfflineGptEspBcdNtfsReconciled"]
+                                and not stage_proof["dualBootVerified"]
+                                and not stage_proof["productionInstallationAuthorized"],
+                                "unsafe Windows/Pop overlay staging result",
+                            )
+                            report["sameDiskLinuxPartitionCreatedInCOWOverlay"] = True
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
