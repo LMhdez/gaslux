@@ -144,9 +144,16 @@ jobs:
           serial="$work/windows10-qemu-serial.log"
           qemu_log="$work/windows10-qemu-process.log"
           [[ -s "$code" && -s "$vars" && -s "$iso" && -s "$answer" ]]
+          if [[ "$GASLUX_WIN10_ACCEL" == kvm ]]; then
+            machine='q35,accel=kvm'
+            cpu='host'
+          else
+            machine='q35,accel=tcg,thread=multi'
+            cpu='max'
+          fi
           set +e
-          timeout --signal=TERM --kill-after=30s 7200s qemu-system-x86_64 \
-            -no-user-config -machine q35,accel=kvm -cpu host -smp 4 -m 6144 \
+          timeout --signal=TERM --kill-after=60s 18000s qemu-system-x86_64 \
+            -no-user-config -machine "$machine" -cpu "$cpu" -smp 4 -m 6144 \
             -rtc base=utc -display none -vga std \
             -serial "file:$serial" -monitor none -net none \
             -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
