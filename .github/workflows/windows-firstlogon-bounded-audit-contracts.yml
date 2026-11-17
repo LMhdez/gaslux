@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - fix/windows-firstlogon-bounded-failure-stages
+      - fix/windows-serial-coalesced-firstboot-witness
     paths:
       - .github/workflows/windows-firstlogon-bounded-audit-contracts.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_clean_poweroff_gate.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
   workflow_dispatch:
 
