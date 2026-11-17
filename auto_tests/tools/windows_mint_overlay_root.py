@@ -93,9 +93,29 @@ def install_mint_root_and_boot(
             and workspace.stat().st_uid == os.getuid()
             and stat.S_IMODE(workspace.stat().st_mode) == 0o700,
             "Windows VM workspace is not private and runner-owned")
-    require(overlay.is_file() and not overlay.is_symlink()
-            and overlay.parent.name == "windows-uefi-cow-checkpoint",
-            "unexpected Windows COW overlay identity")
+    from windows_cachyos_cow_checkpoint import (
+        CHECKPOINT_DIR, OVERLAY_NAME, validate_workspace, sha256_file,
+        owned_regular,
+    )
+    from windows_cachyos_qcow2_gpt_readonly import qcow2_file_identity, require_unchanged_qcow2
+    validate_workspace(base, nvram)
+    checkpoint = base.parent / CHECKPOINT_DIR
+    require(overlay == checkpoint / OVERLAY_NAME
+            and checkpoint.is_dir() and not checkpoint.is_symlink()
+            and stat.S_IMODE(checkpoint.stat().st_mode) == 0o700,
+            "unexpected Windows COW checkpoint identity")
+    owned_regular(overlay, checkpoint, OVERLAY_NAME)
+    require(stat.S_IMODE(overlay.stat().st_mode) == 0o600,
+            "Windows COW overlay permissions are unsafe")
+    info = json.loads(run([
+        "qemu-img", "info", "-f", "qcow2", "--output=json", str(overlay),
+    ]).stdout)
+    require(info.get("format") == "qcow2"
+            and info.get("virtual-size") == 128 * 1024**3
+            and info.get("backing-filename") == str(base)
+            and info.get("backing-filename-format") == "qcow2"
+            and not info.get("encrypted", False),
+            "COW overlay is not bound to the exact Windows QCOW2")
     require(base.is_file() and not base.is_symlink()
             and stat.S_IMODE(base.stat().st_mode) == 0o400,
             "Windows QCOW2 backing must remain immutable")
@@ -111,8 +131,6 @@ def install_mint_root_and_boot(
             "missing exact fifth-partition ext4 proof")
     expected_uuid = ext4_proof["rootFilesystem"]["filesystemUuid"]
     root_uuid, windows_before = _guest_disk_audit(overlay, expected_uuid)
-    from windows_cachyos_cow_checkpoint import sha256_file, qcow2_file_identity
-    from windows_cachyos_qcow2_gpt_readonly import require_unchanged_qcow2
     base_identity = qcow2_file_identity(base)
     base_hash = sha256_file(base)
     nvram_hash = sha256_file(nvram)
@@ -211,11 +229,11 @@ def install_mint_root_and_boot(
             f"if=none,id=windows-cow,format=qcow2,file={overlay}",
             "-device", "virtio-blk-pci,drive=windows-cow,bootindex=1",
             "-kernel", str(kernel_copy), "-initrd", str(initrd_copy),
-            "-append", f"root=UUID={root_uuid} rw console=ttyS0,115200n8 "
+            "-append", f"root=UUID={root_uuid} rw rootwait console=ttyS0,115200n8 "
                        "systemd.unit=multi-user.target "
                        "systemd.wants=serial-getty@ttyS0.service",
             "-serial", f"file:{serial}", "-boot", "order=c,menu=off",
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             deadline = time.monotonic() + 420
             while time.monotonic() < deadline:
@@ -283,7 +301,10 @@ def install_mint_root_and_boot(
         mounts = subprocess.run(["findmnt", "-rn", "-o", "TARGET"],
                                 check=False, capture_output=True, text=True)
         active = set(mounts.stdout.splitlines()) if mounts.returncode == 0 else {str(target), str(iso_mount)}
-        if not guest_mounted and not iso_mounted and str(target) not in active and str(iso_mount) not in active:
+        nested_active = any(path == str(target) or path.startswith(str(target) + "/")
+                            or path == str(iso_mount) or path.startswith(str(iso_mount) + "/")
+                            for path in active)
+        if not guest_mounted and not iso_mounted and not nested_active:
             subprocess.run(["sudo", "rm", "-rf", "--one-file-system", "--", str(temp)],
                        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
