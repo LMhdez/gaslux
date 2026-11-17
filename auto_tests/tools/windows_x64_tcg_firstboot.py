@@ -884,6 +884,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verify-windows-reboot-after-ext4", action="store_true",
                     help="only hosted Windows 10 QCOW2 after fifth-root ext4: "
                          "fourth Windows guest, BCD/WinRE and ext4 UUID audit")
+    ap.add_argument("--run-cachyos-shared-root-pacstrap", action="store_true",
+                    help="EXPERIMENTAL hosted KVM: run signed real-Archiso pacstrap "
+                         "only on the pre-existing fifth ext4 partition in a disposable "
+                         "Windows QCOW2 overlay, then discard that overlay and boot Windows")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -956,6 +960,34 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(
                 "fourth Windows guest after fifth ext4 needs hosted CI "
                 "and separate consent; no Linux installation allowed")
+    if args.run_cachyos_shared_root_pacstrap:
+        from cachyos_windows_shared_cow_grant import CONSENT as ROOT_GRANT_CONSENT
+        from windows_cachyos_postext4_cow_rollback import CONSENT as DISCARD_CONSENT
+        if not (
+            args.verify_windows_reboot_after_ext4
+            and args.format_owned_fifth_ext4_only
+            and args.verify_windows_reboot_with_fifth_gpt
+            and args.stage_cachyos_overlay_root_gpt_only
+            and args.prepare_owned_cow_checkpoint
+            and args.two_stage_install_only and args.derived_no_prompt
+            and args.profile == "win10_22h2_en_us_x64"
+            and args.accel == "kvm" and not args.fixture_only
+            and not args.boot_probe_only and not args.one_shot_install_only
+            and os.environ.get("GITHUB_ACTIONS") == "true"
+            and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+            and os.environ.get("GASLUX_CACHYOS_SHARED_ROOT_PACSTRAP_CONSENT")
+                == ROOT_GRANT_CONSENT
+            and os.environ.get("GASLUX_WINDOWS_POST_EXT4_COW_DISCARD_CONSENT")
+                == DISCARD_CONSENT
+            and os.environ.get("GASLUX_CACHYOS_ARCHISO_READONLY_CONSENT")
+                == "I_ACCEPT_PINNED_ARCHISO_READONLY_WINDOWS10_QCOW2_COW"
+            and Path(os.environ.get("GASLUX_CACHYOS_VERIFIED_ISO_PATH", "")).is_file()
+        ):
+            raise SystemExit(
+                "shared-root pacstrap requires the real Windows fourth boot, "
+                "pre-existing fifth ext4, pinned Archiso, hosted KVM and "
+                "separate COW root-write/discard consent"
+            )
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -991,6 +1023,15 @@ def main(argv: list[str] | None = None) -> int:
         "profile": args.profile, "accelerator": args.accel, "isoHashVerified": False,
         "windowsClientBootVerified": False, "dualBootVerified": False,
         "winReAndBcdRecovered": False, "stable": False,
+        "cachyosRootPacstrapped": False,
+        "cachyosInstalled": False,
+        "cachyosFirstBootVerified": False,
+        "windowsBootAfterPacstrapOverlayDiscardVerified": False,
+        "windowsRecoveryAfterLinuxVerified": False,
+        "rollbackProven": False,
+        "sameDiskDualBootVerified": False,
+        "productionStorageWritesAuthorized": False,
+        "releaseEligible": False,
     }
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
@@ -1272,6 +1313,78 @@ def main(argv: list[str] | None = None) -> int:
                                                 hashlib.sha256(fourth_bytes).hexdigest())
                                             print("GASLUX_WINDOWS_FOURTH_BOOT_POST_EXT4_VERIFIED=1",
                                                   flush=True)
+                                            if args.run_cachyos_shared_root_pacstrap:
+                                                from cachyos_windows_shared_root_pacstrap_host import (
+                                                    run_shared_root_pacstrap,
+                                                )
+                                                pacstrap_proof = run_shared_root_pacstrap(
+                                                    iso=Path(os.environ["GASLUX_CACHYOS_VERIFIED_ISO_PATH"]),
+                                                    pinned_sha256=os.environ["GASLUX_CACHYOS_VERIFIED_ISO_SHA256"],
+                                                    base=disk,
+                                                    nvram=nvram,
+                                                    ovmf_code=code,
+                                                    workspace=workspace,
+                                                    geometry=candidate,
+                                                    checkpoint=cow,
+                                                    staged=staged,
+                                                    third=third,
+                                                    ext4=ext4,
+                                                    fourth=fourth,
+                                                    fourth_serial=workspace / "fourth-post-ext4-windows-serial.log",
+                                                )
+                                                pacstrap_bytes = (
+                                                    json.dumps(pacstrap_proof, sort_keys=True, indent=2)
+                                                    + "\\n"
+                                                ).encode("utf-8")
+                                                pacstrap_path = evidence / (
+                                                    f"{args.profile}-cachyos-shared-root-pacstrap.json"
+                                                )
+                                                require(not pacstrap_path.exists()
+                                                        and not pacstrap_path.is_symlink(),
+                                                        "refusing reused CachyOS pacstrap evidence")
+                                                with pacstrap_path.open("xb") as out:
+                                                    out.write(pacstrap_bytes)
+                                                report["cachyosRootPacstrapped"] = True
+                                                report["cachyosRootPacstrapEvidenceSha256"] = (
+                                                    hashlib.sha256(pacstrap_bytes).hexdigest()
+                                                )
+                                                print("GASLUX_CACHYOS_SHARED_ROOT_PACSTRAP_VERIFIED=1",
+                                                      flush=True)
+                                                from windows_cachyos_postext4_cow_rollback import (
+                                                    verify_discard_postext4_cow,
+                                                )
+                                                discard_proof = verify_discard_postext4_cow(
+                                                    base, disk, nvram, candidate, cow,
+                                                    staged, third, ext4, fourth,
+                                                    timeout=1500,
+                                                )
+                                                discard_bytes = (
+                                                    json.dumps(discard_proof, sort_keys=True, indent=2)
+                                                    + "\\n"
+                                                ).encode("utf-8")
+                                                discard_path = evidence / (
+                                                    f"{args.profile}-post-pacstrap-cow-discard.json"
+                                                )
+                                                require(not discard_path.exists()
+                                                        and not discard_path.is_symlink(),
+                                                        "refusing reused post-pacstrap discard evidence")
+                                                with discard_path.open("xb") as out:
+                                                    out.write(discard_bytes)
+                                                report["windowsBootAfterPacstrapOverlayDiscardVerified"] = (
+                                                    discard_proof["windowsFifthGuestBootAfterExt4DiscardVerified"]
+                                                )
+                                                report["postPacstrapCowDiscardEvidenceSha256"] = (
+                                                    hashlib.sha256(discard_bytes).hexdigest()
+                                                )
+                                                report["cachyosInstalled"] = False
+                                                report["cachyosFirstBootVerified"] = False
+                                                report["windowsRecoveryAfterLinuxVerified"] = False
+                                                report["rollbackProven"] = False
+                                                report["sameDiskDualBootVerified"] = False
+                                                report["productionStorageWritesAuthorized"] = False
+                                                report["releaseEligible"] = False
+                                                print("GASLUX_CACHYOS_POST_PACSTRAP_COW_DISCARD_WINDOWS_BOOT_VERIFIED=1",
+                                                      flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
@@ -1295,6 +1408,10 @@ def main(argv: list[str] | None = None) -> int:
                         ("third-overlay-qemu-stderr.log", "third-boot-qemu-stderr", 256_000),
                         ("fourth-post-ext4-windows-serial.log", "fourth-boot-serial", 512_000),
                         ("fourth-post-ext4-qemu-stderr.log", "fourth-boot-qemu-stderr", 256_000),
+                        ("cachyos-shared-root-pacstrap-serial.log", "cachyos-root-pacstrap-serial", 2_000_000),
+                        ("cachyos-shared-root-pacstrap-qemu-stderr.log", "cachyos-root-pacstrap-qemu-stderr", 256_000),
+                        ("fifth-after-ext4-discard-windows-serial.log", "fifth-post-pacstrap-discard-serial", 512_000),
+                        ("fifth-after-ext4-discard-qemu-stderr.log", "fifth-post-pacstrap-discard-qemu-stderr", 256_000),
                     ):
                         source = workspace / source_name
                         if (source.is_file() and not source.is_symlink()
