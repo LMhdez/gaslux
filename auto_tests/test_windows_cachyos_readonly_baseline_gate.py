@@ -168,6 +168,55 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
                 ):
                     self.exercise(candidate, serial, manifest)
 
+    def test_actual_original_microsoft_dvd_timeout_never_certifies_firstboot(self):
+        for profile in ("win10_22h2_en_us_x64", "win11_26h2_en_us_x64"):
+            with self.subTest(profile=profile):
+                report, serial, manifest = synthetic(profile)
+                report["labDerivedIsoOnly"] = False
+                del report["labDerivedIsoSha256"]
+                first = (INITIAL_SERIAL +
+                    b'Press any key to boot from CD or DVD......\r\n'
+                    b'BdsDxe: failed to start Boot00AF "UEFI QEMU DVD-ROM QM00003": Time out\r\n')
+                report["initialDvdGuestSerialSha256"] = (
+                    hashlib.sha256(first).hexdigest()
+                )
+                with self.assertRaisesRegex(
+                    GATE.BaselineGateError, "firmware reported a boot timeout"
+                ):
+                    self.exercise(report, serial, manifest, first)
+
+    def test_derived_microsoft_dvd_timeout_never_certifies_firstboot(self):
+        report, serial, manifest = synthetic()
+        first = (INITIAL_SERIAL +
+                 b'BdsDxe: failed to start Boot0001 "UEFI QEMU DVD-ROM": Time out\n')
+        report["initialDvdGuestSerialSha256"] = hashlib.sha256(first).hexdigest()
+        with self.assertRaisesRegex(
+            GATE.BaselineGateError, "firmware reported a boot timeout"
+        ):
+            self.exercise(report, serial, manifest, first)
+
+    def test_original_iso_prompt_without_boot_timeout_stays_document_only(self):
+        report, serial, manifest = synthetic("win10_22h2_en_us_x64")
+        report["labDerivedIsoOnly"] = False
+        del report["labDerivedIsoSha256"]
+        first = INITIAL_SERIAL + b"Press any key to boot from CD or DVD......\r\n"
+        report["initialDvdGuestSerialSha256"] = hashlib.sha256(first).hexdigest()
+        result = self.exercise(report, serial, manifest, first)
+        self.assertTrue(result["candidateWindowsFirstbootDocumentsConsistent"])
+        self.assertFalse(result["windowsBootVerified"])
+        self.assertFalse(result["storageWritesAuthorized"])
+
+    def test_timeout_in_other_firmware_boot_id_rejected(self):
+        report, serial, manifest = synthetic("win10_22h2_en_us_x64")
+        first = INITIAL_SERIAL + (
+            b'BdsDxe: failed to start Boot12AB "UEFI QEMU DVD-ROM": Time out\n'
+        )
+        report["initialDvdGuestSerialSha256"] = hashlib.sha256(first).hexdigest()
+        with self.assertRaisesRegex(
+            GATE.BaselineGateError, "firmware reported a boot timeout"
+        ):
+            self.exercise(report, serial, manifest, first)
+
     def test_actual_com1_markers_coalesced_on_same_line_are_accepted_as_documents(self):
         report, serial, _ = synthetic()
         first, *markers = serial.splitlines()
