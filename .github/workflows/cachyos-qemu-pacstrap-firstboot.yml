@@ -75,7 +75,9 @@ jobs:
           assert 'systemd.run=/run/gaslux-control/gaslux-launch.sh' in host
           assert 'mcopy -i "$w/control.raw" "$launch" ::/gaslux-launch.sh' in host
           assert 'systemd-run --no-block --unit=gaslux-vm-install' in launcher
-          assert '--property=TimeoutStartSec=0' in launcher
+          assert '--property=TimeoutStartSec=infinity' in launcher
+          assert '--property=Type=simple' in launcher
+          assert '--property=Type=exec' not in launcher
           assert '--property=RuntimeMaxSec=1800' in launcher
           assert 'systemd-detect-virt --vm' in launcher
           assert 'gaslux-vm-install.service: Failed with result' in host
