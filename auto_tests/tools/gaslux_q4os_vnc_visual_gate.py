@@ -27,35 +27,70 @@ _WELCOME = (
 )
 
 
-def verified_q4os_welcome_desktop(path: Path) -> bool:
+def _open_verified_screen(path: Path) -> Image.Image | None:
     if not isinstance(path, Path) or not path.is_absolute():
-        return False
+        return None
     try:
         meta = path.lstat()
         if not stat.S_ISREG(meta.st_mode) or not 0 < meta.st_size < 2 * 1024 * 1024:
-            return False
+            return None
         with Image.open(path) as source:
             if source.size != _EXPECTED_SCREEN:
-                return False
-            # Convert explicitly so indexed/RGBA/png encoding differences do
-            # not weaken the verified visual content, dimensions or geometry.
-            pixels = source.convert("RGB")
-            return all(
-                hashlib.sha256(pixels.crop(box).tobytes()).hexdigest() == expected
-                for box, expected in (_ICON, _WELCOME)
-            )
+                return None
+            return source.convert("RGB")
     except (OSError, ValueError, UnidentifiedImageError, SyntaxError):
+        return None
+
+
+def _roi_sha(image: Image.Image, box: tuple[int, int, int, int]) -> str:
+    return hashlib.sha256(image.crop(box).tobytes()).hexdigest()
+
+
+def verified_q4os_welcome_desktop(path: Path) -> bool:
+    screen = _open_verified_screen(path)
+    if screen is None:
         return False
+    return all(_roi_sha(screen, box) == expected for box, expected in (_ICON, _WELCOME))
+
+
+def verified_after_close(path: Path) -> bool:
+    """Before clicking installer, verify icon remains same and welcome is gone."""
+    screen = _open_verified_screen(path)
+    if screen is None:
+        return False
+    return (
+        _roi_sha(screen, _ICON[0]) == _ICON[1]
+        and _roi_sha(screen, _WELCOME[0]) != _WELCOME[1]
+    )
+
+
+def verified_centre_changed(before: Path, after: Path) -> bool:
+    """Taskbar-clock updates alone must never satisfy a GUI transition."""
+    previous = _open_verified_screen(before)
+    current = _open_verified_screen(after)
+    if previous is None or current is None:
+        return False
+    return _roi_sha(previous, _WELCOME[0]) != _roi_sha(current, _WELCOME[0])
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("REFUSED: expected one Q4OS VNC screenshot path", file=sys.stderr)
+    if len(sys.argv) < 3:
+        print("REFUSED: expected mode and Q4OS VNC screenshot path", file=sys.stderr)
         return 2
-    if verified_q4os_welcome_desktop(Path(sys.argv[1])):
-        print("GASLUX_Q4OS_DESKTOP_CROPS_VERIFIED=icon+welcome:1280x800")
+    mode = sys.argv[1]
+    if mode == "welcome" and len(sys.argv) == 3:
+        passed = verified_q4os_welcome_desktop(Path(sys.argv[2]))
+    elif mode == "after-close" and len(sys.argv) == 3:
+        passed = verified_after_close(Path(sys.argv[2]))
+    elif mode == "changed-centre" and len(sys.argv) == 4:
+        passed = verified_centre_changed(Path(sys.argv[2]), Path(sys.argv[3]))
+    else:
+        print("REFUSED: unknown Q4OS screenshot guard phase", file=sys.stderr)
+        return 2
+    if passed:
+        print(f"GASLUX_Q4OS_VNC_GUARD_{mode.upper().replace('-', '_')}=passed")
         return 0
-    print("REFUSED: Q4OS screenshot regions differ from prior verified ISO", file=sys.stderr)
+    print(f"REFUSED: Q4OS screenshot guard did not validate: {mode}", file=sys.stderr)
     return 1
 
 
