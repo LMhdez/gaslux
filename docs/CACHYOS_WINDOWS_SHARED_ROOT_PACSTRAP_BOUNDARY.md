@@ -28,13 +28,22 @@ implements the next root-only installation *candidate*:
    the signed plan. Missing NTFS3 support or dirty/encrypted volumes fail
    closed; no unsafe fallbacks.
 5. **Only in the isolated VM test mode**, with all previous checks complete,
-   mount the existing transaction-owned ext4 root (GPT #5) at a fresh
+   require an additional canonical Ed25519-signed *root-only* COW lab grant
+   made with the same key anchored by the original kernel handoff. Check
+   exact plan SHA-256, run/nonce, fifth Linux PARTUUID/UUID, protected Windows
+   GPT digest, authenticated host checkpoint and backing-chain proof hashes,
+   read-only Windows backing, COW discardability and an explicit ban on
+   Windows ESP writes. This is a LAB authorization for a root-only action,
+   never an upgrade of the signed read-only plan to production write access.
+   The actual host-side grant issuer/checkpoint authentication is **not yet
+   implemented or proven**, so no real Archiso pacstrap has been run.
+6. After the signed grant passes, mount the existing ext4 root (GPT #5) at a fresh
    private root-owned empty `/mnt/gaslux-shared-root`; populate official
    Arch/CachyOS keyrings without changing signature policy; call native
    `pacstrap -K` for a minimal CachyOS kernel/root; invoke native branding
    and check `ID=cachyos`. Never run `sgdisk --clear`, `mkfs.*`,
    `grub-install`, `efibootmgr`, or copy a live root filesystem.
-6. Unmount the installed root and re-check both GPTs and protected Windows
+7. Unmount the installed root and re-check both GPTs and protected Windows
    hashes. The host is responsible for owning and discarding the COW on any
    failure, before any user-visible approval.
 
