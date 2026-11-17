@@ -134,7 +134,10 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
                     self.assertNotIn("virtio", " ".join(args))
                     self.assertEqual(args[args.index("-net") + 1], "none")
                     self.assertEqual(args[args.index("-boot") + 1], "order=d")
-                    self.assertEqual(args[args.index("-monitor") + 1], "none")
+                    self.assertEqual(
+                        args[args.index("-monitor") + 1],
+                        f"unix:{(root / 'initial-installer-hmp.sock')},server,nowait",
+                    )
                     self.assertIn("-no-reboot", args)
                     if mode == "fat32_usb":
                         self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0", args)
@@ -144,6 +147,19 @@ class WindowsPEAnswerMediaTests(unittest.TestCase):
                     else:
                         self.assertIn("if=floppy,format=raw,readonly=on,file="
                                       + str(root / "answer.img"), args)
+
+    def test_uefi_and_private_numeric_vga_diagnostics_do_not_promote_winpe(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("capture_owned_qemu_vga(", source)
+        self.assertIn('"winpe-vga-early.ppm"', source)
+        self.assertIn('"winpe-vga-late.ppm"', source)
+        self.assertIn('"GASLUX_WINPE_" + mode.upper() + "_ANSWER_MARKER="', source)
+        self.assertIn('UEFI_DVD_TIMEOUT_SEEN=', source)
+        self.assertIn('_PRIVATE_VGA_NUMERIC_CHANGED=', source)
+        self.assertIn('require(result["fat12_floppy"]', source)
+        self.assertIn('require(result["fat32_usb"]', source)
+        self.assertNotIn('"windowsClientBootVerified": True', source)
+        self.assertNotIn('"storageWritesAuthorized": True', source)
 
     def test_unexpected_media_rejected_before_qemu_or_disk_access(self):
         for value in ("", "linux", "WindowsHostDisk", "fat32-usb"):
