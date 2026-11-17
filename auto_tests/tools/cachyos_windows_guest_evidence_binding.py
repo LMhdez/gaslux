@@ -105,6 +105,24 @@ def check_target_geometry(
         require(old == new, "rollback did not restore the exact GPT partition map")
         return
     require(mode == "postinstall", "unexpected Windows evidence phase")
+    # The Windows NTFS partition MUST end exactly where the transaction says
+    # the owned Linux extent starts; a hidden gap means an unaccounted shrink
+    # or a stale partition map. The raw Windows plan remains immutable.
+    windows_guid = next(
+        (guid for guid, part in old.items()
+         if part["number"] == plan["disk"]["windows"]["number"]
+         and part["offset"] == plan["disk"]["windows"]["offsetBytes"]),
+        None,
+    )
+    require(windows_guid is not None and windows_guid in new,
+            "Windows GPT partition identity was lost during installation")
+    windows = new[windows_guid]
+    expected = plan["disk"]["installer"]
+    require(
+        windows["offset"] == plan["disk"]["windows"]["offsetBytes"]
+        and windows["size"] == expected["finalOffsetBytes"] - windows["offset"],
+        "observed Windows NTFS partition end differs from the exact authorized shrink",
+    )
     additions = set(new) - set(old)
     require(len(additions) == 1, "postinstall requires exactly one owned Linux partition")
     installed = new[next(iter(additions))]
