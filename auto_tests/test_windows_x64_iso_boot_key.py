@@ -72,8 +72,52 @@ class OfficialISOBootPromptTests(unittest.TestCase):
                     monitor_socket=pathlib.Path(temp) / "hmp.sock",
                 )
             self.assertFalse(ok)
-            self.assertIn("did not reach UEFI boot prompt", info)
+            self.assertIn("did not reach UEFI DVD boot or serial prompt", info)
             send.assert_not_called()
+
+    def test_windows11_uefi_dvd_fallback_only_once_when_no_serial_prompt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            logfile = pathlib.Path(temp) / "serial.log"
+            logfile.write_bytes(vm.WINDOWS11_DVD_BOOT_START + b'\\r\\n')
+            qemu = FakeQemu()
+            tick = iter(range(0, 4000, 30))
+            monitor = pathlib.Path(temp) / "monitor.sock"
+            with patch.object(vm.subprocess, "Popen", return_value=qemu), patch.object(
+                vm.time, "monotonic", side_effect=lambda: next(tick)
+            ), patch.object(vm.time, "sleep", return_value=None), patch.object(
+                vm, "send_first_iso_boot_key"
+            ) as sender:
+                ok, info = vm.boot_vm(
+                    ["qemu-system-x86_64"], logfile, 2000,
+                    "win11_26h2_en_us_x64", monitor_socket=monitor)
+            self.assertFalse(ok, info)
+            sender.assert_called_once_with(monitor, hold_ms=6000)
+            self.assertTrue(qemu.killed)
+
+    def test_windows10_never_uses_dvd_start_fallback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            logfile = pathlib.Path(temp) / "serial.log"
+            logfile.write_bytes(vm.WINDOWS11_DVD_BOOT_START + b'\\r\\n')
+            qemu = FakeQemu()
+            tick = iter(range(0, 4000, 30))
+            with patch.object(vm.subprocess, "Popen", return_value=qemu), patch.object(
+                vm.time, "monotonic", side_effect=lambda: next(tick)
+            ), patch.object(vm.time, "sleep", return_value=None), patch.object(
+                vm, "send_first_iso_boot_key"
+            ) as sender:
+                ok, info = vm.boot_vm(
+                    ["qemu-system-x86_64"], logfile, 2000,
+                    "win10_22h2_en_us_x64",
+                    monitor_socket=pathlib.Path(temp) / "hmp.sock")
+            self.assertFalse(ok, info)
+            sender.assert_not_called()
+
+    def test_unapproved_key_duration_refused_even_for_owned_socket(self):
+        monitor = pathlib.Path(
+            "/home/runner/work/_temp/gaslux-win-x64-safe/hmp.sock"
+        )
+        with self.assertRaisesRegex(vm.LabError, "unapproved"):
+            vm.send_first_iso_boot_key(monitor, hold_ms=12000)
 
     def test_untrusted_socket_path_denied(self):
         with self.assertRaisesRegex(vm.LabError, "unowned QEMU monitor"):
