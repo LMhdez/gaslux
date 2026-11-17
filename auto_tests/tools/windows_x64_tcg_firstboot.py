@@ -742,6 +742,38 @@ def scan_two_stage_dvd_serial(
         tail = stream.read(400_000)
     return count, offset, carry, tail
 
+def diagnose_stalled_windows_stage(
+    disk: Path, qemu: subprocess.Popen, initial_allocated: int,
+    inspect_cached_answer: Callable[[Path], None] | None,
+) -> None:
+    """Read-only Panther diagnostic after a *stopped* first-stage QEMU guest.
+
+    Host QCOW2 allocation is a heuristic, never proof of Windows installation.
+    No guest bytes, passwords, OOBE XML or host disk identifiers are logged.
+    """
+    require(qemu.poll() is not None,
+            "stalled Windows guest must be stopped before disk inspection")
+    require(
+        disk.name == "only-disposable-windows-target.qcow2"
+        and disk.parent.parent == Path("/home/runner/work/_temp")
+        and disk.parent.name.startswith("gaslux-win-x64-")
+        and disk.is_file() and not disk.is_symlink()
+        and initial_allocated >= 0,
+        "refusing stalled Windows inspection on unowned disk",
+    )
+    grew = (disk.stat().st_blocks * 512 >
+            initial_allocated + 256 * 1024**2)
+    print("GASLUX_WINDOWS_STAGE1_STALLED_QCOW2_GROWTH_HEURISTIC="
+          + str(int(grew)), flush=True)
+    if inspect_cached_answer is not None:
+        try:
+            inspect_cached_answer(disk)
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
+            # This optional diagnostic must not change the timeout failure.
+            print("GASLUX_WINDOWS_STAGE1_PANTHER_INSPECTION_UNAVAILABLE=1",
+                  flush=True)
+
+
 def boot_two_stage_windows(
     original_args: list[str], disk: Path, final_serial: Path,
     limit: int, profile_key: str,
@@ -779,6 +811,7 @@ def boot_two_stage_windows(
     first_deadline = min(3000, max(900, limit - 800))
     started = time.monotonic()
     stage1_error = final_serial.parent / "first-qemu-stderr.log"
+    first_stage_stalled = False
     with stage1_error.open("xb") as err:
         proc = subprocess.Popen(first, stdout=subprocess.DEVNULL, stderr=err)
         try:
@@ -799,13 +832,20 @@ def boot_two_stage_windows(
                         return False, "initial Windows Setup UEFI DVD boot failed"
                 time.sleep(2)
             if proc.poll() is None:
-                return False, "Windows Setup did not reboot its first owned VM"
-            if proc.returncode != 0:
+                first_stage_stalled = True
+            elif proc.returncode != 0:
                 return False, "QEMU exited abnormally during first Windows Setup stage"
         finally:
             if proc.poll() is None:
                 proc.kill()
                 proc.wait(timeout=30)
+    if first_stage_stalled:
+        # The optional Panther read happens strictly AFTER the VM was killed
+        # and waited, never concurrently with guest filesystem writes.
+        diagnose_stalled_windows_stage(
+            disk, proc, initial_allocated, inspect_cached_answer,
+        )
+        return False, "Windows Setup did not reboot its first owned VM"
     if not initial_serial.is_file():
         return False, "missing first-stage UEFI DVD serial evidence"
     (found, dvd_scan_offset, dvd_scan_carry,
