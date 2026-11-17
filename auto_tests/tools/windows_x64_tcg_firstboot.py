@@ -134,7 +134,7 @@ $ErrorActionPreference = 'Stop'
 $ser = $null
 try {
   $ser = [System.IO.Ports.SerialPort]::new('COM1',115200,[System.IO.Ports.Parity]::None,8,[System.IO.Ports.StopBits]::One)
-  $ser.NewLine = "\n"
+  $ser.NewLine = "`n"
   $ser.Open()
   $os = Get-CimInstance -ClassName Win32_OperatingSystem
   if ([int]$os.ProductType -ne 1) { throw 'running OS is not Windows client' }
@@ -300,7 +300,30 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
 
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str) -> tuple[bool, str]:
+    """Require a real Windows client serial witness AND a clean guest poweroff.
+
+    A serial marker alone is not boot durability. The real guest-side script
+    requests ACPI Windows shutdown after the read-only audit, and QEMU must
+    exit successfully before the host may claim a clean installed firstboot.
+    """
+    build_by_profile = {
+        "win10_22h2_en_us_x64": "19045",
+        "win11_26h2_en_us_x64": "26300",
+    }
+    if profile_key not in build_by_profile:
+        raise LabError("unknown client profile")
+    required = {
+        f"{MARKER}={profile_key}".encode(),
+        b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+        b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+        b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+        b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+        b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+    }
+    build_line = ("GASLUX_WINDOWS_X64_BOOT_BUILD=" +
+                  build_by_profile[profile_key]).encode()
     started = time.monotonic()
+    witnessed_at: float | None = None
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
@@ -308,26 +331,32 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                 if transcript.is_file():
                     with transcript.open("rb") as source:
                         source.seek(max(0, transcript.stat().st_size - 400_000))
-                        data = source.read(400_000)
-                    if FAILURE.encode() in data:
-                        return False, "installed Windows reported failed boot audit"
-                    required = (
-                        f"{MARKER}={profile_key}".encode(),
-                        b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
-                        b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
-                        b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
-                        b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
-                        b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
-                    )
-                    if all(e in data for e in required):
-                        return True, "real installed Windows x64 client serial audit observed"
-                if proc.poll() is not None:
+                        lines = {
+                            line.strip() for line in source.read(400_000).splitlines()
+                        }
+                    if any(line.startswith(FAILURE.encode()) for line in lines):
+                        return False, "installed Windows explicitly rejected firstboot audit"
+                    if required.issubset(lines) and any(
+                        line.startswith(build_line) for line in lines
+                    ):
+                        if witnessed_at is None:
+                            witnessed_at = time.monotonic()
+                rc = proc.poll()
+                if rc is not None:
+                    if witnessed_at is not None and rc == 0:
+                        return True, "installed Windows client audit and clean VM poweroff verified"
+                    if witnessed_at is not None:
+                        return False, "QEMU exited abnormally after Windows audit"
                     return False, "QEMU exited before installed Windows first-logon witness"
+                if witnessed_at is not None and (
+                    time.monotonic() - witnessed_at > 600
+                ):
+                    return False, "installed Windows reported audit but did not power off cleanly"
                 time.sleep(10)
-            return False, "timed out before a complete installed Windows x64 audit"
+            return False, "timed out before verified Windows guest audit and shutdown"
         finally:
             if proc.poll() is None:
-                proc.kill()  # VM-only simulated power off, no host disk signals.
+                proc.kill()  # Only ephemeral QEMU process; never the host disk.
                 proc.wait(timeout=30)
 
 
