@@ -589,28 +589,26 @@ def build_two_stage_qemu_args(
     require(first.count("-boot") == 1 and first.count("-serial") == 1
             and first.count("-monitor") == 1,
             "ambiguous QEMU VM boot/serial/monitor options")
-    # Stage 2 must receive only our answer volume plus the installed disk.
-    # Refuse legacy floppies (not reliably enumerated by Windows UEFI), a
-    # writable answer volume, or any second/unrecognised answer device.
-    answer_drives = [
+    # CONTROLLED A/B against PR #109: retain the exact original Microsoft
+    # ISO + prompt synchronized HMP, guest audit and disk-only QEMU stages.
+    # Switch ONLY the answer medium to the historically working FAT12 floppy.
+    # This path is test-only; production must not depend on a floppy.
+    floppies = [
         original[i + 1] for i in range(len(original) - 1)
         if original[i] == "-drive" and
-        original[i + 1].startswith("if=none,id=lab_unattend,")
-    ]
-    answer_devices = [
-        original[i + 1] for i in range(len(original) - 1)
-        if original[i] == "-device" and
-        original[i + 1].startswith("usb-storage,drive=lab_unattend,")
+        original[i + 1].startswith("if=floppy,")
     ]
     require(
-        len(answer_drives) == 1 and
-        answer_drives[0] == (
-            "if=none,id=lab_unattend,format=raw,readonly=on,file="
-            + str(initial_serial.parent / "only-disposable-answer-usb.img")
-        ) and
-        answer_devices == ["usb-storage,drive=lab_unattend,bus=lab_usb.0"] and
-        not any("if=floppy" in arg for arg in original),
-        "two-stage Windows lab requires unique read-only owned USB answer",
+        floppies == [
+            "if=floppy,format=raw,file="
+            + str(initial_serial.parent / "unattend-floppy.img")
+        ]
+        and not any(
+            "id=lab_unattend" in arg
+            or "usb-storage,drive=lab_unattend" in arg
+            for arg in original
+        ),
+        "original ISO A/B requires unique owned FAT12 file-backed floppy",
     )
     for args, boot, serial in (
         (first, "order=d", initial_serial),
@@ -1106,11 +1104,11 @@ def main(argv: list[str] | None = None) -> int:
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
             if args.two_stage_install_only:
-                answer = workspace / "only-disposable-answer-usb.img"
+                answer = workspace / "unattend-floppy.img"
                 require(not answer.exists() and not answer.is_symlink(),
                         "refusing reused Windows Setup answer volume")
-                subprocess.run(["truncate", "-s", "64M", str(answer)], check=True)
-                subprocess.run(["mkfs.vfat", "-F", "32", "-n", "GASLUXCI", str(answer)],
+                subprocess.run(["truncate", "-s", "1440K", str(answer)], check=True)
+                subprocess.run(["mkfs.vfat", "-F", "12", "-n", "GASLUXCI", str(answer)],
                                check=True, stdout=subprocess.DEVNULL)
             else:
                 answer = workspace / "unattend-floppy.img"
@@ -1168,13 +1166,9 @@ def main(argv: list[str] | None = None) -> int:
                     "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
                 ])
                 if args.two_stage_install_only:
-                    # Read-only, file-backed FAT32 USB: never a host block device.
-                    # It remains attached in both stages; only the DVD detaches.
-                    base.extend([
-                        "-drive",
-                        f"if=none,id=lab_unattend,format=raw,readonly=on,file={answer}",
-                        "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
-                    ])
+                    # Controlled original ISO + FAT12 floppy *lab only*;
+                    # file-backed, in the runner-owned private workspace.
+                    base.extend(["-drive", f"if=floppy,format=raw,file={answer}"])
                 else:
                     base.extend(["-drive", f"if=floppy,format=raw,file={answer}"])
             tpm = None
