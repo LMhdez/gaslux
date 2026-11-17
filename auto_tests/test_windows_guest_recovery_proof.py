@@ -176,6 +176,29 @@ class WindowsRecoveryFixtureTests(unittest.TestCase):
     def test_recovery_partition_deleted(self):
         self.rejected(lambda a, b: b["disks"][0]["partitions"].pop(2), message="removed")
 
+    def test_duplicate_partition_number_in_postinstall_is_rejected(self):
+        self.rejected(
+            lambda old, new: new["disks"][0]["partitions"][-1].update(number=1),
+            message="duplicate partition number",
+        )
+
+    def test_duplicate_partition_number_in_baseline_is_rejected(self):
+        self.rejected(
+            lambda old, new: old["disks"][0]["partitions"][2].update(number=1),
+            message="duplicate partition number",
+        )
+
+    def test_duplicate_number_on_unrelated_disk_is_rejected(self):
+        self.rejected(
+            lambda old, new: new["disks"][1]["partitions"].append(
+                part(
+                    "abcdef12-1111-2222-3333-444444444444", 1,
+                    52 * GIB, GIB, "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7",
+                )
+            ),
+            message="duplicate partition number",
+        )
+
     def test_recovery_partition_moved(self):
         self.rejected(lambda a, b: b["disks"][0]["partitions"][2].update(offset=222 * GIB))
 
