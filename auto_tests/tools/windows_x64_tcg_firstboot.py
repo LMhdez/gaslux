@@ -450,7 +450,7 @@ def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
                 banner += fragment
             require(b"(qemu)" in banner, "unexpected QEMU HMP monitor")
             # HMP screendump only reads the VM display: no input or disk writes.
-            monitor.sendall(f"screendump {destination}\n".encode("ascii"))
+            monitor.sendall(f"screendump {destination.name}\n".encode("ascii"))
             response = b""
             while b"(qemu)" not in response and len(response) < 8192:
                 fragment = monitor.recv(8192 - len(response))
