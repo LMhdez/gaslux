@@ -22,9 +22,7 @@ def test_key_is_pinned_to_upstream_public_key():
 def test_workflow_is_readonly_and_experimental():
     data = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     assert data["permissions"] == {"contents": "read"}
-    assert "feature/bazzite-official-iso-ovmf" in str(
-        data.get("on", data.get(True))
-    )
+    assert "feature/bazzite-official-iso-ovmf" in str(data.get("on", data.get(True)))
     assert "contracts" in data["jobs"]
     assert "official-iso-diskless" in data["jobs"]
     job = data["jobs"]["official-iso-diskless"]
@@ -80,6 +78,6 @@ def test_no_target_writes_or_private_iso_in_artifacts():
         "-blockdev driver=host_device", "-drive file=/dev/",
     ):
         assert forbidden not in source, forbidden
-    assert "-drive \"if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso\"" in source
+    assert '-drive "if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso"' in source
     assert "persist-credentials: false" in source
     assert "if-no-files-found: warn" in source
