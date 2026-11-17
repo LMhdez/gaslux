@@ -985,6 +985,7 @@ def probe_no_prompt_uefi_dvd(args: list[str], serial: Path,
             "unexpected DVD probe or reused guest serial transcript")
     started = time.monotonic()
     begun = False
+    vga_sampled = False
     with (serial.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
@@ -993,6 +994,20 @@ def probe_no_prompt_uefi_dvd(args: list[str], serial: Path,
                     sample = serial.read_bytes()[-16_384:]
                     if b"BdsDxe: starting Boot0001" in sample:
                         begun = True
+                    if (begun and not vga_sampled
+                            and time.monotonic() - started >= 30):
+                        from windows_x64_vga_diagnostic import capture_owned_qemu_vga
+                        try:
+                            summary = capture_owned_qemu_vga(
+                                serial.parent / "initial-installer-hmp.sock",
+                                serial.parent / "first-stage-vga-early.ppm",
+                            )
+                            print("GASLUX_WINDOWS_DVD_PROBE_VGA_NUMERIC="
+                                  + json.dumps(summary, sort_keys=True), flush=True)
+                        except (LabError, OSError, ValueError):
+                            print("GASLUX_WINDOWS_DVD_PROBE_VGA_UNAVAILABLE=1",
+                                  flush=True)
+                        vga_sampled = True
                     if (b"BdsDxe: failed to start Boot0001" in sample or
                             b"No bootable option or device was found." in sample):
                         return False, "OVMF reported the Microsoft DVD bootloader failed"
