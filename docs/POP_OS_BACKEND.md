@@ -69,3 +69,7 @@ and disposable Windows VM installation/dual-boot/rollback evidence.
 Bash validation function with synthetic environment inputs, confirms negative
 and positive policy cases and guards the historical operation order. It does
 not execute installer or disk commands.
+
+## Dev integration safety gate
+
+The shared `configure-target-main.sh` remains **Mint/Zorin only**; the System76 preflight is diagnostic, not an alternative dispatcher. Changes to this script must pass the `dev` legacy WPF/C#/PowerShell/Python contracts and its Bash syntax check, in addition to the candidate preflight tests. Passing these synthetic checks is not equivalent to a real Mint/Zorin reinstall, Pop!_OS native installation, Windows boot or rollback. Keep all candidate IDs absent from the stable release catalogue.
