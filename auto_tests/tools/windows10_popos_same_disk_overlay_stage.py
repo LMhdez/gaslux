@@ -16,6 +16,10 @@ import stat
 import subprocess
 from pathlib import Path
 
+from windows10_popos_gpt_mirror_gate import (
+    capture_owned_qcow2,
+    reconcile_windows_and_root,
+)
 from windows_x64_installed_gpt_ro_audit import (
     BASIC,
     ESP,
@@ -224,6 +228,9 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
     except ImportError:
         raise DiskAuditError("host libguestfs binding unavailable") from None
 
+    # BEFORE ANY COW write: independently verify both GPT header/array CRCs,
+    # mirrored entries, protective MBR and partition identity in the base.
+    crc_before = capture_owned_qcow2(base, expected_count=4)
     # PRECONDITION: host already ran inspect_owned_disk() on the shut-down
     # genuine Windows 10 VM. Independently repeat exact baseline here.
     with closing(guestfs.GuestFS(python_return_dict=True)) as g:
@@ -263,10 +270,15 @@ def stage_owned_overlay(base: Path, evidence: Path) -> dict:
             g.part_set_gpt_type("/dev/sda", 5, LINUX_GPT)
             g.part_set_name("/dev/sda", 5, ROOT_LABEL)
             g.sync()
+        # Independent host-level GPT CRC reconciliation AFTER changing only
+        # overlay GPT. This must pass in addition to guestfs Windows witnesses.
+        crc_after = capture_owned_qcow2(overlay, expected_count=5)
+        reconcile_windows_and_root(crc_before, crc_after, plan)
         with closing(guestfs.GuestFS(python_return_dict=True)) as g:
             g.add_drive_opts(str(overlay), readonly=1, format="qcow2")
             g.launch()
             result = validate_after(g, before, plan)
+        result["primaryAndBackupGptCrcVerifiedAfterStage"] = True
         stat_after = base.stat()
         require(
             original_stat.st_size == stat_after.st_size
