@@ -94,6 +94,25 @@ class OfficialISOBootPromptTests(unittest.TestCase):
             sender.assert_called_once_with(monitor, hold_ms=6000)
             self.assertTrue(qemu.killed)
 
+    def test_windows11_usb_enumeration_can_renumber_dvd_to_boot0002(self):
+        with tempfile.TemporaryDirectory() as temp:
+            logfile = pathlib.Path(temp) / "serial.log"
+            logfile.write_bytes(b'BdsDxe: starting Boot0002 "UEFI QEMU DVD-ROM' + b'\\r\\n')
+            qemu = FakeQemu()
+            tick = iter(range(0, 4000, 30))
+            monitor = pathlib.Path(temp) / "monitor.sock"
+            with patch.object(vm.subprocess, "Popen", return_value=qemu), patch.object(
+                vm.time, "monotonic", side_effect=lambda: next(tick)
+            ), patch.object(vm.time, "sleep", return_value=None), patch.object(
+                vm, "send_first_iso_boot_key"
+            ) as sender:
+                ok, info = vm.boot_vm(
+                    ["qemu-system-x86_64"], logfile, 2000,
+                    "win11_26h2_en_us_x64", monitor_socket=monitor)
+            self.assertFalse(ok, info)
+            sender.assert_called_once_with(monitor, hold_ms=6000)
+            self.assertTrue(qemu.killed)
+
     def test_windows10_never_uses_dvd_start_fallback(self):
         with tempfile.TemporaryDirectory() as temp:
             logfile = pathlib.Path(temp) / "serial.log"
