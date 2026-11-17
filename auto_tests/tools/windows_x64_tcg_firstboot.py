@@ -252,7 +252,7 @@ try {
   if (-not $winreOk) { throw 'WinRE is missing, disabled or unverifiable' }
   $auditStage = 'SERIAL_PROOF'
   $serialProof = @(
-    'GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber,
+    ('GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber)
     'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1',
     'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1',
     'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1',
@@ -260,7 +260,14 @@ try {
     'GASLUX_WINDOWS_X64_WINRE_ENABLED=1',
     '__MARKER__=__PROFILE__'
   )
-  foreach ($line in $serialProof) { $ser.WriteLine($line); Start-Sleep -Milliseconds 100 }
+  if (@($serialProof).Count -ne 7) { throw 'guest serial proof array invalid' }
+  foreach ($line in $serialProof) {
+    if ($line -isnot [string] -or $line -match '\s') {
+      throw 'guest serial marker is not a standalone token'
+    }
+    $ser.WriteLine($line)
+    Start-Sleep -Milliseconds 100
+  }
 } catch {
   if ($ser -and $ser.IsOpen) {
     # Only hard-coded categories; never serialize arbitrary exception data,
@@ -688,6 +695,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
 
 def build_two_stage_qemu_args(
     original: list[str], initial_serial: Path,
+    *, fat12_control_lab: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Return independent VM arguments: DVD first, then strictly disk-only."""
     first = list(original)
@@ -695,9 +703,9 @@ def build_two_stage_qemu_args(
     require(first.count("-boot") == 1 and first.count("-serial") == 1
             and first.count("-monitor") == 1,
             "ambiguous QEMU VM boot/serial/monitor options")
-    # Stage 2 must receive only our answer volume plus the installed disk.
-    # Refuse legacy floppies (not reliably enumerated by Windows UEFI), a
-    # writable answer volume, or any second/unrecognised answer device.
+    # Protect the owned answer medium, and never mix removable and floppy
+    # media. FAT12 exists solely as an explicitly consented historical VM
+    # control; the default USB answer path remains unchanged.
     answer_drives = [
         original[i + 1] for i in range(len(original) - 1)
         if original[i] == "-drive" and
@@ -708,16 +716,28 @@ def build_two_stage_qemu_args(
         if original[i] == "-device" and
         original[i + 1].startswith("usb-storage,drive=lab_unattend,")
     ]
-    require(
-        len(answer_drives) == 1 and
-        answer_drives[0] == (
-            "if=none,id=lab_unattend,format=raw,readonly=on,file="
-            + str(initial_serial.parent / "only-disposable-answer-usb.img")
-        ) and
-        answer_devices == ["usb-storage,drive=lab_unattend,bus=lab_usb.0"] and
-        not any("if=floppy" in arg for arg in original),
-        "two-stage Windows lab requires unique read-only owned USB answer",
-    )
+    floppy = [
+        original[i + 1] for i in range(len(original) - 1)
+        if original[i] == "-drive" and "if=floppy" in original[i + 1]
+    ]
+    if fat12_control_lab:
+        require(
+            not answer_drives and not answer_devices and
+            floppy == ["if=floppy,format=raw,file=" +
+                       str(initial_serial.parent / "unattend-floppy.img")],
+            "FAT12 control requires unique VM-owned answer floppy",
+        )
+    else:
+        require(
+            len(answer_drives) == 1 and
+            answer_drives[0] == (
+                "if=none,id=lab_unattend,format=raw,readonly=on,file="
+                + str(initial_serial.parent / "only-disposable-answer-usb.img")
+            ) and
+            answer_devices == ["usb-storage,drive=lab_unattend,bus=lab_usb.0"]
+            and not floppy,
+            "two-stage Windows lab requires unique read-only owned USB answer",
+        )
     for args, boot, serial in (
         (first, "order=d", initial_serial),
         (second, "order=c", Path(original[original.index("-serial") + 1][5:])),
@@ -867,6 +887,7 @@ def boot_two_stage_windows(
     original_args: list[str], disk: Path, final_serial: Path,
     limit: int, profile_key: str,
     restart_tpm: Callable[[], None] | None = None,
+    *, fat12_control_lab: bool = False,
 ) -> tuple[bool, str]:
     """DVD Setup stage exits at guest reboot; independently boot OWNED GPT disk.
 
@@ -891,7 +912,9 @@ def boot_two_stage_windows(
     initial_serial = final_serial.parent / "initial-dvd-guest-serial.log"
     require(not initial_serial.exists() and not final_serial.exists(),
             "VM serial evidence path was reused")
-    first, second = build_two_stage_qemu_args(original_args, initial_serial)
+    first, second = build_two_stage_qemu_args(
+        original_args, initial_serial, fat12_control_lab=fat12_control_lab,
+    )
     initial_allocated = disk.stat().st_blocks * 512
     dvd_scan_offset = 0
     dvd_scan_carry = b""
@@ -1000,6 +1023,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--two-stage-install-only", action="store_true",
                     help="EXPERIMENTAL hosted KVM: install from DVD in stage 1, "
                          "then start a fresh disk-only guest with no DVD")
+    ap.add_argument("--fat12-proof-control", action="store_true",
+                    help="hosted KVM Windows 10 historical FAT12 answer "
+                         "control only; requires separate consent, never production")
     ap.add_argument("--one-shot-install-only", action="store_true",
                     help="EXPERIMENTAL hosted KVM only: initial no-prompt DVD "
                          "then hard disk on reboot, with repeat-DVD abort")
@@ -1014,6 +1040,18 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
+    if args.fat12_proof_control and not (
+        args.profile == "win10_22h2_en_us_x64"
+        and args.two_stage_install_only and args.derived_no_prompt
+        and args.accel == "kvm" and not args.fixture_only
+        and not args.one_shot_install_only and not args.boot_probe_only
+        and os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and os.environ.get("GASLUX_WINDOWS_FAT12_PROOF_CONSENT")
+            == "I_ACCEPT_DISPOSABLE_HOSTED_KVM_FAT12_CONTROL"
+    ):
+        raise SystemExit("FAT12 historical control requires dedicated "
+                         "hosted KVM consent and Windows 10 two-stage mode")
     if args.two_stage_install_only:
         if not (args.derived_no_prompt and not args.boot_probe_only
                 and not args.one_shot_install_only and args.accel == "kvm"
@@ -1035,7 +1073,8 @@ def main(argv: list[str] | None = None) -> int:
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(
         args.profile, profile["expectedWindowsBuildPrefix"],
-        removable_answer=args.two_stage_install_only,
+        removable_answer=(args.two_stage_install_only
+                          and not args.fat12_proof_control),
     )
     validate_oobe_answer_pass(xml)
     root = ET.fromstring(xml)
@@ -1085,7 +1124,7 @@ def main(argv: list[str] | None = None) -> int:
                 encoding="utf-8")
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
-            if args.two_stage_install_only:
+            if args.two_stage_install_only and not args.fat12_proof_control:
                 answer = workspace / "only-disposable-answer-usb.img"
                 require(not answer.exists() and not answer.is_symlink(),
                         "refusing reused Windows Setup answer volume")
@@ -1147,7 +1186,7 @@ def main(argv: list[str] | None = None) -> int:
                     "-drive", f"if=none,id=only_windows,format=qcow2,file={disk}",
                     "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
                 ])
-                if args.two_stage_install_only:
+                if args.two_stage_install_only and not args.fat12_proof_control:
                     # Read-only, file-backed FAT32 USB: never a host block device.
                     # It remains attached in both stages; only the DVD detaches.
                     base.extend([
@@ -1193,6 +1232,7 @@ def main(argv: list[str] | None = None) -> int:
                         base, disk, serial, args.boot_timeout, args.profile,
                         restart_tpm=(restart_guest_tpm if args.profile.startswith("win11")
                                      else None),
+                        fat12_control_lab=args.fat12_proof_control,
                     )
                 else:
                     ok, diagnostic = boot_vm(
