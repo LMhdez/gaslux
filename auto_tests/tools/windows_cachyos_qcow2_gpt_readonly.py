@@ -94,10 +94,15 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     require(front[510:512] == b"\x55\xaa",
             "invalid protective MBR signature")
     entries_mbr = [front[446 + 16*i:446 + 16*(i+1)] for i in range(4)]
-    require(entries_mbr[0][4] == 0xEE and
-            all(not any(entry) for entry in entries_mbr[1:]),
-            "hybrid or nonprotective MBR is forbidden")
     total = disk_bytes // SECTOR
+    protective_start, protective_span = struct.unpack_from(
+        "<II", entries_mbr[0], 8,
+    )
+    require(entries_mbr[0][0] == 0 and entries_mbr[0][4] == 0xEE and
+            protective_start == 1 and
+            protective_span == min(total - 1, 0xffffffff) and
+            all(not any(entry) for entry in entries_mbr[1:]),
+            "hybrid, short or nonprotective MBR is forbidden")
     primary = header_at(front, SECTOR, 1, total - 1, total)
     backup = header_at(back, WINDOW_BYTES - SECTOR, total - 1, 1, total)
     require(primary[56:72] == backup[56:72] and
@@ -116,6 +121,7 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     first_usable, last_usable = struct.unpack_from("<QQ", primary, 40)
     spans = []
     result_parts = []
+    partition_guids: set[bytes] = set()
     for i in range(128):
         rec = p_entries[i*128:(i+1)*128]
         if not any(rec[:16]):
@@ -124,8 +130,10 @@ def inspect_gpt_windows(front: bytes, back: bytes,
         require(i < 4, "foreign fifth GPT partition detected")
         typ = str(uuid.UUID(bytes_le=rec[:16]))
         require(typ == TYPES[i], "unexpected Windows GPT partition type/order")
-        require(rec[16:32] != b"\x00" * 16,
-                "missing unique Windows GPT partition GUID")
+        guid = rec[16:32]
+        require(guid != b"\x00" * 16 and guid not in partition_guids,
+                "missing or duplicated unique Windows GPT partition GUID")
+        partition_guids.add(guid)
         start, end = struct.unpack_from("<QQ", rec, 32)
         require(first_usable <= start <= end <= last_usable and
                 start >= 2048 and start % 2048 == 0,
