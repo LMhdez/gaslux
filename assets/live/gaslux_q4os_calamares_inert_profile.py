@@ -3,8 +3,9 @@
 
 Only creates data files *inside* the validated, private evidence directory.
 It neither runs Calamares nor authorizes partition, EFI or package writes.
-All three upstream native process jobs are replaced by /bin/false until a
-separately validated live-guest transaction-bound executor exists.
+All three upstream native process jobs and firmware writers are disabled.
+The effective settings have ZERO exec jobs; the audited 29-job source graph is
+retained only as JSON evidence until a live-guest transaction executor exists.
 """
 
 from __future__ import annotations
@@ -106,8 +107,15 @@ def create_inert_calamares_profile(evidence: Path) -> dict:
     ):
         raise CalamaresRefusal("Unrecognized upstream package policy")
 
-    # Refuse any authorization: these names are data-only overlays and are
-    # intentionally unusable for a real unattended installation at this stage.
+    # The ORIGINAL 29-job graph stays in the audit report below, not in the
+    # effective Calamares settings. This prevents even the first partition
+    # job from executing if somebody accidentally activates this profile.
+    effective_settings = dict(original_settings)
+    effective_settings["sequence"] = [
+        {"show": ["welcome"]},
+        {"exec": []},
+        {"show": ["finished"]},
+    ]
     boot["installEFIFallback"] = False
     boot["efiBootloaderId"] = "GasluxQ4OSLab"
     for binary in ("grubInstall", "grubMkconfig", "efiBootMgr"):
@@ -125,7 +133,7 @@ def create_inert_calamares_profile(evidence: Path) -> dict:
     native_modules = folder / "usr" / "lib" / "calamares" / "modules"
     native_modules.mkdir(parents=True, mode=0o700)
     hashes = {}
-    hashes["etc/calamares/settings.conf"] = _dump_yaml(config / "settings.conf", original_settings)
+    hashes["etc/calamares/settings.conf"] = _dump_yaml(config / "settings.conf", effective_settings)
     hashes["etc/calamares/modules/bootloader.conf"] = _dump_yaml(
         config / "modules" / "bootloader.conf", boot
     )
@@ -149,7 +157,10 @@ def create_inert_calamares_profile(evidence: Path) -> dict:
         "version": provenance["version"],
         "nativeShowCount": len(EXPECTED_VIEWS[0]) + len(EXPECTED_VIEWS[1]),
         "nativeExecJobsCount": len(JOBS),
+        "originalNativeExecJobs": list(JOBS),
         "nativeFullExecOrderVerified": True,
+        "effectiveExecutableJobCount": 0,
+        "partitionWritesMechanicallyDisabled": True,
         "nativeHookProvenanceSha256": provenance["nativeHookSourceSha256"],
         "generatedFileSha256": hashes,
         "upstreamNativeHooksExecuted": False,
