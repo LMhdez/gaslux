@@ -45,7 +45,6 @@ _CALAMARES_NEXT = (
 )
 
 
-
 def _open_verified_screen(path: Path) -> Image.Image | None:
     if not isinstance(path, Path) or not path.is_absolute():
         return None
