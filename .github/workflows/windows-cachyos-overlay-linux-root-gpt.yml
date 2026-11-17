@@ -73,7 +73,9 @@ jobs:
               qcow2_file_identity,
           )
           from windows_cachyos_cow_checkpoint import prepare_postboot_cow
-          from windows_cachyos_overlay_gpt_stage import stage_overlay_gpt
+          from windows_cachyos_overlay_gpt_stage import (
+              stage_overlay_gpt, OverlayLayoutError,
+          )
 
           work = pathlib.Path(sys.argv[1])
           base = work / 'only-disposable-windows-target.qcow2'
@@ -115,6 +117,25 @@ jobs:
                        'cachyosInstalled', 'cachyosFirstBootVerified',
                        'windowsBootAfterOverlayMutationVerified', 'rollbackProven'):
               assert proof[gate] is False, gate
+          # Any further attempt on a no-longer-pristine overlay fails closed.
+          # This is a fresh lab-owned file, NOT an actual Windows installation.
+          try:
+              stage_overlay_gpt(
+                  base, nvram, baseline, checkpoint,
+                  uuid.UUID('a1e6f710-b1a9-4346-ae8e-88c60eddb691'),
+              )
+          except OverlayLayoutError as exc:
+              assert 'overlay already contains foreign' in str(exc), exc
+          else:
+              raise AssertionError('foreign/stale overlay accepted')
+          print('GASLUX_OVERLAY_SECOND_WRITE_REFUSED=1')
+          # Discard just the overlay, preserve the owned Windows-shaped base.
+          overlay = work/'windows-uefi-cow-checkpoint'/'cachyos-unwritten-trial-overlay.qcow2'
+          assert overlay.is_file() and not overlay.is_symlink()
+          overlay.unlink()
+          assert qcow2_file_identity(base) == before
+          assert inspect_owned_qcow2(base)['windowsPartitions'] == baseline['windowsPartitions']
+          print('GASLUX_SYNTHETIC_OVERLAY_DISCARD_BASE_UNCHANGED=1')
           print('GASLUX_SYNTHETIC_ONLY_OVERLAY_GPT_STAGE_PASS')
           print(json.dumps(proof,sort_keys=True))
           PY
