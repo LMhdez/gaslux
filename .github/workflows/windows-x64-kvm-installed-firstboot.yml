@@ -5,10 +5,12 @@ on:
   push:
     branches:
       - feature/windows-x64-tcg-winre-recovery-baseline
+      - feature/windows-x64-uefi-dvd-visual-diagnostics
     paths:
       - .github/workflows/windows-x64-kvm-installed-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_kvm_opt_in.py
+      - auto_tests/test_windows_x64_iso_boot_key.py
       - auto_tests/test_windows_x64_clean_poweroff_gate.py
       - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
 
@@ -87,7 +89,7 @@ jobs:
     name: Native firstboot Windows x64 client ${{ matrix.profile }} (real ISO/WinRE)
     needs: isolated-kvm-preflight
     runs-on: ubuntu-24.04
-    timeout-minutes: 85
+    timeout-minutes: 42
     strategy:
       fail-fast: false
       matrix:
@@ -123,7 +125,7 @@ jobs:
           set -Eeuo pipefail
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
-            --profile "${{ matrix.profile }}" --accel kvm --boot-timeout 4800
+            --profile "${{ matrix.profile }}" --accel kvm --boot-timeout 2100
           echo 'Real installed Windows x64 client audit and clean guest shutdown verified; Linux dual boot and Windows rollback NOT tested.' >> "$GITHUB_STEP_SUMMARY"
       - name: Archive only guest serial, SHA256 and verification JSON (never ISO/QCOW2/TPM)
         if: always()
