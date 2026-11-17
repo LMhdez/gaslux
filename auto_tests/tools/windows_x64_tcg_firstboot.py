@@ -602,6 +602,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     witnessed_at: float | None = None
     waiting_for_second_windows_audit = False
     second_windows_boot_proof_offset: int | None = None
+    second_windows_boot_started_at: float | None = None
     acpi_requested_at: float | None = None
     acpi_powerdown_attempts = 0
     initial_cd_key_sent = False
@@ -668,6 +669,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                                 serial_begin + matches[-1].end()
                             )
                             waiting_for_second_windows_audit = True
+                            second_windows_boot_started_at = time.monotonic()
                             witnessed_at = None
                             acpi_requested_at = None
                             acpi_powerdown_attempts = 0
@@ -694,6 +696,10 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     if any(line.startswith(FAILURE.encode()) for line in lines):
                         return False, "installed Windows explicitly rejected firstboot audit"
                     if waiting_for_second_windows_audit:
+                        if (second_windows_boot_started_at is None
+                                or time.monotonic() - second_windows_boot_started_at > 300):
+                            return False, ("Windows 11 second OOBE boot emitted "
+                                           "no authenticated guest audit within 300s")
                         if (second_windows_boot_proof_offset is None
                                 or transcript.stat().st_size
                                 < second_windows_boot_proof_offset):
