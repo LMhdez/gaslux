@@ -93,6 +93,26 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         ):
             self.assertIn(requirement, self.host)
 
+    def test_updated_disk_must_power_off_cleanly_before_new_boot(self):
+        # Do not SIGKILL immediately after native pacman/GRUB writes: that
+        # would inject an unintended crash unrelated to the power-cut case.
+        self.assertIn("GASLUX_VM_UPDATE_CLEAN_SHUTDOWN_REQUESTED=1", self.guest)
+        self.assertIn("systemctl --no-block poweroff", self.guest)
+        self.assertNotIn("systemctl --no-block reboot", self.guest)
+        start = self.host.index("require_marker \"$w/update-transaction-serial.log\" 'GASLUX_VM_UPDATE_APPLIED=1'")
+        end = self.host.index("GASLUX_QCOW2_SIGNED_PACMAN_UPDATE_APPLIED=1", start)
+        update_phase = self.host[start:end]
+        self.assertIn("GASLUX_VM_UPDATE_CLEAN_SHUTDOWN_REQUESTED=1", update_phase)
+        self.assertIn("await_clean_shutdown 160", update_phase)
+        self.assertNotIn("stop_vm", update_phase)
+        self.assertLess(update_phase.index("await_clean_shutdown 160"),
+                        update_phase.index("assert_base_unchanged"))
+        self.assertIn("wait \"$vm_pid\" || status=$?", self.host)
+        self.assertIn("(( status == 0 ))", self.host)
+        self.assertIn("GASLUX_QCOW2_UPDATE_CLEAN_SHUTDOWN_VERIFIED=1", self.host)
+        powercut = self.host.split("# Inject a real VM loss of power", 1)[1]
+        self.assertIn("stop_vm # SIGKILL is a hard VM cut", powercut)
+
     def test_recovery_never_boots_writable_baseline_qcow2(self):
         # A guest can update journal/filesystem state merely by booting.
         # Recovery proof must use a disposable COW overlay and then prove
