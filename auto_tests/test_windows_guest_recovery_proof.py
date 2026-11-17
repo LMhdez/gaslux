@@ -62,12 +62,14 @@ def baseline():
         "runId": "vm-run-12345",
         "capturedAt": "2026-11-16T15:00:00+00:00",
         "computerName": "DISPOSABLE-WIN11",
-        "windowsVersion": "10.0.22631",
+        "windowsVersion": "10.0.22631.0",
+        "windowsProductType": 1,
         "windowsBootTime": "2026-11-16T14:00:00+00:00",
         "windowsDiskId": system["id"],
         "windowsPartitionGuid": WIN,
         "espPartitionGuid": ESP,
         "windowsEfiSha256": "a" * 64,
+        "espFilesystemUuid": "AB12-CD34",
         "winreWimSha256": "c" * 64,
         "secureBootEnabled": False,
         "winreEnabled": True,
@@ -236,3 +238,27 @@ class WindowsRecoveryFixtureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class GuestTrustBoundaryTests(unittest.TestCase):
+    def test_windows_server_cannot_be_reported_as_windows_client(self):
+        fixture = baseline()
+        fixture["windowsProductType"] = 3
+        with self.assertRaisesRegex(verify.EvidenceError, "client"):
+            verify.validate(fixture, "baseline")
+
+    def test_missing_or_malformed_fat_volume_identity_fails_closed(self):
+        for serial in ("", "0000-0000", "ABCD-EFGH", "abcd-1234"):
+            fixture = baseline()
+            fixture["espFilesystemUuid"] = serial
+            with self.subTest(serial=serial), self.assertRaises(verify.EvidenceError):
+                verify.validate(fixture, "baseline")
+
+    def test_changed_fat_serial_detected_after_reboot(self):
+        before = baseline()
+        after = copy.deepcopy(before)
+        after["phase"] = "postinstall"
+        after["capturedAt"] = "2026-11-17T00:30:00+00:00"
+        after["windowsBootTime"] = "2026-11-17T00:00:00+00:00"
+        after["espFilesystemUuid"] = "DEAD-BEEF"
+        with self.assertRaisesRegex(verify.EvidenceError, "espFilesystemUuid"):
+            verify.compare(before, after, "postinstall")
