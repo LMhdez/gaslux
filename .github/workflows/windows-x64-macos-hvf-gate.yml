@@ -1,0 +1,54 @@
+name: macOS Intel HVF readiness for disposable Windows x64 QEMU (no guest boot)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-x64-tcg-winre-recovery-baseline
+    paths:
+      - .github/workflows/windows-x64-macos-hvf-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  hvf-and-storage-readonly:
+    name: macOS Intel HVF and Windows ISO/virtual-disk capacity — read-only
+    runs-on: macos-15-intel
+    timeout-minutes: 10
+    steps:
+      - name: Require hardware virtualization and enough disposable SSD for Windows x64
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "$GITHUB_ACTIONS" != true || "$RUNNER_OS" != macOS || "$(uname -m)" != x86_64 ]]; then
+            echo "::error::This check must run on isolated GitHub-hosted macOS Intel only"
+            exit 1
+          fi
+          hv="$(sysctl -n kern.hv_support 2>/dev/null || true)"
+          [[ "$hv" == 0 || "$hv" == 1 ]] || hv="unknown"
+          free_kb="$(df -k "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          [[ "$free_kb" =~ ^[0-9]+$ ]] || free_kb=0
+          free_bytes=$((free_kb * 1024))
+          # Real Windows 11 official ISO 8.23GB + at least 18GiB for native
+          # installation to sparse file-backed QCOW2 and ephemeral control.
+          # No storage cleanup or network/download attempted in this gate.
+          required_bytes=$((8225329152 + 18 * 1024 * 1024 * 1024))
+          {
+            echo "### macOS Intel host-only QEMU/HVF gate"
+            echo "Intel host: yes"
+            echo "HVF host capability: $hv"
+            echo "Available temporary storage bytes: $free_bytes"
+            echo "Minimum expected guest+ISO bytes: $required_bytes"
+            echo "Windows client installed: NO"
+            echo "Windows/Linux dual boot: NOT TESTED"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$hv" != 1 ]]; then
+            echo "::error::Apple Hypervisor.framework unavailable; do not attempt x64 Windows guest"
+            exit 1
+          fi
+          if (( free_bytes < required_bytes )); then
+            echo "::error::Too little free isolated SSD to host Microsoft Windows ISO plus guest; refuse VM start"
+            exit 1
+          fi
+          echo "Only host HVF/storage prerequisites passed; no guest installed or booted."
