@@ -20,7 +20,7 @@ RECOVERY = "de94bba4-06d1-4d40-a16a-bfd50179d6ac"
 TYPES = (ESP, MSR, BASIC, RECOVERY)
 GUID = re.compile(r"[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\Z")
 
-SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\\Z")
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 
 class DiskAuditError(ValueError):
     pass
