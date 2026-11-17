@@ -523,6 +523,11 @@ def main(argv: list[str] | None = None) -> int:
                 "-monitor", f"unix:{monitor_path},server,nowait", "-net", "none",
                 "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
                 "-drive", f"if=pflash,format=raw,file={nvram}",
+                # Explicit USB keyboard input is required in headless OVMF.
+                # A QEMU HMP 'sendkey' command being accepted does NOT prove
+                # that the guest firmware received the keystroke.
+                "-device", "qemu-xhci,id=lab_usb",
+                "-device", "usb-kbd,bus=lab_usb.0",
                 "-device", "ich9-ahci,id=lab_sata",
                 "-drive", f"if=none,id=only_windows,format=qcow2,file={disk}",
                 "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
