@@ -335,6 +335,9 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
 
 BOOT_FROM_CD_PROMPT = b"Press any key to boot from CD or DVD"
 WINDOWS11_DVD_BOOT_START = b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM'
+# Boot option numbering changes when the disposable USB is present.
+WINDOWS11_DVD_BOOT_PATTERN = re.compile(
+    rb'BdsDxe: starting Boot[0-9A-Fa-f]{4} "UEFI QEMU DVD-ROM')
 
 
 def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
@@ -519,7 +522,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             print("GASLUX_VM_INITIAL_OFFICIAL_ISO_PROMPT_KEY_SENT=1",
                                   flush=True)
                         elif (profile_key == "win11_26h2_en_us_x64" and
-                              WINDOWS11_DVD_BOOT_START in serial_data):
+                              WINDOWS11_DVD_BOOT_PATTERN.search(serial_data)):
                             if win11_dvd_started_at is None:
                                 win11_dvd_started_at = time.monotonic()
                             # Genuine official Windows 11 ISO emitted firmware
