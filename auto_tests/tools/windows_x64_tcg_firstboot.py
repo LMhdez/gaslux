@@ -471,9 +471,53 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
         raise LabError("QEMU HMP failed to deliver initial ISO boot key") from exc
 
 
+
+def request_owned_windows_acpi_powerdown(monitor_path: Path) -> None:
+    """Ask a proven installed Windows 11 guest to process one ACPI power button.
+
+    Host never uses HMP quit, QEMU kill or -no-reboot as proof of poweroff.
+    """
+    parent = monitor_path.parent
+    require(
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and os.environ.get("RUNNER_TEMP") == "/home/runner/work/_temp"
+        and os.environ.get("GASLUX_WINDOWS_ACPI_LAB_CONSENT")
+        == "I_ACCEPT_DISPOSABLE_WIN11_POSTAUDIT_ACPI_POWERDOWN"
+        and monitor_path.name == "windows11-acpi-hmp.sock"
+        and parent.parent == Path("/home/runner/work/_temp")
+        and parent.name.startswith("gaslux-win-x64-")
+        and parent.is_dir() and not parent.is_symlink()
+        and parent.resolve() == parent
+        and parent.stat().st_uid == os.getuid()
+        and stat.S_IMODE(parent.stat().st_mode) == 0o700
+        and monitor_path.is_absolute() and monitor_path.is_socket()
+        and not monitor_path.is_symlink()
+        and monitor_path.stat().st_uid == os.getuid(),
+        "unowned Windows guest ACPI monitor or missing hosted consent",
+    )
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
+            monitor.settimeout(3)
+            monitor.connect(str(monitor_path))
+            banner = monitor.recv(8192)
+            require(b"(qemu)" in banner or b"QEMU" in banner,
+                    "unexpected private QEMU HMP monitor banner")
+            monitor.sendall(b"system_powerdown\n")
+            response = monitor.recv(8192)
+            require(bool(response)
+                    and b"unknown command" not in response.lower()
+                    and b"error:" not in response.lower(),
+                    "QEMU refused guest ACPI power-button request")
+    except (TimeoutError, OSError) as exc:
+        raise LabError("QEMU ACPI request failed for owned Windows guest") from exc
+
+
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
-            reject_repeated_dvd_boot: bool = False) -> tuple[bool, str]:
+            reject_repeated_dvd_boot: bool = False,
+            acpi_powerdown_socket: Path | None = None) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -496,8 +540,13 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     }
     build_line = ("GASLUX_WINDOWS_X64_BOOT_BUILD=" +
                   build_by_profile[profile_key]).encode()
+    if acpi_powerdown_socket is not None:
+        require(profile_key == "win11_26h2_en_us_x64"
+                and reject_repeated_dvd_boot and monitor_socket is None,
+                "ACPI powerdown restricted to installed Windows 11 witness")
     started = time.monotonic()
     witnessed_at: float | None = None
+    acpi_requested_at: float | None = None
     initial_cd_key_sent = False
     win11_dvd_started_at: float | None = None
     # Firmware replay evidence must survive COM1 tails exceeding 400 KiB.
@@ -572,6 +621,14 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                         return False, "QEMU exited abnormally after Windows audit"
                     return False, (f"QEMU exited before installed Windows first-logon witness "
                                    f"(QEMU exit code {rc}; Windows still unverified)")
+                if acpi_powerdown_socket is not None and witnessed_at is not None:
+                    if acpi_requested_at is None:
+                        request_owned_windows_acpi_powerdown(acpi_powerdown_socket)
+                        acpi_requested_at = time.monotonic()
+                        print("GASLUX_WIN11_GUEST_ACPI_POWERDOWN_REQUESTED_AFTER_AUDIT=1",
+                              flush=True)
+                    elif time.monotonic() - acpi_requested_at > 120:
+                        return False, "Windows guest ignored ACPI powerdown after audit"
                 if (monitor_socket is not None and not initial_cd_key_sent and
                         time.monotonic() - started > 300):
                     return False, "official ISO did not reach UEFI DVD boot or serial prompt"
@@ -579,8 +636,9 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     time.monotonic() - witnessed_at > 600
                 ):
                     return False, "installed Windows reported audit but did not power off cleanly"
-                time.sleep(0.1 if monitor_socket is not None and not initial_cd_key_sent
-                           else (1 if reject_repeated_dvd_boot else 10))
+                time.sleep(1 if acpi_powerdown_socket is not None else
+                           (0.1 if monitor_socket is not None and not initial_cd_key_sent
+                            else (1 if reject_repeated_dvd_boot else 10)))
             return False, "timed out before verified Windows guest audit and shutdown"
         finally:
             if proc.poll() is None:
@@ -753,6 +811,7 @@ def boot_two_stage_windows(
     original_args: list[str], disk: Path, final_serial: Path,
     limit: int, profile_key: str,
     restart_tpm: Callable[[], None] | None = None,
+    request_acpi_after_audit: bool = False,
 ) -> tuple[bool, str]:
     """DVD Setup stage exits at guest reboot; independently boot OWNED GPT disk.
 
@@ -774,10 +833,25 @@ def boot_two_stage_windows(
     )
     require(profile_key != "win11_26h2_en_us_x64" or restart_tpm is not None,
             "Windows 11 second stage requires a fresh owned TPM 2.0 listener")
+    if request_acpi_after_audit:
+        require(profile_key == "win11_26h2_en_us_x64"
+                and restart_tpm is not None
+                and os.environ.get("GITHUB_ACTIONS") == "true"
+                and os.environ.get("GASLUX_WINDOWS_ACPI_LAB_CONSENT")
+                == "I_ACCEPT_DISPOSABLE_WIN11_POSTAUDIT_ACPI_POWERDOWN",
+                "ACPI control requires dedicated Windows 11 hosted consent")
     initial_serial = final_serial.parent / "initial-dvd-guest-serial.log"
     require(not initial_serial.exists() and not final_serial.exists(),
             "VM serial evidence path was reused")
     first, second = build_two_stage_qemu_args(original_args, initial_serial)
+    acpi_socket = None
+    if request_acpi_after_audit:
+        acpi_socket = final_serial.parent / "windows11-acpi-hmp.sock"
+        require(not acpi_socket.exists() and not acpi_socket.is_symlink()
+                and second.count("-monitor") == 1
+                and second[second.index("-monitor") + 1] == "none",
+                "refusing ambiguous or reused guest ACPI HMP monitor")
+        second[second.index("-monitor") + 1] = f"unix:{acpi_socket},server,nowait"
     initial_allocated = disk.stat().st_blocks * 512
     dvd_scan_offset = 0
     dvd_scan_carry = b""
@@ -839,6 +913,7 @@ def boot_two_stage_windows(
     return boot_vm(
         second, final_serial, remaining, profile_key,
         monitor_socket=None, reject_repeated_dvd_boot=True,
+        acpi_powerdown_socket=acpi_socket,
     )
 
 
@@ -1085,6 +1160,7 @@ def main(argv: list[str] | None = None) -> int:
                         base, disk, serial, args.boot_timeout, args.profile,
                         restart_tpm=(restart_guest_tpm if args.profile.startswith("win11")
                                      else None),
+                        request_acpi_after_audit=args.audit_primary_backup_gpt_readonly,
                     )
                     if ok and args.audit_installed_gpt_readonly:
                         # The second native Windows guest has exited CLEANLY
