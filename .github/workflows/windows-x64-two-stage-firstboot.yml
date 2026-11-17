@@ -9,11 +9,14 @@ on:
       - fix/windows-two-stage-full-serial-dvd-guard
       - fix/windows-eval-oobe-international-pass
       - fix/windows-two-stage-removable-oobe-answer
+      - test/windows-two-stage-offline-panther-cache-evidence
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_two_stage_boot.py
       - auto_tests/test_windows_x64_swtpm_reconnect.py
+      - auto_tests/tools/windows_x64_offline_panther_probe.py
+      - auto_tests/test_windows_x64_offline_panther_probe.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
   workflow_dispatch:
 
@@ -45,6 +48,7 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
           for name in \
               test_windows_x64_two_stage_boot.py \
+              test_windows_x64_offline_panther_probe.py \
               test_windows_x64_noprompt_one_shot.py \
               test_windows_x64_derived_noprompt.py \
               test_windows_x64_kvm_opt_in.py \
@@ -63,6 +67,20 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends swtpm
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_swtpm_reconnect.py' -v
           echo 'Real swtpm Unix listener reconnected with same temporary NV directory; no Windows boot proven.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Prove guestfish read-only inspection of a newly created empty QCOW2 (no Windows)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libguestfs-tools qemu-utils
+          tmp="$(mktemp -d "$RUNNER_TEMP/gaslux-win-x64-panther-XXXXXX")"
+          chmod 700 "$tmp"
+          trap 'rm -rf -- "$tmp"' EXIT
+          qemu-img create -f qcow2 "$tmp/only-disposable-windows-target.qcow2" 64M
+          guestfish --ro --format=qcow2 -a "$tmp/only-disposable-windows-target.qcow2" run : list-filesystems
+          echo 'PASS: libguestfs opened only a synthetic QCOW2 read-only; no Windows/Panther data, no boot proof.' >> "$GITHUB_STEP_SUMMARY"
 
   genuine-client-two-stage-firstboot:
     name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
@@ -95,7 +113,7 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
-            p7zip-full genisoimage
+            p7zip-full genisoimage libguestfs-tools
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
