@@ -139,7 +139,6 @@ if [[ "$owned_hooks" -eq 1 ]]; then
     fatal 'transaction-owned-hook3-failed'
 fi
 mkdir -p /var/lib
-sha256sum "$native_loader"mkdir -p /var/lib
 sha256sum "$native_loader" | cut -d' ' -f1 > "$state"
 if [[ "$owned_hooks" -eq 1 ]]; then
   "$owned_hook_tool" hook5 ||
