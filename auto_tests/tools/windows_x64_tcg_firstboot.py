@@ -251,16 +251,26 @@ try {
   $winreOk = ($LASTEXITCODE -eq 0 -and (($winre -join "`n") -match 'Windows RE status:\s+Enabled'))
   if (-not $winreOk) { throw 'WinRE is missing, disabled or unverifiable' }
   $auditStage = 'SERIAL_PROOF'
+  # Never let PowerShell comma/operator precedence coerce an entire marker
+  # array into ONE space-joined string: raw QEMU serial evidence must carry
+  # seven independent records, not a forged-looking concatenated line.
   $serialProof = @(
-    'GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber,
-    'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1',
-    'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1',
-    'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1',
-    'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1',
-    'GASLUX_WINDOWS_X64_WINRE_ENABLED=1',
+    ('GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber)
+    'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1'
+    'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1'
+    'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1'
+    'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1'
+    'GASLUX_WINDOWS_X64_WINRE_ENABLED=1'
     '__MARKER__=__PROFILE__'
   )
-  foreach ($line in $serialProof) { $ser.WriteLine($line); Start-Sleep -Milliseconds 100 }
+  if (@($serialProof).Count -ne 7) { throw 'guest serial proof array invalid' }
+  foreach ($line in $serialProof) {
+    if ($line -isnot [string] -or $line -match '\s') {
+      throw 'guest serial marker is not a standalone token'
+    }
+    $ser.WriteLine($line)
+    Start-Sleep -Milliseconds 100
+  }
 } catch {
   if ($ser -and $ser.IsOpen) {
     # Only hard-coded categories; never serialize arbitrary exception data,
