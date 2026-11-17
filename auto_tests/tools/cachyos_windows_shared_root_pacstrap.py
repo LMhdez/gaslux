@@ -115,9 +115,9 @@ def strict_gpt_evidence(
             == plan["diskGuidSha256"], "disk GUID differs from signed plan")
     require(len(entries) == 128 * 128 and
             not any(entries[5*128:]), "foreign sixth GPT record")
-    require(hashlib.sha256(entries[:4*128]).hexdigest()
+    require(hashlib.sha256(front + back).hexdigest()
             == plan["gptWindowsSha256"],
-            "first four Windows GPT entry bytes differ from signed baseline")
+            "Windows GPT entry bytes differ from canonical signed dual-window baseline")
     for i, planned in enumerate(plan["partitions"]):
         row = entries[i*128:(i+1)*128]
         require(str(uuid.UUID(bytes_le=row[0:16])) ==
