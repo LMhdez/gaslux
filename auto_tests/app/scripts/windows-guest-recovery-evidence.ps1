@@ -60,11 +60,42 @@ function Get-GasluxWindowsEfiHash {
 
 function Get-GasluxWindowsEspFatUuid {
     param([Parameter(Mandatory = $true)]$Esp)
-    # Read the *filesystem* serial from the already identified Windows ESP.
-    # Neither mountvol nor a new drive letter is used.
+    # The selected Windows ESP is already identified. No new mount or drive letter.
     $volume = $Esp | Get-Volume -ErrorAction Stop
     $volumePath = [string]$volume.Path
-    if ($volumePath -notmatch '^\\\\\?\\Volume\{[a-fA-F0-9-]{36}\}\\
+    if ($volumePath -notmatch '^\\\\\?\\Volume\{[a-fA-F0-9-]{36}\}\\$') {
+        throw 'ESP filesystem volume GUID path cannot be verified.'
+    }
+    if (-not ('GasluxReadOnlyFatSerial' -as [type])) {
+        $source = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class GasluxReadOnlyFatSerial {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool GetVolumeInformation(
+        string root, StringBuilder name, int nameLength,
+        out uint serial, out uint maxComponent, out uint flags,
+        StringBuilder filesystem, int filesystemLength);
+}
+'@
+        Add-Type -TypeDefinition $source -ErrorAction Stop
+    }
+    [uint32]$serial = 0
+    [uint32]$maxComponent = 0
+    [uint32]$flags = 0
+    $filesystem = New-Object System.Text.StringBuilder 32
+    $ok = [GasluxReadOnlyFatSerial]::GetVolumeInformation(
+        $volumePath, $null, 0, [ref]$serial, [ref]$maxComponent,
+        [ref]$flags, $filesystem, $filesystem.Capacity)
+    if (-not $ok -or $filesystem.ToString() -cne 'FAT32' -or $serial -eq 0) {
+        throw 'Cannot read the FAT32 serial of the recorded Windows ESP.'
+    }
+    $id = $serial.ToString('X8')
+    return $id.Substring(0,4) + '-' + $id.Substring(4,4)
+}
+
+function Invoke-GasluxWindowsRecoveryEvidence {
     param([string]$EvidencePhase, [string]$EvidenceRunId)
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -167,152 +198,6 @@ function Get-GasluxWindowsEspFatUuid {
         espPartitionGuid = ([string]$espParts[0].Guid).Trim('{}').ToLowerInvariant()
         windowsEfiSha256 = $loaderSha256
         espFilesystemUuid = $espFilesystemUuid
-        winreWimSha256 = $winreWimSha256
-        secureBootEnabled = $secureBoot
-        winreEnabled = $true
-        winreRaw = $winre
-        bcdCurrentRaw = $bcdCurrent
-        bcdAllRaw = $bcdAll
-        firmwareRaw = $firmware
-        bitlocker = [ordered]@{
-            protectionStatus = [string]$encrypted.ProtectionStatus
-            volumeStatus = [string]$encrypted.VolumeStatus
-            encryptionPercentage = [int]$encrypted.EncryptionPercentage
-        }
-        disks = @($disks)
-    } | ConvertTo-Json -Depth 10 -Compress
-}
-if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-GasluxWindowsRecoveryEvidence -EvidencePhase $Phase -EvidenceRunId $RunId
-}
-) {
-        throw 'ESP filesystem volume GUID path cannot be verified.'
-    }
-    if (-not ('GasluxReadOnlyFatSerial' -as [type])) {
-        Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public static class GasluxReadOnlyFatSerial {
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern bool GetVolumeInformation(
-        string root, StringBuilder name, int nameLength,
-        out uint serial, out uint maxComponent, out uint flags,
-        StringBuilder filesystem, int filesystemLength);
-}
-'@ -ErrorAction Stop
-    }
-    [uint32]$serial = 0
-    [uint32]$maxComponent = 0
-    [uint32]$flags = 0
-    $filesystem = New-Object System.Text.StringBuilder 32
-    $ok = [GasluxReadOnlyFatSerial]::GetVolumeInformation(
-        $volumePath, $null, 0, [ref]$serial, [ref]$maxComponent,
-        [ref]$flags, $filesystem, $filesystem.Capacity)
-    if (-not $ok -or $filesystem.ToString() -cne 'FAT32' -or $serial -eq 0) {
-        throw 'Cannot read the FAT32 serial of the recorded Windows ESP.'
-    }
-    $id = $serial.ToString('X8')
-    return $id.Substring(0,4) + '-' + $id.Substring(4,4)
-}
-
-function Invoke-GasluxWindowsRecoveryEvidence {
-    param([string]$EvidencePhase, [string]$EvidenceRunId)
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Evidence collection requires an elevated Windows test VM.'
-    }
-    if ($env:SystemDrive -notmatch '^[A-Za-z]:$') { throw 'Unexpected Windows system drive.' }
-    $winParts = @(Get-Partition -DriveLetter $env:SystemDrive.Substring(0,1) -ErrorAction Stop)
-    if ($winParts.Count -ne 1) { throw 'Windows system partition is ambiguous.' }
-    $winPart = $winParts[0]
-    $winDisk = Get-Disk -Number $winPart.DiskNumber -ErrorAction Stop
-    if ([string]$winDisk.PartitionStyle -ne 'GPT' -or
-        [string]::IsNullOrWhiteSpace([string]$winDisk.UniqueId)) {
-        throw 'UEFI/GPT system disk is not identifiable.'
-    }
-    $espParts = @(Get-Partition -DiskNumber $winDisk.Number -ErrorAction Stop |
-        Where-Object { ([string]$_.GptType).Trim('{}') -ieq 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' })
-    if ($espParts.Count -ne 1) { throw 'Exactly one EFI System Partition is required.' }
-    $loaderSha256 = Get-GasluxWindowsEfiHash -Esp $espParts[0]
-
-    $disks = @()
-    $diskIdentifiers = @{}
-    foreach ($disk in @(Get-Disk -ErrorAction Stop | Sort-Object Number)) {
-        $diskId = ([string]$disk.UniqueId).Trim()
-        if (-not $diskId -or $diskIdentifiers.ContainsKey($diskId)) {
-            throw 'Missing/duplicated stable physical disk identity.'
-        }
-        $diskIdentifiers[$diskId] = $true
-        $partitions = @()
-        if ([string]$disk.PartitionStyle -in @('GPT', 'MBR')) {
-            foreach ($part in @(Get-Partition -DiskNumber $disk.Number -ErrorAction Stop)) {
-                $guid = ([string]$part.Guid).Trim('{}').ToLowerInvariant()
-                if ([string]$disk.PartitionStyle -eq 'GPT' -and
-                    $guid -notmatch '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$') {
-                    throw 'Missing GPT partition GUID.'
-                }
-                $partitions += [ordered]@{
-                    guid = $guid
-                    number = [int]$part.PartitionNumber
-                    offset = [int64]$part.Offset
-                    size = [int64]$part.Size
-                    gptType = ([string]$part.GptType).Trim('{}').ToLowerInvariant()
-                    isBoot = [bool]$part.IsBoot
-                    isSystem = [bool]$part.IsSystem
-                }
-            }
-        }
-        $disks += [ordered]@{
-            id = $diskId
-            size = [int64]$disk.Size
-            logicalSectorSize = [int]$disk.LogicalSectorSize
-            partitionStyle = [string]$disk.PartitionStyle
-            partitions = @($partitions)
-        }
-    }
-
-    $winre = Invoke-GasluxReadOnlyCommand -Executable (Join-Path $env:SystemRoot 'System32\reagentc.exe') -Arguments @('/info')
-    if (-not (Test-GasluxWinReEnabled -Output $winre)) {
-        throw 'Windows Recovery Environment is not provably enabled.'
-    }
-    $image = Get-GasluxWinReImagePath -Info $winre -SystemDiskNumber $winDisk.Number
-    if (-not (Test-Path -LiteralPath $image -PathType Leaf)) {
-        throw 'Windows Recovery image is unreadable without mounting the partition.'
-    }
-    $winreWimSha256 = (Get-FileHash -LiteralPath $image -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
-    $bcd = Join-Path $env:SystemRoot 'System32\bcdedit.exe'
-    $bcdCurrent = Invoke-GasluxReadOnlyCommand -Executable $bcd -Arguments @('/enum','{current}','/v')
-    $bcdAll = Invoke-GasluxReadOnlyCommand -Executable $bcd -Arguments @('/enum','all','/v')
-    $firmware = Invoke-GasluxReadOnlyCommand -Executable $bcd -Arguments @('/enum','firmware','/v')
-    if ($bcdCurrent -notmatch '(?i)winload\.efi' -or
-        $firmware -notmatch '(?i)bootmgfw\.efi') {
-        throw 'Windows BCD/EFI boot executable evidence is missing.'
-    }
-    if (-not (Get-Command Get-BitLockerVolume -ErrorAction SilentlyContinue)) {
-        throw 'Cannot independently inspect BitLocker/Device Encryption.'
-    }
-    $encryptedVolumes = @(Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop)
-    if ($encryptedVolumes.Count -ne 1) { throw 'BitLocker system volume is ambiguous.' }
-    $encrypted = $encryptedVolumes[0]
-    $secureBoot = Confirm-SecureBootUEFI -ErrorAction Stop
-    if ($secureBoot -isnot [bool]) { throw 'Cannot inspect Secure Boot status.' }
-
-    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-    [ordered]@{
-        schemaVersion = 1
-        source = 'gaslux-windows-guest-readonly-v1'
-        phase = $EvidencePhase
-        runId = $EvidenceRunId
-        capturedAt = [DateTime]::UtcNow.ToString('o')
-        computerName = [string]$env:COMPUTERNAME
-        windowsVersion = [string]$os.Version
-        windowsBootTime = ([DateTime]$os.LastBootUpTime).ToUniversalTime().ToString('o')
-        windowsDiskId = ([string]$winDisk.UniqueId).Trim()
-        windowsPartitionGuid = ([string]$winPart.Guid).Trim('{}').ToLowerInvariant()
-        espPartitionGuid = ([string]$espParts[0].Guid).Trim('{}').ToLowerInvariant()
-        windowsEfiSha256 = $loaderSha256
         winreWimSha256 = $winreWimSha256
         secureBootEnabled = $secureBoot
         winreEnabled = $true
