@@ -49,22 +49,45 @@ def _require(condition: bool, reason: str) -> None:
 
 def _validate_manifest(value: dict[str, Any]) -> None:
     fields = {
-        "schemaVersion", "operation", "runId", "nonce", "planSha256",
-        "snapshotFilename", "snapshotSha256", "snapshotFileSizeBytes",
-        "snapshotFormat", "snapshotVirtualSizeBytes", "snapshotBackingFile",
-        "snapshotSelfContained", "snapshotIntegrityVerified",
+        "schemaVersion",
+        "operation",
+        "runId",
+        "nonce",
+        "planSha256",
+        "snapshotFilename",
+        "snapshotSha256",
+        "snapshotFileSizeBytes",
+        "snapshotFormat",
+        "snapshotVirtualSizeBytes",
+        "snapshotBackingFile",
+        "snapshotSelfContained",
+        "snapshotIntegrityVerified",
         "snapshotDurableForRunnerJob",
         "snapshotArtifactPrepared",
         "artifactRetentionDays",
         "restorePerformed",
-        "restoreTargetFilename", "restoreTargetIsNewHostFile", "restoreCompareVerified",
-        "restoredGptVerified", "restoredDiskGuid", "restoredEspGuid",
-        "restoredEspStartLba", "restoredEspEndLba", "restoredEspLabel",
-        "baseImageSparseSha256Before", "baseImageSparseSha256After",
-        "baseImageUnchanged", "manifestSigned", "planSignatureVerified",
-        "gptMetadataVerified", "guestBooted", "guestDiskWrites",
-        "diskWritesAuthorized", "installationAuthorized", "calamaresJobsAuthorized",
-        "windowsEspWritesAuthorized", "rollbackVerified",
+        "restoreTargetFilename",
+        "restoreTargetIsNewHostFile",
+        "restoreCompareVerified",
+        "restoredGptVerified",
+        "restoredDiskGuid",
+        "restoredEspGuid",
+        "restoredEspStartLba",
+        "restoredEspEndLba",
+        "restoredEspLabel",
+        "baseImageSparseSha256Before",
+        "baseImageSparseSha256After",
+        "baseImageUnchanged",
+        "manifestSigned",
+        "planSignatureVerified",
+        "gptMetadataVerified",
+        "guestBooted",
+        "guestDiskWrites",
+        "diskWritesAuthorized",
+        "installationAuthorized",
+        "calamaresJobsAuthorized",
+        "windowsEspWritesAuthorized",
+        "rollbackVerified",
     }
     _require(set(value) == fields, "Snapshot manifest fields differ from contract")
     _require(
@@ -77,8 +100,7 @@ def _validate_manifest(value: dict[str, Any]) -> None:
     )
     _require(isinstance(value["runId"], str) and 12 <= len(value["runId"]) <= 100, "Invalid run ID")
     _require(
-        isinstance(value["nonce"], str)
-        and NONCE_RE.fullmatch(value["nonce"]) is not None,
+        isinstance(value["nonce"], str) and NONCE_RE.fullmatch(value["nonce"]) is not None,
         "Invalid nonce",
     )
     for field in (
@@ -88,8 +110,7 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         "baseImageSparseSha256After",
     ):
         _require(
-            isinstance(value[field], str)
-            and HASH_RE.fullmatch(value[field]) is not None,
+            isinstance(value[field], str) and HASH_RE.fullmatch(value[field]) is not None,
             f"Invalid {field}",
         )
     _require(value["snapshotFilename"] == SNAPSHOT_NAME, "Unexpected snapshot filename")
@@ -128,13 +149,23 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         "snapshotIntegrityVerified",
         "snapshotDurableForRunnerJob",
         "snapshotArtifactPrepared",
-        "restorePerformed", "restoreTargetIsNewHostFile", "restoreCompareVerified",
-        "restoredGptVerified", "baseImageUnchanged", "manifestSigned",
-        "planSignatureVerified", "gptMetadataVerified",
+        "restorePerformed",
+        "restoreTargetIsNewHostFile",
+        "restoreCompareVerified",
+        "restoredGptVerified",
+        "baseImageUnchanged",
+        "manifestSigned",
+        "planSignatureVerified",
+        "gptMetadataVerified",
     )
     false_fields = (
-        "guestBooted", "guestDiskWrites", "diskWritesAuthorized", "installationAuthorized",
-        "calamaresJobsAuthorized", "windowsEspWritesAuthorized", "rollbackVerified",
+        "guestBooted",
+        "guestDiskWrites",
+        "diskWritesAuthorized",
+        "installationAuthorized",
+        "calamaresJobsAuthorized",
+        "windowsEspWritesAuthorized",
+        "rollbackVerified",
     )
     for field in true_fields:
         _require(value[field] is True, f"{field} must be true")
