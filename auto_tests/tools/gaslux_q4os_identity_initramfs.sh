@@ -50,7 +50,7 @@ for name, major, minor, mode in (
         ["sudo", "mknod", str(node), "c", str(major), str(minor)],
         check=True,
     )
-    node.chmod(mode)
+    subprocess.run(["sudo", "chmod", format(mode, "o"), str(node)], check=True)
 
 def copy_file(source: Path, destination: Path) -> None:
     if not source.is_file():
