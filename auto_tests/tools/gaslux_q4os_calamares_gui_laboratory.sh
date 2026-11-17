@@ -17,6 +17,12 @@ digest="$3"
 launch_installer="${GASLUX_Q4OS_LAUNCH_INSTALLER:-no}"
 [[ "$launch_installer" == yes || "$launch_installer" == no ]] ||
   die 'Unrecognized Q4OS GUI launch laboratory mode'
+advance_welcome="${GASLUX_Q4OS_ADVANCE_WELCOME:-no}"
+[[ "$advance_welcome" == yes || "$advance_welcome" == no ]] ||
+  die 'Unrecognized native Calamares welcome navigation mode'
+if [[ "$advance_welcome" == yes && "$launch_installer" != yes ]]; then
+  die 'Calamares page navigation requires the verified desktop launcher'
+fi
 [[ "$digest" == '1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d' ]] ||
   die 'Official Q4OS 6.10 r2 SHA-256 is not the independently pinned digest'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
@@ -189,6 +195,8 @@ visual_gate="$(dirname "$0")/gaslux_q4os_vnc_visual_gate.py"
   die 'Required SHA-verified Q4OS visual gate is missing'
 launcher_clicked=0
 post_launcher_frame=0
+calamares_welcome_next_clicked=0
+calamares_location_frame=0
 
 for tick in $(seq 1 "$max_ticks"); do
   sleep 5
@@ -226,11 +234,27 @@ for tick in $(seq 1 "$max_ticks"); do
               move 57 39 click 1 pause 0.3 click 1 ||
               die 'SHA-verified Q4OS installer desktop icon click failed'
             launcher_clicked=1
-          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 ]] &&
+          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 &&
+                  "$post_launcher_frame" -eq 0 ]] &&
                python3 "$visual_gate" changed-centre \
                  "$work/vnc-before-icon-click.png" "$work/vnc-$tick.png"; then
             post_launcher_frame=1
             cp "$work/vnc-$tick.png" "$work/vnc-after-installer-icon.png"
+            if [[ "$advance_welcome" == yes ]]; then
+              python3 "$visual_gate" calamares-welcome "$work/vnc-after-installer-icon.png" ||
+                die 'Unexpected Q4OS Calamares Welcome source: navigation refused'
+              # Only a verified *non-destructive* Welcome > Location action.
+              # No partitioning/Install/confirmation or extra Next actions.
+              timeout 20s vncdo -s 127.0.0.1:1 move 1002 644 click 1 ||
+                die 'Q4OS Calamares Welcome Next click failed'
+              calamares_welcome_next_clicked=1
+            fi
+          elif [[ "$advance_welcome" == yes && "$calamares_welcome_next_clicked" -eq 1 &&
+                  "$calamares_location_frame" -eq 0 ]] &&
+               python3 "$visual_gate" changed-centre \
+                 "$work/vnc-after-installer-icon.png" "$work/vnc-$tick.png"; then
+            calamares_location_frame=1
+            cp "$work/vnc-$tick.png" "$work/vnc-location-page.png"
           fi
         fi
       fi
@@ -247,15 +271,21 @@ printf '%s\n' "$rc" > "$work/qemu.rc"
 if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
       "$selected_modal" -eq 1 && "$dismissed_modal" -eq 1 ]] &&
    { [[ "$launch_installer" == no ]] ||
-     [[ "$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1 ]]; }; then
+     [[ "$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1 ]]; } &&
+   { [[ "$advance_welcome" == no ]] ||
+     [[ "$calamares_welcome_next_clicked" -eq 1 && "$calamares_location_frame" -eq 1 ]]; }; then
   echo 'PASS: Q4OS first-run modal and audited graphical desktop transitioned under SHA-bound VNC actions.'
   if [[ "$launch_installer" == yes ]]; then
     echo 'PASS: Q4OS launcher icon was clicked after two-stage image checks and centre changed.'
-    echo 'NOT PROVEN: Calamares executable actually started; screenshot must be reviewed.'
+    echo 'NOT PROVEN: Calamares GUI identity unless screenshot is independently reviewed.'
+    if [[ "$advance_welcome" == yes ]]; then
+      echo 'PASS: Calamares Welcome verified and its non-destructive Next selected.'
+      echo 'NOT PERFORMED: partition choice, user setup, Install confirmation, any Calamares exec job.'
+    fi
   fi
   echo "GASLUX_Q4OS_FRAME_COUNT=$frame_count"
   echo 'NOT PROVEN: native Calamares job execution, full installation, Linux/Windows dual boot or rollback.'
 else
   tail -c 5000 "$work/serial.log" >&2 || true
-  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame)"
+  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame welcome=$calamares_welcome_next_clicked location=$calamares_location_frame)"
 fi
