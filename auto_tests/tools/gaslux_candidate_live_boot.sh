@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Disposable QEMU/OVMF real live-kernel smoke for Pop!_OS, Q4OS and Zorin.
-# Real ISO stays read-only on an emulated optical drive. This neither
+# Real ISO stays read-only on an emulated optical or virtio device. This neither
 # installs a target OS nor starts a Windows VM.
 set -Eeuo pipefail
 
@@ -126,6 +126,9 @@ set default=0
 menuentry 'Gaslux $distro real live-kernel lab boot' {
   insmod iso9660
   insmod part_gpt
+  insmod search_fs_file
+  # Capture enumerated GRUB devices if a pinned ISO is not accessible.
+  ls
   search --no-floppy --file --set=source /$kernel
   if [ ! -f (\$source)/$initrd ]; then
     echo 'Pinned guest live initramfs not found'
@@ -149,6 +152,18 @@ mmd -i "$work/efi-part.img" ::/EFI/BOOT
 mcopy -i "$work/efi-part.img" "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
 dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc status=none
 
+# OVMF exposes the owned ESP as virtio. Some hybrid Casper ISOs are not
+# enumerated by stand-alone GRUB when attached through the legacy IDE CD-ROM.
+# Present Zorin's pinned ISO as a second, strictly read-only virtio device
+# while leaving the older Pop/Q4OS lab media modes unchanged.
+iso_drive=(-cdrom "$iso")
+if [[ "$distro" == zorin ]]; then
+  iso_drive=(
+    -drive "if=none,id=labiso,format=raw,readonly=on,file=$iso"
+    -device virtio-blk-pci,drive=labiso,bootindex=2
+  )
+fi
+
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
 echo "GASLUX_GUEST_INITRD=$initrd"
@@ -160,7 +175,7 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
-  -cdrom "$iso" \
+  "${iso_drive[@]}" \
   -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
 guest="$!"
