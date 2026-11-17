@@ -1,0 +1,109 @@
+name: Zorin genuine installed-root firstboot (disposable OVMF, no Windows)
+
+on:
+  push:
+    branches:
+      - test/zorin181-installed-root-ovmf-lab
+  pull_request:
+    paths:
+      - '.github/workflows/zorin-installed-root-lab.yml'
+      - 'auto_tests/tools/gaslux_zorin_installed_target_lab.sh'
+      - 'assets/live/libertix-distribution-common.sh'
+      - 'assets/live/libertix-install-runtime-common.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Parse isolated real-target harness and demand invalid identity rejection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_zorin_installed_target_lab.sh
+          if bash auto_tests/tools/gaslux_zorin_installed_target_lab.sh /not-a-real-image "not-a-hash"; then
+            echo "::error::Owned disk test accepted bogus ISO credentials"
+            exit 1
+          fi
+          # All physical devices are forbidden; only generated loop files are eligible.
+          if grep -Eq '/dev/(sd[a-z]|nvme[0-9]|vd[a-z]|hd[a-z])' \
+              auto_tests/tools/gaslux_zorin_installed_target_lab.sh; then
+            echo "::error::An actual block-device path was introduced in the lab"
+            exit 1
+          fi
+
+  genuine-installed-firstboot:
+    needs: preflight-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+      ZORIN_BYTES: '3909091328'
+      ZORIN_URL: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+      GASLUX_ZORIN_INSTALLED_EVIDENCE: ${{ runner.temp }}/zorin-installed-evidence
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Assert stable catalog pin and enough scratch space
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          catalog = json.loads(Path("release-config.json").read_text())
+          items = [item for item in catalog["distributions"] if item["id"] == "zorin"]
+          assert len(items) == 1
+          item = items[0]
+          assert item["name"] == "Zorin OS 18.1 Core"
+          assert item["osReleaseId"] == "zorin"
+          assert item["isoInstaller"] == os.environ["ZORIN_URL"]
+          assert item["isoInstallerSha256"] == os.environ["ZORIN_SHA"]
+          assert item["isoInstallerSizeBytes"] == int(os.environ["ZORIN_BYTES"])
+          assert shutil.disk_usage(os.environ["RUNNER_TEMP"]).free > 15 * 1024**3
+          print("Verified exact pinned 18.1 Core release and disposable storage budget")
+          PY
+      - name: Install isolated disk/VM and read-only media tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get -qq update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 squashfs-tools gdisk dosfstools e2fsprogs util-linux \
+            grub-efi-amd64-bin grub-common qemu-system-x86 ovmf
+      - name: Obtain official ISO and independently verify SHA-256 and byte count
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/zorin-upstream"
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=5 --retry-wait=10 --timeout=90 --connect-timeout=30 \
+            --check-integrity=true --checksum="sha-256=$ZORIN_SHA" \
+            --dir="$RUNNER_TEMP/zorin-upstream" --out=zorin.iso "$ZORIN_URL"
+          iso="$RUNNER_TEMP/zorin-upstream/zorin.iso"
+          test -f "$iso" && test ! -L "$iso"
+          test "$(stat -c %s "$iso")" = "$ZORIN_BYTES"
+          printf '%s  %s\n' "$ZORIN_SHA" "$iso" | sha256sum --check --status
+      - name: Extract installed Zorin into exclusively owned GPT/ext4 and require disk-only login
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_zorin_installed_target_lab.sh
+          bash auto_tests/tools/gaslux_zorin_installed_target_lab.sh \
+            "$RUNNER_TEMP/zorin-upstream/zorin.iso" "$ZORIN_SHA"
+      - name: Retain bounded manifests and serial logs only (no disk images or ISO)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-181-disposable-installed-root-evidence
+          path: ${{ env.GASLUX_ZORIN_INSTALLED_EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
