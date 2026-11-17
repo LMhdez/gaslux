@@ -132,9 +132,20 @@ def install_mint_root_and_boot(
             "missing exact fifth-partition ext4 proof")
     expected_uuid = ext4_proof["rootFilesystem"]["filesystemUuid"]
     root_uuid, windows_before = _guest_disk_audit(overlay, expected_uuid)
+    require(windows_before == ext4_proof["rootFilesystem"]["windowsFourPartitionSha256"],
+            "Windows partition hashes differ from the pre-Mint ext4 checkpoint")
     base_identity = qcow2_file_identity(base)
     base_hash = sha256_file(base)
     nvram_hash = sha256_file(nvram)
+    vars_baseline = checkpoint / "windows-ovmf-baseline.fd"
+    vars_trial = checkpoint / "trial-ovmf-variables.fd"
+    owned_regular(vars_baseline, checkpoint, vars_baseline.name)
+    owned_regular(vars_trial, checkpoint, vars_trial.name)
+    require(stat.S_IMODE(vars_baseline.stat().st_mode) == 0o400
+            and stat.S_IMODE(vars_trial.stat().st_mode) == 0o600
+            and sha256_file(vars_baseline) == nvram_hash,
+            "Windows OVMF baseline or trial VARS ownership/hash mismatch")
+    trial_vars_hash = sha256_file(vars_trial)
     require(base_hash and nvram_hash, "missing Windows baseline hashes")
 
     temp = Path(tempfile.mkdtemp(prefix="gaslux-mint-cow-", dir=workspace))
@@ -287,8 +298,10 @@ def install_mint_root_and_boot(
         require(root_uuid_after == root_uuid and windows_after_boot == windows_before,
                 "Mint Linux boot changed Windows partitions or root UUID")
         require_unchanged_qcow2(base, base_identity)
-        require(sha256_file(base) == base_hash and sha256_file(nvram) == nvram_hash,
-                "Windows backing QCOW2 or original NVRAM changed")
+        require(sha256_file(base) == base_hash and sha256_file(nvram) == nvram_hash
+                and sha256_file(vars_baseline) == nvram_hash
+                and sha256_file(vars_trial) == trial_vars_hash,
+                "Windows backing QCOW2 or OVMF baseline/trial VARS changed")
         serial_hash = sha256(serial)
         proof = {
             "mintIsoSha256": MINT_SHA256,
