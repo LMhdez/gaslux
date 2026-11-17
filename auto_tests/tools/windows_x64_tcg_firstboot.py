@@ -42,6 +42,7 @@ EXPECTED_FINAL_HOSTS = {
 }
 CONSENT = "I_ACCEPT_FILE_BACKED_WINDOWS_EVAL_TCG_ONLY"
 MARKER = "GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT"
+POST_OVERLAY_MARKER = "GASLUX_WINDOWS_X64_POST_OVERLAY_BOOT_VERIFIED"
 FAILURE = "GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL"
 
 
@@ -207,10 +208,30 @@ def derive_no_prompt_uefi_lab_iso(original: Path, derived: Path,
         return hashlib.file_digest(fd, "sha256").hexdigest()
 
 
-def witness_powershell(profile_key: str, build: str) -> str:
-    # Runs ONLY at FirstLogon in the installed Windows evaluation client.
-    # The test-only local account has no usable remote credentials.
-    return r'''
+def witness_powershell(profile_key: str, build: str, *,
+                       arm_post_overlay: bool = False,
+                       post_overlay: bool = False) -> str:
+    """Guest audit: first-logon or separate task on the NEXT Windows boot.
+
+    Both variants independently verify GPT, ESP, BCD, WinRE and running build.
+    Neither grants disk-write permission or claims Windows recovery after Linux.
+    """
+    require(not (arm_post_overlay and post_overlay), "ambiguous guest audit phase")
+    arm = r"""
+  if (-not (Test-Path -LiteralPath 'A:\GASLUX2.PS1')) {
+    throw 'missing distinct post-overlay audit payload on disposable floppy'
+  }
+  $auditCopy = 'C:\ProgramData\GasluxDisposableCiPostOverlayAudit.ps1'
+  Copy-Item -LiteralPath 'A:\GASLUX2.PS1' -Destination $auditCopy -Force -ErrorAction Stop
+  $taskCmd = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\GasluxDisposableCiPostOverlayAudit.ps1'
+  & schtasks.exe /Create /F /SC ONSTART /TN 'GasluxDisposableCiPostOverlayAudit' /RU SYSTEM /RL HIGHEST /TR $taskCmd | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'could not arm next Windows boot guest audit' }
+""" if arm_post_overlay else ""
+    disarm = r"""
+  & schtasks.exe /Delete /F /TN 'GasluxDisposableCiPostOverlayAudit' | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'could not disarm post-overlay startup audit' }
+""" if post_overlay else ""
+    script = r'''
 $ErrorActionPreference = 'Stop'
 $ser = $null
 try {
@@ -239,6 +260,7 @@ try {
   $winre = & reagentc /info 2>&1
   $winreOk = ($LASTEXITCODE -eq 0 -and (($winre -join "`n") -match 'Windows RE status:\s+Enabled'))
   if (-not $winreOk) { throw 'WinRE is missing, disabled or unverifiable' }
+  __PHASE_ACTION__
   $serialProof = @(
     ('GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber)
     'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1'
@@ -263,8 +285,11 @@ try {
 }
 Start-Sleep -Seconds 2
 & "$env:WINDIR\System32\shutdown.exe" /s /f /t 0
-'''.replace("__BUILD__", build).replace("__PROFILE__", profile_key).replace(
-        "__MARKER__", MARKER).strip()
+'''
+    return (script.replace("__BUILD__", build)
+            .replace("__PROFILE__", profile_key)
+            .replace("__MARKER__", POST_OVERLAY_MARKER if post_overlay else MARKER)
+            .replace("__PHASE_ACTION__", arm or disarm).strip())
 
 
 def generate_unattend(profile_key: str, build: str) -> bytes:
@@ -467,7 +492,8 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
 
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
-            reject_repeated_dvd_boot: bool = False) -> tuple[bool, str]:
+            reject_repeated_dvd_boot: bool = False,
+            required_marker: str = MARKER) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -480,8 +506,10 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     }
     if profile_key not in build_by_profile:
         raise LabError("unknown client profile")
+    require(required_marker in (MARKER, POST_OVERLAY_MARKER),
+            "unrecognized installed Windows guest audit phase")
     required = {
-        f"{MARKER}={profile_key}".encode(),
+        f"{required_marker}={profile_key}".encode(),
         b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
         b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
         b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
@@ -603,6 +631,27 @@ def build_two_stage_qemu_args(
         "second-stage Windows VM still exposes the installer DVD",
     )
     return first, second
+
+
+
+def build_post_overlay_disk_boot_args(original: list[str], serial: Path) -> list[str]:
+    """Third guest: strict disk-only VM, excluding both Setup DVD and floppy."""
+    require(serial.is_absolute() and serial.parent.name == "post-overlay-guest"
+            and not serial.exists() and not serial.parent.is_symlink(),
+            "unowned or reused post-overlay serial path")
+    _, args = build_two_stage_qemu_args(original, serial)
+    floppies = [i for i in range(len(args) - 1)
+                if args[i] == "-drive" and
+                args[i + 1].startswith("if=floppy,")]
+    require(len(floppies) == 1, "ambiguous/unexpected third guest floppy")
+    i = floppies[0]
+    del args[i:i + 2]
+    args[args.index("-serial") + 1] = "file:" + str(serial)
+    require("order=c" in args and
+            all("verified_iso" not in x and "if=floppy" not in x
+                for x in args) and "-no-reboot" not in args,
+            "third Windows VM contains installer media or invalid boot policy")
+    return args
 
 
 def restart_owned_swtpm_for_second_guest(
@@ -884,6 +933,15 @@ def main(argv: list[str] | None = None) -> int:
     elif args.derived_no_prompt and not args.boot_probe_only:
         raise SystemExit("derived no-prompt DVD requires probe-only unless the "
                          "separate hosted VM one-shot installation gate is approved")
+    overlay_reboot = os.environ.get("GASLUX_WINDOWS_OVERLAY_REBOOT_TEST")
+    require(overlay_reboot in (None, "I_ACCEPT_HOSTED_WINDOWS_POST_OVERLAY_REBOOT_ONLY"),
+            "invalid third-boot experiment consent")
+    require(not overlay_reboot or (
+        args.two_stage_install_only and args.accel == "kvm"
+        and args.profile == "win10_22h2_en_us_x64"
+        and os.environ.get("GASLUX_WINDOWS_OVERLAY_TEST")
+            == "I_ACCEPT_NEW_QCOW2_OVERLAY_ONLY"),
+        "third Windows reboot requires both hosted overlay consents")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
@@ -931,10 +989,20 @@ def main(argv: list[str] | None = None) -> int:
             guest_ps1 = workspace / "GASLUX.PS1"
             guest_ps1.write_text(
                 witness_powershell(args.profile,
-                                   profile["expectedWindowsBuildPrefix"]) + "\n",
+                                   profile["expectedWindowsBuildPrefix"],
+                                   arm_post_overlay=bool(overlay_reboot)) + "\n",
                 encoding="utf-8")
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
+            if overlay_reboot:
+                guest_ps2 = workspace / "GASLUX2.PS1"
+                guest_ps2.write_text(
+                    witness_powershell(args.profile,
+                                       profile["expectedWindowsBuildPrefix"],
+                                       post_overlay=True) + "\n",
+                    encoding="utf-8")
+                report["postOverlayGuestAuditScriptSha256"] = hashlib.sha256(
+                    guest_ps2.read_bytes()).hexdigest()
             floppy = workspace / "unattend-floppy.img"
             subprocess.run(["truncate", "-s", "1440K", str(floppy)], check=True)
             subprocess.run(["mkfs.vfat", "-F", "12", "-n", "GASLUXCI", str(floppy)],
@@ -943,6 +1011,9 @@ def main(argv: list[str] | None = None) -> int:
                             "::/Autounattend.xml"], check=True)
             subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps1),
                             "::/GASLUX.PS1"], check=True)
+            if overlay_reboot:
+                subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps2),
+                                "::/GASLUX2.PS1"], check=True)
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
             subprocess.run(["qemu-img", "create", "-f", "qcow2", str(disk), VM_SIZE],
@@ -1054,6 +1125,26 @@ def main(argv: list[str] | None = None) -> int:
                                     and not overlay_result["storageWritesAuthorized"],
                                     "Windows overlay isolation experiment failed")
                             report["disposableOverlayExperiment"] = overlay_result
+                            if overlay_reboot:
+                                post_dir = workspace / "post-overlay-guest"
+                                require(not post_dir.exists(), "third guest directory reused")
+                                post_dir.mkdir(mode=0o700)
+                                post_serial = post_dir / "win-post-overlay-serial.log"
+                                third = build_post_overlay_disk_boot_args(
+                                    base, post_serial)
+                                third_ok, third_diag = boot_vm(
+                                    third, post_serial, 900, args.profile,
+                                    monitor_socket=None, required_marker=POST_OVERLAY_MARKER)
+                                require(third_ok, "Windows boot after overlay discard failed: "
+                                        + third_diag)
+                                # A second independently running Windows guest
+                                # checked its own ESP/BCD/WinRE and shut down
+                                # cleanly. No partition or Linux installer ran.
+                                overlay_result["windowsRebootAfterFaultVerified"] = True
+                                overlay_result["windowsBcdWinreReobservedAfterDiscard"] = True
+                                report["windowsPostOverlayBootVerified"] = True
+                                print("GASLUX_WINDOWS_POST_OVERLAY_DISCARD_BOOT_AND_BCD_WINRE_VERIFIED=1",
+                                      flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
@@ -1072,6 +1163,10 @@ def main(argv: list[str] | None = None) -> int:
                     for source_name, suffix, max_bytes in (
                         ("initial-dvd-guest-serial.log", "initial-dvd-serial", 2_000_000),
                         ("first-qemu-stderr.log", "initial-qemu-stderr", 256_000),
+                        ("post-overlay-guest/win-post-overlay-serial.log",
+                         "post-overlay-serial", 2_000_000),
+                        ("post-overlay-guest/qemu-stderr.log",
+                         "post-overlay-qemu-stderr", 256_000),
                         ("qemu-stderr.log", "second-qemu-stderr", 256_000),
                     ):
                         source = workspace / source_name
@@ -1089,6 +1184,8 @@ def main(argv: list[str] | None = None) -> int:
                             )
                             if suffix == "initial-dvd-serial":
                                 report["initialDvdGuestSerialSha256"] = digest
+                            if suffix == "post-overlay-serial":
+                                report["windowsPostOverlaySerialSha256"] = digest
                 if tpm:
                     tpm.terminate()
                     tpm.wait(timeout=10)
