@@ -103,6 +103,22 @@ stop_vm() {
   wait "$vm_pid" 2>/dev/null || true
   vm_pid=0
 }
+await_clean_shutdown() {
+  local count="$1" status=0
+  [[ "$vm_pid" =~ ^[0-9]+$ ]] && (( vm_pid > 0 )) ||
+    die 'cannot wait for a missing QEMU guest'
+  for ((attempt=0; attempt<count; attempt++)); do
+    if ! kill -0 "$vm_pid" 2>/dev/null; then
+      wait "$vm_pid" || status=$?
+      vm_pid=0
+      (( status == 0 )) || die "updated QEMU guest did not power off cleanly (status=$status)"
+      echo 'GASLUX_QCOW2_UPDATE_CLEAN_SHUTDOWN_VERIFIED=1'
+      return 0
+    fi
+    sleep 3
+  done
+  die 'updated QEMU guest never completed its requested clean poweroff'
+}
 assert_base_unchanged() {
   [[ "$(sha256sum "$base" | cut -d' ' -f1)" == "$saved_sha" ]] ||
     die 'immutable original CachyOS disk changed during overlay test'
@@ -138,7 +154,8 @@ update="$w/update-overlay.qcow2"
 make_overlay "$update"
 launch "$update" GASLUX_CI_UPDATE "$w/update-transaction-serial.log" "$w/update-vars.fd"
 require_marker "$w/update-transaction-serial.log" 'GASLUX_VM_UPDATE_APPLIED=1' 900
-stop_vm
+require_marker "$w/update-transaction-serial.log" 'GASLUX_VM_UPDATE_CLEAN_SHUTDOWN_REQUESTED=1' 30
+await_clean_shutdown 160
 assert_base_unchanged
 echo 'GASLUX_QCOW2_SIGNED_PACMAN_UPDATE_APPLIED=1'
 
