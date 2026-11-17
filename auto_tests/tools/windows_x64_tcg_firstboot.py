@@ -1025,6 +1025,27 @@ def main(argv: list[str] | None = None) -> int:
                         restart_tpm=(restart_guest_tpm if args.profile.startswith("win11")
                                      else None),
                     )
+                    if ok:
+                        # Only AFTER Windows' inside-guest ESP/BCD/WinRE audit
+                        # and clean QEMU shutdown: inspect the Windows GPT
+                        # primary + backup headers and entry arrays via bounded
+                        # read-only QEMU input. Do not mount, shrink or write.
+                        from windows_cachyos_qcow2_gpt_readonly import inspect_owned_qcow2
+                        candidate = inspect_owned_qcow2(disk)
+                        serialized = (json.dumps(
+                            candidate, indent=2, sort_keys=True,
+                        ) + "\\n").encode("utf-8")
+                        geometry_file = (evidence /
+                            f"{args.profile}-gpt-readonly-candidate.json")
+                        require(not geometry_file.exists() and
+                                not geometry_file.is_symlink(),
+                                "refusing to overwrite Windows GPT evidence")
+                        with geometry_file.open("xb") as out:
+                            out.write(serialized)
+                        report["readOnlyGptGeometryCandidate"] = True
+                        report["readOnlyGptGeometryEvidenceSha256"] = (
+                            hashlib.sha256(serialized).hexdigest()
+                        )
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
