@@ -20,6 +20,7 @@ def evidence():
         fstype = ("vfat", None, "ntfs", "ntfs", "ext4")[idx]
         data = {
             "type": "part",
+            "path": f"/dev/vdb{idx+1}", "name": f"vdb{idx+1}",
             "partuuid": row["uniqueGuid"],
             "parttype": row["typeGuid"],
             "start": row["firstLba"],
@@ -60,6 +61,30 @@ class NativeArchisoGuestLayoutTests(unittest.TestCase):
         observed["blockdevices"].append(copy.deepcopy(observed["blockdevices"][0]))
         with self.assertRaisesRegex(guest.SharedDiskHandoffRejected,"ambiguous"):
             guest.validate_lsblk_readonly(plan,observed)
+
+    def test_foreign_or_aliased_guest_partition_device_rejected(self):
+        for index in range(5):
+            for key, value in (("path", "/dev/vdc1"),
+                               ("path", "/dev/vdb"),
+                               ("path", f"/dev/vdb{(index + 1) % 5 + 1}"),
+                               ("name", "vdc1"),
+                               ("name", f"vdb{(index + 1) % 5 + 1}"),
+                               ("path", None), ("name", None)):
+                plan, observed = evidence()
+                observed["blockdevices"][0]["children"][index][key] = value
+                with self.subTest(partition=index+1, key=key, value=value), \
+                     self.assertRaisesRegex(
+                         guest.SharedDiskHandoffRejected, "partition device path"):
+                    guest.validate_lsblk_readonly(plan, observed)
+
+    def test_disk_path_cannot_be_partition_or_foreign_storage(self):
+        for bad in ("/dev/vdb1", "/dev/sda", "/dev/mapper/root",
+                    "/dev/vdb/../sda", "/dev/vdb ", "/dev/vd"):
+            plan, observed = evidence()
+            observed["blockdevices"][0]["path"] = bad
+            with self.subTest(path=bad), self.assertRaises(
+                    guest.SharedDiskHandoffRejected):
+                guest.validate_lsblk_readonly(plan, observed)
 
     def test_wrong_target_disk_capacity_or_sector_size_rejected(self):
         for key,value in (("size",64*1024**3),("log-sec",4096),
