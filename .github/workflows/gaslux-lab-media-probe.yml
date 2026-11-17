@@ -3,12 +3,15 @@ name: Gaslux candidate media probes (read-only)
 on:
   push:
     branches:
+      - dev
       - feature/multidistro-lab-media-probe
       - feature/popos-native-preflight
       - feature/bazzite-atomic-preflight
       - feature/q4os-native-preflight
   pull_request:
     paths:
+      - 'assets/live/configure-target-main.sh'
+      - 'auto_tests/tests/test_ubuntu_target_backend_preflight.py'
       - 'assets/live/gaslux_*probe.py'
       - 'assets/live/gaslux_*preflight.py'
       - 'auto_tests/tests/test_*preflight.py'
