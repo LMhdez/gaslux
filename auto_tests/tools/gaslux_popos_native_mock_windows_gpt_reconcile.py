@@ -67,7 +67,7 @@ def capture_mock_windows(image: Path) -> dict:
     last_lba = DISK_SIZE // SECTOR_SIZE - 1
     if (
         len(mbr) != SECTOR_SIZE
-        or mbr[510:512] != b"\\x55\\xaa"
+        or mbr[510:512] != b"\x55\xaa"
         or mbr[450] != 0xEE
         or primary["current"] != 1
         or primary["alternate"] != last_lba
@@ -129,7 +129,12 @@ def reconcile_mock_windows(before: dict, after: dict) -> dict:
         "mbrSha256", "primary", "backup", "entries",
         "mockWindowsEspSha256", "mockWindowsNtfsSha256",
     }
-    if type(before) is not dict or type(after) is not dict or set(before) != required or set(after) != required:
+    if (
+        type(before) is not dict
+        or type(after) is not dict
+        or set(before) != required
+        or set(after) != required
+    ):
         raise GptRefusal("Unexpected evidence format")
     if before["mbrSha256"] != after["mbrSha256"]:
         raise GptRefusal("Protective MBR changed")
@@ -137,7 +142,10 @@ def reconcile_mock_windows(before: dict, after: dict) -> dict:
         raise GptRefusal("GPT header, disk GUID or array topology changed")
     old_root = _validate_entries(before["entries"], installed=False)
     new_root = _validate_entries(after["entries"], installed=True)
-    if before["entries"][:3] != after["entries"][:3] or before["entries"][4:] != after["entries"][4:]:
+    if (
+        before["entries"][:3] != after["entries"][:3]
+        or before["entries"][4:] != after["entries"][4:]
+    ):
         raise GptRefusal("Mock Windows or owned ESP GPT entry changed")
     for key in ("mockWindowsEspSha256", "mockWindowsNtfsSha256"):
         if not re.fullmatch(r"[a-f0-9]{64}", before[key]) or before[key] != after[key]:
@@ -163,7 +171,10 @@ def main(args: list[str]) -> int:
             "owned-gpt-before.json", "owned-gpt-after.json", "owned-gpt-postboot.json",
         }:
             raise GptRefusal("Mock volume snapshots must remain in VM temp directory")
-        output.write_text(json.dumps(capture_mock_windows(image), sort_keys=True) + "\\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(capture_mock_windows(image), sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         return 0
     if len(args) == 3 and args[0] == "verify":
         old, new = map(Path, args[1:])

@@ -32,7 +32,7 @@ def entry(kind, guid, first, last, name="", attrs=0):
         bytes.fromhex(kind)
         + uuid.UUID(int=guid).bytes_le
         + struct.pack("<QQQ", first, last, attrs)
-        + name.encode("utf-16-le").ljust(72, b"\\x00")
+        + name.encode("utf-16-le").ljust(72, b"\x00")
     ).hex()
 
 
@@ -82,9 +82,13 @@ def test_mock_windows_tampering_fails_closed(mutant):
     elif mutant == "windows_ntfs_content":
         after["mockWindowsNtfsSha256"] = "d" * 64
     elif mutant == "windows_esp_entry":
-        after["entries"][0] = entry(ESP_TYPE, 99, WINDOWS_ESP_START, WINDOWS_ESP_END, "MOCK-WINDOWS-ESP")
+        after["entries"][0] = entry(
+            ESP_TYPE, 99, WINDOWS_ESP_START, WINDOWS_ESP_END, "MOCK-WINDOWS-ESP"
+        )
     elif mutant == "windows_ntfs_entry":
-        after["entries"][1] = entry(NTFS_TYPE, 99, WINDOWS_NTFS_START, WINDOWS_NTFS_END, "MOCK-WINDOWS-NTFS")
+        after["entries"][1] = entry(
+            NTFS_TYPE, 99, WINDOWS_NTFS_START, WINDOWS_NTFS_END, "MOCK-WINDOWS-NTFS"
+        )
     elif mutant == "owned_esp_entry":
         after["entries"][2] = entry(ESP_TYPE, 99, POP_ESP_START, POP_ESP_END, "GASLUX-OWNED-ESP")
     elif mutant == "root_start":
@@ -106,7 +110,9 @@ def test_mock_windows_tampering_fails_closed(mutant):
     elif mutant == "bad_digest":
         before["mockWindowsEspSha256"] = "incorrect"
     elif mutant == "wrong_windows_type":
-        after["entries"][1] = entry(ROOT_TYPE, 2, WINDOWS_NTFS_START, WINDOWS_NTFS_END, "MOCK-WINDOWS-NTFS")
+        after["entries"][1] = entry(
+            ROOT_TYPE, 2, WINDOWS_NTFS_START, WINDOWS_NTFS_END, "MOCK-WINDOWS-NTFS"
+        )
     with pytest.raises(GptRefusal):
         reconcile_mock_windows(before, after)
 
@@ -124,7 +130,9 @@ def test_mock_windows_native_install_never_selects_protected_partitions():
     assert '--use "$disk:1:' not in guest
     assert '--use "$disk:2:' not in guest
     assert "GASLUXPOPMOCKVM" in guest
-    runner = (ROOT / "auto_tests/tools/gaslux_popos_native_mock_windows_firstboot_vm.sh").read_text()
+    runner = (
+        ROOT / "auto_tests/tools/gaslux_popos_native_mock_windows_firstboot_vm.sh"
+    ).read_text()
     assert 'GASLUX_POP_NATIVE_MOCK_WINDOWS_VM:-0' in runner
     assert "-net none" in runner
     assert "owned-gpt-postboot.json" in runner

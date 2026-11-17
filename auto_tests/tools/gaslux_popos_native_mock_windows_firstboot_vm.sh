@@ -182,7 +182,7 @@ mkfs.vfat -F 32 -n MOCKWINESP "$work/mock-windows-esp.img" >/dev/null
 mmd -i "$work/mock-windows-esp.img" ::/EFI
 mmd -i "$work/mock-windows-esp.img" ::/EFI/Microsoft
 mmd -i "$work/mock-windows-esp.img" ::/EFI/Microsoft/Boot
-printf 'NOT AN EFI EXECUTABLE - GASLUX MOCK WINDOWS ONLY\\n' > "$work/mock-bootmgfw.efi"
+printf 'NOT AN EFI EXECUTABLE - GASLUX MOCK WINDOWS ONLY\n' > "$work/mock-bootmgfw.efi"
 mcopy -i "$work/mock-windows-esp.img" "$work/mock-bootmgfw.efi" \
   ::/EFI/Microsoft/Boot/bootmgfw.efi
 dd if="$work/mock-windows-esp.img" of="$target" bs=1M seek=1 \
