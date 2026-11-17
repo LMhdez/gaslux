@@ -861,10 +861,21 @@ def main(argv: list[str] | None = None) -> int:
                          "with official noprompt UEFI image; never release media")
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
+    ap.add_argument("--audit-installed-gpt-readonly", action="store_true",
+                    help="Windows 10 hosted KVM ONLY: after verified client shutdown, "
+                         "inspect the owned installed QCOW2 via read-only libguestfs")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
+    if args.audit_installed_gpt_readonly and not (
+        args.profile == "win10_22h2_en_us_x64"
+        and args.two_stage_install_only
+        and args.accel == "kvm"
+        and not args.fixture_only
+    ):
+        raise SystemExit("offline installed GPT audit requires genuine Windows 10 "
+                         "two-stage hosted KVM firstboot")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -901,6 +912,8 @@ def main(argv: list[str] | None = None) -> int:
         "windowsClientBootVerified": False, "dualBootVerified": False,
         "winReAndBcdRecovered": False, "stable": False,
     }
+    if args.audit_installed_gpt_readonly:
+        report["installedGptReadOnlyVerified"] = False
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
@@ -1025,6 +1038,25 @@ def main(argv: list[str] | None = None) -> int:
                         restart_tpm=(restart_guest_tpm if args.profile.startswith("win11")
                                      else None),
                     )
+                    if ok and args.audit_installed_gpt_readonly:
+                        # The second native Windows guest has exited CLEANLY
+                        # with all exact guest audit tokens before this check.
+                        # This independent, offline read-only inspection cannot
+                        # authorize Linux disk mutation or claim recovery.
+                        from windows_x64_installed_gpt_ro_audit import (
+                            inspect_owned_disk, encode_report,
+                        )
+                        snapshot = inspect_owned_disk(disk)
+                        require(evidence.is_dir() and not evidence.is_symlink()
+                                and evidence.resolve() == evidence
+                                and evidence.name == "windows-x64-tcg-evidence",
+                                "unowned Windows GPT audit evidence directory")
+                        target = evidence / (args.profile + "-installed-gpt-readonly.json")
+                        with target.open("x", encoding="utf-8") as outfile:
+                            outfile.write(encode_report(snapshot))
+                        report["installedGptReadOnlyVerified"] = True
+                        print("GASLUX_WINDOWS_INSTALLED_GPT_OFFLINE_READONLY_VERIFIED=1",
+                              flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
