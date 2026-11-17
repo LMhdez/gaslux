@@ -6,6 +6,7 @@ on:
     branches:
       - feature/windows-x64-tcg-winre-recovery-baseline
       - feature/windows-x64-vnc-official-dvd-firstboot
+      - fix/windows-eval-owned-unix-vnc
     paths:
       - .github/workflows/windows-x64-kvm-installed-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
