@@ -1,5 +1,9 @@
 name: Windows 10 fourth boot after fifth ext4 (COW only)
 
+concurrency:
+  group: windows-mint-cow-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
