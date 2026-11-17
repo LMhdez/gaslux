@@ -193,8 +193,10 @@ def validate(doc: Any, phase: str) -> None:
                 and type(part["size"]) is int,
                 "invalid partition geometry type",
             )
-            require(part["number"] not in partition_numbers,
-                    "duplicate partition number on the same physical disk")
+            require(
+                part["number"] not in partition_numbers,
+                "duplicate partition number on the same physical disk",
+            )
             partition_numbers.add(part["number"])
             offset, length = part["offset"], part["size"]
             require(
