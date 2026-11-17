@@ -129,6 +129,9 @@ def test_inert_profile_preserves_full_native_graph_and_blocks_all_risky_writers(
     assert report["nativeExecJobsCount"] == 29
     assert report["nativeShowCount"] == 8
     assert report["nativeFullExecOrderVerified"] is True
+    assert report["originalNativeExecJobs"] == list(JOBS)
+    assert report["effectiveExecutableJobCount"] == 0
+    assert report["partitionWritesMechanicallyDisabled"] is True
     assert report["profileActivationAuthorized"] is False
     assert report["installationAuthorized"] is False
     assert report["windowsEspWriteAuthorized"] is False
@@ -146,7 +149,11 @@ def test_inert_profile_preserves_full_native_graph_and_blocks_all_risky_writers(
     assert packages["operations"] == []
     assert packages["skip_if_no_internet"] is True
     settings = yaml.safe_load((directory / "etc/calamares/settings.conf").read_text())
-    assert settings["sequence"][1]["exec"] == list(JOBS)
+    assert settings["sequence"] == [
+        {"show": ["welcome"]},
+        {"exec": []},
+        {"show": ["finished"]},
+    ]
     for hook in ("q4oshook2", "q4oshook3", "q4oshook5"):
         descriptor = yaml.safe_load(
             (directory / f"usr/lib/calamares/modules/{hook}/module.desc").read_text()
