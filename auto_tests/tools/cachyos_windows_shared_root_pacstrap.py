@@ -329,6 +329,44 @@ def verify_lab_root_write_grant(
         require(type(value) is str and SHA.fullmatch(value) is not None
                 and value != "0" * 64,
                 "missing host checkpoint / backing-chain attestation digest")
+    checkpoint_file = control_dir / "host-checkpoint.json"
+    backing_file = control_dir / "host-overlay-backing-proof.json"
+    for proof_file in (checkpoint_file, backing_file):
+        require(proof_file.is_file() and not proof_file.is_symlink()
+                and 0 < proof_file.stat().st_size < 16384,
+                "missing or oversized signed host checkpoint document")
+    checkpoint_bytes = checkpoint_file.read_bytes()
+    backing_bytes = backing_file.read_bytes()
+    try:
+        checkpoint_doc = json.loads(checkpoint_bytes)
+        backing_doc = json.loads(backing_bytes)
+    except ValueError as error:
+        raise SharedDiskHandoffRejected("invalid host checkpoint document") from error
+    require(type(checkpoint_doc) is dict and canonical(checkpoint_doc) == checkpoint_bytes
+            and type(backing_doc) is dict and canonical(backing_doc) == backing_bytes
+            and hashlib.sha256(checkpoint_bytes).hexdigest()
+                == grant["hostCheckpointSha256"]
+            and hashlib.sha256(backing_bytes).hexdigest()
+                == grant["hostOverlayBackingProofSha256"]
+            and checkpoint_doc.get("schemaVersion") == 1
+            and checkpoint_doc.get("runId") == plan["runId"]
+            and checkpoint_doc.get("bootNonce") == plan["bootNonce"]
+            and checkpoint_doc.get("windowsPartitionFileHashes") == plan["windowsHashes"]
+            and checkpoint_doc.get("snapshotIndependentlyRestorable") is False
+            and checkpoint_doc.get("overlayDiscardAndWindowsBaselineRebootRequired") is True
+            and checkpoint_doc.get("windowsRecoveryAfterLinuxVerified") is False
+            and checkpoint_doc.get("productionRollbackVerified") is False
+            and backing_doc.get("schemaVersion") == 1
+            and backing_doc.get("runId") == plan["runId"]
+            and backing_doc.get("overlayBackingChainVerified") is True
+            and backing_doc.get("overlayDiscardable") is True
+            and backing_doc.get("onlyTrialOverlayMayBeGuestWritable") is True
+            and backing_doc.get("windowsEspWritesAllowed") is False
+            and backing_doc.get("base", {}).get("readonly") is True
+            and backing_doc.get("overlay", {}).get("mode") == 0o600
+            and backing_doc.get("overlay", {}).get("backingFormat") == "qcow2"
+            and backing_doc.get("overlay", {}).get("virtualSizeBytes") == VIRTUAL_BYTES,
+            "host checkpoint or COW backing proof differs from signed root grant")
     outcome = subprocess.run([
         "openssl", "pkeyutl", "-verify", "-pubin", "-inkey",
         str(args.public_key), "-sigfile", str(signature_file),
