@@ -1167,6 +1167,14 @@ def main(argv: list[str] | None = None) -> int:
                                     and not overlay_result["storageWritesAuthorized"],
                                     "Windows overlay isolation experiment failed")
                             report["disposableOverlayExperiment"] = overlay_result
+                            if os.environ.get("GASLUX_WINDOWS_BCD_OVERLAY_TEST"):
+                                from windows_cachyos_overlay_bcd_fault import corrupt_and_discard_bcd_overlay
+                                bcd_result = corrupt_and_discard_bcd_overlay(disk)
+                                require(bcd_result["bcdActuallyModifiedInsideOverlay"]
+                                        and bcd_result["overlayDiscardRestoredBaseBcdHash"]
+                                        and not bcd_result["storageWritesAuthorized"],
+                                        "Windows-only BCD overlay rollback failed")
+                                report["disposableBcdOverlayExperiment"] = bcd_result
                             if os.environ.get("GASLUX_WINDOWS_THIRDBOOT_TEST"):
                                 require(boot_installed_windows_third_time(
                                     base, workspace, args.profile),
