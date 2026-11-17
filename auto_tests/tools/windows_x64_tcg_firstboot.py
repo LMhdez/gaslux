@@ -865,6 +865,21 @@ def boot_two_stage_windows(
             "first-stage DVD key requires fresh owned HMP socket")
     initial_allocated = disk.stat().st_blocks * 512
     dvd_key_sent = False
+    vga_sampled = False
+
+    def read_private_vga_diagnostic(phase: str) -> None:
+        # Numeric-only private ephemeral screenshot. Never upload raw VGA or
+        # treat colour statistics as Windows boot, WinRE or disk proof.
+        from windows_x64_vga_diagnostic import capture_owned_qemu_vga
+        output = final_serial.parent / ("first-stage-vga-" + phase + ".ppm")
+        try:
+            sample = capture_owned_qemu_vga(expected_monitor, output)
+            print("GASLUX_WINDOWS_STAGE1_VGA_" + phase.upper() + "_NUMERIC="
+                  + json.dumps(sample, sort_keys=True), flush=True)
+        except (LabError, OSError, ValueError):
+            print("GASLUX_WINDOWS_STAGE1_VGA_" + phase.upper()
+                  + "_UNAVAILABLE=1", flush=True)
+
     dvd_started_at: float | None = None
     dvd_scan_offset = 0
     dvd_scan_carry = b""
@@ -897,12 +912,21 @@ def boot_two_stage_windows(
                         dvd_key_sent = True
                         print("GASLUX_WINDOWS_STAGE1_DVD_HMP_KEY_SENT=1",
                               flush=True)
+                    if (dvd_key_sent and not vga_sampled
+                            and dvd_started_at is not None
+                            and time.monotonic() - dvd_started_at >= 30):
+                        read_private_vga_diagnostic("early")
+                        vga_sampled = True
                     if (b"No bootable option or device was found." in observed
                             or b"DVD-ROM" in observed
                             and b"Time out" in observed):
                         return False, "initial Windows Setup UEFI DVD boot failed"
                 time.sleep(2)
             if proc.poll() is None:
+                # HMP screendump is read-only and performed before QEMU kill.
+                # Only aggregate RGB counts leave the private VM workspace.
+                if dvd_key_sent:
+                    read_private_vga_diagnostic("timeout")
                 allocated = max(0, disk.stat().st_blocks * 512 - initial_allocated)
                 print("GASLUX_WINDOWS_STAGE1_QCOW2_ALLOCATED_MIB="
                       + str(allocated // (1024 * 1024)), flush=True)
