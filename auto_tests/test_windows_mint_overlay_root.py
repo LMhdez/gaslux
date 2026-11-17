@@ -57,6 +57,19 @@ class MintOverlayContracts(unittest.TestCase):
             with self.assertRaisesRegex(mint.MintOverlayError, "ambiguous"):
                 mint._guest_disk_audit(Path("/tmp/unused"))
 
+    def test_guestmount_allows_runner_access_with_kernel_permissions(self):
+        command = mint.guestmount_command(
+            Path("/tmp/windows-cow.qcow2"), Path("/tmp/mint-target"))
+        self.assertEqual(command[:2], ["sudo", "guestmount"])
+        self.assertEqual(command[command.index("-o") + 1],
+                         "allow_other,default_permissions")
+        self.assertEqual(command[-1], "/tmp/mint-target")
+
+    def test_guestmount_workflow_enables_fuse_allow_other(self):
+        root = Path(mint.__file__).resolve().parents[2]
+        workflow = root / ".github/workflows/windows-cachyos-post-ext4-fourth-boot.yml"
+        self.assertIn("user_allow_other", workflow.read_text(encoding="utf-8"))
+
     def test_wrong_root_extent_is_rejected(self):
         fake = FakeGuest(root_size=23 * 1024**3)
         with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
