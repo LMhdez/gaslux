@@ -3,6 +3,7 @@ name: Gaslux candidate media probes (read-only)
 on:
   push:
     branches:
+      - dev
       - feature/multidistro-lab-media-probe
       - feature/popos-native-preflight
       - feature/bazzite-atomic-preflight
