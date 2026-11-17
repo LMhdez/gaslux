@@ -127,14 +127,21 @@ class PacmanTrustTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.PolicyError, "regular explicit"):
             POLICY.assess(Path("etc/pacman.conf"), run=self.runner)
 
-    def test_stage_must_refuse_weak_config_before_pacstrap(self):
-        stage = (ROOT / "assets/live/cachyos-stage-target.sh").read_text()
-        fn = stage.split("install_target() {", 1)[1]
-        self.assertLess(fn.index("check_identity "), fn.index("--prepare-vm --run-id"))
-        self.assertLess(fn.index("--prepare-vm --run-id"), fn.index("  pacstrap -K -C"))
-        self.assertIn('--config "$strict_dir/pacman-install.conf"', fn)
-        self.assertIn('--config "$TARGET/etc/pacman.conf"', fn)
-        self.assertNotIn("install -m 0644 /etc/pacman.conf", fn)
+    def test_vm_guest_must_refuse_weak_config_before_pacstrap(self):
+        # PR #34 runs a separate VM-only guest launcher; it does not call
+        # the production-isolated stage --install command from PR #27.
+        guest = (ROOT / "auto_tests/tools/cachyos_vm_guest_install.sh").read_text()
+        safety = 'bash /run/gaslux-control/stage.sh --validate-target'
+        builder = '--prepare-vm'
+        trusted = 'python3 /run/gaslux-control/pacman-trust.py --config'
+        install = 'pacstrap -K -C "$strict_dir/pacman-install.conf" /mnt/target'
+        self.assertLess(guest.index(safety), guest.index(builder))
+        self.assertLess(guest.index(builder), guest.index(trusted))
+        self.assertLess(guest.index(trusted), guest.index(install))
+        self.assertIn('cmp -s "$strict_dir/pacman-target.conf"', guest)
+        self.assertIn('install -m 0644 "$strict_dir/pacman-target.conf"', guest)
+        self.assertNotIn('pacstrap -K /mnt/target', guest)
+        self.assertNotIn('install -m 0644 /etc/pacman.conf', guest)
 
     def test_no_trust_bypass_in_guard(self):
         raw = SOURCE.read_text()
