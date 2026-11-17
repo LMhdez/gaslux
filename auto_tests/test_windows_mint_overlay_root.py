@@ -61,8 +61,9 @@ class MintOverlayContracts(unittest.TestCase):
         command = mint.guestmount_command(
             Path("/tmp/windows-cow.qcow2"), Path("/tmp/mint-target"))
         self.assertEqual(command[:2], ["sudo", "guestmount"])
-        self.assertEqual(command[command.index("-o") + 1],
-                         "allow_other,default_permissions")
+        options = [command[index + 1] for index, value in enumerate(command[:-1])
+                   if value == "-o"]
+        self.assertEqual(options, ["allow_other", "default_permissions"])
         self.assertEqual(command[-1], "/tmp/mint-target")
 
     def test_guestmount_workflow_enables_fuse_allow_other(self):
