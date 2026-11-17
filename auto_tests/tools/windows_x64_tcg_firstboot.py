@@ -1040,18 +1040,26 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
+    # Profile-specific positive authorization: Windows 11 must never inherit
+    # an existing Windows 10 test's consent or bypass TPM2 requirements.
+    fat12_control_consent = {
+        "win10_22h2_en_us_x64":
+            "I_ACCEPT_DISPOSABLE_HOSTED_KVM_FAT12_CONTROL",
+        "win11_26h2_en_us_x64":
+            "I_ACCEPT_DISPOSABLE_HOSTED_KVM_WIN11_TPM_FAT12_CONTROL",
+    }
     if args.fat12_proof_control and not (
-        args.profile == "win10_22h2_en_us_x64"
+        args.profile in fat12_control_consent
         and args.two_stage_install_only and args.derived_no_prompt
         and args.accel == "kvm" and not args.fixture_only
         and not args.one_shot_install_only and not args.boot_probe_only
         and os.environ.get("GITHUB_ACTIONS") == "true"
         and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
         and os.environ.get("GASLUX_WINDOWS_FAT12_PROOF_CONSENT")
-            == "I_ACCEPT_DISPOSABLE_HOSTED_KVM_FAT12_CONTROL"
+            == fat12_control_consent[args.profile]
     ):
         raise SystemExit("FAT12 historical control requires dedicated "
-                         "hosted KVM consent and Windows 10 two-stage mode")
+                         "per-profile hosted KVM consent and two-stage mode")
     if args.two_stage_install_only:
         if not (args.derived_no_prompt and not args.boot_probe_only
                 and not args.one_shot_install_only and args.accel == "kvm"

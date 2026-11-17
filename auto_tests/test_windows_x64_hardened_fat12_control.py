@@ -116,7 +116,7 @@ class HardenedFat12Control(unittest.TestCase):
             "RUNNER_ENVIRONMENT": "github-hosted",
             "GASLUX_WINDOWS_FAT12_PROOF_CONSENT": "",
         }):
-            with self.assertRaisesRegex(SystemExit, "dedicated hosted KVM consent"):
+            with self.assertRaisesRegex(SystemExit, "per-profile hosted KVM consent"):
                 vm.main(args)
 
     def test_fat12_flag_requires_exact_client_and_install_mode(self):
@@ -137,8 +137,82 @@ class HardenedFat12Control(unittest.TestCase):
                     "GASLUX_WINDOWS_FAT12_PROOF_CONSENT":
                         "I_ACCEPT_DISPOSABLE_HOSTED_KVM_FAT12_CONTROL",
                 }):
-                    with self.assertRaisesRegex(SystemExit, "dedicated hosted KVM consent"):
+                    with self.assertRaisesRegex(SystemExit, "per-profile hosted KVM consent"):
                         vm.main(args)
+
+
+    def test_win11_requires_its_own_distinct_tpm_control_consent(self):
+        args = [
+            "--profile", "win11_26h2_en_us_x64", "--accel", "kvm",
+            "--derived-no-prompt", "--two-stage-install-only",
+            "--fat12-proof-control",
+        ]
+        for inherited in ("", "I_ACCEPT_DISPOSABLE_HOSTED_KVM_FAT12_CONTROL"):
+            with self.subTest(consent=inherited), patch.dict(os.environ, {
+                "GITHUB_ACTIONS": "true",
+                "RUNNER_ENVIRONMENT": "github-hosted",
+                "GASLUX_WINDOWS_FAT12_PROOF_CONSENT": inherited,
+            }):
+                with patch.object(vm, "load_catalog",
+                                  side_effect=AssertionError("must not read catalog")):
+                    with self.assertRaisesRegex(SystemExit, "per-profile hosted KVM consent"):
+                        vm.main(args)
+
+    def test_win11_explicit_consent_passes_only_preflight_not_guest_boot(self):
+        args = [
+            "--profile", "win11_26h2_en_us_x64", "--accel", "kvm",
+            "--derived-no-prompt", "--two-stage-install-only",
+            "--fat12-proof-control",
+        ]
+        with patch.dict(os.environ, {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "github-hosted",
+            "GASLUX_WINDOWS_FAT12_PROOF_CONSENT":
+                "I_ACCEPT_DISPOSABLE_HOSTED_KVM_WIN11_TPM_FAT12_CONTROL",
+            "GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT":
+                "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY",
+        }):
+            # Abort deliberately before catalog, ISO, subprocess or any VM.
+            with patch.object(vm, "load_catalog",
+                              side_effect=RuntimeError("passed control preflight")):
+                with self.assertRaisesRegex(RuntimeError, "passed control preflight"):
+                    vm.main(args)
+
+    def test_win11_control_never_approves_win10_consent(self):
+        args = [
+            "--profile", "win10_22h2_en_us_x64", "--accel", "kvm",
+            "--derived-no-prompt", "--two-stage-install-only",
+            "--fat12-proof-control",
+        ]
+        with patch.dict(os.environ, {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "github-hosted",
+            "GASLUX_WINDOWS_FAT12_PROOF_CONSENT":
+                "I_ACCEPT_DISPOSABLE_HOSTED_KVM_WIN11_TPM_FAT12_CONTROL",
+        }):
+            with self.assertRaisesRegex(SystemExit, "per-profile hosted KVM consent"):
+                vm.main(args)
+
+    def test_win11_audit_requires_full_seven_independent_markers(self):
+        script = vm.witness_powershell("win11_26h2_en_us_x64", "26300")
+        self.assertIn("('GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber)", script)
+        self.assertIn("@($serialProof).Count -ne 7", script)
+        self.assertIn("$line -isnot [string]", script)
+        self.assertIn("GASLUX_WINDOWS_X64_WINRE_ENABLED=1", script)
+        self.assertIn("bcdedit /enum", script)
+        self.assertIn("reagentc /info", script)
+        self.assertIn("GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL_STAGE=", script)
+        self.assertIn("GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64", script)
+
+    def test_win11_fat12_guest_requires_private_tpm_restart(self):
+        # The guard executes before launching either QEMU stage.
+        import inspect
+        code = inspect.getsource(vm.boot_two_stage_windows)
+        self.assertIn('profile_key != "win11_26h2_en_us_x64" or restart_tpm is not None', code)
+        self.assertIn("restart_tpm()", code)
+        self.assertIn("fat12_control_lab=fat12_control_lab", code)
+        self.assertIn("reject_repeated_dvd_boot=True", code)
+
 
 
 if __name__ == "__main__":
