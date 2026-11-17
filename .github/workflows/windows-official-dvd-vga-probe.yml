@@ -1,0 +1,60 @@
+name: Official Microsoft Windows 10 UEFI DVD-only VGA diagnostics
+
+on:
+  push:
+    branches:
+      - diag/windows-stage1-private-vga-telemetry
+    paths:
+      - .github/workflows/windows-official-dvd-vga-probe.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/tools/windows_x64_vga_diagnostic.py
+      - auto_tests/test_windows_x64_vga_diagnostic.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  short-official-windows-uefi-dvd:
+    name: Official SHA-pinned Windows 10 DVD UEFI VGA probe - no Windows disk guest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require GitHub-hosted KVM with no physical device passthrough
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf p7zip-full genisoimage \
+            dosfstools mtools
+          python3 -m py_compile \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/tools/windows_x64_vga_diagnostic.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_vga_diagnostic.py' -v
+      - name: Verify original Microsoft ISO and observe only first UEFI DVD GUI pixels
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-dvd-probe-evidence"
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-dvd-probe-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile win10_22h2_en_us_x64 \
+            --accel kvm --derived-no-prompt --boot-probe-only \
+            --boot-timeout 1200
+          echo 'Only real Microsoft SHA-verified UEFI DVD firmware handoff and numeric VGA occupancy tested. No unattended Windows Setup, client boot, WinRE/BCD, CachyOS, dual boot or recovery proven.' >> "$GITHUB_STEP_SUMMARY"
