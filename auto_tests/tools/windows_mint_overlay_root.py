@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the pinned Mint root into partition 5 of the disposable Win10 COW.
+"""Stage the pinned Mint SquashFS root in partition 5 of the disposable Win10 COW.
 
 CI-only. The Windows QCOW2 base and Windows partitions are never mounted RW.
 Linux is booted from the same QCOW2 via QEMU direct-kernel handoff; this is
@@ -106,7 +106,7 @@ def install_mint_root_and_boot(
     *, overlay: Path, base: Path, nvram: Path, workspace: Path,
     ext4_proof: dict, iso: Path, evidence: Path,
 ) -> dict:
-    """Copy authentic Mint squashfs to exact #5, build initramfs, boot Linux."""
+    """Copy Mint SquashFS to exact #5, build initramfs and direct-kernel boot it."""
     require(os.environ.get("GITHUB_ACTIONS") == "true"
             and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
             and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
@@ -327,7 +327,7 @@ def install_mint_root_and_boot(
             "mintIsoBytes": MINT_BYTES,
             "mintRootUuid": root_uuid,
             "mintKernel": kernel.name,
-            "mintInstalledIntoWindowsCOWPartition5": True,
+            "mintSquashfsRootCopiedToWindowsCOWPartition5": True,
             "mintFirstBootFromSameWindowsCOWVerified": True,
             "windowsFourPartitionSha256Unchanged": True,
             "windowsBackingQcow2Unchanged": True,
