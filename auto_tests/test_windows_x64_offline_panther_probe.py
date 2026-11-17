@@ -98,6 +98,46 @@ class PantherProbeContracts(unittest.TestCase):
                 self.assertTrue(size_seen,
                                 "no credential content before bounded file size")
 
+    def test_guestfish_cat_one_extra_cli_lf_is_not_part_of_xml(self):
+        original = FakeGuestfish()
+
+        def guestfish_appends_lf(command, **kwargs):
+            res = original(command, **kwargs)
+            if command[-2:] == [
+                "cat", "/Windows/Panther/Unattend.xml"
+            ] and res.returncode == 0:
+                return result(command, 0, res.stdout + b"\n")
+            return res
+
+        state, stdout = self.invoke(guestfish_appends_lf)
+        self.assertTrue(state["cachedWindowsAnswerObserved"])
+        self.assertTrue(state["cachedAnswerOobePassPresent"])
+        self.assertFalse(state["windowsClientBootVerified"])
+        self.assertEqual(
+            state["cachedAnswerSha256"],
+            probe.hashlib.sha256(XML).hexdigest(),
+            "CLI-generated LF must never change cached file identity",
+        )
+        self.assertNotIn("CI_SECRET_NEVER_LOGGED", stdout)
+
+    def test_guestfish_cat_arbitrary_extra_bytes_fail_closed(self):
+        for junk in (b"X", b"\n\n", b"\x00"):
+            with self.subTest(extra=junk):
+                fake = FakeGuestfish()
+
+                def tampered_output(command, **kwargs):
+                    res = fake(command, **kwargs)
+                    if command[-2:] == [
+                        "cat", "/Windows/Panther/Unattend.xml"
+                    ] and res.returncode == 0:
+                        return result(command, 0, res.stdout + junk)
+                    return res
+
+                state, printed = self.invoke(tampered_output)
+                self.assertFalse(state["cachedWindowsAnswerObserved"])
+                self.assertFalse(state["windowsClientBootVerified"])
+                self.assertNotIn("CI_SECRET_NEVER_LOGGED", printed)
+
     def test_missing_cached_answer_fails_proof_closed(self):
         status, printed = self.invoke(FakeGuestfish(cached=False))
         self.assertFalse(status["cachedWindowsAnswerObserved"])
