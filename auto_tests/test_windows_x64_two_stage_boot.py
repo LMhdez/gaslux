@@ -31,8 +31,7 @@ def synthetic_args(tmp):
         "-device", "ide-hd,drive=only_windows,bus=lab_sata.0",
         "-drive", "if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file=/tmp/derived.iso",
         "-device", "ide-cd,drive=verified_iso,bus=lab_sata.1",
-        "-drive", f"if=none,id=lab_unattend,format=raw,readonly=on,file={tmp}/only-disposable-answer-usb.img",
-        "-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0",
+        "-drive", f"if=floppy,format=raw,file={tmp}/unattend-floppy.img",
         "-serial", f"file:{tmp}/win-guest-serial.log",
         "-boot", "order=c,once=d",
     ]
@@ -150,33 +149,37 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertNotIn("verified_iso", " ".join(second))
         self.assertNotIn("ide-cd,", " ".join(second))
         self.assertIn("only_windows", " ".join(second))
-        self.assertIn("only-disposable-answer-usb.img", " ".join(second))
-        self.assertIn("usb-storage,drive=lab_unattend,bus=lab_usb.0", " ".join(second))
-        self.assertNotIn("if=floppy", " ".join(second))
+        self.assertIn("if=floppy,format=raw,file=", " ".join(second))
+        self.assertIn("unattend-floppy.img", " ".join(second))
+        self.assertNotIn("usb-storage,drive=lab_unattend", " ".join(second))
         self.assertNotEqual(first[first.index("-serial") + 1],
                             second[second.index("-serial") + 1])
 
-    def test_missing_or_writable_answer_usb_fails_closed(self):
+    def test_unowned_or_ambiguous_floppy_fails_closed(self):
         with tempfile.TemporaryDirectory() as d:
             original = synthetic_args(d)
-            ans = next(x for x in original if x.startswith(
-                "if=none,id=lab_unattend,"))
+            ans = next(x for x in original if x.startswith("if=floppy,"))
             for replacement in (
-                ans.replace("readonly=on,", ""),
-                ans.replace("only-disposable-answer-usb.img", "foreign-usb.img"),
+                ans.replace("unattend-floppy.img", "foreign-floppy.img"),
                 ans.replace(str(pathlib.Path(d)), "/tmp/foreign-gaslux-vm"),
+                ans.replace("if=floppy,", "if=none,"),
+                ans.replace("format=raw", "format=qcow2"),
             ):
                 with self.subTest(replacement=replacement):
                     modified = list(original)
                     modified[modified.index(ans)] = replacement
-                    with self.assertRaisesRegex(VM.LabError, "read-only owned USB"):
+                    with self.assertRaisesRegex(VM.LabError, "owned FAT12"):
                         VM.build_two_stage_qemu_args(
                             modified, pathlib.Path(d) / "first.log")
-            modified = [x for x in original
-                        if not x.startswith("usb-storage,drive=lab_unattend,")]
-            with self.assertRaisesRegex(VM.LabError, "read-only owned USB"):
-                VM.build_two_stage_qemu_args(
-                    modified, pathlib.Path(d) / "first.log")
+            for injection in (
+                ["-drive", "if=floppy,format=raw,file=/dev/sda"],
+                ["-drive", "if=none,id=lab_unattend,format=raw,readonly=on,file=/tmp/usb.img"],
+                ["-device", "usb-storage,drive=lab_unattend,bus=lab_usb.0"],
+            ):
+                with self.subTest(injection=injection):
+                    with self.assertRaisesRegex(VM.LabError, "owned FAT12"):
+                        VM.build_two_stage_qemu_args(
+                            original + injection, pathlib.Path(d) / "first.log")
 
     def test_two_stage_removable_answer_has_unique_label_and_oobe_defaults(self):
         for profile, build in (("win10_22h2_en_us_x64", "19045"),
