@@ -9,6 +9,7 @@ on:
       - fix/windows-two-stage-full-serial-dvd-guard
       - fix/windows-eval-oobe-international-pass
       - test/windows-floppy-proven-setup-firstlogon-fix
+      - test/windows10-proven-floppy-cachyos-readonly-gate
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -16,6 +17,8 @@ on:
       - auto_tests/test_windows_x64_swtpm_reconnect.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
       - auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
   workflow_dispatch:
 
 permissions:
@@ -39,6 +42,7 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_noprompt_one_shot.py \
@@ -47,7 +51,8 @@ jobs:
               test_windows_x64_clean_poweroff_gate.py \
               test_windows_x64_tcg_unattend_contract.py \
               test_windows_x64_winre_baseline_contract.py \
-              test_windows_x64_qemu_host_gate.py; do
+              test_windows_x64_qemu_host_gate.py \
+              test_windows_cachyos_readonly_baseline_gate.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
       - name: Prove physical-host-safe swtpm listener restart with same private NV directory
@@ -108,6 +113,27 @@ jobs:
             --profile "${{ matrix.profile }}" --accel kvm \
             --derived-no-prompt --two-stage-install-only --boot-timeout 4800
           echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
+      # Never run this candidate check unless the exact existing Windows 10
+      # DVD+FAT12 unattended install has rebooted and passed its firstlogon
+      # ESP/BCD/WinRE audit with clean Windows poweroff. It cannot authorize
+      # any Linux disk mutation, even when it prints success.
+      - name: Cross-check first DVD and installed Windows 10 COM1 SHA manifests (READ-ONLY)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          PROFILE="${{ matrix.profile }}"
+          test "$PROFILE" = win10_22h2_en_us_x64
+          PROOF="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            --profile "$PROFILE" \
+            --result "$PROOF/$PROFILE-result.json" \
+            --serial "$PROOF/$PROFILE-serial.log" \
+            --serial-sha256 "$PROOF/$PROFILE-serial.sha256" \
+            --initial-dvd-serial "$PROOF/$PROFILE-initial-dvd-serial.log" \
+            --initial-dvd-serial-sha256 "$PROOF/$PROFILE-initial-dvd-serial.sha256"
+          echo 'PASS: same-run Windows 10 candidate document consistency only. No independent provenance authentication, Windows+Linux same-disk install or recovery; no storage write permitted.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
