@@ -1,0 +1,69 @@
+name: Windows 10/11 x64 full Microsoft ISO SHA-256 (no installation)
+
+on:
+  push:
+    branches:
+      - feature/windows-x64-tcg-winre-recovery-baseline
+    paths:
+      - .github/workflows/windows-x64-full-iso-sha256.yml
+      - auto_tests/tools/windows_x64_full_iso_sha256.py
+      - auto_tests/test_windows_x64_full_iso_sha256.py
+      - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-iso-security-tests:
+    name: Immutable Microsoft ISO profile, consent and recovery status guards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify negative SHA256/size/consent contracts without network
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_full_iso_sha256.py
+          python3 -m unittest discover -s auto_tests -v -p 'test_windows_x64_full_iso_sha256.py'
+          echo 'Security preflight only; no Windows client was installed.' >> "$GITHUB_STEP_SUMMARY"
+
+  full-microsoft-iso-sha256:
+    name: Stream official ISO ${{ matrix.profile }} and compute actual SHA256
+    needs: full-iso-security-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - win10_22h2_en_us_x64
+          - win11_26h2_en_us_x64
+    env:
+      GASLUX_ISO_BYTES_CONSENT: DISPOSABLE_GITHUB_ISO_BYTES_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Stream and verify SHA256 of full Microsoft evaluation ISO (ephemeral)
+        shell: bash
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/windows-iso-digest-evidence"
+          python3 auto_tests/tools/windows_x64_full_iso_sha256.py \
+            --profile "${{ matrix.profile }}" \
+            --evidence-dir "$GITHUB_WORKSPACE/windows-iso-digest-evidence"
+          echo 'Original Microsoft ISO bytes SHA256 match pinned publication. No installed Windows, dual boot or recovery is inferred.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload only JSON digest, never copyrighted ISO or installed OS
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-verified-iso-sha256-${{ matrix.profile }}
+          path: windows-iso-digest-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 7
