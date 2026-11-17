@@ -19,6 +19,7 @@ import sys
 import tempfile
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from test_windows_cachyos_qcow2_gpt_readonly import create_disk_windows
 from tools.windows_cachyos_qcow2_gpt_readonly import (
     SECTOR, WINDOW_BYTES, VIRTUAL_BYTES, inspect_gpt_windows,
