@@ -110,7 +110,9 @@ def candidate(geometry: dict, checkpoint: dict, stage: dict,
         and root["firstLba"] % (1024 * 1024 // SECTOR) == 0
         and root["firstLba"] > previous_end
         and root["lastLba"] - root["firstLba"] + 1 == LINUX_SIZE_BYTES // SECTOR
-        and root.get("remainingUnallocatedAfterLinuxBytes", 0) >= 16 * 1024**3,
+        and type(root.get("remainingUnallocatedAfterLinuxBytes")) is int
+        and root["remainingUnallocatedAfterLinuxBytes"] >= 16 * 1024**3
+        and root["lastLba"] < VIRTUAL_BYTES // SECTOR - 33,
         "fifth partition outside the exact owned 24-GiB extent",
     )
     root_guid = guid(root.get("uniqueGuid"), "missing fifth GPT PARTUUID")
