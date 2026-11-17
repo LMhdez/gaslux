@@ -520,9 +520,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                                       flush=True)
                     if any(line.startswith(FAILURE.encode()) for line in lines):
                         return False, "installed Windows explicitly rejected firstboot audit"
-                    if required.issubset(lines) and any(
-                        line.startswith(build_line) for line in lines
-                    ):
+                    if required.issubset(lines) and build_line in lines:
                         if witnessed_at is None:
                             witnessed_at = time.monotonic()
                 rc = proc.poll()
