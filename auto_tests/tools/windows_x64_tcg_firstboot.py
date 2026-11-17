@@ -975,6 +975,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--audit-primary-backup-gpt-readonly", action="store_true",
                     help="Windows 11 KVM only: validate both GPT copies, >=40 GiB free "
                          "and exact agreement with libguestfs, after clean shutdown")
+    ap.add_argument("--stage-cachyos-win11-root-gpt-overlay-only", action="store_true",
+                    help="experimental genuine Win11 KVM ONLY: after full firstboot, "
+                         "libguestfs and both GPT CRC checks, stage one unformatted "
+                         "24 GiB Linux partition solely in a disposable QCOW2 COW")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -997,6 +1001,31 @@ def main(argv: list[str] | None = None) -> int:
     ):
         raise SystemExit("primary/backup GPT audit requires genuine Windows 11 "
                          "two-stage KVM and independent libguestfs proof")
+    if args.stage_cachyos_win11_root_gpt_overlay_only and not (
+        args.profile == "win11_26h2_en_us_x64"
+        and args.two_stage_install_only and args.derived_no_prompt
+        and args.accel == "kvm" and not args.fixture_only
+        and not args.boot_probe_only and not args.one_shot_install_only
+        and args.audit_installed_gpt_readonly
+        and args.audit_primary_backup_gpt_readonly
+        and os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and os.environ.get("RUNNER_TEMP") == "/home/runner/work/_temp"
+        and os.environ.get("GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT")
+        == "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY"
+        and os.environ.get("GASLUX_WINDOWS_ACPI_LAB_CONSENT")
+        == "I_ACCEPT_DISPOSABLE_WIN11_POSTAUDIT_ACPI_POWERDOWN"
+        and os.environ.get("GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT")
+        == "I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY"
+        and os.environ.get("GASLUX_CACHYOS_OVERLAY_GPT_CONSENT")
+        == "I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY"
+        and os.environ.get("GASLUX_WINDOWS11_CACHYOS_STAGE_CONSENT")
+        == "I_ACCEPT_WIN11_POSTBOOT_GPT_COW_ONLY_NO_FILESYSTEM"
+    ):
+        raise SystemExit("Windows 11 fifth GPT overlay requires all distinct "
+                         "hosted-VM consents and proven Windows firstboot, "
+                         "both read-only GPT audits and no real disk writes")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -1037,6 +1066,13 @@ def main(argv: list[str] | None = None) -> int:
         report["installedGptReadOnlyVerified"] = False
     if args.audit_primary_backup_gpt_readonly:
         report["gptPrimaryBackupReadOnlyVerified"] = False
+    if args.stage_cachyos_win11_root_gpt_overlay_only:
+        report["win11CachyosFifthGptOverlayStagedOnly"] = False
+        report["win11CachyosOverlayDiscarded"] = False
+        report["linuxInstalled"] = False
+        report["windowsRebootAfterLinuxGptVerified"] = False
+        report["rollbackProven"] = False
+        report["storageWritesAuthorized"] = False
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
@@ -1200,6 +1236,77 @@ def main(argv: list[str] | None = None) -> int:
                         report["installedGptReadOnlyVerified"] = True
                         print("GASLUX_WINDOWS_INSTALLED_GPT_OFFLINE_READONLY_VERIFIED=1",
                               flush=True)
+                        if args.stage_cachyos_win11_root_gpt_overlay_only:
+                            # Only an already cleanly shut down, genuinely
+                            # installed Win11 guest with two independent
+                            # read-only GPT proofs may enter this branch.
+                            require(
+                                ok and report["isoHashVerified"] is True
+                                and report["gptPrimaryBackupReadOnlyVerified"] is True
+                                and candidate is not None
+                                and candidate["independentLibguestfsPartitionAgreement"] is True
+                                and candidate["unallocatedAfterWindowsBytes"] >= 40*1024**3
+                                and snapshot["profile"] == "win11_26h2_en_us_x64",
+                                "refusing fifth GPT COW without proven Windows 11 baseline",
+                            )
+                            from windows_cachyos_cow_checkpoint import (
+                                prepare_postboot_cow, CHECKPOINT_DIR, OVERLAY_NAME,
+                            )
+                            from windows_cachyos_overlay_gpt_stage import (
+                                stage_overlay_gpt,
+                            )
+                            from uuid import uuid4
+                            checkpoint = prepare_postboot_cow(disk, nvram, candidate)
+                            staged = stage_overlay_gpt(
+                                disk, nvram, candidate, checkpoint, uuid4(),
+                            )
+                            require(
+                                staged["overlayGptLinuxRootEntryPrepared"] is True
+                                and staged["bothGptMirrorsAfterStageVerified"] is True
+                                and staged["windowsBackingQcow2Unchanged"] is True
+                                and staged["windowsUefiVariablesUnchanged"] is True
+                                and staged["linuxRootFilesystemFormatted"] is False
+                                and staged["storageWritesAuthorized"] is False
+                                and staged["sameDiskDualBootVerified"] is False
+                                and staged["cachyosInstalled"] is False,
+                                "staged overlay violates Windows-only safety contract",
+                            )
+                            overlay = workspace / CHECKPOINT_DIR / OVERLAY_NAME
+                            require(overlay.is_file() and not overlay.is_symlink()
+                                    and overlay.stat().st_uid == os.getuid()
+                                    and overlay.stat().st_nlink == 1,
+                                    "refusing to discard an unowned COW trial")
+                            # Discard only the owned trial overlay, NOT the
+                            # Windows baseline or its copied OVMF variables.
+                            overlay.unlink()
+                            original_after = inspect_owned_qcow2(disk)
+                            filesystem_after = inspect_owned_disk(disk, args.profile)
+                            require(
+                                original_after["candidateWindowsGptPrimaryAndBackupConsistent"] is True
+                                and original_after["windowsPartitions"] == candidate["windowsPartitions"]
+                                and original_after["diskGuidSha256"] == candidate["diskGuidSha256"]
+                                and original_after["unallocatedAfterWindowsBytes"] ==
+                                    candidate["unallocatedAfterWindowsBytes"]
+                                and filesystem_after == snapshot
+                                and not overlay.exists(),
+                                "Windows backing GPT/ESP/BCD/NTFS changed after COW discard",
+                            )
+                            staged["overlayDiscarded"] = True
+                            staged["windowsBaselineReadOnlyAfterDiscardVerified"] = True
+                            staged["windowsRebootAfterLinuxGptVerified"] = False
+                            staged["linuxInstalled"] = False
+                            data = json.dumps(staged, sort_keys=True, indent=2) + "\n"
+                            filename = args.profile + "-cachyos-overlay-fifth-gpt-only.json"
+                            with (evidence / filename).open("x", encoding="utf-8") as out:
+                                out.write(data)
+                            digest = hashlib.sha256(data.encode("utf-8")).hexdigest()
+                            (evidence / (filename + ".sha256")).write_text(
+                                f"{digest}  {filename}\n", encoding="ascii",
+                            )
+                            report["win11CachyosFifthGptOverlayStagedOnly"] = True
+                            report["win11CachyosOverlayDiscarded"] = True
+                            print("GASLUX_WIN11_CACHYOS_FIFTH_GPT_COW_STAGED_AND_DISCARDED=1",
+                                  flush=True)
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,

@@ -12,12 +12,18 @@ on:
       - test/windows10-postboot-gpt-readonly-audit
       - test/windows11-postboot-gpt-readonly-audit
       - test/windows11-gpt-primary-backup-readonly-gate
+      - test/windows11-cachyos-cow-gpt-stage
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
       - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
       - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/tools/windows_cachyos_cow_checkpoint.py
+      - auto_tests/test_windows_cachyos_cow_checkpoint.py
+      - auto_tests/tools/windows_cachyos_overlay_gpt_stage.py
+      - auto_tests/test_windows_cachyos_overlay_gpt_stage.py
+      - auto_tests/test_windows11_cachyos_cow_preflight.py
       - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
       - auto_tests/test_windows11_floppy_control.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
@@ -50,11 +56,16 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m py_compile auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_gpt_stage.py
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_installed_gpt_ro_audit.py \
               test_windows_cachyos_qcow2_gpt_readonly.py \
+              test_windows_cachyos_cow_checkpoint.py \
+              test_windows_cachyos_overlay_gpt_stage.py \
+              test_windows11_cachyos_cow_preflight.py \
               test_windows11_floppy_control.py \
               test_windows_x64_noprompt_one_shot.py \
               test_windows_x64_derived_noprompt.py \
@@ -94,6 +105,9 @@ jobs:
       GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
       GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
       GASLUX_WINDOWS_ACPI_LAB_CONSENT: I_ACCEPT_DISPOSABLE_WIN11_POSTAUDIT_ACPI_POWERDOWN
+      GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT: I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_GPT_CONSENT: I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY
+      GASLUX_WINDOWS11_CACHYOS_STAGE_CONSENT: I_ACCEPT_WIN11_POSTBOOT_GPT_COW_ONLY_NO_FILESYSTEM
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -132,9 +146,40 @@ jobs:
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
             --profile "${{ matrix.profile }}" --accel kvm \
             --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
-            --audit-installed-gpt-readonly --audit-primary-backup-gpt-readonly
+            --audit-installed-gpt-readonly --audit-primary-backup-gpt-readonly \
+            --stage-cachyos-win11-root-gpt-overlay-only
           echo 'PASS: Windows 11 clean firstboot plus read-only libguestfs and independent primary/backup GPT CRC/partition identity agreement.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Windows+CachyOS dualboot, WinRE/BCD RESTORATION and rollback NOT verified; no storage writes authorized.' >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          p = Path("windows-x64-tcg-evidence")
+          result = json.loads((p/"win11_26h2_en_us_x64-result.json").read_text())
+          doc = "win11_26h2_en_us_x64-cachyos-overlay-fifth-gpt-only.json"
+          data = (p/doc).read_bytes()
+          recorded, target = (p/(doc+".sha256")).read_text().strip().split(None, 1)
+          assert target == doc and recorded == hashlib.sha256(data).hexdigest()
+          staged = json.loads(data)
+          assert result["isoHashVerified"] is True
+          assert result["windowsClientBootVerified"] is True
+          assert result["installedGptReadOnlyVerified"] is True
+          assert result["gptPrimaryBackupReadOnlyVerified"] is True
+          assert result["win11CachyosFifthGptOverlayStagedOnly"] is True
+          assert result["win11CachyosOverlayDiscarded"] is True
+          assert staged["linuxRoot"]["lengthBytes"] == 24*1024**3
+          assert staged["linuxRootFilesystemFormatted"] is False
+          assert staged["overlayDiscarded"] is True
+          assert staged["windowsBaselineReadOnlyAfterDiscardVerified"] is True
+          assert staged["windowsBackingQcow2Unchanged"] is True
+          assert staged["windowsUefiVariablesUnchanged"] is True
+          for key in ("cachyosInstalled", "cachyosFirstBootVerified",
+                      "sameDiskDualBootVerified", "windowsRecoveryAfterLinuxVerified",
+                      "rollbackProven", "storageWritesAuthorized", "releaseEligible",
+                      "linuxInstalled", "windowsRebootAfterLinuxGptVerified"):
+              assert staged[key] is False, key
+          print("GASLUX_WIN11_FIFTH_GPT_OVERLAY_EVIDENCE_VERIFIED=1")
+          PY
+          echo 'Only fifth GPT unformatted entry was staged in private COW, discarded; Windows backing read-only GPT and filesystem identical.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No Linux installation, second Windows boot, in-place rollback or production write authorization.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
