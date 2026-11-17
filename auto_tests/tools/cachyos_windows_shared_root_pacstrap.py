@@ -13,6 +13,7 @@ file is never attached to this VM as a separate writable drive.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -82,14 +83,25 @@ def strict_gpt_evidence(
     Refuses PMBR hybrids, shifted entries, damaged CRC, foreign slots, and
     a different disk/sector table even if lsblk appears correct.
     """
-    require(disk.is_block_device() and not disk.is_symlink(),
-            "chosen QEMU guest device is not one whole block device")
-    fd = os.open(str(disk), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    require(disk.is_absolute() and disk.parent == Path("/dev")
+            and re.fullmatch(r"vd[a-z]{1,2}", disk.name) is not None
+            and not disk.is_symlink() and disk.is_block_device(),
+            "chosen QEMU guest device is not one whole virtio disk")
+    fd = os.open(str(disk), os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
     try:
         whole = os.fstat(fd)
         require(stat.S_ISBLK(whole.st_mode), "not a block device")
+        actual_bytes = struct.unpack("=Q", fcntl.ioctl(
+            fd, 0x80081272, bytes(8)))[0]  # Linux BLKGETSIZE64
+        actual_sector = struct.unpack("=I", fcntl.ioctl(
+            fd, 0x1268, bytes(4)))[0]  # Linux BLKSSZGET
+        require(actual_bytes == VIRTUAL_BYTES
+                and actual_sector == SECTOR_BYTES,
+                "actual whole disk size/sector bytes differ from signed plan")
         front = os.pread(fd, WINDOW_BYTES, 0)
         back = os.pread(fd, WINDOW_BYTES, VIRTUAL_BYTES - WINDOW_BYTES)
+        require(os.fstat(fd).st_rdev == whole.st_rdev,
+                "whole guest device changed during bounded GPT reads")
     finally:
         os.close(fd)
     require(len(front) == len(back) == WINDOW_BYTES
@@ -195,7 +207,7 @@ def guest_plan(
     found = [item for item in topology["blockdevices"]
              if item.get("type") == "disk" and item.get("serial") == SERIAL]
     require(len(found) == 1 and
-            found[0]["path"].startswith("/dev/vd"),
+            re.fullmatch(r"/dev/vd[a-z]{1,2}", found[0]["path"]) is not None,
             "unexpected signed virtual disk source")
     disk = Path(found[0]["path"])
     require(disk.is_block_device() and
