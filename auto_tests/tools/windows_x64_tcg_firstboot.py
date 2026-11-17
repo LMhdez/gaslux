@@ -859,6 +859,29 @@ def main(argv: list[str] | None = None) -> int:
                     report["windowsClientBootVerified"] = ok
                 report["diagnostic"] = diagnostic
             finally:
+                if args.two_stage_install_only:
+                    # Preserve only bounded, VM-generated firmware serial and
+                    # QEMU stderr evidence. Never archive ISO, Windows WIM,
+                    # installed QCOW2, unattended media, TPM or private NVRAM.
+                    for source_name, suffix, max_bytes in (
+                        ("initial-dvd-guest-serial.log", "initial-dvd-serial", 2_000_000),
+                        ("first-qemu-stderr.log", "initial-qemu-stderr", 256_000),
+                    ):
+                        source = workspace / source_name
+                        if (source.is_file() and not source.is_symlink()
+                                and 0 < source.stat().st_size <= max_bytes):
+                            dest = evidence / f"{args.profile}-{suffix}.log"
+                            with source.open("rb") as stream, dest.open("xb") as output:
+                                shutil.copyfileobj(stream, output, length=64 * 1024)
+                            with dest.open("rb") as hashed:
+                                digest = hashlib.file_digest(
+                                    hashed, "sha256"
+                                ).hexdigest()
+                            (evidence / f"{args.profile}-{suffix}.sha256").write_text(
+                                f"{digest}  {dest.name}\n", encoding="ascii",
+                            )
+                            if suffix == "initial-dvd-serial":
+                                report["initialDvdGuestSerialSha256"] = digest
                 if tpm:
                     tpm.terminate()
                     tpm.wait(timeout=10)
