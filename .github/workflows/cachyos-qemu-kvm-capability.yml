@@ -1,4 +1,4 @@
-name: QEMU hardware acceleration availability (read-only probe)
+name: QEMU hardware acceleration availability (disposable VM probe)
 
 on:
   push:
@@ -118,3 +118,70 @@ jobs:
             fi
           done
           echo 'Diskless VM probing only. This does not prove pacstrap or installed Linux.'
+      - name: Probe KVM with the full disk image topology (never host disks)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 ovmf acl
+          work="$(mktemp -d -p "$RUNNER_TEMP" gaslux-kvm-exact-XXXXXXXX)"
+          trap 'rm -rf -- "$work"' EXIT
+          code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
+          vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          [[ -f "$code" && -f "$vars" ]] || exit 2
+          # Only new sparse image files. No /dev/sdX, NVMe, block-device
+          # passthrough, Windows volume, actual ESP, NVRAM or partition write.
+          truncate -s 96M "$work/liveboot.raw"
+          truncate -s 64M "$work/iso.raw"
+          truncate -s 64M "$work/root.raw"
+          truncate -s 64M "$work/esp.raw"
+          truncate -s 64M "$work/control.raw"
+          if [[ ! -c /dev/kvm ]]; then
+            echo 'GASLUX_FULL_TOPOLOGY_KVM=false: missing /dev/kvm'
+            exit 0
+          fi
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          for mode in runner root; do
+            cp "$vars" "$work/nvram-$mode.fd"
+            args=(
+              qemu-system-x86_64
+              -machine q35,accel=kvm,smm=on -cpu host
+              -global driver=cfi.pflash01,property=secure,value=on
+              -smp 2 -m 6144 -display none -monitor none -no-reboot -boot order=c
+              -drive "if=pflash,format=raw,readonly=on,file=$code"
+              -drive "if=pflash,format=raw,file=$work/nvram-$mode.fd"
+              -device qemu-xhci
+              -drive "if=none,id=liveefi,format=raw,file=$work/liveboot.raw,readonly=on"
+              -device usb-storage,drive=liveefi
+              -drive "if=none,id=source,format=raw,file=$work/iso.raw,readonly=on"
+              -device virtio-blk-pci,drive=source
+              -drive "if=none,id=target,format=raw,file=$work/root.raw"
+              -device virtio-blk-pci,drive=target
+              -drive "if=none,id=esp,format=raw,file=$work/esp.raw"
+              -device virtio-blk-pci,drive=esp
+              -drive "if=none,id=control,format=raw,file=$work/control.raw,readonly=on"
+              -device virtio-blk-pci,drive=control
+              -netdev user,id=n0 -device virtio-net-pci,netdev=n0
+              -serial "file:$work/serial-$mode.log"
+            )
+            set +e
+            if [[ "$mode" == root ]]; then
+              sudo timeout --kill-after=2s 5s "${args[@]}" > "$work/qemu-$mode.stderr" 2>&1
+            else
+              timeout --kill-after=2s 5s "${args[@]}" > "$work/qemu-$mode.stderr" 2>&1
+            fi
+            rc=$?
+            set -e
+            ok=false
+            if (( rc == 124 )) &&
+               ! grep -Eiq 'permission denied|failed to initialize kvm|could not access kvm' "$work/qemu-$mode.stderr"; then
+              ok=true
+            fi
+            upper="$(printf %s "$mode" | tr '[:lower:]' '[:upper:]')"
+            echo "GASLUX_FULL_TOPOLOGY_KVM_$upper=$ok (status $rc)"
+            echo "GASLUX_FULL_TOPOLOGY_KVM_$upper=$ok" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$ok" == false ]]; then
+              tail -c 1200 "$work/qemu-$mode.stderr" || true
+            fi
+          done
+          echo 'No Linux, Windows, pacstrap or installed root was booted in this probe.'
