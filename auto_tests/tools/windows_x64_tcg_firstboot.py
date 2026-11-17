@@ -1034,7 +1034,7 @@ def main(argv: list[str] | None = None) -> int:
                         candidate = inspect_owned_qcow2(disk)
                         serialized = (json.dumps(
                             candidate, indent=2, sort_keys=True,
-                        ) + "\\n").encode("utf-8")
+                        ) + "\n").encode("utf-8")
                         geometry_file = (evidence /
                             f"{args.profile}-gpt-readonly-candidate.json")
                         require(not geometry_file.exists() and
