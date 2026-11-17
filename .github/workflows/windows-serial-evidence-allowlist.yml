@@ -1,0 +1,48 @@
+name: Windows COM1 pinned proof-token allowlist (no VM)
+
+on:
+  push:
+    branches:
+      - fix/windows-serial-evidence-token-allowlist
+    paths:
+      - .github/workflows/windows-serial-evidence-allowlist.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_full_serial_audit.py
+      - auto_tests/test_windows_x64_tcg_unattend_contract.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-serial-scanner:
+    name: Bounded COM1 audit and Windows firstboot contract regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Reject untrusted hosts and compile scanner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/test_windows_x64_full_serial_audit.py
+      - name: Simulate noisy and contradictory serial witnesses without Windows or disk writes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for name in \
+            test_windows_x64_full_serial_audit.py \
+            test_windows_x64_tcg_unattend_contract.py \
+            test_windows_x64_clean_poweroff_gate.py \
+            test_windows_x64_two_stage_boot.py \
+            test_windows_x64_noprompt_one_shot.py; do
+            python3 -m unittest discover -v -s auto_tests -p "$name"
+          done
+          echo 'Only Python serial/witness contracts passed; genuine Windows client boot and dual boot NOT tested.' >> "$GITHUB_STEP_SUMMARY"
