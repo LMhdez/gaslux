@@ -115,6 +115,9 @@ def strict_gpt_evidence(
             == plan["diskGuidSha256"], "disk GUID differs from signed plan")
     require(len(entries) == 128 * 128 and
             not any(entries[5*128:]), "foreign sixth GPT record")
+    require(hashlib.sha256(entries[:4*128]).hexdigest()
+            == plan["gptWindowsSha256"],
+            "first four Windows GPT entry bytes differ from signed baseline")
     for i, planned in enumerate(plan["partitions"]):
         row = entries[i*128:(i+1)*128]
         require(str(uuid.UUID(bytes_le=row[0:16])) ==
@@ -141,6 +144,8 @@ def protected_files_readonly(disk: Path, plan: dict[str, Any]) -> None:
         require(part.is_symlink() and part.resolve().is_block_device(),
                 "signed protected partition identity missing")
         source = part.resolve()
+        require(execute(["lsblk", "-no", "PKNAME", str(source)]).strip()
+                == disk.name, "protected partition is not on the signed disk")
         with tempfile.TemporaryDirectory(prefix="gaslux-win-ro-", dir="/run") as temp:
             mount_type = "vfat" if index == 1 else "ntfs3"
             execute(["mount", "-t", mount_type,
@@ -211,6 +216,11 @@ def pacstrap_only(args: argparse.Namespace) -> None:
     require(by_id.is_symlink() and by_id.resolve().is_block_device(),
             "fifth Linux partition symlink missing")
     root_partition = by_id.resolve()
+    require(execute(["lsblk", "-no", "PKNAME", str(root_partition)]).strip()
+            == disk.name, "fifth Linux root does not belong to signed Windows disk")
+    require(execute(["blkid", "-s", "UUID", "-o", "value",
+                     str(root_partition)]).strip().lower() ==
+            plan["rootFsUuid"], "existing ext4 UUID not owned by transaction")
     require(ROOT.is_dir() and not ROOT.is_symlink()
             and not any(ROOT.iterdir()),
             "root mount target not empty, regular or lab-owned")
@@ -231,6 +241,15 @@ def pacstrap_only(args: argparse.Namespace) -> None:
                 "pre-existing OS or foreign root content")
         # Only the transaction-owned ext4 root is writable in this VM.
         # NEVER pass /dev/sda, its ESP, WinRE or Windows partition to pacstrap.
+        keyring = ROOT / "etc/pacman.d/gnupg"
+        keyring.mkdir(parents=True, exist_ok=False)
+        execute(["pacman-key", "--gpgdir", str(keyring), "--init"], timeout=90)
+        execute(["pacman-key", "--gpgdir", str(keyring),
+                 "--populate", "archlinux", "cachyos"], timeout=120)
+        # Official keyring identity already proven in the separate
+        # CachyOS VM-only installation test. Never change SigLevel.
+        execute(["pacman-key", "--gpgdir", str(keyring), "--list-keys",
+                 "882DCFE48E2051D48E2562ABF3B607488DB35A47"])
         packages = [
             "base", "linux-cachyos-lts", "mkinitcpio", "grub", "efibootmgr",
             "cachyos-keyring", "cachyos-mirrorlist", "cachyos-settings",
@@ -240,6 +259,13 @@ def pacstrap_only(args: argparse.Namespace) -> None:
         require((ROOT / "boot/vmlinuz-linux-cachyos-lts").is_file()
                 and (ROOT / "usr/share/libalpm/scripts/cachyos-branding").is_file(),
                 "signed native kernel/CachyOS branding packages absent")
+        execute(["arch-chroot", str(ROOT),
+                 "/usr/share/libalpm/scripts/cachyos-branding", "os-release"],
+                timeout=75)
+        release = (ROOT / "etc/os-release").read_text(encoding="utf-8")
+        require("ID=cachyos\\n" in release
+                and "ID_LIKE=arch\\n" in release,
+                "native CachyOS identity not established by signed branding")
         (ROOT / ".gaslux-lab-root-owner").write_text(
             plan["runId"] + "\n", encoding="ascii")
         os.sync()
