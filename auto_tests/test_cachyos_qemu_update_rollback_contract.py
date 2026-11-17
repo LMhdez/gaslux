@@ -99,7 +99,7 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
             "ID=cachyos", "ID_LIKE=arch",
             "lab-real-iso-signed-20261116",
             "01234567-89ab-cdef-0123-456789abcdef",
-            "pacman-conf --repo", "TrustedOnly", "PackageRequired",
+            "pacman-conf --repo", "PackageOptional", "TrustAll",
             "pacman -Syu --noconfirm linux-cachyos-lts grub",
             "mkinitcpio -P", "grub-script-check",
             "GASLUX_VM_UPDATE_APPLIED=1",
@@ -156,53 +156,30 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         self.assertIn('LocalFileSigLevel = Required TrustedOnly', self.stage)
         self.assertIn('RemoteFileSigLevel = Required TrustedOnly', self.stage)
 
-    def test_update_rejects_foreign_repos_and_weak_effective_signatures(self):
-        self.assertIn('(( ${#repos[@]} == 3 ))', self.guest)
-        self.assertIn('^(core|extra|cachyos)
-        self.assertIn('sha256sum "$updater"', self.runner)
-        self.assertIn('mcopy -i "$fat" "$updater" ::/update.sh', self.runner)
-        self.assertIn('sha256sum --check update.sha256', self.stage)
-        self.assertIn("ExecStart=/usr/local/sbin/gaslux-ci-vm-update",
-                      self.stage)
-        self.assertIn("After=gaslux-ci-firstboot.service", self.stage)
-        self.assertIn('GASLUX_LAB_UPDATE_ROLLBACK', self.runner)
-        self.assertIn("auto_tests/tools/cachyos_qemu_update_rollback.sh",
-                      self.runner)
-
-    def test_real_official_iso_ci_only_on_explicit_branch(self):
-        config = WORKFLOW.read_text()
-        self.assertIn("feature/cachyos-qemu-updates-snapshot-recovery", config)
-        self.assertIn("GASLUX_LAB_UPDATE_ROLLBACK:", config)
-        self.assertIn("cachyos_qemu_update_rollback.sh", config)
-        self.assertIn("cachyos_vm_update_recovery_guest.sh", config)
-        self.assertIn("No Windows rollback", config)
-
-
-if __name__ == "__main__":
-    unittest.main()
-, self.guest)
+    def test_update_rejects_untrusted_and_foreign_repo_configuration(self):
+        self.assertIn('unexpected enabled repository count', self.guest)
+        self.assertIn('unapproved installed repository', self.guest)
         self.assertIn('count == 1', self.guest)
-        self.assertIn('untrusted signing policy in $repo', self.guest)
-        marker = '  python3 - "$repo" "$level" <<\'PY\' || fail'
-        self.assertIn(marker, self.guest)
-        code = self.guest.split(marker, 1)[1].split("\\nPY\\n", 1)[0].split("\\n", 1)[1]
-        inputs = {
+        start = self.guest.index('import sys\nrepo, raw = sys.argv[1:]')
+        code = self.guest[start:].split("\nPY\n", 1)[0]
+        cases = {
             'Required DatabaseOptional TrustedOnly': True,
             'PackageRequired DatabaseOptional PackageTrustedOnly': True,
             'DatabaseRequired TrustedOnly': False,
             'Required DatabaseOptional': False,
+            'Required Optional TrustedOnly': False,
             'Required DatabaseOptional TrustAll': False,
             'Required PackageOptional TrustedOnly': False,
-            'Required DatabaseOptional Required TrustedOnly': False,
-            'Required DatabaseOptional Unrecognized': False,
+            'Required Required TrustedOnly': False,
+            'Required DatabaseOptional Unknown': False,
         }
-        for level, accepted in inputs.items():
+        for level, expected in cases.items():
             with self.subTest(level=level):
                 result = subprocess.run(
                     ['python3', '-c', code, 'cachyos', level],
                     capture_output=True, text=True, timeout=5, check=False,
                 )
-                self.assertEqual(result.returncode == 0, accepted,
+                self.assertEqual(result.returncode == 0, expected,
                                  result.stdout + result.stderr)
 
     def test_bounded_guest_script_is_hashed_in_signed_boot_fat(self):
