@@ -12,6 +12,8 @@ sys.path.insert(0, str(TOOLS))
 from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     _CALAMARES_LOCATION_NEXT,
     _CALAMARES_LOCATION_WINDOW,
+    _CALAMARES_KEYBOARD_NEXT,
+    _CALAMARES_KEYBOARD_WINDOW,
     _CALAMARES_NEXT,
     _CALAMARES_WINDOW,
     _EXPECTED_SCREEN,
@@ -20,6 +22,7 @@ from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     _WELCOME_BOX,
     verified_after_close,
     verified_centre_changed,
+    verified_native_calamares_keyboard,
     verified_native_calamares_location,
     verified_native_calamares_welcome,
     verified_q4os_welcome_desktop,
@@ -162,3 +165,29 @@ def test_refuse_location_next_when_screenshot_unknown_or_tampered(tmp_path):
     )
     assert result.returncode == 1
     assert "REFUSED" in result.stderr
+
+
+def test_keyboard_view_is_pinned_to_exact_verified_qemu_artifact():
+    assert _CALAMARES_KEYBOARD_WINDOW == (
+        (128, 118, 1152, 667),
+        "570830d10805331de7e4ec4b6d10603c58f899517d2696a0447e952ee92ea588",
+    )
+    assert _CALAMARES_KEYBOARD_NEXT == (
+        (960, 626, 1044, 663),
+        "157a5d9d73c5c231ea486fa09312969567e247701384f51ee4f3cf4c20ed22b9",
+    )
+
+
+def test_refuse_unknown_keyboard_screen_and_unknown_dimensions(tmp_path):
+    for size in ((1280, 800), (640, 480)):
+        image = tmp_path / f"unknown-{size[0]}.png"
+        Image.new("RGB", size, "black").save(image)
+        assert not verified_native_calamares_keyboard(image)
+        result = subprocess.run(
+            [sys.executable, str(GATE), "calamares-keyboard", str(image)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 1
+        assert "REFUSED" in result.stderr

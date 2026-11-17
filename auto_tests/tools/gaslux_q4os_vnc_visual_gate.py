@@ -55,6 +55,18 @@ _CALAMARES_LOCATION_NEXT = (
     (961, 626, 1044, 663),
     "77799468f6fc2ec9dddd531bdcb376865c2176683af6e185fa6095c870ccac60",
 )
+# Official Q4OS ISO / native Calamares Keyboard view, verified by manual
+# inspection of CI #44139349156, artifact #14353932390.
+# The same exact crops were unchanged across four screenshots in that run.
+# Only permits one non-destructive Keyboard -> Software Next click.
+_CALAMARES_KEYBOARD_WINDOW = (
+    (128, 118, 1152, 667),
+    "570830d10805331de7e4ec4b6d10603c58f899517d2696a0447e952ee92ea588",
+)
+_CALAMARES_KEYBOARD_NEXT = (
+    (960, 626, 1044, 663),
+    "157a5d9d73c5c231ea486fa09312969567e247701384f51ee4f3cf4c20ed22b9",
+)
 
 
 def _open_verified_screen(path: Path) -> Image.Image | None:
@@ -118,6 +130,17 @@ def verified_native_calamares_location(path: Path) -> bool:
     )
 
 
+def verified_native_calamares_keyboard(path: Path) -> bool:
+    """Keyboard -> Software is permitted ONLY for exact pinned Calamares pixels."""
+    screen = _open_verified_screen(path)
+    if screen is None:
+        return False
+    return (
+        _roi_sha(screen, _CALAMARES_KEYBOARD_WINDOW[0]) == _CALAMARES_KEYBOARD_WINDOW[1]
+        and _roi_sha(screen, _CALAMARES_KEYBOARD_NEXT[0]) == _CALAMARES_KEYBOARD_NEXT[1]
+    )
+
+
 def verified_centre_changed(before: Path, after: Path) -> bool:
     """Taskbar-clock updates alone must never satisfy a GUI transition."""
     previous = _open_verified_screen(before)
@@ -140,6 +163,8 @@ def main() -> int:
         passed = verified_native_calamares_welcome(Path(sys.argv[2]))
     elif mode == "calamares-location" and len(sys.argv) == 3:
         passed = verified_native_calamares_location(Path(sys.argv[2]))
+    elif mode == "calamares-keyboard" and len(sys.argv) == 3:
+        passed = verified_native_calamares_keyboard(Path(sys.argv[2]))
     elif mode == "changed-centre" and len(sys.argv) == 4:
         passed = verified_centre_changed(Path(sys.argv[2]), Path(sys.argv[3]))
     else:

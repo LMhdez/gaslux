@@ -1,4 +1,4 @@
-name: Q4OS native Calamares Welcome to Keyboard GUI test (no install)
+name: Q4OS native Calamares Welcome to Software GUI test (no install)
 
 on:
   push:
@@ -52,7 +52,7 @@ jobs:
           aria2c --continue=true --split=4 --max-connection-per-server=4 --max-tries=5 --retry-wait=8 --timeout=60 --connect-timeout=30 --file-allocation=none --check-integrity=true --checksum="sha-256=$Q4OS_SHA256" -o q4os.iso "$Q4OS_SOURCE"
           printf '%s  %s\n' "$Q4OS_SHA256" q4os.iso | sha256sum --check --status
           echo "GASLUX_Q4OS_ISO=$RUNNER_TEMP/q4os-native-target/q4os.iso" >> "$GITHUB_ENV"
-      - name: SHA-verify Welcome and Location, observe next Keyboard screen without installation
+      - name: SHA-gate Welcome, Location and Keyboard; observe Software without installation
         shell: bash
         env:
           Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
@@ -60,6 +60,7 @@ jobs:
           GASLUX_Q4OS_LAUNCH_INSTALLER: 'yes'
           GASLUX_Q4OS_ADVANCE_WELCOME: 'yes'
           GASLUX_Q4OS_ADVANCE_LOCATION: 'yes'
+          GASLUX_Q4OS_ADVANCE_KEYBOARD: 'yes'
           GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/q4os-native-target/evidence
         run: |
           set -Eeuo pipefail
@@ -70,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: q4os-calamares-welcome-to-keyboard-vnc-evidence
+          name: q4os-calamares-welcome-to-software-vnc-evidence
           path: ${{ runner.temp }}/q4os-native-target/evidence/
           if-no-files-found: warn
           retention-days: 7

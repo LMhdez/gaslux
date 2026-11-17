@@ -176,3 +176,37 @@ def test_location_opt_in_without_verified_welcome_refused_before_disk_setup(tmp_
     )
     assert result.returncode != 0
     assert "Calamares Location navigation requires SHA-verified Welcome step" in result.stderr
+
+
+def test_keyboard_to_software_is_pixel_gated_without_partition_actions():
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'advance_keyboard="${GASLUX_Q4OS_ADVANCE_KEYBOARD:-no}"' in source
+    assert "Calamares Keyboard navigation requires SHA-verified Location step" in source
+    assert 'python3 "$visual_gate" calamares-keyboard "$work/vnc-keyboard-page.png"' in source
+    assert "vnc-software-page.png" in source
+    assert '"$calamares_keyboard_next_clicked" -eq 1 && "$calamares_software_frame" -eq 1' in source
+    assert "NOT PROVEN: Software screen identity without independent screenshot inspection." in source
+    assert "NOT PERFORMED: partition choice, user setup, Install confirmation" in source
+    assert "mkfs.ext4" not in source
+    assert "calamares -d" not in source
+
+
+def test_keyboard_opt_in_without_location_opt_in_refused_before_disk_setup(tmp_path):
+    iso = tmp_path / "fake.iso"
+    iso.write_bytes(b"not Q4OS")
+    env = os.environ.copy()
+    env["GITHUB_ACTIONS"] = "true"
+    env["GASLUX_Q4OS_GRAPHICS_LAB_ONLY"] = "1"
+    env["GASLUX_Q4OS_LAUNCH_INSTALLER"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_WELCOME"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_LOCATION"] = "no"
+    env["GASLUX_Q4OS_ADVANCE_KEYBOARD"] = "yes"
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "q4os", str(iso), "0" * 64],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Calamares Keyboard navigation requires SHA-verified Location step" in result.stderr
