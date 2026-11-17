@@ -222,8 +222,11 @@ def pacstrap_only(args: argparse.Namespace) -> None:
                      str(root_partition)]).strip().lower() ==
             plan["rootFsUuid"], "existing ext4 UUID not owned by transaction")
     require(ROOT.is_dir() and not ROOT.is_symlink()
+            and ROOT.stat().st_uid == 0
+            and stat.S_IMODE(ROOT.stat().st_mode) == 0o700
+            and ROOT.parent == Path("/mnt")
             and not any(ROOT.iterdir()),
-            "root mount target not empty, regular or lab-owned")
+            "root mount target not empty, private or root-owned")
     for tool in ("pacstrap", "pacman-key", "arch-chroot", "mount", "umount"):
         require(subprocess.run(["which", tool], stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL).returncode == 0,
