@@ -138,7 +138,7 @@ jobs:
           PY
           printf 'GASLUX_WIN10_QCOW2_CREATED=PASS\n'
 
-      - name: Install Windows 10 in QEMU using OVMF and boot into the installed OS
+      - name: Install Windows 10 and complete first logon across UEFI reboot cycles
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -150,41 +150,104 @@ jobs:
           code='/usr/share/OVMF/OVMF_CODE_4M.fd'
           serial="$work/windows10-qemu-serial.log"
           qemu_log="$work/windows10-qemu-process.log"
+          mount_root="$work/first-logon-check"
+          mkdir -p "$mount_root"
           [[ -s "$code" && -s "$vars" && -s "$iso" && -s "$answer" ]]
           if [[ "$GASLUX_WIN10_ACCEL" == kvm ]]; then
-            machine='q35'
             accelerator='kvm'
             cpu='host'
           else
-            machine='q35'
             accelerator='tcg,thread=multi'
             cpu='max'
           fi
-          set +e
-          timeout --signal=TERM --kill-after=60s 18000s qemu-system-x86_64 \
-            -no-user-config -machine "$machine" -accel "$accelerator" -cpu "$cpu" -smp 4 -m 6144 \
-            -rtc base=utc -display none -vga std \
-            -serial "file:$serial" -monitor none -net none \
-            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
-            -drive "if=pflash,format=raw,unit=1,file=$vars" \
-            -device ich9-ahci,id=sata \
-            -drive "if=none,id=system,file=$image,format=qcow2,cache=writeback" \
-            -device ide-hd,drive=system,bus=sata.0,bootindex=2 \
-            -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on" \
-            -device ide-cd,drive=install,bus=sata.1,bootindex=1 \
-            -drive "if=none,id=answer,file=$answer,format=raw,media=cdrom,readonly=on" \
-            -device ide-cd,drive=answer,bus=sata.2,bootindex=3 \
-            > "$qemu_log" 2>&1
-          status=$?
-          set -e
-          if [[ $status -ne 0 ]]; then
+
+          check_first_logon() {
+            sudo qemu-nbd --read-only --connect=/dev/nbd0 --format=qcow2 "$image"
+            sudo udevadm settle
+            local found=1
+            if [[ -b /dev/nbd0p3 ]]; then
+              sudo mount -t ntfs-3g -o ro,norecover /dev/nbd0p3 "$mount_root"
+              if [[ -s "$mount_root/GasluxEvidence/first-logon.txt" ]] &&
+                 grep -q 'GASLUX_WINDOWS_FIRST_LOGON=PASS' "$mount_root/GasluxEvidence/first-logon.txt"; then
+                found=0
+              fi
+              sudo umount "$mount_root"
+            fi
+            sudo qemu-nbd --disconnect /dev/nbd0
+            sudo udevadm settle
+            return "$found"
+          }
+
+          # Windows Setup requests one or more guest resets between the
+          # specialize and OOBE/first-logon phases. -no-reboot makes each reset
+          # return control to this host loop, so the installer ISO is detached
+          # after the first boot and the next cycle must boot from the QCOW2.
+          completed=0
+          for attempt in $(seq 1 8); do
+            remaining=$((18000-SECONDS))
+            if (( remaining <= 0 )); then
+              echo 'Windows setup exceeded the five-hour guest budget' >&2
+              exit 1
+            fi
+            args=(
+              -no-user-config
+              -no-reboot
+              -machine q35
+              -accel "$accelerator"
+              -cpu "$cpu"
+              -smp 4
+              -m 6144
+              -rtc base=utc
+              -display none
+              -vga std
+              -serial "file:$serial"
+              -monitor none
+              -net none
+              -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code"
+              -drive "if=pflash,format=raw,unit=1,file=$vars"
+              -device ich9-ahci,id=sata
+              -drive "if=none,id=system,file=$image,format=qcow2,cache=writeback"
+              -device ide-hd,drive=system,bus=sata.0,bootindex=1
+              -drive "if=none,id=answer,file=$answer,format=raw,media=cdrom,readonly=on"
+              -device ide-cd,drive=answer,bus=sata.2,bootindex=3
+            )
+            if (( attempt == 1 )); then
+              args+=(
+                -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on"
+                -device ide-cd,drive=install,bus=sata.1,bootindex=0
+              )
+            fi
+            echo "Starting Windows setup/boot cycle $attempt (install media attached: $((attempt == 1 ? 1 : 0)))"
+            set +e
+            timeout --signal=TERM --kill-after=60s "${remaining}s" qemu-system-x86_64 "${args[@]}" > "$qemu_log" 2>&1
+            status=$?
+            set -e
+            if [[ $status -eq 124 || $status -eq 137 ]]; then
+              tail -n 120 "$qemu_log" || true
+              tail -n 120 "$serial" || true
+              echo "Windows guest did not reboot or shut down within the remaining time budget" >&2
+              exit 1
+            fi
+            if [[ $status -ne 0 ]]; then
+              tail -n 120 "$qemu_log" || true
+              tail -n 120 "$serial" || true
+              echo "Windows QEMU cycle $attempt exited with status $status" >&2
+              exit "$status"
+            fi
+            qemu-img check "$image"
+            if check_first_logon; then
+              completed=1
+              echo "GASLUX_WIN10_FIRST_LOGON_HOST_CHECK=PASS"
+              break
+            fi
+            echo "Windows first-logon marker not present after cycle $attempt; retrying from installed disk without Windows ISO."
+          done
+          [[ "$completed" -eq 1 ]] || {
             tail -n 120 "$qemu_log" || true
             tail -n 120 "$serial" || true
-            echo "Windows install/first-logon QEMU exit status: $status" >&2
+            echo 'Windows did not reach the required first-logon marker after eight UEFI boot cycles' >&2
             exit 1
-          fi
-          [[ -s "$image" ]] || { echo 'Windows QCOW2 is empty' >&2; exit 1; }
-          qemu-img check "$image"
+          }
           printf 'GASLUX_WIN10_QEMU_SHUTDOWN=PASS\n'
 
       - name: Verify installed Windows files, GPT ESP, BCD and first-logon marker
