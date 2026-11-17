@@ -20,7 +20,7 @@ from typing import Any
 from cachyos_windows_shared_archiso_handoff import (
     SharedDiskHandoffRejected, canonical, validate_plan,
 )
-from cachyos_windows_cow_checkpoint import (
+from windows_cachyos_cow_checkpoint import (
     CHECKPOINT_DIR, OVERLAY_NAME, sha256_file,
 )
 from cachyos_windows_overlay_reboot import (
