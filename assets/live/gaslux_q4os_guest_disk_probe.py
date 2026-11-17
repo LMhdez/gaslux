@@ -1,4 +1,5 @@
 """Read-only Q4OS guest-visible virtio identity contract; never grants write authority."""
+
 from __future__ import annotations
 
 import hashlib
@@ -44,12 +45,21 @@ def validate_guest_disk_report(
         raise Q4osPlanRefusal("Malformed guest identity JSON") from exc
     _refuse(isinstance(data, dict), "Guest report must be an object")
     fields = {
-        "schemaVersion", "runId", "nonce", "device", "serial", "sizeBytes",
-        "logicalSectorBytes", "physicalSectorBytes", "diskGuid", "partitions",
-        "readOnlyProbe", "writeAttempted",
+        "schemaVersion",
+        "runId",
+        "nonce",
+        "device",
+        "serial",
+        "sizeBytes",
+        "logicalSectorBytes",
+        "physicalSectorBytes",
+        "diskGuid",
+        "partitions",
+        "readOnlyProbe",
+        "writeAttempted",
     }
     _refuse(set(data) == fields, "Guest report fields differ from contract")
-    _refuse(data["schemaVersion"] == 1, "Unsupported guest report schema")
+    _refuse(type(data["schemaVersion"]) is int and data["schemaVersion"] == 1, "Unsupported guest report schema")
     _refuse(
         data["runId"] == plan["runId"] and data["nonce"] == plan["nonce"],
         "Run/nonce mismatch",
@@ -62,9 +72,19 @@ def validate_guest_disk_report(
         isinstance(data["device"], str) and _DEVICE.fullmatch(data["device"]),
         "Invalid diagnostic device path",
     )
-    _refuse(data["sizeBytes"] == plan["diskSizeBytes"], "Guest disk capacity mismatch")
-    _refuse(data["logicalSectorBytes"] == plan["sectorBytes"], "Logical sector size mismatch")
-    _refuse(data["physicalSectorBytes"] in (512, 4096), "Unsupported physical sector size")
+    _refuse(
+        type(data["sizeBytes"]) is int and data["sizeBytes"] == plan["diskSizeBytes"],
+        "Guest disk capacity mismatch",
+    )
+    _refuse(
+        type(data["logicalSectorBytes"]) is int
+        and data["logicalSectorBytes"] == plan["sectorBytes"],
+        "Logical sector size mismatch",
+    )
+    _refuse(
+        type(data["physicalSectorBytes"]) is int and data["physicalSectorBytes"] in (512, 4096),
+        "Unsupported physical sector size",
+    )
     _refuse(data["diskGuid"] == plan["diskGuid"], "Guest GPT disk GUID mismatch")
     _refuse(
         data["readOnlyProbe"] is True and data["writeAttempted"] is False,
@@ -74,12 +94,21 @@ def validate_guest_disk_report(
     _refuse(isinstance(parts, list) and len(parts) == 1, "Unexpected guest partition count")
     esp = parts[0]
     expected = {
-        "number", "startLba", "endLba", "typeGuid", "partGuid", "label", "filesystem",
+        "number",
+        "startLba",
+        "endLba",
+        "typeGuid",
+        "partGuid",
+        "label",
+        "filesystem",
     }
     _refuse(isinstance(esp, dict) and set(esp) == expected, "Malformed guest ESP record")
-    _refuse(esp["number"] == 1, "Unexpected ESP partition number")
+    _refuse(type(esp["number"]) is int and esp["number"] == 1, "Unexpected ESP partition number")
     _refuse(
-        esp["startLba"] == plan["espStartLba"] and esp["endLba"] == plan["espEndLba"],
+        type(esp["startLba"]) is int
+        and type(esp["endLba"]) is int
+        and esp["startLba"] == plan["espStartLba"]
+        and esp["endLba"] == plan["espEndLba"],
         "Guest ESP geometry mismatch",
     )
     try:

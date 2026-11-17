@@ -1,4 +1,5 @@
 """Pure guest identity negative tests; no block devices or disk writes."""
+
 from __future__ import annotations
 
 import hashlib
@@ -89,6 +90,7 @@ def test_valid_observation_is_identity_only():
         ("readOnlyProbe", False),
         ("writeAttempted", True),
         ("device", "/dev/sda"),
+        ("schemaVersion", True),
     ],
 )
 def test_guest_identity_mismatch_refused(key, value):
@@ -107,6 +109,7 @@ def test_guest_identity_mismatch_refused(key, value):
         ("partGuid", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
         ("label", "EFI-WINDOWS"),
         ("filesystem", "ntfs"),
+        ("number", True),
     ],
 )
 def test_esp_mismatch_refused(field, value):
