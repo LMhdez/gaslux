@@ -10,7 +10,9 @@ from pathlib import Path
 import struct
 import sys
 import unittest
+from unittest import mock
 import uuid
+import stat
 
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE/"tools"))
@@ -134,10 +136,57 @@ class RealReadOnlyGptWindowsTests(unittest.TestCase):
     def test_readonly_raw_audit_never_accepts_a_partition_device_path(self):
         # Reject before stat/open/ioctl, even if lsblk claims the device exists.
         for forbidden in ("/dev/vdb1", "/dev/vda5", "/dev/vdaa1",
-                          "/dev/vdb/", "/dev/vdb-1", "/dev/nvme0n1"):
+                          "/dev/vdb-1", "/dev/nvme0n1"):
             with self.subTest(device=forbidden), self.assertRaisesRegex(
                     inspect.SharedDiskHandoffRejected, "virtio"):
                 inspect.read_guest_disk_windows_readonly(Path(forbidden))
+
+    def test_raw_disk_geometry_must_match_before_any_gpt_read(self):
+        # All kernel responses are mocked. No /dev node is opened in this test.
+        for size, sector in ((64 * 1024**3, 512),
+                             (128 * 1024**3, 4096)):
+            def ioctl(_fd, command, _buffer):
+                if command == 0x80081272:
+                    return struct.pack("=Q", size)
+                if command == 0x1268:
+                    return struct.pack("=I", sector)
+                raise AssertionError("unexpected ioctl")
+
+            with self.subTest(size=size, sector=sector), \
+                 mock.patch.object(Path, "stat", return_value=mock.Mock(
+                     st_mode=stat.S_IFBLK, st_rdev=123)), \
+                 mock.patch.object(inspect.os, "open", return_value=9), \
+                 mock.patch.object(inspect.os, "fstat", return_value=mock.Mock(
+                     st_rdev=123)), \
+                 mock.patch.object(inspect.os, "close"), \
+                 mock.patch.object(inspect.fcntl, "ioctl", side_effect=ioctl), \
+                 mock.patch.object(inspect.os, "pread") as pread:
+                with self.assertRaisesRegex(
+                        inspect.SharedDiskHandoffRejected,
+                        "size or logical sector"):
+                    inspect.read_guest_disk_windows_readonly(Path("/dev/vdb"))
+                pread.assert_not_called()
+
+    def test_matching_geometry_allows_two_bounded_read_only_windows(self):
+        # This verifies the Linux ioctl contract without a host block device.
+        payload = b"X" * gpt.WINDOW_BYTES
+        def ioctl(_fd, command, _buffer):
+            return (struct.pack("=Q", 128 * 1024**3)
+                    if command == 0x80081272
+                    else struct.pack("=I", 512))
+        with mock.patch.object(Path, "stat", return_value=mock.Mock(
+                 st_mode=stat.S_IFBLK, st_rdev=123)), \
+             mock.patch.object(inspect.os, "open", return_value=9) as opener, \
+             mock.patch.object(inspect.os, "fstat", return_value=mock.Mock(
+                 st_rdev=123)), \
+             mock.patch.object(inspect.os, "close"), \
+             mock.patch.object(inspect.fcntl, "ioctl", side_effect=ioctl), \
+             mock.patch.object(inspect.os, "pread", return_value=payload) as pread:
+            front, back = inspect.read_guest_disk_windows_readonly(Path("/dev/vdb"))
+            self.assertEqual((front, back), (payload, payload))
+            self.assertEqual(pread.call_count, 2)
+            self.assertEqual(opener.call_args.args[0], Path("/dev/vdb"))
+            self.assertTrue(opener.call_args.args[1] & inspect.os.O_RDONLY == 0)
 
     def test_real_host_files_and_character_devices_not_accepted(self):
         with self.assertRaisesRegex(
