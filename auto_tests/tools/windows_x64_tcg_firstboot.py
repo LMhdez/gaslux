@@ -539,6 +539,108 @@ def probe_no_prompt_uefi_dvd(args: list[str], serial: Path,
                 proc.wait(timeout=30)
 
 
+
+def installed_only_qemu_command(
+    first: list[str], *, iso: Path, floppy: Path, target: Path,
+    code: Path, nvram: Path, monitor: Path,
+    first_serial: Path, installed_serial: Path,
+) -> list[str]:
+    """Fail closed unless a second QEMU contains NO optical/floppy/monitor media.
+
+    This is exclusively a disposable GitHub-hosted VM contract. The original
+    pinned ISO, derivative, and unattended floppy NEVER enter stage two.
+    """
+    require(
+        len(first) > 1 and first[0] == "qemu-system-x86_64"
+        and (len(first) - 1) % 2 == 0 and "-no-reboot" not in first,
+        "unexpected QEMU argument shape for isolated second boot",
+    )
+    expected_removed = {
+        ("-drive", f"if=none,id=verified_iso,media=cdrom,readonly=on,format=raw,file={iso}"),
+        ("-device", "ide-cd,drive=verified_iso,bus=lab_sata.1"),
+        ("-drive", f"if=floppy,format=raw,file={floppy}"),
+        ("-monitor", f"unix:{monitor},server,nowait"),
+    }
+    allowed_drives = {
+        f"if=pflash,format=raw,readonly=on,file={code}",
+        f"if=pflash,format=raw,file={nvram}",
+        f"if=none,id=only_windows,format=qcow2,file={target}",
+    }
+    removed: set[tuple[str, str]] = set()
+    seen_drives: set[str] = set()
+    qemu = [first[0]]
+    boot_count = serial_count = disk_count = 0
+    for opt, value in zip(first[1::2], first[2::2]):
+        pair = (opt, value)
+        require(opt.startswith("-"), "unexpected unpaired QEMU argument")
+        if pair in expected_removed:
+            require(pair not in removed, "duplicate detachable QEMU media")
+            removed.add(pair)
+            continue
+        if opt == "-drive":
+            require(value in allowed_drives and value not in seen_drives,
+                    "unexpected or duplicate second-stage QEMU disk")
+            seen_drives.add(value)
+        if opt == "-device" and value.startswith("ide-hd,drive="):
+            require(value == "ide-hd,drive=only_windows,bus=lab_sata.0",
+                    "unowned second-stage QEMU block device")
+            disk_count += 1
+        if opt == "-boot":
+            require(value == "order=dc", "unexpected first-stage boot order")
+            boot_count += 1
+            value = "order=c"  # The installed QCOW2 is the ONLY boot source.
+        if opt == "-serial":
+            require(value == f"file:{first_serial}", "unexpected guest serial")
+            serial_count += 1
+            value = f"file:{installed_serial}"
+        qemu.extend((opt, value))
+    require(
+        removed == expected_removed and seen_drives == allowed_drives
+        and boot_count == serial_count == disk_count == 1
+        and not installed_serial.exists() and not installed_serial.is_symlink(),
+        "stage-two media removal, disk ownership or serial isolation failed",
+    )
+    return qemu
+
+
+def stage_verified_dvd_until_first_restart(
+    qemu: list[str], serial: Path, limit: int,
+) -> tuple[bool, str]:
+    """Observe initial verified UEFI DVD and a QEMU -no-reboot exit only.
+
+    This is NOT proof of Windows Setup completion or firstboot. The only
+    acceptance witness remains a fresh second QEMU with NO installation DVD.
+    """
+    require(qemu and qemu[-1] == "-no-reboot" and
+            not serial.exists() and not serial.is_symlink() and
+            600 <= limit <= 3600,
+            "invalid isolated Windows Setup reboot contract")
+    began = time.monotonic()
+    dvd_started = False
+    with (serial.parent / "qemu-stderr.log").open("xb") as err:
+        proc = subprocess.Popen(qemu, stdout=subprocess.DEVNULL, stderr=err)
+        try:
+            while time.monotonic() - began < limit:
+                if serial.is_file():
+                    sample = serial.read_bytes()[-300_000:]
+                    if (b"BdsDxe: starting Boot" in sample and
+                            b"UEFI QEMU DVD-ROM" in sample):
+                        dvd_started = True
+                    if b"No bootable option or device was found." in sample:
+                        return False, "OVMF could not start verified lab DVD"
+                rc = proc.poll()
+                if rc is not None:
+                    if rc == 0 and dvd_started:
+                        return True, "QEMU exited after lab DVD initial guest restart"
+                    return False, "guest stopped without a verified UEFI DVD/restart"
+                time.sleep(3)
+            return False, "Windows lab setup did not reboot within isolated deadline"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=30)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--profile", choices=sorted(EXPECTED), required=True)
@@ -548,6 +650,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--derived-no-prompt", action="store_true",
                     help="disposable KVM lab ONLY: rebuild Microsoft-sourced UDF "
                          "with official noprompt UEFI image; never release media")
+    ap.add_argument("--lab-install-derived", action="store_true",
+                    help="disposable KVM ONLY: stop at first Setup reboot, then "
+                         "boot QCOW2 alone; never a production Windows installer")
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
     ap.add_argument("--boot-timeout", type=int, default=6300)
@@ -556,9 +661,20 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
-    if args.derived_no_prompt and not args.boot_probe_only:
-        raise SystemExit("derived no-prompt DVD requires probe-only until safe "
-                         "DVD detachment before first Windows reboot is proven")
+    if args.lab_install_derived and (
+        not args.derived_no_prompt or args.boot_probe_only or args.accel != "kvm"
+    ):
+        raise SystemExit(
+            "derived full lab requires --derived-no-prompt, --accel kvm and "
+            "must not use --boot-probe-only"
+        )
+    if args.derived_no_prompt and not (
+        args.boot_probe_only or args.lab_install_derived
+    ):
+        raise SystemExit("derived no-prompt DVD requires probe-only unless "
+                         "explicit two-stage disposable lab mode is enabled")
+    if args.lab_install_derived and args.boot_timeout < 1800:
+        raise SystemExit("two-stage disposable lab needs at least 1800s timeout")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
@@ -685,6 +801,37 @@ def main(argv: list[str] | None = None) -> int:
                     ok, diagnostic = probe_no_prompt_uefi_dvd(base, serial)
                     report["labNoPromptDvdBootProbePassed"] = ok
                     report["windowsClientBootVerified"] = False
+                elif args.lab_install_derived:
+                    # Stop at the FIRST actual VM reset; never let the no-prompt
+                    # DVD remain attached for a subsequent installer boot.
+                    run_started = time.monotonic()
+                    first_limit = min(2700, args.boot_timeout // 2)
+                    first_ok, first_message = stage_verified_dvd_until_first_restart(
+                        base + ["-no-reboot"], serial, first_limit
+                    )
+                    if serial.is_file():
+                        setup_copy = evidence / f"{args.profile}-setup-serial.log"
+                        require(not setup_copy.exists() and not setup_copy.is_symlink(),
+                                "existing setup-stage evidence file")
+                        shutil.copyfile(serial, setup_copy)
+                    require(first_ok, first_message)
+                    report["labInitialDvdGuestRestartObserved"] = True
+                    installed_dir = workspace / "installed-only"
+                    installed_dir.mkdir()
+                    installed_serial = installed_dir / "serial.log"
+                    resume = installed_only_qemu_command(
+                        base, iso=boot_iso, floppy=floppy, target=disk,
+                        code=code, nvram=nvram, monitor=monitor_path,
+                        first_serial=serial, installed_serial=installed_serial,
+                    )
+                    report["labSecondQemuBootMediaDetached"] = True
+                    serial = installed_serial
+                    remaining = args.boot_timeout - int(time.monotonic() - run_started)
+                    require(remaining >= 120,
+                            "no time remains for independent installed Windows guest")
+                    ok, diagnostic = boot_vm(
+                        resume, serial, remaining, args.profile, monitor_socket=None
+                    )
                 else:
                     ok, diagnostic = boot_vm(base, serial, args.boot_timeout,
                                          args.profile, monitor_socket=monitor_path)
