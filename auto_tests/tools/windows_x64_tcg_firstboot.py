@@ -443,9 +443,12 @@ def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
             monitor.settimeout(5)
             monitor.connect(str(monitor_path))
-            banner = monitor.recv(8192)
-            require(b"QEMU" in banner or b"(qemu)" in banner,
-                    "unexpected QEMU HMP monitor")
+            banner = b""
+            while b"(qemu)" not in banner and len(banner) < 8192:
+                fragment = monitor.recv(8192 - len(banner))
+                require(bool(fragment), "QEMU HMP did not send initial prompt")
+                banner += fragment
+            require(b"(qemu)" in banner, "unexpected QEMU HMP monitor")
             # HMP screendump only reads the VM display: no input or disk writes.
             monitor.sendall(f"screendump {destination}\n".encode("ascii"))
             response = monitor.recv(8192)
