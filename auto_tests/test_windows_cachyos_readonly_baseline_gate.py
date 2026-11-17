@@ -20,6 +20,8 @@ assert SPEC and SPEC.loader
 GATE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(GATE)
 
+INITIAL_SERIAL = b'BdsDxe: starting Boot00AF "UEFI QEMU DVD-ROM LAB"\r\n'
+
 
 def synthetic(profile="win11_26h2_en_us_x64"):
     build = "26300" if profile.startswith("win11") else "19045"
@@ -51,7 +53,7 @@ def synthetic(profile="win11_26h2_en_us_x64"):
             GATE.witness_powershell(profile, build) + "\n"
         ).encode("utf-8")).hexdigest(),
         "labDerivedIsoSha256": "b" * 64,
-        "initialDvdGuestSerialSha256": "c" * 64,
+        "initialDvdGuestSerialSha256": hashlib.sha256(INITIAL_SERIAL).hexdigest(),
     }
     digest = hashlib.sha256(serial).hexdigest()
     manifest = f"{digest}  {profile}-serial.log\n".encode()
@@ -59,8 +61,26 @@ def synthetic(profile="win11_26h2_en_us_x64"):
 
 
 class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
-    def exercise(self, report, serial, manifest):
-        return GATE.evaluate(report["profile"], report, serial, manifest)
+    def exercise(self, report, serial, manifest, initial_serial=INITIAL_SERIAL,
+                 initial_manifest=None):
+        if initial_manifest is None:
+            initial_manifest = (
+                hashlib.sha256(initial_serial).hexdigest() + "  " +
+                report["profile"] + "-initial-dvd-serial.log\n"
+            ).encode("ascii")
+        return GATE.evaluate(
+            report["profile"], report, serial, manifest,
+            initial_serial, initial_manifest,
+        )
+
+    def exercise_with_profile(self, profile, report, serial, manifest):
+        initial_manifest = (
+            hashlib.sha256(INITIAL_SERIAL).hexdigest() + "  " +
+            report["profile"] + "-initial-dvd-serial.log\n"
+        ).encode("ascii")
+        return GATE.evaluate(
+            profile, report, serial, manifest, INITIAL_SERIAL, initial_manifest,
+        )
 
     def test_windows_11_candidate_never_authorizes_storage(self):
         report, serial, manifest = synthetic()
@@ -201,12 +221,12 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
     def test_wrong_profile_rejected(self):
         report, serial, manifest = synthetic()
         with self.assertRaises(GATE.BaselineGateError):
-            GATE.evaluate("win10_22h2_en_us_x64", report, serial, manifest)
+            self.exercise_with_profile("win10_22h2_en_us_x64", report, serial, manifest)
 
     def test_unknown_profile_rejected(self):
         report, serial, manifest = synthetic()
         with self.assertRaises(GATE.BaselineGateError):
-            GATE.evaluate("win-server-2022", report, serial, manifest)
+            self.exercise_with_profile("win-server-2022", report, serial, manifest)
 
     def test_unverified_client_rejected(self):
         report, serial, manifest = synthetic()
@@ -319,10 +339,17 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
             (root / "report.json").write_text(json.dumps(report))
             (root / "guest.log").write_bytes(serial)
             (root / "guest.sha256").write_bytes(manifest)
+            (root / "initial-dvd.log").write_bytes(INITIAL_SERIAL)
+            (root / "initial-dvd.sha256").write_bytes((
+                hashlib.sha256(INITIAL_SERIAL).hexdigest() + "  " +
+                report["profile"] + "-initial-dvd-serial.log\n"
+            ).encode("ascii"))
             cmd = [sys.executable, str(SOURCE), "--profile", report["profile"],
                    "--result", str(root / "report.json"),
                    "--serial", str(root / "guest.log"),
-                   "--serial-sha256", str(root / "guest.sha256")]
+                   "--serial-sha256", str(root / "guest.sha256"),
+                   "--initial-dvd-serial", str(root / "initial-dvd.log"),
+                   "--initial-dvd-serial-sha256", str(root / "initial-dvd.sha256")]
             proc = subprocess.run(cmd, capture_output=True, text=True,
                                   timeout=10, check=False)
             self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
@@ -341,11 +368,62 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
                 [sys.executable, str(SOURCE), "--profile", report["profile"],
                  "--result", str(root / "report.json"),
                  "--serial", str(root / "guest.log"),
-                 "--serial-sha256", str(root / "guest.sha256")],
+                 "--serial-sha256", str(root / "guest.sha256"),
+                 "--initial-dvd-serial", str(root / "initial-dvd.log"),
+                 "--initial-dvd-serial-sha256", str(root / "initial-dvd.sha256")],
                 capture_output=True, text=True, timeout=10, check=False,
             )
             self.assertEqual(proc.returncode, 2)
             self.assertFalse(json.loads(proc.stdout)["storageWritesAuthorized"])
+
+    def test_initial_dvd_serial_hash_binds_to_report(self):
+        report, serial, manifest = synthetic()
+        changed = INITIAL_SERIAL + b"firmware debug change\n"
+        with self.assertRaisesRegex(GATE.BaselineGateError, "Windows report"):
+            self.exercise(report, serial, manifest, initial_serial=changed)
+
+    def test_initial_dvd_serial_manifest_hash_is_required(self):
+        report, serial, manifest = synthetic()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "evidence manifest"):
+            self.exercise(report, serial, manifest,
+                          initial_manifest=b"0" * 64 + b"  foreign.log\n")
+
+    def test_initial_dvd_serial_manifest_rejects_cross_profile(self):
+        report, serial, manifest = synthetic()
+        wrong = (
+            hashlib.sha256(INITIAL_SERIAL).hexdigest() +
+            "  win10_22h2_en_us_x64-initial-dvd-serial.log\n"
+        ).encode("ascii")
+        with self.assertRaisesRegex(GATE.BaselineGateError, "evidence manifest"):
+            self.exercise(report, serial, manifest, initial_manifest=wrong)
+
+    def test_missing_initial_uefi_dvd_start_is_rejected(self):
+        report, serial, manifest = synthetic()
+        initial = b"BdsDxe: starting Boot00AF UEFI Misc Device\n"
+        report["initialDvdGuestSerialSha256"] = hashlib.sha256(initial).hexdigest()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "exactly one"):
+            self.exercise(report, serial, manifest, initial_serial=initial)
+
+    def test_repeated_initial_dvd_start_is_rejected(self):
+        report, serial, manifest = synthetic()
+        initial = INITIAL_SERIAL + INITIAL_SERIAL
+        report["initialDvdGuestSerialSha256"] = hashlib.sha256(initial).hexdigest()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "exactly one"):
+            self.exercise(report, serial, manifest, initial_serial=initial)
+
+    def test_initial_dvd_log_size_limit_is_consistent_with_archive(self):
+        report, serial, manifest = synthetic()
+        initial = INITIAL_SERIAL + b"X" * GATE.MAX_INITIAL_SERIAL
+        with self.assertRaisesRegex(GATE.BaselineGateError, "oversized initial"):
+            self.exercise(report, serial, manifest, initial_serial=initial)
+
+    def test_initial_dvd_candidate_never_claims_authenticity(self):
+        report, serial, manifest = synthetic()
+        proof = self.exercise(report, serial, manifest)
+        self.assertTrue(proof["initialDvdSerialManifestVerified"])
+        self.assertTrue(proof["firstStageSingleDvdStartObserved"])
+        self.assertFalse(proof["windowsGuestOriginAuthenticated"])
+        self.assertFalse(proof["windowsBootVerified"])
 
     def test_no_disk_mutation_imports_or_calls(self):
         source = SOURCE.read_text()
