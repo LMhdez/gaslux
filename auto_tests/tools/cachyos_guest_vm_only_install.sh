@@ -158,8 +158,7 @@ cmp -s "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf" ||
 # duplicates, empty lines, whitespace and additional repos fail-closed.
 repos="$(arch-chroot "$TARGET" pacman-conf --repo-list)" ||
   die 'cannot enumerate installed native pacman repositories'
-python3 - "$repos" <<'PY' ||
-  die 'installed repo set does not match signed CachyOS/core/extra policy'
+python3 - "$repos" <<'PY' || die 'installed repo set does not match signed CachyOS/core/extra policy'
 import sys
 repos = sys.argv[1].splitlines()
 if len(repos) != 3 or set(repos) != {'cachyos', 'core', 'extra'}:
