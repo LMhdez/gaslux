@@ -76,6 +76,23 @@ class GuestUSBVisibilityTests(unittest.TestCase):
                 with self.assertRaises(probe.GuestUSBError):
                     probe.validate_witness(VALID + extra)
 
+    def test_grub_terminal_ansi_csi_only_is_ignored(self):
+        # A real UEFI GRUB terminal uses cursor/SGR escape sequences around
+        # displayed serial text. This cannot turn an echoed prompt into proof.
+        formatted = VALID.replace(
+            probe.READY, b"\x1b[1;32m" + probe.READY + b"\x1b[0m"
+        ).replace(
+            probe.SUCCESS, b"\x1b[?25h" + probe.SUCCESS + b"\x1b[0m"
+        )
+        self.assertTrue(probe.validate_witness(formatted))
+
+    def test_ansi_csi_does_not_excuse_text_prefixes(self):
+        forged = VALID.replace(
+            probe.SUCCESS, b"fake>\x1b[32m" + probe.SUCCESS
+        )
+        with self.assertRaisesRegex(probe.GuestUSBError, "unrecognized"):
+            probe.validate_witness(forged)
+
     def test_partial_output_remains_unproven(self):
         self.assertFalse(probe.validate_witness(READY + LABEL + XML + SCRIPT_OK))
 
