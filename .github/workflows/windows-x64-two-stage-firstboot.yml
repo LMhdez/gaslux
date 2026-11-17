@@ -8,6 +8,7 @@ on:
       - fix/windows-two-stage-swtpm-reconnect
       - fix/windows-two-stage-full-serial-dvd-guard
       - fix/windows-eval-oobe-international-pass
+      - fix/windows-two-stage-removable-oobe-answer
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
