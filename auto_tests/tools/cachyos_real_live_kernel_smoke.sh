@@ -253,8 +253,7 @@ if [[ "$lab_install" -eq 1 ]]; then
   for _ in $(seq 1 84); do
     sleep 5
     if [[ -f "$w/installed-serial.log" ]] &&
-       tr -d '\r' < "$w/installed-serial.log" |
-         grep -Fxq 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1'; then
+       python3 auto_tests/tools/cachyos_installed_firstboot_evidence.py "$w/installed-serial.log" >/dev/null 2>&1; then
       installed_success=1
       break
     fi
@@ -269,8 +268,7 @@ if [[ "$lab_install" -eq 1 ]]; then
       sha256sum cachyos-installed-firstboot-serial.log > cachyos-firstboot.sha256 )
   fi
   if [[ "$installed_success" -ne 1 ]] ||
-     tr -d '\r' < "$w/installed-serial.log" |
-       grep -Fq 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_FAIL:'; then
+     ! python3 auto_tests/tools/cachyos_installed_firstboot_evidence.py "$w/installed-serial.log"; then
     echo 'FAIL: installed CachyOS did not prove first boot from virtual disk' >&2
     tail -c 6000 "$w/installed-serial.log" >&2 || true
     exit 1
