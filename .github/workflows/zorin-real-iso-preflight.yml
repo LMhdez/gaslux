@@ -1,0 +1,118 @@
+name: Zorin 18.1 official ISO legacy prewrite proof (read-only)
+
+on:
+  push:
+    branches:
+      - fix/zorin-mint-prewrite-iso-identity
+    paths:
+      - '.github/workflows/zorin-real-iso-preflight.yml'
+      - 'assets/live/libertix-distribution-common.sh'
+      - 'assets/live/libertix-install-runtime-common.sh'
+      - 'release-config.json'
+  pull_request:
+    paths:
+      - '.github/workflows/zorin-real-iso-preflight.yml'
+      - 'assets/live/libertix-distribution-common.sh'
+      - 'assets/live/libertix-install-runtime-common.sh'
+      - 'release-config.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zorin-official-readonly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verified-zorin-iso-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Assert official Zorin 18.1 Core identity and disk budget
+        shell: bash
+        env:
+          ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+          ZORIN_BYTES: '3909091328'
+          ZORIN_SOURCE: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          cfg = json.loads(Path("release-config.json").read_text(encoding="utf-8"))
+          zorin = [item for item in cfg["distributions"] if item["id"] == "zorin"]
+          assert len(zorin) == 1, "Zorin release identity is missing or ambiguous"
+          release = zorin[0]
+          assert release["osReleaseId"] == "zorin"
+          assert release["name"] == "Zorin OS 18.1 Core"
+          assert release["isoInstallerSha256"] == os.environ["ZORIN_SHA"]
+          assert release["isoInstallerSizeBytes"] == int(os.environ["ZORIN_BYTES"])
+          assert release["isoInstaller"] == os.environ["ZORIN_SOURCE"]
+          assert shutil.disk_usage(os.environ["RUNNER_TEMP"]).free > 6 * 1024 ** 3, (
+              "Not enough runner scratch space to verify the complete ISO safely"
+          )
+          print("Zorin release-config matches upstream 18.1 Core checksum and size")
+          PY
+      - name: Install read-only inspection utilities
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 squashfs-tools util-linux
+      - name: Download exact official mirror bytes into runner scratch
+        shell: bash
+        env:
+          ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+          ZORIN_SOURCE: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+          ZORIN_BYTES: '3909091328'
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/zorin-real/evidence"
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=4 --retry-wait=10 --connect-timeout=30 --timeout=60 \
+            --check-integrity=true --checksum="sha-256=$ZORIN_SHA" \
+            --dir="$RUNNER_TEMP/zorin-real" --out=zorin.iso "$ZORIN_SOURCE"
+          test -f "$RUNNER_TEMP/zorin-real/zorin.iso"
+          test ! -L "$RUNNER_TEMP/zorin-real/zorin.iso"
+          test "$(stat -c %s "$RUNNER_TEMP/zorin-real/zorin.iso")" = "$ZORIN_BYTES"
+          printf '%s  %s\n' "$ZORIN_SHA" "$RUNNER_TEMP/zorin-real/zorin.iso" | sha256sum -c -
+          printf 'source=%s\nbytes=%s\nsha256=%s\n' \
+            "$ZORIN_SOURCE" "$ZORIN_BYTES" "$ZORIN_SHA" \
+            > "$RUNNER_TEMP/zorin-real/evidence/source.txt"
+      - name: Run actual Gaslux read-only Mint/Zorin prewrite guard on Zorin ISO
+        shell: bash
+        env:
+          ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+        run: |
+          set -Eeuo pipefail
+          bash -n assets/live/libertix-install-main.sh \
+            assets/live/libertix-distribution-common.sh \
+            assets/live/libertix-install-runtime-common.sh
+          # Only source function definitions; never execute the live disk installer.
+          source assets/live/libertix-install-runtime-common.sh
+          source assets/live/libertix-distribution-common.sh
+          preflight_legacy_installer_iso_or_die \
+            "$RUNNER_TEMP/zorin-real/zorin.iso" "$ZORIN_SHA" zorin zorin
+          if findmnt -rn -M /mnt/libertix-iso-preflight >/dev/null 2>&1; then
+            echo "::error::Read-only ISO preflight leaked a mount"
+            exit 1
+          fi
+          printf 'PASS: genuine, SHA-pinned Zorin 18.1 ISO passed the production prewrite read-only preflight\n' \
+            > "$RUNNER_TEMP/zorin-real/evidence/result.txt"
+          echo "NOT TESTED: Windows disk writes, real Zorin installation, Linux boot, Windows boot, update, rollback."
+      - name: Save small integrity evidence, not ISO or user data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zorin-181-official-readonly-preflight
+          path: ${{ runner.temp }}/zorin-real/evidence/
+          if-no-files-found: warn
+          retention-days: 14
