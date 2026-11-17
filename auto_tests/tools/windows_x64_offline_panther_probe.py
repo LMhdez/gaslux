@@ -124,7 +124,7 @@ def inspect_cached_oobe_answer(
             if len(result.stdout) == expected_size:
                 payload = result.stdout
             elif (len(result.stdout) == expected_size + 1
-                  and result.stdout.endswith(b"\\n")):
+                  and result.stdout.endswith(b"\n")):
                 payload = result.stdout[:-1]
             else:
                 continue
