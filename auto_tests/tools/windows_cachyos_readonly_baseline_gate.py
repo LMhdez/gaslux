@@ -145,6 +145,26 @@ def evaluate(profile: str, report: dict, serial: bytes,
             "initial DVD serial SHA256 differs from evidence manifest")
     require(len(DVD_START.findall(initial_serial)) == 1,
             "initial DVD stage must show exactly one UEFI DVD startup")
+    # The original Microsoft Windows 10 DVD may print its real key prompt,
+    # followed by a firmware timeout if the HMP Enter arrived too late.
+    # This exact failure was witnessed in PR #108 real COM1 logs. An
+    # apparently successful report must never override a recorded failed
+    # UEFI boot attempt, even with a syntactically valid serial manifest.
+    require(
+        not re.search(
+            rb'(?im)^BdsDxe: failed to start Boot[0-9a-f]{4} '
+            rb'"UEFI QEMU DVD-ROM[^\r\n]*Time out',
+            initial_serial,
+        ),
+        "initial Windows DVD firmware reported a boot timeout",
+    )
+    require(
+        not any(
+            b"DVD-ROM" in line and b"Time out" in line
+            for line in initial_serial.splitlines()
+        ),
+        "initial Windows DVD firmware reported a boot timeout",
+    )
     require(len(serial) > 0 and len(serial) <= MAX_SERIAL,
             "empty or oversized installed Windows serial")
     require(not DVD_START.search(serial),
