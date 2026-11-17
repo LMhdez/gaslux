@@ -746,6 +746,7 @@ def boot_two_stage_windows(
     original_args: list[str], disk: Path, final_serial: Path,
     limit: int, profile_key: str,
     restart_tpm: Callable[[], None] | None = None,
+    inspect_cached_answer: Callable[[Path], None] | None = None,
 ) -> tuple[bool, str]:
     """DVD Setup stage exits at guest reboot; independently boot OWNED GPT disk.
 
@@ -819,6 +820,11 @@ def boot_two_stage_windows(
     # bytes are a staging heuristic, NOT a Windows installation proof.
     if disk.stat().st_blocks * 512 <= initial_allocated + 256 * 1024**2:
         return False, "first Windows guest reset without staging target GPT/OS data"
+    if inspect_cached_answer is not None:
+        # Stage 1 QEMU has already exited, so libguestfs reads only a static
+        # owned QCOW2 with --ro. Missing cached answer is diagnostic only:
+        # it must never be treated as evidence of Windows client firstboot.
+        inspect_cached_answer(disk)
     remaining = limit - int(time.monotonic() - started)
     if remaining < 600:
         return False, "not enough time for independent installed Windows boot"
@@ -1068,10 +1074,18 @@ def main(argv: list[str] | None = None) -> int:
                         require(tpm is not None, "Windows 11 virtual TPM missing")
                         tpm = restart_owned_swtpm_for_second_guest(tpm, workspace)
 
+                    def inspect_guest_panther(source: Path) -> None:
+                        from windows_x64_offline_panther_probe import (
+                            inspect_cached_oobe_answer,
+                        )
+                        result = inspect_cached_oobe_answer(source)
+                        report["stage1PantherDiagnostic"] = result
+
                     ok, diagnostic = boot_two_stage_windows(
                         base, disk, serial, args.boot_timeout, args.profile,
                         restart_tpm=(restart_guest_tpm if args.profile.startswith("win11")
                                      else None),
+                        inspect_cached_answer=inspect_guest_panther,
                     )
                 else:
                     ok, diagnostic = boot_vm(
