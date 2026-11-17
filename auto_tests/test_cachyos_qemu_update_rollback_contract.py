@@ -108,19 +108,25 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
             self.assertIn(requirement, self.guest)
 
     def test_native_repo_set_provisioned_without_weak_live_config(self):
-        # A valid pacstrap is insufficient if the installed CachyOS has no
-        # enabled native repositories for its first signed kernel update.
-        for expected in (
-            "for mirror in mirrorlist cachyos-mirrorlist",
-            "[cachyos]", "[core]", "[extra]",
-            "SigLevel = Required DatabaseOptional",
-            "LocalFileSigLevel = Required",
-            "Include = /etc/pacman.d/cachyos-mirrorlist",
-            "Include = /etc/pacman.d/mirrorlist",
-            'pacman-conf --repo "$repo" SigLevel',
-            "GASLUX_LAB_SIGNED_INSTALLED_REPOS_CONFIGURED=1",
+        # The pinned ISO's live pacman.conf is NOT sufficient for signed-only
+        # pacstrap. Reuse the tested PR34 builder and effective trust guard.
+        strict = (ROOT / "assets/live/cachyos-strict-pacman.py").read_text()
+        trust = (ROOT / "assets/live/cachyos-pacman-trust.py").read_text()
+        for required in (
+            'sha256sum --check --status "$guard.sha256"',
+            'strict-pacman.py --root / --run-id "$TX" --prepare-vm',
+            'pacman-trust.py --config "$strict_dir/pacman-install.conf"',
+            'pacstrap -K -C "$strict_dir/pacman-install.conf" "$TARGET"',
+            'LocalFileSigLevel = Required TrustedOnly',
+            'RemoteFileSigLevel = Required TrustedOnly',
+            'install -m 0644 "$strict_dir/pacman-target.conf"',
+            'cmp -s "$strict_dir/pacman-target.conf"',
+            'GASLUX_LAB_SIGNED_INSTALLED_REPOS_CONFIGURED=1',
         ):
-            self.assertIn(expected, self.stage)
+            self.assertIn(required, self.stage)
+        self.assertIn("Required DatabaseOptional TrustedOnly", strict)
+        self.assertIn("PackageTrustedOnly", trust)
+        self.assertNotIn('pacstrap -K "$TARGET"', self.stage)
         self.assertNotIn('cp /etc/pacman.conf', self.stage)
         self.assertIn("GASLUX_VM_UPDATE_TRUST_POLICY_VERIFIED=1", self.guest)
 
@@ -152,9 +158,7 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode == 0, siglevel in accepted,
                                  result.stdout + result.stderr)
-        self.assertEqual(self.stage.count('SigLevel = Required DatabaseOptional TrustedOnly'), 4)
-        self.assertIn('LocalFileSigLevel = Required TrustedOnly', self.stage)
-        self.assertIn('RemoteFileSigLevel = Required TrustedOnly', self.stage)
+        self.assertIn('pacstrap -K -C "$strict_dir/pacman-install.conf"', self.stage)
 
     def test_update_rejects_untrusted_and_foreign_repo_configuration(self):
         self.assertIn('unexpected enabled repository count', self.guest)
@@ -181,6 +185,24 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode == 0, expected,
                                  result.stdout + result.stderr)
+
+    def test_signed_only_tools_are_hashed_on_disposable_boot_volume(self):
+        for required in (
+            'assets/live/cachyos-strict-pacman.py',
+            'assets/live/cachyos-pacman-trust.py',
+            'mcopy -i "$fat" "$src"',
+            'mcopy -i "$fat" "$w/$guard.sha256"',
+        ):
+            self.assertIn(required, self.runner)
+        self.assertIn('missing trusted VM-only $guard tool', self.stage)
+        self.assertLess(
+            self.stage.index('sha256sum --check --status "$guard.sha256"'),
+            self.stage.index('sgdisk --clear'),
+        )
+        self.assertLess(
+            self.stage.index('GASLUX_LAB_STRICT_SIGNED_ONLY_POLICY_PASS=1'),
+            self.stage.index('pacstrap -K -C "$strict_dir/pacman-install.conf"'),
+        )
 
     def test_bounded_guest_script_is_hashed_in_signed_boot_fat(self):
         self.assertIn('sha256sum "$updater"', self.runner)
