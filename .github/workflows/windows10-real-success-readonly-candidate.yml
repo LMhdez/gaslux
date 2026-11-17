@@ -1,0 +1,56 @@
+name: Historic successful Windows 10 firstboot candidate evidence (read-only)
+on:
+  push:
+    branches:
+      - test/windows10-real-firstboot-readonly-candidate-gate
+    paths:
+      - .github/workflows/windows10-real-success-readonly-candidate.yml
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/tools/windows10_success_artifact_candidate_probe.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows10_success_artifact_candidate_probe.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  candidate-artifact-readonly:
+    name: Exact pinned Windows 10 installed serial and JSON, no VM/no disk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Reuse PR110 candidate verifier and reject forged evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            auto_tests/tools/windows10_success_artifact_candidate_probe.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_readonly_baseline_gate.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows10_success_artifact_candidate_probe.py' -v
+      - name: Download and pin genuine successful Actions artifact, inspect only bytes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(gh api repos/LMhdez/gaslux/actions/runs/44085976726 --jq '.head_sha + " " + .conclusion')" = "10478282dbb6f503c01451f503409b8b9ba81fce success"
+          test "$(gh api repos/LMhdez/gaslux/actions/artifacts/14329558083 --jq '.name + " " + (.expired|tostring)')" = "windows-genuine-two-stage-firstboot-win10_22h2_en_us_x64 false"
+          work=$(mktemp -d "$RUNNER_TEMP/gaslux-win10-candidate-XXXXXXXX")
+          trap 'rm -rf -- "$work"' EXIT
+          gh api repos/LMhdez/gaslux/actions/artifacts/14329558083/zip > "$work/verified-artifact.zip"
+          echo '25346b3a292bd0f5089c2e650fc6101e599fc1ec9441c3c0517f743082ba20f2  '"$work/verified-artifact.zip" | sha256sum -c -
+          python3 auto_tests/tools/windows10_success_artifact_candidate_probe.py "$work/verified-artifact.zip"
+          echo 'PASS: immutable authentic Actions artifact documents internally consistent, release/storage/guest-origin AUTHORIZATION all false. No VM, original disk or rollback tested.' >> "$GITHUB_STEP_SUMMARY"
