@@ -133,6 +133,38 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
         with self.assertRaisesRegex(GATE.BaselineGateError, "oversized"):
             self.exercise(report, serial, manifest)
 
+    def test_unknown_prefixed_token_rejected_even_with_all_seven_proofs(self):
+        report, serial, _ = synthetic()
+        serial += b"GASLUX_WINDOWS_X64_EXTRA_PROOF=1\n"
+        manifest = (hashlib.sha256(serial).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "unrecognized"):
+            self.exercise(report, serial, manifest)
+
+    def test_twelve_thousand_distinct_untrusted_markers_fail_closed(self):
+        report, serial, _ = synthetic()
+        noise = b"".join(
+            f"GASLUX_WINDOWS_X64_NOISE_{i}=1\n".encode()
+            for i in range(12000)
+        )
+        serial = noise + serial
+        manifest = (hashlib.sha256(serial).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "unrecognized"):
+            self.exercise(report, serial, manifest)
+
+    def test_unrelated_firmware_output_is_not_a_windows_proof(self):
+        report, serial, _ = synthetic()
+        serial = (
+            b"BdsDxe: starting Boot00AF \"UEFI Misc Device\"\n"
+            b"firmware-debug log 0001\n" + serial
+        )
+        manifest = (hashlib.sha256(serial).hexdigest() + "  " +
+                    report["profile"] + "-serial.log\n").encode()
+        proof = self.exercise(report, serial, manifest)
+        self.assertTrue(proof["candidateWindowsFirstbootDocumentsConsistent"])
+        self.assertFalse(proof["windowsGuestOriginAuthenticated"])
+
     def test_wrong_profile_rejected(self):
         report, serial, manifest = synthetic()
         with self.assertRaises(GATE.BaselineGateError):
