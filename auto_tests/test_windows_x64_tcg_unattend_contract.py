@@ -101,7 +101,12 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
         source = SRC.read_text(encoding="utf-8")
         self.assertIn('f"{MARKER}={profile_key}".encode()', source)
         self.assertIn('b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1"', source)
-        self.assertIn("required.issubset(lines)", source)
+        # COM1 may merge several WriteLine records into a single frame.
+        # Require exact audit tokens (and the full Windows build), never
+        # substrings or prefix-only matches; RC=0 remains mandatory.
+        self.assertIn("tokens = set(serial_data.split())", source)
+        self.assertIn("required.issubset(tokens) and build_line in tokens", source)
+        self.assertIn("token.startswith(FAILURE.encode())", source)
         self.assertIn("witnessed_at is not None and rc == 0", source)
         self.assertIn("reject_repeated_dvd_boot", source)
 
