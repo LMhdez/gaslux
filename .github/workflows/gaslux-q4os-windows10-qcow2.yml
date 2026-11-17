@@ -1,0 +1,261 @@
+name: Q4OS Windows 10 installed QCOW2 UEFI/GPT lab
+
+on:
+  push:
+    branches:
+      - feature/q4os-windows10-qcow2-lab
+    paths:
+      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
+      - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
+      - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows10-uefi-gpt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install QEMU, OVMF and offline NTFS inspection tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl
+          [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
+            echo 'KVM is required; refusing an unbounded TCG Windows installation' >&2
+            exit 1
+          }
+          sudo modprobe nbd max_part=8
+
+      - name: Download Microsoft Windows 10 Enterprise Evaluation 22H2 and verify official SHA-256
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/gaslux-win10-$GITHUB_RUN_ID"
+          mkdir -m 0700 "$work"
+          printf 'GASLUX_WIN10_WORK=%s\n' "$work" >> "$GITHUB_ENV"
+          iso="$work/Windows10_Enterprise_22H2_Eval_EN-US_x64.iso"
+          url='https://software-static.download.prss.microsoft.com/dbazure/988969d5-f34g-4e03-ac9d-1f9786c66750/19045.2006.220908-0225.22h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso'
+          curl --fail --location --retry 4 --retry-delay 5 --connect-timeout 30 \
+            --output "$iso" "$url"
+          expected='ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668'
+          actual="$(sha256sum "$iso" | awk '{print $1}')"
+          [[ "$actual" == "$expected" ]] || {
+            echo "Windows ISO SHA-256 mismatch: $actual" >&2
+            exit 1
+          }
+          printf 'GASLUX_WIN10_ISO_SHA256=%s\n' "$actual" >> "$GITHUB_ENV"
+          printf 'GASLUX_WIN10_ISO_VERIFIED=PASS\n'
+
+      - name: Prepare an isolated UEFI/GPT QCOW2 and unattended evaluation install
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          work="$GASLUX_WIN10_WORK"
+          image="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
+          vars="$work/OVMF_VARS.fd"
+          unattend="$work/Autounattend.xml"
+          answer_iso="$work/unattend.iso"
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd "$vars"
+          chmod 0600 "$vars"
+          qemu-img create -f qcow2 -o compat=1.1 "$image" 48G
+          password="Gaslux-$(openssl rand -hex 16)!"
+          printf 'GASLUX_WIN10_LAB_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
+          cat > "$unattend" <<XML
+          <?xml version="1.0" encoding="utf-8"?>
+          <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+            <settings pass="windowsPE">
+              <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <SetupUILanguage><UILanguage>en-US</UILanguage></SetupUILanguage>
+                <InputLocale>en-US</InputLocale><SystemLocale>en-US</SystemLocale><UILanguage>en-US</UILanguage><UserLocale>en-US</UserLocale>
+              </component>
+              <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <DiskConfiguration>
+                  <Disk wcm:action="add"><DiskID>0</DiskID><WillWipeDisk>true</WillWipeDisk>
+                    <CreatePartitions>
+                      <CreatePartition wcm:action="add"><Order>1</Order><Type>EFI</Type><Size>100</Size></CreatePartition>
+                      <CreatePartition wcm:action="add"><Order>2</Order><Type>MSR</Type><Size>16</Size></CreatePartition>
+                      <CreatePartition wcm:action="add"><Order>3</Order><Type>Primary</Type><Extend>true</Extend></CreatePartition>
+                    </CreatePartitions>
+                    <ModifyPartitions>
+                      <ModifyPartition wcm:action="add"><Order>1</Order><PartitionID>1</PartitionID><Format>FAT32</Format><Label>System</Label></ModifyPartition>
+                      <ModifyPartition wcm:action="add"><Order>2</Order><PartitionID>3</PartitionID><Format>NTFS</Format><Label>Windows</Label><Letter>C</Letter></ModifyPartition>
+                    </ModifyPartitions>
+                  </Disk>
+                </DiskConfiguration>
+                <ImageInstall><OSImage>
+                  <InstallFrom><MetaData wcm:action="add"><Key>/IMAGE/INDEX</Key><Value>1</Value></MetaData></InstallFrom>
+                  <InstallTo><DiskID>0</DiskID><PartitionID>3</PartitionID></InstallTo>
+                </OSImage></ImageInstall>
+                <UserData><AcceptEula>true</AcceptEula><FullName>Gaslux Lab</FullName><Organization>Gaslux</Organization></UserData>
+              </component>
+            </settings>
+            <settings pass="specialize">
+              <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <ComputerName>GASLUX-WIN10</ComputerName><TimeZone>UTC</TimeZone>
+              </component>
+            </settings>
+            <settings pass="oobeSystem">
+              <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <InputLocale>en-US</InputLocale><SystemLocale>en-US</SystemLocale><UILanguage>en-US</UILanguage><UserLocale>en-US</UserLocale>
+              </component>
+              <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+                <OOBE><HideEULAPage>true</HideEULAPage><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE><NetworkLocation>Work</NetworkLocation><ProtectYourPC>3</ProtectYourPC><SkipMachineOOBE>true</SkipMachineOOBE><SkipUserOOBE>true</SkipUserOOBE></OOBE>
+                <UserAccounts><LocalAccounts><LocalAccount wcm:action="add"><Name>GasluxLab</Name><Group>Administrators</Group><Password><Value>$password</Value><PlainText>true</PlainText></Password></LocalAccount></LocalAccounts></UserAccounts>
+                <AutoLogon><Password><Value>$password</Value><PlainText>true</PlainText></Password><Enabled>true</Enabled><LogonCount>1</LogonCount><Username>GasluxLab</Username></AutoLogon>
+                <FirstLogonCommands><SynchronousCommand wcm:action="add"><Order>1</Order><Description>Write Gaslux first-logon evidence and power off</Description><CommandLine>cmd.exe /c "mkdir C:\GasluxEvidence &amp; echo GASLUX_WINDOWS_FIRST_LOGON=PASS &gt; C:\GasluxEvidence\first-logon.txt &amp; shutdown /s /t 20"</CommandLine><RequiresUserInput>false</RequiresUserInput></SynchronousCommand></FirstLogonCommands>
+              </component>
+            </settings>
+          </unattend>
+          XML
+          xorriso -as mkisofs -quiet -o "$answer_iso" -V GASLUXANSWER -J -r "$unattend"
+          xmllint --noout "$unattend" 2>/dev/null || python - "$unattend" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          ET.parse(sys.argv[1])
+          print("Autounattend XML: PASS")
+          PY
+          printf 'GASLUX_WIN10_QCOW2_CREATED=PASS\n'
+
+      - name: Install Windows 10 in QEMU using OVMF and boot into the installed OS
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          work="$GASLUX_WIN10_WORK"
+          image="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
+          iso="$work/Windows10_Enterprise_22H2_Eval_EN-US_x64.iso"
+          vars="$work/OVMF_VARS.fd"
+          answer="$work/unattend.iso"
+          code='/usr/share/OVMF/OVMF_CODE_4M.fd'
+          serial="$work/windows10-qemu-serial.log"
+          qemu_log="$work/windows10-qemu-process.log"
+          [[ -s "$code" && -s "$vars" && -s "$iso" && -s "$answer" ]]
+          set +e
+          timeout --signal=TERM --kill-after=30s 7200s qemu-system-x86_64 \
+            -no-user-config -machine q35,accel=kvm -cpu host -smp 4 -m 6144 \
+            -rtc base=utc -no-reboot -display none -vga std \
+            -serial "file:$serial" -monitor none -net none \
+            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,unit=1,file=$vars" \
+            -device ahci,id=sata \
+            -drive "if=none,id=system,file=$image,format=qcow2,cache=writeback" \
+            -device ide-hd,drive=system,bus=sata.0,bootindex=2 \
+            -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on" \
+            -device ide-cd,drive=install,bus=sata.1,bootindex=1 \
+            -drive "if=none,id=answer,file=$answer,format=raw,media=cdrom,readonly=on" \
+            -device ide-cd,drive=answer,bus=sata.2,bootindex=3 \
+            > "$qemu_log" 2>&1
+          status=$?
+          set -e
+          if [[ $status -ne 0 ]]; then
+            tail -n 120 "$qemu_log" || true
+            tail -n 120 "$serial" || true
+            echo "Windows install/first-logon QEMU exit status: $status" >&2
+            exit 1
+          fi
+          [[ -s "$image" ]] || { echo 'Windows QCOW2 is empty' >&2; exit 1; }
+          qemu-img check "$image"
+          printf 'GASLUX_WIN10_QEMU_SHUTDOWN=PASS\n'
+
+      - name: Verify installed Windows files, GPT ESP, BCD and first-logon marker
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          work="$GASLUX_WIN10_WORK"
+          image="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
+          mount_root="$work/mnt"
+          mkdir -p "$mount_root/windows" "$mount_root/esp"
+          cleanup() {
+            sudo umount "$mount_root/windows" 2>/dev/null || true
+            sudo umount "$mount_root/esp" 2>/dev/null || true
+            sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          sudo qemu-nbd --connect=/dev/nbd0 --format=qcow2 "$image"
+          sudo udevadm settle
+          sudo sgdisk --verify /dev/nbd0
+          lsblk -nrpo NAME,PARTTYPE /dev/nbd0
+          [[ -b /dev/nbd0p1 && -b /dev/nbd0p3 ]]
+          sudo mount -t vfat -o ro /dev/nbd0p1 "$mount_root/esp"
+          sudo mount -t ntfs-3g -o ro,norecover /dev/nbd0p3 "$mount_root/windows"
+          test -s "$mount_root/windows/Windows/System32/winload.efi"
+          test -s "$mount_root/esp/EFI/Microsoft/Boot/bootmgfw.efi"
+          test -s "$mount_root/esp/EFI/Microsoft/Boot/BCD"
+          grep -q 'GASLUX_WINDOWS_FIRST_LOGON=PASS' \
+            "$mount_root/windows/GasluxEvidence/first-logon.txt"
+          printf 'GASLUX_WIN10_GPT=PASS\n'
+          printf 'GASLUX_WIN10_WINDOWS_ROOT=PASS\n'
+          printf 'GASLUX_WIN10_ESP_BOOTMGR_BCD=PASS\n'
+          printf 'GASLUX_WIN10_FIRST_LOGON=PASS\n'
+          sudo umount "$mount_root/windows"
+          sudo umount "$mount_root/esp"
+          sudo qemu-nbd --disconnect /dev/nbd0
+          trap - EXIT
+
+      - name: Produce self-contained compressed Windows 10 QCOW2 and SHA-256 evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          work="$GASLUX_WIN10_WORK"
+          source="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
+          output="$work/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2"
+          qemu-img convert -p -f qcow2 -O qcow2 -c "$source" "$output"
+          qemu-img check "$output"
+          info="$(qemu-img info --output=json "$output")"
+          python - "$info" <<'PY'
+          import json, sys
+          x=json.loads(sys.argv[1])
+          assert x["format"]=="qcow2"
+          assert x["virtual-size"]==48*1024**3
+          assert not x.get("backing-filename")
+          print("GASLUX_WIN10_SELF_CONTAINED_QCOW2=PASS")
+          PY
+          sha="$(sha256sum "$output" | awk '{print $1}')"
+          printf '%s  %s\n' "$sha" "$(basename "$output")" > "$work/windows10-qcow2.sha256"
+          cat > "$work/windows10-install-manifest.json" <<JSON
+          {
+            "schemaVersion": 1,
+            "distribution": "Windows 10 Enterprise Evaluation 22H2",
+            "architecture": "x86_64",
+            "firmware": "UEFI",
+            "partitionTable": "GPT",
+            "isoSha256": "$GASLUX_WIN10_ISO_SHA256",
+            "qcow2Filename": "$(basename "$output")",
+            "qcow2Sha256": "$sha",
+            "virtualSizeBytes": 51539607552,
+            "selfContained": true,
+            "windowsRootVerified": true,
+            "efiBootManagerVerified": true,
+            "bcdVerified": true,
+            "firstLogonVerified": true,
+            "networkAttached": false,
+            "qemuKvm": true,
+            "evaluationLicense": true
+          }
+          JSON
+          printf 'GASLUX_WIN10_QCOW2_SHA256=%s\n' "$sha" >> "$GITHUB_ENV"
+          printf 'GASLUX_WIN10_INSTALLED=PASS\n'
+          printf 'GASLUX_WIN10_QCOW2_SHA256=%s\n' "$sha"
+
+      - name: Upload verified Windows 10 installed QCOW2 and manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaslux-windows10-enterprise-eval-22h2-uefi-gpt-installed
+          path: |
+            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2
+            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-qcow2.sha256
+            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-install-manifest.json
+          if-no-files-found: warn
+          retention-days: 7
