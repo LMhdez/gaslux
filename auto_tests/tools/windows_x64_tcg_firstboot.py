@@ -504,9 +504,47 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                 proc.wait(timeout=30)
 
 
+def probe_no_prompt_uefi_dvd(args: list[str], serial: Path,
+                             seconds: int = 120) -> tuple[bool, str]:
+    """Observe only OVMF's DVD bootloader handoff, never infer installed Windows.
+
+    The Microsoft UEFI bootloader emits to firmware serial until loading
+    Windows PE, which is VGA-only. No serial witness means firstboot is FALSE.
+    """
+    require(seconds == 120 and not serial.exists(),
+            "unexpected DVD probe or reused guest serial transcript")
+    started = time.monotonic()
+    begun = False
+    with (serial.parent / "qemu-stderr.log").open("xb") as err:
+        proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
+        try:
+            while time.monotonic() - started < seconds:
+                if serial.is_file():
+                    sample = serial.read_bytes()[-16_384:]
+                    if b"BdsDxe: starting Boot0001" in sample:
+                        begun = True
+                    if (b"BdsDxe: failed to start Boot0001" in sample or
+                            b"No bootable option or device was found." in sample):
+                        return False, "OVMF reported the Microsoft DVD bootloader failed"
+                if proc.poll() is not None:
+                    return False, "QEMU exited before lab UEFI DVD observation completed"
+                time.sleep(2)
+            if not begun:
+                return False, "OVMF never reported starting the selected UEFI DVD"
+            return True, ("OVMF started derived no-prompt EFI DVD without a "
+                          "firmware DVD timeout; Windows Setup/boot NOT verified")
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=30)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--profile", choices=sorted(EXPECTED), required=True)
+    ap.add_argument("--boot-probe-only", action="store_true",
+                    help="lab-only: stop after a short OVMF no-prompt DVD check "
+                         "and always keep installed Windows proof false")
     ap.add_argument("--derived-no-prompt", action="store_true",
                     help="disposable KVM lab ONLY: rebuild Microsoft-sourced UDF "
                          "with official noprompt UEFI image; never release media")
@@ -516,6 +554,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
+    if args.boot_probe_only and not args.derived_no_prompt:
+        raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
@@ -632,9 +672,15 @@ def main(argv: list[str] | None = None) -> int:
                              "-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
                              "-device", "tpm-tis,tpmdev=tpm0"])
             try:
-                ok, diagnostic = boot_vm(base, serial, args.boot_timeout,
+                if args.boot_probe_only:
+                    ok, diagnostic = probe_no_prompt_uefi_dvd(base, serial)
+                    report["labNoPromptDvdBootProbePassed"] = ok
+                    report["windowsClientBootVerified"] = False
+                else:
+                    ok, diagnostic = boot_vm(base, serial, args.boot_timeout,
                                          args.profile, monitor_socket=monitor_path)
-                report["windowsClientBootVerified"] = ok
+                if not args.boot_probe_only:
+                    report["windowsClientBootVerified"] = ok
                 report["diagnostic"] = diagnostic
             finally:
                 if tpm:
