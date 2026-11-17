@@ -125,7 +125,7 @@ class CachyosFirstBootContracts(unittest.TestCase):
         self.assertIn('file="$w/installed-nvram.fd"', before_assert)
         self.assertNotIn("id=bootimg", before_assert)
         self.assertNotIn("id=isoimg", before_assert)
-        self.assertIn("GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1", phase)
+        self.assertEqual(phase.count("python3 auto_tests/tools/cachyos_installed_firstboot_evidence.py"), 2)
         self.assertIn("cachyos-installed-firstboot-serial.log", phase)
 
     def test_real_iso_job_is_explicitly_branch_gated(self):
