@@ -1334,7 +1334,7 @@ def main(argv: list[str] | None = None) -> int:
                                                 )
                                                 pacstrap_bytes = (
                                                     json.dumps(pacstrap_proof, sort_keys=True, indent=2)
-                                                    + "\\n"
+                                                    + "\n"
                                                 ).encode("utf-8")
                                                 pacstrap_path = evidence / (
                                                     f"{args.profile}-cachyos-shared-root-pacstrap.json"
@@ -1360,7 +1360,7 @@ def main(argv: list[str] | None = None) -> int:
                                                 )
                                                 discard_bytes = (
                                                     json.dumps(discard_proof, sort_keys=True, indent=2)
-                                                    + "\\n"
+                                                    + "\n"
                                                 ).encode("utf-8")
                                                 discard_path = evidence / (
                                                     f"{args.profile}-post-pacstrap-cow-discard.json"
