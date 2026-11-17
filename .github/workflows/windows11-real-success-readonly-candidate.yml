@@ -48,7 +48,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           test "$(gh api repos/LMhdez/gaslux/actions/runs/44094951108 --jq '.head_sha + " " + .conclusion')" = "35ef6de46b71524c6c05c8d9f3a9f87564529ce7 success"
           test "$(gh api repos/LMhdez/gaslux/actions/artifacts/14335490721 --jq '.name + " " + (.expired|tostring)')" = "windows-genuine-two-stage-firstboot-win11_26h2_en_us_x64 false"
-          work=$(mktemp -d "$RUNNER_TEMP/gaslux-win10-candidate-XXXXXXXX")
+          work=$(mktemp -d "$RUNNER_TEMP/gaslux-win11-candidate-XXXXXXXX")
           trap 'rm -rf -- "$work"' EXIT
           gh api repos/LMhdez/gaslux/actions/artifacts/14335490721/zip > "$work/verified-artifact.zip"
           echo '55b40f86d4de9f40508b564f9029beb04788fd5d03832370ce3099d259953cc4  '"$work/verified-artifact.zip" | sha256sum -c -
