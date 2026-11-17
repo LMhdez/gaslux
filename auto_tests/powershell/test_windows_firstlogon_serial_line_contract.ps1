@@ -54,39 +54,3 @@ if (-not $source.Contains('$ser.NewLine = "' + [char]96 + 'n"')) {
 }
 Write-Host 'GASLUX_WINDOWS_SERIAL_MARKERS_INDIVIDUAL_LINES_CONTRACT_PASS=1'
 
-)
-if (-not $match.Success) {
-    throw 'Missing bounded native serial marker array'
-}
-$os = [pscustomobject]@{ BuildNumber = '19045' }
-$markerSnippet = '$serialProof = @(' + [Environment]::NewLine + $match.Groups['items'].Value + [Environment]::NewLine + ')'
-. ([scriptblock]::Create($markerSnippet))
-$observed = @($serialProof)
-Write-Host ("GASLUX_WINDOWS_SERIAL_MARKER_ELEMENT_COUNT={0}" -f $observed.Count)
-if ($observed.Count -ne 7) {
-    throw 'PowerShell constructed incorrect number of individual serial markers'
-}
-$expected = @(
-    'GASLUX_WINDOWS_X64_BOOT_BUILD=19045'
-    'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1'
-    'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1'
-    'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1'
-    'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1'
-    'GASLUX_WINDOWS_X64_WINRE_ENABLED=1'
-    'GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win10_22h2_en_us_x64'
-)
-for ($i = 0; $i -lt $expected.Count; $i++) {
-    if ($observed[$i] -isnot [string]) {
-        throw "Serial element $i is not a string; array-to-string conversion is unsafe"
-    }
-    if ($observed[$i] -cne $expected[$i]) {
-        throw "Serial element $i is missing or contains concatenated markers"
-    }
-    if ($observed[$i] -match '\s') {
-        throw "Serial element $i contains embedded marker separators"
-    }
-}
-if (-not $source.Contains('$ser.NewLine = "' + [char]96 + 'n"')) {
-    throw 'Windows COM1 witness must set an explicit LF line delimiter'
-}
-Write-Host 'GASLUX_WINDOWS_SERIAL_MARKERS_INDIVIDUAL_LINES_CONTRACT_PASS=1'
