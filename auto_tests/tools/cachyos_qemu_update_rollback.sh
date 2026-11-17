@@ -150,13 +150,19 @@ stop_vm
 assert_base_unchanged
 echo 'GASLUX_QCOW2_UPDATED_LINUX_REBOOT_VERIFIED=1'
 
-# Rollback means discarding the owned update overlay ONLY; Windows rollback is
-# NOT proven by this exercise. Verify original bytes before booting again.
+# Discard only the owned update overlay, then boot a NEW overlay of the
+# unchanged baseline. Booting the base directly would allow systemd/journal
+# writes to modify the very QCOW2 whose immutability we claim to prove.
 rm -- "$update"
 assert_base_unchanged
-launch "$base" BASELINE "$w/recovered-baseline-serial.log" "$w/recovered-vars.fd"
+recovered="$w/recovered-overlay.qcow2"
+make_overlay "$recovered"
+launch "$recovered" BASELINE "$w/recovered-baseline-serial.log" "$w/recovered-vars.fd"
 require_marker "$w/recovered-baseline-serial.log" 'GASLUX_INSTALLED_CACHYOS_FIRSTBOOT_PASS=1' 170
 stop_vm
+assert_base_unchanged
+rm -- "$recovered"
+assert_base_unchanged
 echo 'GASLUX_QCOW2_BASELINE_RECOVERY_BOOT_VERIFIED=1'
 echo 'NOT TESTED: Windows boot, WinRE/BCD/BitLocker recovery, desktop or production rollback.'
 
