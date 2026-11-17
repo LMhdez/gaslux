@@ -42,11 +42,11 @@ def synthetic(profile="win11_26h2_en_us_x64"):
         "isoSizeBytes": 5 * 1024**3,
         "officialIsoUnmodified": True,
         "labDerivedIsoOnly": True,
-        "windowsClientBootVerified": True,
+        "windowsClientBootVerified": True,\n        "diagnostic": "installed Windows client audit and clean VM poweroff verified",
         "dualBootVerified": False,
         "winReAndBcdRecovered": False,
         "stable": False,
-        "firstLogonScriptSha256": "a" * 64,
+        "firstLogonScriptSha256": hashlib.sha256((\n            GATE.witness_powershell(profile, build) + "\\n"\n        ).encode("utf-8")).hexdigest(),
         "labDerivedIsoSha256": "b" * 64,
         "initialDvdGuestSerialSha256": "c" * 64,
     }
@@ -131,6 +131,36 @@ class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
         manifest = (hashlib.sha256(serial).hexdigest() + "  " +
                     report["profile"] + "-serial.log\n").encode()
         with self.assertRaisesRegex(GATE.BaselineGateError, "oversized"):
+            self.exercise(report, serial, manifest)
+
+    def test_weak_qemu_exit_without_verified_audit_rejected(self):
+        report, serial, manifest = synthetic()
+        report["diagnostic"] = (
+            "QEMU exited before installed Windows first-logon witness "
+            "(QEMU exit code 0; Windows still unverified)"
+        )
+        with self.assertRaisesRegex(GATE.BaselineGateError, "clean guest shutdown"):
+            self.exercise(report, serial, manifest)
+
+    def test_missing_clean_shutdown_witness_rejected(self):
+        report, serial, manifest = synthetic()
+        report.pop("diagnostic")
+        with self.assertRaisesRegex(GATE.BaselineGateError, "clean guest shutdown"):
+            self.exercise(report, serial, manifest)
+
+    def test_arbitrary_firstlogon_script_digest_rejected(self):
+        report, serial, manifest = synthetic()
+        report["firstLogonScriptSha256"] = "a" * 64
+        with self.assertRaisesRegex(GATE.BaselineGateError, "FirstLogon script SHA256"):
+            self.exercise(report, serial, manifest)
+
+    def test_altered_firstlogon_script_digest_rejected(self):
+        report, serial, manifest = synthetic()
+        actual = report["firstLogonScriptSha256"]
+        report["firstLogonScriptSha256"] = (
+            ("0" if actual[0] != "0" else "1") + actual[1:]
+        )
+        with self.assertRaisesRegex(GATE.BaselineGateError, "FirstLogon script SHA256"):
             self.exercise(report, serial, manifest)
 
     def test_unknown_prefixed_token_rejected_even_with_all_seven_proofs(self):
