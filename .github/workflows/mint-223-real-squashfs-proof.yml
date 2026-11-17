@@ -150,6 +150,44 @@ jobs:
             echo "::error::Read-only Mint ISO mount was not released"
             exit 1
           fi
+      - name: Rehearse PR 167 legacy prewrite guard with hardened Mint capabilities
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Pin the upstream draft prewrite function; do not merge its code into this PR.
+          zorin_head=1696e44ee87a67105750ca797d630cdfc6c61dd2
+          git fetch --no-tags --depth=1 origin "$zorin_head"
+          test "$(git rev-parse FETCH_HEAD)" = "$zorin_head"
+          git show FETCH_HEAD:assets/live/libertix-distribution-common.sh \
+            > /tmp/mint223/pr167-distribution-common.sh
+          grep -q '^preflight_legacy_installer_iso_or_die() {' \
+            /tmp/mint223/pr167-distribution-common.sh
+          sudo env MINT_SHA="$MINT_SHA" bash -s <<'PREWRITE'
+          set -Eeuo pipefail
+          # First load the pinned prewrite gate from PR #167, then the stronger
+          # capability validator from PR #169. Verify the actual two-PR runtime.
+          source /tmp/mint223/pr167-distribution-common.sh
+          source assets/live/libertix-distribution-common.sh
+          source assets/live/libertix-install-runtime-common.sh
+          cleanup() {
+            if findmnt -rn -M /mnt/libertix-iso-preflight >/dev/null 2>&1; then
+              umount /mnt/libertix-iso-preflight
+            fi
+          }
+          trap cleanup EXIT
+          if preflight_legacy_installer_iso_or_die /tmp/mint223/mint.iso "$MINT_SHA" zorin zorin; then
+            echo "::error::Mint media was permitted for the wrong distribution"
+            exit 1
+          fi
+          preflight_legacy_installer_iso_or_die /tmp/mint223/mint.iso "$MINT_SHA" mint linuxmint
+          if findmnt -rn -M /mnt/libertix-iso-preflight >/dev/null 2>&1; then
+            echo "::error::Prewrite guard leaked a mount"
+            exit 1
+          fi
+          printf '%s\n' \
+            'PASS: PR167 prewrite guard plus PR169 hardened capability validator on genuine Mint ISO' \
+            >> /tmp/mint223/evidence/result.txt
+          PREWRITE
       - name: Publish only small text evidence, never ISO or disk images
         if: always()
         uses: actions/upload-artifact@v4
