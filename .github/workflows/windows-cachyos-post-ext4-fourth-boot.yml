@@ -9,6 +9,7 @@ on:
     branches:
       - test/windows10-cachyos-post-ext4-fourth-boot
       - test/mint22-windows10-cow-firstboot
+      - test/mint-cow-proof-validation
     paths:
       - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -36,7 +37,6 @@ on:
       - auto_tests/test_windows_mint_overlay_root.py
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
       - auto_tests/test_windows_mint_cow_boot_evidence.py
-      - auto_tests/test_windows_x64_private_workspace.py
       - auto_tests/test_windows_x64_private_workspace.py
   workflow_dispatch:
 
