@@ -1,0 +1,74 @@
+name: Authentic Windows 10/11 archived COM1 evidence replay (NO VM)
+
+on:
+  push:
+    branches:
+      - test/windows-authentic-com1-artifact-replay
+    paths:
+      - .github/workflows/windows-authentic-com1-artifact-replay.yml
+      - auto_tests/tools/replay_pinned_windows_serial_artifacts.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  immutable-genuine-windows-com1:
+    name: Replay pinned real Windows 10/11 guest serial without ISO or QEMU
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require isolated GitHub-hosted runner and compile replay verifier
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          command -v gh
+          python3 -m py_compile \
+            auto_tests/tools/replay_pinned_windows_serial_artifacts.py \
+            auto_tests/tools/windows_x64_tcg_firstboot.py
+      - name: Fetch historical immutable archived COM1 from 2026-11-17 Windows guests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          root="$(mktemp -d "$RUNNER_TEMP/gaslux-authentic-com1-replay-XXXXXXXX")"
+          trap 'rm -rf -- "$root"' EXIT
+          for profile in win10_22h2_en_us_x64 win11_26h2_en_us_x64; do
+            mkdir "$root/$profile"
+            gh run download 44048550209 \
+              --repo "$GITHUB_REPOSITORY" \
+              --name "windows-genuine-two-stage-firstboot-$profile" \
+              --dir "$root/$profile"
+          done
+          python3 auto_tests/tools/replay_pinned_windows_serial_artifacts.py \
+            --artifact-directory "$root" \
+            | tee "$RUNNER_TEMP/gaslux-authentic-com1-result.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          result = json.loads(
+              (Path(os.environ['RUNNER_TEMP']) / 'gaslux-authentic-com1-result.json')
+              .read_text(encoding='utf-8')
+          )
+          assert result["replayPassed"] is True
+          assert result["windowsBootVerified"] is False
+          assert result["releaseEligible"] is False
+          assert len(result["profiles"]) == 2
+          assert all(p["recognizedCompleteAuditTokens"] == 7
+                     and p["historicalWindowsBootCertified"] is False
+                     and p["storageWritesAuthorized"] is False
+                     for p in result["profiles"])
+          PY
+          echo 'PASS: replayed exact SHA-pinned genuine Windows 10 and 11 archived COM1; seven complete tokens each. The original jobs remained FAILED and no Windows boot, recovery or Linux dual boot is certified.' >> "$GITHUB_STEP_SUMMARY"
