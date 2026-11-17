@@ -267,8 +267,10 @@ def _run_qemu(
     serial_log = workspace / "guest-serial.log"
     qemu_log = workspace / "qemu.log"
     _require(len(str(socket_path).encode()) < 100, "QEMU Unix socket path is too long")
-    _require("," not in str(overlay) and "," not in str(kernel) and "," not in str(initramfs),
-             "Unsafe comma in QEMU file path")
+    _require(
+        "," not in str(overlay) and "," not in str(kernel) and "," not in str(initramfs),
+        "Unsafe comma in QEMU file path",
+    )
     kvm = Path("/dev/kvm")
     accel = "kvm" if kvm.exists() and os.access(kvm, os.R_OK | os.W_OK) else "tcg"
     command = [
@@ -341,9 +343,7 @@ def _run_qemu(
                 raise Q4osQemuLabRefusal("Host lacks Unix peer-credential support")
             peer = struct.unpack(
                 "3i",
-                connection.getsockopt(
-                    socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
-                ),
+                connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")),
             )
             peer_pid, peer_uid, _peer_gid = peer
             if peer_pid != process.pid or peer_uid != os.getuid():
@@ -354,9 +354,7 @@ def _run_qemu(
                 raise Q4osQemuLabRefusal("Guest did not identify the named virtio-serial endpoint")
 
             challenge_secret = secrets.token_hex(32)
-            challenge = (
-                f"{CHALLENGE_MAGIC}:{run_id}:{nonce}:{challenge_secret}\n"
-            ).encode("ascii")
+            challenge = (f"{CHALLENGE_MAGIC}:{run_id}:{nonce}:{challenge_secret}\n").encode("ascii")
             connection.sendall(challenge)
 
             header = _read_line(stream, 64)
@@ -423,15 +421,23 @@ def run_lab(
 ) -> dict[str, Any]:
     _require(os.environ.get("GITHUB_ACTIONS") == "true", "Q4OS QEMU lab requires GitHub Actions")
     for path in (workspace, plan_dir, kernel, initramfs):
-        _require(path.is_absolute() and path.exists() and not path.is_symlink(),
-                 "Q4OS QEMU lab input path is missing or unsafe")
-    _require(workspace.is_dir() and workspace.stat().st_uid == os.getuid(),
-             "Q4OS QEMU workspace is not owned by this runner")
-    _require(plan_dir.is_dir() and plan_dir.stat().st_uid == os.getuid(),
-             "Signed plan evidence is not runner-owned")
+        _require(
+            path.is_absolute() and path.exists() and not path.is_symlink(),
+            "Q4OS QEMU lab input path is missing or unsafe",
+        )
+    _require(
+        workspace.is_dir() and workspace.stat().st_uid == os.getuid(),
+        "Q4OS QEMU workspace is not owned by this runner",
+    )
+    _require(
+        plan_dir.is_dir() and plan_dir.stat().st_uid == os.getuid(),
+        "Signed plan evidence is not runner-owned",
+    )
     _require(kernel.is_file() and initramfs.is_file(), "Kernel or initramfs is missing")
-    _require(not evidence.exists() and not evidence.is_symlink(),
-             "Q4OS QEMU evidence directory already exists")
+    _require(
+        not evidence.exists() and not evidence.is_symlink(),
+        "Q4OS QEMU evidence directory already exists",
+    )
     evidence.mkdir(mode=0o700)
     disk = workspace / "efi-disk.img"
     overlay = workspace / "q4os-target-overlay.qcow2"

@@ -312,9 +312,11 @@ def serve_one_report(
         raw_report = json.dumps(
             report, sort_keys=True, separators=(",", ":"), allow_nan=False
         ).encode("utf-8")
-        mac = hmac.new(
-            secret.encode("ascii"), MAC_DOMAIN + raw_report, hashlib.sha256
-        ).hexdigest().encode("ascii")
+        mac = (
+            hmac.new(secret.encode("ascii"), MAC_DOMAIN + raw_report, hashlib.sha256)
+            .hexdigest()
+            .encode("ascii")
+        )
         _write_all(fd, REPORT_MAGIC + raw_report + b"\n" + mac + b"\n")
         print("GASLUX_Q4OS_GUEST_PROBE=PASS", flush=True)
         print("GASLUX_Q4OS_GUEST_SERIAL=" + serial, flush=True)

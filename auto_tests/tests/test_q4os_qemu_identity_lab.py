@@ -250,9 +250,7 @@ def test_hmac_authenticated_report_binds_plan_and_keeps_all_write_flags_false():
     secret = "ab" * 32
     raw = canonical_guest_json(guest_report())
     mac = hmac.new(secret.encode("ascii"), MAC_DOMAIN + raw, hashlib.sha256).hexdigest()
-    result = verify_authenticated_report(
-        raw, mac, challenge_secret=secret, plan=PLAN
-    )
+    result = verify_authenticated_report(raw, mac, challenge_secret=secret, plan=PLAN)
     assert result["guestDiskIdentityVerified"] is True
     assert result["transportAuthenticated"] is True
     assert result["blockDeviceReadOnly"] is True
