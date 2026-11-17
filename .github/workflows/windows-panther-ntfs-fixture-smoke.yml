@@ -1,0 +1,98 @@
+name: Windows Panther synthetic NTFS read-only evidence fixture (no Microsoft ISO)
+
+on:
+  push:
+    branches:
+      - test/windows-panther-real-ntfs-readonly-fixture
+    paths:
+      - .github/workflows/windows-panther-ntfs-fixture-smoke.yml
+      - auto_tests/tools/windows_x64_offline_panther_probe.py
+      - auto_tests/tools/windows_x64_libguestfs_kernel.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-ntfs-panther-readonly:
+    name: Real guestfish NTFS/Panther read-only integration (synthetic QCOW2 only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require GitHub-hosted runner and install guestfs appliance dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          python3 -m py_compile auto_tests/tools/windows_x64_offline_panther_probe.py
+          bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libguestfs-tools qemu-utils linux-image-generic
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+      - name: Create disposable GPT/NTFS Panther fixture and prove bounded read-only inspection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          umask 077
+          work="$(mktemp -d "$RUNNER_TEMP/gaslux-win-x64-ntfs-XXXXXXXX")"
+          chmod 0700 "$work"
+          trap 'rm -rf -- "$work"' EXIT
+          disk="$work/only-disposable-windows-target.qcow2"
+          test ! -e "$disk"
+          qemu-img create -f qcow2 "$disk" 512M
+          cat > "$work/synthetic-oobe.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <unattend xmlns="urn:schemas-microsoft-com:unattend">
+            <settings pass="oobeSystem">
+              <component name="Microsoft-Windows-International-Core">
+                <InputLocale>en-US</InputLocale>
+                <SystemLocale>en-US</SystemLocale>
+                <UILanguage>en-US</UILanguage>
+                <UserLocale>en-US</UserLocale>
+              </component>
+            </settings>
+          </unattend>
+          XML
+          # The ONLY write is to this newly created file-backed guest image.
+          # /dev/sda1 is an appliance-internal device, never a host disk.
+          timeout --kill-after=10s 180s guestfish --format=qcow2 -a "$disk" \
+            run : part-disk /dev/sda gpt : mkfs ntfs /dev/sda1 : \
+            mount /dev/sda1 / : mkdir-p /Windows/Panther : \
+            upload "$work/synthetic-oobe.xml" /Windows/Panther/Unattend.xml
+          before="$(sha256sum "$disk" | awk '{print $1}')"
+          export GASLUX_SYNTHETIC_PANTHER_DISK="$disk"
+          export GASLUX_SYNTHETIC_PANTHER_XML="$work/synthetic-oobe.xml"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import os
+          import sys
+          sys.path.insert(0, "auto_tests/tools")
+          from windows_x64_offline_panther_probe import inspect_cached_oobe_answer
+          disk = Path(os.environ["GASLUX_SYNTHETIC_PANTHER_DISK"])
+          fixture = Path(os.environ["GASLUX_SYNTHETIC_PANTHER_XML"])
+          result = inspect_cached_oobe_answer(disk)
+          expected = hashlib.sha256(fixture.read_bytes()).hexdigest()
+          assert result.get("cachedWindowsAnswerObserved") is True, result
+          assert result.get("cachedAnswerOobePassPresent") is True, result
+          assert result.get("cachedAnswerSha256") == expected, "cached XML SHA mismatch"
+          assert result.get("windowsClientBootVerified") is False
+          print("GASLUX_SYNTHETIC_NTFS_RO_PANTHER_READ_OK=1", flush=True)
+          PY
+          after="$(sha256sum "$disk" | awk '{print $1}')"
+          test "$before" = "$after"
+          echo 'GASLUX_SYNTHETIC_QCOW2_UNMODIFIED_AFTER_READ=1'
+          echo 'Guestfish read real synthetic NTFS /Windows/Panther/Unattend.xml through --ro, matched SHA-256, and did not modify QCOW2. No Microsoft Windows ISO or firstboot proof.' >> "$GITHUB_STEP_SUMMARY"
