@@ -79,12 +79,33 @@ jobs:
           from pathlib import Path
           import hashlib
           import os
+          import subprocess
           import sys
           sys.path.insert(0, "auto_tests/tools")
           from windows_x64_offline_panther_probe import inspect_cached_oobe_answer
           disk = Path(os.environ["GASLUX_SYNTHETIC_PANTHER_DISK"])
           fixture = Path(os.environ["GASLUX_SYNTHETIC_PANTHER_XML"])
-          result = inspect_cached_oobe_answer(disk)
+
+          def diagnostic_runner(argv, **kwargs):
+              outcome = subprocess.run(argv, **kwargs)
+              op = "list-filesystems" if argv[-1] == "list-filesystems" else argv[-2]
+              # NEVER print XML/guest output or stderr; only bounded operation type,
+              # return code, bytes, and SHA256 for this disposable synthetic guest.
+              print(
+                  "GASLUX_SYNTHETIC_GUESTFISH_OPERATION="
+                  + op + " rc=" + str(outcome.returncode)
+                  + " stdoutBytes=" + str(len(outcome.stdout)),
+                  flush=True,
+              )
+              if op == "list-filesystems":
+                  print(
+                      "GASLUX_SYNTHETIC_NTFS_SEEN="
+                      + str(b": ntfs" in outcome.stdout),
+                      flush=True,
+                  )
+              return outcome
+
+          result = inspect_cached_oobe_answer(disk, runner=diagnostic_runner)
           expected = hashlib.sha256(fixture.read_bytes()).hexdigest()
           assert result.get("cachedWindowsAnswerObserved") is True, result
           assert result.get("cachedAnswerOobePassPresent") is True, result
