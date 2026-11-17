@@ -16,6 +16,7 @@ on:
       - fix/windows-stage1-hmp-ack-and-timeout-diagnostics
       - test/windows-official-iso-direct-two-stage-kvm
       - fix/windows-original-iso-com1-prompt-timing
+      - test/windows-original-iso-fat12-floppy-controlled-ab
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
