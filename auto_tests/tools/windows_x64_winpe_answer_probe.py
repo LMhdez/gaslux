@@ -77,7 +77,11 @@ def build_winpe_witness_xml(mode: str) -> bytes:
     ET.SubElement(command, "{" + NS + "}Path").text = (
         "cmd.exe /c echo GASLUX_WINPE_AUTOANSWER_ACTUALLY_CONSUMED=1>COM1"
     )
-    ET.SubElement(command, "{" + NS + "}WillReboot").text = "Never"
+    # Microsoft-Windows-Setup/RunSynchronousCommand (windowsPE) supports
+    # Credentials, Description, Order and Path, but *not* WillReboot.
+    # WillReboot is a different component's setting. Including it can
+    # invalidate the entire Autounattend.xml before this COM1 witness runs.
+    # https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-setup-runsynchronous-runsynchronouscommand
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
