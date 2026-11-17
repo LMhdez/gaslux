@@ -189,6 +189,8 @@ jobs:
               echo 'Windows setup exceeded the five-hour guest budget' >&2
               exit 1
             fi
+            disk_bootindex=1
+            if (( attempt == 1 )); then disk_bootindex=2; fi
             args=(
               -no-user-config
               -no-reboot
@@ -207,14 +209,14 @@ jobs:
               -drive "if=pflash,format=raw,unit=1,file=$vars"
               -device ich9-ahci,id=sata
               -drive "if=none,id=system,file=$image,format=qcow2,cache=writeback"
-              -device ide-hd,drive=system,bus=sata.0,bootindex=1
+              -device ide-hd,drive=system,bus=sata.0,bootindex=$disk_bootindex
               -drive "if=none,id=answer,file=$answer,format=raw,media=cdrom,readonly=on"
               -device ide-cd,drive=answer,bus=sata.2,bootindex=3
             )
             if (( attempt == 1 )); then
               args+=(
                 -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on"
-                -device ide-cd,drive=install,bus=sata.1,bootindex=0
+                -device ide-cd,drive=install,bus=sata.1,bootindex=1
               )
             fi
             echo "Starting Windows setup/boot cycle $attempt (install media attached: $((attempt == 1 ? 1 : 0)))"
