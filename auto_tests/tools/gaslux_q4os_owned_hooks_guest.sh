@@ -20,16 +20,12 @@ grep -Eiq 'QEMU|Bochs|Standard PC \(Q35' \
   refuse 'not-disposable-QEMU-guest'
 [[ "$(cat /etc/q4os_version)" == '6.10-deb13u1' ]] ||
   refuse 'Q4OS-installed-root-not-verified'
-[[ -r /etc/gaslux-q4os-lab-transaction.id &&
-   -r /etc/gaslux-q4os-lab-root.uuid &&
-   -r /etc/gaslux-q4os-lab-esp.uuid &&
-   -r /etc/gaslux-q4os-lab-iso.sha256 ]] ||
+[[ -r /etc/gaslux-q4os-lab-transaction.id && -r /etc/gaslux-q4os-lab-root.uuid && -r /etc/gaslux-q4os-lab-esp.uuid && -r /etc/gaslux-q4os-lab-iso.sha256 ]] ||
   refuse 'missing-durable-lab-transaction'
 transaction="$(cat /etc/gaslux-q4os-lab-transaction.id)"
 [[ "$transaction" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$ ]] ||
   refuse 'invalid-transaction-identity'
-[[ "$(cat /etc/gaslux-q4os-lab-iso.sha256)" ==
-   '1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d' ]] ||
+[[ "$(cat /etc/gaslux-q4os-lab-iso.sha256)" == '1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d' ]] ||
   refuse 'not-pinned-Q4OS-ISO'
 [[ "$(lsblk -dn -o NAME,TYPE | awk '$2 == "disk" { print $1 }')" == vda ]] ||
   refuse 'unexpected-additional-guest-disk'
@@ -37,21 +33,15 @@ root_device="$(findmnt -nro SOURCE /)"
 esp_device="$(findmnt -nro SOURCE /boot/efi)"
 [[ "$root_device" == /dev/vda2 && "$esp_device" == /dev/vda1 ]] ||
   refuse 'target-mount-does-not-belong-to-guest'
-[[ "$(lsblk -nro PARTLABEL "$root_device")" == GASLUX-Q4OS-ROOT &&
-   "$(lsblk -nro PARTLABEL "$esp_device")" == GASLUX-Q4OS-ESP ]] ||
+[[ "$(lsblk -nro PARTLABEL "$root_device")" == GASLUX-Q4OS-ROOT && "$(lsblk -nro PARTLABEL "$esp_device")" == GASLUX-Q4OS-ESP ]] ||
   refuse 'target-partition-label-not-owned'
-[[ "$(findmnt -nro FSTYPE /)" == ext4 &&
-   "$(findmnt -nro FSTYPE /boot/efi)" == vfat ]] ||
+[[ "$(findmnt -nro FSTYPE /)" == ext4 && "$(findmnt -nro FSTYPE /boot/efi)" == vfat ]] ||
   refuse 'wrong-filesystem-or-ESP-mount'
-[[ "$(blkid -s UUID -o value "$root_device")" ==
-   "$(cat /etc/gaslux-q4os-lab-root.uuid)" ]] ||
+[[ "$(blkid -s UUID -o value "$root_device")" == "$(cat /etc/gaslux-q4os-lab-root.uuid)" ]] ||
   refuse 'root-uuid-changed'
-[[ "$(blkid -s UUID -o value "$esp_device")" ==
-   "$(cat /etc/gaslux-q4os-lab-esp.uuid)" ]] ||
+[[ "$(blkid -s UUID -o value "$esp_device")" == "$(cat /etc/gaslux-q4os-lab-esp.uuid)" ]] ||
   refuse 'ESP-uuid-changed'
-[[ ! -e /boot/efi/EFI/Microsoft && ! -L /boot/efi/EFI/Microsoft &&
-   ! -e /boot/efi/EFI/BOOT/bootmgfw.efi &&
-   ! -L /boot/efi/EFI/BOOT/bootmgfw.efi ]] ||
+[[ ! -e /boot/efi/EFI/Microsoft && ! -L /boot/efi/EFI/Microsoft && ! -e /boot/efi/EFI/BOOT/bootmgfw.efi && ! -L /boot/efi/EFI/BOOT/bootmgfw.efi ]] ||
   refuse 'Windows-ESP-resource-present'
 [[ ! -L /boot/efi/EFI && ! -L /boot/efi/EFI/BOOT ]] ||
   refuse 'symlink-into-unowned-ESP'
@@ -59,8 +49,7 @@ state='/var/lib/gaslux-q4os-owned-hooks'
 [[ ! -L /var/lib/gaslux-q4os-owned-hooks ]] ||
   refuse 'transaction-state-symlink'
 if [[ -e "$state/transaction.id" ]]; then
-  [[ -f "$state/transaction.id" && ! -L "$state/transaction.id" &&
-     "$(cat "$state/transaction.id")" == "$transaction" ]] ||
+  [[ -f "$state/transaction.id" && ! -L "$state/transaction.id" && "$(cat "$state/transaction.id")" == "$transaction" ]] ||
     refuse 'transaction-state-owned-by-other-install'
 else
   [[ "$phase" == hook2 && ! -e "$state" ]] ||
@@ -90,8 +79,7 @@ case "$phase" in
   hook3)
     [[ -s "$state/hook2" && ! -e "$state/hook3" ]] ||
       refuse 'hook3-out-of-order-or-replayed'
-    [[ -s /boot/grub/grub.cfg &&
-       -s /boot/efi/EFI/GasluxQ4OSLab/grubx64.efi ]] ||
+    [[ -s /boot/grub/grub.cfg && -s /boot/efi/EFI/GasluxQ4OSLab/grubx64.efi ]] ||
       refuse 'missing-package-owned-native-GRUB-before-hook3'
     [[ ! -e /boot/efi/EFI/debian ]] ||
       refuse 'upstream-legacy-EFI-directory-not-owned'
@@ -133,8 +121,7 @@ case "$phase" in
     [[ -d /home/gasluxlab ]] || refuse 'locked-user-home-missing'
     [[ "$(passwd -S gasluxlab | awk '{print $2}')" == L ]] ||
       refuse 'test-account-was-unlocked'
-    [[ "$(cat "$state/hook3")" ==
-       'aptCleanup=blocked;profileInstaller=blocked;legacyEFI=blocked' ]] ||
+    [[ "$(cat "$state/hook3")" == 'aptCleanup=blocked;profileInstaller=blocked;legacyEFI=blocked' ]] ||
       refuse 'unreviewed-hook-effects-must-stay-blocked'
     printf 'GASLUX_Q4OS_OWNED_HOOKS_VERIFIED=%s\n' "$transaction" > /dev/ttyS0
     ;;
