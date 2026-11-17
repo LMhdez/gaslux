@@ -100,10 +100,20 @@ def inspect_cached_oobe_answer(
     for volume in volumes:
         for path in targets:
             try:
+                # Bound guest-origin bytes BEFORE reading an unattend file,
+                # whose content may contain confidential lab credentials.
+                length = execute("-m", volume + ":/", "filesize", path)
+                if length.returncode != 0 or len(length.stdout) > 12:
+                    continue
+                size = length.stdout.strip()
+                if not re.fullmatch(rb"[0-9]{1,6}", size) or not (
+                    0 < int(size) <= 256_000
+                ):
+                    continue
                 result = execute("-m", volume + ":/", "cat", path)
             except (OSError, subprocess.TimeoutExpired):
                 continue
-            if result.returncode != 0 or not (0 < len(result.stdout) <= 256_000):
+            if result.returncode != 0 or len(result.stdout) != int(size):
                 continue
             payload = result.stdout
             try:
