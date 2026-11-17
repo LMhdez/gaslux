@@ -150,10 +150,10 @@ def install_mint_root_and_boot(
         guest_mounted = True
         run(["sudo", "cp", "-a", str(unpacked) + "/.", str(target) + "/"],
             timeout=1200, capture=False)
-        os_release = target / "etc/os-release"
+        os_release = unpacked / "etc/os-release"
         require(os_release.is_file() and "ID=linuxmint" in os_release.read_text(),
                 "extracted target is not Linux Mint")
-        kernels = sorted((target / "boot").glob("vmlinuz-*"))
+        kernels = sorted((unpacked / "boot").glob("vmlinuz-*"))
         require(len(kernels) == 1, "Mint target must contain one unambiguous kernel")
         kernel = kernels[0]
         version = kernel.name.removeprefix("vmlinuz-")
@@ -186,8 +186,10 @@ def install_mint_root_and_boot(
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         kernel_copy = temp / "vmlinuz"
         initrd_copy = temp / "initrd.img"
-        shutil.copyfile(kernel, kernel_copy)
-        shutil.copyfile(initrd, initrd_copy)
+        run(["sudo", "cp", str(kernel), str(kernel_copy)])
+        run(["sudo", "cp", str(initrd), str(initrd_copy)])
+        kernel_copy.chmod(0o644)
+        initrd_copy.chmod(0o644)
         run(["sudo", "guestunmount", str(target)], timeout=120)
         guest_mounted = False
         run(["sudo", "umount", str(iso_mount)], timeout=60)
