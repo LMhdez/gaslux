@@ -36,13 +36,34 @@ _NONCE = re.compile(r"[0-9a-f]{32}\Z")
 _RUN = re.compile(r"[A-Za-z0-9_-]{12,100}\Z")
 _PLAN_FIELDS = frozenset(
     {
-        "schemaVersion", "distributionId", "backend", "firmwareLayout", "sourceKind",
-        "isoSha256", "runId", "nonce", "diskSizeBytes", "sectorBytes", "diskGuid",
-        "espGuid", "espName", "espStartLba", "espEndLba", "rootName",
-        "vmFileDeviceId", "vmFileInode",
-        "rootStartLba", "rootEndLba", "rootFilesystem", "gptPrimarySha256",
-        "gptBackupSha256", "operation", "guestOnly", "installationAuthorized",
-        "calamaresJobsAuthorized", "windowsEspWritesAuthorized",
+        "schemaVersion",
+        "distributionId",
+        "backend",
+        "firmwareLayout",
+        "sourceKind",
+        "isoSha256",
+        "runId",
+        "nonce",
+        "diskSizeBytes",
+        "sectorBytes",
+        "diskGuid",
+        "espGuid",
+        "espName",
+        "espStartLba",
+        "espEndLba",
+        "rootName",
+        "vmFileDeviceId",
+        "vmFileInode",
+        "rootStartLba",
+        "rootEndLba",
+        "rootFilesystem",
+        "gptPrimarySha256",
+        "gptBackupSha256",
+        "operation",
+        "guestOnly",
+        "installationAuthorized",
+        "calamaresJobsAuthorized",
+        "windowsEspWritesAuthorized",
     }
 )
 
@@ -90,6 +111,7 @@ def _validate_gpt_header(buf: bytes, *, expected_lba: int, peer_lba: int, part_l
 
 def _inspect_gpt(fd: int) -> dict:
     """Read exactly the two GPT tables and the protective MBR; never write."""
+
     def read(lba: int, n: int) -> bytes:
         raw = os.pread(fd, n * SECTOR_BYTES, lba * SECTOR_BYTES)
         _require(len(raw) == n * SECTOR_BYTES, "Truncated GPT disk image")
@@ -104,9 +126,7 @@ def _inspect_gpt(fd: int) -> dict:
     _require(all(x == bytes(16) for x in entries[1:]), "Foreign MBR partition")
     primary_h = read(1, 1)
     backup_h = read(DISK_SECTORS - 1, 1)
-    primary = _validate_gpt_header(
-        primary_h, expected_lba=1, peer_lba=DISK_SECTORS - 1, part_lba=2
-    )
+    primary = _validate_gpt_header(primary_h, expected_lba=1, peer_lba=DISK_SECTORS - 1, part_lba=2)
     backup = _validate_gpt_header(
         backup_h,
         expected_lba=DISK_SECTORS - 1,
@@ -200,9 +220,18 @@ def propose_read_only_plan(evidence: dict, *, run_id: str, nonce: str) -> dict:
     _require(type(run_id) is str and _RUN.fullmatch(run_id) is not None, "Unsafe run ID")
     _require(type(nonce) is str and _NONCE.fullmatch(nonce) is not None, "Unsafe nonce")
     for key in (
-        "diskGuid", "espGuid", "gptPrimarySha256", "gptBackupSha256",
-        "diskSizeBytes", "sectorBytes", "espStartLba", "espEndLba",
-        "rootStartLba", "rootEndLba", "vmFileDeviceId", "vmFileInode",
+        "diskGuid",
+        "espGuid",
+        "gptPrimarySha256",
+        "gptBackupSha256",
+        "diskSizeBytes",
+        "sectorBytes",
+        "espStartLba",
+        "espEndLba",
+        "rootStartLba",
+        "rootEndLba",
+        "vmFileDeviceId",
+        "vmFileInode",
     ):
         _require(key in evidence, "Incomplete independent GPT evidence")
     for key in ("gptPrimarySha256", "gptBackupSha256"):
@@ -230,11 +259,23 @@ def propose_read_only_plan(evidence: dict, *, run_id: str, nonce: str) -> dict:
         "calamaresJobsAuthorized": False,
         "windowsEspWritesAuthorized": False,
     }
-    plan.update({key: evidence[key] for key in (
-        "gptPrimarySha256", "gptBackupSha256", "diskSizeBytes", "sectorBytes",
-        "espStartLba", "espEndLba", "rootStartLba", "rootEndLba",
-        "vmFileDeviceId", "vmFileInode",
-    )})
+    plan.update(
+        {
+            key: evidence[key]
+            for key in (
+                "gptPrimarySha256",
+                "gptBackupSha256",
+                "diskSizeBytes",
+                "sectorBytes",
+                "espStartLba",
+                "espEndLba",
+                "rootStartLba",
+                "rootEndLba",
+                "vmFileDeviceId",
+                "vmFileInode",
+            )
+        }
+    )
     return plan
 
 
