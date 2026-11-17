@@ -267,7 +267,31 @@ Start-Sleep -Seconds 2
         "__MARKER__", MARKER).strip()
 
 
-def generate_unattend(profile_key: str, build: str) -> bytes:
+def usb_firstlogon_command(profile_key: str, build: str) -> str:
+    """Resolve only the unique FAT32 lab answer volume and hash-pin its script.
+
+    The proven historical FAT12 fixture boots from A:, but a QEMU xHCI USB
+    mass-storage volume is NOT A:. The isolated Windows guest must locate its
+    own volume by the exact GASLUXCI label and verify the bytes it will run.
+    The script is itself the existing in-guest firstboot/BCD/WinRE witness.
+    """
+    payload = (witness_powershell(profile_key, build) + "\n").encode("utf-8")
+    sha256 = hashlib.sha256(payload).hexdigest()
+    command = (
+        'powershell.exe -NoP -EP Bypass -C "'
+        '$v=Get-Volume -FileSystemLabel GASLUXCI;'
+        # Count-1 is false ONLY for one match; rejects no drive/multiple drives.
+        # The short form keeps the Windows Setup CommandLine under 240 chars.
+        'if($v.Count-1){throw};'
+        "$p=$v.DriveLetter+':\\GASLUX.PS1';"
+        "if((Get-FileHash $p).Hash-ne '" + sha256 + "'){throw};&$p\""
+    )
+    require(len(command) < 240, "USB firstlogon command exceeds Setup limit")
+    return command
+
+
+def generate_unattend(profile_key: str, build: str, *,
+                      usb_answer: bool = False) -> bytes:
     # Windows Setup owns disk partitioning, but can only see the ONE new
     # file-backed QCOW2 and its read-only installer ISO/floppy. Never a host disk.
     ns = "urn:schemas-microsoft-com:unattend"
@@ -391,9 +415,14 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
     child(command, "Description", "Gaslux first boot serial verification")
     # FirstLogonCommands must remain short. Base64-encoding a full witness
     # makes the setup XML command longer than Windows command-line limits.
-    # Only a hash-checked, VM-exclusive floppy is available to Windows.
-    child(command, "CommandLine", "powershell.exe -NoProfile -NonInteractive "
-          "-ExecutionPolicy Bypass -File A:\\GASLUX.PS1")
+    # The old FAT12 baseline must remain unchanged; USB mass storage is
+    # mounted under a dynamic drive letter, never the A: floppy path.
+    if usb_answer:
+        child(command, "CommandLine",
+              usb_firstlogon_command(profile_key, build))
+    else:
+        child(command, "CommandLine", "powershell.exe -NoProfile -NonInteractive "
+              "-ExecutionPolicy Bypass -File A:\\GASLUX.PS1")
     child(command, "RequiresUserInput", "false")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -886,7 +915,10 @@ def main(argv: list[str] | None = None) -> int:
                          "separate hosted VM one-shot installation gate is approved")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
-    xml = generate_unattend(args.profile, profile["expectedWindowsBuildPrefix"])
+    xml = generate_unattend(
+        args.profile, profile["expectedWindowsBuildPrefix"],
+        usb_answer=args.two_stage_install_only,
+    )
     validate_oobe_answer_pass(xml)
     root = ET.fromstring(xml)
     if args.fixture_only:
