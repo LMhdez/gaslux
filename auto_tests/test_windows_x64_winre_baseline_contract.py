@@ -36,6 +36,14 @@ class WindowsClientGPTWinREContracts(unittest.TestCase):
                 modifications = root.findall(".//u:ModifyPartition", NS)
                 self.assertEqual(len(modifications), 3)
                 self.assertEqual(
+                    [part.find("u:Order", NS).text for part in parts],
+                    ["1", "2", "3", "4"],
+                    "CreatePartition order must be 1..N")
+                self.assertEqual(
+                    [part.find("u:Order", NS).text for part in modifications],
+                    ["1", "2", "3"],
+                    "ModifyPartition order must be contiguous; MSR skips PartitionID=2")
+                self.assertEqual(
                     [p.find("u:PartitionID", NS).text for p in modifications],
                     ["1", "3", "4"])
                 self.assertEqual(
