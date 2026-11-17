@@ -245,7 +245,7 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
         changed = bytearray(front)
         changed[446 + 16 + 4] = 0x07
         with self.assertRaisesRegex(
-            gpt.GeometryError, r"unexpected_entry_slots=\\(2,\\)"
+            gpt.GeometryError, r"unexpected_entry_slots=\(2,\)"
         ):
             gpt.inspect_gpt_windows(bytes(changed), back)
 
