@@ -55,20 +55,35 @@ if [[ -f /var/lib/gaslux-ci/update-complete ]]; then
 fi
 # Validate effective installed package signing policy before any network update.
 command -v pacman-conf >/dev/null || fail 'pacman-conf missing'
-mapfile -t repos < <(pacman-conf --repo-list)
-(( ${#repos[@]} >= 3 )) || fail 'too few enabled repositories'
+# Reject additional/unexpected repositories and require the same effective
+# trusted, mandatory signatures as the installed lab stage.  Inspect pacman's
+# interpretation (pacman-conf), never grep pacman.conf for a reassuring line.
+repos_raw="$(pacman-conf --repo-list)" || fail 'cannot enumerate repositories'
+mapfile -t repos <<< "$repos_raw"
+(( ${#repos[@]} == 3 )) || fail 'unexpected enabled repository count'
+for expected in core extra cachyos; do
+  count=0
+  for repo in "${repos[@]}"; do [[ "$repo" == "$expected" ]] && ((count+=1)) || true; done
+  (( count == 1 )) || fail "required repository missing or duplicated: $expected"
+done
 for repo in "${repos[@]}"; do
-  [[ "$repo" =~ ^[a-zA-Z0-9_-]+$ ]] || fail 'unsafe repository name'
+  [[ "$repo" =~ ^(core|extra|cachyos)$ ]] || fail 'unapproved installed repository'
   level="$(pacman-conf --repo "$repo" SigLevel)" ||
     fail "cannot inspect signature policy in $repo"
-  # Parse complete effective SigLevel tokens. "DatabaseRequired" alone
-  # MUST NOT be misread as proof that package signatures are mandatory.
-  [[ "$level" =~ (^|[[:space:]])(Required|PackageRequired)($|[[:space:]]) ]] ||
-    fail "package signatures not mandatory in $repo"
-  if [[ "$level" =~ (^|[[:space:]])(Never|Optional|PackageNever|PackageOptional|TrustAll|PackageTrustAll|DatabaseNever)($|[[:space:]]) ]]; then
-    fail "weak signing policy in $repo"
-  fi
-  # DatabaseOptional is allowed by pacman; packages are still signed.
+  python3 - "$repo" "$level" <<'PY' || fail "untrusted signing policy in $repo"
+import sys
+repo, raw = sys.argv[1:]
+tokens = raw.split()
+allowed = {'Required', 'PackageRequired', 'DatabaseRequired',
+           'DatabaseOptional', 'TrustedOnly', 'PackageTrustedOnly',
+           'DatabaseTrustedOnly'}
+if (not tokens or len(set(tokens)) != len(tokens)
+        or not set(tokens).issubset(allowed)
+        or not ({'Required', 'PackageRequired'} & set(tokens))
+        or not ({'TrustedOnly', 'PackageTrustedOnly'} & set(tokens))):
+    print(f'Unacceptable effective SigLevel for {repo}: {raw!r}', file=sys.stderr)
+    raise SystemExit(1)
+PY
 done
 printf 'GASLUX_VM_UPDATE_TRUST_POLICY_VERIFIED=1\n' > /dev/ttyS0
 [[ -L /etc/resolv.conf || -s /etc/resolv.conf ]] || fail 'no DNS resolver'
