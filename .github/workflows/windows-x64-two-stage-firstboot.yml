@@ -5,10 +5,12 @@ on:
     branches:
       - feature/windows-eval-two-stage-disposable-firstboot
       - fix/windows-two-stage-second-guest-evidence
+      - fix/windows-two-stage-swtpm-reconnect
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_two_stage_boot.py
+      - auto_tests/test_windows_x64_swtpm_reconnect.py
   workflow_dispatch:
 
 permissions:
@@ -43,6 +45,15 @@ jobs:
               test_windows_x64_qemu_host_gate.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
+      - name: Prove physical-host-safe swtpm listener restart with same private NV directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends swtpm
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_swtpm_reconnect.py' -v
+          echo 'Real swtpm Unix listener reconnected with same temporary NV directory; no Windows boot proven.' >> "$GITHUB_STEP_SUMMARY"
 
   genuine-client-two-stage-firstboot:
     name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
