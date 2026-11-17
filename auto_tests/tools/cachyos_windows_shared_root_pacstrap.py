@@ -274,6 +274,44 @@ def verify_lab_root_write_grant(
             "Ed25519 root-only COW grant signature rejected")
 
 
+def prepare_signed_only_pacman(plan: dict[str, Any]) -> Path:
+    """Prepare PR #34's effective signed-only policy on disposable /run tmpfs.
+
+    This runs before the first writable Linux root mount. Missing read-only
+    control scripts, keyrings, HTTPS mirrors, or effective signature policy
+    are hard errors; no inherited live ISO pacman.conf is accepted.
+    """
+    control = Path("/run/gaslux-control")
+    require(control.is_dir() and not control.is_symlink(),
+            "missing verified read-only Archiso control volume")
+    options = execute(["findmnt", "-rn", "-M", str(control), "-o", "OPTIONS"])
+    require("ro" in options.split(","),
+            "CachyOS pacman trust scripts must be read-only")
+    builder = control / "strict-pacman.py"
+    verifier = control / "pacman-trust.py"
+    require(all(p.is_file() and not p.is_symlink()
+                and p.stat().st_size > 1000 for p in (builder, verifier)),
+            "trusted signed-only pacman builder or verifier missing")
+    execute(["python3", str(builder), "--root", "/",
+             "--run-id", plan["runId"], "--prepare-vm"], timeout=60)
+    folder = Path("/run/gaslux-pacman-" + plan["runId"])
+    require(folder.is_dir() and not folder.is_symlink()
+            and folder.stat().st_uid == 0
+            and stat.S_IMODE(folder.stat().st_mode) == 0o700,
+            "non-private or missing strict pacman tmpfs policy")
+    config = folder / "pacman-install.conf"
+    target = folder / "pacman-target.conf"
+    require(config.is_file() and not config.is_symlink()
+            and target.is_file() and not target.is_symlink(),
+            "missing immutable intended native pacman policy")
+    execute(["python3", str(verifier), "--config", str(config)],
+            timeout=40)
+    require("SigLevel = Required DatabaseOptional TrustedOnly"
+            in config.read_text(encoding="utf-8"),
+            "missing exact signed-only pacman policy")
+    return folder
+
+
 def pacstrap_only(args: argparse.Namespace) -> None:
     plan, disk = guest_plan(args)
     verify_lab_root_write_grant(args, plan)
@@ -300,6 +338,8 @@ def pacstrap_only(args: argparse.Namespace) -> None:
     require(Path("/usr/share/pacman/keyrings/archlinux.gpg").is_file()
             and Path("/usr/share/pacman/keyrings/cachyos.gpg").is_file(),
             "pinned live ISO lacks signing keyrings")
+    strict_folder = prepare_signed_only_pacman(plan)
+    strict_config = strict_folder / "pacman-install.conf"
     execute(["mount", "-t", "ext4", "-o", "rw,nosuid,nodev",
              str(root_partition), str(ROOT)])
     try:
@@ -324,7 +364,16 @@ def pacstrap_only(args: argparse.Namespace) -> None:
             "cachyos-keyring", "cachyos-mirrorlist", "cachyos-settings",
             "cachyos-hooks", "sudo", "e2fsprogs", "dosfstools", "python",
         ]
-        execute(["pacstrap", "-K", str(ROOT), *packages], timeout=2200)
+        execute(["pacstrap", "-K", "-C", str(strict_config), str(ROOT), *packages], timeout=2200)
+        # Retain exact, signed-only repository policy for installed updates.
+        import shutil
+        shutil.copyfile(strict_folder / "pacman-target.conf", ROOT / "etc/pacman.conf")
+        for name in ("mirrorlist", "cachyos-mirrorlist"):
+            shutil.copyfile(strict_folder / name,
+                            ROOT / "etc/pacman.d" / name)
+        require((ROOT / "etc/pacman.conf").read_bytes() ==
+                (strict_folder / "pacman-target.conf").read_bytes(),
+                "installed package signature policy does not match validated source")
         require((ROOT / "boot/vmlinuz-linux-cachyos-lts").is_file()
                 and (ROOT / "usr/share/libalpm/scripts/cachyos-branding").is_file(),
                 "signed native kernel/CachyOS branding packages absent")
