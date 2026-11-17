@@ -71,6 +71,23 @@ class MintOverlayContracts(unittest.TestCase):
             with self.assertRaisesRegex(mint.MintOverlayError, "not ext4"):
                 mint._guest_disk_audit(Path("/tmp/unused"))
 
+    def test_rejects_reordered_or_additional_partitions(self):
+        fake = FakeGuest(parts=["/dev/sda1", "/dev/sda2", "/dev/sda3",
+                                "/dev/sda5", "/dev/sda4"])
+        with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
+                GuestFS=lambda **kwargs: fake)}):
+            with self.assertRaisesRegex(mint.MintOverlayError, "exactly four Windows"):
+                mint._guest_disk_audit(Path("/tmp/unused"))
+
+    def test_native_grub_and_release_claims_are_never_enabled_by_harness(self):
+        source = (Path(mint.__file__)).read_text(encoding="utf-8")
+        self.assertIn('"nativeGrubDualBootVerified": False', source)
+        self.assertIn('"sameDiskDualBootVerified": False', source)
+        self.assertIn('"updatesVerified": False', source)
+        self.assertIn('"rollbackVerified": False', source)
+        self.assertNotIn('/dev/sda', source)
+        self.assertNotIn('/dev/nvme', source)
+
     def test_success_returns_four_windows_partition_hashes(self):
         fake = FakeGuest()
         with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
