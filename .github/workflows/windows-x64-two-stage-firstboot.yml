@@ -7,11 +7,14 @@ on:
       - fix/windows-two-stage-second-guest-evidence
       - fix/windows-two-stage-swtpm-reconnect
       - fix/windows-two-stage-full-serial-dvd-guard
+      - feature/windows-cachyos-readonly-baseline-gate
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_two_stage_boot.py
       - auto_tests/test_windows_x64_swtpm_reconnect.py
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
   workflow_dispatch:
 
 permissions:
@@ -43,7 +46,8 @@ jobs:
               test_windows_x64_clean_poweroff_gate.py \
               test_windows_x64_tcg_unattend_contract.py \
               test_windows_x64_winre_baseline_contract.py \
-              test_windows_x64_qemu_host_gate.py; do
+              test_windows_x64_qemu_host_gate.py \
+              test_windows_cachyos_readonly_baseline_gate.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
       - name: Prove physical-host-safe swtpm listener restart with same private NV directory
@@ -101,6 +105,18 @@ jobs:
             --profile "${{ matrix.profile }}" --accel kvm \
             --derived-no-prompt --two-stage-install-only --boot-timeout 4800
           echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Gate Windows candidate baseline for future CachyOS (READ-ONLY, NO DUALBOOT)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PROOF="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          PROFILE="${{ matrix.profile }}"
+          python3 auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            --profile "$PROFILE" \
+            --result "$PROOF/$PROFILE-result.json" \
+            --serial "$PROOF/$PROFILE-serial.log" \
+            --serial-sha256 "$PROOF/$PROFILE-serial.sha256"
+          echo 'Read-only candidate consistency only; DOES NOT authorize CachyOS disk writes, prove dual boot or Windows recovery.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
