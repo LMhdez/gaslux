@@ -9,9 +9,13 @@ on:
       - fix/windows-two-stage-full-serial-dvd-guard
       - fix/windows-eval-oobe-international-pass
       - test/windows-floppy-proven-setup-firstlogon-fix
+      - test/windows10-postboot-gpt-readonly-audit
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+      - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
+      - auto_tests/tools/windows_x64_libguestfs_kernel.sh
       - auto_tests/test_windows_x64_two_stage_boot.py
       - auto_tests/test_windows_x64_swtpm_reconnect.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
@@ -39,8 +43,11 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m py_compile auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+          bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
+              test_windows_x64_installed_gpt_ro_audit.py \
               test_windows_x64_noprompt_one_shot.py \
               test_windows_x64_derived_noprompt.py \
               test_windows_x64_kvm_opt_in.py \
@@ -94,11 +101,20 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
-            p7zip-full genisoimage
+            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
           mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Select a complete private libguestfs kernel without switching host kernel
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 - <<'PY'
+          import guestfs
+          print("PASS: Ubuntu python3-guestfs binding installed; no disk opened")
+          PY
       - name: Validate official SHA, disposable first DVD Setup, detach DVD and independently firstboot Windows
         shell: bash
         run: |
@@ -106,8 +122,10 @@ jobs:
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
             --profile "${{ matrix.profile }}" --accel kvm \
-            --derived-no-prompt --two-stage-install-only --boot-timeout 4800
-          echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
+            --audit-installed-gpt-readonly
+          echo 'PASS: Windows 10 installed guest, clean shutdown, then separate read-only libguestfs GPT/ESP/BCD/NTFS inspection.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Windows+CachyOS dualboot, WinRE/BCD RESTORATION and rollback NOT verified; no storage writes authorized.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
