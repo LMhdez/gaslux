@@ -131,10 +131,13 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn('"windowsClientBootVerified": false', proc.stdout)
 
-    def test_firstlogon_script_is_floppy_only_and_has_valid_serial_constructor(self):
+    def test_firstlogon_script_is_owned_usb_and_has_valid_serial_constructor(self):
         src = SRC.read_text()
+        media = (SRC.parent / "windows_x64_partitioned_answer_usb.py").read_text()
         self.assertIn('guest_ps1 = workspace / "GASLUX.PS1"', src)
-        self.assertIn('"::/GASLUX.PS1"', src)
+        self.assertIn('build_partitioned_answer(answer, xmlfile, guest_ps1)', src)
+        self.assertIn('"::/GASLUX.PS1"', media)
+        self.assertIn('"::/Autounattend.xml"', media)
         self.assertIn("firstLogonScriptSha256", src)
         self.assertIn("[System.IO.Ports.SerialPort]::new(", 
                       module.witness_powershell("win10_22h2_en_us_x64", "19045"))
