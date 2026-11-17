@@ -228,6 +228,16 @@ def stage_overlay_gpt(
             info.get("backing-filename-format") == "qcow2" and
             not info.get("encrypted", False),
             "overlay not bound to exact protected Windows base")
+    # The fresh overlay MUST still be byte-for-byte identical to the
+    # protected Windows base BEFORE any GPT write. A previous/stale guest
+    # mutation elsewhere on NTFS/ESP cannot be detected by GPT checks alone.
+    # Use QEMU's full logical compare; it reads files, not host block devices.
+    comparison = subprocess.run([
+        "qemu-img", "compare", "-f", "qcow2", "-F", "qcow2",
+        str(disk), str(overlay),
+    ], check=False, capture_output=True, text=True, timeout=180)
+    require(comparison.returncode == 0,
+            "overlay already contains foreign or unexpected Windows disk writes")
     original_identity = qcow2_file_identity(disk)
     reread = inspect_owned_qcow2(disk)
     require(reread["windowsPartitions"] == geometry["windowsPartitions"] and
