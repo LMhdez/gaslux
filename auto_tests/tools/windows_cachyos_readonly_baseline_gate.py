@@ -115,8 +115,14 @@ def evaluate(profile: str, report: dict, serial: bytes,
     # Bind the Windows guest audit script to the checked-out source itself,
     # rather than accepting an arbitrary syntactically valid SHA256. This
     # independently catches an altered FirstLogon audit payload.
+    third_boot = (os.environ.get("GASLUX_WINDOWS_THIRDBOOT_TEST")
+                  == "I_ACCEPT_THIRD_WINDOWS_KVM_BOOT")
+    if third_boot:
+        require(report.get("windowsRebootAfterOverlayDiscardVerified") is True,
+                "third Windows boot after overlay discard not confirmed")
     generated = witness_powershell(
         profile, catalog["profiles"][profile]["expectedWindowsBuildPrefix"],
+        third_boot_lab=third_boot,
     ) + "\n"
     require(
         report["firstLogonScriptSha256"] ==
