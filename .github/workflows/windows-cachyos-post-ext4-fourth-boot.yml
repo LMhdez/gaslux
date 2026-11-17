@@ -34,6 +34,8 @@ on:
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
       - auto_tests/tools/windows_mint_overlay_root.py
       - auto_tests/test_windows_mint_overlay_root.py
+      - auto_tests/tools/validate_mint_cow_boot_evidence.py
+      - auto_tests/test_windows_mint_cow_boot_evidence.py
   workflow_dispatch:
 
 permissions:
@@ -56,7 +58,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
-          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/tools/windows_mint_overlay_root.py
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/tools/windows_mint_overlay_root.py auto_tests/tools/validate_mint_cow_boot_evidence.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py auto_tests/test_windows_cachyos_cow_checkpoint.py
@@ -81,7 +83,8 @@ jobs:
               test_windows_cachyos_overlay_reboot.py \
               test_windows_cachyos_overlay_ext4_only.py \
               test_windows_cachyos_postext4_windows.py \
-              test_windows_mint_overlay_root.py; do
+              test_windows_mint_overlay_root.py \
+              test_windows_mint_cow_boot_evidence.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
       - name: Prove physical-host-safe swtpm listener restart with same private NV directory
@@ -214,8 +217,16 @@ jobs:
             --format-owned-fifth-ext4-only \
             --verify-windows-reboot-after-ext4 \
             --install-mint-cow-root --mint-iso "$RUNNER_TEMP/mint-upstream/mint.iso"
-          echo 'Mint and Windows are boot-tested on the same disposable COW; native GRUB menu, updates and rollback remain unproven.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Mint SquashFS root copied to the fifth COW partition and direct-kernel booted; Windows boots are checked separately. Native GRUB dual boot, updates and rollback remain unproven.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Only if this step succeeded, both Windows DVD and disk-only stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux native dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Independently validate Mint SquashFS direct-kernel boot evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          python3 auto_tests/tools/validate_mint_cow_boot_evidence.py \
+            --evidence-dir "$GITHUB_WORKSPACE/windows-x64-tcg-evidence" \
+            --profile "${{ matrix.profile }}"
       # Never run this candidate check unless the exact existing Windows 10
       # DVD+FAT12 unattended install has rebooted and passed its firstlogon
       # ESP/BCD/WinRE audit with clean Windows poweroff. It cannot authorize
