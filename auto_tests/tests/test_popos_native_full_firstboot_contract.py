@@ -86,9 +86,12 @@ def test_real_distinst_not_test_mode_and_only_linux_owned_disk():
     controller = (ROOT / "auto_tests/tools/gaslux_popos_native_install_serial.py").read_text(
         encoding="utf-8"
     )
-    assert 'conn.sendall(b"sync\\r")' in controller
+    assert "GASLUX_POP_POSTINSTALL_SHELL_READY=1" in controller
+    assert "GASLUX_POP_NATIVE_SYNC_DONE=1" in controller
+    assert "POSTINSTALL_READY" in controller
+    assert "SYNC_DONE" in controller
     assert 'conn.sendall(b"systemctl poweroff -i\\r")' in controller
-    assert "ROOT_DEBUG_SHELL, timeout_seconds=120" in controller
+    assert "ROOT_DEBUG_SHELL, timeout_seconds=120" not in controller
     assert "native guest did not close serial after poweroff" in controller
     assert "agent.sha256" in source
     assert "GASLUX_POP_NATIVE_INSTALL_DIAGNOSTIC_TAIL_BEGIN" in source

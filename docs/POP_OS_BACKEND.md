@@ -197,8 +197,8 @@ bootloader configuration, but failed the host's clean-poweroff gate before
 starting the second VM. The guest controller previously closed its serial
 connection immediately after sending the shutdown command, even though the
 interactive shell might not yet have regained its prompt. The revised
-controller waits for the shell prompt, confirms completion of a separate
-`sync`, sends normal `systemctl poweroff -i` and keeps the socket open until
+controller proves the returned shell with a post-install command challenge,
+confirms a separate completed `sync`, then sends normal `systemctl poweroff -i` and keeps the socket open until
 guest disconnection. Disconnection is NOT trusted as success: the QEMU process
 must still exit with code 0 and installed first boot remains a separate check.
 
@@ -209,6 +209,6 @@ showed the live root debug-shell prompt sharing a line with a late `systemd`
 mount message, so a strict end-of-line prompt regex failed even though
 `Startup finished in` was observed. The installer controller now uses the
 already required nonce-like shell challenge as the sole proof of active shell
-execution before any mount or installer command is sent. The prompt
-requirement after the *completed* native install is retained to prevent a
-premature shutdown. No disk mutation is authorized on missing nonce proof.
+execution before any mount or installer command is sent. After completed native installation, a fresh post-install shell challenge
+and a separate sync-confirmation marker prevent premature shutdown without
+relying on potentially interleaved prompt text. No disk mutation is authorized on missing nonce proof.

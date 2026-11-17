@@ -10,7 +10,6 @@ from pathlib import Path
 
 from gaslux_popos_guest_serial import (
     READY,
-    ROOT_DEBUG_SHELL,
     SHA,
     GuestProbeError,
     normalized,
@@ -29,6 +28,8 @@ PRECHECK_RESULT = re.compile(
 START_RESULT = re.compile(
     rb"(?m)^GASLUX_POP_NATIVE_(?:INSTALL_DISTINST_STARTED=1|INSTALL_FAILURE: [^\r\n]+)\r?\n"
 )
+POSTINSTALL_READY = re.compile(rb"(?m)^GASLUX_POP_POSTINSTALL_SHELL_READY=1\r?$")
+SYNC_DONE = re.compile(rb"(?m)^GASLUX_POP_NATIVE_SYNC_DONE=1\r?$")
 
 
 def connect(path: Path) -> socket.socket:
@@ -122,15 +123,22 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
         output = normalized(bytes(transcript[start:]))
         if not SUCCESS.search(output):
             raise GuestProbeError("native installer reported an explicit failure")
-        # Installer emits its success marker BEFORE the interactive shell
-        # returns to its prompt. Do not close the QEMU serial socket with a
-        # shutdown command still queued as input to the running installer.
-        # The HOST separately requires QEMU's clean exit code and boots again
-        # with neither the ISO nor the temporary control disk.
-        wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=120, start=start)
+        # Installer success is emitted before the shell is interactive again.
+        # A prompt can be interleaved with systemd mount messages; require
+        # actual post-install command execution instead of matching prompt text.
+        # The HOST still independently requires QEMU exit 0.
+        ready_start = len(transcript)
+        conn.sendall(b"printf 'GASLUX_POP_POSTINSTALL_SHELL_READY=1\\n'\r")
+        wait_for(
+            conn,
+            transcript,
+            POSTINSTALL_READY,
+            timeout_seconds=120,
+            start=ready_start,
+        )
         sync_start = len(transcript)
-        conn.sendall(b"sync\r")
-        wait_for(conn, transcript, ROOT_DEBUG_SHELL, timeout_seconds=150, start=sync_start)
+        conn.sendall(b"sync && printf 'GASLUX_POP_NATIVE_SYNC_DONE=1\\n'\r")
+        wait_for(conn, transcript, SYNC_DONE, timeout_seconds=150, start=sync_start)
         conn.sendall(b"systemctl poweroff -i\r")
         # Keep the console alive until the guest actually closes the socket.
         # EOF alone is NOT a proof: the host must still see QEMU exit 0.
