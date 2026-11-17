@@ -58,10 +58,27 @@ if [[ "$distro" == popos ]]; then
   initrd="$prefix/initrd.gz"
   boot="boot=casper live-media-path=/$prefix"
 elif [[ "$distro" == zorin ]]; then
-  # Verify the known Ubuntu-family Casper boot artifacts on the same pinned
-  # image. This does not authorize target provisioning or shared-disk writes.
-  kernel="casper/vmlinuz"
-  initrd="casper/initrd"
+  # The exact kernel/initrd naming varies by Ubuntu/Casper image build.
+  # Discover both only within the verified ISO's top-level casper directory.
+  # Ambiguous or missing candidates fail before creating any VM boot media.
+  [[ -d "$work/iso-root/casper" ]] || die 'Pinned Zorin ISO has no Casper directory'
+  mapfile -t kernels < <(
+    find -L "$work/iso-root/casper" -mindepth 1 -maxdepth 1 -type f \
+      \( -name vmlinuz -o -name vmlinuz.efi \) -printf '%f\n' | sort
+  )
+  mapfile -t initrds < <(
+    find -L "$work/iso-root/casper" -mindepth 1 -maxdepth 1 -type f \
+      \( -name initrd -o -name initrd.img -o -name initrd.lz -o -name initrd.gz \) \
+      -printf '%f\n' | sort
+  )
+  if [[ "${#kernels[@]}" -ne 1 || "${#initrds[@]}" -ne 1 ]]; then
+    echo 'Pinned Zorin Casper kernel/initramfs candidates:' >&2
+    find "$work/iso-root/casper" -mindepth 1 -maxdepth 1 \
+      \( -name '*vmlinuz*' -o -name '*initrd*' \) -printf '%f\n' >&2
+    die 'Pinned Zorin ISO has missing or ambiguous kernel/initramfs files'
+  fi
+  kernel="casper/${kernels[0]}"
+  initrd="casper/${initrds[0]}"
   boot="boot=casper live-media-path=/casper"
 else
   # Debian/Q4OS native live media uses release-versioned vmlinuz/initrd pairs.
