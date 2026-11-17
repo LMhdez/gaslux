@@ -177,9 +177,7 @@ def run_lab(workspace: Path, plan_dir: Path, evidence: Path) -> dict[str, Any]:
             ],
             timeout=600,
         )
-        info = json.loads(
-            _run(["qemu-img", "info", "--output=json", str(snapshot)]).stdout
-        )
+        info = json.loads(_run(["qemu-img", "info", "--output=json", str(snapshot)]).stdout)
         _require(info.get("format") == "qcow2", "Snapshot format mismatch")
         _require(info.get("virtual-size") == DISK_BYTES, "Snapshot virtual size mismatch")
         _require(info.get("backing-filename") in (None, ""), "Snapshot is not self-contained")
@@ -223,13 +221,9 @@ def run_lab(workspace: Path, plan_dir: Path, evidence: Path) -> dict[str, Any]:
         _run(["sgdisk", "--verify", str(restored)], timeout=60)
         restored_fd = os.open(restored, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         try:
-            restored_gpt = inspect_gpt_fd(
-                restored_fd, disk_size_bytes=DISK_BYTES, sector_bytes=512
-            )
+            restored_gpt = inspect_gpt_fd(restored_fd, disk_size_bytes=DISK_BYTES, sector_bytes=512)
         except GuestProbeError as exc:
-            raise Q4osSnapshotLabRefusal(
-                "Restored GPT/FAT32 verification failed"
-            ) from exc
+            raise Q4osSnapshotLabRefusal("Restored GPT/FAT32 verification failed") from exc
         finally:
             os.close(restored_fd)
         restored_fields = verify_restored_gpt(plan, restored_gpt)
@@ -295,22 +289,12 @@ def run_lab(workspace: Path, plan_dir: Path, evidence: Path) -> dict[str, Any]:
             "rollbackVerified": False,
         }
         private_key = Ed25519PrivateKey.generate()
-        raw_manifest, signature, public_key, fingerprint = sign_manifest(
-            manifest, private_key
-        )
-        verified = verify_signed_manifest(
-            raw_manifest, signature, public_key, fingerprint
-        )
+        raw_manifest, signature, public_key, fingerprint = sign_manifest(manifest, private_key)
+        verified = verify_signed_manifest(raw_manifest, signature, public_key, fingerprint)
         _require(verified == manifest, "Snapshot manifest signature self-check failed")
-        _write_bytes_durable(
-            evidence / "q4os-recovery-snapshot-manifest.json", raw_manifest
-        )
-        _write_bytes_durable(
-            evidence / "q4os-recovery-snapshot-manifest.ed25519", signature
-        )
-        _write_bytes_durable(
-            evidence / "q4os-recovery-snapshot-public-key.bin", public_key
-        )
+        _write_bytes_durable(evidence / "q4os-recovery-snapshot-manifest.json", raw_manifest)
+        _write_bytes_durable(evidence / "q4os-recovery-snapshot-manifest.ed25519", signature)
+        _write_bytes_durable(evidence / "q4os-recovery-snapshot-public-key.bin", public_key)
         _write_bytes_durable(
             evidence / "q4os-recovery-snapshot-public-key.sha256",
             (fingerprint + "\n").encode("ascii"),
