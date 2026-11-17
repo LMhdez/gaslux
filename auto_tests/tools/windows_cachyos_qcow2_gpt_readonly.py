@@ -198,11 +198,22 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
             ("back", VIRTUAL_BYTES // SECTOR - WINDOW_SECTORS),
         ):
             dest = Path(tmp) / (suffix + ".raw")
-            subprocess.run([
+            # QEMU 8.2's dd truncates its internal input size to 'count'
+            # BEFORE applying 'skip'. Supplying both on the last 1 MiB
+            # yields an EMPTY file but may exit with status 0. For the final
+            # 1 MiB, skip directly to EOF and omit count altogether.
+            command = [
                 "qemu-img", "dd", "-f", "qcow2", "-O", "raw",
-                f"bs={SECTOR}", f"count={WINDOW_SECTORS}", f"skip={skip}",
-                f"if={disk}", f"of={dest}",
-            ], check=True, capture_output=True, timeout=60)
+                f"bs={SECTOR}",
+            ]
+            if skip == 0:
+                command.append(f"count={WINDOW_SECTORS}")
+            command.extend([f"skip={skip}", f"if={disk}", f"of={dest}"])
+            result = subprocess.run(
+                command, check=True, capture_output=True, timeout=60,
+            )
+            require(b"cannot skip to specified offset" not in result.stderr,
+                    "QEMU rejected the requested GPT window")
             require(dest.is_file() and not dest.is_symlink() and
                     dest.stat().st_size == WINDOW_BYTES,
                     "QEMU returned an invalid bounded GPT window")
