@@ -123,8 +123,8 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
         import hashlib, tempfile
         with tempfile.TemporaryDirectory() as folder:
             serial=Path(folder)/'baseline.log'
-            raw=(b'BdsDxe: starting Boot0003 "Windows Boot Manager"\\r\\n'
-                 + b"".join((x+"\\r\\n").encode("ascii")
+            raw=(b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+                 + b"".join((x+"\r\n").encode("ascii")
                            for x in boot.PROOF_FOUR_PARTITION_BASELINE))
             serial.write_bytes(raw)
             self.assertEqual(boot.audit_complete_four_partition_serial(serial),
@@ -134,13 +134,13 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as folder:
             serial=Path(folder)/'baseline.log'
-            bm=b'BdsDxe: starting Boot0003 "Windows Boot Manager"\\r\\n'
-            markers=[(x+"\\n").encode("ascii")
+            bm=b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+            markers=[(x+"\n").encode("ascii")
                      for x in boot.PROOF_FOUR_PARTITION_BASELINE]
             for bad in (
                 bm+b"".join(markers[:-1]),
                 bm+b"".join(markers)+markers[0],
-                bm+b"".join(markers)+b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1\\n",
+                bm+b"".join(markers)+b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1\n",
             ):
                 serial.write_bytes(bad)
                 with self.assertRaises(boot.OverlayBootError):
@@ -150,11 +150,11 @@ class ThirdBootOverlaySafetyTests(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as folder:
             serial=Path(folder)/'baseline.log'
-            bm=b'BdsDxe: starting Boot0003 "Windows Boot Manager"\\r\\n'
-            markers=b"".join((x+"\\n").encode("ascii")
+            bm=b'BdsDxe: starting Boot0003 "Windows Boot Manager"\r\n'
+            markers=b"".join((x+"\n").encode("ascii")
                              for x in boot.PROOF_FOUR_PARTITION_BASELINE)
-            for bad in (bm+b"UEFI QEMU DVD-ROM\\n"+markers,
-                        bm+markers+b"GASLUX_COW_WIN10_REBOOT_FAIL=1\\n"):
+            for bad in (bm+b"UEFI QEMU DVD-ROM\n"+markers,
+                        bm+markers+b"GASLUX_COW_WIN10_REBOOT_FAIL=1\n"):
                 serial.write_bytes(bad)
                 with self.assertRaises(boot.OverlayBootError):
                     boot.audit_complete_four_partition_serial(serial)
