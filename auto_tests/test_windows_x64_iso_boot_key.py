@@ -165,7 +165,7 @@ class LocalVncIsoBootKeyTests(unittest.TestCase):
         name = b"QEMU"
         server_init = bytes(20) + len(name).to_bytes(4, "big")
         sock.recv.side_effect = [
-            b"RFB 003.008\\n", b"\\x01", b"\\x01", b"\\x00" * 4, server_init, name
+            b"RFB 003.008\n", b"\x01", b"\x01", b"\x00" * 4, server_init, name
         ]
         hosted = {
             "GITHUB_ACTIONS": "true",
@@ -182,7 +182,7 @@ class LocalVncIsoBootKeyTests(unittest.TestCase):
         self.assertEqual(
             [call.args[0] for call in sock.sendall.call_args_list],
             [
-                b"RFB 003.008\\n", b"\\x01", b"\\x01",
+                b"RFB 003.008\n", b"\x01", b"\x01",
                 vm.struct.pack(">BBHI", 4, 1, 0, 0xFF0D),
                 vm.struct.pack(">BBHI", 4, 0, 0, 0xFF0D),
             ],
