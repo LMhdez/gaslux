@@ -26,6 +26,16 @@ jobs:
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_winre_baseline_contract.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_iso_boot_key.py'
+      - name: Ruff static checks for firmware and safety tests
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --break-system-packages ruff==0.13.3
+          python3 -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/test_windows_x64_noprompt_one_shot.py
+          python3 -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/test_windows_x64_noprompt_one_shot.py
       - name: Declare synthetic-only evidence
         run: |
           printf '%s\n' 'No ISO, guest disk, Windows Setup, Windows firstboot or dualboot executed.' >> "$GITHUB_STEP_SUMMARY"
