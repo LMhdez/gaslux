@@ -35,11 +35,19 @@ The optional `--derived-no-prompt` flag is permitted ONLY in the
    and the original Microsoft no-prompt EFI boot image. Hashes this DERIVED
    artifact separately as `labDerivedIsoSha256`; it never claims this hash
    is Microsoft's published official ISO SHA-256.
-5. Boots QEMU/OVMF with a newly created file-backed QCOW2 and private OVMF
-   variables. With `--boot-probe-only`, it only checks that the firmware
-   starts the UEFI DVD without reporting a timeout. It forcibly terminates the
-   disposable guest after 120 seconds; it does **not** assert WinPE or Windows
-   client installed firstboot.
+5. Boots QEMU/OVMF with **only the read-only derived DVD attached** and
+   private OVMF variable storage. The diagnostic exposes **no target hard
+   disk and no unattended answer floppy** to the guest. It only checks that
+   the firmware starts the UEFI DVD without reporting a timeout. The guest
+   is stopped after 120 seconds; this does **not** prove WinPE or installed
+   Windows client firstboot.
+
+The options `--derived-no-prompt` and `--boot-probe-only` MUST be used
+**together**. A no-prompt installation DVD left attached during a full
+Windows Setup could restart the installer after reboot and overwrite its own
+disposable VM installation. The full installer will remain blocked on that
+mode until a controlled one-time boot and media-detachment transaction has
+been tested, including a second Windows boot.
 
 The full Windows installed-firstboot witness (client ProductType, expected
 build, EFI/GPT, Windows recovery partition, WinRE Enabled, BCD listing and
