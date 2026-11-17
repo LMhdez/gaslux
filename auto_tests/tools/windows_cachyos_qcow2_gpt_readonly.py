@@ -98,10 +98,12 @@ def inspect_gpt_windows(front: bytes, back: bytes,
             "invalid protective MBR signature")
     entries_mbr = [front[446 + 16*i:446 + 16*(i+1)] for i in range(4)]
     total = disk_bytes // SECTOR
-    # A mere 0xEE type byte does not establish a protective MBR. In
-    # particular, a forged zero-length/shifted entry must not certify a
-    # disk for subsequent Linux partition planning. This fixed-size lab
-    # fits the protective MBR's 32-bit sector-count field exactly.
+    # Windows Setup has emitted an oversized 0xFFFFFFFF PMBR size on the
+    # pinned 128-GiB lab image (observed Actions #44106826373). UEFI 2.11
+    # specifies the exact size for this disk: the oversized value is NOT
+    # canonical. Permit that single observed value for READ-ONLY diagnosis
+    # after full GPT checks, but never authorize partition/boot writes.
+    # A hybrid PMBR, shortened size, wrong start or other entry is rejected.
     protective_start, protective_span = struct.unpack_from(
         "<II", entries_mbr[0], 8,
     )
@@ -110,11 +112,14 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     expected_span = min(total - 1, 0xffffffff)
     extra_slots = tuple(i + 2 for i, entry in enumerate(entries_mbr[1:])
                         if any(entry))
+    oversized_windows_pmbr = (
+        expected_span < 0xFFFFFFFF and protective_span == 0xFFFFFFFF
+    )
     require(
         protective_boot == 0
         and protective_type == 0xEE
         and protective_start == 1
-        and protective_span == expected_span
+        and (protective_span == expected_span or oversized_windows_pmbr)
         and not extra_slots,
         "hybrid or invalid protective MBR geometry: "
         f"boot={protective_boot}, type=0x{protective_type:02x}, "
@@ -178,6 +183,8 @@ def inspect_gpt_windows(front: bytes, back: bytes,
             "insufficient untouched post-Windows GPT free space")
     return {
         "candidateWindowsGptPrimaryAndBackupConsistent": True,
+        "protectiveMbrCanonical": not oversized_windows_pmbr,
+        "protectiveMbrOversizedWindowsLabException": oversized_windows_pmbr,
         "virtualDiskBytes": disk_bytes,
         "sectorBytes": SECTOR,
         "windowsPartitions": result_parts,
