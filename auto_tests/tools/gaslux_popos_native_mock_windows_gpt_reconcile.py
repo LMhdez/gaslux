@@ -5,6 +5,7 @@ Requires two independent, whole-partition SHA-256 snapshots + strict GPT
 ownership invariants before/after native System76 installation and first boot.
 These are MOCK volumes, never real Windows, and never production authorization.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -126,8 +127,12 @@ def _validate_entries(rows: list[str], *, installed: bool) -> dict:
 
 def reconcile_mock_windows(before: dict, after: dict) -> dict:
     required = {
-        "mbrSha256", "primary", "backup", "entries",
-        "mockWindowsEspSha256", "mockWindowsNtfsSha256",
+        "mbrSha256",
+        "primary",
+        "backup",
+        "entries",
+        "mockWindowsEspSha256",
+        "mockWindowsNtfsSha256",
     }
     if (
         type(before) is not dict
@@ -168,7 +173,9 @@ def main(args: list[str]) -> int:
     if len(args) == 3 and args[0] == "capture":
         image, output = map(Path, args[1:])
         if output.parent != image.parent or output.name not in {
-            "owned-gpt-before.json", "owned-gpt-after.json", "owned-gpt-postboot.json",
+            "owned-gpt-before.json",
+            "owned-gpt-after.json",
+            "owned-gpt-postboot.json",
         }:
             raise GptRefusal("Mock volume snapshots must remain in VM temp directory")
         output.write_text(
@@ -178,9 +185,15 @@ def main(args: list[str]) -> int:
         return 0
     if len(args) == 3 and args[0] == "verify":
         old, new = map(Path, args[1:])
-        if old.parent != new.parent or old.name != "owned-gpt-before.json" or new.name not in {
-            "owned-gpt-after.json", "owned-gpt-postboot.json",
-        }:
+        if (
+            old.parent != new.parent
+            or old.name != "owned-gpt-before.json"
+            or new.name
+            not in {
+                "owned-gpt-after.json",
+                "owned-gpt-postboot.json",
+            }
+        ):
             raise GptRefusal("Unexpected mock Windows proof files")
         proof = reconcile_mock_windows(
             json.loads(old.read_text(encoding="utf-8")),

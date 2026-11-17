@@ -70,10 +70,23 @@ def test_mock_windows_preserved_and_root_reconciled():
 
 @pytest.mark.parametrize(
     "mutant",
-    ["windows_esp_content", "windows_ntfs_content", "windows_esp_entry",
-     "windows_ntfs_entry", "owned_esp_entry", "root_start", "root_end",
-     "root_type", "root_attrs", "other_partition", "mbr", "disk",
-     "missing_evidence", "bad_digest", "wrong_windows_type"],
+    [
+        "windows_esp_content",
+        "windows_ntfs_content",
+        "windows_esp_entry",
+        "windows_ntfs_entry",
+        "owned_esp_entry",
+        "root_start",
+        "root_end",
+        "root_type",
+        "root_attrs",
+        "other_partition",
+        "mbr",
+        "disk",
+        "missing_evidence",
+        "bad_digest",
+        "wrong_windows_type",
+    ],
 )
 def test_mock_windows_tampering_fails_closed(mutant):
     before, after = fixtures()
@@ -133,7 +146,7 @@ def test_mock_windows_native_install_never_selects_protected_partitions():
     runner = (
         ROOT / "auto_tests/tools/gaslux_popos_native_mock_windows_firstboot_vm.sh"
     ).read_text()
-    assert 'GASLUX_POP_NATIVE_MOCK_WINDOWS_VM:-0' in runner
+    assert "GASLUX_POP_NATIVE_MOCK_WINDOWS_VM:-0" in runner
     assert "-net none" in runner
     assert "owned-gpt-postboot.json" in runner
     assert "GASLUX_POP_MOCK_WINDOWS_PROTECTED_THROUGH_FIRSTBOOT=1" in runner
