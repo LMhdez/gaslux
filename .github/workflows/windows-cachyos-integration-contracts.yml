@@ -1,0 +1,51 @@
+name: Windows/CachyOS combined native COM1 and two-stage candidate gates (no Windows guest)
+
+on:
+  push:
+    branches:
+      - feature/windows-cachyos-integrated-kvm-evidence
+    paths:
+      - .github/workflows/windows-cachyos-integration-contracts.yml
+      - .github/workflows/windows-x64-two-stage-firstboot.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_x64_full_serial_audit.py
+      - docs/WINDOWS_CACHYOS_READONLY_BASELINE_GATE.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  combined-no-iso:
+    name: Windows native COM1, candidate cross-stage manifests, Microsoft pins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile all cross-branch controls and exercise fail-closed fixtures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile \
+            auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+          for name in \
+            test_windows_cachyos_readonly_baseline_gate.py \
+            test_windows_x64_full_serial_audit.py \
+            test_windows_x64_clean_poweroff_gate.py \
+            test_windows_x64_two_stage_boot.py \
+            test_windows_x64_tcg_unattend_contract.py \
+            test_windows_x64_winre_baseline_contract.py \
+            test_windows_x64_qemu_host_gate.py; do
+            python3 -m unittest discover -s auto_tests -p "$name" -v
+          done
+          echo 'PASS: combined offline contracts only. No Windows guest, same-disk dualboot, partition writer, WinRE recovery or physical drive has been tested.' >> "$GITHUB_STEP_SUMMARY"
