@@ -233,5 +233,17 @@ class FullSerialAuditContracts(unittest.TestCase):
         )
 
 
+    def test_stage_one_windows_setup_serial_oversize_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "initial-dvd-guest-serial.log"
+            with path.open("wb") as stream:
+                stream.truncate(vm.MAX_WINDOWS_GUEST_SERIAL_BYTES + 1)
+            with self.assertRaisesRegex(
+                vm.LabError, "initial Windows Setup COM1 serial exceeded"
+            ):
+                vm.scan_two_stage_dvd_serial(path, 0, b"")
+
+
+
 if __name__ == "__main__":
     unittest.main()
