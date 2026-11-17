@@ -151,5 +151,54 @@ class FullSerialAuditContracts(unittest.TestCase):
                 vm.scan_windows_guest_tokens(path, 0, b"", False)
 
 
+    def test_untrusted_prefixed_noise_does_not_expand_proof_set(self):
+        # A compromised guest can emit arbitrarily many distinct serial
+        # messages. None is proof unless it is one of the pinned audit tokens.
+        noise = b"".join(
+            f"GASLUX_WINDOWS_X64_UNTRUSTED_{i}=1\\n".encode("ascii")
+            for i in range(12000)
+        )
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "guest.log"
+            path.write_bytes(noise + PROOFS)
+            found, offset, carry, discarding = vm.scan_windows_guest_tokens(
+                path, 0, b"", False,
+            )
+            self.assertEqual(found, set(PROOFS.split()))
+            self.assertEqual(len(found), 7)
+            self.assertEqual(offset, path.stat().st_size)
+            self.assertEqual(carry, b"")
+            self.assertFalse(discarding)
+
+    def test_noisy_serial_failure_still_overrides_valid_proof(self):
+        noise = b"GASLUX_WINDOWS_X64_UNTRUSTED_IGNORE=1\\n" * 3000
+        ok, diagnostic = self.boot(
+            noise + b"GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL_STAGE=WINRE\\n"
+            + PROOFS
+        )
+        self.assertFalse(ok)
+        self.assertIn("explicitly rejected", diagnostic)
+
+    def test_other_pinned_windows_version_cannot_satisfy_profile(self):
+        # The allowlist contains both Windows versions for the same scanner;
+        # the calling boot gate must still require its exact profile/build.
+        win11 = (
+            PROOFS.replace(b"BOOT_BUILD=19045", b"BOOT_BUILD=26300")
+            .replace(b"FIRSTBOOT=win10_22h2", b"FIRSTBOOT=win11_26h2")
+        )
+        ok, diagnostic = self.boot(win11)
+        self.assertFalse(ok)
+        self.assertIn("before installed Windows first-logon", diagnostic)
+
+    def test_superstring_fake_positive_token_is_not_a_witness(self):
+        data = PROOFS.replace(
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=19045",
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=19045_EXTRA",
+        )
+        ok, diagnostic = self.boot(data)
+        self.assertFalse(ok)
+        self.assertIn("before installed Windows first-logon", diagnostic)
+
+
 if __name__ == "__main__":
     unittest.main()
