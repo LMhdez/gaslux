@@ -150,7 +150,9 @@ def test_calamares_location_to_keyboard_requires_exact_image_and_never_installs(
     assert 'python3 "$visual_gate" calamares-location "$work/vnc-location-page.png"' in source
     assert '"$calamares_location_next_clicked" -eq 1 && "$calamares_keyboard_frame" -eq 1' in source
     assert "vnc-keyboard-page.png" in source
-    assert "NOT PROVEN: Keyboard screen identity without independent screenshot inspection." in source
+    assert (
+        "NOT PROVEN: Keyboard screen identity without independent screenshot inspection." in source
+    )
     assert "NOT PERFORMED: partition choice, user setup, Install confirmation" in source
     assert "mkfs.ext4" not in source
     assert "calamares -d" not in source
