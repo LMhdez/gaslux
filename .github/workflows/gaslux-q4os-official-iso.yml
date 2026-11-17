@@ -177,6 +177,8 @@ jobs:
           profile = root / 'calamares-inert-profile'
           audit = json.loads((profile / 'profile-audit.json').read_text())
           assert audit['nativeExecJobsCount'] == 29
+          assert audit['effectiveExecutableJobCount'] == 0
+          assert audit['partitionWritesMechanicallyDisabled'] is True
           assert audit['nativeFullExecOrderVerified']
           assert audit['installationAuthorized'] is False
           assert audit['profileActivationAuthorized'] is False
@@ -184,6 +186,10 @@ jobs:
           assert audit['windowsEspWriteAuthorized'] is False
           assert audit['firmwareNvramWriteAuthorized'] is False
           assert audit['diskWrites'] == 0
+          effective = yaml.safe_load(
+              (profile / 'etc/calamares/settings.conf').read_text()
+          )
+          assert effective['sequence'][1] == {'exec': []}
           boot = yaml.safe_load(
               (profile / 'etc/calamares/modules/bootloader.conf').read_text()
           )
@@ -195,7 +201,7 @@ jobs:
                   (profile / f'usr/lib/calamares/modules/{name}/module.desc').read_text()
               )
               assert desc['command'] == '/bin/false'
-          print('PASS: native 29-job graph audited and all risk-bearing commands blocked.')
+          print('PASS: original 29-job graph audited; effective Calamares has ZERO exec jobs.')
           print('NOT TESTED: genuine full Calamares job-engine execution or Windows dual boot.')
           PY
       - name: Fetch native Debian 13 EFI GRUB package through signed APT metadata (lab only)
