@@ -1046,6 +1046,14 @@ def main(argv: list[str] | None = None) -> int:
                         report["readOnlyGptGeometryEvidenceSha256"] = (
                             hashlib.sha256(serialized).hexdigest()
                         )
+                        if os.environ.get("GASLUX_WINDOWS_OVERLAY_TEST"):
+                            from windows_cachyos_qcow2_overlay_discard import overlay_trial
+                            overlay_result = overlay_trial(disk)
+                            require(overlay_result["backingWindowsGptUnchanged"]
+                                    and overlay_result["overlayFaultRejected"]
+                                    and not overlay_result["storageWritesAuthorized"],
+                                    "Windows overlay isolation experiment failed")
+                            report["disposableOverlayExperiment"] = overlay_result
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
