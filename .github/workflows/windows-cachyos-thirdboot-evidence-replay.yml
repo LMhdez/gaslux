@@ -1,4 +1,4 @@
-name: Replay prior genuine Win10 fifth-GPT thirdboot evidence (NO VM or storage writes)
+name: Reject stale Windows thirdboot audit SHA (no VM, no disk writes)
 
 on:
   push:
@@ -42,6 +42,10 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           evidence="$RUNNER_TEMP/extracted"
           profile=win10_22h2_en_us_x64
+          # The 44121273289 witness predates the later schtasks auditor fix.
+          # Reject that obsolete guest script SHA under the CURRENT checked-out
+          # code rather than accepting a stale but otherwise genuine VM log.
+          set +e
           python3 auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
             --profile "$profile" \
             --result "$evidence/$profile-result.json" \
@@ -49,7 +53,21 @@ jobs:
             --serial-sha256 "$evidence/$profile-serial.sha256" \
             --initial-dvd-serial "$evidence/$profile-initial-dvd-serial.log" \
             --initial-dvd-serial-sha256 "$evidence/$profile-initial-dvd-serial.sha256" \
-            --verify-owned-overlay-third-boot
+            --verify-owned-overlay-third-boot > "$RUNNER_TEMP/baseline-rejection.json"
+          gate_status=$?
+          set -e
+          python3 - "$gate_status" "$RUNNER_TEMP/baseline-rejection.json" <<'PY'
+          import json,pathlib,sys
+          code=int(sys.argv[1])
+          result=json.loads(pathlib.Path(sys.argv[2]).read_text())
+          assert code==2
+          assert result["candidateWindowsFirstbootDocumentsConsistent"] is False
+          assert result["error"]=="third Windows boot audit is not bound to checked-out source"
+          assert result["releaseEligible"] is False
+          assert result["storageWritesAuthorized"] is False
+          assert result["sameDiskDualBootVerified"] is False
+          print("PASS: obsolete third-guest auditor SHA rejected by current source-bound gate")
+          PY
           python3 - "$evidence" "$profile" <<'PY'
           import hashlib,json,pathlib,sys
           root,profile=pathlib.Path(sys.argv[1]),sys.argv[2]
@@ -69,7 +87,7 @@ jobs:
           for field in ('cachyosInstalled','cachyosFirstBootVerified','rollbackProven',
                         'sameDiskDualBootVerified','storageWritesAuthorized','releaseEligible'):
               assert proof[field] is False,field
-          print("PASS: sha256-pinned prior Win10 fifth-GPT thirdboot artifact replay")
+          print("PASS: legacy real VM serial digest valid but obsolete script SHA refused")
           print("NOT proof of fresh Windows VM boot or dual boot on this run")
           PY
-          echo 'PASS: hash-pinned prior genuine Windows boot evidence replay; no VM boot or disk write performed in this job.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'PASS: stale genuine VM witness rejected by current auditor source; no VM boot or disk write performed in this job.' >> "$GITHUB_STEP_SUMMARY"
