@@ -511,6 +511,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                         if BOOT_FROM_CD_PROMPT in serial_data:
                             send_boot_key(monitor_socket)
                             initial_cd_key_sent = True
+                            initial_cd_key_at = time.monotonic()
                             print("GASLUX_VM_INITIAL_OFFICIAL_ISO_PROMPT_KEY_SENT=1",
                                   flush=True)
                         elif (profile_key == "win11_26h2_en_us_x64" and
@@ -523,6 +524,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             if time.monotonic() - win11_dvd_started_at >= 1:
                                 send_boot_key(monitor_socket, hold_ms=6000)
                                 initial_cd_key_sent = True
+                                initial_cd_key_at = time.monotonic()
                                 print("GASLUX_VM_INITIAL_OFFICIAL_WIN11_DVD_KEY_SENT=1",
                                       flush=True)
                     if any(line.startswith(FAILURE.encode()) for line in lines):
@@ -532,6 +534,20 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     ):
                         if witnessed_at is None:
                             witnessed_at = time.monotonic()
+                if (diagnostic_dir is not None and monitor_socket is not None
+                        and initial_cd_key_at is not None):
+                    for seconds in (90, 180):
+                        if (seconds not in captured_times and
+                                time.monotonic() - initial_cd_key_at >= seconds):
+                            captured_times.add(seconds)
+                            screenshot = diagnostic_dir / f"windows-dvd-{seconds}s.ppm"
+                            try:
+                                digest = capture_vm_screen(monitor_socket, screenshot)
+                                print(f"GASLUX_VM_READONLY_SCREEN_{seconds}S_SHA256={digest}",
+                                      flush=True)
+                            except LabError as exc:
+                                print(f"GASLUX_VM_SCREEN_DIAGNOSTIC_FAILED: {exc}",
+                                      file=sys.stderr, flush=True)
                 rc = proc.poll()
                 if rc is not None:
                     if witnessed_at is not None and rc == 0:
