@@ -25,10 +25,9 @@ class EvidenceError(ValueError):
 def verify(data: bytes) -> None:
     if not data or len(data) > MAX_BYTES or b"\x00" in data:
         raise EvidenceError("serial transcript missing, oversized or binary")
-    # Normalize terminal line endings but do not remove/ignore any content.
-    normalized = data.replace(b"\r\n", b"\n")
-    if b"\r" in normalized:
-        raise EvidenceError("unexpected bare carriage return")
+    # Real OVMF/systemd serial includes CRLF and standalone CR cursor returns.
+    # Treat both as line separators, never concatenate or drop evidence lines.
+    normalized = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     if FAIL_LINE.search(normalized):
         raise EvidenceError("installed guest explicitly reported failure")
     roots = list(ROOT_LINE.finditer(normalized))
