@@ -30,7 +30,6 @@ from gaslux_q4os_vm_target_plan import (  # noqa: E402
     verify_signed_plan_against_disk,
 )
 
-
 DOMAIN = b"GASLUX-Q4OS-VM-READONLY-TARGET-V1\n"
 
 
