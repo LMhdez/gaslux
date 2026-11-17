@@ -10,6 +10,8 @@ TOOLS = Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
 
 from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
+    _CALAMARES_DESKTOP_NEXT,
+    _CALAMARES_DESKTOP_SELECTED_WINDOW,
     _CALAMARES_KEYBOARD_NEXT,
     _CALAMARES_KEYBOARD_WINDOW,
     _CALAMARES_LOCATION_NEXT,
@@ -24,6 +26,7 @@ from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     _WELCOME_BOX,
     verified_after_close,
     verified_centre_changed,
+    verified_native_calamares_desktop_selected,
     verified_native_calamares_keyboard,
     verified_native_calamares_location,
     verified_native_calamares_software_unselected,
@@ -216,6 +219,31 @@ def test_untrusted_software_screen_never_authorizes_selection(tmp_path):
         check=False,
         text=True,
         capture_output=True,
+    )
+    assert result.returncode == 1
+    assert "REFUSED" in result.stderr
+
+
+def test_selected_q4os_desktop_screen_from_two_official_qemu_runs():
+    assert _CALAMARES_DESKTOP_SELECTED_WINDOW == (
+        (128, 118, 1152, 667),
+        "4aa94d654bb23e5d0bf33af141112e4e086766f0484063dac7310a62f26ead70",
+    )
+    assert _CALAMARES_DESKTOP_NEXT == (
+        (961, 626, 1044, 663),
+        "2c31f373af722d9d51f946a8179a190e19c2c9e3fa2a786aa6e98efed8b65d6b",
+    )
+
+
+def test_unknown_desktop_selection_image_must_refuse_next(tmp_path):
+    image = tmp_path / "fake-desktop-selected.png"
+    Image.new("RGB", (1280, 800), "black").save(image)
+    assert not verified_native_calamares_desktop_selected(image)
+    result = subprocess.run(
+        [sys.executable, str(GATE), "calamares-desktop-selected", str(image)],
+        check=False,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 1
     assert "REFUSED" in result.stderr

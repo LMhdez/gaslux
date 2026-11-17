@@ -260,3 +260,39 @@ def test_disposable_gpt_is_reaudited_before_qemu_guest_boot():
     assert "GASLUX_Q4OS_VM_GPT_INSTALL_AUTHORIZED=NO" in source
     assert "gpt-audit.txt" in source
     assert "-drive file=/dev/" not in source
+
+
+def test_software_next_to_partitions_is_sha_gated_and_non_mutating():
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'advance_software="${GASLUX_Q4OS_ADVANCE_SOFTWARE:-no}"' in source
+    assert "Software Next requires SHA-verified Q4OS Desktop selection" in source
+    expected = 'python3 "$visual_gate" calamares-desktop-selected "$work/vnc-software-selected.png"'
+    assert expected in source
+    assert "vnc-partitions-page.png" in source
+    assert '"$q4os_desktop_next_clicked" -eq 1 && "$calamares_partitions_frame" -eq 1' in source
+    assert "NOT PERFORMED: any partition selection or native Calamares job." in source
+    assert "mkfs.ext4" not in source
+    assert "calamares -d" not in source
+
+
+def test_refuse_software_next_without_q4os_desktop_selection(tmp_path):
+    iso = tmp_path / "fake.iso"
+    iso.write_bytes(b"not Q4OS")
+    env = os.environ.copy()
+    env["GITHUB_ACTIONS"] = "true"
+    env["GASLUX_Q4OS_GRAPHICS_LAB_ONLY"] = "1"
+    env["GASLUX_Q4OS_LAUNCH_INSTALLER"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_WELCOME"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_LOCATION"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_KEYBOARD"] = "yes"
+    env["GASLUX_Q4OS_SELECT_SOFTWARE"] = "no"
+    env["GASLUX_Q4OS_ADVANCE_SOFTWARE"] = "yes"
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "q4os", str(iso), "0" * 64],
+        env=env,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode != 0
+    assert "Software Next requires SHA-verified Q4OS Desktop selection" in result.stderr

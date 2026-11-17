@@ -78,6 +78,17 @@ _CALAMARES_SOFTWARE_PROFILE = (
     (327, 155, 500, 249),
     "2832aaeac6d7d6c3f008071a6fe7261d327efeeeee2c38a33aeb960749fd674e",
 )
+# Q4OS Desktop selected, native Calamares Software. Screenshots visually
+# checked from separate official QEMU runs #44148940688/#14357204402 and
+# #44149051278/#14357149677. Only ONE Next to observe Partitions is allowed.
+_CALAMARES_DESKTOP_SELECTED_WINDOW = (
+    (128, 118, 1152, 667),
+    "4aa94d654bb23e5d0bf33af141112e4e086766f0484063dac7310a62f26ead70",
+)
+_CALAMARES_DESKTOP_NEXT = (
+    (961, 626, 1044, 663),
+    "2c31f373af722d9d51f946a8179a190e19c2c9e3fa2a786aa6e98efed8b65d6b",
+)
 
 
 def _open_verified_screen(path: Path) -> Image.Image | None:
@@ -163,6 +174,18 @@ def verified_native_calamares_software_unselected(path: Path) -> bool:
     )
 
 
+def verified_native_calamares_desktop_selected(path: Path) -> bool:
+    """Allow Software -> Partitions only on a previously pinned Q4OS Desktop view."""
+    screen = _open_verified_screen(path)
+    if screen is None:
+        return False
+    return (
+        _roi_sha(screen, _CALAMARES_DESKTOP_SELECTED_WINDOW[0])
+        == _CALAMARES_DESKTOP_SELECTED_WINDOW[1]
+        and _roi_sha(screen, _CALAMARES_DESKTOP_NEXT[0]) == _CALAMARES_DESKTOP_NEXT[1]
+    )
+
+
 def verified_centre_changed(before: Path, after: Path) -> bool:
     """Taskbar-clock updates alone must never satisfy a GUI transition."""
     previous = _open_verified_screen(before)
@@ -189,6 +212,8 @@ def main() -> int:
         passed = verified_native_calamares_keyboard(Path(sys.argv[2]))
     elif mode == "calamares-software-unselected" and len(sys.argv) == 3:
         passed = verified_native_calamares_software_unselected(Path(sys.argv[2]))
+    elif mode == "calamares-desktop-selected" and len(sys.argv) == 3:
+        passed = verified_native_calamares_desktop_selected(Path(sys.argv[2]))
     elif mode == "changed-centre" and len(sys.argv) == 4:
         passed = verified_centre_changed(Path(sys.argv[2]), Path(sys.argv[3]))
     else:
