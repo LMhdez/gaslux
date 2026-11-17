@@ -329,15 +329,17 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
 
 
 BOOT_FROM_CD_PROMPT = b"Press any key to boot from CD or DVD"
+WINDOWS11_DVD_BOOT_START = b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM'
 
 
-def send_first_iso_boot_key(monitor_path: Path) -> None:
+def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
     """Exactly one QEMU HMP Enter keystroke, to boot the official ISO initially.
 
     Never send subsequent keys: Windows Setup must reboot autonomously from
     the installed disk. The local Unix HMP socket belongs to the fresh
     0700-permission GitHub-hosted VM temporary directory, never the network.
     """
+    require(hold_ms in (300, 6000), "unapproved firmware boot-key duration")
     require(monitor_path.is_absolute() and monitor_path.is_socket() and
             not monitor_path.is_symlink() and
             monitor_path.parent.name.startswith("gaslux-win-x64-") and
@@ -351,7 +353,7 @@ def send_first_iso_boot_key(monitor_path: Path) -> None:
             banner = monitor.recv(8192)
             require(b"QEMU" in banner or b"(qemu)" in banner,
                     "unexpected guest monitor protocol banner")
-            monitor.sendall(b"sendkey ret 300\n")
+            monitor.sendall(f"sendkey ret {hold_ms}\n".encode("ascii"))
             response = monitor.recv(8192)
             require(b"unknown command" not in response.lower() and
                     b"error:" not in response.lower(),
@@ -387,6 +389,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     started = time.monotonic()
     witnessed_at: float | None = None
     initial_cd_key_sent = False
+    win11_dvd_started_at: float | None = None
     with (transcript.parent / "qemu-stderr.log").open("xb") as err:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=err)
         try:
@@ -398,12 +401,24 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                         lines = {
                             line.strip() for line in serial_data.splitlines()
                         }
-                    if (monitor_socket is not None and not initial_cd_key_sent and
-                            BOOT_FROM_CD_PROMPT in serial_data):
-                        send_first_iso_boot_key(monitor_socket)
-                        initial_cd_key_sent = True
-                        print("GASLUX_VM_INITIAL_OFFICIAL_ISO_BOOT_KEY_SENT=1",
-                              flush=True)
+                    if monitor_socket is not None and not initial_cd_key_sent:
+                        if BOOT_FROM_CD_PROMPT in serial_data:
+                            send_first_iso_boot_key(monitor_socket)
+                            initial_cd_key_sent = True
+                            print("GASLUX_VM_INITIAL_OFFICIAL_ISO_PROMPT_KEY_SENT=1",
+                                  flush=True)
+                        elif (profile_key == "win11_26h2_en_us_x64" and
+                              WINDOWS11_DVD_BOOT_START in serial_data):
+                            if win11_dvd_started_at is None:
+                                win11_dvd_started_at = time.monotonic()
+                            # Genuine official Windows 11 ISO emitted firmware
+                            # DVD startup, but not a visible serial prompt.
+                            # Hold ONE Enter through its VGA-only prompt.
+                            if time.monotonic() - win11_dvd_started_at >= 1:
+                                send_first_iso_boot_key(monitor_socket, hold_ms=6000)
+                                initial_cd_key_sent = True
+                                print("GASLUX_VM_INITIAL_OFFICIAL_WIN11_DVD_KEY_SENT=1",
+                                      flush=True)
                     if any(line.startswith(FAILURE.encode()) for line in lines):
                         return False, "installed Windows explicitly rejected firstboot audit"
                     if required.issubset(lines) and any(
@@ -420,7 +435,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     return False, "QEMU exited before installed Windows first-logon witness"
                 if (monitor_socket is not None and not initial_cd_key_sent and
                         time.monotonic() - started > 300):
-                    return False, "official ISO did not reach UEFI boot prompt"
+                    return False, "official ISO did not reach UEFI DVD boot or serial prompt"
                 if witnessed_at is not None and (
                     time.monotonic() - witnessed_at > 600
                 ):
