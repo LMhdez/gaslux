@@ -84,16 +84,29 @@ log="$(mktemp -p /run -t gaslux-native-distinst.XXXXXX)"
 # The actual native System76 installer performs extraction, target configuration
 # and systemd-boot. No --test, no --new-table or --modify-boot, no host disk.
 printf 'GASLUX_POP_NATIVE_INSTALL_DISTINST_STARTED=1\n' > /dev/ttyS0
-if ! timeout --kill-after=15s 1500s /usr/bin/distinst \
+# The full native run is longer than the partition-stage check. The
+# authenticated disposable guest forwards bounded diagnostic tails every
+# 40 seconds; never expose guest logs as installation success evidence.
+timeout --kill-after=15s 1500s /usr/bin/distinst \
   --no-efi-vars \
   --squashfs "$squashfs" --remove "$remove" \
   --hostname gaslux-pop-installed --keyboard us --lang en_US.UTF-8 \
   --block "$disk" \
   --use "$disk:1:reuse:mount=/boot/efi" \
   --use "$disk:2:ext4:mount=/" \
-  > "$log" 2>&1; then
+  > "$log" 2>&1 &
+native_pid="$!"
+while kill -0 "$native_pid" >/dev/null 2>&1; do
+  sleep 40
+  printf 'GASLUX_POP_NATIVE_INSTALL_DIAGNOSTIC_TAIL_BEGIN\n' > /dev/ttyS0
+  tail -n 6 "$log" | cut -c1-220 > /dev/ttyS0 || true
+  printf 'GASLUX_POP_NATIVE_INSTALL_DIAGNOSTIC_TAIL_END\n' > /dev/ttyS0
+done
+native_rc=0
+wait "$native_pid" || native_rc="$?"
+if [[ "$native_rc" != 0 ]]; then
   tail -n 55 "$log" > /dev/ttyS0
-  fail 'System76 native full installation failed'
+  fail "System76 native full installation failed (exit=$native_rc)"
 fi
 grep -Fq 'install was successful' "$log" ||
   fail 'native System76 success message missing'

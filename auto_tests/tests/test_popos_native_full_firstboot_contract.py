@@ -72,6 +72,9 @@ def test_real_distinst_not_test_mode_and_only_linux_owned_disk():
     assert "GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1" in source
     assert "GASLUX_POP_NATIVE_INSTALL_PREFLIGHT_OK=1" in source
     assert "GASLUX_POP_NATIVE_INSTALL_DISTINST_STARTED=1" in source
+    assert "GASLUX_POP_NATIVE_INSTALL_DIAGNOSTIC_TAIL_BEGIN" in source
+    assert "tail -n 6" in source
+    assert 'wait "$native_pid" || native_rc="$?"' in source
     invocation = source.split("1500s /usr/bin/distinst", maxsplit=1)[1].split(
         '> "$log"', maxsplit=1
     )[0]
