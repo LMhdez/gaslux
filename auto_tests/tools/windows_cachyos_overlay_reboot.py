@@ -26,6 +26,14 @@ PROOF = (
     "GASLUX_COW_WIN10_REBOOT_WINRE=1",
     "GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1",
 )
+BASELINE_PROOF = (
+    "GASLUX_COW_WIN10_REBOOT_LIVE=1",
+    "GASLUX_COW_WIN10_REBOOT_BUILD=19045",
+    "GASLUX_COW_WIN10_REBOOT_ESP=1",
+    "GASLUX_COW_WIN10_REBOOT_BCD=1",
+    "GASLUX_COW_WIN10_REBOOT_WINRE=1",
+    "GASLUX_COW_WIN10_ROLLBACK_FOUR_GPT=1",
+)
 
 class OverlayBootError(ValueError):
     pass
@@ -47,12 +55,17 @@ try {
   if ($os.ProductType -ne 1 -or -not $os.BuildNumber.StartsWith('19045')) { throw 'unexpected Windows client build' }
   $disk = Get-Disk -Number 0
   $parts = @(Get-Partition -DiskNumber 0)
-  if ($disk.PartitionStyle -ne 'GPT' -or $parts.Count -ne 5) { throw 'GPT partition count not five' }
+  if ($disk.PartitionStyle -ne 'GPT' -or $parts.Count -notin @(4,5)) { throw 'GPT partition count not four or five' }
   $esp = @($parts | Where-Object { $_.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' })
   $recovery = @($parts | Where-Object { $_.GptType -eq '{de94bba4-06d1-4d40-a16a-bfd50179d6ac}' })
   $linux = @($parts | Where-Object { $_.GptType -eq '{0fc63daf-8483-4772-8e79-3d69d8477de4}' })
-  if ($esp.Count -ne 1 -or $recovery.Count -ne 1 -or $linux.Count -ne 1) { throw 'ESP, Recovery or Linux root missing' }
-  if ($linux[0].PartitionNumber -ne 5 -or $linux[0].Size -ne 24GB) { throw 'Linux root geometry not 24 GiB' }
+  if ($esp.Count -ne 1 -or $recovery.Count -ne 1) { throw 'ESP or Recovery partition missing' }
+  if ($parts.Count -eq 5) {
+    if ($linux.Count -ne 1) { throw 'fifth Linux root missing' }
+    if ($linux[0].PartitionNumber -ne 5 -or $linux[0].Size -ne 24GB) { throw 'Linux root geometry not 24 GiB' }
+  } elseif ($parts.Count -eq 4) {
+    if ($linux.Count -ne 0) { throw 'four-partition Windows baseline contains foreign Linux root' }
+  } else { throw 'unexpected GPT partition count' }
   $windows = Get-Partition -DriveLetter C
   if ($windows.DiskNumber -ne 0 -or $windows.PartitionNumber -ne 3 -or
       $recovery[0].PartitionNumber -ne 4 -or
@@ -66,14 +79,26 @@ try {
   if ($LASTEXITCODE -ne 0 -or ($re -join [Environment]::NewLine) -notmatch 'Windows RE status:\s+Enabled') {
     throw 'WinRE is missing or disabled'
   }
-  foreach ($m in @(
-    'GASLUX_COW_WIN10_REBOOT_LIVE=1',
-    'GASLUX_COW_WIN10_REBOOT_BUILD=19045',
-    'GASLUX_COW_WIN10_REBOOT_ESP=1',
-    'GASLUX_COW_WIN10_REBOOT_BCD=1',
-    'GASLUX_COW_WIN10_REBOOT_WINRE=1',
-    'GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1'
-  )) { $serial.WriteLine($m); Start-Sleep -Milliseconds 150 }
+  if ($parts.Count -eq 5) {
+    $markers = @(
+      'GASLUX_COW_WIN10_REBOOT_LIVE=1',
+      'GASLUX_COW_WIN10_REBOOT_BUILD=19045',
+      'GASLUX_COW_WIN10_REBOOT_ESP=1',
+      'GASLUX_COW_WIN10_REBOOT_BCD=1',
+      'GASLUX_COW_WIN10_REBOOT_WINRE=1',
+      'GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1'
+    )
+  } else {
+    $markers = @(
+      'GASLUX_COW_WIN10_REBOOT_LIVE=1',
+      'GASLUX_COW_WIN10_REBOOT_BUILD=19045',
+      'GASLUX_COW_WIN10_REBOOT_ESP=1',
+      'GASLUX_COW_WIN10_REBOOT_BCD=1',
+      'GASLUX_COW_WIN10_REBOOT_WINRE=1',
+      'GASLUX_COW_WIN10_ROLLBACK_FOUR_GPT=1'
+    )
+  }
+  foreach ($m in $markers) { $serial.WriteLine($m); Start-Sleep -Milliseconds 150 }
 } catch {
   if ($serial -and $serial.IsOpen) { $serial.WriteLine('GASLUX_COW_WIN10_REBOOT_FAIL=1') }
 } finally {
@@ -105,6 +130,26 @@ def audit_complete_third_serial(path: Path) -> str:
     lines = data.splitlines()
     require(all(lines.count(line.encode("ascii")) == 1 for line in PROOF),
             "missing, duplicated or coalesced third Windows audit witnesses")
+    return hashlib.sha256(data).hexdigest()
+
+
+def audit_complete_four_partition_serial(path: Path) -> str:
+    """Accept only one clean Windows boot with the original four GPT partitions."""
+    require(path.is_file() and not path.is_symlink()
+            and path.stat().st_nlink == 1
+            and 0 < path.stat().st_size <= 512_000,
+            "missing, linked or oversized restored Windows serial")
+    data = path.read_bytes()
+    require(len(data) <= 512_000
+            and len(BOOT_MANAGER.findall(data)) == 1
+            and b'UEFI QEMU DVD-ROM' not in data,
+            "restored guest did not perform exactly one disk-only Windows boot")
+    require(b'GASLUX_COW_WIN10_REBOOT_FAIL=1' not in data
+            and b'GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1' not in data,
+            "restored Windows baseline contains a failure or fifth-partition witness")
+    lines = data.splitlines()
+    require(all(lines.count(line.encode("ascii")) == 1 for line in BASELINE_PROOF),
+            "missing, duplicated or coalesced four-partition Windows witnesses")
     return hashlib.sha256(data).hexdigest()
 
 def first_logon_task(script_hash: str) -> str:
