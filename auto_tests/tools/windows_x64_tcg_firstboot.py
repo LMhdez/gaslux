@@ -601,6 +601,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     started = time.monotonic()
     witnessed_at: float | None = None
     waiting_for_second_windows_audit = False
+    second_windows_boot_proof_offset: int | None = None
     acpi_requested_at: float | None = None
     acpi_powerdown_attempts = 0
     initial_cd_key_sent = False
@@ -617,6 +618,7 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     with transcript.open("rb") as source:
                         source.seek(max(0, transcript.stat().st_size - 400_000))
                         serial_data = source.read(400_000)
+                        serial_begin = source.tell() - len(serial_data)
                         lines = {
                             line.strip() for line in serial_data.splitlines()
                         }
@@ -652,6 +654,19 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             # but it invalidates the previous guest witness.
                             # Require the distinct hash-checked SYSTEM task
                             # to recheck Win11/ESP/BCD/WinRE on that next boot.
+                            matches = list(
+                                WINDOWS_BOOT_MANAGER_START.finditer(serial_data)
+                            )
+                            if not matches:
+                                return False, ("second Windows Boot Manager event "
+                                               "outside bounded serial evidence")
+                            # Authenticate the NEW guest audit only from bytes
+                            # emitted AFTER the second firmware boot event.
+                            # Old first-logon markers (or a task that ran early
+                            # on the first boot) are never reusable evidence.
+                            second_windows_boot_proof_offset = (
+                                serial_begin + matches[-1].end()
+                            )
                             waiting_for_second_windows_audit = True
                             witnessed_at = None
                             acpi_requested_at = None
@@ -679,19 +694,33 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     if any(line.startswith(FAILURE.encode()) for line in lines):
                         return False, "installed Windows explicitly rejected firstboot audit"
                     if waiting_for_second_windows_audit:
+                        if (second_windows_boot_proof_offset is None
+                                or transcript.stat().st_size
+                                < second_windows_boot_proof_offset):
+                            return False, "missing bounded second Windows audit offset"
+                        with transcript.open("rb") as second_serial:
+                            second_serial.seek(second_windows_boot_proof_offset)
+                            # Bounded to 400KiB; never allow old firstboot
+                            # tokens or an unbounded log to substitute proof.
+                            fresh = second_serial.read(400_001)
+                        if len(fresh) > 400_000:
+                            return False, "oversized second Windows audit evidence"
+                        fresh_lines = {
+                            line.strip() for line in fresh.splitlines()
+                        }
                         authenticated = (
                             b"GASLUX_WINDOWS_X64_WIN11_OOBE_REBOOT_AUDIT="
                             + profile_key.encode("ascii")
                         )
-                        if authenticated in lines:
+                        if authenticated in fresh_lines:
                             rechecked = (required - {
                                 f"{MARKER}={profile_key}".encode()
                             }) | {build_line}
-                            if not all(serial_data.count(token) >= 2
-                                       for token in rechecked):
-                                return False, ("Win11 OOBE restart marker lacked a "
-                                               "second full ESP/BCD/WinRE witness")
-                            if serial_data.count(authenticated) != 1:
+                            if not rechecked.issubset(fresh_lines):
+                                return False, ("Win11 OOBE second-boot marker lacked "
+                                               "fresh ESP/BCD/WinRE evidence")
+                            if sum(line == authenticated
+                                   for line in fresh.splitlines()) != 1:
                                 return False, "duplicate Win11 OOBE second native audit"
                             witnessed_at = time.monotonic()
                             waiting_for_second_windows_audit = False
