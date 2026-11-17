@@ -4,12 +4,6 @@ on:
     branches:
       - feature/windows-guest-recovery-proof
       - feature/windows-x64-uefi-dvd-visual-diagnostics
-    paths:
-      - .github/workflows/windows-guest-recovery-evidence.yml
-      - auto_tests/tools/verify_windows_guest_recovery.py
-      - auto_tests/test_windows_guest_recovery_proof.py
-      - auto_tests/app/scripts/windows-guest-recovery-evidence.ps1
-      - PowerShell.Tests/WindowsGuestRecoveryEvidence.Tests.ps1
   pull_request:
     branches:
       - feature/cachyos-real-iso-contract
