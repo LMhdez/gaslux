@@ -1,0 +1,65 @@
+name: Microsoft Windows 10/11 x64 ISO origin/readiness (no ISO download)
+
+on:
+  push:
+    branches:
+      - feature/windows-x64-tcg-winre-recovery-baseline
+    paths:
+      - .github/workflows/windows-x64-microsoft-origin.yml
+      - auto_tests/tools/windows_x64_iso_origin_probe.py
+      - auto_tests/test_windows_x64_iso_origin_probe.py
+      - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-iso-origin-negatives:
+    name: Reject counterfeit Microsoft links and false client boot claims
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Python tests, parser and fake CDN response cases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_iso_origin_probe.py
+          python3 -m unittest discover -s auto_tests -v -p 'test_windows_x64_iso_origin_probe.py'
+          echo 'HTTP origin and Content-Length only. NO official ISO bytes verified.' >> "$GITHUB_STEP_SUMMARY"
+
+  official-microsoft-origin-metadata:
+    name: Probe exact Microsoft HTTP origin for ${{ matrix.profile }} (HEAD only)
+    needs: offline-iso-origin-negatives
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [win10_22h2_en_us_x64, win11_26h2_en_us_x64]
+    env:
+      GASLUX_ISO_PROBE_CONSENT: I_ACCEPT_READ_ONLY_MICROSOFT_ORIGIN_PROBE
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Inspect origin and HTTP length only (do not download ISO)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          d="$GITHUB_WORKSPACE/windows-iso-origin-evidence"
+          mkdir -p "$d"
+          python3 auto_tests/tools/windows_x64_iso_origin_probe.py \
+            --profile "${{ matrix.profile }}" --report-dir "$d"
+          echo 'Origin inspection PASSED; NOT ISO integrity, Windows installed boot or recovery proof.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload non-sensitive HTTP status and origin hostname evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: win-iso-origin-${{ matrix.profile }}
+          path: windows-iso-origin-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 7
