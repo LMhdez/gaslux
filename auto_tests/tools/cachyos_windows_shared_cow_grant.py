@@ -23,7 +23,7 @@ from cachyos_windows_shared_archiso_handoff import (
 from windows_cachyos_cow_checkpoint import (
     CHECKPOINT_DIR, OVERLAY_NAME, sha256_file,
 )
-from cachyos_windows_overlay_reboot import (
+from windows_cachyos_overlay_reboot import (
     audit_complete_third_serial, gpt_windows,
 )
 from windows_cachyos_qcow2_gpt_readonly import (
