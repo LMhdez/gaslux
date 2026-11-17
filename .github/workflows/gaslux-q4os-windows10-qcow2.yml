@@ -16,6 +16,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: gaslux-q4os-win10-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows10-uefi-gpt:
     runs-on: ubuntu-24.04
