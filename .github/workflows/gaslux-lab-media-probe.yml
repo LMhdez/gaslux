@@ -13,6 +13,7 @@ on:
       - feature/q4os-native-hook-source-audit
       - feature/q4os-owned-hook-guest-lab
       - feature/q4os-calamares-transaction-profile-lab
+      - feature/q4os-calamares-gui-launch-lab
   pull_request:
     paths:
       - 'assets/live/gaslux_*probe.py'
