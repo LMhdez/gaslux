@@ -10,6 +10,7 @@ on:
       - fix/windows-eval-oobe-international-pass
       - test/windows-floppy-proven-setup-firstlogon-fix
       - test/windows10-proven-floppy-cachyos-readonly-gate
+      - test/windows10-gpt-primary-backup-readonly-evidence
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -19,6 +20,8 @@ on:
       - auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
       - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
       - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
   workflow_dispatch:
 
 permissions:
@@ -43,6 +46,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_noprompt_one_shot.py \
@@ -52,7 +56,8 @@ jobs:
               test_windows_x64_tcg_unattend_contract.py \
               test_windows_x64_winre_baseline_contract.py \
               test_windows_x64_qemu_host_gate.py \
-              test_windows_cachyos_readonly_baseline_gate.py; do
+              test_windows_cachyos_readonly_baseline_gate.py \
+              test_windows_cachyos_qcow2_gpt_readonly.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
       - name: Prove physical-host-safe swtpm listener restart with same private NV directory
@@ -134,6 +139,36 @@ jobs:
             --initial-dvd-serial "$PROOF/$PROFILE-initial-dvd-serial.log" \
             --initial-dvd-serial-sha256 "$PROOF/$PROFILE-initial-dvd-serial.sha256"
           echo 'PASS: same-run Windows 10 candidate document consistency only. No independent provenance authentication, Windows+Linux same-disk install or recovery; no storage write permitted.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify offline GPT primary/backup candidate document (no Linux disk writes)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PROFILE="${{ matrix.profile }}"
+          PROOF="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 - "$PROOF" "$PROFILE" <<'PY'
+          import hashlib, json, pathlib, sys
+          folder, profile = pathlib.Path(sys.argv[1]), sys.argv[2]
+          disk_layout = folder / (profile + '-gpt-readonly-candidate.json')
+          report_path = folder / (profile + '-result.json')
+          assert disk_layout.is_file() and not disk_layout.is_symlink()
+          assert 100 < disk_layout.stat().st_size < 32768
+          report = json.loads(report_path.read_text())
+          baseline = json.loads(disk_layout.read_text())
+          assert report['windowsClientBootVerified'] is True
+          assert report['readOnlyGptGeometryCandidate'] is True
+          assert report['readOnlyGptGeometryEvidenceSha256'] == hashlib.sha256(
+              disk_layout.read_bytes()).hexdigest()
+          assert baseline['candidateWindowsGptPrimaryAndBackupConsistent'] is True
+          assert len(baseline['windowsPartitions']) == 4
+          assert baseline['unallocatedAfterWindowsBytes'] >= 40 * 1024**3
+          for status in ('releaseEligible', 'storageWritesAuthorized',
+                         'windowsBootVerified', 'sameDiskDualBootVerified',
+                         'windowsBcdWinreRestorationVerified'):
+              assert baseline[status] is False
+          print('PASS: offline QCOW2 GPT primary/backup CRC and partition geometry')
+          print('NO Linux install, disk writes, dual boot or rollback acceptance')
+          PY
+          echo 'PASS: read-only primary+backup GPT candidate layout; no Windows+CachyOS authorization' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
