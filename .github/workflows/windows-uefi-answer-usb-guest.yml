@@ -1,0 +1,158 @@
+name: UEFI guest can enumerate Windows answer USB (NO Windows)
+
+on:
+  push:
+    branches:
+      - test/windows-uefi-usb-answer-guest-visibility
+    paths:
+      - .github/workflows/windows-uefi-answer-usb-guest.yml
+      - auto_tests/tools/windows_uefi_answer_usb_guest.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uefi-readonly-answer-usb:
+    name: Real disposable UEFI GRUB discovers Windows answer USB - ${{ matrix.profile }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [win10_22h2_en_us_x64, win11_26h2_en_us_x64]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require GitHub-hosted KVM, OVMF, GRUB and FAT32 tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 ovmf grub-common grub-efi-amd64-bin grub-pc-bin \
+            xorriso mtools dosfstools
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          python3 -m py_compile auto_tests/tools/windows_uefi_answer_usb_guest.py
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+      - name: Generate real Windows client answer files, read back FAT, boot actual UEFI USB
+        shell: bash
+        env:
+          LAB_PROFILE: ${{ matrix.profile }}
+          PYTHONUNBUFFERED: '1'
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          dir="$(mktemp -d -p "$RUNNER_TEMP" gaslux-win-x64-XXXXXXXX)"
+          chmod 700 "$dir"
+          qemu_pid=
+          cleanup() {
+            if [[ -n "$qemu_pid" ]]; then
+              kill "$qemu_pid" 2>/dev/null || true
+              wait "$qemu_pid" 2>/dev/null || true
+            fi
+            rm -rf -- "$dir"
+          }
+          trap cleanup EXIT
+          mkdir -p "$dir/iso-tree/boot/grub"
+          cat > "$dir/iso-tree/boot/grub/grub.cfg" <<'GRUB'
+          serial --unit=0 --speed=115200
+          terminal_output serial
+          insmod usb
+          insmod usbms
+          insmod fat
+          insmod search_label
+          echo GASLUX_EFI_ANSWER_USB_SCAN_STARTED=1
+          set found=no
+          for retry in 1 2 3 4 5 6 7 8 9 10; do
+            if search --no-floppy --label GASLUXCI --set=answer; then
+              set found=yes
+              break
+            fi
+            sleep 1
+          done
+          if [ "$found" = "yes" ]; then
+            if test -f "(${answer})/Autounattend.xml" && test -f "(${answer})/GASLUX.PS1"; then
+              echo GASLUX_EFI_ANSWER_USB_FILES_VISIBLE=1
+            else
+              echo GASLUX_EFI_ANSWER_USB_FILES_MISSING=1
+            fi
+          else
+            echo GASLUX_EFI_ANSWER_USB_FILES_MISSING=1
+          fi
+          sleep 15
+          GRUB
+          iso="$dir/only-disposable-grub-uefi.iso"
+          grub-mkrescue -o "$iso" "$dir/iso-tree" > "$dir/grub-build.log" 2>&1 || {
+            echo 'UEFI GRUB fixture creation failed'
+            tail -n 10 "$dir/grub-build.log"
+            exit 1
+          }
+          test -s "$iso" && test ! -L "$iso"
+          python3 - "$dir" "$LAB_PROFILE" <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "auto_tests/tools")
+          from windows_x64_tcg_firstboot import generate_unattend, witness_powershell, validate_oobe_answer_pass
+          d = Path(sys.argv[1])
+          profile = sys.argv[2]
+          build = {"win10_22h2_en_us_x64":"19045", "win11_26h2_en_us_x64":"26300"}[profile]
+          xml = generate_unattend(profile, build, removable_answer=True)
+          validate_oobe_answer_pass(xml)
+          (d / "Autounattend.xml").write_bytes(xml)
+          (d / "GASLUX.PS1").write_bytes((witness_powershell(profile, build) + "\n").encode("utf-8"))
+          PY
+          answer="$dir/only-disposable-answer-usb.img"
+          truncate -s 64M "$answer"
+          mkfs.vfat -F 32 -n GASLUXCI "$answer" > /dev/null
+          mcopy -i "$answer" "$dir/Autounattend.xml" ::/Autounattend.xml
+          mcopy -i "$answer" "$dir/GASLUX.PS1" ::/GASLUX.PS1
+          mtype -i "$answer" ::/Autounattend.xml | cmp -s - "$dir/Autounattend.xml"
+          mtype -i "$answer" ::/GASLUX.PS1 | cmp -s - "$dir/GASLUX.PS1"
+          echo 'GASLUX_EFI_ANSWER_USB_HOST_READBACK_VERIFIED=1'
+          if [[ -f /usr/share/OVMF/OVMF_CODE_4M.fd && -f /usr/share/OVMF/OVMF_VARS_4M.fd ]]; then
+            code=/usr/share/OVMF/OVMF_CODE_4M.fd
+            vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          else
+            code=/usr/share/OVMF/OVMF_CODE.fd
+            vars=/usr/share/OVMF/OVMF_VARS.fd
+          fi
+          test -f "$code" && test -f "$vars"
+          cp "$vars" "$dir/ovmf-vars.fd"
+          chmod 600 "$dir/ovmf-vars.fd"
+          serial="$dir/only-disposable-answer-guest-serial.log"
+          qemu-system-x86_64 \
+            -machine q35,accel=kvm,smm=on -cpu host -smp 2 -m 4096 \
+            -display none -vga std -net none -no-reboot \
+            -drive "if=pflash,format=raw,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,file=$dir/ovmf-vars.fd" \
+            -device qemu-xhci,id=lab_usb -device usb-kbd,bus=lab_usb.0 \
+            -device ich9-ahci,id=lab_sata \
+            -drive "if=none,id=lab_dvd,media=cdrom,readonly=on,format=raw,file=$iso" \
+            -device ide-cd,drive=lab_dvd,bus=lab_sata.1 \
+            -drive "if=none,id=lab_unattend,format=raw,readonly=on,file=$answer" \
+            -device usb-storage,drive=lab_unattend,bus=lab_usb.0 \
+            -boot order=d -serial "file:$serial" -monitor none \
+            > "$dir/qemu.stdout" 2> "$dir/qemu.stderr" &
+          qemu_pid=$!
+          timeout --kill-after=5s 145s python3 \
+            auto_tests/tools/windows_uefi_answer_usb_guest.py "$serial" || {
+              echo 'UEFI guest did not confirm FAT32 answer files'
+              if [[ -f "$serial" ]]; then
+                grep -aoE 'GASLUX_EFI_ANSWER_USB_[A-Z_]+=1' "$serial" | sort -u || true
+              fi
+              exit 1
+            }
+          echo 'PASS: isolated UEFI GRUB guest read Windows answer USB directory on QEMU xHCI. No Windows PE execution or Windows firstboot.' >> "$GITHUB_STEP_SUMMARY"
