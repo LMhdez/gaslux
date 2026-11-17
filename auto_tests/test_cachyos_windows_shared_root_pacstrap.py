@@ -38,6 +38,7 @@ def fixture():
         })
     return front, back, {
         "diskGuidSha256": hashlib.sha256(front[512+56:512+72]).hexdigest(),
+        "gptWindowsSha256": hashlib.sha256(data[:4*128]).hexdigest(),
         "partitions": parts,
     }
 
@@ -66,6 +67,13 @@ class SharedRootOnlySafety(unittest.TestCase):
         plan["partitions"][4]["uniqueGuid"] = "10000000-0000-4000-8000-000000000001"
         with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
                                     "GPT entry disagrees"):
+            check(front, back, plan)
+
+    def test_signed_windows_partition_record_bytes_are_binding(self):
+        front, back, plan = fixture()
+        plan["gptWindowsSha256"] = "a" * 64
+        with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
+                                    "Windows GPT entry bytes differ"):
             check(front, back, plan)
 
     def test_missing_backup_crc_or_modified_primary_rejected(self):
