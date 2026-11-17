@@ -73,8 +73,8 @@ class DerivedIsoUsbABTest(unittest.TestCase):
         self.assertIn('report["windowsClientBootVerified"] = ok', source)
         self.assertIn('if not ok:', source)
         self.assertIn('raise LabError(diagnostic)', source)
-        self.assertIn('report["dualBootVerified"] = False', source)
-        self.assertIn('report["winReAndBcdRecovered"] = False', source)
+        self.assertIn('"dualBootVerified": False', source)
+        self.assertIn('"winReAndBcdRecovered": False', source)
         self.assertNotIn('report["windowsClientBootVerified"] = True', source)
 
 
