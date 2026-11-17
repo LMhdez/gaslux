@@ -13,11 +13,13 @@ on:
       - fix/windows-panther-guestfs-kernel-appliance
       - test/windows-panther-real-ntfs-readonly-fixture
       - diag/windows-stage1-timeout-offline-panther
+      - fix/windows-stage1-hmp-ack-and-timeout-diagnostics
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_two_stage_boot.py
       - auto_tests/test_windows_x64_stage1_stalled_panther.py
+      - auto_tests/test_windows_x64_iso_boot_key.py
       - auto_tests/test_windows_x64_swtpm_reconnect.py
       - auto_tests/tools/windows_x64_offline_panther_probe.py
       - auto_tests/test_windows_x64_offline_panther_probe.py
@@ -56,6 +58,7 @@ jobs:
           for name in \
               test_windows_x64_two_stage_boot.py \
               test_windows_x64_stage1_stalled_panther.py \
+              test_windows_x64_iso_boot_key.py \
               test_windows_x64_offline_panther_probe.py \
               test_windows_x64_noprompt_one_shot.py \
               test_windows_x64_derived_noprompt.py \
