@@ -51,13 +51,18 @@ jobs:
           foreach ($profile in @('win10_22h2_en_us_x64', 'win11_26h2_en_us_x64')) {
             $build = if ($profile.StartsWith('win10')) { '19045' } else { '26300' }
             $source = "auto_tests/powershell/usb-firstlogon-$profile.txt"
+            $owned = Join-Path $env:RUNNER_TEMP ("gaslux-fat32-" + $profile)
+            $null = New-Item -ItemType Directory -Path $owned -Force
+            $scriptFile = Join-Path $owned 'GASLUX.PS1'
+            python -c "import sys;from pathlib import Path;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import witness_powershell;Path(sys.argv[3]).write_text(witness_powershell(sys.argv[1],sys.argv[2])+chr(10),encoding='utf-8')" $profile $build $scriptFile
+            if ($LASTEXITCODE -ne 0) { throw 'Real synthetic guest script bytes could not be generated' }
             python -c "import sys;sys.path.insert(0,'auto_tests/tools');from windows_x64_tcg_firstboot import usb_firstlogon_command;print(usb_firstlogon_command(sys.argv[1],sys.argv[2]))" $profile $build |
               Out-File -LiteralPath $source -Encoding ascii
             if ($LASTEXITCODE -ne 0) { throw 'Python generator of USB FirstLogon command failed' }
-            & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File auto_tests/powershell/test_windows_usb_firstlogon_command.ps1 -CommandFile $source
+            & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File auto_tests/powershell/test_windows_usb_firstlogon_command.ps1 -CommandFile $source -ScriptFile $scriptFile
             if ($LASTEXITCODE -ne 0) { throw "Native Windows PS5.1 USB $profile command contract failed" }
-            & pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_usb_firstlogon_command.ps1 -CommandFile $source
+            & pwsh -NoProfile -NonInteractive -File auto_tests/powershell/test_windows_usb_firstlogon_command.ps1 -CommandFile $source -ScriptFile $scriptFile
             if ($LASTEXITCODE -ne 0) { throw "Native Windows PS7 USB $profile command contract failed" }
           }
-          'Native PS 5.1/7: only mocked volumes and hashes, no guest script or Windows disk read.' |
+          'Native PS5.1/7: mocked volume enumeration, real SHA256 on disposable hosted temp script; no witness execution or Windows guest.' |
             Out-File $env:GITHUB_STEP_SUMMARY -Append
