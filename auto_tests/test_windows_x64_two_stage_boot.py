@@ -337,6 +337,148 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertTrue(guest.killed)
         self.assertEqual(events, [socket, socket])
 
+
+    def test_win11_cow_guest_script_requires_hash_checked_one_time_reaudit(self):
+        script = VM.witness_powershell(
+            "win11_26h2_en_us_x64", "26300",
+            arm_win11_post_oobe_audit=True)
+        self.assertIn("Get-FileHash -LiteralPath $source -Algorithm SHA256", script)
+        self.assertIn("Get-FileHash -LiteralPath $saved -Algorithm SHA256", script)
+        self.assertIn("schtasks.exe /Create /F /SC ONSTART", script)
+        self.assertIn("schtasks.exe /Delete /F /TN $task", script)
+        self.assertIn("GASLUX_WINDOWS_X64_WIN11_OOBE_REBOOT_AUDIT", script)
+        self.assertIn("($phaseMarker + '=win11_26h2_en_us_x64')", script)
+        old = VM.witness_powershell("win11_26h2_en_us_x64", "26300")
+        self.assertNotIn("GasluxWin11OobeReauditOnce", old)
+        with self.assertRaisesRegex(VM.LabError, "restricted to Windows 11"):
+            VM.witness_powershell(
+                "win10_22h2_en_us_x64", "19045",
+                arm_win11_post_oobe_audit=True)
+
+    def test_win11_authentic_second_audit_after_one_oobe_reboot_and_clean_poweroff(self):
+        class Qemu:
+            stopped = False
+            def poll(self): return 0 if self.stopped else None
+            def kill(self): raise AssertionError("never force kill for accepted proof")
+            def wait(self, timeout): return 0
+        vm = Qemu()
+        boot = b'BdsDxe: starting Boot0003 "Windows Boot Manager"\n'
+        markers = [
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300",
+            b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+            b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+        ]
+        first = b"\n".join(markers + [
+            b"GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64",
+        ]) + b"\n"
+        second = b"\n".join(markers + [
+            b"GASLUX_WINDOWS_X64_WIN11_OOBE_REBOOT_AUDIT=win11_26h2_en_us_x64",
+        ]) + b"\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            serial = pathlib.Path(tmp) / "serial.log"
+            serial.write_bytes(boot + first)
+            sock = pathlib.Path(tmp) / "owned-sock"
+            calls = []
+            def powerdown(s):
+                calls.append(s)
+                if len(calls) == 1:
+                    with serial.open("ab") as f:
+                        f.write(boot + second)
+                else:
+                    vm.stopped = True
+            with patch.object(VM.subprocess, "Popen", return_value=vm), \
+                 patch.object(VM, "request_owned_windows_acpi_powerdown",
+                              side_effect=powerdown), \
+                 patch.object(VM.time, "sleep", return_value=None):
+                ok, why = VM.boot_vm(
+                    ["qemu-system-x86_64"], serial, 60,
+                    "win11_26h2_en_us_x64",
+                    reject_repeated_dvd_boot=True, acpi_powerdown_socket=sock,
+                    allow_authenticated_win11_oobe_reboot=True)
+            self.assertTrue(ok, why)
+            self.assertEqual(calls, [sock, sock])
+
+    def test_second_oobe_boot_without_authenticated_guest_audit_never_passes(self):
+        class Qemu:
+            stopped = False
+            def poll(self): return 0 if self.stopped else None
+            def kill(self): raise AssertionError("guest has already exited")
+            def wait(self, timeout): return 0
+        vm = Qemu()
+        boot = b'BdsDxe: starting Boot0003 "Windows Boot Manager"\n'
+        first = b"\n".join([
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300",
+            b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+            b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+            b"GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64",
+        ]) + b"\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            serial = pathlib.Path(tmp) / "serial.log"
+            serial.write_bytes(boot + first)
+            def reboot(_):
+                with serial.open("ab") as f:
+                    f.write(boot)
+                vm.stopped = True
+            with patch.object(VM.subprocess, "Popen", return_value=vm), \
+                 patch.object(VM, "request_owned_windows_acpi_powerdown",
+                              side_effect=reboot), \
+                 patch.object(VM.time, "sleep", return_value=None):
+                ok, why = VM.boot_vm(
+                    ["qemu-system-x86_64"], serial, 60,
+                    "win11_26h2_en_us_x64",
+                    reject_repeated_dvd_boot=True,
+                    acpi_powerdown_socket=pathlib.Path(tmp) / "sock",
+                    allow_authenticated_win11_oobe_reboot=True)
+            self.assertFalse(ok)
+            self.assertIn("before installed Windows", why)
+
+    def test_second_oobe_boot_cannot_reuse_first_audit_without_new_marker(self):
+        class Qemu:
+            stopped = False
+            def poll(self): return 0 if self.stopped else None
+            def kill(self): self.stopped = True
+            def wait(self, timeout): return 0
+        vm = Qemu()
+        boot = b'BdsDxe: starting Boot0003 "Windows Boot Manager"\n'
+        proof = b"\n".join([
+            b"GASLUX_WINDOWS_X64_BOOT_BUILD=26300",
+            b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
+            b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+            b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
+            b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
+            b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
+            b"GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win11_26h2_en_us_x64",
+        ]) + b"\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            serial = pathlib.Path(tmp) / "serial.log"
+            serial.write_bytes(boot + proof)
+            ticks = {"t": 0}
+            def add_reboot(_):
+                with serial.open("ab") as f:
+                    f.write(boot)
+            def advance(_): ticks["t"] += 16
+            with patch.object(VM.subprocess, "Popen", return_value=vm), \
+                 patch.object(VM, "request_owned_windows_acpi_powerdown",
+                              side_effect=add_reboot), \
+                 patch.object(VM.time, "monotonic",
+                              side_effect=lambda: ticks["t"]), \
+                 patch.object(VM.time, "sleep", side_effect=advance):
+                ok, why = VM.boot_vm(
+                    ["qemu-system-x86_64"], serial, 100,
+                    "win11_26h2_en_us_x64",
+                    reject_repeated_dvd_boot=True,
+                    acpi_powerdown_socket=pathlib.Path(tmp) / "sock",
+                    allow_authenticated_win11_oobe_reboot=True)
+            self.assertFalse(ok)
+            self.assertTrue(vm.stopped)
+            self.assertNotIn("clean", why)
+
     def test_duplicate_iso_device_fails_closed(self):
         with tempfile.TemporaryDirectory() as d:
             args = synthetic_args(d)

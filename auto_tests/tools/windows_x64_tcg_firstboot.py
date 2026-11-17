@@ -207,10 +207,14 @@ def derive_no_prompt_uefi_lab_iso(original: Path, derived: Path,
         return hashlib.file_digest(fd, "sha256").hexdigest()
 
 
-def witness_powershell(profile_key: str, build: str) -> str:
+def witness_powershell(profile_key: str, build: str, *,
+                       arm_win11_post_oobe_audit: bool = False) -> str:
+    require(not arm_win11_post_oobe_audit
+            or profile_key == "win11_26h2_en_us_x64",
+            "post-OOBE startup audit restricted to Windows 11 disposable COW")
     # Runs ONLY at FirstLogon in the installed Windows evaluation client.
     # The test-only local account has no usable remote credentials.
-    return r'''
+    script = r'''
 $ErrorActionPreference = 'Stop'
 $ser = $null
 try {
@@ -266,11 +270,55 @@ Start-Sleep -Seconds 2
 # Use immediate local poweroff only in this disposable KVM guest; still
 # require QEMU's actual clean exit and forbid any second Boot Manager start.
 & "$env:WINDIR\System32\shutdown.exe" __LAB_POWEROFF_ARGS__
-'''.replace("__BUILD__", build).replace("__PROFILE__", profile_key).replace(
-        "__MARKER__", MARKER).replace(
-        "__LAB_POWEROFF_ARGS__",
-        "/p /f" if profile_key == "win11_26h2_en_us_x64" else "/s /f /t 0",
-    ).strip()
+'''
+    script = (script.replace("__BUILD__", build)
+              .replace("__PROFILE__", profile_key)
+              .replace("__MARKER__", MARKER)
+              .replace("__LAB_POWEROFF_ARGS__",
+                       "/p /f" if profile_key == "win11_26h2_en_us_x64"
+                       else "/s /f /t 0"))
+    if arm_win11_post_oobe_audit:
+        # This private lab image may reboot during Win11 OOBE after its
+        # first native audit. Install a single *authenticated* SYSTEM
+        # startup re-audit that runs only on the NEXT Windows boot.
+        # An unverified firmware restart alone is never accepted.
+        phase = r"""
+  $flag = 'C:\ProgramData\GasluxWin11OobeAuditArmed.flag'
+  $saved = 'C:\ProgramData\GasluxWin11OobeReaudit.ps1'
+  $task = 'GasluxWin11OobeReauditOnce'
+  $phaseMarker = '__INITIAL_MARKER__'
+  if (Test-Path -LiteralPath $flag) {
+    & schtasks.exe /Delete /F /TN $task | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'failed to disarm Win11 OOBE restart audit' }
+    $phaseMarker = 'GASLUX_WINDOWS_X64_WIN11_OOBE_REBOOT_AUDIT'
+  } else {
+    $source = 'A:\GASLUX.PS1'
+    if (-not (Test-Path -LiteralPath $source)) {
+      throw 'missing hash-checked Win11 first-logon script on CI floppy'
+    }
+    Copy-Item -LiteralPath $source -Destination $saved -Force -ErrorAction Stop
+    $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+    $savedHash = (Get-FileHash -LiteralPath $saved -Algorithm SHA256).Hash
+    if (-not $sourceHash -or $sourceHash -ne $savedHash) {
+      throw 'Win11 OOBE restart audit script copy failed SHA256 check'
+    }
+    [System.IO.File]::WriteAllText($flag, 'DISPOSABLE_WIN11_ONLY')
+    $command = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\GasluxWin11OobeReaudit.ps1'
+    & schtasks.exe /Create /F /SC ONSTART /TN $task /RU SYSTEM /RL HIGHEST /TR $command | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'failed to arm next Windows boot native audit' }
+  }
+"""
+        require(script.count("  $serialProof = @(") == 1
+                and script.count(f"    '{MARKER}={profile_key}'") == 1,
+                "cannot arm unambiguous Win11 OOBE native second-boot witness")
+        script = script.replace("  $serialProof = @(",
+                                phase.replace("__INITIAL_MARKER__", MARKER)
+                                + "\n  $serialProof = @(")
+        script = script.replace(
+            f"    '{MARKER}={profile_key}'",
+            f"    ($phaseMarker + '={profile_key}')",
+        )
+    return script.strip()
 
 
 def generate_unattend(profile_key: str, build: str) -> bytes:
@@ -517,7 +565,8 @@ def request_owned_windows_acpi_powerdown(monitor_path: Path) -> None:
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
             reject_repeated_dvd_boot: bool = False,
-            acpi_powerdown_socket: Path | None = None) -> tuple[bool, str]:
+            acpi_powerdown_socket: Path | None = None,
+            allow_authenticated_win11_oobe_reboot: bool = False) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -544,8 +593,14 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
         require(profile_key == "win11_26h2_en_us_x64"
                 and reject_repeated_dvd_boot and monitor_socket is None,
                 "ACPI powerdown restricted to installed Windows 11 witness")
+    if allow_authenticated_win11_oobe_reboot:
+        require(profile_key == "win11_26h2_en_us_x64"
+                and reject_repeated_dvd_boot and monitor_socket is None
+                and acpi_powerdown_socket is not None,
+                "second OOBE boot audit restricted to opt-in Win11 COW lab")
     started = time.monotonic()
     witnessed_at: float | None = None
+    waiting_for_second_windows_audit = False
     acpi_requested_at: float | None = None
     acpi_powerdown_attempts = 0
     initial_cd_key_sent = False
@@ -583,12 +638,26 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             )
                         )
                         bootmgr_start_count += bm_hits
-                        if bootmgr_start_count > 1:
-                            return False, (
-                                "installed Windows rebooted after first-logon "
-                                "audit rather than powering off; Windows still "
-                                "unverified"
-                            )
+                        if bm_hits and bootmgr_start_count > 1:
+                            if (not allow_authenticated_win11_oobe_reboot
+                                    or bootmgr_start_count > 2
+                                    or witnessed_at is None
+                                    or waiting_for_second_windows_audit):
+                                return False, (
+                                    "installed Windows rebooted after first-logon "
+                                    "audit rather than powering off; Windows still "
+                                    "unverified"
+                                )
+                            # One Windows 11 post-OOBE restart can be observed,
+                            # but it invalidates the previous guest witness.
+                            # Require the distinct hash-checked SYSTEM task
+                            # to recheck Win11/ESP/BCD/WinRE on that next boot.
+                            waiting_for_second_windows_audit = True
+                            witnessed_at = None
+                            acpi_requested_at = None
+                            acpi_powerdown_attempts = 0
+                            print("GASLUX_WIN11_OOBE_SECOND_BOOT_AUDIT_REQUIRED=1",
+                                  flush=True)
                     if monitor_socket is not None and not initial_cd_key_sent:
                         if BOOT_FROM_CD_PROMPT in serial_data:
                             send_first_iso_boot_key(monitor_socket)
@@ -609,7 +678,26 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                                       flush=True)
                     if any(line.startswith(FAILURE.encode()) for line in lines):
                         return False, "installed Windows explicitly rejected firstboot audit"
-                    if required.issubset(lines) and any(
+                    if waiting_for_second_windows_audit:
+                        authenticated = (
+                            b"GASLUX_WINDOWS_X64_WIN11_OOBE_REBOOT_AUDIT="
+                            + profile_key.encode("ascii")
+                        )
+                        if authenticated in lines:
+                            rechecked = (required - {
+                                f"{MARKER}={profile_key}".encode()
+                            }) | {build_line}
+                            if not all(serial_data.count(token) >= 2
+                                       for token in rechecked):
+                                return False, ("Win11 OOBE restart marker lacked a "
+                                               "second full ESP/BCD/WinRE witness")
+                            if serial_data.count(authenticated) != 1:
+                                return False, "duplicate Win11 OOBE second native audit"
+                            witnessed_at = time.monotonic()
+                            waiting_for_second_windows_audit = False
+                            print("GASLUX_WIN11_OOBE_SECOND_NATIVE_AUDIT_VERIFIED=1",
+                                  flush=True)
+                    elif required.issubset(lines) and any(
                         line.startswith(build_line) for line in lines
                     ):
                         if witnessed_at is None:
@@ -827,6 +915,7 @@ def boot_two_stage_windows(
     limit: int, profile_key: str,
     restart_tpm: Callable[[], None] | None = None,
     request_acpi_after_audit: bool = False,
+    allow_authenticated_win11_oobe_reboot: bool = False,
 ) -> tuple[bool, str]:
     """DVD Setup stage exits at guest reboot; independently boot OWNED GPT disk.
 
@@ -855,6 +944,12 @@ def boot_two_stage_windows(
                 and os.environ.get("GASLUX_WINDOWS_ACPI_LAB_CONSENT")
                 == "I_ACCEPT_DISPOSABLE_WIN11_POSTAUDIT_ACPI_POWERDOWN",
                 "ACPI control requires dedicated Windows 11 hosted consent")
+    if allow_authenticated_win11_oobe_reboot:
+        require(request_acpi_after_audit
+                and profile_key == "win11_26h2_en_us_x64"
+                and os.environ.get("GASLUX_WINDOWS11_CACHYOS_STAGE_CONSENT")
+                == "I_ACCEPT_WIN11_POSTBOOT_GPT_COW_ONLY_NO_FILESYSTEM",
+                "post-OOBE second native audit restricted to COW-only lab")
     initial_serial = final_serial.parent / "initial-dvd-guest-serial.log"
     require(not initial_serial.exists() and not final_serial.exists(),
             "VM serial evidence path was reused")
@@ -929,6 +1024,7 @@ def boot_two_stage_windows(
         second, final_serial, remaining, profile_key,
         monitor_socket=None, reject_repeated_dvd_boot=True,
         acpi_powerdown_socket=acpi_socket,
+        allow_authenticated_win11_oobe_reboot=allow_authenticated_win11_oobe_reboot,
     )
 
 
@@ -1117,8 +1213,12 @@ def main(argv: list[str] | None = None) -> int:
             xmlfile.write_bytes(xml)
             guest_ps1 = workspace / "GASLUX.PS1"
             guest_ps1.write_text(
-                witness_powershell(args.profile,
-                                   profile["expectedWindowsBuildPrefix"]) + "\n",
+                witness_powershell(
+                    args.profile, profile["expectedWindowsBuildPrefix"],
+                    arm_win11_post_oobe_audit=(
+                        args.stage_cachyos_win11_root_gpt_overlay_only
+                    ),
+                ) + "\n",
                 encoding="utf-8")
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
@@ -1212,6 +1312,9 @@ def main(argv: list[str] | None = None) -> int:
                         restart_tpm=(restart_guest_tpm if args.profile.startswith("win11")
                                      else None),
                         request_acpi_after_audit=args.audit_primary_backup_gpt_readonly,
+                        allow_authenticated_win11_oobe_reboot=(
+                            args.stage_cachyos_win11_root_gpt_overlay_only
+                        ),
                     )
                     if ok and args.audit_installed_gpt_readonly:
                         # The second native Windows guest has exited CLEANLY
