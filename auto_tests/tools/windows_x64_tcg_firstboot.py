@@ -327,7 +327,7 @@ def generate_unattend(profile_key: str, build: str) -> bytes:
           "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass "
           "-Command \"$v=@(Get-Volume -FileSystemLabel GASLUXCI|? DriveLetter);"
           "if($v.Count -ne 1){exit 20};"
-          "& ($v[0].DriveLetter + ':\\\\GASLUX.PS1')\"")
+          "& ($v[0].DriveLetter + ':\\GASLUX.PS1')\"")
     child(command, "RequiresUserInput", "false")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
