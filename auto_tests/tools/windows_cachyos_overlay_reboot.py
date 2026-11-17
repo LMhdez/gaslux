@@ -26,14 +26,15 @@ PROOF = (
     "GASLUX_COW_WIN10_REBOOT_WINRE=1",
     "GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1",
 )
-PROOF_FOUR_PARTITION_BASELINE = (
-    "GASLUX_COW_WIN10_BASELINE_AFTER_COW_DISCARD=1",
-    "GASLUX_COW_WIN10_BASELINE_GPT_PARTITIONS=4",
-    "GASLUX_COW_WIN10_BASELINE_ESP=1",
-    "GASLUX_COW_WIN10_BASELINE_BCD=1",
-    "GASLUX_COW_WIN10_BASELINE_WINRE=1",
-    "GASLUX_COW_WIN10_BASELINE_NO_LINUX=1",
+BASELINE_PROOF = (
+    "GASLUX_COW_WIN10_REBOOT_LIVE=1",
+    "GASLUX_COW_WIN10_REBOOT_BUILD=19045",
+    "GASLUX_COW_WIN10_REBOOT_ESP=1",
+    "GASLUX_COW_WIN10_REBOOT_BCD=1",
+    "GASLUX_COW_WIN10_REBOOT_WINRE=1",
+    "GASLUX_COW_WIN10_ROLLBACK_FOUR_GPT=1",
 )
+PROOF_FOUR_PARTITION_BASELINE = BASELINE_PROOF
 
 class OverlayBootError(ValueError):
     pass
@@ -55,7 +56,9 @@ try {
   if ($os.ProductType -ne 1 -or -not $os.BuildNumber.StartsWith('19045')) { throw 'unexpected Windows client build' }
   $disk = Get-Disk -Number 0
   $parts = @(Get-Partition -DiskNumber 0 | Sort-Object PartitionNumber)
-  if ($disk.PartitionStyle -ne 'GPT') { throw 'Windows baseline is not GPT' }
+  if ($disk.PartitionStyle -ne 'GPT' -or $parts.Count -notin @(4,5)) {
+    throw 'Windows baseline is not one of the two audited GPT layouts'
+  }
   $esp = @($parts | Where-Object { $_.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' })
   $msr = @($parts | Where-Object { $_.GptType -eq '{e3c9e316-0b5c-4db8-817d-f92df00215ae}' })
   $recovery = @($parts | Where-Object { $_.GptType -eq '{de94bba4-06d1-4d40-a16a-bfd50179d6ac}' })
@@ -84,12 +87,12 @@ try {
   } elseif ($parts.Count -eq 4) {
     if ($linux.Count -ne 0) { throw 'discarded baseline still contains Linux root' }
     $markers = @(
-      'GASLUX_COW_WIN10_BASELINE_AFTER_COW_DISCARD=1',
-      'GASLUX_COW_WIN10_BASELINE_GPT_PARTITIONS=4',
-      'GASLUX_COW_WIN10_BASELINE_ESP=1',
-      'GASLUX_COW_WIN10_BASELINE_BCD=1',
-      'GASLUX_COW_WIN10_BASELINE_WINRE=1',
-      'GASLUX_COW_WIN10_BASELINE_NO_LINUX=1'
+      'GASLUX_COW_WIN10_REBOOT_LIVE=1',
+      'GASLUX_COW_WIN10_REBOOT_BUILD=19045',
+      'GASLUX_COW_WIN10_REBOOT_ESP=1',
+      'GASLUX_COW_WIN10_REBOOT_BCD=1',
+      'GASLUX_COW_WIN10_REBOOT_WINRE=1',
+      'GASLUX_COW_WIN10_ROLLBACK_FOUR_GPT=1'
     )
   } else {
     throw 'unexpected Windows GPT partition count'
@@ -147,10 +150,9 @@ def audit_complete_four_partition_serial(path: Path) -> str:
             "post-discard guest did not complete one clean Windows boot")
     lines = data.splitlines()
     require(all(lines.count(line.encode("ascii")) == 1
-                for line in PROOF_FOUR_PARTITION_BASELINE),
+                for line in BASELINE_PROOF),
             "missing, duplicated or coalesced four-partition Windows baseline witnesses")
-    require(not any(line.startswith(b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=")
-                    for line in lines),
+    require(PROOF[-1].encode("ascii") not in lines,
             "post-discard baseline incorrectly reported a fifth Linux partition")
     return hashlib.sha256(data).hexdigest()
 
