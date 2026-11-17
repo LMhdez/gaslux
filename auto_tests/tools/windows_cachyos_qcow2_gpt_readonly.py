@@ -98,17 +98,30 @@ def inspect_gpt_windows(front: bytes, back: bytes,
             "invalid protective MBR signature")
     entries_mbr = [front[446 + 16*i:446 + 16*(i+1)] for i in range(4)]
     total = disk_bytes // SECTOR
-    # A mere 0xEE type byte does not establish a protective MBR. In
-    # particular, a forged zero-length/shifted entry must not certify a
-    # disk for subsequent Linux partition planning. This fixed-size lab
-    # fits the protective MBR's 32-bit sector-count field exactly.
+    # A mere 0xEE type byte does not establish a protective MBR. Reject
+    # offset/size zero, hybrid slots or active MBR boots. Windows 10 is
+    # documented to emit 0xFFFFFFFF even when the disk is <2 TiB, instead
+    # of the UEFI-defined real sector count. Recognize ONLY that explicit
+    # Windows read-only variant; do not use the saturated field to measure
+    # free space or to authorize any disk write. Actual geometry comes
+    # solely from the independently CRC-verified primary/backup GPT.
+    protective_start, protective_count = struct.unpack_from(
+        "<II", entries_mbr[0], 8,
+    )
+    windows_saturated_protective_size = (
+        total - 1 < 0xffffffff and protective_count == 0xffffffff
+    )
     require(
         entries_mbr[0][0] == 0
         and entries_mbr[0][4] == 0xEE
-        and struct.unpack_from("<II", entries_mbr[0], 8) ==
-            (1, min(total - 1, 0xffffffff))
+        and protective_start == 1
+        and protective_count in (total - 1, 0xffffffff)
         and all(not any(entry) for entry in entries_mbr[1:]),
-        "hybrid or invalid protective MBR geometry",
+        "hybrid or invalid protective MBR geometry: "
+        + f"boot=0x{entries_mbr[0][0]:02x},"
+          f"type=0x{entries_mbr[0][4]:02x},"
+          f"start={protective_start},count={protective_count},"
+          f"foreign_slots={sum(any(e) for e in entries_mbr[1:])}",
     )
     primary = header_at(front, SECTOR, 1, total - 1, total)
     backup = header_at(back, WINDOW_BYTES - SECTOR, total - 1, 1, total)
@@ -171,6 +184,8 @@ def inspect_gpt_windows(front: bytes, back: bytes,
         "windowsPartitions": result_parts,
         "unallocatedAfterWindowsBytes": free_end_bytes,
         "diskGuidSha256": hashlib.sha256(primary[56:72]).hexdigest(),
+        "protectiveMbrWindowsSaturatedSizeObserved":
+            windows_saturated_protective_size,
         "windowsGuestOriginAuthenticated": False,
         "windowsBootVerified": False,
         "windowsBcdWinreRestorationVerified": False,
