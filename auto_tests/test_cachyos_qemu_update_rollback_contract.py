@@ -107,6 +107,23 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         ):
             self.assertIn(requirement, self.guest)
 
+    def test_native_repo_set_provisioned_without_weak_live_config(self):
+        # A valid pacstrap is insufficient if the installed CachyOS has no
+        # enabled native repositories for its first signed kernel update.
+        for expected in (
+            "for mirror in mirrorlist cachyos-mirrorlist",
+            "[cachyos]", "[core]", "[extra]",
+            "SigLevel = Required DatabaseOptional",
+            "LocalFileSigLevel = Required",
+            "Include = /etc/pacman.d/cachyos-mirrorlist",
+            "Include = /etc/pacman.d/mirrorlist",
+            'pacman-conf --repo "$repo" SigLevel',
+            "GASLUX_LAB_SIGNED_INSTALLED_REPOS_CONFIGURED=1",
+        ):
+            self.assertIn(expected, self.stage)
+        self.assertNotIn('cp /etc/pacman.conf', self.stage)
+        self.assertIn("GASLUX_VM_UPDATE_TRUST_POLICY_VERIFIED=1", self.guest)
+
     def test_bounded_guest_script_is_hashed_in_signed_boot_fat(self):
         self.assertIn('sha256sum "$updater"', self.runner)
         self.assertIn('mcopy -i "$fat" "$updater" ::/update.sh', self.runner)
