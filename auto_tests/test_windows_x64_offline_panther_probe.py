@@ -56,7 +56,13 @@ class FakeGuestfish:
         ]
         if command[-1] == "list-filesystems":
             return result(command, 0, self.filesystems)
-        if self.cached and command[-1] == "/Windows/Panther/Unattend.xml":
+        if self.cached and command[-2:] == [
+            "filesize", "/Windows/Panther/Unattend.xml"
+        ]:
+            return result(command, 0, str(len(XML)).encode() + b"\\n")
+        if self.cached and command[-2:] == [
+            "cat", "/Windows/Panther/Unattend.xml"
+        ]:
             return result(command, 0, XML)
         return result(command, 1)
 
@@ -84,6 +90,13 @@ class PantherProbeContracts(unittest.TestCase):
                       printed)
         self.assertTrue(all("--ro" in c for c in fake.calls))
         self.assertTrue(all("cat" not in c or "-m" in c for c in fake.calls))
+        size_seen = False
+        for command in fake.calls:
+            if command[-2:] == ["filesize", "/Windows/Panther/Unattend.xml"]:
+                size_seen = True
+            if command[-2:] == ["cat", "/Windows/Panther/Unattend.xml"]:
+                self.assertTrue(size_seen,
+                                "no credential content before bounded file size")
 
     def test_missing_cached_answer_fails_proof_closed(self):
         status, printed = self.invoke(FakeGuestfish(cached=False))
@@ -122,6 +135,22 @@ class PantherProbeContracts(unittest.TestCase):
         status, printed = self.invoke(fake)
         self.assertFalse(status["windowsClientBootVerified"])
         self.assertNotIn("Windows RE", printed)
+
+    def test_oversized_panther_answer_rejected_before_read(self):
+        fake = FakeGuestfish(cached=True)
+        observed = []
+        def oversized(command, **kwargs):
+            observed.append(command)
+            if command[-2:] == ["filesize", "/Windows/Panther/Unattend.xml"]:
+                return result(command, 0, b"3000000\\n")
+            if command[-2:] == ["cat", "/Windows/Panther/Unattend.xml"]:
+                raise AssertionError("oversized guest XML must never be read")
+            return fake(command, **kwargs)
+
+        status, printed = self.invoke(oversized)
+        self.assertFalse(status["cachedWindowsAnswerObserved"])
+        self.assertFalse(status["windowsClientBootVerified"])
+        self.assertNotIn("CI_SECRET_NEVER_LOGGED", printed)
 
     def test_bad_xml_is_never_accepted_as_cached_answer(self):
         fake = FakeGuestfish(cached=True)
