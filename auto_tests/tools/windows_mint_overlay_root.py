@@ -157,15 +157,17 @@ def install_mint_root_and_boot(
         require(len(kernels) == 1, "Mint target must contain one unambiguous kernel")
         kernel = kernels[0]
         version = kernel.name.removeprefix("vmlinuz-")
-        require((target / "lib/modules" / version).is_dir(),
+        require((unpacked / "lib/modules" / version).is_dir(),
                 "Mint target kernel modules are missing")
-        fstab = target / "etc/fstab"
-        fstab.write_text(f"UUID={root_uuid} / ext4 defaults 0 1\n", encoding="ascii")
-        (target / "etc/hostname").write_text("GASLUXMINT\n", encoding="ascii")
-        for directory, source in (("dev", "/dev"), ("proc", "proc")):
-            run(["sudo", "mount", "--bind" if directory == "dev" else "-t",
-                 source if directory == "dev" else source,
-                 str(target / directory)])
+        fstab = unpacked / "etc/fstab"
+        subprocess.run(["sudo", "tee", str(fstab)],
+                       input=f"UUID={root_uuid} / ext4 defaults 0 1\\n",
+                       check=True, text=True, stdout=subprocess.DEVNULL)
+        subprocess.run(["sudo", "tee", str(unpacked / "etc/hostname")],
+                       input="GASLUXMINT\\n", check=True, text=True,
+                       stdout=subprocess.DEVNULL)
+        run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
+        run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
         run(["sudo", "mount", "--bind", "/dev/pts", str(target / "dev/pts")])
         try:
             run(["sudo", "chroot", str(target), "/usr/bin/env", "-u",
