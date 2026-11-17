@@ -3,10 +3,13 @@ on:
   push:
     branches:
       - test/windows-original-dvd-short-com1-enter-probe
+      - diag/windows-original-winpe-vga-progress
     paths:
       - .github/workflows/windows-original-dvd-short-com1-enter-probe.yml
       - auto_tests/tools/windows_x64_original_dvd_com1_probe.py
       - auto_tests/test_windows_x64_original_dvd_com1_probe.py
+      - auto_tests/tools/windows_x64_vga_diagnostic.py
+      - auto_tests/test_windows_x64_vga_diagnostic.py
       - auto_tests/tools/windows_x64_tcg_firstboot.py
   workflow_dispatch:
 permissions:
@@ -35,6 +38,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_original_dvd_com1_probe.py
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_original_dvd_com1_probe.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_vga_diagnostic.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_two_stage_boot.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_iso_boot_key.py' -v
       - name: Install only VM/ISO tools after fail-closed negative tests
@@ -47,11 +51,11 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf dosfstools mtools
-      - name: Compare 300ms and 6000ms Enter on exact original Microsoft Win10 DVD
+      - name: Compare original DVD HMP prompt and two private numeric VGA samples per duration
         shell: bash
         run: |
           set -Eeuo pipefail
           mkdir -p "$GITHUB_WORKSPACE/windows-original-dvd-no-disk-evidence"
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-original-dvd-no-disk-evidence"
           python3 auto_tests/tools/windows_x64_original_dvd_com1_probe.py
-          echo 'DVD-only EFI timing experiment. No HDD, WinPE Setup completion, Windows client boot, WinRE/BCD, Linux, dual boot, or rollback tested.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'DVD-only EFI timing + numeric VGA snapshots, deleted immediately. No HDD, WinPE Setup completion, Windows client boot, WinRE/BCD, Linux, dual boot, or rollback tested.' >> "$GITHUB_STEP_SUMMARY"
