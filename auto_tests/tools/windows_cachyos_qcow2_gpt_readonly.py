@@ -108,13 +108,19 @@ def inspect_gpt_windows(front: bytes, back: bytes,
     protective_boot = entries_mbr[0][0]
     protective_type = entries_mbr[0][4]
     expected_span = min(total - 1, 0xffffffff)
+    # Windows 10 was independently observed to use a saturated 0xffffffff
+    # protective count on a 128-GiB disk (PR #123, Actions #44103640850).
+    # Accept ONLY this specific count on a clean 0xEE MBR; never derive disk
+    # geometry or any write permission from the protective count.
+    windows_saturated_size = (total - 1 < 0xffffffff
+                              and protective_span == 0xffffffff)
     extra_slots = tuple(i + 2 for i, entry in enumerate(entries_mbr[1:])
                         if any(entry))
     require(
         protective_boot == 0
         and protective_type == 0xEE
         and protective_start == 1
-        and protective_span == expected_span
+        and (protective_span == expected_span or windows_saturated_size)
         and not extra_slots,
         "hybrid or invalid protective MBR geometry: "
         f"boot={protective_boot}, type=0x{protective_type:02x}, "
@@ -184,6 +190,7 @@ def inspect_gpt_windows(front: bytes, back: bytes,
         "windowsPartitions": result_parts,
         "unallocatedAfterWindowsBytes": free_end_bytes,
         "diskGuidSha256": hashlib.sha256(primary[56:72]).hexdigest(),
+        "protectiveMbrWindowsSaturatedSizeObserved": windows_saturated_size,
         "windowsGuestOriginAuthenticated": False,
         "windowsBootVerified": False,
         "windowsBcdWinreRestorationVerified": False,

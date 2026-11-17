@@ -289,6 +289,38 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
         with self.assertRaisesRegex(gpt.GeometryError, "duplicate Windows GPT"):
             gpt.inspect_gpt_windows(front, back)
 
+    def test_windows_saturated_protective_count_is_readonly_variant(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xffffffff)
+        result = gpt.inspect_gpt_windows(bytes(changed), back)
+        self.assertTrue(result["protectiveMbrWindowsSaturatedSizeObserved"])
+        self.assertGreaterEqual(result["unallocatedAfterWindowsBytes"],
+                                gpt.MIN_UNALLOCATED)
+        for key in ("storageWritesAuthorized", "releaseEligible",
+                    "sameDiskDualBootVerified", "windowsBootVerified"):
+            self.assertIs(result[key], False)
+
+    def test_canonical_protective_count_is_not_saturated(self):
+        result = gpt.inspect_gpt_windows(*create_disk_windows())
+        self.assertIs(result["protectiveMbrWindowsSaturatedSizeObserved"], False)
+
+    def test_saturated_mbr_does_not_hide_bad_backup_gpt(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xffffffff)
+        corrupt = bytearray(back)
+        corrupt[-512+48] ^= 1
+        with self.assertRaisesRegex(gpt.GeometryError, "GPT header CRC mismatch"):
+            gpt.inspect_gpt_windows(bytes(changed), bytes(corrupt))
+
+    def test_saturated_mbr_does_not_allow_foreign_partition(self):
+        front, back = create_disk_windows(part_types=list(gpt.TYPES) + [gpt.TYPES[2]])
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xffffffff)
+        with self.assertRaisesRegex(gpt.GeometryError, "foreign fifth"):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
     def test_protective_mbr_wrong_start_lba_refused(self):
         front, back = create_disk_windows()
         changed = bytearray(front)
