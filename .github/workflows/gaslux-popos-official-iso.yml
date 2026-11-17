@@ -28,6 +28,7 @@ on:
       - 'auto_tests/tools/gaslux_popos_mock_windows_full_install_guest.sh'
       - 'auto_tests/tools/gaslux_popos_mock_windows_firstboot_guest.sh'
       - 'auto_tests/tools/gaslux_popos_native_mock_windows_gpt_reconcile.py'
+      - 'auto_tests/tests/test_popos_native_mock_windows_gpt.py'
   workflow_dispatch:
 
 permissions:
