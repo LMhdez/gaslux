@@ -10,6 +10,7 @@ No Windows+Linux dual boot/rollback is attempted here.
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import hashlib
 import stat
 import json
@@ -52,6 +53,50 @@ class LabError(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise LabError(message)
+
+
+def workspace_has_active_mount(workspace: Path, mount_targets: list[str]) -> bool:
+    root = str(workspace)
+    return any(target == root or target.startswith(root + os.sep)
+               for target in mount_targets)
+
+
+def cleanup_private_workspace(workspace: Path, runner_temp: Path) -> bool:
+    """Delete only our private hosted-runner workspace, and only when unmounted."""
+    try:
+        if (workspace.is_symlink() or not workspace.is_dir()
+                or workspace.resolve() != workspace
+                or workspace.parent.resolve() != runner_temp.resolve()
+                or not workspace.name.startswith("gaslux-win-x64-")
+                or workspace.stat().st_uid != os.getuid()
+                or stat.S_IMODE(workspace.stat().st_mode) != 0o700):
+            print("WARNING: refusing unsafe Windows VM workspace cleanup", file=sys.stderr)
+            return False
+        mounts = subprocess.run(
+            ["findmnt", "-rn", "-o", "TARGET"],
+            check=False, capture_output=True, text=True,
+        )
+        if mounts.returncode != 0:
+            print("WARNING: cannot prove Windows VM workspace is unmounted; preserving it",
+                  file=sys.stderr)
+            return False
+        if workspace_has_active_mount(workspace, mounts.stdout.splitlines()):
+            print("WARNING: preserving Windows VM workspace because a mount remains active",
+                  file=sys.stderr)
+            return False
+        removed = subprocess.run(
+            ["sudo", "rm", "-rf", "--one-file-system", "--", str(workspace)],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+        )
+        if removed.returncode != 0 or workspace.exists():
+            print(f"WARNING: private Windows VM workspace cleanup failed: {removed.stderr}",
+                  file=sys.stderr)
+            return False
+        return True
+    except OSError as exc:
+        print(f"WARNING: preserving Windows VM workspace after cleanup error: {exc}",
+              file=sys.stderr)
+        return False
 
 
 def validate_environment(workspace: Path, accelerator: str = "tcg") -> None:
@@ -1013,8 +1058,11 @@ def main(argv: list[str] | None = None) -> int:
         "windowsClientBootVerified": False, "dualBootVerified": False,
         "winReAndBcdRecovered": False, "stable": False,
     }
+    workspace_tmp = None
     try:
-        with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
+        workspace_tmp = tempfile.mkdtemp(
+            prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"])
+        with nullcontext(workspace_tmp) as tmp:
             workspace = Path(tmp)
             validate_environment(workspace, args.accel)
             require(120 <= args.boot_timeout <= 6600,
@@ -1377,6 +1425,10 @@ def main(argv: list[str] | None = None) -> int:
         status = 1
     else:
         status = 0
+    finally:
+        if workspace_tmp is not None:
+            cleanup_private_workspace(
+                Path(workspace_tmp), Path(os.environ["RUNNER_TEMP"]))
     # On any preflight failure, never create report paths outside the
     # authorization-controlled GitHub Actions evidence directory.
     if (evidence.is_absolute() and evidence.is_dir() and
