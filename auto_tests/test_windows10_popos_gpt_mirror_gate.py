@@ -101,6 +101,27 @@ class TestGptCrcReconciliation(unittest.TestCase):
                 with self.assertRaisesRegex(DiskAuditError, "CRC mismatch"):
                     parse_windows_pop_gpt(bytes(x), bytes(y), expected_count=5)
 
+    def test_exact_real_windows_oversized_pmbr_is_lab_only(self):
+        before_front, before_back, _ = make_pair(linux=False)
+        after_front, after_back, plan = make_pair(linux=True)
+        modified = []
+        for source in (before_front, after_front):
+            mbr = bytearray(source)
+            struct.pack_into("<I", mbr, 446+12, 0xFFFFFFFF)
+            modified.append(bytes(mbr))
+        before = parse_windows_pop_gpt(modified[0], before_back, expected_count=4)
+        after = parse_windows_pop_gpt(modified[1], after_back, expected_count=5)
+        reconcile_windows_and_root(before, after, plan)
+        self.assertFalse(before["protectiveMbrCanonical"])
+        self.assertTrue(before["oversizedWindowsPmbrLabOnly"])
+        self.assertIs(before["productionInstallationAuthorized"], False)
+        for damaged_count in (0xFFFFFFFE, 12345, 0):
+            with self.subTest(count=damaged_count):
+                invalid = bytearray(before_front)
+                struct.pack_into("<I", invalid, 446+12, damaged_count)
+                with self.assertRaises(DiskAuditError):
+                    parse_windows_pop_gpt(bytes(invalid), before_back, expected_count=4)
+
     def test_reject_hybrid_mbr_and_truncated_windows(self):
         f, b, _ = make_pair(linux=False)
         x = bytearray(f)
