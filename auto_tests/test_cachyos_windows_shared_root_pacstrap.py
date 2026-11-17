@@ -43,7 +43,7 @@ def fixture():
         })
     return front, back, {
         "diskGuidSha256": hashlib.sha256(front[512+56:512+72]).hexdigest(),
-        "gptWindowsSha256": hashlib.sha256(data[:4*128]).hexdigest(),
+        "gptWindowsSha256": hashlib.sha256(front+back).hexdigest(),
         "partitions": parts,
     }
 
@@ -103,6 +103,7 @@ class SharedRootOnlySafety(unittest.TestCase):
         front, back, plan = fixture()
         changed = bytearray(front)
         struct.pack_into("<I", changed, 446+12, 0xffffffff)
+        plan["gptWindowsSha256"] = hashlib.sha256(bytes(changed)+back).hexdigest()
         observed = check(bytes(changed), back, plan)
         self.assertTrue(observed["protectiveMbrWindowsLabOversized"])
         self.assertFalse(observed["productionWritesAuthorized"])
