@@ -38,6 +38,58 @@ def synthetic_args(tmp):
 
 
 class WindowsTwoStageSafetyTests(unittest.TestCase):
+
+    def test_incremental_dvd_scan_preserves_old_boot_when_log_exceeds_400k(self):
+        with tempfile.TemporaryDirectory() as d:
+            serial = pathlib.Path(d) / "vm-serial.log"
+            first = b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM'
+            second = b'BdsDxe: starting Boot00AF "UEFI QEMU DVD-ROM'
+            serial.write_bytes(first)
+            n, offset, carry, tail = VM.scan_two_stage_dvd_serial(
+                serial, 0, b"",
+            )
+            self.assertEqual(n, 1)
+            self.assertIn(first, tail)
+            with serial.open("ab") as stream:
+                stream.write(b"x" * 500_000 + second)
+            n2, offset, carry, tail = VM.scan_two_stage_dvd_serial(
+                serial, offset, carry,
+            )
+            self.assertEqual(n2, 1)
+            self.assertNotIn(first, tail)
+            self.assertIn(second, tail)
+            self.assertEqual(n + n2, 2)
+
+    def test_fragmented_hex_uefi_marker_counted_once(self):
+        marker = b'BdsDxe: starting Boot0AF3 "UEFI QEMU DVD-ROM'
+        count, carry = 0, b""
+        for fragment in (
+            marker[:8], marker[8:18], marker[18:30], marker[30:],
+        ):
+            found, carry = VM.scan_dvd_firmware_starts(fragment, carry)
+            count += found
+        self.assertEqual(count, 1)
+        found, carry = VM.scan_dvd_firmware_starts(
+            b"waiting for installed guest", carry,
+        )
+        self.assertEqual(found, 0)
+
+    def test_stage_one_serial_truncation_denied_before_second_guest(self):
+        with tempfile.TemporaryDirectory() as d:
+            serial = pathlib.Path(d) / "vm-serial.log"
+            serial.write_bytes(b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM')
+            VM.scan_two_stage_dvd_serial(serial, 0, b"")
+            with self.assertRaisesRegex(VM.LabError, "truncated"):
+                VM.scan_two_stage_dvd_serial(serial, 1024, b"")
+
+    def test_two_stage_boot_uses_incremental_full_uefi_marker_count(self):
+        source = SRC.read_text(encoding="utf-8")
+        self.assertIn("dvd_start_count += found", source)
+        self.assertIn("if dvd_start_count > 1:", source)
+        self.assertIn("if dvd_start_count != 1:", source)
+        self.assertIn("scan_two_stage_dvd_serial(", source)
+        self.assertNotIn("initial_serial.read_bytes()[-400_000:]", source)
+
     def test_qemu_args_protect_second_boot_from_dvd_reinstallation(self):
         with tempfile.TemporaryDirectory() as d:
             first, second = VM.build_two_stage_qemu_args(

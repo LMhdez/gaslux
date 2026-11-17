@@ -626,6 +626,50 @@ def restart_owned_swtpm_for_second_guest(
     raise LabError("fresh second-stage swtpm listener unavailable")
 
 
+
+DVD_FIRMWARE_START = re.compile(
+    rb'BdsDxe: starting Boot[0-9A-Fa-f]{4} "UEFI QEMU DVD-ROM'
+)
+DVD_SCAN_CARRY_BYTES = 96
+
+
+def scan_dvd_firmware_starts(chunk: bytes, carry: bytes = b"") -> tuple[int, bytes]:
+    """Count full DVD boot markers even when firmware splits them across writes."""
+    require(len(carry) <= DVD_SCAN_CARRY_BYTES, "invalid firmware scanner carry")
+    data = carry + chunk
+    found = sum(
+        match.end() > len(carry) for match in DVD_FIRMWARE_START.finditer(data)
+    )
+    return found, data[-DVD_SCAN_CARRY_BYTES:]
+
+
+def scan_two_stage_dvd_serial(
+    path: Path, offset: int, carry: bytes,
+) -> tuple[int, int, bytes, bytes]:
+    """Incrementally scan *all* stage-one UEFI DVD starts, plus a bounded tail.
+
+    Never use only the last 400 KiB to decide whether firmware reentered
+    setup. No side effects except reading the disposable guest serial file.
+    """
+    require(offset >= 0 and len(carry) <= DVD_SCAN_CARRY_BYTES,
+            "invalid stage-one DVD serial scanner")
+    require(path.is_file() and not path.is_symlink(),
+            "missing or untrusted initial guest serial")
+    count = 0
+    with path.open("rb") as stream:
+        end = stream.seek(0, os.SEEK_END)
+        require(end >= offset, "first Windows guest serial log was truncated")
+        stream.seek(offset)
+        while offset < end:
+            chunk = stream.read(min(65536, end - offset))
+            require(bool(chunk), "first Windows serial changed during scan")
+            hits, carry = scan_dvd_firmware_starts(chunk, carry)
+            count += hits
+            offset += len(chunk)
+        stream.seek(max(0, end - 400_000))
+        tail = stream.read(400_000)
+    return count, offset, carry, tail
+
 def boot_two_stage_windows(
     original_args: list[str], disk: Path, final_serial: Path,
     limit: int, profile_key: str,
@@ -656,6 +700,9 @@ def boot_two_stage_windows(
             "VM serial evidence path was reused")
     first, second = build_two_stage_qemu_args(original_args, initial_serial)
     initial_allocated = disk.stat().st_blocks * 512
+    dvd_scan_offset = 0
+    dvd_scan_carry = b""
+    dvd_start_count = 0
     first_deadline = min(3000, max(900, limit - 800))
     started = time.monotonic()
     stage1_error = final_serial.parent / "first-qemu-stderr.log"
@@ -666,12 +713,12 @@ def boot_two_stage_windows(
                 if proc.poll() is not None:
                     break
                 if initial_serial.is_file():
-                    observed = initial_serial.read_bytes()[-400_000:]
-                    dvd_loads = re.findall(
-                        rb'BdsDxe: starting Boot[0-9]{4} "UEFI QEMU DVD-ROM',
-                        observed,
+                    (found, dvd_scan_offset, dvd_scan_carry,
+                     observed) = scan_two_stage_dvd_serial(
+                        initial_serial, dvd_scan_offset, dvd_scan_carry,
                     )
-                    if len(dvd_loads) > 1:
+                    dvd_start_count += found
+                    if dvd_start_count > 1:
                         return False, "initial Windows Setup retried the DVD boot"
                     if (b"No bootable option or device was found." in observed
                             or b"DVD-ROM" in observed
@@ -688,10 +735,12 @@ def boot_two_stage_windows(
                 proc.wait(timeout=30)
     if not initial_serial.is_file():
         return False, "missing first-stage UEFI DVD serial evidence"
-    first_trace = initial_serial.read_bytes()[-400_000:]
-    if len(re.findall(
-        rb'BdsDxe: starting Boot[0-9]{4} "UEFI QEMU DVD-ROM', first_trace
-    )) != 1:
+    (found, dvd_scan_offset, dvd_scan_carry,
+     _) = scan_two_stage_dvd_serial(
+        initial_serial, dvd_scan_offset, dvd_scan_carry,
+    )
+    dvd_start_count += found
+    if dvd_start_count != 1:
         return False, "first-stage UEFI DVD did not start exactly once"
     # Only a newly created CI-owned QCOW2 was writable. Reject guest resets
     # before meaningful Windows disk provisioning was observed. Allocated

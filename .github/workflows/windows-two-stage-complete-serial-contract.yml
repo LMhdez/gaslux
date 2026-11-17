@@ -1,0 +1,36 @@
+name: Windows two-stage full UEFI DVD serial witness contracts (no ISO or VM)
+
+on:
+  push:
+    branches:
+      - fix/windows-two-stage-full-serial-dvd-guard
+    paths:
+      - .github/workflows/windows-two-stage-complete-serial-contract.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_two_stage_boot.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  negative-firmware-gates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Python compilation and fail-closed firmware regressions (no disk)
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/test_windows_x64_two_stage_boot.py
+          for file in \
+            test_windows_x64_two_stage_boot.py \
+            test_windows_x64_noprompt_one_shot.py \
+            test_windows_x64_clean_poweroff_gate.py \
+            test_windows_x64_winre_baseline_contract.py; do
+            python3 -m unittest discover -s auto_tests -p "$file" -v
+          done
+          echo 'Only no-write synthetic/negative firmware tests ran; NO Windows guest boot proof.' >> "$GITHUB_STEP_SUMMARY"
