@@ -175,6 +175,33 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
         with self.assertRaisesRegex(gpt.GeometryError, "duplicate Windows GPT"):
             gpt.inspect_gpt_windows(front, back)
 
+    def test_windows_saturated_protective_mbr_candidate_never_authorizes_writes(self):
+        # Windows 10 has been observed using an all-ones length despite
+        # a real disk smaller than 2 TiB. Accept the read-only candidate,
+        # but derive exact bounds from CRC-checked GPT, never from this MBR.
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0xffffffff)
+        result = gpt.inspect_gpt_windows(bytes(changed), back)
+        self.assertTrue(result["candidateWindowsGptPrimaryAndBackupConsistent"])
+        self.assertTrue(result["protectiveMbrWindowsSaturatedSizeObserved"])
+        self.assertEqual(result["virtualDiskBytes"], gpt.VIRTUAL_BYTES)
+        self.assertFalse(result["storageWritesAuthorized"])
+        self.assertFalse(result["sameDiskDualBootVerified"])
+        self.assertFalse(result["releaseEligible"])
+
+    def test_uefi_exact_protective_mbr_size_is_not_saturated(self):
+        front, back = create_disk_windows()
+        result = gpt.inspect_gpt_windows(front, back)
+        self.assertFalse(result["protectiveMbrWindowsSaturatedSizeObserved"])
+
+    def test_protective_mbr_empty_size_still_refused(self):
+        front, back = create_disk_windows()
+        changed = bytearray(front)
+        struct.pack_into("<I", changed, 446 + 12, 0)
+        with self.assertRaisesRegex(gpt.GeometryError, "protective MBR geometry"):
+            gpt.inspect_gpt_windows(bytes(changed), back)
+
     def test_protective_mbr_wrong_start_lba_refused(self):
         front, back = create_disk_windows()
         changed = bytearray(front)
