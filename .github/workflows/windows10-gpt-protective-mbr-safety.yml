@@ -1,0 +1,40 @@
+name: Windows 10 protective MBR + GPT exact-identity contracts (NO guest)
+on:
+  push:
+    branches:
+      - fix/windows10-gpt-protective-mbr-unique-guids
+    paths:
+      - .github/workflows/windows10-gpt-protective-mbr-safety.yml
+      - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safety:
+    name: Reject corrupt Windows protective MBR / GPT identities before disk operations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile and run all GPT and two-stage candidate document regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile \
+            auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py \
+            auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py \
+            auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_readonly_baseline_gate.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_qemu_host_gate.py' -v
+          echo 'Only synthetic read-only proof checks: NO ISO, VM, target disk, Windows files, Linux installer, dual boot or rollback.' >> "$GITHUB_STEP_SUMMARY"
