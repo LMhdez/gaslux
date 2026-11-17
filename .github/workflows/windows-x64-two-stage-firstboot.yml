@@ -92,7 +92,8 @@ jobs:
           for kernel in /boot/vmlinuz-*; do
             if [[ -f "$kernel" ]]; then stat -c 'host-kernel=%n mode=%a owner=%U' "$kernel"; fi
           done
-          if ! timeout --kill-after=10s 100s guestfish --ro --format=qcow2 \
+          if ! LIBGUESTFS_DEBUG=1 LIBGUESTFS_TRACE=1 \
+            timeout --kill-after=10s 100s guestfish --ro --format=qcow2 \
             -a "$tmp/only-disposable-windows-target.qcow2" run : list-filesystems \
             > "$tmp/guestfish-smoke.log" 2>&1; then
             echo 'guestfish failure diagnostics (limited to kernel/supermin lines):'
