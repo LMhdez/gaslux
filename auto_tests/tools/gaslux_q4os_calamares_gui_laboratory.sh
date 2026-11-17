@@ -234,8 +234,7 @@ for tick in $(seq 1 "$max_ticks"); do
               move 57 39 click 1 pause 0.3 click 1 ||
               die 'SHA-verified Q4OS installer desktop icon click failed'
             launcher_clicked=1
-          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 &&
-                  "$post_launcher_frame" -eq 0 ]] &&
+          elif [[ "$launch_installer" == yes && "$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 0 ]] &&
                python3 "$visual_gate" changed-centre \
                  "$work/vnc-before-icon-click.png" "$work/vnc-$tick.png"; then
             post_launcher_frame=1
@@ -249,8 +248,7 @@ for tick in $(seq 1 "$max_ticks"); do
                 die 'Q4OS Calamares Welcome Next click failed'
               calamares_welcome_next_clicked=1
             fi
-          elif [[ "$advance_welcome" == yes && "$calamares_welcome_next_clicked" -eq 1 &&
-                  "$calamares_location_frame" -eq 0 ]] &&
+          elif [[ "$advance_welcome" == yes && "$calamares_welcome_next_clicked" -eq 1 && "$calamares_location_frame" -eq 0 ]] &&
                python3 "$visual_gate" changed-centre \
                  "$work/vnc-after-installer-icon.png" "$work/vnc-$tick.png"; then
             calamares_location_frame=1
