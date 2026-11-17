@@ -60,7 +60,90 @@ def synthetic(profile="win11_26h2_en_us_x64"):
     return report, serial, manifest
 
 
+
+def synthetic_post_overlay():
+    """Document-only fixture: independent CI verifies the actual third serial."""
+    report, serial, manifest = synthetic("win10_22h2_en_us_x64")
+    build = "19045"
+    first = GATE.witness_powershell(
+        report["profile"], build, arm_post_overlay=True) + "\n"
+    second = GATE.witness_powershell(
+        report["profile"], build, post_overlay=True) + "\n"
+    report["firstLogonScriptSha256"] = hashlib.sha256(
+        first.encode("utf-8")).hexdigest()
+    report["postOverlayGuestAuditScriptSha256"] = hashlib.sha256(
+        second.encode("utf-8")).hexdigest()
+    report["windowsPostOverlaySerialSha256"] = "b" * 64
+    report["windowsPostOverlayBootVerified"] = True
+    report["disposableOverlayExperiment"] = {
+        "overlayFaultRejected": True,
+        "overlayDiscarded": True,
+        "backingWindowsGptUnchanged": True,
+        "windowsRebootAfterFaultVerified": True,
+        "windowsBcdWinreReobservedAfterDiscard": True,
+        "windowsBcdWinreRestorationVerified": False,
+        "linuxInstalled": False,
+        "dualBootVerified": False,
+        "storageWritesAuthorized": False,
+        "releaseEligible": False,
+    }
+    return report, serial, manifest
+
+
+
 class WindowsCachyosReadonlyBaselineGateTests(unittest.TestCase):
+
+    def test_post_overlay_win10_both_guest_scripts_pinned_by_source(self):
+        report, serial, manifest = synthetic_post_overlay()
+        result = self.exercise(report, serial, manifest)
+        self.assertTrue(result["candidateWindowsFirstbootDocumentsConsistent"])
+        for field in ("storageWritesAuthorized", "releaseEligible",
+                      "windowsBcdWinreRestorationVerified", "sameDiskDualBootVerified"):
+            self.assertFalse(result[field])
+
+    def test_post_overlay_rejects_edited_first_or_second_guest_script_sha(self):
+        for key in ("firstLogonScriptSha256", "postOverlayGuestAuditScriptSha256"):
+            with self.subTest(key=key):
+                report, serial, manifest = synthetic_post_overlay()
+                report[key] = "0" * 64
+                with self.assertRaises(GATE.BaselineGateError):
+                    self.exercise(report, serial, manifest)
+
+    def test_post_overlay_rejects_missing_or_unauthorized_lab_proof(self):
+        for key in ("overlayFaultRejected", "overlayDiscarded",
+                    "backingWindowsGptUnchanged", "windowsRebootAfterFaultVerified",
+                    "windowsBcdWinreReobservedAfterDiscard"):
+            with self.subTest(key=key):
+                report, serial, manifest = synthetic_post_overlay()
+                report["disposableOverlayExperiment"][key] = False
+                with self.assertRaisesRegex(
+                        GATE.BaselineGateError, "post-overlay lab flags"):
+                    self.exercise(report, serial, manifest)
+        report, serial, manifest = synthetic_post_overlay()
+        report["disposableOverlayExperiment"]["storageWritesAuthorized"] = True
+        with self.assertRaisesRegex(GATE.BaselineGateError, "authority"):
+            self.exercise(report, serial, manifest)
+
+    def test_post_overlay_rejects_missing_mode_or_malformed_sha(self):
+        report, serial, manifest = synthetic_post_overlay()
+        del report["windowsPostOverlayBootVerified"]
+        with self.assertRaises(GATE.BaselineGateError):
+            self.exercise(report, serial, manifest)
+        report, serial, manifest = synthetic_post_overlay()
+        report["windowsPostOverlaySerialSha256"] = "not-sha"
+        with self.assertRaisesRegex(GATE.BaselineGateError, "post-overlay serial"):
+            self.exercise(report, serial, manifest)
+
+    def test_default_firstlogon_requires_original_hash(self):
+        report, serial, manifest = synthetic("win10_22h2_en_us_x64")
+        report["firstLogonScriptSha256"] = hashlib.sha256((
+            GATE.witness_powershell(report["profile"], "19045",
+                                    arm_post_overlay=True) + "\n"
+        ).encode()).hexdigest()
+        with self.assertRaisesRegex(GATE.BaselineGateError, "FirstLogon"):
+            self.exercise(report, serial, manifest)
+
+
     def exercise(self, report, serial, manifest, initial_serial=INITIAL_SERIAL,
                  initial_manifest=None):
         if initial_manifest is None:
