@@ -274,3 +274,61 @@ Generated-by: GPT-6
 - Delta #179–#186: #179 Bazzite bloqueada; #180 CachyOS bloqueada sobre #173; #181 Mint/Zorin para consolidação sobre #176; #182 Q4OS bloqueada sobre #59; #183 Q4OS bloqueada sobre #182; #184 endurecimento de mounts CachyOS para correção/revisão sobre #171; #185 Mint/Windows bloqueada sobre #161; #186 Q4OS bloqueada sobre #183.
 - Classificação das oito novas PRs: Corrigir +1, Consolidar +1, Bloquear +6. Totais revistos: Corrigir 85, Consolidar 52, Bloquear 28. Nenhuma é elegível para merge apenas por esta classificação.
 - Não foram encerradas PRs nem alterados os seus branches. A disposição "encerrar" permanece reservada a revisão individual de patches, commits únicos, descendentes e evidências.
+
+
+## Auditoria de patch IDs e consolidação seletiva — 17/11/2026
+
+### Método e limite de cobertura
+
+- Foram consultados os HEADs, BASEs, commits individuais e diffs das cadeias CachyOS e Windows/VM abaixo; também foram lidos os metadados e checks Actions das cadeias Q4OS e Pop!_OS.
+- A comparação de patch-id foi calculada com `git patch-id --stable` sobre os diffs integrais recuperados dos dois commits suspeitos. Não foi feita uma varredura de patch-id de todos os commits das 165 PRs: isso continua pendente e não deve ser inferido deste recorte.
+- SHA de commit igual é prova de identidade do objeto; patch-id igual é prova de patch equivalente após normalização, não de que os branches sejam intercambiáveis. Mensagens iguais não são prova de duplicação.
+
+### CachyOS — cadeia linear e cadeia pacstrap paralela
+
+| PR | Base SHA (prefixo) | HEAD SHA (prefixo) | Commits | Alteração efetiva | Ação |
+|---|---|---|---:|---|---|
+| [#165](https://github.com/LMhdez/gaslux/pull/165) | `26def172fe34` | `0362a65c04b9` | 13 | Handoff Ed25519 e auditoria GPT/Windows read-only | Consolidar como tronco de handoff |
+| [#170](https://github.com/LMhdez/gaslux/pull/170) | `0362a65c04b9` | `f4303df5ee14` | 9 | Caminhos virtio e geometria real do disco | Consolidar depois de #165 |
+| [#173](https://github.com/LMhdez/gaslux/pull/173) | `f4303df5ee14` | `60ea702eda4d` | 7 | Arranque de Windows 10 e Archiso real, disco Windows read-only | Consolidar depois de #170 |
+| [#180](https://github.com/LMhdez/gaslux/pull/180) | `60ea702eda4d` | `6b217864e89a` | 6 | Hashes reais ESP/BCD/WinRE no Archiso read-only | Consolidar depois de #173 |
+| [#171](https://github.com/LMhdez/gaslux/pull/171) | `0362a65c04b9` | `2d8cdf0a0822` | 32 | Candidato pacstrap root-only, grant independente e política pacman | Bloquear instalação; manter ramo experimental |
+| [#184](https://github.com/LMhdez/gaslux/pull/184) | `2d8cdf0a0822` | `86b38b510d61` | 4 | Identidade de mounts Windows/Linux e hashing no-follow | Consolidar no ramo #171 após auditoria |
+
+As dependências #165→#170→#173→#180 e #165→#171→#184 são comprovadas pela igualdade entre o SHA HEAD do pai e o SHA BASE do filho. Os seis HEADs têm checks Actions SUCCESS observados. Em #173/#180, o job real executa Windows 10 genuíno + ISO oficial CachyOS e auditoria Archiso **read-only**; não instala CachyOS. Em #171/#184, a execução é de contratos estáticos/GPT sem mount de guest ou pacstrap. O grant independente e o emissor host estão documentados como não implementados; não autorizar pacstrap.
+
+### Windows/VM — dependências e patch duplicado confirmado
+
+| PR | Base SHA (prefixo) | HEAD SHA (prefixo) | Observação |
+|---|---|---|---|
+| [#145](https://github.com/LMhdez/gaslux/pull/145) | `ae4f170104e8` | `886b4095c84f` | Checkpoints GPT sintéticos e interrupção |
+| [#147](https://github.com/LMhdez/gaslux/pull/147) | `886b4095c84f` | `46c0bf78f713` | Fault em overlay QCOW2 descartável |
+| [#149](https://github.com/LMhdez/gaslux/pull/149) | `46c0bf78f713` | `bb586572408b` | Terceiro boot Windows e auditoria BCD/WinRE |
+| [#150](https://github.com/LMhdez/gaslux/pull/150) | `46c0bf78f713` | `f3cfd0edb55d` | Hashes ESP/BCD/WinRE; ramo irmão de #149 |
+| [#155](https://github.com/LMhdez/gaslux/pull/155) | `f3cfd0edb55d` | `162e41e37e91` | Terceiro boot e bind do script FirstLogon |
+| [#157](https://github.com/LMhdez/gaslux/pull/157) | `73f5b73818df` | `7ab9784fd73f` | Corrupção BCD COW, descarte e terceiro boot; base ficou no antecessor de #155 |
+| [#159](https://github.com/LMhdez/gaslux/pull/159) | `bb586572408b` | `ad003bdca537` | GPT COW e auditoria Windows pós-descarte, ramo derivado de #149 |
+| [#163](https://github.com/LMhdez/gaslux/pull/163) | `7ab9784fd73f` | `1b01b7a69732` | Adicionar/remover entrada GPT Linux no COW e rollback |
+
+**Duplicado de patch confirmado:** os commits `162e41e37e91` (#155) e `7ab9784fd73f` (#157) têm diffs integrais idênticos no ficheiro `auto_tests/tools/windows_cachyos_readonly_baseline_gate.py`; `git patch-id --stable` devolveu `dd0c4bb59acdab69e05ec5ee475289b9d6c4cdcb` para ambos. O SHA do commit é diferente. A comparação GitHub confirma que #157 usa como base `73f5b73818df`, antecessor do commit #155 `162e41e37e91`; #157 está divergida (7 commits à frente e 1 atrás quando comparada com #155 HEAD). Portanto não fechar #155 nem #157, nem apagar o commit repetido isoladamente: primeiro é preciso reconstruir uma branch de integração com a alteração #155 herdada uma única vez e os seis commits únicos de #157 reaplicados/verificados. #163 depende de #157 e fica bloqueada até essa reconstrução.
+
+Os checks de #159/#163 em SUCCESS demonstram sobretudo boot Windows de ISO genuína e guardas de replay; não provam por si só a transação GPT específica, instalação Linux ou rollback integral. As provas de #145/#147 são sintéticas/overlay. Manter a distinção no gate de estabilidade.
+
+### Q4OS — duas cadeias distintas
+
+- [#59](https://github.com/LMhdez/gaslux/pull/59) → [#182](https://github.com/LMhdez/gaslux/pull/182) → [#183](https://github.com/LMhdez/gaslux/pull/183) → [#186](https://github.com/LMhdez/gaslux/pull/186) é uma cadeia de VNC/Calamares, plano Ed25519, identidade virtio e transporte autenticado.
+- #186 tem checks Actions SUCCESS. O job cria um alvo GPT sintético de 32 GiB, arranca QEMU com initramfs read-only e valida identidade e relatório autenticado. Não é uma instalação Windows real, não executa Calamares no disco Windows, nem comprova instalação Q4OS ou dual boot.
+- A cadeia independente #35→#37→#40→#44→#45→#49 continua a cobrir ISO/Calamares/GRUB; não a fundir com #59 sem comparação de ficheiros/commits e prova de compatibilidade entre as configurações.
+
+### Pop!_OS — cadeias paralelas, ainda sem prova de instalação final integrada
+
+- [#134](https://github.com/LMhdez/gaslux/pull/134) → [#177](https://github.com/LMhdez/gaslux/pull/177) → [#178](https://github.com/LMhdez/gaslux/pull/178): raiz Linux/ESP separados em QCOW2 descartável. #178 tem checks SUCCESS, incluindo boot/instalação Windows e GPT sintético; não prova instalação Pop!_OS nativa, distinst, primeiro boot Pop e preservação de entrada Windows após updates.
+- Outra cadeia: #47→#50→#61→#63, com #50 a cobrir instalação System76/distinst em VM e primeiro boot OVMF. Manter separada até verificar o mesmo contrato de ESP e a relação de dependências.
+- #39 (proteção da ESP Windows) é ramo irmão; não o descartar nem o integrar sem confirmar se o seu guard está presente nos HEADs Pop mais recentes.
+
+### Decisões desta ronda
+
+1. Recuperação seletiva já identificada: usar os seis commits únicos de #157 e a alteração comum de #155 uma só vez na futura cadeia Windows; manter #163 dependente desse resultado. Nenhuma branch foi reescrita nesta ronda.
+2. CachyOS: manter duas linhas de integração (read-only Archiso e candidato pacstrap), sem autorizar instalação até existir emissor do grant independente, checkpoint real, pacstrap no COW e primeiro boot comprovado.
+3. Q4OS e Pop!_OS: preservar cadeias paralelas até o diff/contrato provar equivalência; Actions verdes atuais não autorizam promoção.
+4. **Nenhuma PR foi encerrada, nenhuma branch apagada ou reescrita, e nenhum merge foi feito em `main`.** A main não deve receber backends experimentais. A PR #168 continua draft e os seus próprios checks de integração ainda não estão todos concluídos.
