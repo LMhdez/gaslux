@@ -19,6 +19,7 @@ on:
       - test/windows10-overlay-efi-bcd-guestfs-evidence
       - test/windows10-thirdboot-after-overlay
       - test/windows10-overlay-bcd-corruption-discard
+      - test/windows10-cachyos-owned-gpt-overlay-transaction
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -33,6 +34,7 @@ on:
       - auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
       - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
       - auto_tests/tools/windows_cachyos_overlay_bcd_fault.py
+      - auto_tests/tools/windows_cachyos_real_windows_gpt_cow_transaction.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
   workflow_dispatch:
 
@@ -60,6 +62,7 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_bcd_fault.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_real_windows_gpt_cow_transaction.py
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
@@ -106,6 +109,7 @@ jobs:
       GASLUX_WINDOWS_GUESTFS_TEST: I_ACCEPT_READONLY_FILESYSTEM_AUDIT
       GASLUX_WINDOWS_THIRDBOOT_TEST: I_ACCEPT_THIRD_WINDOWS_KVM_BOOT
       GASLUX_WINDOWS_BCD_OVERLAY_TEST: I_ACCEPT_BCD_WRITES_TO_NEW_OVERLAY_ONLY
+      GASLUX_WINDOWS_LINUX_GPT_COW_CONSENT: I_ACCEPT_FRESH_COW_GPT_PARTITION_ONLY
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -190,6 +194,16 @@ jobs:
           assert bcd_test['overlayDiscardRestoredBaseBcdHash'] is True
           assert bcd_test['windowsBackingImageUnchanged'] is True
           assert bcd_test['windowsRebootAfterBcdOverlayDiscardVerified'] is True
+          linux_txn = report['disposableLinuxGptOverlayExperiment']
+          for observed in ('linuxGptEntry5AddedInsideOverlay',
+                           'linuxGptEntry5DeletedInsideOverlay',
+                           'interruptedGptAdditionRolledBackByDiscard',
+                           'windowsBaseGptEspBcdWinreUnchanged'):
+              assert linux_txn[observed] is True
+          for forbidden in ('linuxSystemInstalled', 'linuxBootVerified',
+                            'inPlaceWindowsRollbackVerified', 'storageWritesAuthorized',
+                            'releaseEligible', 'sameDiskDualBootVerified'):
+              assert linux_txn[forbidden] is False
           third_serial = folder / (profile + '-thirdboot-serial.log')
           third_manifest = folder / (profile + '-thirdboot-serial.sha256')
           assert third_serial.is_file() and not third_serial.is_symlink()
