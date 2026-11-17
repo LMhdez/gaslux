@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Disposable QEMU/OVMF real live-kernel smoke for Pop!_OS and Q4OS.
+# Disposable QEMU/OVMF real live-kernel smoke for Pop!_OS, Q4OS and Zorin.
 # Real ISO stays read-only on an emulated optical drive. This neither
 # installs a target OS nor starts a Windows VM.
 set -Eeuo pipefail
 
 die() { printf '%s\n' "GASLUX_LIVE_BOOT_ERROR: $*" >&2; exit 1; }
-[[ $# -eq 3 ]] || die 'Usage: gaslux_candidate_live_boot.sh popos|q4os ISO PINNED_SHA256'
+[[ $# -eq 3 ]] || die 'Usage: gaslux_candidate_live_boot.sh popos|q4os|zorin ISO PINNED_SHA256'
 distro="$1"
 iso="$(realpath -e "$2")"
 digest="$3"
-[[ "$distro" == popos || "$distro" == q4os ]] || die 'Unknown backend'
+[[ "$distro" == popos || "$distro" == q4os || "$distro" == zorin ]] || die 'Unknown backend'
 [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || die 'Missing pinned sha256'
 [[ -f "$iso" && ! -L "$iso" ]] || die 'Refuse symlink/non-regular ISO'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
@@ -57,6 +57,12 @@ if [[ "$distro" == popos ]]; then
   kernel="$prefix/vmlinuz.efi"
   initrd="$prefix/initrd.gz"
   boot="boot=casper live-media-path=/$prefix"
+elif [[ "$distro" == zorin ]]; then
+  # Verify the known Ubuntu-family Casper boot artifacts on the same pinned
+  # image. This does not authorize target provisioning or shared-disk writes.
+  kernel="casper/vmlinuz"
+  initrd="casper/initrd"
+  boot="boot=casper live-media-path=/casper"
 else
   # Debian/Q4OS native live media uses release-versioned vmlinuz/initrd pairs.
   mapfile -t kernels < <(find "$work/iso-root/live" -mindepth 1 -maxdepth 1 \
