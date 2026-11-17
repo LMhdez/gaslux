@@ -129,7 +129,7 @@ jobs:
                       if ready and not injected and hmp.is_socket():
                           print("GASLUX_SYNTHETIC_OVMF_HMP_KEY_REQUEST=1", flush=True)
                           time.sleep(.6)  # Allow EFI console to enter its read loop.
-                          send_first_iso_boot_key(hmp)
+                          send_first_iso_boot_key(hmp, hold_ms=6000)
                           print("GASLUX_SYNTHETIC_OVMF_HMP_KEY_ACCEPTED=1", flush=True)
                           injected = True
                       time.sleep(.15)
