@@ -9,6 +9,7 @@ on:
       - fix/windows-two-stage-full-serial-dvd-guard
       - fix/windows-eval-oobe-international-pass
       - test/windows-floppy-proven-setup-firstlogon-fix
+      - test/windows-derived-iso-usb-fat32-controlled-ab
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -16,6 +17,7 @@ on:
       - auto_tests/test_windows_x64_swtpm_reconnect.py
       - auto_tests/test_windows_x64_tcg_unattend_contract.py
       - auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+      - auto_tests/test_windows_x64_derived_iso_usb_ab.py
   workflow_dispatch:
 
 permissions:
@@ -46,6 +48,7 @@ jobs:
               test_windows_x64_kvm_opt_in.py \
               test_windows_x64_clean_poweroff_gate.py \
               test_windows_x64_tcg_unattend_contract.py \
+              test_windows_x64_derived_iso_usb_ab.py \
               test_windows_x64_winre_baseline_contract.py \
               test_windows_x64_qemu_host_gate.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
