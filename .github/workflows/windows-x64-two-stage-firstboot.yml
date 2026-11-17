@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/windows-eval-two-stage-disposable-firstboot
+      - fix/windows-two-stage-second-guest-evidence
     paths:
       - .github/workflows/windows-x64-two-stage-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
