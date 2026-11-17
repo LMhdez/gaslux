@@ -1,0 +1,122 @@
+name: CachyOS Linux root GPT on disposable Windows-style COW overlay only
+on:
+  push:
+    branches: [test/windows10-cachyos-overlay-gpt-linux-root-only]
+    paths:
+      - auto_tests/tools/windows_cachyos_overlay_gpt_stage.py
+      - auto_tests/test_windows_cachyos_overlay_gpt_stage.py
+      - auto_tests/tools/windows_x64_libguestfs_kernel.sh
+      - .github/workflows/windows-cachyos-overlay-linux-root-gpt.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-guest-safety-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Check compile and fail-closed GPT identity and ownership fixtures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_gpt_stage.py
+          python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_gpt_stage.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_cow_checkpoint.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
+          bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
+  sparse-qcow2-backed-guestfs-only:
+    needs: no-guest-safety-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT: I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_GPT_CONSENT: I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install QEMU/guestfs and select owned private appliance kernel
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-utils python3-guestfs libguestfs-tools linux-image-generic
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 -c 'import guestfs; print("PASS: private guestfs only")'
+      - name: Build synthetic Windows GPT, freeze base, stage only fifth GPT entry in COW
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true && test "$RUNNER_ENVIRONMENT" = github-hosted
+          w="$(mktemp -d -p "$RUNNER_TEMP" gaslux-win-x64-XXXXXXXX)"
+          chmod 700 "$w"
+          trap 'rm -rf -- "$w"' EXIT
+          qemu-img create -f qcow2 "$w/only-disposable-windows-target.qcow2" 128G
+          python3 - "$w" <<'PY'
+          import json, pathlib, sys, uuid
+          sys.path.insert(0, 'auto_tests')
+          sys.path.insert(0, 'auto_tests/tools')
+          import guestfs
+          from test_windows_cachyos_qcow2_gpt_readonly import create_disk_windows
+          from windows_cachyos_qcow2_gpt_readonly import (
+              VIRTUAL_BYTES, WINDOW_BYTES, inspect_owned_qcow2,
+              qcow2_file_identity,
+          )
+          from windows_cachyos_cow_checkpoint import prepare_postboot_cow
+          from windows_cachyos_overlay_gpt_stage import stage_overlay_gpt
+
+          work = pathlib.Path(sys.argv[1])
+          base = work / 'only-disposable-windows-target.qcow2'
+          nvram = work / 'ovmf-variables.fd'
+          # Synthetic GPT from regression fixtures; NO Windows installed/booted.
+          original_front, original_back = create_disk_windows()
+          g = guestfs.GuestFS(python_return_dict=True)
+          try:
+              g.add_drive_opts(str(base), format='qcow2', readonly=0)
+              g.launch()
+              devices = g.list_devices()
+              assert len(devices) == 1 and g.blockdev_getsize64(devices[0]) == VIRTUAL_BYTES
+              assert g.pwrite_device(devices[0], original_front, 0) == WINDOW_BYTES
+              assert g.pwrite_device(devices[0], original_back,
+                                     VIRTUAL_BYTES-WINDOW_BYTES) == WINDOW_BYTES
+              g.sync()
+          finally:
+              try: g.shutdown()
+              finally: g.close()
+          nvram.write_bytes(b'\x71' * 600000)
+          baseline = inspect_owned_qcow2(base)
+          assert baseline['candidateWindowsGptPrimaryAndBackupConsistent'] is True
+          checkpoint = prepare_postboot_cow(base, nvram, baseline)
+          before = qcow2_file_identity(base)
+          proof = stage_overlay_gpt(
+              base, nvram, baseline, checkpoint,
+              uuid.UUID('5e4b06a0-214a-4d37-908e-ef1d8eaa0311'),
+          )
+          assert proof['overlayGptLinuxRootEntryPrepared'] is True
+          assert proof['windowsBackingQcow2Unchanged'] is True
+          assert proof['bothGptMirrorsAfterStageVerified'] is True
+          assert proof['windowsUefiVariablesUnchanged'] is True
+          assert proof['linuxRoot']['lengthBytes'] == 24*1024**3
+          assert proof['linuxRootFilesystemFormatted'] is False
+          assert qcow2_file_identity(base) == before
+          assert inspect_owned_qcow2(base)['windowsPartitions'] == baseline['windowsPartitions']
+          for gate in ('storageWritesAuthorized', 'releaseEligible',
+                       'sameDiskDualBootVerified', 'windowsRecoveryAfterLinuxVerified',
+                       'cachyosInstalled', 'cachyosFirstBootVerified',
+                       'windowsBootAfterOverlayMutationVerified', 'rollbackProven'):
+              assert proof[gate] is False, gate
+          print('GASLUX_SYNTHETIC_ONLY_OVERLAY_GPT_STAGE_PASS')
+          print(json.dumps(proof,sort_keys=True))
+          PY
+          echo 'PASS: exact fifth Linux GPT entry in disposable COW; both Windows GPT mirrors and backing intact' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NO real Windows, Linux installation, filesystem, ESP write, guest boot, recovery or rollback verified' >> "$GITHUB_STEP_SUMMARY"
