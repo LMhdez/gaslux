@@ -60,6 +60,10 @@ def partition_records(front: bytes) -> bytes:
     return front[2 * SECTOR:34 * SECTOR]
 
 
+def backup_partition_records(back: bytes) -> bytes:
+    return back[-33 * SECTOR:-SECTOR]
+
+
 def markers(disk: Path, parts: list[dict]) -> dict[int, bytes]:
     markers = {}
     with disk.open("rb", buffering=0) as src:
@@ -132,8 +136,9 @@ def one_synthetic_trial() -> None:
         run("sgdisk", "--verify", str(disk))
         added_front, added_back = sections(disk)
         first_four = partition_records(before[0])[:4 * 128]
-        check(partition_records(added_front)[:4 * 128] == first_four,
-              "Windows GPT entry bytes changed while adding synthetic Linux")
+        check(partition_records(added_front)[:4 * 128] == first_four
+              and backup_partition_records(added_back)[:4 * 128] == first_four,
+              "Windows primary or backup GPT entries changed when adding Linux")
         entry5 = partition_records(added_front)[4 * 128:5 * 128]
         check(uuid.UUID(bytes_le=entry5[:16]) == uuid.UUID(LINUX_TYPE),
               "new synthetic Linux entry has wrong GPT type")
@@ -162,8 +167,8 @@ def one_synthetic_trial() -> None:
         verify_markers(disk, saved)
         # Compare all GPT partition records (not merely labels/UUIDs).
         check(partition_records(rolled_front) == partition_records(before[0])
-              and partition_records(rolled_back) ==
-                  partition_records(before[1]),
+              and backup_partition_records(rolled_back) ==
+                  backup_partition_records(before[1]),
               "entire GPT record arrays not restored")
         print("GASLUX_SYNTHETIC_GPT_WINDOWS_PARTITIONS_PRESERVED=1")
         print("GASLUX_SYNTHETIC_GPT_ENTRY_ROLLBACK_VERIFIED=1")
