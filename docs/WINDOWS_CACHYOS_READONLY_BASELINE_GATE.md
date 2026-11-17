@@ -83,3 +83,36 @@ The candidate gate now requires **both** the first Microsoft DVD/Setup-stage COM
 The added CLI arguments are `--initial-dvd-serial` and `--initial-dvd-serial-sha256`, taking the existing `<profile>-initial-dvd-serial.log` and `<profile>-initial-dvd-serial.sha256` artifacts from the **same** disposable GitHub runner. Missing, symlinked, nonregular, oversized, inconsistent or repeated DVD-start evidence fails closed. No source ISO, QCOW2 or credential is uploaded.
 
 This cross-check improves **internal consistency only**. The records and SHA-256 manifests are still controlled by the laboratory; it does not independently authenticate guest provenance or prove installed Windows, CachyOS dual boot, EFI/BCD/WinRE restoration or recovery. All corresponding product approval flags remain false. This code never opens block devices or authorizes disk writes.
+
+## Original Microsoft ISO vs derived no-prompt ISO (experimental)
+
+PR #108 introduced a direct, SHA-pinned, **unaltered official Microsoft
+Windows ISO** option for its authorized disposable KVM comparison. That
+native Windows result sets `labDerivedIsoOnly=false`, retains
+`officialIsoUnmodified=true`, includes the pinned official `isoSha256`,
+and **does not** provide `labDerivedIsoSha256`. The older remastered
+no-prompt ISO path sets `labDerivedIsoOnly=true` and provides a separate,
+valid `labDerivedIsoSha256` distinct from the pinned official ISO digest.
+
+The read-only candidate checker now requires one of these **exclusive**
+reporting combinations with an explicit boolean. It rejects ambiguity:
+missing mode, a derived ISO without its own distinct SHA-256, or an
+original-ISO claim accompanied by a derivative hash. The existing
+checks for Microsoft ISO SHA-256, PowerShell first-logon witness,
+first/second serial manifests, WinRE/BCD marker content, exact full
+client audit and clean shutdown diagnostic remain mandatory.
+
+**This is format compatibility, not independent media authentication.**
+The original ISO flag and digest are still self-reported by the hosted
+Windows test, and an attacker who forges every input can forge them.
+The candidate helper always returns
+`windowsGuestOriginAuthenticated=false`,
+`windowsBootVerified=false`, `sameDiskDualBootVerified=false`,
+`storageWritesAuthorized=false`, and `releaseEligible=false`.
+A real original-Microsoft-ISO firstboot run and independent disk identity
+and rollback checks must pass before any Windows/CachyOS shared-disk
+operation. The existing PR #98 **derived ISO real KVM job is not
+reinterpreted** by this change.
+
+This change is stacked on PR #98, which itself remains experimental and
+must not be merged into the stable release without issue #3 evidence.
