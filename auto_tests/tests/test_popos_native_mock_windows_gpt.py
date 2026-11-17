@@ -154,15 +154,12 @@ def test_mock_windows_native_install_never_selects_protected_partitions():
     assert "GASLUX_POP_MOCK_WINDOWS_PROTECTED_THROUGH_FIRSTBOOT=1" in runner
 
 
-
 def test_separate_esp_requires_actual_installed_bootctl_menu_observation():
-    guest = (
-        ROOT / "auto_tests/tools/gaslux_popos_mock_windows_firstboot_guest.sh"
-    ).read_text()
+    guest = (ROOT / "auto_tests/tools/gaslux_popos_mock_windows_firstboot_guest.sh").read_text()
     runner = (
         ROOT / "auto_tests/tools/gaslux_popos_native_mock_windows_firstboot_vm.sh"
     ).read_text()
-    assert 'bootctl --no-pager --esp-path=/boot/efi list' in guest
+    assert "bootctl --no-pager --esp-path=/boot/efi list" in guest
     assert "fail 'installed systemd-boot entry enumeration failed'" in guest
     assert "auto-windows" in guest
     assert "GASLUX_POP_SEPARATE_ESP_WINDOWS_MENU_ABSENT=1" in guest
