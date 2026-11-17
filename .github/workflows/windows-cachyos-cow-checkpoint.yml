@@ -1,0 +1,86 @@
+name: CachyOS Windows-owned disposable COW recovery checkpoint (no Windows ISO)
+on:
+  push:
+    branches: [test/windows10-cachyos-owned-cow-checkpoint]
+    paths:
+      - auto_tests/tools/windows_cachyos_cow_checkpoint.py
+      - auto_tests/test_windows_cachyos_cow_checkpoint.py
+      - .github/workflows/windows-cachyos-cow-checkpoint.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checkpoint-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Fail-closed source ownership, consent and Windows geometry contract tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_cow_checkpoint.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
+  real-disposable-overlay:
+    needs: checkpoint-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT: I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Prove COW writes and discard cannot mutate blank baseline Windows-shaped QCOW2
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true && test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          w="$(mktemp -d -p "$RUNNER_TEMP" gaslux-win-x64-XXXXXX)"
+          chmod 700 "$w"
+          trap 'rm -rf -- "$w"' EXIT
+          qemu-img create -f qcow2 "$w/only-disposable-windows-target.qcow2" 128G
+          python3 - "$w" <<'PY'
+          import pathlib, sys, json
+          sys.path.insert(0, "auto_tests/tools")
+          from windows_cachyos_cow_checkpoint import prepare_postboot_cow
+          path = pathlib.Path(sys.argv[1])
+          # Only synthetic UEFI bytes. No real Windows/EFI content or guest.
+          (path/"ovmf-variables.fd").write_bytes(b"\x99" * 600000)
+          proof = prepare_postboot_cow(
+              path/"only-disposable-windows-target.qcow2",
+              path/"ovmf-variables.fd",
+              {"candidateWindowsGptPrimaryAndBackupConsistent":True,
+               "storageWritesAuthorized":False, "releaseEligible":False},
+          )
+          assert proof["candidateWindowsCowCheckpointPrepared"] is True
+          assert proof["snapshotIndependentlyRestorable"] is False
+          assert proof["storageWritesAuthorized"] is False
+          assert proof["releaseEligible"] is False
+          print(json.dumps(proof,sort_keys=True))
+          PY
+          overlay="$w/windows-uefi-cow-checkpoint/cachyos-unwritten-trial-overlay.qcow2"
+          base="$w/only-disposable-windows-target.qcow2"
+          # Only the new disposable OVERLAY is written. The 128GiB baseline is
+          # protected and never mounted or opened as writable.
+          qemu-io -f qcow2 -c 'write -P 0x5a 524288 512' "$overlay"
+          set +e
+          qemu-img compare -f qcow2 -F qcow2 "$base" "$overlay"
+          rc=$?
+          set -e
+          test "$rc" -eq 1
+          qemu-io -r -f qcow2 -c 'read -P 0x00 524288 512' "$base"
+          test "$(stat -c '%a' "$base")" = 400
+          test "$(stat -c '%a' "$w/windows-uefi-cow-checkpoint/windows-ovmf-baseline.fd")" = 400
+          rm -- "$overlay"
+          qemu-img info -f qcow2 "$base" >/dev/null
+          echo 'PASS: write to disposable trial overlay changes overlay only; base + UEFI variables preserved' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT a Windows install, independent backup, Windows reboot, Linux install, dualboot, rollback of Windows/WinRE or release gate' >> "$GITHUB_STEP_SUMMARY"
