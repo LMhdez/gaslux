@@ -1,0 +1,98 @@
+name: Genuine Windows 10/11 two-stage DVD then disk-only installed firstboot (VM only)
+
+on:
+  push:
+    branches:
+      - feature/windows-eval-two-stage-disposable-firstboot
+    paths:
+      - .github/workflows/windows-x64-two-stage-firstboot.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_two_stage_boot.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-host-and-proof-contracts:
+    name: All Windows client and two-stage destructive-replay guards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: No media, no guest, fail-closed unit and Linux portability tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          for name in \
+              test_windows_x64_two_stage_boot.py \
+              test_windows_x64_noprompt_one_shot.py \
+              test_windows_x64_derived_noprompt.py \
+              test_windows_x64_kvm_opt_in.py \
+              test_windows_x64_clean_poweroff_gate.py \
+              test_windows_x64_tcg_unattend_contract.py \
+              test_windows_x64_winre_baseline_contract.py \
+              test_windows_x64_qemu_host_gate.py; do
+            python3 -m unittest discover -s auto_tests -p "$name" -v
+          done
+
+  genuine-client-two-stage-firstboot:
+    name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
+    needs: verify-host-and-proof-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - win10_22h2_en_us_x64
+          - win11_26h2_en_us_x64
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require hosted KVM and prepare isolated Windows/ISO UDF tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
+            p7zip-full genisoimage
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Validate official SHA, disposable first DVD Setup, detach DVD and independently firstboot Windows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile "${{ matrix.profile }}" --accel kvm \
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800
+          echo 'Only if this step succeeded, both native stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-genuine-two-stage-firstboot-${{ matrix.profile }}
+          path: windows-x64-tcg-evidence/
+          retention-days: 7
+          if-no-files-found: warn
