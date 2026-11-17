@@ -115,8 +115,39 @@ def evaluate(profile: str, report: dict, serial: bytes,
     # Bind the Windows guest audit script to the checked-out source itself,
     # rather than accepting an arbitrary syntactically valid SHA256. This
     # independently catches an altered FirstLogon audit payload.
+    build = catalog["profiles"][profile]["expectedWindowsBuildPrefix"]
+    post_overlay = report.get("windowsPostOverlayBootVerified", False)
+    require(type(post_overlay) is bool, "invalid post-overlay boot mode")
+    if post_overlay:
+        require(profile == "win10_22h2_en_us_x64",
+                "post-overlay reboot experiment supports Windows 10 only")
+        overlay = report.get("disposableOverlayExperiment")
+        require(type(overlay) is dict and all(
+            overlay.get(key) is True for key in (
+                "overlayFaultRejected", "overlayDiscarded",
+                "backingWindowsGptUnchanged",
+                "windowsRebootAfterFaultVerified",
+                "windowsBcdWinreReobservedAfterDiscard",
+            )), "missing independent post-overlay lab flags")
+        require(all(overlay.get(key) is False for key in (
+            "windowsBcdWinreRestorationVerified", "linuxInstalled",
+            "dualBootVerified", "storageWritesAuthorized", "releaseEligible",
+        )), "post-overlay report falsely claims storage or recovery authority")
+        post_script = witness_powershell(profile, build, post_overlay=True) + "\n"
+        require(report.get("postOverlayGuestAuditScriptSha256") ==
+                hashlib.sha256(post_script.encode("utf-8")).hexdigest(),
+                "post-overlay guest audit script does not match checked-out source")
+        require(type(report.get("windowsPostOverlaySerialSha256")) is str and
+                SHA256.fullmatch(report["windowsPostOverlaySerialSha256"]) is not None,
+                "post-overlay serial digest is missing or malformed")
+    else:
+        require("postOverlayGuestAuditScriptSha256" not in report and
+                "windowsPostOverlaySerialSha256" not in report,
+                "post-overlay evidence without explicit accepted mode")
+    # This is a *closed* set of two source-bound variants, not a generic SHA
+    # allowlist. The original/default FirstLogon audit remains unchanged.
     generated = witness_powershell(
-        profile, catalog["profiles"][profile]["expectedWindowsBuildPrefix"],
+        profile, build, arm_post_overlay=post_overlay,
     ) + "\n"
     require(
         report["firstLogonScriptSha256"] ==
