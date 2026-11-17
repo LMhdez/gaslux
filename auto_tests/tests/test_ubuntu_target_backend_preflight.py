@@ -10,6 +10,120 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "assets/live/configure-target-main.sh"
 
 
+# Guard the actual squashfs capability scan used by the inherited Mint/Zorin
+# backend. All unsquashfs output is synthetic; no ISO or disk is accessed.
+SQUASHFS_HELPERS = ROOT / "assets/live/libertix-distribution-common.sh"
+
+
+@pytest.mark.parametrize(
+    ("listing", "tool_exit", "accepted"),
+    [
+        ("-rw-r--r-- root/root 100 2026-11-17 12:00 squashfs-root/etc/os-release", 0, True),
+        (
+            "lrwxrwxrwx root/root 1 2026-11-17 12:00 "
+            "squashfs-root/etc/os-release -> ../usr/lib/os-release",
+            0,
+            True,
+        ),
+        ("-rw-r--r-- root/root 100 2026-11-17 12:00 squashfs-root/etc/os-release.old", 0, False),
+        (
+            "-rw-r--r-- root/root 100 2026-11-17 12:00 "
+            "prefix/squashfs-root/etc/os-release",
+            0,
+            False,
+        ),
+        (
+            "lrwxrwxrwx root/root 1 2026-11-17 12:00 "
+            "squashfs-root/tmp/spoof -> squashfs-root/etc/os-release",
+            0,
+            False,
+        ),
+        ("unsquashfs: squashfs-root/etc/os-release", 0, False),
+        ("", 0, False),
+        ("-rw-r--r-- root/root 100 2026-11-17 12:00 squashfs-root/etc/os-release", 2, False),
+    ],
+)
+def test_legacy_mint_zorin_squashfs_capabilities_require_exact_paths(
+    listing: str, tool_exit: int, accepted: bool
+):
+    shell = (
+        "set -euo pipefail\n"
+        + SQUASHFS_HELPERS.read_text(encoding="utf-8")
+        + r"""
+unsquashfs() {
+    printf '%s\n' "$MOCK_LISTING"
+    return "$MOCK_EXIT"
+}
+distribution_squashfs_path_exists /fake/image.squashfs etc/os-release
+"""
+    )
+    result = subprocess.run(
+        ["bash", "-c", shell],
+        env=dict(os.environ, MOCK_LISTING=listing, MOCK_EXIT=str(tool_exit)),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is accepted, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("expected_id", "actual_id", "family", "broken_capability", "accepted"),
+    [
+        ("linuxmint", "linuxmint", "ubuntu", "", True),
+        ("zorin", "zorin", "ubuntu debian", "", True),
+        ("linuxmint", "zorin", "ubuntu", "", False),
+        ("zorin", "zorin", "arch", "", False),
+        ("linuxmint", "linuxmint", "ubuntu", "usr/sbin/update-grub", False),
+    ],
+)
+def test_legacy_mint_zorin_payload_requires_real_capabilities_and_identity(
+    tmp_path: Path,
+    expected_id: str,
+    actual_id: str,
+    family: str,
+    broken_capability: str,
+    accepted: bool,
+):
+    rootfs = tmp_path / "filesystem.squashfs"
+    rootfs.touch()
+    shell = (
+        "set -euo pipefail\n"
+        + SQUASHFS_HELPERS.read_text(encoding="utf-8")
+        + r"""
+unsquashfs() {
+    if [ "$1" = "-ll" ]; then
+        path="$3"
+        if [ "$path" = "$MOCK_BROKEN_CAPABILITY" ]; then
+            path="$path.old"
+        fi
+        printf '%s\n' "-rw-r--r-- root/root 10 2026-11-17 12:00 squashfs-root/$path"
+    elif [ "$1" = "-cat" ]; then
+        printf 'ID=%s\nID_LIKE=%s\n' "$MOCK_ID" "$MOCK_FAMILY"
+    else
+        return 2
+    fi
+}
+assert_distribution_rootfs_compatible_or_die "$MOCK_ROOTFS" "$MOCK_EXPECTED_ID"
+"""
+    )
+    result = subprocess.run(
+        ["bash", "-c", shell],
+        env=dict(
+            os.environ,
+            MOCK_ROOTFS=str(rootfs),
+            MOCK_EXPECTED_ID=expected_id,
+            MOCK_ID=actual_id,
+            MOCK_FAMILY=family,
+            MOCK_BROKEN_CAPABILITY=broken_capability,
+        ),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is accepted, result.stderr
+
+
 def _validate_target(
     *, distro: str, os_id: str, backend: str | None, firmware: str = "uefi"
 ) -> subprocess.CompletedProcess:
