@@ -1,0 +1,37 @@
+name: Windows genuine firstlogon bounded diagnostic stage (no ISO, no disk)
+
+on:
+  push:
+    branches:
+      - fix/windows-firstlogon-bounded-failure-stages
+    paths:
+      - .github/workflows/windows-firstlogon-bounded-audit-contracts.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_tcg_unattend_contract.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-guest-marker-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Syntax, Windows contract, no-disk regression and recovery requirements
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          for name in \
+              test_windows_x64_tcg_unattend_contract.py \
+              test_windows_x64_two_stage_boot.py \
+              test_windows_x64_swtpm_reconnect.py \
+              test_windows_x64_winre_baseline_contract.py \
+              test_windows_x64_clean_poweroff_gate.py; do
+            python3 -m unittest discover -s auto_tests -p "$name" -v
+          done
+          echo "Contracts only; no Windows guest was started and no firstboot was proved." >> "$GITHUB_STEP_SUMMARY"

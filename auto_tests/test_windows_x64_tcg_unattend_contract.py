@@ -68,6 +68,43 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
                 self.assertIn("bcdedit /enum", module.witness_powershell(key, prefix))
                 self.assertNotIn("bcdedit /set", module.witness_powershell(key, prefix))
 
+
+    def test_firstlogon_failure_stages_are_bounded_and_not_boot_proof(self):
+        for profile, build in (
+            ("win10_22h2_en_us_x64", "19045"),
+            ("win11_26h2_en_us_x64", "26300"),
+        ):
+            with self.subTest(profile=profile):
+                guest = module.witness_powershell(profile, build)
+                self.assertIn("GASLUX_WINDOWS_X64_FIRSTLOGON_STARTED=1", guest)
+                self.assertIn("GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL_STAGE=", guest)
+                self.assertIn("GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL: guest audit rejected", guest)
+                self.assertIn("GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT", guest)
+                self.assertIn("$auditStage = 'WINRE'", guest)
+                self.assertIn("$auditStage = 'BCD'", guest)
+                self.assertIn("$auditStage = 'GPT_PARTITIONS'", guest)
+                self.assertIn("$auditStage = 'CLIENT'", guest)
+                self.assertIn("$auditStage = 'SERIAL_PROOF'", guest)
+                self.assertIn("$auditStage = 'UNCLASSIFIED'", guest)
+                self.assertNotIn("$_.Exception", guest)
+                self.assertNotIn("WriteLine($_", guest)
+                self.assertNotIn("$ser.WriteLine($Error", guest)
+                self.assertLess(
+                    guest.index("GASLUX_WINDOWS_X64_FIRSTLOGON_STARTED=1"),
+                    guest.index("GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1"),
+                )
+                self.assertIn("GASLUX_WINDOWS_X64_WINRE_ENABLED=1", guest)
+                self.assertIn("bcdedit /enum", guest)
+                self.assertNotIn("bcdedit /set", guest)
+
+    def test_stage_only_markers_never_satisfy_windows_client_acceptance(self):
+        source = SRC.read_text(encoding="utf-8")
+        self.assertIn('f"{MARKER}={profile_key}".encode()', source)
+        self.assertIn('b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1"', source)
+        self.assertIn("required.issubset(lines)", source)
+        self.assertIn("witnessed_at is not None and rc == 0", source)
+        self.assertIn("reject_repeated_dvd_boot", source)
+
     def test_oobe_international_defaults_present_for_real_win10_and_win11(self):
         for profile, build in (("win10_22h2_en_us_x64", "19045"),
                                ("win11_26h2_en_us_x64", "26300")):

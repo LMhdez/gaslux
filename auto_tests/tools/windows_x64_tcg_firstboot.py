@@ -213,32 +213,44 @@ def witness_powershell(profile_key: str, build: str) -> str:
     return r'''
 $ErrorActionPreference = 'Stop'
 $ser = $null
+$auditStage = 'SERIAL'
 try {
   $ser = [System.IO.Ports.SerialPort]::new('COM1',115200,[System.IO.Ports.Parity]::None,8,[System.IO.Ports.StopBits]::One)
   $ser.NewLine = "`n"
   $ser.Open()
+  # A start marker never counts as Windows firstboot proof; it only distinguishes
+  # an OOBE / answer-media failure from an audit that was actually invoked.
+  $ser.WriteLine('GASLUX_WINDOWS_X64_FIRSTLOGON_STARTED=1')
+  $auditStage = 'CLIENT'
   $os = Get-CimInstance -ClassName Win32_OperatingSystem
   if ([int]$os.ProductType -ne 1) { throw 'running OS is not Windows client' }
   if (-not [Environment]::Is64BitOperatingSystem) { throw 'not 64bit OS' }
   if (-not $os.BuildNumber.StartsWith('__BUILD__')) { throw 'unexpected Windows build' }
+  $auditStage = 'GPT_DISK'
   $disk = Get-Disk -Number 0
   if ($disk.PartitionStyle -ne 'GPT') { throw 'installed target not GPT' }
+  $auditStage = 'GPT_PARTITIONS'
   $parts = @(Get-Partition -DiskNumber 0)
   $esp = @($parts | Where-Object { $_.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' })
   if ($esp.Count -ne 1) { throw 'missing or multiple Windows ESP' }
   $recovery = @($parts | Where-Object { $_.GptType -eq '{de94bba4-06d1-4d40-a16a-bfd50179d6ac}' })
   if ($recovery.Count -ne 1) { throw 'missing or multiple Windows Recovery GPT partitions' }
+  $auditStage = 'PARTITION_ORDER'
   $windowsPart = Get-Partition -DriveLetter C
   if ($windowsPart.DiskNumber -ne 0 -or $windowsPart.Offset -le $esp[0].Offset -or
       $recovery[0].Offset -lt ($windowsPart.Offset + $windowsPart.Size)) {
     throw 'unexpected Windows/ESP/WinRE partition order'
   }
+  $auditStage = 'EFI_LOADER'
   if (-not (Test-Path 'C:\Windows\System32\winload.efi')) { throw 'Windows EFI loader missing' }
+  $auditStage = 'BCD'
   $bcd = & bcdedit /enum '{bootmgr}' 2>&1
   if ($LASTEXITCODE -ne 0) { throw 'BCD boot manager enumeration failed' }
+  $auditStage = 'WINRE'
   $winre = & reagentc /info 2>&1
   $winreOk = ($LASTEXITCODE -eq 0 -and (($winre -join "`n") -match 'Windows RE status:\s+Enabled'))
   if (-not $winreOk) { throw 'WinRE is missing, disabled or unverifiable' }
+  $auditStage = 'SERIAL_PROOF'
   $serialProof = @(
     'GASLUX_WINDOWS_X64_BOOT_BUILD=' + $os.BuildNumber,
     'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1',
@@ -250,7 +262,15 @@ try {
   )
   foreach ($line in $serialProof) { $ser.WriteLine($line); Start-Sleep -Milliseconds 100 }
 } catch {
-  if ($ser -and $ser.IsOpen) { $ser.WriteLine('GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL: guest audit rejected') }
+  if ($ser -and $ser.IsOpen) {
+    # Only hard-coded categories; never serialize arbitrary exception data,
+    # product keys, passwords, drive paths, serial numbers or TPM contents.
+    if ($auditStage -notin @('SERIAL','CLIENT','GPT_DISK','GPT_PARTITIONS',
+                             'PARTITION_ORDER','EFI_LOADER','BCD','WINRE',
+                             'SERIAL_PROOF')) { $auditStage = 'UNCLASSIFIED' }
+    $ser.WriteLine('GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL_STAGE=' + $auditStage)
+    $ser.WriteLine('GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL: guest audit rejected')
+  }
 } finally {
   if ($ser) { $ser.Close(); $ser.Dispose() }
 }
