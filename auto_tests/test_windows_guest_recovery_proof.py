@@ -239,6 +239,7 @@ class WindowsRecoveryFixtureTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
 class GuestTrustBoundaryTests(unittest.TestCase):
     def test_windows_server_cannot_be_reported_as_windows_client(self):
         fixture = baseline()
