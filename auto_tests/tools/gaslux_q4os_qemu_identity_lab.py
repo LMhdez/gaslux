@@ -180,10 +180,10 @@ def verify_authenticated_report(
     }
 
 
-def _read_line(stream: Any, limit: int) -> bytes:
+def _read_line(stream: Any, limit: int, context: str) -> bytes:
     value = stream.readline(limit + 1)
     if not value or len(value) > limit or not value.endswith(b"\n"):
-        raise Q4osQemuLabRefusal("Incomplete or oversized QEMU virtio-serial frame")
+        raise Q4osQemuLabRefusal(f"Incomplete or oversized {context} frame")
     return value[:-1]
 
 
