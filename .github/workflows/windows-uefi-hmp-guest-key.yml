@@ -1,0 +1,118 @@
+name: Real UEFI guest keyboard receipt from QEMU HMP (NO Windows)
+on:
+  push:
+    branches:
+      - test/windows-uefi-guest-receives-hmp-key
+    paths:
+      - .github/workflows/windows-uefi-hmp-guest-key.yml
+      - auto_tests/tools/windows_uefi_hmp_guest_key.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  grub-efi-hmp-guest-receipt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require hosted VM-only authorization and compile script
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          python3 -m py_compile auto_tests/tools/windows_uefi_hmp_guest_key.py
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          test -c /dev/kvm
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 ovmf grub-common grub-efi-amd64-bin grub-pc-bin \
+            xorriso mtools dosfstools
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+      - name: Boot a disposable GRUB UEFI ISO and require actual guest key receipt
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          tmp="$(mktemp -d -p "$RUNNER_TEMP" gaslux-win-x64-XXXXXXXX)"
+          chmod 700 "$tmp"
+          qemu_pid=
+          cleanup() {
+            if [[ -n "$qemu_pid" ]]; then
+              kill "$qemu_pid" 2>/dev/null || true
+              wait "$qemu_pid" 2>/dev/null || true
+            fi
+            rm -rf -- "$tmp"
+          }
+          trap cleanup EXIT
+          mkdir -p "$tmp/iso-tree/boot/grub"
+          cat > "$tmp/iso-tree/boot/grub/grub.cfg" <<'GRUB'
+          serial --unit=0 --speed=115200
+          terminal_output serial
+          terminal_input console
+          echo GASLUX_EFI_GUEST_WAITING_FOR_ENTER=1
+          if read --prompt="EFI Enter> " lab_input; then
+              echo GASLUX_EFI_GUEST_ENTER_RECEIVED=1
+          else
+              echo GASLUX_EFI_GUEST_ENTER_REJECTED=1
+          fi
+          sleep 25
+          GRUB
+          iso="$tmp/only-disposable-grub-uefi.iso"
+          grub-mkrescue -o "$iso" "$tmp/iso-tree" > "$tmp/grub-build.log" 2>&1 || {
+            echo 'Synthetic EFI rescue ISO creation failed'
+            tail -n 15 "$tmp/grub-build.log"
+            exit 1
+          }
+          test -s "$iso" && test ! -L "$iso"
+          if [[ -f /usr/share/OVMF/OVMF_CODE_4M.fd && \
+                -f /usr/share/OVMF/OVMF_VARS_4M.fd ]]; then
+            code=/usr/share/OVMF/OVMF_CODE_4M.fd
+            vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          else
+            code=/usr/share/OVMF/OVMF_CODE.fd
+            vars=/usr/share/OVMF/OVMF_VARS.fd
+          fi
+          test -f "$code" && test -f "$vars"
+          cp "$vars" "$tmp/ovmf-vars.fd"
+          chmod 600 "$tmp/ovmf-vars.fd"
+          serial="$tmp/only-disposable-grub-serial.log"
+          sock="$tmp/initial-installer-hmp.sock"
+          test ! -e "$sock" && test ! -L "$sock"
+          qemu-system-x86_64 \
+            -machine q35,accel=kvm,smm=on -cpu host -smp 1 -m 768 \
+            -display none -vga std -net none -no-reboot \
+            -drive "if=pflash,format=raw,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,file=$tmp/ovmf-vars.fd" \
+            -device qemu-xhci,id=lab_usb -device usb-kbd,bus=lab_usb.0 \
+            -device ich9-ahci,id=lab_sata \
+            -drive "if=none,id=lab_dvd,media=cdrom,readonly=on,format=raw,file=$iso" \
+            -device ide-cd,drive=lab_dvd,bus=lab_sata.1 \
+            -boot order=d -serial "file:$serial" \
+            -monitor "unix:$sock,server,nowait" \
+            > "$tmp/qemu.stdout" 2> "$tmp/qemu.stderr" &
+          qemu_pid=$!
+          timeout --kill-after=5s 190s python3 \
+            auto_tests/tools/windows_uefi_hmp_guest_key.py "$serial" "$sock" || {
+              echo 'Synthetic UEFI HMP guest keyboard delivery did not verify'
+              # Only fixed synthetic markers; never include framebuffer or guest data.
+              if [[ -f "$serial" ]]; then
+                grep -aoE 'GASLUX_EFI_GUEST_[A-Z_]+=1' "$serial" | sort -u || true
+              fi
+              exit 1
+            }
+          echo 'PASS: QEMU HMP Enter received by real EFI GRUB guest, NO Windows media or installed disk.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NO Windows installed-client boot, BCD, WinRE, Linux dual boot, or rollback proven.' >> "$GITHUB_STEP_SUMMARY"
