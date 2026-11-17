@@ -13,6 +13,7 @@ on:
       - auto_tests/test_windows_x64_iso_boot_key.py
       - auto_tests/tools/windows_x64_uefi_visual_probe.py
       - auto_tests/test_windows_x64_uefi_visual_probe.py
+      - auto_tests/test_windows_x64_firstboot_vga_contract.py
       - auto_tests/test_windows_x64_clean_poweroff_gate.py
       - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
 
@@ -47,6 +48,7 @@ jobs:
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_kvm_opt_in.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_uefi_visual_probe.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_firstboot_vga_contract.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_iso_boot_key.py'
       - name: Install QEMU, matched OVMF firmware and host-side FAT tools
         shell: bash
