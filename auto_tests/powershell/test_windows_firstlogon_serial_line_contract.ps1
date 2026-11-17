@@ -16,7 +16,7 @@ if ($parseErrors.Count -ne 0) {
 $source = Get-Content -LiteralPath $sourceFile -Raw
 $match = [regex]::Match(
     $source,
-    '(?ms)^[ \t]*\$serialProof\s*=\s*@\(\r?\n(?<items>.*?)^[ \t]*\)\s*
+    '(?ms)^[ \t]*\$serialProof\s*=\s*@\(\r?\n(?<items>.*?)^[ \t]*\)\s*$',
 )
 if (-not $match.Success) {
     throw 'Missing bounded native serial marker array'
