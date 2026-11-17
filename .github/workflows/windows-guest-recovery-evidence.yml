@@ -26,6 +26,7 @@ jobs:
       - name: Ruff checks
         run: |
           python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/verify_windows_guest_recovery.py auto_tests/test_windows_guest_recovery_proof.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tools/verify_windows_guest_recovery.py auto_tests/test_windows_guest_recovery_proof.py
           python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/verify_windows_guest_recovery.py auto_tests/test_windows_guest_recovery_proof.py
       - name: Offline evidence-negative tests (synthetic fixtures only)
         run: python3 -m unittest auto_tests.test_windows_guest_recovery_proof -v
