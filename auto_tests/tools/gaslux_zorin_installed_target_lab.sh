@@ -69,6 +69,7 @@ release_chroot_mounts_or_die() {
     sleep 1
   done
   echo 'GASLUX_ZORIN_INSTALLED_LAB_ERROR: could not release chroot mounts' >&2
+  findmnt -rn -o TARGET,FSTYPE | grep -F "$work/target/" >&2 || true
   return 1
 }
 
@@ -183,7 +184,9 @@ echo GASLUXZORIN | sudo tee "$work/target/etc/hostname" >/dev/null
 # are also safely released without traversing a host bind filesystem.
 chroot_mounted=1
 sudo mount -t proc proc "$work/target/proc"
-sudo mount -t sysfs sysfs "$work/target/sys"
+# An installed-target update-initramfs build does not require a writable
+# host sysfs bind. Keeping host /sys out of the guest chroot avoids an
+# un-unmountable pseudo-filesystem and never exposes host PCI/block state.
 sudo mount --bind /dev "$work/target/dev"
 sudo mount --bind /dev/pts "$work/target/dev/pts"
 sudo chroot "$work/target" /usr/bin/env -u CASPER_GENERATE_UUID \
