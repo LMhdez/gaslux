@@ -100,7 +100,7 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertNotIn("-no-reboot", second)
         self.assertEqual(first[first.index("-boot") + 1], "order=d")
         self.assertEqual(second[second.index("-boot") + 1], "order=c")
-        self.assertEqual(first[first.index("-monitor") + 1], "none")
+        self.assertEqual(first[first.index("-monitor") + 1], f"unix:{tmp}/hmp.sock,server,nowait")
         self.assertEqual(second[second.index("-monitor") + 1], "none")
         self.assertIn("/tmp/derived.iso", " ".join(first))
         self.assertNotIn("/tmp/derived.iso", " ".join(second))
@@ -252,6 +252,16 @@ class WindowsTwoStageSafetyTests(unittest.TestCase):
         self.assertIn('source.is_file() and not source.is_symlink()', source)
         self.assertIn('0 < source.stat().st_size <= max_bytes', source)
         self.assertIn('if not ok:\n                raise LabError(diagnostic)', source)
+
+    def test_two_stage_boot_key_requires_owned_monitor_and_never_second_stage(self):
+        code = SRC.read_text(encoding="utf-8")
+        self.assertIn('expected_monitor = final_serial.parent / "initial-installer-hmp.sock"', code)
+        self.assertIn('send_first_iso_boot_key(expected_monitor, hold_ms=6000)', code)
+        self.assertIn('dvd_key_sent = True', code)
+        self.assertIn('if args is second:', code)
+        self.assertIn('args[args.index("-monitor") + 1] = "none"', code)
+        self.assertIn('dvd_start_count > 1', code)
+        self.assertIn('GASLUX_WINDOWS_STAGE1_QCOW2_ALLOCATED_MIB=', code)
 
     def test_fake_firmware_markers_not_a_real_firstboot(self):
         code = SRC.read_text()
