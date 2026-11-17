@@ -88,6 +88,21 @@ def exercise() -> None:
                 report["stable"] is False and
                 report["storageWritesAuthorized"] is False,
                 "synthetic postboot GPT audit did not preserve fail-closed flags")
+        if os.environ.get("GASLUX_RUN_SYNTHETIC_POP_OVERLAY_STAGE") == "1":
+            from windows10_popos_same_disk_overlay_stage import stage_owned_overlay
+
+            evidence = Path(os.environ["GITHUB_WORKSPACE"]) / "windows-x64-tcg-evidence"
+            require(evidence.is_dir() and not evidence.is_symlink(),
+                    "owned evidence directory missing")
+            proof = stage_owned_overlay(disk, evidence)
+            require(
+                proof["sameDiskLinuxPartitionCreatedInCOWOverlay"]
+                and proof["windowsOfflineGptEspBcdNtfsReconciled"]
+                and proof["linuxSystemInstalled"] is False
+                and proof["windowsBootAfterPartitionStageVerified"] is False,
+                "synthetic COW partition stage unexpectedly claimed boot",
+            )
+            print("GASLUX_SYNTHETIC_WIN10_POP_COW_GPT_STAGE_PASS=1", flush=True)
         print("GASLUX_SYNTHETIC_WIN10_QCOW2_GPT_READONLY_PASS=1", flush=True)
         print("GASLUX_REAL_WINDOWS_GUEST_BOOT_VERIFIED=0", flush=True)
 
