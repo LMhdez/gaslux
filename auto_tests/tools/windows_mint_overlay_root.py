@@ -150,9 +150,6 @@ def install_mint_root_and_boot(
         guest_mounted = True
         run(["sudo", "cp", "-a", str(unpacked) + "/.", str(target) + "/"],
             timeout=1200, capture=False)
-        release, windows_after_copy = _guest_disk_audit(overlay, expected_uuid)
-        require(release == root_uuid and windows_after_copy == windows_before,
-                "Mint extraction changed Windows partitions or ext4 identity")
         os_release = target / "etc/os-release"
         require(os_release.is_file() and "ID=linuxmint" in os_release.read_text(),
                 "extracted target is not Linux Mint")
@@ -195,6 +192,9 @@ def install_mint_root_and_boot(
         guest_mounted = False
         run(["sudo", "umount", str(iso_mount)], timeout=60)
         iso_mounted = False
+        root_uuid_after_copy, windows_after_copy = _guest_disk_audit(overlay, expected_uuid)
+        require(root_uuid_after_copy == root_uuid and windows_after_copy == windows_before,
+                "Mint extraction changed Windows partitions or ext4 identity")
 
         serial = evidence / "mint-same-windows-cow-serial.log"
         require(not serial.exists() and not serial.is_symlink(),
