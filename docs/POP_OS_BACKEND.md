@@ -179,3 +179,12 @@ only the installed target disk. The original offline full-install lab in PR
 weakens the signed ISO/agent checks. The shorter TCG-only live and mock GPT
 regressions are inherited from prior proven PRs and intentionally skipped in
 this targeted A/B experiment; they are not replaced by this result.
+
+## Native full-install diagnostic collection
+
+A real System76 installation can take substantially longer than the ISO
+boot smoke tests. In disposable QEMU only, the guest now forwards bounded
+periodic tails of the authenticated native `distinst` log to the serial
+transcript. These are diagnostic messages, not boot or recovery proofs.
+A separate explicit native exit code and independent installed-system
+boot markers remain mandatory; timeouts fail closed.

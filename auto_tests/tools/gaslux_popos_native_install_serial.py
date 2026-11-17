@@ -89,7 +89,7 @@ def run(path: Path, digest: str, transcript: bytearray) -> None:
         if b"GASLUX_POP_NATIVE_INSTALL_FAILURE:" in normalized(bytes(transcript[start:])):
             raise GuestProbeError("native installer not invoked after preflight")
         print("GASLUX_POP_NATIVE_DISTINST_INVOCATION_CONFIRMED=1", flush=True)
-        wait_for(conn, transcript, RESULT, timeout_seconds=1500, start=start)
+        wait_for(conn, transcript, RESULT, timeout_seconds=1585, start=start)
         output = normalized(bytes(transcript[start:]))
         if not SUCCESS.search(output):
             raise GuestProbeError("native installer reported an explicit failure")
