@@ -36,3 +36,9 @@ The next stage is to use this Windows QCOW2 as a disposable guest target, make a
 The QEMU installer phase now uses `-no-reboot` and a bounded host-side boot-cycle loop. The Windows installation ISO is attached only for the initial Windows PE/setup boot. When Setup requests a reset, QEMU exits to the host; subsequent cycles boot the QCOW2 first, with only the unattended answer media retained. After each guest reset or shutdown, the host mounts the NTFS partition read-only through qemu-nbd and checks for the first-logon marker. The loop fails closed after eight cycles or five hours, and does not treat a QEMU exit alone as success.
 
 This change addresses the previous boot-order hazard where the Windows installer ISO remained the highest-priority boot device after Setup had copied Windows to disk. It is not yet evidence that the guest installation succeeds; the new exact-head Actions run must pass all offline checks and upload its artifact.
+
+## Windows Recovery Environment (WinRE) validation — 17 November 2026
+
+The unattended UEFI/GPT layout reserves a dedicated 1-GiB recovery partition (GPT type `DE94BBA4-06D1-4D40-A16A-BFD50179D6AC`, recovery attributes) in addition to the ESP, MSR and Windows NTFS volume. During the first interactive logon, the guest copies `Winre.wim` to `R:\\Recovery\\WindowsRE`, registers the image with `reagentc`, enables Windows RE, and records the command output. The host subsequently mounts the QCOW2 read-only and checks the recovery partition type, the recovery image and the guest-side enabled marker.
+
+This is a stricter acceptance gate than merely checking for an ESP/BCD. It still does not prove that the Windows Recovery Environment can be entered interactively; that requires a separate boot-to-recovery test after the restored-image workflow is implemented.
