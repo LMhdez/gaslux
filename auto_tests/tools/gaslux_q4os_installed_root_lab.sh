@@ -16,6 +16,37 @@ digest="$2"
 [[ -d "$3" && ! -L "$3" ]] || die 'Evidence path must be a non-symlink directory'
 evidence="$(realpath -e -- "$3")"
 native_grub="${GASLUX_Q4OS_NATIVE_GRUB_LAB:-no}"
+owned_hooks="${GASLUX_Q4OS_OWNED_HOOK_LAB:-no}"
+[[ "$owned_hooks" == yes || "$owned_hooks" == no ]] ||
+  die 'Unknown Q4OS guest-owned hook laboratory mode'
+if [[ "$owned_hooks" == yes ]]; then
+  [[ "$native_grub" == yes && "${GITHUB_ACTIONS:-}" == true ]] ||
+    die 'Owned Q4OS hooks require the native-GRUB disposable GitHub Actions guest'
+  [[ -f "$evidence/native-hook-source-audit.json" &&
+     ! -L "$evidence/native-hook-source-audit.json" ]] ||
+    die 'Missing same-ISO native Calamares hook audit evidence'
+  python3 - "$evidence/native-hook-source-audit.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+expected = {
+    "nativeHookSourcesCount": 12,
+    "moduleDescriptorSourceCount": 3,
+    "shellSourceCount": 9,
+    "nativeCalamaresConfigVerified": True,
+    "nativeHookCommandsExecuted": False,
+    "hookExecutionAuthorized": False,
+    "windowsEspWriteAuthorized": False,
+    "nativeInstallationProven": False,
+    "diskWrites": 0,
+}
+if any(data.get(k) != v for k, v in expected.items()):
+    raise SystemExit("Untrusted Q4OS native hook audit: target writes refused")
+PY
+fi
+
 [[ "$native_grub" == yes || "$native_grub" == no ]] ||
   die 'Unrecognized native GRUB laboratory mode'
 if [[ "$native_grub" == yes ]]; then
@@ -113,6 +144,21 @@ if [[ "$native_grub" == yes ]]; then
   [[ -f "$guest_tool" && ! -L "$guest_tool" ]] ||
     die 'Missing trusted native GRUB guest-only code'
   sudo install -D -m 0755 "$guest_tool"     "$work/root/usr/local/sbin/gaslux-q4os-native-grub-guest"
+
+  if [[ "$owned_hooks" == yes ]]; then
+    owned_tool="$(dirname "$0")/gaslux_q4os_owned_hooks_guest.sh"
+    [[ -f "$owned_tool" && ! -L "$owned_tool" ]] ||
+      die 'Missing trusted safe Q4OS guest process-hook adapter'
+    sudo install -D -m 0755 "$owned_tool" \
+      "$work/root/usr/local/sbin/gaslux-q4os-owned-hooks-guest"
+    transaction="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+    printf '%s\n' "$transaction" |
+      sudo tee "$work/root/etc/gaslux-q4os-lab-transaction.id" >/dev/null
+    printf '%s\n' "$esp_uuid" |
+      sudo tee "$work/root/etc/gaslux-q4os-lab-esp.uuid" >/dev/null
+    printf '%s\n' "$digest" |
+      sudo tee "$work/root/etc/gaslux-q4os-lab-iso.sha256" >/dev/null
+  fi
   packages="$(dirname "$evidence")/packages"
   [[ -d "$packages" && ! -L "$packages" ]] ||
     die 'Missing authentic Debian APT package cache'
@@ -258,8 +304,13 @@ for _ in $(seq 1 94); do
        grep -Eiq 'Linux version|Freeing unused kernel|systemd\[1\]' "$work/serial-installed.log"; then
       if [[ "$native_grub" == no ]] ||
          grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_INSTALLED=6.10-deb13u1' "$work/serial-installed.log"; then
-        verified=1
-        break
+        if [[ "$owned_hooks" == no ]] ||
+           { grep -Fq 'GASLUX_Q4OS_OWNED_HOOK2=' "$work/serial-installed.log" &&
+             grep -Fq 'GASLUX_Q4OS_OWNED_HOOK3=' "$work/serial-installed.log" &&
+             grep -Fq 'GASLUX_Q4OS_OWNED_HOOK5=' "$work/serial-installed.log"; }; then
+          verified=1
+          break
+        fi
       fi
     fi
   fi
@@ -286,7 +337,9 @@ if [[ "$verified" -eq 1 ]]; then
         if grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_BOOT=6.10-deb13u1' "$work/serial-native-grub.log" &&
            grep -Fq 'GASLUX_Q4OS_NATIVE_GRUB_SECOND_KERNEL=6.12.111+deb13-amd64' "$work/serial-native-grub.log" &&
            grep -Fq 'GASLUX_Q4OS_INSTALLED_ROOT_PROOF=6.10-deb13u1' "$work/serial-native-grub.log" &&
-           grep -Fq 'Loading Q4OS operating system' "$work/serial-native-grub.log"; then
+           grep -Fq 'Loading Q4OS operating system' "$work/serial-native-grub.log" &&
+           { [[ "$owned_hooks" == no ]] ||
+             grep -Fq 'GASLUX_Q4OS_OWNED_HOOKS_VERIFIED=' "$work/serial-native-grub.log"; }; then
           second_verified=1
           break
         fi
@@ -299,6 +352,12 @@ if [[ "$verified" -eq 1 ]]; then
     if [[ "$second_verified" -ne 1 ]]; then
       tail -c 9000 "$work/serial-native-grub.log" >&2 || true
       die 'No second installed Q4OS boot proof from package-owned GRUB'
+    fi
+    if [[ "$owned_hooks" == yes ]]; then
+      printf 'PASS: three transaction-owned Q4OS hook replacements completed and survived reboot.\n' |
+        tee -a "$work/installed-result.txt"
+      printf 'BLOCKED: original Calamares hooks, apt purges, shared EFI writes and full Calamares are not executed.\n' |
+        tee -a "$work/installed-result.txt"
     fi
     printf 'PASS: package-owned Q4OS GRUB launched a second guest boot without the ISO.\n' |
       tee -a "$work/installed-result.txt"
