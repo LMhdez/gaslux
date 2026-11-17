@@ -253,6 +253,22 @@ def worker(op: str, path: Path) -> None:
     scoped(path, runner)
     if op == "recover":
         recover(path)
+    elif op == "partial-backup":
+        record, orig_front, orig_back = load_checkpoint(path)
+        verify_mutation(path, record, orig_front)
+        fd = os.open(path, os.O_RDWR | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            st = os.fstat(fd)
+            require(stat.S_ISREG(st.st_mode) and st.st_dev == record["identity"]["device"]
+                    and st.st_ino == record["identity"]["inode"] and
+                    st.st_size == VIRTUAL_BYTES,
+                    "partial recovery target identity changed")
+            require(os.pwrite(fd, orig_back, VIRTUAL_BYTES - WINDOW_BYTES)
+                    == WINDOW_BYTES, "partial backup GPT write")
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os._exit(74)
     elif op == "add":
         record, original_front, _ = load_checkpoint(path)
         require(windows(path)[0] == original_front, "already modified")
@@ -276,7 +292,7 @@ def command(op: str, disk: Path) -> subprocess.CompletedProcess:
 
 def orchestrate() -> None:
     runner = gate()
-    for scenario in ("recovery", "tampered_checkpoint", "wrong_inode", "foreign_entry"):
+    for scenario in ("recovery", "partial_recovery", "tampered_checkpoint", "wrong_inode", "foreign_entry"):
         with tempfile.TemporaryDirectory(prefix=LAB_PREFIX, dir=runner) as tmp:
             root = Path(tmp)
             disk = root / "synthetic-no-os.img"
@@ -298,7 +314,17 @@ def orchestrate() -> None:
             interrupted = command("add", disk)
             require(interrupted.returncode == 73,
                     "injected interruption not observed: " + interrupted.stderr[-500:])
-            if scenario == "tampered_checkpoint":
+            if scenario == "partial_recovery":
+                partial = command("partial-backup", disk)
+                require(partial.returncode == 74,
+                        "partial backup-only restore failpoint not observed")
+                resumed = command("recover", disk)
+                require(resumed.returncode == 0, resumed.stderr[-1000:])
+                again = command("recover", disk)
+                require(again.returncode == 0,
+                        "partial recovery not idempotent")
+                print("GASLUX_SYNTHETIC_PARTIAL_GPT_RESTORE_RESUMED=1")
+            elif scenario == "tampered_checkpoint":
                 p = root / "backup.snapshot"
                 with p.open("r+b") as f:
                     f.seek(512)
@@ -343,7 +369,7 @@ if __name__ == "__main__":
     try:
         if len(sys.argv) == 1:
             orchestrate()
-        elif len(sys.argv) == 3 and sys.argv[1] in ("add", "recover"):
+        elif len(sys.argv) == 3 and sys.argv[1] in ("add", "recover", "partial-backup"):
             worker(sys.argv[1], Path(sys.argv[2]))
         else:
             raise RuntimeError("invalid lab arguments")
