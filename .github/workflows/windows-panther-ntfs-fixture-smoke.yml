@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/windows-panther-ntfs-fixture-smoke.yml
       - auto_tests/tools/windows_x64_offline_panther_probe.py
+      - auto_tests/test_windows_x64_offline_panther_probe.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
   workflow_dispatch:
 
@@ -32,6 +33,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           test "$RUNNER_TEMP" = /home/runner/work/_temp
           python3 -m py_compile auto_tests/tools/windows_x64_offline_panther_probe.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_offline_panther_probe.py' -v
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
