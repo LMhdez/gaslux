@@ -199,6 +199,28 @@ def bounded_qcow2_dd_command(disk: Path, dest: Path, suffix: str) -> list[str]:
     return cmd
 
 
+
+def qcow2_file_identity(disk: Path) -> tuple[int, int, int, int, int, int]:
+    """Track owned image identity and mutation across bounded GPT reads.
+
+    A cleanly shut down guest must leave its QCOW2 unchanged while two
+    independent GPT windows are extracted. This is a fail-closed
+    inconsistency detector, NOT an authenticated immutable snapshot.
+    """
+    item = disk.lstat()
+    require(stat.S_ISREG(item.st_mode) and item.st_nlink == 1,
+            "Windows QCOW2 ceased to be an exclusive regular file")
+    return (item.st_dev, item.st_ino, item.st_nlink, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns)
+
+
+def require_unchanged_qcow2(
+    disk: Path, baseline: tuple[int, int, int, int, int, int],
+) -> None:
+    require(qcow2_file_identity(disk) == baseline,
+            "Windows QCOW2 identity or content changed during GPT audit")
+
+
 def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
     """QEMU reads only an owned QCOW2 and writes at most 2 MiB private scratch."""
     require(os.environ.get("GITHUB_ACTIONS") == "true" and
@@ -218,6 +240,7 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
             disk.parent.stat().st_uid == os.getuid() and
             stat.S_IMODE(disk.parent.stat().st_mode) == 0o700,
             "unowned or unsafe Windows QCOW2 path")
+    baseline_identity = qcow2_file_identity(disk)
     raw = subprocess.run(
         ["qemu-img", "info", "-f", "qcow2", "--output=json", str(disk)],
         check=True, capture_output=True, text=True, timeout=25,
@@ -229,6 +252,7 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
             not info.get("full-backing-filename") and
             not info.get("encrypted", False),
             "QCOW2 has unexpected format, size, encryption or backing chain")
+    require_unchanged_qcow2(disk, baseline_identity)
     with tempfile.TemporaryDirectory(prefix="gaslux-gpt-readonly-", dir=disk.parent) as tmp:
         region = []
         for suffix in ("front", "back"):
@@ -237,6 +261,7 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
                 bounded_qcow2_dd_command(disk, dest, suffix),
                 check=True, capture_output=True, timeout=60,
             )
+            require_unchanged_qcow2(disk, baseline_identity)
             require(dest.is_file() and not dest.is_symlink(),
                     f"QEMU returned no regular bounded {suffix} GPT window")
             actual_bytes = dest.stat().st_size
@@ -244,6 +269,7 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
                     f"QEMU returned invalid {suffix} GPT window length: "
                     f"{actual_bytes} bytes instead of {WINDOW_BYTES}")
             region.append(dest.read_bytes())
+    require_unchanged_qcow2(disk, baseline_identity)
     return inspect_gpt_windows(region[0], region[1])
 
 
