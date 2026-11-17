@@ -75,20 +75,29 @@ jobs:
           insmod fat
           insmod search_label
           echo GASLUX_EFI_ANSWER_USB_SCAN_STARTED=1
-          set found=no
+          set label_found=0
+          set xml_found=0
+          set script_found=0
           for retry in 1 2 3 4 5 6 7 8 9 10; do
             if search --no-floppy --label GASLUXCI --set=answer; then
-              set found=yes
+              set label_found=1
               break
             fi
             sleep 1
           done
-          if [ "$found" = "yes" ]; then
-            if test -f "(${answer})/Autounattend.xml" && test -f "(${answer})/GASLUX.PS1"; then
-              echo GASLUX_EFI_ANSWER_USB_FILES_VISIBLE=1
-            else
-              echo GASLUX_EFI_ANSWER_USB_FILES_MISSING=1
+          if [ "$label_found" = "1" ]; then
+            if test -f "(${answer})/Autounattend.xml"; then
+              set xml_found=1
             fi
+            if test -f "(${answer})/GASLUX.PS1"; then
+              set script_found=1
+            fi
+          fi
+          echo GASLUX_EFI_ANSWER_USB_LABEL_FOUND=$label_found
+          echo GASLUX_EFI_ANSWER_USB_XML_FOUND=$xml_found
+          echo GASLUX_EFI_ANSWER_USB_SCRIPT_FOUND=$script_found
+          if [ "$label_found" = "1" ] && [ "$xml_found" = "1" ] && [ "$script_found" = "1" ]; then
+            echo GASLUX_EFI_ANSWER_USB_FILES_VISIBLE=1
           else
             echo GASLUX_EFI_ANSWER_USB_FILES_MISSING=1
           fi
@@ -151,7 +160,7 @@ jobs:
             auto_tests/tools/windows_uefi_answer_usb_guest.py "$serial" || {
               echo 'UEFI guest did not confirm FAT32 answer files'
               if [[ -f "$serial" ]]; then
-                grep -aoE 'GASLUX_EFI_ANSWER_USB_[A-Z_]+=1' "$serial" | sort -u || true
+                grep -aoE 'GASLUX_EFI_ANSWER_USB_[A-Z_]+=[01]' "$serial" | sort | uniq -c || true
               fi
               exit 1
             }
