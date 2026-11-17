@@ -8,9 +8,10 @@ on:
       - .github/workflows/mint-cow-proof-contracts.yml
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
       - auto_tests/test_windows_mint_cow_boot_evidence.py
+      - auto_tests/test_windows_x64_private_workspace.py
       - auto_tests/tools/windows_mint_overlay_root.py
       - auto_tests/test_windows_mint_overlay_root.py
-      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/test_windows_x64_private_workspace.py
       - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
   pull_request:
     branches:
@@ -45,6 +46,7 @@ jobs:
           set -Eeuo pipefail
           python3 -m unittest discover -s auto_tests -p 'test_windows_mint_overlay_root.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_mint_cow_boot_evidence.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_private_workspace.py' -v
       - name: Exercise root-owned guestmount with runner-readable FUSE permissions
         shell: bash
         run: |
