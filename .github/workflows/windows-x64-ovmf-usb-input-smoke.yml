@@ -94,7 +94,9 @@ jobs:
                   "qemu-system-x86_64", "-machine", "q35,accel=kvm,smm=on",
                   "-global", "driver=cfi.pflash01,property=secure,value=on",
                   "-cpu", "host", "-smp", "2", "-m", "1024",
-                  "-display", "none", "-vga", "std",
+                  # Loopback-only ephemeral VGA frontend; HMP remains private Unix.
+                  # QEMU -display none can leave headless keyboard routing unproven.
+                  "-display", "vnc=127.0.0.1:79", "-vga", "std",
                   "-monitor", f"unix:{hmp},server,nowait", "-net", "none",
                   "-device", "qemu-xhci,id=lab_usb",
                   "-device", "usb-kbd,bus=lab_usb.0",
