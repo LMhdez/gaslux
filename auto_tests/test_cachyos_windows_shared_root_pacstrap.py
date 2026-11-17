@@ -332,9 +332,10 @@ class SharedRootOnlySafety(unittest.TestCase):
                     {"observed_source": "/dev/vdc3"},
                     {"observed_source": "/dev/vdb4"},
                     {"observed_type": "ext4"},
-                    {"options": "rw,nosuid,nodev,noexec"},
-                    {"options": "ro,nosuid,nodev,noexec"} if not readonly
-                        else {"options": "ro,relatime"},
+                    {"options": "rw,nosuid,nodev,noexec"} if readonly
+                        else {"options": "ro,nosuid,nodev,noexec"},
+                    {"options": "ro,relatime"} if readonly
+                        else {"options": "rw,relatime"},
                 ):
                     with self.subTest(mutation=mutation), \
                          self.assertRaisesRegex(
