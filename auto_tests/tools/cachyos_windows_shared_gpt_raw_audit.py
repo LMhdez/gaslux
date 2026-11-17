@@ -7,8 +7,10 @@ this alone does not authenticate the VM origin or authorize pacstrap.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import os
+import re
 from pathlib import Path
 import stat
 import struct
@@ -92,8 +94,7 @@ def read_guest_disk_windows_readonly(device: Path) -> tuple[bytes, bytes]:
     """Bounded O_RDONLY device reads, never a write or block-device mutation."""
     require(isinstance(device, Path) and device.is_absolute()
             and device.parent == Path("/dev")
-            and device.name.startswith("vd")
-            and len(device.name) <= 8
+            and re.fullmatch(r"vd[a-z]{1,2}", device.name) is not None
             and not device.is_symlink(),
             "read-only audit only accepts exact QEMU virtio guest block path")
     st = device.stat()
@@ -103,6 +104,14 @@ def read_guest_disk_windows_readonly(device: Path) -> tuple[bytes, bytes]:
     try:
         require(os.fstat(fd).st_rdev == st.st_rdev,
                 "guest block device changed before read")
+        # Linux block ioctls: reject a partition, stale node, or wrong geometry
+        # before either bounded GPT window read. Read-only ioctls only.
+        physical_bytes = struct.unpack("=Q", fcntl.ioctl(
+            fd, 0x80081272, bytes(8)))[0]  # BLKGETSIZE64, x86_64
+        logical_bytes = struct.unpack("=I", fcntl.ioctl(
+            fd, 0x1268, bytes(4)))[0]  # BLKSSZGET
+        require(physical_bytes == VIRTUAL_BYTES and logical_bytes == SECTOR,
+                "guest block device size or logical sector differs from plan")
         first=os.pread(fd, WINDOW_BYTES, 0)
         last=os.pread(fd, WINDOW_BYTES, VIRTUAL_BYTES-WINDOW_BYTES)
         require(len(first) == WINDOW_BYTES and len(last) == WINDOW_BYTES,
