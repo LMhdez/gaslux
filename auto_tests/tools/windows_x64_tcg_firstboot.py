@@ -278,11 +278,11 @@ def usb_firstlogon_command(profile_key: str, build: str) -> str:
     payload = (witness_powershell(profile_key, build) + "\n").encode("utf-8")
     sha256 = hashlib.sha256(payload).hexdigest()
     command = (
-        'powershell.exe -NoP -EP Bypass -C "'
+        'powershell -NoP -EP Bypass -C "'
         '$v=Get-Volume -FileSystemLabel GASLUXCI;'
-        # Count-1 is false ONLY for one match; rejects no drive/multiple drives.
-        # The short form keeps the Windows Setup CommandLine under 240 chars.
-        'if($v.Count-1){throw};'
+        # A single volume is mandatory; other/missing labels fail closed.
+        # Powershell's PATH-resolved .exe keeps this under the Setup limit.
+        'if($v.Count-ne 1){throw};'
         "$p=$v.DriveLetter+':\\GASLUX.PS1';"
         "if((Get-FileHash $p).Hash-ne '" + sha256 + "'){throw};&$p\""
     )
