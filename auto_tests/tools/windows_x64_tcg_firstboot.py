@@ -463,8 +463,10 @@ def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
             if destination.is_file() and destination.stat().st_size > 100:
                 break
             time.sleep(.1)
+        hmp_reply = response.decode("ascii", "replace").replace(
+            str(destination.parent), "<vm>")
         require(destination.is_file() and not destination.is_symlink(),
-                "missing QEMU framebuffer")
+                "missing QEMU framebuffer; HMP returned " + repr(hmp_reply[:240]))
         require(100 < destination.stat().st_size <= 20 * 1024**2,
                 "unexpected QEMU framebuffer size")
         with destination.open("rb") as stream:
