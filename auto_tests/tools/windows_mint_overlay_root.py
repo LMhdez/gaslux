@@ -190,11 +190,11 @@ def install_mint_root_and_boot(
         require((unpacked / "lib/modules" / version).is_dir(),
                 "Mint target kernel modules are missing")
         fstab = unpacked / "etc/fstab"
-        subprocess.run(["sudo", "tee", str(fstab)],
-                       input=f"UUID={root_uuid} / ext4 defaults 0 1\\n",
+        subprocess.run(["sudo", "tee", str(target / "etc/fstab")],
+                       input=f"UUID={root_uuid} / ext4 defaults 0 1\n",
                        check=True, text=True, stdout=subprocess.DEVNULL)
-        subprocess.run(["sudo", "tee", str(unpacked / "etc/hostname")],
-                       input="GASLUXMINT\\n", check=True, text=True,
+        subprocess.run(["sudo", "tee", str(target / "etc/hostname")],
+                       input="GASLUXMINT\n", check=True, text=True,
                        stdout=subprocess.DEVNULL)
         run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
         run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
@@ -273,7 +273,7 @@ def install_mint_root_and_boot(
             require(channel is not None, "Mint QEMU monitor did not become available")
             try:
                 channel.recv(4096)
-                channel.sendall(b"system_powerdown\\n")
+                channel.sendall(b"system_powerdown\n")
             finally:
                 channel.close()
             try:
