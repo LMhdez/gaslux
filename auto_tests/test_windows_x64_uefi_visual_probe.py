@@ -69,7 +69,7 @@ class DisplayProbeTests(unittest.TestCase):
                     self.messages.append(payload)
                     command = payload.decode("ascii")
                     self_path = Path(command.removeprefix("screendump ").strip())
-                    self_path.write_bytes(b"P6\\n2 2\\n255\\n" + b"\\x00" * 12)
+                    self_path.write_bytes(b"P6\n2 2\n255\n" + b"\x00" * 12)
             fake = FakeHmp()
             with patch.object(probe, "validate_monitor_path"), \
                  patch.object(probe.socket, "socket", return_value=fake):
@@ -77,7 +77,7 @@ class DisplayProbeTests(unittest.TestCase):
             self.assertEqual(result["bytes"], 23)
             self.assertEqual(len(result["sha256"]), 64)
             self.assertEqual(fake.messages, [
-                f"screendump {base}/gaslux-00-dvd.ppm\\n".encode("ascii")
+                f"screendump {base}/gaslux-00-dvd.ppm\n".encode("ascii")
             ])
             self.assertTrue((evidence / result["file"]).is_file())
             self.assertNotIn(b"sendkey", b"".join(fake.messages))
