@@ -1,0 +1,39 @@
+name: Windows + CachyOS candidate firstboot evidence (READ-ONLY, no ISO or guest)
+
+on:
+  push:
+    branches:
+      - feature/windows-cachyos-readonly-baseline-gate
+    paths:
+      - .github/workflows/windows-cachyos-baseline-readonly-gate.yml
+      - auto_tests/tools/windows_cachyos_readonly_baseline_gate.py
+      - auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-evidence-only:
+    name: Windows guest candidate artifact and dualboot no-write contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile, run 21 negative and positive client evidence checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          python3 -m py_compile \
+            auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            auto_tests/test_windows_cachyos_readonly_baseline_gate.py
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_cachyos_readonly_baseline_gate.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_x64_qemu_host_gate.py' -v
+          echo 'PASS: offline synthetic candidate evidence gate. No Windows ISO, real client, Linux installation, disk write, dual boot or recovery executed.' >> "$GITHUB_STEP_SUMMARY"
