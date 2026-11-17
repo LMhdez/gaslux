@@ -35,7 +35,8 @@ on:
       - auto_tests/tools/windows_mint_overlay_root.py
       - auto_tests/test_windows_mint_overlay_root.py
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
-      - auto_tests/test_windows_mint_cow_boot_evidence.py auto_tests/test_windows_x64_private_workspace.py
+      - auto_tests/test_windows_mint_cow_boot_evidence.py
+      - auto_tests/test_windows_x64_private_workspace.py
       - auto_tests/test_windows_x64_private_workspace.py
   workflow_dispatch:
 
@@ -59,7 +60,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
-          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/tools/windows_mint_overlay_root.py auto_tests/tools/validate_mint_cow_boot_evidence.py
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/tools/windows_mint_overlay_root.py auto_tests/tools/validate_mint_cow_boot_evidence.py auto_tests/test_windows_x64_private_workspace.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py auto_tests/test_windows_cachyos_cow_checkpoint.py
