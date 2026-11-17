@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/windows-two-stage-hmp-full-ack
+      - security/windows-owned-hmp-socket-gate
     paths:
       - .github/workflows/windows-hmp-prompt-ack-regression.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -36,6 +37,12 @@ jobs:
           assert 'until_prompt().lower()' in function
           assert 'monitor.recv(8192)' in function
           assert 'closed before acknowledging boot key' in function
+          owned=source[source.index('def require_owned_hmp_socket('):start]
+          assert 'workspace.stat().st_uid == os.getuid()' in owned
+          assert 'stat.S_IMODE(workspace.stat().st_mode) == 0o700' in owned
+          assert 'monitor_path.stat().st_uid == os.getuid()' in owned
+          assert 'workspace.resolve() == workspace' in owned
+          assert 'monitor_path.name == "initial-installer-hmp.sock"' in owned
           print('PASS: one HMP key, complete bounded command acknowledgment; no Windows boot claimed')
           PY
   diskless-real-hmp:
