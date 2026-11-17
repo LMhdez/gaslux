@@ -97,13 +97,9 @@ def test_unauthorized_gpt_mutations_refused(tamper):
     elif tamper == "root_kind":
         after["entries"][1] = entry(ESP, uuid.UUID(int=3), ROOT_FIRST, ROOT_LAST - 1)
     elif tamper == "root_attrs":
-        after["entries"][1] = entry(
-            LINUX, uuid.UUID(int=3), ROOT_FIRST, ROOT_LAST - 1, attrs=1
-        )
+        after["entries"][1] = entry(LINUX, uuid.UUID(int=3), ROOT_FIRST, ROOT_LAST - 1, attrs=1)
     elif tamper == "root_name":
-        after["entries"][1] = entry(
-            LINUX, uuid.UUID(int=3), ROOT_FIRST, ROOT_LAST - 1, "OTHER"
-        )
+        after["entries"][1] = entry(LINUX, uuid.UUID(int=3), ROOT_FIRST, ROOT_LAST - 1, "OTHER")
     elif tamper == "zero_root_guid":
         after["entries"][1] = entry(LINUX, uuid.UUID(int=0), ROOT_FIRST, ROOT_LAST - 1)
     elif tamper == "unknown_field":
@@ -113,9 +109,9 @@ def test_unauthorized_gpt_mutations_refused(tamper):
 
 
 def test_runner_binds_host_gpt_partuuid_to_guest_boot_proof():
-    runner = (
-        ROOT / "auto_tests/tools/gaslux_popos_native_full_firstboot_vm.sh"
-    ).read_text(encoding="utf-8")
+    runner = (ROOT / "auto_tests/tools/gaslux_popos_native_full_firstboot_vm.sh").read_text(
+        encoding="utf-8"
+    )
     assert "gaslux_popos_native_gpt_reconcile.py" in runner
     assert '"$work/owned-gpt-before.json"' in runner
     assert '"$work/owned-gpt-after.json"' in runner
@@ -126,9 +122,9 @@ def test_runner_binds_host_gpt_partuuid_to_guest_boot_proof():
 
 
 def test_module_has_no_host_disk_writer():
-    source = (
-        ROOT / "auto_tests/tools/gaslux_popos_native_gpt_reconcile.py"
-    ).read_text(encoding="utf-8")
+    source = (ROOT / "auto_tests/tools/gaslux_popos_native_gpt_reconcile.py").read_text(
+        encoding="utf-8"
+    )
     assert "subprocess" not in source
     assert "os.system" not in source
     assert 'image.open("rb")' in source

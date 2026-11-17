@@ -35,8 +35,7 @@ def capture_linux_only(image: Path) -> dict:
     """Inspect both GPT copies, with CRC checks, on an isolated QEMU file."""
     if (
         image.name != "pop-target.raw"
-        or re.fullmatch(r"gaslux-pop-native-full-[A-Za-z0-9]+", image.parent.name)
-        is None
+        or re.fullmatch(r"gaslux-pop-native-full-[A-Za-z0-9]+", image.parent.name) is None
         or image.is_symlink()
         or image.parent.is_symlink()
     ):
