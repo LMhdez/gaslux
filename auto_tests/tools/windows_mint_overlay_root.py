@@ -72,7 +72,7 @@ def guestmount_command(overlay: Path, target: Path) -> list[str]:
     """Mount the stopped COW through FUSE for the runner with kernel permission checks."""
     return [
         "sudo", "guestmount", "-a", str(overlay), "-m", "/dev/sda5",
-        "--rw", "-o", "allow_other,default_permissions", str(target),
+        "--rw", "-o", "allow_other", "-o", "default_permissions", str(target),
     ]
 
 
