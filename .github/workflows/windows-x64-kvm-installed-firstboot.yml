@@ -6,11 +6,13 @@ on:
     branches:
       - feature/windows-x64-tcg-winre-recovery-baseline
       - feature/windows-x64-vnc-official-dvd-firstboot
+      - feature/windows-usb-unattend-kvm-issue71
     paths:
       - .github/workflows/windows-x64-kvm-installed-firstboot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_kvm_opt_in.py
       - auto_tests/test_windows_x64_iso_boot_key.py
+      - auto_tests/test_windows_x64_usb_answer_contract.py
       - auto_tests/test_windows_x64_clean_poweroff_gate.py
       - auto_tests/fixtures/windows_x64_official_evaluation_isos.json
 
@@ -41,6 +43,8 @@ jobs:
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_kvm_opt_in.py'
           python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_iso_boot_key.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_usb_answer_contract.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_vnc_screen_diagnostics.py'
       - name: Install QEMU, matched OVMF firmware and host-side FAT tools
         shell: bash
         run: |
