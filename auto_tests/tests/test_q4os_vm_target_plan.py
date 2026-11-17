@@ -62,7 +62,7 @@ def _create_synthetic_q4os_disk(workspace, *, extra=False, esp_name="GASLUX-LAB-
         fp.truncate(DISK_BYTES)
         mbr = bytearray(512)
         mbr[446 + 4] = 0xEE
-        struct.pack_into("<II", mbr, 446 + 8, 1, 0xFFFFFFFF)
+        struct.pack_into("<II", mbr, 446 + 8, 1, DISK_SECTORS - 1)
         mbr[510:512] = b"\x55\xaa"
         fp.seek(0)
         fp.write(mbr)
@@ -364,3 +364,12 @@ def test_read_only_disk_revalidated_after_signing(signed):
             independently_expected_run_id=RUN_ID,
             independently_expected_nonce=NONCE,
         )
+
+
+def test_reject_saturated_protective_mbr_length_on_32g_disk(vm):
+    workspace, disk, _ = vm
+    with disk.open("r+b") as fp:
+        fp.seek(446 + 12)
+        fp.write(struct.pack("<I", 0xFFFFFFFF))
+    with pytest.raises(Q4osPlanRefusal, match="MBR size mismatch"):
+        inspect_owned_vm_disk(workspace, disk)
