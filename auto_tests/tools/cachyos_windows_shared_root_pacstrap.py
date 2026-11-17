@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""Experimental QEMU-only CachyOS pacstrap into an existing owned GPT #5.
+
+NOT a Windows installer, not production write authorization, not a bootloader
+installer. This script never repartitions, formats, writes the Windows ESP,
+modifies BCD/NVRAM or writes any Windows filesystem.
+
+A signed read-only handoff is necessary but not sufficient. Lab writes are
+separately gated on the exact hosted/QEMU environment and are limited to the
+already formatted ext4 Linux root in a DISPOSABLE COW whose Windows backing
+file is never attached to this VM as a separate writable drive.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import struct
+import subprocess
+import tempfile
+from typing import Any
+import uuid
+
+from cachyos_windows_shared_archiso_guest_probe import (
+    require_live_archiso, efi_mode_readonly, validate_lsblk_readonly,
+)
+from cachyos_windows_shared_archiso_handoff import (
+    SERIAL, VIRTUAL_BYTES, SECTOR_BYTES, ISO_SHA256,
+    validate_plan, verify, SharedDiskHandoffRejected,
+)
+from windows_cachyos_qcow2_gpt_readonly import (
+    WINDOW_BYTES, SECTOR, header_at, part_array,
+)
+
+ROOT = Path("/mnt/gaslux-shared-root")
+WIN_FILES = (
+    (1, "/EFI/Microsoft/Boot/bootmgfw.efi", "espBootManagerSha256"),
+    (1, "/EFI/Microsoft/Boot/BCD", "espBcdSha256"),
+    (3, "/Windows/System32/winload.efi", "windowsLoaderSha256"),
+    (4, "/Recovery/WindowsRE/Winre.wim", "winreImageSha256"),
+)
+LAB_CONSENT = "I_ACCEPT_SIGNED_CACHYOS_ROOT_ONLY_IN_DISPOSABLE_QEMU_COW"
+SHA = re.compile(r"[a-f0-9]{64}\\Z")
+
+
+def require(ok: bool, why: str) -> None:
+    if not ok:
+        raise SharedDiskHandoffRejected(why)
+
+
+def execute(argv: list[str], *, timeout: int = 60) -> str:
+    completed = subprocess.run(argv, capture_output=True, text=True,
+                               check=False, timeout=timeout)
+    require(completed.returncode == 0,
+            "lab command failed: " + argv[0])
+    return completed.stdout
+
+
+def sha_file(path: Path) -> str:
+    require(path.is_file() and not path.is_symlink(),
+            "missing protected Windows source")
+    h = hashlib.sha256()
+    with path.open("rb", buffering=0) as f:
+        while True:
+            buf = f.read(1024 * 1024)
+            if not buf:
+                break
+            h.update(buf)
+    return h.hexdigest()
+
+
+def strict_gpt_evidence(
+    disk: Path, plan: dict[str, Any],
+) -> dict[str, Any]:
+    """Read BOTH full GPT windows directly; prove all five signed records.
+
+    Does not use the Windows-only 4-partition candidate as write authority.
+    Refuses PMBR hybrids, shifted entries, damaged CRC, foreign slots, and
+    a different disk/sector table even if lsblk appears correct.
+    """
+    require(disk.is_block_device() and not disk.is_symlink(),
+            "chosen QEMU guest device is not one whole block device")
+    fd = os.open(str(disk), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        whole = os.fstat(fd)
+        require(stat.S_ISBLK(whole.st_mode), "not a block device")
+        front = os.pread(fd, WINDOW_BYTES, 0)
+        back = os.pread(fd, WINDOW_BYTES, VIRTUAL_BYTES - WINDOW_BYTES)
+    finally:
+        os.close(fd)
+    require(len(front) == len(back) == WINDOW_BYTES
+            and front[510:512] == b"\\x55\\xaa", "missing bounded GPT/PMBR")
+    records = [front[446+i*16:446+(i+1)*16] for i in range(4)]
+    pmbr = records[0]
+    expected_size = VIRTUAL_BYTES // SECTOR - 1
+    start, span = struct.unpack_from("<II", pmbr, 8)
+    require(pmbr[0] == 0 and pmbr[4] == 0xEE and start == 1
+            and span in (expected_size, 0xFFFFFFFF)
+            and not any(any(rec) for rec in records[1:]),
+            "hybrid or invalid Windows protective MBR")
+    total = VIRTUAL_BYTES // SECTOR
+    primary = header_at(front, SECTOR, 1, total-1, total)
+    backup = header_at(back, WINDOW_BYTES-SECTOR, total-1, 1, total)
+    require(primary[56:72] == backup[56:72]
+            and primary[40:56] == backup[40:56],
+            "GPT disk GUID or usable range changed")
+    entries = part_array(primary, front, back, total)
+    require(entries == part_array(backup, front, back, total),
+            "GPT primary/backup tables disagree")
+    require(hashlib.sha256(primary[56:72]).hexdigest()
+            == plan["diskGuidSha256"], "disk GUID differs from signed plan")
+    require(len(entries) == 128 * 128 and
+            not any(entries[5*128:]), "foreign sixth GPT record")
+    for i, planned in enumerate(plan["partitions"]):
+        row = entries[i*128:(i+1)*128]
+        require(str(uuid.UUID(bytes_le=row[0:16])) ==
+                    planned["typeGuid"]
+                and str(uuid.UUID(bytes_le=row[16:32])) ==
+                    planned["uniqueGuid"]
+                and struct.unpack_from("<QQ", row, 32) ==
+                    (planned["firstLba"], planned["lastLba"]),
+                "signed Windows/owned-Linux GPT entry disagrees with real disk")
+    return {
+        "bothGptCopiesCrcVerified": True,
+        "allWindowsAndOwnedLinuxEntriesIdenticalToSignedPlan": True,
+        "protectiveMbrCanonical": span == expected_size,
+        "protectiveMbrWindowsLabOversized": span == 0xFFFFFFFF,
+        "productionWritesAuthorized": False,
+    }
+
+
+def protected_files_readonly(disk: Path, plan: dict[str, Any]) -> None:
+    """Always inspect Windows from read-only guest mounts, never NTFS rw."""
+    hashes = plan["windowsHashes"]
+    for index, filename, field in WIN_FILES:
+        part = Path("/dev/disk/by-partuuid") / plan["partitions"][index-1]["uniqueGuid"]
+        require(part.is_symlink() and part.resolve().is_block_device(),
+                "signed protected partition identity missing")
+        source = part.resolve()
+        with tempfile.TemporaryDirectory(prefix="gaslux-win-ro-", dir="/run") as temp:
+            mount_type = "vfat" if index == 1 else "ntfs3"
+            execute(["mount", "-t", mount_type,
+                     "-o", "ro,nosuid,nodev,noexec", str(source), temp])
+            try:
+                mount_info = execute(["findmnt", "-n", "-M", temp, "-o", "OPTIONS"])
+                require("ro" in mount_info.split(","),
+                        "Windows partition not mounted read-only")
+                candidate = Path(temp) / filename.lstrip("/")
+                digest = sha_file(candidate)
+                require(SHA.fullmatch(digest) is not None
+                        and digest == hashes[field],
+                        "protected Windows content hash differs from signed plan")
+            finally:
+                execute(["umount", temp])
+    print("GASLUX_SHARED_COW_WINDOWS_ESP_BCD_WINRE_HASHES_VERIFIED=1", flush=True)
+
+
+def guest_plan(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any], Path]:
+    require_live_archiso()
+    efi_mode_readonly()
+    require(os.environ.get("GITHUB_ACTIONS_GUEST")
+            == "I_ACCEPT_QEMU_GUEST_WITH_HOSTED_WINDOWS_COW"
+            and os.environ.get("GASLUX_SHARED_COW_ROOT_INSTALL_CONSENT")
+                == LAB_CONSENT
+            and os.geteuid() == 0,
+            "no explicit QEMU guest / root-only pacstrap consent")
+    raw = args.plan.read_bytes()
+    verify(args.plan, args.signature, args.public_key,
+           Path("/proc/cmdline").read_text(encoding="utf-8"),
+           independent_run_id=args.expected_run_id,
+           independent_root_uuid=args.expected_root_uuid)
+    plan = json.loads(raw)
+    validate_plan(plan)
+    require(plan["labOnly"] is True and plan["writeAuthority"] is False,
+            "production write authority must never be inferred")
+    topology = json.loads(execute([
+        "lsblk", "--json", "--tree", "--bytes", "--output",
+        "NAME,TYPE,PATH,SERIAL,SIZE,LOG-SEC,START,PARTTYPE,PARTUUID,FSTYPE,UUID,MOUNTPOINTS",
+    ]))
+    probe = validate_lsblk_readonly(plan, topology)
+    require(probe["observedFivePartitionLayoutMatchesSignedPlan"]
+            and probe["storageWritesAuthorized"] is False,
+            "signed in-guest disk layout not validated")
+    found = [item for item in topology["blockdevices"]
+             if item.get("type") == "disk" and item.get("serial") == SERIAL]
+    require(len(found) == 1 and
+            found[0]["path"].startswith("/dev/vd"),
+            "unexpected signed virtual disk source")
+    disk = Path(found[0]["path"])
+    require(disk.is_block_device() and
+            not disk.is_symlink() and
+            not any(x.get("mountpoints") not in (None, [], [None], [""])
+                    for x in found[0]["children"]),
+            "shared Windows disk is ambiguous or mounted")
+    require(strict_gpt_evidence(disk, plan)["bothGptCopiesCrcVerified"],
+            "independent GPT validation absent")
+    protected_files_readonly(disk, plan)
+    return plan, disk
+
+
+def pacstrap_only(args: argparse.Namespace) -> None:
+    plan, disk = guest_plan(args)
+    root_id = plan["partitions"][4]["uniqueGuid"]
+    by_id = Path("/dev/disk/by-partuuid") / root_id
+    require(by_id.is_symlink() and by_id.resolve().is_block_device(),
+            "fifth Linux partition symlink missing")
+    root_partition = by_id.resolve()
+    require(ROOT.is_dir() and not ROOT.is_symlink()
+            and not any(ROOT.iterdir()),
+            "root mount target not empty, regular or lab-owned")
+    for tool in ("pacstrap", "pacman-key", "arch-chroot", "mount", "umount"):
+        require(subprocess.run(["which", tool], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL).returncode == 0,
+                "missing native CachyOS stage capability: " + tool)
+    require(Path("/usr/share/pacman/keyrings/archlinux.gpg").is_file()
+            and Path("/usr/share/pacman/keyrings/cachyos.gpg").is_file(),
+            "pinned live ISO lacks signing keyrings")
+    execute(["mount", "-t", "ext4", "-o", "rw,nosuid,nodev",
+             str(root_partition), str(ROOT)])
+    try:
+        require(execute(["findmnt", "-n", "-M", str(ROOT), "-o", "FSTYPE"]).strip()
+                == "ext4", "installed root unexpectedly not ext4")
+        require(not (ROOT / "etc/os-release").exists()
+                and set(x.name for x in ROOT.iterdir()) <= {"lost+found"},
+                "pre-existing OS or foreign root content")
+        # Only the transaction-owned ext4 root is writable in this VM.
+        # NEVER pass /dev/sda, its ESP, WinRE or Windows partition to pacstrap.
+        packages = [
+            "base", "linux-cachyos-lts", "mkinitcpio", "grub", "efibootmgr",
+            "cachyos-keyring", "cachyos-mirrorlist", "cachyos-settings",
+            "cachyos-hooks", "sudo", "e2fsprogs", "dosfstools", "python",
+        ]
+        execute(["pacstrap", "-K", str(ROOT), *packages], timeout=2200)
+        require((ROOT / "boot/vmlinuz-linux-cachyos-lts").is_file()
+                and (ROOT / "usr/share/libalpm/scripts/cachyos-branding").is_file(),
+                "signed native kernel/CachyOS branding packages absent")
+        (ROOT / ".gaslux-lab-root-owner").write_text(
+            plan["runId"] + "\\n", encoding="ascii")
+        os.sync()
+    finally:
+        execute(["umount", str(ROOT)])
+    require(strict_gpt_evidence(disk, plan)["bothGptCopiesCrcVerified"],
+            "Windows GPT changed during root-only package installation")
+    protected_files_readonly(disk, plan)
+    print("GASLUX_SHARED_COW_NATIVE_CACHYOS_PACSTRAP_ROOT_ONLY=1", flush=True)
+    print("GASLUX_SHARED_COW_ESP_BOOTLOADER_NOT_INSTALLED=1", flush=True)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--plan", type=Path, required=True)
+    parser.add_argument("--signature", type=Path, required=True)
+    parser.add_argument("--public-key", type=Path, required=True)
+    parser.add_argument("--expected-run-id", required=True)
+    parser.add_argument("--expected-root-uuid", required=True)
+    parser.add_argument("--lab-install", action="store_true")
+    args = parser.parse_args()
+    try:
+        if args.lab_install:
+            pacstrap_only(args)
+        else:
+            guest_plan(args)
+            print("GASLUX_SHARED_COW_PREWRITE_GUEST_PROOF_ONLY=1",
+                  flush=True)
+        print("GASLUX_SHARED_COW_WINDOWS_INPLACE_RECOVERY_NOT_VERIFIED=1",
+              flush=True)
+    except (SharedDiskHandoffRejected, OSError, ValueError, RuntimeError,
+            subprocess.TimeoutExpired) as exc:
+        print("GASLUX_SHARED_COW_PREWRITE_FAILURE: " + str(exc), flush=True)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
