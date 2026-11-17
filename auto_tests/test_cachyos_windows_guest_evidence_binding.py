@@ -223,6 +223,26 @@ class WindowsGuestBindingTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.GUEST.EvidenceError, "duplicate partition number"):
             self.check()
 
+    def test_second_system_partition_flag_in_baseline_rejected(self):
+        self.before["disks"][0]["partitions"][2]["isSystem"] = True
+        with self.assertRaisesRegex(MODULE.BridgeError, "ambiguous boot/system"):
+            self.check()
+
+    def test_second_boot_partition_flag_in_baseline_rejected(self):
+        self.before["disks"][0]["partitions"][2]["isBoot"] = True
+        with self.assertRaisesRegex(MODULE.BridgeError, "ambiguous boot/system"):
+            self.check()
+
+    def test_linux_root_cannot_claim_system_partition_flag(self):
+        self.after["disks"][0]["partitions"][-1]["isSystem"] = True
+        with self.assertRaisesRegex(MODULE.BridgeError, "must not claim Windows boot/system"):
+            self.check()
+
+    def test_linux_root_cannot_claim_boot_partition_flag(self):
+        self.after["disks"][0]["partitions"][-1]["isBoot"] = True
+        with self.assertRaisesRegex(MODULE.BridgeError, "must not claim Windows boot/system"):
+            self.check()
+
     def test_rollback_exact_partition_restoration_consistency(self):
         self.after = copy.deepcopy(self.before)
         self.after["phase"] = "rollback"
