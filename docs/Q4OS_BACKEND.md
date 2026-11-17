@@ -213,3 +213,47 @@ retained the original hook descriptors and scripts in an Actions artifact.
 The next gate is a transaction-bound, VM-only implementation or
 replacement of unsafe Q4OS hook effects, verified before touching any
 Windows or shared EFI resources.
+
+## Transaction-owned guest-only replacements for unsafe process hooks
+
+The experimental [PR #52](https://github.com/LMhdez/gaslux/pull/52)
+replaces *selected effects* of the upstream `debian_adjust2.sh`,
+`debian_adjust3.sh`, and `debian_adjust5.sh` in a **disposable installed
+QEMU guest only**. It never executes those upstream scripts, and it does
+**not** claim a complete native Calamares installation.
+
+Before each guest action, the hook replacement verifies the real QEMU
+identity, exactly one `/dev/vda` disk, `/dev/vda2` ext4 root and
+`/dev/vda1` VFAT ESP mounts, exact `GASLUX-Q4OS-ROOT` and
+`GASLUX-Q4OS-ESP` GPT partition labels, measured filesystem UUIDs,
+the pinned official ISO SHA-256, Q4OS version and a randomly generated
+transaction UUID persisted on the installed root. Windows EFI files
+and any unexpected ESP symlinks cause a refusal **before a hook writes**.
+
+The replacement sequence is checked during the guest-native GRUB
+installation and after reboot:
+- Hook 2 creates a *locked synthetic QEMU test account* in the already
+  mounted guest root, recording a transaction-owned checkpoint. It does
+  not use a production user's credentials or claim Calamares users/locale.
+- Hook 3 records that unreviewed Q4OS profile installation, APT package
+  purges, forced removal of the essential `q4os-loopin` package and
+  legacy `EFI/debian` writes remain **blocked**, not performed.
+- Hook 5 uses the installed system's `update-grub`, validating that
+  the native and guest-owned fallback EFI binary SHA-256 remain unchanged.
+- The second boot independently checks the checkpoints, the locked
+  account and the unchanged guest root/ESP identities.
+
+The runner requires the positive source inventory and policy audit
+from the **same hashed official ISO** before staging the hook adapter.
+The only writable target is a newly-created sparse GPT image in the
+private Actions temporary directory. No device passthrough or
+Windows disk is supplied to QEMU.
+
+**Unproven / prohibited:** executing the actual full Calamares UI/job
+sequence, generating an unattended Calamares partition+users plan,
+running unreviewed native package/profile removals, modifying shared
+Windows ESP/BCD/WinRE/NVRAM, Linux upgrades, uninstall and recovery.
+The guest-only checkpoints are not a production rollback mechanism.
+Full Calamares validation requires a separate, transaction-authenticated,
+disposable Windows/UEFI lab with automated graphical input and post-boot
+recovery checks. Q4OS stays experimental and is not enabled for users.
