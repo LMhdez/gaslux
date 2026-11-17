@@ -1,0 +1,105 @@
+name: Q4OS 6.10 official ISO integrity and native live inspect (lab only)
+
+on:
+  push:
+    branches:
+      - feature/q4os-native-preflight
+    paths:
+      - '.github/workflows/gaslux-q4os-official-iso.yml'
+      - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  q4os-native-iso-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare isolated ISO lab tools
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 grub-common grub-efi-amd64-bin mtools dosfstools gdisk
+      - name: Download Q4OS 6.10 r2 from project mirror, independently verify public SHA-256
+        shell: bash
+        env:
+          Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+          Q4OS_SOURCE: https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/gaslux-q4os"
+          cd "$RUNNER_TEMP/gaslux-q4os"
+          aria2c --continue=true --split=4 --max-connection-per-server=4 \
+            --max-tries=5 --retry-wait=8 --timeout=60 --connect-timeout=30 \
+            --file-allocation=none --check-integrity=true \
+            --checksum="sha-256=$Q4OS_SHA256" -o q4os.iso "$Q4OS_SOURCE"
+          printf '%s  %s\n' "$Q4OS_SHA256" q4os.iso | sha256sum --check --status
+          test "$(stat -c '%s' q4os.iso)" -gt 1500000000
+          test "$(stat -c '%s' q4os.iso)" -lt 3000000000
+          echo "GASLUX_Q4OS_FILE=$RUNNER_TEMP/gaslux-q4os/q4os.iso" >> "$GITHUB_ENV"
+          echo "Independent release SHA-256 matched the official Q4OS source: $Q4OS_SHA256"
+      - name: Inspect verified native ISO and live system evidence read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          w="$RUNNER_TEMP/gaslux-q4os"
+          mkdir -p "$w/iso-root" "$w/evidence"
+          sudo mount -o loop,ro,nosuid,nodev,noexec "$GASLUX_Q4OS_FILE" "$w/iso-root"
+          trap 'sudo umount "$w/iso-root" || true' EXIT
+          find "$w/iso-root" -maxdepth 4 -type f | sed "s|$w/iso-root/||" | sort > "$w/evidence/iso-files.txt"
+          find "$w/iso-root" -maxdepth 4 -type f -name '*.squashfs' > "$w/evidence/squashfs-paths.txt"
+          test -s "$w/evidence/squashfs-paths.txt" || {
+            echo "::error::Verified Q4OS ISO does not expose a known squashfs live root"
+            exit 1
+          }
+          while IFS= read -r squash; do
+            unsquashfs -ll "$squash" > "$w/evidence/rootfs-listing.txt"
+            if unsquashfs -cat "$squash" etc/os-release > "$w/evidence/os-release.txt" 2>/dev/null; then
+              echo "Extracted Q4OS live os-release from verified mounted ISO"
+              break
+            fi
+          done < "$w/evidence/squashfs-paths.txt"
+          test -s "$w/evidence/os-release.txt" || {
+            echo "::error::Live os-release was not found in an ISO squashfs"
+            exit 1
+          }
+          cat "$w/evidence/os-release.txt"
+          grep -Eq '^ID="?debian"?$' "$w/evidence/os-release.txt" || {
+            echo "::error::Q4OS live root did not identify its Debian base"
+            exit 1
+          }
+          grep -Eq '^VERSION_ID="?13"?$' "$w/evidence/os-release.txt" || {
+            echo "::error::Q4OS 6.10 live base did not identify Debian 13"
+            exit 1
+          }
+          grep -E 'calamares|q4os_version' "$w/evidence/rootfs-listing.txt" |
+            head -100 > "$w/evidence/installer-paths.txt" || true
+          test -s "$w/evidence/installer-paths.txt" || {
+            echo "::error::Q4OS native Calamares/version marker not discovered"
+            exit 1
+          }
+          (cd "$w/evidence" && sha256sum *.txt > manifest.sha256)
+          echo "PASS: verified official Q4OS ISO, real squashfs and live Debian 13 identity."
+          echo "NOT TESTED: Q4OS installed root, Windows 10/11 dual boot or recovery."
+      - name: Boot actual verified Q4OS live ISO in disposable OVMF/QEMU
+        shell: bash
+        env:
+          Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-q4os/evidence/guest
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            q4os "$GASLUX_Q4OS_FILE" "$Q4OS_SHA256"
+      - name: Retain SHA-linked read-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-official-610-iso-evidence
+          path: ${{ runner.temp }}/gaslux-q4os/evidence/
+          if-no-files-found: warn
+          retention-days: 14
