@@ -45,6 +45,26 @@ def build_winpe_witness_xml(mode: str) -> bytes:
     setup = [x for x in root.findall("./{" + NS + "}settings/{" + NS + "}component")
              if x.attrib.get("name") == "Microsoft-Windows-Setup"]
     require(len(setup) == 1, "missing unique WinPE Setup component")
+    # The positive FAT12 control previously failed even though the FAT12
+    # answer is known to install Windows on a disposable target disk. This
+    # *diskless* WinPE probe was mistakenly supplying the real unattended
+    # DiskConfiguration/WillWipeDisk=TRUE and InstallTo DiskID=0 despite NO
+    # target disk. Strip ALL installed-OS and Setup-disk instructions before
+    # adding the sole Windows PE COM1 discovery witness.
+    #
+    # This is intentionally NOT the production/installer unattended document.
+    for setting in root.findall("{" + NS + "}settings"):
+        if setting.attrib.get("pass") != "windowsPE":
+            root.remove(setting)
+    require(len(root.findall("{" + NS + "}settings")) == 1,
+            "ambiguous windowsPE pass in diskless answer probe")
+    for existing in list(setup[0]):
+        setup[0].remove(existing)
+    for banned in ("DiskConfiguration", "ImageInstall", "DiskID",
+                   "InstallTo", "WillWipeDisk", "FirstLogonCommands"):
+        require(not any(x.tag == "{" + NS + "}" + banned
+                        for x in root.iter()),
+                "diskless WinPE probe must not contain " + banned)
     node = ET.SubElement(setup[0], "{" + NS + "}RunSynchronous")
     command = ET.SubElement(node, "{" + NS + "}RunSynchronousCommand",
                             {"{" + WCM + "}action": "add"})
