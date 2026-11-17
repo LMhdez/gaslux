@@ -27,8 +27,7 @@ SQUASHFS_HELPERS = ROOT / "assets/live/libertix-distribution-common.sh"
         ),
         ("-rw-r--r-- root/root 100 2026-11-17 12:00 squashfs-root/etc/os-release.old", 0, False),
         (
-            "-rw-r--r-- root/root 100 2026-11-17 12:00 "
-            "prefix/squashfs-root/etc/os-release",
+            "-rw-r--r-- root/root 100 2026-11-17 12:00 prefix/squashfs-root/etc/os-release",
             0,
             False,
         ),
