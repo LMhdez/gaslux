@@ -58,12 +58,12 @@ def write_target_configuration(target: Path, root_uuid: str) -> None:
             "Mint target /etc is missing or unsafe")
     subprocess.run(
         ["sudo", "tee", str(etc / "fstab")],
-        input=f"UUID={canonical_uuid} / ext4 defaults 0 1\\n",
+        input=f"UUID={canonical_uuid} / ext4 defaults 0 1\n",
         check=True, text=True, stdout=subprocess.DEVNULL,
     )
     subprocess.run(
         ["sudo", "tee", str(etc / "hostname")],
-        input="GASLUXMINT\\n", check=True, text=True,
+        input="GASLUXMINT\n", check=True, text=True,
         stdout=subprocess.DEVNULL,
     )
 
