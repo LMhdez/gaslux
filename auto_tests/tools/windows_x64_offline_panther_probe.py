@@ -113,9 +113,21 @@ def inspect_cached_oobe_answer(
                 result = execute("-m", volume + ":/", "cat", path)
             except (OSError, subprocess.TimeoutExpired):
                 continue
-            if result.returncode != 0 or len(result.stdout) != int(size):
+            if result.returncode != 0:
                 continue
-            payload = result.stdout
+            # guestfish 'cat' writes file bytes to stdout and appends ONE
+            # presentation LF even when the original XML already ends in LF.
+            # The filesize response is the guest-file authority. Accept
+            # exactly N bytes or N+1 with a sole CLI LF, never arbitrary
+            # trailing bytes or a shortened/altered file.
+            expected_size = int(size)
+            if len(result.stdout) == expected_size:
+                payload = result.stdout
+            elif (len(result.stdout) == expected_size + 1
+                  and result.stdout.endswith(b"\\n")):
+                payload = result.stdout[:-1]
+            else:
+                continue
             try:
                 root = ET.fromstring(payload)
             except ET.ParseError:
