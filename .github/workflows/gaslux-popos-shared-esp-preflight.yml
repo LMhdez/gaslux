@@ -1,0 +1,100 @@
+name: Pop OS shared Windows ESP file integrity preflight (synthetic)
+
+on:
+  push:
+    branches:
+      - feature/popos-shared-esp-microsoft-file-guard
+  pull_request:
+    paths:
+      - 'auto_tests/tools/gaslux_popos_windows_efi_subtree.py'
+      - 'auto_tests/tests/test_popos_windows_efi_subtree.py'
+      - '.github/workflows/gaslux-popos-shared-esp-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shared-esp-readonly-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GASLUX_POP_SHARED_ESP_AUDIT: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact lab-only dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gdisk dosfstools mtools
+          python -m pip install pytest ruff
+      - name: Python syntax, Ruff and negative contracts (no disks)
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q auto_tests/tools/gaslux_popos_windows_efi_subtree.py auto_tests/tests/test_popos_windows_efi_subtree.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/gaslux_popos_windows_efi_subtree.py auto_tests/tests/test_popos_windows_efi_subtree.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/gaslux_popos_windows_efi_subtree.py auto_tests/tests/test_popos_windows_efi_subtree.py
+          python -m pytest -q auto_tests/tests/test_popos_windows_efi_subtree.py
+      - name: Real FAT32 read-only EFI-tree capture and tampering injection (synthetic Windows only)
+        env:
+          CI: 'true'
+          GASLUX_POP_SHARED_ESP_AUDIT: '1'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true && test -d "$RUNNER_TEMP"
+          work="$(mktemp -d "$RUNNER_TEMP/gaslux-pop-native-shared-XXXXXX")"
+          trap 'rm -rf -- "$work"' EXIT
+          disk="$work/pop-target.raw"
+          truncate -s 32G "$disk"
+          sgdisk --zap-all --new=1:2048:+256M --typecode=1:EF00 --change-name=1:MOCK-WINDOWS-ESP \
+            --new=2:0:+2048M --typecode=2:0700 --change-name=2:MOCK-WINDOWS-NTFS \
+            --new=3:0:+1024M --typecode=3:EF00 --change-name=3:GASLUX-OWNED-ESP \
+            --new=4:0:+26G --typecode=4:8300 --change-name=4:GASLUX-OWNED-ROOT \
+            "$disk" >/dev/null
+          truncate -s 256M "$work/windows-esp.img"
+          mkfs.vfat -F 32 "$work/windows-esp.img" >/dev/null
+          for name in EFI EFI/Microsoft EFI/Microsoft/Boot; do
+            mmd -i "$work/windows-esp.img" "::/$name"
+          done
+          printf 'MOCK EFI, NEVER A WINDOWS BOOTLOADER\n' > "$work/bootmgfw.efi"
+          printf 'MOCK BCD, NEVER A WINDOWS BCD STORE\n' > "$work/BCD"
+          mcopy -i "$work/windows-esp.img" "$work/bootmgfw.efi" ::/EFI/Microsoft/Boot/bootmgfw.efi
+          mcopy -i "$work/windows-esp.img" "$work/BCD" ::/EFI/Microsoft/Boot/BCD
+          dd if="$work/windows-esp.img" of="$disk" bs=1M seek=1 conv=notrunc status=none
+          python3 auto_tests/tools/gaslux_popos_windows_efi_subtree.py capture "$disk" "$work/esp-before.json"
+
+          # A Pop-owned loader outside EFI/Microsoft may change FAT32 metadata.
+          mmd -i "$work/windows-esp.img" ::/EFI/systemd
+          printf 'MOCK POP LOADER, NOT EXECUTABLE\n' > "$work/pop.efi"
+          mcopy -i "$work/windows-esp.img" "$work/pop.efi" ::/EFI/systemd/systemd-bootx64.efi
+          dd if="$work/windows-esp.img" of="$disk" bs=1M seek=1 conv=notrunc status=none
+          python3 auto_tests/tools/gaslux_popos_windows_efi_subtree.py capture "$disk" "$work/esp-after.json"
+          python3 auto_tests/tools/gaslux_popos_windows_efi_subtree.py verify "$work/esp-before.json" "$work/esp-after.json" > "$work/proof.txt"
+          grep -Fxq 'GASLUX_POP_SHARED_ESP_MICROSOFT_FILES_INTACT=1' "$work/proof.txt"
+          python3 - "$work/proof.txt" <<'PY'
+          import json, pathlib, sys
+          proof = pathlib.Path(sys.argv[1]).read_text().splitlines()
+          assert len(proof) == 2
+          result = json.loads(proof[1])
+          assert result["microsoftEfiFilesIdentical"] is True
+          assert result["espWholePartitionBytesIdentical"] is False
+          assert result["windowsDualBootProven"] is False
+          assert result["productionInstallationAuthorized"] is False
+          PY
+
+          # Mutation in EFI/Microsoft MUST invalidate the independently captured manifest.
+          printf 'MUTATED MOCK BCD, MUST REFUSE\n' > "$work/BCD"
+          mcopy -o -i "$work/windows-esp.img" "$work/BCD" ::/EFI/Microsoft/Boot/BCD
+          dd if="$work/windows-esp.img" of="$disk" bs=1M seek=1 conv=notrunc status=none
+          python3 auto_tests/tools/gaslux_popos_windows_efi_subtree.py capture "$disk" "$work/esp-after.json"
+          if python3 auto_tests/tools/gaslux_popos_windows_efi_subtree.py verify "$work/esp-before.json" "$work/esp-after.json"; then
+            echo '::error::Windows BCD tampering was accepted'
+            exit 1
+          fi
+          echo 'PASS: mock Microsoft EFI subtree changes fail closed.'
+          echo 'NOT TESTED: real Windows 10/11, real System76 installation, dual boot, kernel update or recovery.'
