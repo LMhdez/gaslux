@@ -169,7 +169,8 @@ jobs:
             --serial "$PROOF/$PROFILE-serial.log" \
             --serial-sha256 "$PROOF/$PROFILE-serial.sha256" \
             --initial-dvd-serial "$PROOF/$PROFILE-initial-dvd-serial.log" \
-            --initial-dvd-serial-sha256 "$PROOF/$PROFILE-initial-dvd-serial.sha256"
+            --initial-dvd-serial-sha256 "$PROOF/$PROFILE-initial-dvd-serial.sha256" \
+            --verify-owned-overlay-third-boot
           echo 'PASS: same-run Windows 10 candidate document consistency only. No independent provenance authentication, Windows+Linux same-disk install or recovery; no storage write permitted.' >> "$GITHUB_STEP_SUMMARY"
       - name: Verify offline GPT primary/backup candidate document (no Linux disk writes)
         shell: bash
