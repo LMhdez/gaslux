@@ -284,7 +284,7 @@ def _run_qemu(
         "-smp",
         "2",
         "-m",
-        "512",
+        "2048",
         "-no-reboot",
         "-display",
         "none",
@@ -352,7 +352,7 @@ def _run_qemu(
             if peer_pid != process.pid or peer_uid != os.getuid():
                 raise Q4osQemuLabRefusal("Virtio-serial peer is not the expected QEMU process")
             stream = connection.makefile("rb")
-            hello = _read_line(stream, 128)
+            hello = _read_line(stream, 128, "guest hello")
             if hello != HELLO:
                 raise Q4osQemuLabRefusal("Guest did not identify the named virtio-serial endpoint")
 
@@ -360,11 +360,11 @@ def _run_qemu(
             challenge = (f"{CHALLENGE_MAGIC}:{run_id}:{nonce}:{challenge_secret}\n").encode("ascii")
             connection.sendall(challenge)
 
-            header = _read_line(stream, 64)
+            header = _read_line(stream, 64, "guest report header")
             if header != REPORT_MAGIC:
                 raise Q4osQemuLabRefusal("Unexpected guest report frame header")
-            report_raw = _read_line(stream, MAX_REPORT_BYTES + 1)
-            mac_line = _read_line(stream, 128)
+            report_raw = _read_line(stream, MAX_REPORT_BYTES + 1, "guest report JSON")
+            mac_line = _read_line(stream, 128, "guest report HMAC")
             try:
                 mac_hex = mac_line.decode("ascii")
             except UnicodeDecodeError as exc:
