@@ -69,8 +69,16 @@ def evaluate(profile: str, report: dict, serial: bytes,
     require(type(report) is dict and report.get("profile") == profile,
             "Windows result belongs to another profile")
     for key in ("isoHashVerified", "officialIsoUnmodified",
-                "labDerivedIsoOnly", "windowsClientBootVerified"):
+                "windowsClientBootVerified"):
         require(report.get(key) is True, "missing Windows lab proof: " + key)
+    # Two mutually exclusive SHA-pinned Windows boot-media paths now exist:
+    # the derived no-prompt ISO used by PR #98, and the ORIGINAL Microsoft
+    # ISO attached read-only by PR #108. Do not silently require or invent a
+    # derivative for the original-media experiment. This is only a report
+    # consistency gate: report flags/manifest cannot authenticate their origin.
+    derived_mode = report.get("labDerivedIsoOnly")
+    require(type(derived_mode) is bool,
+            "Windows boot-media mode must be an explicit boolean")
     for key in ("stable", "dualBootVerified", "winReAndBcdRecovered"):
         require(report.get(key) is False,
                 "unsupported Windows recovery/stability claim: " + key)
@@ -90,11 +98,20 @@ def evaluate(profile: str, report: dict, serial: bytes,
             report["isoSizeBytes"] >= 3 * 1024**3 and
             report["isoSizeBytes"] <= 9 * 1024**3,
             "invalid Windows ISO size")
-    for key in ("firstLogonScriptSha256", "labDerivedIsoSha256",
+    for key in ("firstLogonScriptSha256",
                 "initialDvdGuestSerialSha256"):
         require(type(report.get(key)) is str and
                 SHA256.fullmatch(report[key]) is not None,
                 "missing SHA256: " + key)
+    if derived_mode:
+        derivative = report.get("labDerivedIsoSha256")
+        require(type(derivative) is str and
+                SHA256.fullmatch(derivative) is not None and
+                derivative != EXPECTED[profile],
+                "derived Windows ISO must have a distinct SHA256")
+    else:
+        require("labDerivedIsoSha256" not in report,
+                "unaltered original Windows ISO cannot claim a derived hash")
     # Bind the Windows guest audit script to the checked-out source itself,
     # rather than accepting an arbitrary syntactically valid SHA256. This
     # independently catches an altered FirstLogon audit payload.
