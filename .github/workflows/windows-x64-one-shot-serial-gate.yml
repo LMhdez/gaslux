@@ -1,0 +1,31 @@
+name: Windows one-shot firmware serial evidence (no ISO or disk)
+
+on:
+  push:
+    branches:
+      - fix/windows-one-shot-serial-boot-counter
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  negative-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile and run isolated firmware and Windows contract regressions
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/test_windows_x64_noprompt_one_shot.py
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_noprompt_one_shot.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_derived_noprompt.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_winre_baseline_contract.py'
+          python3 -m unittest discover -v -s auto_tests -p 'test_windows_x64_iso_boot_key.py'
+      - name: Declare synthetic-only evidence
+        run: |
+          printf '%s\n' 'No ISO, guest disk, Windows Setup, Windows firstboot or dualboot executed.' >> "$GITHUB_STEP_SUMMARY"
