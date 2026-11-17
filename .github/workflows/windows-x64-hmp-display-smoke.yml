@@ -1,0 +1,90 @@
+name: QEMU HMP screendump headless vs private Unix VNC (diskless)
+
+on:
+  push:
+    branches:
+      - feature/windows-x64-uefi-dvd-visual-diagnostics
+    paths:
+      - .github/workflows/windows-x64-hmp-display-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diskless-qemu-hmp-compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Compare firmware VGA screenshot without guest disk or network
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 ovmf
+          w="$(mktemp -d -p "$RUNNER_TEMP" gaslux-hmp-visual-XXXXXX)"
+          trap 'rm -rf -- "$w"' EXIT
+          code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
+          vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          test -f "$code" && test -f "$vars"
+          for mode in none unix-vnc; do
+            mkdir "$w/$mode"
+            cp "$vars" "$w/$mode/vars.fd"
+            if [[ "$mode" == none ]]; then
+              display=(-display none)
+            else
+              display=(-vnc "unix:$w/$mode/vnc.sock")
+            fi
+            qemu-system-x86_64 \
+              -machine q35,accel=tcg,smm=on -cpu qemu64 -m 1024 -smp 1 \
+              -global driver=cfi.pflash01,property=secure,value=on \
+              -vga std -net none -serial none -monitor "unix:$w/$mode/hmp.sock,server,nowait" \
+              -drive if=pflash,format=raw,readonly=on,file="$code" \
+              -drive "if=pflash,format=raw,file=$w/$mode/vars.fd" \
+              ${display[@]} > "$w/$mode/stdout.log" 2>"$w/$mode/stderr.log" &
+            pid=$!
+            set +e
+            python3 - "$w/$mode/hmp.sock" "$w/$mode/screen.ppm" "$mode" <<'PY'
+          import pathlib,socket,sys,time
+          hmp,out,mode=pathlib.Path(sys.argv[1]),pathlib.Path(sys.argv[2]),sys.argv[3]
+          for _ in range(75):
+              if hmp.is_socket(): break
+              time.sleep(.2)
+          if not hmp.is_socket():
+              print(f"{mode}: ERROR missing HMP socket")
+              sys.exit(2)
+          with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+              s.settimeout(10)
+              s.connect(str(hmp))
+              print(f"{mode}: HMP banner {s.recv(2000)!r}")
+              s.sendall(("screendump "+str(out)+"\n").encode())
+              response=s.recv(2000)
+              print(f"{mode}: HMP response {response!r}")
+          for _ in range(50):
+              if out.is_file() and out.stat().st_size>16: break
+              time.sleep(.2)
+          if not out.is_file():
+              print(f"{mode}: screenshot absent")
+              sys.exit(1)
+          print(f"{mode}: screenshot bytes={out.stat().st_size} header={out.read_bytes()[:16]!r}")
+          if not out.read_bytes().startswith(b"P6\n") or out.stat().st_size>16*1024*1024:
+              sys.exit(1)
+          PY
+            rc=$?
+            set -e
+            echo "GASLUX_HMP_SCREENSHOT_MODE=$mode RC=$rc"
+            echo "$mode $rc" >> "$w/results.txt"
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            echo "$mode: QEMU stderr:"
+            tail -c 1200 "$w/$mode/stderr.log" || true
+          done
+          cat "$w/results.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -q '^unix-vnc 0$' "$w/results.txt" ||
+            { echo "::error::No private-UNIX VNC HMP VGA capture; no Windows firstboot proved"; exit 1; }
+          echo 'PASS: private Unix VNC HMP display captures OVMF VGA; no Windows installed or booted.' >> "$GITHUB_STEP_SUMMARY"
