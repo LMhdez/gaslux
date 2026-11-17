@@ -17,8 +17,8 @@ from gaslux_q4os_vnc_visual_gate import (  # noqa: E402
     _WELCOME_ALLOWED,
     _WELCOME_BOX,
     verified_after_close,
-    verified_native_calamares_welcome,
     verified_centre_changed,
+    verified_native_calamares_welcome,
     verified_q4os_welcome_desktop,
 )
 
