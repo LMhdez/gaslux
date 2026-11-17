@@ -124,6 +124,38 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
         self.assertNotIn('cp /etc/pacman.conf', self.stage)
         self.assertIn("GASLUX_VM_UPDATE_TRUST_POLICY_VERIFIED=1", self.guest)
 
+    def test_effective_pacman_policy_accepts_only_trusted_required_packages(self):
+        # Execute exactly the offline Python policy check embedded in the lab
+        # installer, not a weaker duplicate implementation.
+        anchor = '  python3 - "$repo" "$level" <<\'PY\' || die'
+        self.assertIn(anchor, self.stage)
+        code = self.stage.split(anchor, 1)[1].split("\\nPY\\n", 1)[0].split("\\n", 1)[1]
+        accepted = (
+            'Required DatabaseOptional TrustedOnly',
+            'PackageRequired DatabaseOptional TrustedOnly',
+            'DatabaseOptional PackageRequired PackageTrustedOnly',
+        )
+        rejected = (
+            '', 'DatabaseRequired TrustedOnly', 'Required Optional TrustedOnly',
+            'Required DatabaseOptional TrustAll',
+            'Required DatabaseOptional PackageTrustAll',
+            'PackageOptional DatabaseRequired TrustedOnly',
+            'Required Required TrustedOnly',
+            'Required DatabaseNever TrustedOnly',
+            'Required DatabaseOptional Unknown',
+        )
+        for siglevel in accepted + rejected:
+            with self.subTest(siglevel=siglevel):
+                result = subprocess.run(
+                    ['python3', '-c', code, 'cachyos', siglevel],
+                    capture_output=True, text=True, timeout=5, check=False,
+                )
+                self.assertEqual(result.returncode == 0, siglevel in accepted,
+                                 result.stdout + result.stderr)
+        self.assertEqual(self.stage.count('SigLevel = Required DatabaseOptional TrustedOnly'), 4)
+        self.assertIn('LocalFileSigLevel = Required TrustedOnly', self.stage)
+        self.assertIn('RemoteFileSigLevel = Required TrustedOnly', self.stage)
+
     def test_bounded_guest_script_is_hashed_in_signed_boot_fat(self):
         self.assertIn('sha256sum "$updater"', self.runner)
         self.assertIn('mcopy -i "$fat" "$updater" ::/update.sh', self.runner)
