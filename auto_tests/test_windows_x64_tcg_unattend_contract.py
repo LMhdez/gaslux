@@ -68,6 +68,60 @@ class WindowsX64RealTcgContracts(unittest.TestCase):
                 self.assertIn("bcdedit /enum", module.witness_powershell(key, prefix))
                 self.assertNotIn("bcdedit /set", module.witness_powershell(key, prefix))
 
+    def test_oobe_international_defaults_present_for_real_win10_and_win11(self):
+        for profile, build in (("win10_22h2_en_us_x64", "19045"),
+                               ("win11_26h2_en_us_x64", "26300")):
+            with self.subTest(profile=profile):
+                xml = module.generate_unattend(profile, build)
+                module.validate_oobe_answer_pass(xml)
+                root = ET.fromstring(xml)
+                passes = [x for x in root.findall("u:settings", NS)
+                          if x.attrib.get("pass") == "oobeSystem"]
+                self.assertEqual(len(passes), 1)
+                international = [c for c in passes[0].findall("u:component", NS)
+                                 if c.attrib.get("name") ==
+                                 "Microsoft-Windows-International-Core"]
+                self.assertEqual(len(international), 1)
+                for name in ("InputLocale", "SystemLocale", "UILanguage",
+                             "UserLocale"):
+                    self.assertEqual(
+                        international[0].find("u:" + name, NS).text, "en-US")
+                self.assertNotIn(b"SkipMachineOOBE", xml)
+                self.assertNotIn(b"SkipUserOOBE", xml)
+
+    def test_incomplete_oobe_locale_refused_before_vm_start(self):
+        xml = module.generate_unattend("win10_22h2_en_us_x64", "19045")
+        root = ET.fromstring(xml)
+        oobe = next(x for x in root.findall("u:settings", NS)
+                    if x.attrib.get("pass") == "oobeSystem")
+        international = next(c for c in oobe.findall("u:component", NS)
+                             if c.attrib.get("name") ==
+                             "Microsoft-Windows-International-Core")
+        for name in ("InputLocale", "SystemLocale", "UILanguage",
+                     "UserLocale"):
+            with self.subTest(removed=name):
+                child = international.find("u:" + name, NS)
+                international.remove(child)
+                with self.assertRaisesRegex(module.LabError,
+                                            "Windows OOBE " + name):
+                    module.validate_oobe_answer_pass(ET.tostring(root))
+                international.append(child)
+
+    def test_repeated_or_skipped_oobe_pass_refused(self):
+        xml = module.generate_unattend("win11_26h2_en_us_x64", "26300")
+        root = ET.fromstring(xml)
+        oobe = next(x for x in root.findall("u:settings", NS)
+                    if x.attrib.get("pass") == "oobeSystem")
+        repeated = ET.fromstring(ET.tostring(oobe))
+        root.append(repeated)
+        with self.assertRaisesRegex(module.LabError, "ambiguous"):
+            module.validate_oobe_answer_pass(ET.tostring(root))
+        root.remove(repeated)
+        ET.SubElement(oobe, "{urn:schemas-microsoft-com:unattend}SkipMachineOOBE"
+                      ).text = "true"
+        with self.assertRaisesRegex(module.LabError, "skip directives"):
+            module.validate_oobe_answer_pass(ET.tostring(root))
+
     def test_fixture_only_never_downloads_or_boots(self):
         for profile in module.EXPECTED:
             proc = subprocess.run(
