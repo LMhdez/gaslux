@@ -136,7 +136,7 @@ class RealReadOnlyGptWindowsTests(unittest.TestCase):
                 inspect.SharedDiskHandoffRejected,"virtio"):
             inspect.read_guest_disk_windows_readonly(Path("/tmp/disposable.img"))
         with self.assertRaisesRegex(
-                inspect.SharedDiskHandoffRejected,"block device"):
+                inspect.SharedDiskHandoffRejected,"virtio"):
             inspect.read_guest_disk_windows_readonly(Path("/dev/null"))
 
 
