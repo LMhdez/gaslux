@@ -86,6 +86,14 @@ class CachyosQemuPlasmaProof(unittest.TestCase):
             with self.assertRaisesRegex(audit.GraphicsEvidenceError, "lab-only"):
                 audit.run(Path(folder) / "monitor.sock", arbitrary)
 
+    def test_serial_login_prompt_interleaving_must_match_exact_guest_marker(self):
+        script = RUNNER.read_text()
+        self.assertIn('installed_marker_present()', script)
+        self.assertIn('"gaslux-cachyos-ci login: " marker', script)
+        self.assertIn('$0 == marker || $0 ==', script)
+        self.assertNotIn('index($0, marker)', script)
+        self.assertIn('cachyos_qemu_graphics_evidence.py', script)
+
     def test_bash_stage_and_qemu_runner_syntax(self):
         for script in (INSTALL, RUNNER):
             proc = subprocess.run(["bash", "-n", str(script)],
