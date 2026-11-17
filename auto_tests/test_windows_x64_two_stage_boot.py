@@ -40,6 +40,49 @@ def synthetic_args(tmp):
 
 class WindowsTwoStageSafetyTests(unittest.TestCase):
 
+    def test_original_win10_serial_prompt_triggers_immediate_key(self):
+        prompt = b'Press any key to boot from CD or DVD......'
+        self.assertTrue(VM.first_stage_dvd_key_ready(
+            prompt, 100.0, 100.05, True),
+            "Must not wait 1s after OVMF when live Windows CD prompt is present")
+
+    def test_original_win10_no_prompt_never_sends_premature_key(self):
+        self.assertFalse(VM.first_stage_dvd_key_ready(
+            b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM',
+            100.0, 130.0, True))
+
+    def test_original_win10_timeout_never_sends_late_key(self):
+        transcript = (
+            b"Press any key to boot from CD or DVD......\\r\\n"
+            b'BdsDxe: failed to start Boot0001 "UEFI QEMU DVD-ROM": Time out'
+        )
+        self.assertFalse(VM.first_stage_dvd_key_ready(
+            transcript, 100.0, 103.0, True))
+
+    def test_original_win10_requires_real_firmware_dvd_start(self):
+        self.assertFalse(VM.first_stage_dvd_key_ready(
+            VM.BOOT_FROM_CD_PROMPT, None, 103.0, True))
+        self.assertFalse(VM.first_stage_dvd_key_ready(
+            VM.BOOT_FROM_CD_PROMPT, 200.0, 100.0, True))
+
+    def test_other_profiles_retain_original_fallback(self):
+        self.assertFalse(VM.first_stage_dvd_key_ready(
+            b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM',
+            100.0, 100.5, False))
+        self.assertTrue(VM.first_stage_dvd_key_ready(
+            b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM',
+            100.0, 101.05, False))
+
+    def test_original_win10_prompt_only_applies_to_real_two_stage(self):
+        source = SRC.read_text()
+        self.assertIn('require_serial_prompt: bool = False', source)
+        self.assertIn('and args.profile == "win10_22h2_en_us_x64"', source)
+        self.assertIn('require(not require_serial_prompt or profile_key', source)
+        self.assertIn('GASLUX_WINDOWS_STAGE1_SERIAL_CD_PROMPT_OBSERVED=1', source)
+        self.assertIn('time.sleep(0.1 if require_serial_prompt and not dvd_key_sent', source)
+        self.assertIn('return False, "initial Windows Setup UEFI DVD boot failed"',
+                      source)
+
     def test_incremental_dvd_scan_preserves_old_boot_when_log_exceeds_400k(self):
         with tempfile.TemporaryDirectory() as d:
             serial = pathlib.Path(d) / "vm-serial.log"
