@@ -36,7 +36,7 @@ $expected = @(
     'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1'
     'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1'
     'GASLUX_WINDOWS_X64_WINRE_ENABLED=1'
-    '__MARKER__=__PROFILE__'
+    'GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win10_22h2_en_us_x64'
 )
 for ($i = 0; $i -lt $expected.Count; $i++) {
     if ($observed[$i] -isnot [string]) {
