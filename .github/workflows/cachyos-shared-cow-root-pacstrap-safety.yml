@@ -1,0 +1,45 @@
+name: CachyOS Windows-shared root-only pacstrap safety contracts (NO install)
+
+on:
+  push:
+    branches: [feature/cachyos-shared-cow-root-pacstrap-only]
+    paths:
+      - .github/workflows/cachyos-shared-cow-root-pacstrap-safety.yml
+      - auto_tests/tools/cachyos_windows_shared_root_pacstrap.py
+      - auto_tests/test_cachyos_windows_shared_root_pacstrap.py
+      - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
+      - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-gpt-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile, shell safety boundaries, and isolated GPT regressions (NO guest mount or pacstrap)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile \
+            auto_tests/tools/cachyos_windows_shared_root_pacstrap.py \
+            auto_tests/test_cachyos_windows_shared_root_pacstrap.py \
+            auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
+            auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_root_pacstrap.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_handoff.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_guest_probe.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
+          if grep -En '(^|[[:space:]])(sgdisk[[:space:]]+--clear|mkfs\.|grub-install|efibootmgr[[:space:]]+-c)' auto_tests/tools/cachyos_windows_shared_root_pacstrap.py; then
+            echo 'Unsafe Windows ESP/GPT mutation in shared-root backend' >&2
+            exit 1
+          fi
+          echo 'PASS: only static contracts and synthetic no-device GPT evidence; real Archiso/pacstrap/dualboot NOT run.' >> "$GITHUB_STEP_SUMMARY"
