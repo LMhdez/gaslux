@@ -18,9 +18,7 @@ import yaml
 from gaslux_q4os_calamares_policy import CalamaresRefusal, _yaml
 from gaslux_q4os_hook_policy import audit_q4os_native_hooks
 
-OFFICIAL_ISO_SHA256 = (
-    "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
-)
+OFFICIAL_ISO_SHA256 = "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
 JOBS = (
     "partition",
     "mount",
@@ -127,9 +125,7 @@ def create_inert_calamares_profile(evidence: Path) -> dict:
     native_modules = folder / "usr" / "lib" / "calamares" / "modules"
     native_modules.mkdir(parents=True, mode=0o700)
     hashes = {}
-    hashes["etc/calamares/settings.conf"] = _dump_yaml(
-        config / "settings.conf", original_settings
-    )
+    hashes["etc/calamares/settings.conf"] = _dump_yaml(config / "settings.conf", original_settings)
     hashes["etc/calamares/modules/bootloader.conf"] = _dump_yaml(
         config / "modules" / "bootloader.conf", boot
     )
@@ -146,9 +142,7 @@ def create_inert_calamares_profile(evidence: Path) -> dict:
             "command": "/bin/false",
             "timeout": {"q4oshook2": 3600, "q4oshook3": 18000, "q4oshook5": 600}[name],
         }
-        hashes[f"usr/lib/calamares/modules/{name}/module.desc"] = _dump_yaml(
-            path, descriptor
-        )
+        hashes[f"usr/lib/calamares/modules/{name}/module.desc"] = _dump_yaml(path, descriptor)
     report = {
         "profile": "q4os-calamares-inert-v1",
         "officialIsoSha256Prerequisite": OFFICIAL_ISO_SHA256,
