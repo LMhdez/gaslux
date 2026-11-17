@@ -237,9 +237,12 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
                 bounded_qcow2_dd_command(disk, dest, suffix),
                 check=True, capture_output=True, timeout=60,
             )
-            require(dest.is_file() and not dest.is_symlink() and
-                    dest.stat().st_size == WINDOW_BYTES,
-                    "QEMU returned an invalid bounded GPT window")
+            require(dest.is_file() and not dest.is_symlink(),
+                    f"QEMU returned no regular bounded {suffix} GPT window")
+            actual_bytes = dest.stat().st_size
+            require(actual_bytes == WINDOW_BYTES,
+                    f"QEMU returned invalid {suffix} GPT window length: "
+                    f"{actual_bytes} bytes instead of {WINDOW_BYTES}")
             region.append(dest.read_bytes())
     return inspect_gpt_windows(region[0], region[1])
 
