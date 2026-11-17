@@ -50,13 +50,14 @@ cleanup() {
     mkdir -p "$GASLUX_POP_FULL_VM_EVIDENCE_DIR"
     for name in grub.cfg live.serial.log live.console.trace installed.serial.log \
       installed.normalized.log target-before.txt target-after.txt kernel-path.txt install-qemu.exit \
-      installed-qemu.exit; do
+      installed-qemu.exit owned-gpt-before.json owned-gpt-after.json \
+      owned-gpt-proof.txt; do
       [[ -f "$work/$name" ]] &&
         cp "$work/$name" "$GASLUX_POP_FULL_VM_EVIDENCE_DIR/" || true
     done
     (
       cd "$GASLUX_POP_FULL_VM_EVIDENCE_DIR"
-      sha256sum ./*.txt ./*.log ./*.trace ./*.cfg ./*.exit > evidence.sha256 2>/dev/null
+      sha256sum ./*.txt ./*.log ./*.trace ./*.cfg ./*.exit ./*.json > evidence.sha256 2>/dev/null
     ) || true
   fi
   [[ "$work" == "$RUNNER_TEMP"/gaslux-pop-native-full-* ]] ||
@@ -174,6 +175,9 @@ dd if="$work/owned-esp.img" of="$target" bs=1M seek=1 \
   conv=notrunc,sparse status=none
 rm -f -- "$work/owned-esp.img"
 sync
+# Host-side, immutable pre-install GPT evidence: isolated Linux-only VM disk.
+python3 auto_tests/tools/gaslux_popos_native_gpt_reconcile.py capture \
+  "$target" "$work/owned-gpt-before.json"
 printf 'GASLUX_POP_NATIVE_INSTALL_LAB_DISK=isolated-linux-only\n'
 
 [[ "$iso" != *,* && "$target" != *,* ]] ||
@@ -219,6 +223,35 @@ printf '%s\n' "$qemu_rc" > "$work/install-qemu.exit"
 [[ "$qemu_rc" == 0 ]] || die "Native install QEMU did not shut down cleanly ($qemu_rc)"
 sgdisk --print "$target" > "$work/target-after.txt"
 test -s "$work/target-after.txt" || die 'Installed target GPT cannot be inspected'
+python3 auto_tests/tools/gaslux_popos_native_gpt_reconcile.py capture \
+  "$target" "$work/owned-gpt-after.json"
+python3 auto_tests/tools/gaslux_popos_native_gpt_reconcile.py verify \
+  "$work/owned-gpt-before.json" "$work/owned-gpt-after.json" \
+  > "$work/owned-gpt-proof.txt"
+grep -Fxq 'GASLUX_POP_NATIVE_LINUXONLY_GPT_VERIFIED=1' \
+  "$work/owned-gpt-proof.txt" || die 'Host GPT reconciliation missing'
+expected_partuuid="$(python3 - "$work/owned-gpt-proof.txt" <<'PY'
+import json
+import sys
+import uuid
+from pathlib import Path
+
+lines = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 2 or lines[0] != "GASLUX_POP_NATIVE_LINUXONLY_GPT_VERIFIED=1":
+    raise SystemExit("Missing independently validated host GPT proof")
+proof = json.loads(lines[1])
+if proof.get("productionInstallationAuthorized") is not False:
+    raise SystemExit("Lab GPT proof must never authorize production")
+if proof.get("ownedEspGptEntryIdentical") is not True:
+    raise SystemExit("Owned ESP GPT entry changed during native install")
+value = proof.get("rootPartuuidAfter")
+if type(value) is not str or str(uuid.UUID(value)) != value:
+    raise SystemExit("Missing authoritative root PARTUUID")
+print(value)
+PY
+)"
+[[ "$expected_partuuid" =~ ^[0-9a-f-]{36}$ ]] ||
+  die 'Host post-install root PARTUUID missing'
 printf 'GASLUX_POP_NATIVE_DISTINST_FULL_INSTALL_ON_QEMU=1\n'
 
 # The SECOND QEMU has NO lab EFI disk and NO live ISO. Only the native Pop disk
@@ -250,7 +283,7 @@ for _ in $(seq 1 290); do
         "$work/installed.normalized.log" &&
        grep -Eq '^GASLUX_POP_NATIVE_FIRSTBOOT_KERNEL=[^[:space:]]+$' \
         "$work/installed.normalized.log" &&
-       grep -Eq '^GASLUX_POP_NATIVE_FIRSTBOOT_ROOT_PARTUUID=[a-f0-9-]{36}$' \
+       grep -Fxq "GASLUX_POP_NATIVE_FIRSTBOOT_ROOT_PARTUUID=$expected_partuuid" \
         "$work/installed.normalized.log"; then
       verified=1
       break

@@ -212,3 +212,18 @@ already required nonce-like shell challenge as the sole proof of active shell
 execution before any mount or installer command is sent. After completed native installation, a fresh post-install shell challenge
 and a separate sync-confirmation marker prevent premature shutdown without
 relying on potentially interleaved prompt text. No disk mutation is authorized on missing nonce proof.
+
+## Linux-only first-boot GPT reconciliation (experimental)
+
+A follow-on lab step captures and validates *both* GPT copies (CRC, disk GUID,
+protective MBR, partition arrays) before and after the native install. It
+rejects any change outside the uniquely owned root partition, checks that the
+owned ESP GPT entry is byte-identical, and records the root PARTUUID observed
+**on the host after installation**. The independently booted Pop guest must
+report that same PARTUUID over serial. An installation success marker or a
+plausible-looking guest UUID is not sufficient without this cross-check.
+
+The experiment uses a new Linux-only QEMU disk, not Windows partitions. It is
+not a production authorization, shared-ESP integrity guarantee, Windows dual
+boot, Windows recovery, update, or uninstall proof. Those tests remain blocked
+pending a signed production transaction and disposable Windows VMs.
