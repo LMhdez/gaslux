@@ -1,0 +1,85 @@
+name: Q4OS signed disposable VM target plan (read-only; NO install)
+
+on:
+  push:
+    branches:
+      - feature/q4os-signed-vm-target-plan
+    paths:
+      - '.github/workflows/gaslux-q4os-vm-target-plan.yml'
+      - 'assets/live/gaslux_q4os_vm_target_plan.py'
+      - 'auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py'
+      - 'auto_tests/tests/test_q4os_vm_target_plan.py'
+      - 'schemas/gaslux-q4os-vm-target-plan.schema.json'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-vm-target-plan.yml'
+      - 'assets/live/gaslux_q4os_vm_target_plan.py'
+      - 'auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py'
+      - 'auto_tests/tests/test_q4os_vm_target_plan.py'
+      - 'schemas/gaslux-q4os-vm-target-plan.schema.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-plan-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated Q4OS GPT test prerequisites
+        run: |
+          set -Eeuo pipefail
+          python -m pip install 'pytest>=9,<10' 'cryptography>=46,<51' 'jsonschema>=4,<5' 'ruff>=0.8,<1'
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gdisk dosfstools
+      - name: Check read-only signed plan, schema and negative GPT contracts
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q assets/live/gaslux_q4os_vm_target_plan.py auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py auto_tests/tests/test_q4os_vm_target_plan.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_vm_target_plan.py auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py auto_tests/tests/test_q4os_vm_target_plan.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_vm_target_plan.py auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py auto_tests/tests/test_q4os_vm_target_plan.py
+          python -m pytest -q auto_tests/tests/test_q4os_vm_target_plan.py
+      - name: Construct ONLY one new disposable GPT+FAT32 VM disk file
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ "$GITHUB_ACTIONS" == true && -d "$RUNNER_TEMP" ]] || exit 1
+          work="$(mktemp -d -p "$RUNNER_TEMP" gaslux-q4os-vm-target-XXXXXXXX)"
+          [[ -d "$work" && ! -L "$work" && -O "$work" ]] || exit 1
+          printf 'GASLUX_Q4OS_VM_PLAN_WORK=%s\n' "$work" >> "$GITHUB_ENV"
+          truncate -s 32G "$work/efi-disk.img"
+          sgdisk --zap-all --new=1:2048:+512M --typecode=1:EF00 \
+            --change-name=1:GASLUX-LAB-ESP "$work/efi-disk.img" >/dev/null
+          truncate -s 512M "$work/efi-part.img"
+          mkfs.vfat -F 32 -n GASLUXLAB "$work/efi-part.img" >/dev/null
+          dd if="$work/efi-part.img" of="$work/efi-disk.img" \
+            bs=1M seek=1 conv=notrunc status=none
+          sgdisk --verify "$work/efi-disk.img"
+          echo 'GASLUX_Q4OS_VM_FIXTURE_ONLY=1'
+      - name: Sign and re-verify independent actual GPT evidence (NO disk writes)
+        env:
+          GASLUX_Q4OS_VM_EVIDENCE: ${{ runner.temp }}/q4os-verified-target-plan-evidence
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py \
+            "$GASLUX_Q4OS_VM_PLAN_WORK" "$GASLUX_Q4OS_VM_EVIDENCE"
+          grep -F '"installationAuthorized": false' \
+            "$GASLUX_Q4OS_VM_EVIDENCE/q4os-vm-verification.json"
+          grep -F '"diskWritesAuthorized": false' \
+            "$GASLUX_Q4OS_VM_EVIDENCE/q4os-vm-verification.json"
+      - name: Preserve only signed read-only evidence (not the 32GiB disk)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-owned-gpt-signed-readonly-target-proposal
+          path: ${{ runner.temp }}/q4os-verified-target-plan-evidence/
+          if-no-files-found: warn
+          retention-days: 7
