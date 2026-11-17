@@ -850,6 +850,8 @@ def scan_two_stage_dvd_serial(
     with path.open("rb") as stream:
         end = stream.seek(0, os.SEEK_END)
         require(end >= offset, "first Windows guest serial log was truncated")
+        require(end <= MAX_WINDOWS_GUEST_SERIAL_BYTES,
+                "initial Windows Setup COM1 serial exceeded maximum evidence size")
         stream.seek(offset)
         while offset < end:
             chunk = stream.read(min(65536, end - offset))
