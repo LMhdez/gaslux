@@ -966,6 +966,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--derived-no-prompt", action="store_true",
                     help="disposable KVM lab ONLY: rebuild Microsoft-sourced UDF "
                          "with official noprompt UEFI image; never release media")
+    ap.add_argument("--official-original-iso", action="store_true",
+                    help="EXPERIMENTAL hosted KVM two-stage ONLY: boot the "
+                         "unaltered SHA-pinned original Microsoft ISO, using "
+                         "exactly one acknowledged DVD HMP Enter")
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
     ap.add_argument("--boot-timeout", type=int, default=6300)
@@ -975,12 +979,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
-        if not (args.derived_no_prompt and not args.boot_probe_only
+        if not ((args.derived_no_prompt != args.official_original_iso)
+                and not args.boot_probe_only
                 and not args.one_shot_install_only and args.accel == "kvm"
                 and os.environ.get("GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT")
                 == "I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY"):
             raise SystemExit("two-stage Windows lab installation requires "
-                             "separate hosted KVM consent and no-prompt DVD")
+                             "separate hosted KVM consent and exactly one "
+                             "pinned boot mode (derived or original Microsoft ISO)")
     elif args.one_shot_install_only:
         if not (args.derived_no_prompt and not args.boot_probe_only
                 and args.accel == "kvm" and
@@ -991,6 +997,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.derived_no_prompt and not args.boot_probe_only:
         raise SystemExit("derived no-prompt DVD requires probe-only unless the "
                          "separate hosted VM one-shot installation gate is approved")
+    elif args.official_original_iso:
+        raise SystemExit("original Microsoft ISO two-stage comparison is forbidden "
+                         "outside separately consented hosted KVM two-stage mode")
     catalog = load_catalog()
     profile = catalog["profiles"][args.profile]
     xml = generate_unattend(
@@ -1023,6 +1032,16 @@ def main(argv: list[str] | None = None) -> int:
                           isoSizeBytes=iso_size)
             print("GASLUX_WINDOWS_EVAL_ISO_MICROSOFT_SHA256_VERIFIED=1", flush=True)
             boot_iso = iso
+            if args.official_original_iso:
+                # Use ONLY the original Microsoft bytes, not an ISO re-master.
+                # The pinned SHA-256 was checked by download_verified_iso().
+                # This branch isolates remastering as a Windows Setup variable.
+                require(args.two_stage_install_only and args.accel == "kvm",
+                        "original ISO direct mode requires the hosted KVM gate")
+                report["labDerivedIsoOnly"] = False
+                report["officialIsoUnmodified"] = True
+                print("GASLUX_WINDOWS_ORIGINAL_MICROSOFT_ISO_DIRECT_KVM=1",
+                      flush=True)
             if args.derived_no_prompt:
                 require(args.accel == "kvm",
                         "no-prompt derived ISO permitted only in isolated hosted KVM")
