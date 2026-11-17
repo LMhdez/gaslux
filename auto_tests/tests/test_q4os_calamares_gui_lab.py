@@ -70,15 +70,15 @@ def test_only_new_disposable_disk_is_visible_to_qemu():
     assert "GASLUX_Q4OS_GRAPHICS_LAB_ONLY" in source
 
 
-def test_desktop_installer_icon_launch_is_separately_exact_image_gated():
+def test_desktop_launcher_requires_pixel_attestations_and_closed_welcome():
     source = SCRIPT.read_text(encoding="utf-8")
-    assert (
-        "expected_desktop='231a01a5e394937808d71080dbb4f1a8e9da3bc52e61d80e2e5cdebce8d638d7'"
-        in source
-    )
     assert 'launch_installer="${GASLUX_Q4OS_LAUNCH_INSTALLER:-no}"' in source
-    assert '"$current" == "$expected_desktop"' in source
-    assert "move 948 93 click 1 pause 1 move 57 39 click 1 pause 0.3 click 1" in source
+    assert 'visual_gate="$(dirname "$0")/gaslux_q4os_vnc_visual_gate.py"' in source
+    assert 'python3 "$visual_gate" welcome "$work/vnc-$tick.png"' in source
+    assert "move 948 93 click 1" in source
+    assert 'python3 "$visual_gate" after-close "$work/vnc-before-icon-click.png"' in source
+    assert "move 57 39 click 1 pause 0.3 click 1" in source
+    assert "python3 \"$visual_gate\" changed-centre" in source
     assert "GASLUX_Q4OS_PINNED_DESKTOP_LAUNCHER_VERIFIED" in source
     assert "vnc-after-installer-icon.png" in source
     assert '"$launcher_clicked" -eq 1 && "$post_launcher_frame" -eq 1' in source
