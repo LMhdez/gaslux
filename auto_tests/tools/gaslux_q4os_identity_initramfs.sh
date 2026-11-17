@@ -22,7 +22,7 @@ mkdir -m 0700 -p "$rootfs"
 
 ROOTFS="$rootfs" KERNEL_VERSION="$kernel_version" \
 GUEST_AGENT="$(dirname "$0")/q4os_guest_identity_agent.py" \
-/usr/bin/python3 - <<'PY'
+env -u LD_LIBRARY_PATH /usr/bin/python3 - <<'PY'
 from __future__ import annotations
 
 import os
@@ -59,7 +59,11 @@ def copy_file(source: Path, destination: Path) -> None:
     shutil.copy2(source.resolve(), destination)
 
 def copy_ldd_dependencies(binary: Path) -> None:
-    result = subprocess.run(["ldd", str(binary)], capture_output=True, text=True)
+    clean_env = os.environ.copy()
+    clean_env.pop("LD_LIBRARY_PATH", None)
+    result = subprocess.run(
+        ["ldd", str(binary)], capture_output=True, text=True, env=clean_env
+    )
     output = result.stdout + result.stderr
     if "not found" in output:
         raise SystemExit(f"unresolved shared library for {binary}: {output}")
