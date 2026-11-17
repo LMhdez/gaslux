@@ -126,6 +126,7 @@ def _write_lab_image(path: Path, size_bytes: int, label: str,
     require(result.returncode == 0, "could not format private lab control media")
     require(path.is_file() and not path.is_symlink(),
             "private lab image was not created")
+    os.chmod(path, 0o600)
 
 
 def _copy_to_fat(image: Path, source: Path, target: str) -> None:
@@ -329,24 +330,41 @@ def run_shared_root_pacstrap(
     iso_capacity = ((iso_size + 1024**3 - 1) // 1024**3 + 1) * 1024**3
     iso_image = workspace / "cachyos-iso-source.raw"
     _write_lab_image(iso_image, iso_capacity, "CACHYOSISO", "ext4", iso_uuid)
-    debug = _run([
-        "debugfs", "-w", "-R", "write " + str(iso) + " /cachyos.iso",
-        str(iso_image),
-    ], timeout=600)
-    require(debug.returncode == 0, "could not stage pinned CachyOS ISO in private ext4 media")
+    storage_root = workspace / "cachyos-iso-storage"
+    storage_root.mkdir(mode=0o700)
+    mount_rw = _run(["sudo", "mount", "-o", "loop,rw", str(iso_image), str(storage_root)])
+    require(mount_rw.returncode == 0, "could not mount private ext4 ISO storage")
+    storage_iso = storage_root / "cachyos.iso"
+    try:
+        require(not storage_iso.exists() and not storage_iso.is_symlink(),
+                "refusing to overwrite ISO inside private storage")
+        with iso.open("rb") as source, storage_iso.open("xb") as target:
+            shutil.copyfileobj(source, target, length=4 * 1024 * 1024)
+            target.flush()
+            os.fsync(target.fileno())
+        require(_sha(storage_iso) == pinned_sha256
+                and storage_iso.stat().st_size == iso_size,
+                "copy into private ISO storage differs from pinned source")
+    finally:
+        unmount_rw = _run(["sudo", "umount", str(storage_root)])
+        require(unmount_rw.returncode == 0, "could not close private writable ISO staging")
+    mount_ro = _run(["sudo", "mount", "-o", "loop,ro", str(iso_image), str(storage_root)])
+    require(mount_ro.returncode == 0, "could not remount private ISO storage read-only")
     iso_mount = workspace / "cachyos-iso-mounted"
     iso_mount.mkdir(mode=0o700)
-    mount = _run(["sudo", "mount", "-o", "ro,loop", str(iso), str(iso_mount)])
-    require(mount.returncode == 0, "could not mount the exact pinned CachyOS ISO read-only")
+    mount_iso = _run(["sudo", "mount", "-o", "ro,loop", str(storage_iso), str(iso_mount)])
+    require(mount_iso.returncode == 0, "could not mount the exact stored CachyOS ISO read-only")
     try:
         grub_cfg = _create_boot_config(
-            iso=iso, iso_sha256=pinned_sha256, iso_uuid=iso_uuid,
+            iso=storage_iso, iso_sha256=pinned_sha256, iso_uuid=iso_uuid,
             iso_mount=iso_mount, workspace=workspace, run_id=run_id,
             nonce=nonce, plan_sha=plan_sha, key_sha=key_sha,
         )
     finally:
-        unmount = _run(["sudo", "umount", str(iso_mount)])
-        require(unmount.returncode == 0, "could not release read-only CachyOS ISO mount")
+        unmount_iso = _run(["sudo", "umount", str(iso_mount)])
+        require(unmount_iso.returncode == 0, "could not release read-only CachyOS ISO mount")
+        unmount_storage = _run(["sudo", "umount", str(storage_root)])
+        require(unmount_storage.returncode == 0, "could not release read-only ISO storage mount")
     boot_efi = workspace / "cachyos-liveboot.raw"
     _write_lab_image(boot_efi, 96 * 1024**2, "GASLUXBOOT", "vfat")
     _run(["mmd", "-i", str(boot_efi), "::/EFI"])
