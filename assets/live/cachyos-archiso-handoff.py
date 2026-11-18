@@ -139,8 +139,13 @@ def verify_live_iso_mount(
     # libblkid result may refer to the preceding filesystem on /dev/loopN;
     # probe the *currently mounted block device* without consulting the cache.
     # The check is read-only and a mismatch still fails closed.
+    # The workflow mounts its private ext4 ISO carrier through sudo. On
+    # hosted Ubuntu, the resulting /dev/loopN is root:disk (0660), while the
+    # unprivileged runner is not in disk. Keep the probe read-only, but execute
+    # it non-interactively with sudo so device permissions cannot hide UUID.
     observed_uuid = _command(runner, [
-        "blkid", "-p", "-c", "/dev/null", "-s", "UUID", "-o", "value", store[0]
+        "sudo", "-n", "blkid", "-p", "-c", "/dev/null",
+        "-s", "UUID", "-o", "value", store[0]
     ])
     _require(observed_uuid.upper() == storage_uuid.upper(), "ISO storage UUID mismatch")
 
