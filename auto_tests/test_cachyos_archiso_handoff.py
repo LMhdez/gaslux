@@ -6,6 +6,7 @@ import importlib.util
 import subprocess
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -229,6 +230,35 @@ class HandoffTests(unittest.TestCase):
         self.assertIn("os.O_RDONLY", ext4_probe[4])
         self.assertIn("1024+104", ext4_probe[4])
         self.assertNotIn(("blkid", "-s", "UUID", "-o", "value", "/dev/loop7"), calls)
+
+    def test_ext4_superblock_uuid_probe_reads_exact_bytes(self):
+        device = Path(self.temp.name) / "synthetic-loop-device"
+        device.write_bytes(b"\\x00" * 4096)
+        expected_uuid = "01234567-89ab-cdef-0123-456789abcdef"
+        with device.open("r+b") as stream:
+            stream.seek(1024 + 56)
+            stream.write(bytes((0x53, 0xef)))
+            stream.seek(1024 + 104)
+            stream.write(uuid.UUID(expected_uuid).bytes)
+
+        def cmd(argv, **kwargs):
+            if argv[0] == "findmnt" and str(self.disk) in argv:
+                return subprocess.CompletedProcess(argv, 0, "/dev/loop7 ext4\\n", "")
+            if argv[0] == "sudo" and argv[1:3] == ["-n", "python3"]:
+                return subprocess.run(
+                    ["python3", "-c", argv[4], str(device)],
+                    capture_output=True, text=True, check=False,
+                )
+            if argv[0] == "findmnt":
+                return subprocess.CompletedProcess(argv, 0, "/dev/loop8 iso9660 ro,nosuid\\n", "")
+            return subprocess.CompletedProcess(argv, 0, str(self.source.resolve()) + "\\n", "")
+
+        plan = dict(self.plan, isoStorageFilesystem="ext4", isoStorageUuid=expected_uuid)
+        result = handoff.prepare(
+            plan, storage_root=self.disk, iso_root=self.iso,
+            require_mounted_iso=True, mount_runner=cmd,
+        )
+        self.assertTrue(result["isoMountedFromVerifiedSource"])
 
     def test_loop_mount_from_different_iso_is_rejected(self):
         def cmd(argv, **kwargs):
