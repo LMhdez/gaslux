@@ -223,7 +223,7 @@ class MintOverlayContracts(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self._make_kernel_tree(builtin="kernel/fs/ext4.ko")
+            self._make_kernel_tree(root, builtin="kernel/fs/ext4.ko")
             modules_dep = root / "lib/modules/6.8.0-mint/modules.dep"
             modules_dep.write_text("kernel/fs/ext4.ko:\n", encoding="utf-8")
             with patch.object(mint.subprocess, "run") as run:
@@ -235,7 +235,7 @@ class MintOverlayContracts(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self._make_kernel_tree()
+            self._make_kernel_tree(root)
             config = root / "etc/initramfs-tools/modules"
             config.unlink()
             config.symlink_to(root / "outside")
@@ -248,7 +248,7 @@ class MintOverlayContracts(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            modules = self._make_kernel_tree(builtin="kernel/fs/ext4.ko")
+            modules = self._make_kernel_tree(root, builtin="kernel/fs/ext4.ko")
             listing = (
                 "usr/lib/modules/6.8.0-mint/kernel/drivers/block/virtio_blk.ko.zst\n"
                 "usr/lib/modules/6.8.0-mint/kernel/drivers/virtio/virtio_pci.ko.xz\n"
