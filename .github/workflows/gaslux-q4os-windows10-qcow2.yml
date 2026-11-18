@@ -1,11 +1,12 @@
 name: Q4OS Windows 10 installed QCOW2 UEFI/GPT lab
 
 on:
-  pull_request:
+  push:
+    branches:
+      - feature/q4os-windows10-qcow2-lab
     paths:
       - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
       - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
-  workflow_dispatch:
 
 permissions:
   contents: read
