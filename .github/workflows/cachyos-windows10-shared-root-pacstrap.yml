@@ -17,6 +17,8 @@ on:
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
       - auto_tests/tools/cachyos_windows_shared_gpt_raw_audit.py
       - auto_tests/tools/cachyos_generated_boot_config.py
+      - assets/live/cachyos-archiso-handoff.py
+      - auto_tests/test_cachyos_archiso_handoff.py
       - auto_tests/tools/windows_cachyos_postext4_cow_rollback.py
       - auto_tests/tools/windows_cachyos_overlay_reboot.py
       - auto_tests/test_windows_cachyos_overlay_reboot.py
@@ -39,6 +41,8 @@ on:
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
       - auto_tests/tools/cachyos_generated_boot_config.py
+      - assets/live/cachyos-archiso-handoff.py
+      - auto_tests/test_cachyos_archiso_handoff.py
       - auto_tests/tools/windows_cachyos_postext4_cow_rollback.py
       - auto_tests/test_cachyos_windows_shared_root_pacstrap.py
       - auto_tests/test_cachyos_windows_shared_cow_grant.py
@@ -103,6 +107,7 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_gpt_stage.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_cow_checkpoint.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_handoff.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_archiso_handoff.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_archiso_guest_probe.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_strict_pacman.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_pacman_trust.py' -v
