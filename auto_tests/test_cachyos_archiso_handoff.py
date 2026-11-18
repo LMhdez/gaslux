@@ -243,15 +243,15 @@ class HandoffTests(unittest.TestCase):
 
         def cmd(argv, **kwargs):
             if argv[0] == "findmnt" and str(self.disk) in argv:
-                return subprocess.CompletedProcess(argv, 0, "/dev/loop7 ext4\\n", "")
+                return subprocess.CompletedProcess(argv, 0, "/dev/loop7 ext4\n", "")
             if argv[0] == "sudo" and argv[1:3] == ["-n", "python3"]:
                 return subprocess.run(
                     ["python3", "-c", argv[4], str(device)],
                     capture_output=True, text=True, check=False,
                 )
             if argv[0] == "findmnt":
-                return subprocess.CompletedProcess(argv, 0, "/dev/loop8 iso9660 ro,nosuid\\n", "")
-            return subprocess.CompletedProcess(argv, 0, str(self.source.resolve()) + "\\n", "")
+                return subprocess.CompletedProcess(argv, 0, "/dev/loop8 iso9660 ro,nosuid\n", "")
+            return subprocess.CompletedProcess(argv, 0, str(self.source.resolve()) + "\n", "")
 
         plan = dict(self.plan, isoStorageFilesystem="ext4", isoStorageUuid=expected_uuid)
         result = handoff.prepare(
