@@ -203,9 +203,11 @@ def run() -> dict:
         # crash lab, QEMU is SIGKILLed while the guest is blocked here.
         finish = _read_line(fd, 256).split(b":")
         _require(len(finish) == 2 and finish[0] == FINISH, "Missing host finish")
-        finish_mac = hmac.new(
-            secret.encode("ascii"), AUTH_DOMAIN + FINISH, hashlib.sha256
-        ).hexdigest().encode("ascii")
+        finish_mac = (
+            hmac.new(secret.encode("ascii"), AUTH_DOMAIN + FINISH, hashlib.sha256)
+            .hexdigest()
+            .encode("ascii")
+        )
         _require(hmac.compare_digest(finish[1], finish_mac), "Invalid host finish")
         return report
     finally:
