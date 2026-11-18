@@ -218,7 +218,7 @@ class HandoffTests(unittest.TestCase):
                 output = "01234567-89ab-cdef-0123-456789abcdef"
             else:
                 output = str(self.source.resolve())
-            return subprocess.CompletedProcess(argv, 0, output + "\\n", "")
+            return subprocess.CompletedProcess(argv, 0, output + "\n", "")
         plan = dict(self.plan, isoStorageFilesystem="ext4",
                     isoStorageUuid="01234567-89ab-cdef-0123-456789abcdef")
         result = handoff.prepare(plan, storage_root=self.disk, iso_root=self.iso,
