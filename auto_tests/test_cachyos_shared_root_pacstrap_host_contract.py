@@ -315,5 +315,23 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
             self.assertNotIn("Traceback", message)
 
 
+    def test_deferred_root_requires_orderly_shutdown_and_offline_ext4_state(self):
+        source = (TOOLS / "cachyos_windows_shared_root_pacstrap_host.py").read_text()
+        guest = (TOOLS / "cachyos_windows_shared_root_pacstrap.py").read_text()
+        self.assertIn("ordinary_umount + deferred_umount == 1", source)
+        self.assertIn("All filesystems, swaps, loop devices, MD devices and DM devices detached.", source)
+        self.assertIn('fs_state.get("Filesystem state") == "clean"', source)
+        self.assertIn("qemu-img", source)
+        self.assertIn("read_windows_file_hashes(overlay)", source)
+        self.assertIn("_verify_installed_root(overlay, plan, run_id)", source)
+        self.assertIn("defer_busy_owned_root=verified_native_root", guest)
+        self.assertIn("verified_native_root = True", guest)
+        self.assertIn("GASLUX_SHARED_COW_ROOT_UNMOUNT_DEFERRED_TO_POWEROFF=1", guest)
+        self.assertNotIn("umount -R", source)
+        self.assertNotIn('["umount", "-l"', guest)
+        self.assertNotIn('["umount", "-f"', guest)
+
+
+
 if __name__ == "__main__":
     unittest.main()
