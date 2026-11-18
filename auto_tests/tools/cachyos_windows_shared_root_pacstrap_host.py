@@ -150,7 +150,7 @@ def _write_lab_image(path: Path, size_bytes: int, label: str,
 
 
 def _prepare_owned_ext4_iso_copy(iso_image: Path, mount: Path) -> None:
-    """Permit unprivileged exclusive-create only on this exact disposable ext4 loop mount."""
+    """Verify the private ext4 loop mount without changing its ownership or permissions."""
     _owned(iso_image, iso_image.parent, "cachyos-iso-source.raw", mode=0o600)
     require(mount.parent == iso_image.parent
             and mount.name == "cachyos-iso-storage"
@@ -169,18 +169,8 @@ def _prepare_owned_ext4_iso_copy(iso_image: Path, mount: Path) -> None:
                 line.split(":", 1)[0] == device
                 for line in associated.stdout.splitlines()
             ), "ISO storage loop device does not match the owned raw image")
-    # mkfs.ext4 creates a root-owned filesystem root. Limit the owner change to
-    # that freshly verified, loop-backed mount; never chown the host workspace.
-    owner = _run(["sudo", "chown", str(os.getuid()) + ":" + str(os.getgid()),
-                  "--", str(mount)])
-    require(owner.returncode == 0, "could not grant owned ISO root to the runner")
-    mode = _run(["sudo", "chmod", "--", "0700", str(mount)])
-    require(mode.returncode == 0, "could not lock down owned ISO root")
-    actual = mount.stat()
-    require(os.path.ismount(mount) and actual.st_uid == os.getuid()
-            and actual.st_gid == os.getgid()
-            and stat.S_IMODE(actual.st_mode) == 0o700,
-            "ISO loop mount did not retain exclusive runner ownership")
+    # Keep the ext4 filesystem root owned by root. The later single-file
+    # install runs through sudo and is constrained to this verified mount.
 
 
 def _copy_to_fat(image: Path, source: Path, target: str) -> None:
