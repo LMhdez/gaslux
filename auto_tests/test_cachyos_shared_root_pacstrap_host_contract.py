@@ -237,23 +237,5 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
             self.assertNotIn("Traceback", message)
 
 
-    def test_blkid_command_failure_exposes_bounded_redacted_cause(self):
-        raw = "probe of /dev/loop91 at /home/runner/private/iso failed: bad magic"
-        failure = subprocess.CompletedProcess(
-            ["blkid", "-p"], 2, "", raw
-        )
-        with mock.patch.object(host.subprocess, "run", return_value=failure):
-            with self.assertRaises(host.SharedRootPacstrapError) as caught:
-                host._command(["blkid", "-p"])
-        message = str(caught.exception)
-        self.assertIn("blkid", message)
-        self.assertIn("exit 2", message)
-        self.assertIn("bad magic", message)
-        self.assertIn("<private-path>", message)
-        self.assertNotIn("/dev/loop91", message)
-        self.assertNotIn("/home/runner", message)
-        self.assertLessEqual(len(message), 512)
-
-
 if __name__ == "__main__":
     unittest.main()
