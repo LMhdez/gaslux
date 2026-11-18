@@ -222,7 +222,8 @@ _PACSTRAP_API_MOUNTS = {
 
 
 def unmount_owned_root_tree(root: Path, root_partition: Path, *,
-                            run=execute, sleeper=None) -> None:
+                            run=execute, sleeper=None,
+                            defer_busy_owned_root=False) -> bool:
     """Release only the attested ext4 root and known pacstrap pseudo mounts.
 
     Enumerate/validate the *complete* subtree before unmounting any path.
@@ -275,12 +276,31 @@ def unmount_owned_root_tree(root: Path, root_partition: Path, *,
                 break
             except SharedDiskHandoffRejected as error:
                 if attempt == 3:
+                    if target == str(root) and defer_busy_owned_root:
+                        # The only deferred mount is our already validated
+                        # fifth-partition root, after all known API mounts.
+                        remaining = run([
+                            "findmnt", "-rn", "-R", "-o",
+                            "TARGET,SOURCE,FSTYPE", str(root),
+                        ]).splitlines()
+                        require(remaining == [
+                            f"{root} {root_partition} ext4"
+                        ], "foreign or nested mount remains at shutdown handoff")
+                        observed_again = run([
+                            "findmnt", "-rn", "-M", str(root),
+                            "-o", "SOURCE,FSTYPE",
+                        ]).strip().split()
+                        require(observed_again == [str(root_partition), "ext4"],
+                                "root mount identity changed before poweroff")
+                        os.sync()
+                        return False
                     raise SharedDiskHandoffRejected(
                         "owned pacstrap cleanup failed after bounded retries: "
                         + name) from error
                 # No forced/lazy/recursive unmount and no mutation of a new
                 # mount: the next attempt checks SOURCE and FSTYPE anew.
                 sleeper(1)
+    return True
 
 
 
@@ -597,6 +617,7 @@ def pacstrap_only(args: argparse.Namespace) -> None:
     strict_config = strict_folder / "pacman-install.conf"
     execute(["mount", "-t", "ext4", "-o", "rw,nosuid,nodev",
              str(root_partition), str(ROOT)])
+    verified_native_root = False
     try:
         verify_mounted_source(ROOT, root_partition, "ext4", readonly=False)
         require(not (ROOT / "etc/os-release").exists()
@@ -638,6 +659,7 @@ def pacstrap_only(args: argparse.Namespace) -> None:
         (ROOT / ".gaslux-lab-root-owner").write_text(
             plan["runId"] + "\n", encoding="ascii")
         os.sync()
+        verified_native_root = True
     except (SharedDiskHandoffRejected, OSError, ValueError, RuntimeError,
             subprocess.TimeoutExpired) as error:
         # Report the original package error before cleanup so a busy API mount
@@ -646,7 +668,19 @@ def pacstrap_only(args: argparse.Namespace) -> None:
               + str(error), flush=True)
         raise
     finally:
-        unmount_owned_root_tree(ROOT, root_partition)
+        root_unmounted = unmount_owned_root_tree(
+            ROOT, root_partition,
+            defer_busy_owned_root=verified_native_root)
+    # A busy owned fifth ext4 is not proof of an installed system. Only an
+    # orderly guest shutdown plus independent offline host checks can
+    # conclude the disposable laboratory transaction.
+    if root_unmounted:
+        print("GASLUX_SHARED_COW_ROOT_UNMOUNTED_IN_GUEST=1", flush=True)
+    else:
+        require(verified_native_root,
+                "cannot defer unverified pacstrap root cleanup")
+        print("GASLUX_SHARED_COW_ROOT_UNMOUNT_DEFERRED_TO_POWEROFF=1",
+              flush=True)
     require(strict_gpt_evidence(disk, plan)["bothGptCopiesCrcVerified"],
             "Windows GPT changed during root-only package installation")
     protected_files_readonly(disk, plan)
