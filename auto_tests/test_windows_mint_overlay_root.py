@@ -131,6 +131,20 @@ class MintOverlayContracts(unittest.TestCase):
                         link, "12345678-1234-4234-8234-123456789abc",
                         ["a" * 64] * 4)
 
+    def test_real_windows_job_requires_local_synthetic_import_before_any_guest(self):
+        workflow = (Path(__file__).resolve().parents[1]
+                    / ".github/workflows/windows-cachyos-post-ext4-fourth-boot.yml")
+        source = workflow.read_text(encoding="utf-8")
+        real = source.split("  genuine-client-two-stage-firstboot:", 1)[1]
+        self.assertIn("needs: verify-host-and-proof-contracts", real)
+        smoke = "python3 auto_tests/tools/windows_mint_synthetic_tar_guestfs.py"
+        installer = "python3 auto_tests/tools/windows_x64_tcg_firstboot.py"
+        self.assertIn("Mandatory real synthetic fifth-ext4 tar import", real)
+        self.assertIn("GASLUX_SYNTHETIC_EXT4_CONSENT:", real)
+        self.assertLess(real.index(smoke), real.index(installer))
+        self.assertIn("set -Eeuo pipefail", real)
+        self.assertNotIn("continue-on-error: true", real)
+
     def test_mint_tar_stage_prepares_initramfs_before_guest_write(self):
         source = Path(mint.__file__).read_text(encoding="utf-8")
         self.assertLess(source.index('write_target_configuration(unpacked, root_uuid)'),
