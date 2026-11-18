@@ -13,8 +13,8 @@ import io
 import json
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from bazzite_legacy_language_gate import BANNER, WELCOME
 

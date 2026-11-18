@@ -44,8 +44,10 @@ jobs:
             auto_tests/tests/test_bazzite_legacy_blue_button.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_legacy_diskless_navigation.py \
+            auto_tests/bazzite_legacy_blue_button.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
-            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
+            auto_tests/tests/test_bazzite_legacy_blue_button.py
 
   prior-blue-button:
     needs: contracts
