@@ -145,6 +145,78 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertIn("set -Eeuo pipefail", real)
         self.assertNotIn("continue-on-error: true", real)
 
+    def test_storage_initramfs_explicit_virtio_drivers_are_written_prewrite(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            modules = root / "lib/modules/6.14.0-37-generic"
+            modules.mkdir(parents=True)
+            (modules / "modules.builtin").write_text(
+                "kernel/fs/ext4/ext4.ko\n"
+            )
+            for driver in ("virtio_pci", "virtio_blk"):
+                (modules / f"{driver}.ko.zst").write_bytes(b"sample")
+            tools = root / "etc/initramfs-tools"
+            tools.mkdir(parents=True)
+            (tools / "modules").write_text("# existing defaults\n")
+            with patch.object(mint.subprocess, "run") as write:
+                builtins = mint.prepare_mint_storage_initramfs_modules(
+                    root, "6.14.0-37-generic")
+            self.assertEqual(builtins, {"ext4"})
+            write.assert_called_once()
+            self.assertEqual(write.call_args.args[0][:2], ["sudo", "tee"])
+            self.assertIn("virtio_blk\n", write.call_args.kwargs["input"])
+            self.assertIn("virtio_pci\n", write.call_args.kwargs["input"])
+
+    def test_storage_initramfs_refuses_missing_virtio_driver_before_write(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            modules = root / "lib/modules/6.14.0-37-generic"
+            modules.mkdir(parents=True)
+            (modules / "modules.builtin").write_text("kernel/fs/ext4/ext4.ko\n")
+            (modules / "virtio_pci.ko.zst").write_bytes(b"sample")
+            (root / "etc/initramfs-tools").mkdir(parents=True)
+            with patch.object(mint.subprocess, "run") as write:
+                with self.assertRaisesRegex(mint.MintOverlayError, "virtio_blk"):
+                    mint.prepare_mint_storage_initramfs_modules(
+                        root, "6.14.0-37-generic")
+            write.assert_not_called()
+
+    def test_storage_initramfs_rejects_dangling_symlink_before_write(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            modules = root / "lib/modules/6.14.0-37-generic"
+            modules.mkdir(parents=True)
+            (modules / "modules.builtin").write_text(
+                "".join(f"kernel/builtin/{name}.ko\n"
+                        for name in ("virtio_blk", "virtio_pci", "ext4"))
+            )
+            tools = root / "etc/initramfs-tools"
+            tools.mkdir(parents=True)
+            (tools / "modules").symlink_to(root / "nonexistent-foreign-modules")
+            with patch.object(mint.subprocess, "run") as write:
+                with self.assertRaisesRegex(mint.MintOverlayError, "unsafe Mint"):
+                    mint.prepare_mint_storage_initramfs_modules(
+                        root, "6.14.0-37-generic")
+            write.assert_not_called()
+
+    def test_storage_initramfs_accepts_verified_loadable_modules_and_builtin(self):
+        listing = ("usr/lib/modules/6.14.0-37-generic/kernel/drivers/"
+                   "block/virtio_blk.ko.zst\n"
+                   "usr/lib/modules/6.14.0-37-generic/kernel/drivers/"
+                   "virtio/virtio_pci.ko.zst\n")
+        mint.verify_mint_storage_initramfs(listing, {"ext4"})
+        with self.assertRaisesRegex(mint.MintOverlayError, "virtio_blk"):
+            mint.verify_mint_storage_initramfs(
+                listing.replace("virtio_blk.ko.zst", "irrelevant.ko.zst"),
+                {"ext4"})
+
+    def test_storage_initramfs_accepts_all_genuine_kernel_builtins(self):
+        mint.verify_mint_storage_initramfs(
+            "", {"ext4", "virtio_blk", "virtio_pci"})
+
     def test_mint_tar_stage_prepares_initramfs_before_guest_write(self):
         source = Path(mint.__file__).read_text(encoding="utf-8")
         self.assertLess(source.index('write_target_configuration(unpacked, root_uuid)'),
