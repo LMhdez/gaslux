@@ -196,6 +196,76 @@ def strict_gpt_evidence(
     }
 
 
+
+# Only pacstrap's API mounts may be released below the transaction-owned root.
+# Never use umount -R: an unexpected nested mount must remain untouched and
+# fail the lab instead of risking any foreign block device.
+_PACSTRAP_API_MOUNTS = {
+    "dev": {"devtmpfs", "tmpfs"},
+    "dev/pts": {"devpts"},
+    "dev/shm": {"tmpfs"},
+    "dev/mqueue": {"mqueue"},
+    "dev/hugepages": {"hugetlbfs"},
+    "proc": {"proc"},
+    "proc/sys/fs/binfmt_misc": {"binfmt_misc"},
+    "sys": {"sysfs"},
+    "sys/fs/cgroup": {"cgroup2", "cgroup"},
+    "sys/fs/bpf": {"bpf"},
+    "sys/kernel/tracing": {"tracefs"},
+    "sys/kernel/debug": {"debugfs"},
+    "sys/kernel/config": {"configfs"},
+    "sys/fs/fuse/connections": {"fusectl"},
+    "sys/firmware/efi/efivars": {"efivarfs"},
+    "run": {"tmpfs"},
+    "tmp": {"tmpfs"},
+}
+
+
+def unmount_owned_root_tree(root: Path, root_partition: Path, *, run=execute) -> None:
+    """Release only the attested ext4 root and known pacstrap pseudo mounts.
+
+    Enumerate/validate the *complete* subtree before unmounting any path.
+    No foreign block-backed mount, additional partition or unexpected target
+    may be detached by this helper, even in the disposable guest.
+    """
+    require(root == ROOT and root.is_absolute() and not root.is_symlink()
+            and root_partition.is_absolute()
+            and root_partition.parent == Path("/dev"),
+            "invalid transaction-owned root for cleanup")
+    rows = run(["findmnt", "-rn", "-R", "-o", "TARGET,SOURCE,FSTYPE",
+                str(root)]).splitlines()
+    require(1 <= len(rows) <= 64, "missing or oversized owned-root mount tree")
+    found: dict[str, tuple[str, str]] = {}
+    for row in rows:
+        cells = row.split()
+        require(len(cells) == 3, "ambiguous owned-root mount record")
+        target, source, kind = cells
+        require(target not in found, "stacked mount inside transaction-owned root")
+        if target == str(root):
+            require(source == str(root_partition) and kind == "ext4",
+                    "owned-root mount source/format changed during pacstrap")
+        else:
+            require(target.startswith(str(root) + "/"),
+                    "mount escaped transaction-owned root")
+            relative = target[len(str(root)) + 1:]
+            require(kind in _PACSTRAP_API_MOUNTS.get(relative, set())
+                    and not source.startswith("/dev/"),
+                    "foreign or unknown mount inside transaction-owned root")
+        found[target] = (source, kind)
+    require(found.get(str(root)) == (str(root_partition), "ext4"),
+            "transaction-owned ext4 root is not mounted")
+    # Deepest children first; no recursive/lazy/forced unmount. Recheck each
+    # mount immediately before detaching it to reject unexpected replacement.
+    for target in sorted(found, key=lambda p: (p.count("/"), p), reverse=True):
+        source, kind = found[target]
+        observed = run(["findmnt", "-rn", "-M", target,
+                        "-o", "SOURCE,FSTYPE"]).strip().split()
+        require(observed == [source, kind],
+                "mount identity changed during owned-root cleanup")
+        run(["umount", "--", target])
+
+
+
 def protected_files_readonly(disk: Path, plan: dict[str, Any]) -> None:
     """Always inspect Windows from read-only guest mounts, never NTFS rw."""
     hashes = plan["windowsHashes"]
@@ -546,8 +616,15 @@ def pacstrap_only(args: argparse.Namespace) -> None:
         (ROOT / ".gaslux-lab-root-owner").write_text(
             plan["runId"] + "\n", encoding="ascii")
         os.sync()
+    except (SharedDiskHandoffRejected, OSError, ValueError, RuntimeError,
+            subprocess.TimeoutExpired) as error:
+        # Report the original package error before cleanup so a busy API mount
+        # cannot mask whether pacstrap itself failed.
+        print("GASLUX_SHARED_COW_ROOT_STAGE_FAILURE_BEFORE_CLEANUP: "
+              + str(error), flush=True)
+        raise
     finally:
-        execute(["umount", str(ROOT)])
+        unmount_owned_root_tree(ROOT, root_partition)
     require(strict_gpt_evidence(disk, plan)["bothGptCopiesCrcVerified"],
             "Windows GPT changed during root-only package installation")
     protected_files_readonly(disk, plan)
