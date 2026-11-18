@@ -21,14 +21,26 @@ def test_workflow_is_isolated_and_never_grants_install():
     assert "sha256sum" in content
     assert "xorriso -indev" in content
     assert "gh attestation verify" in content
-    assert '\"installationAuthorized\": False' in content
-    assert '\"windowsEspWriteAuthorized\": False' in content
-    assert '\"catalogPinAuthorized\": False' in content
+    assert '"installationAuthorized": False' in content
+    assert '"windowsEspWriteAuthorized": False' in content
+    assert '"catalogPinAuthorized": False' in content
     for forbidden in (
-        "qemu-system", "qemu-img create", "mkfs.", "wipefs ", "sgdisk ",
-        "parted ", "efibootmgr ", "bcdedit ", "/dev/sda", "windows10.qcow2",
-        "windows11.qcow2", "bootc install", "rpm-ostree deploy",
-        "cosign sign", "git push", "release-config.json",
+        "qemu-system",
+        "qemu-img create",
+        "mkfs.",
+        "wipefs ",
+        "sgdisk ",
+        "parted ",
+        "efibootmgr ",
+        "bcdedit ",
+        "/dev/sda",
+        "windows10.qcow2",
+        "windows11.qcow2",
+        "bootc install",
+        "rpm-ostree deploy",
+        "cosign sign",
+        "git push",
+        "release-config.json",
     ):
         assert forbidden not in content, forbidden
 
@@ -48,7 +60,6 @@ def test_bash_steps_are_valid():
         for step in job["steps"]:
             if "run" in step:
                 result = subprocess.run(
-                    ["bash", "-n"], input=step["run"], capture_output=True, text=True,
-                    check=False
+                    ["bash", "-n"], input=step["run"], capture_output=True, text=True, check=False
                 )
                 assert result.returncode == 0, (step.get("name"), result.stderr)
