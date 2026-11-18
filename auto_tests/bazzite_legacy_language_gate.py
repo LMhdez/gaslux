@@ -43,14 +43,16 @@ def _get_words(tsv_text: str) -> list[dict]:
                 raise ScreenRefusal("Invalid Tesseract numeric geometry") from exc
             if width <= 0 or height <= 0 or left < 0 or top < 0:
                 raise ScreenRefusal("Invalid word rectangle")
-            words.append({
-                "text": row["text"].strip(),
-                "left": left,
-                "top": top,
-                "width": width,
-                "height": height,
-                "confidence": confidence,
-            })
+            words.append(
+                {
+                    "text": row["text"].strip(),
+                    "left": left,
+                    "top": top,
+                    "width": width,
+                    "height": height,
+                    "confidence": confidence,
+                }
+            )
         return words
     except (csv.Error, UnicodeError) as exc:
         raise ScreenRefusal("Unsafe or invalid OCR metadata") from exc
