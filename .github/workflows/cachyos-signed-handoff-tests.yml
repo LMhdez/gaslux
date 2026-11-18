@@ -44,7 +44,7 @@ jobs:
           openssl version
       - name: Signed handoff and release-gate regression tests
         run: |
-          python3 -m unittest -v \\
-            auto_tests.test_cachyos_signed_handoff \\
-            auto_tests.test_cachyos_signed_grub_handoff \\
+          python3 -m unittest -v \
+            auto_tests.test_cachyos_signed_handoff \
+            auto_tests.test_cachyos_signed_grub_handoff \
             auto_tests.test_cachyos_release_gate
