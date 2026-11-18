@@ -236,6 +236,7 @@ def _authenticate_guest_write(
     initramfs: Path,
     plan: dict,
     evidence: Path,
+    abrupt_power_loss: bool = False,
 ) -> dict:
     sock_dir = Path(tempfile.mkdtemp(prefix="gq4osw-", dir="/tmp"))
     os.chmod(sock_dir, 0o700)
@@ -365,21 +366,32 @@ def _authenticate_guest_write(
             hmac.compare_digest(post_mac, expected_post_mac), "Unauthenticated guest write report"
         )
         verified = validate_write_result(post_raw, plan=plan, serial=serial)
-        process.wait(timeout=50)
-        _require(process.returncode == 0, "QEMU guest did not shut down successfully")
-        _require(not stream.read(1), "Unexpected trailing guest output")
-        log_text = guest_log.read_text(encoding="utf-8", errors="replace")
-        _require(
-            "GASLUX_Q4OS_BOUND_GUEST_WRITE=PASS" in log_text,
-            "Missing guest serial evidence of the bounded write",
-        )
+        if abrupt_power_loss:
+            # SIGKILL emulates an abrupt loss of QEMU process power after
+            # the authenticated guest pwrite/fsync/readback, before shutdown.
+            # It does NOT emulate a host crash, disk cache failure or
+            # power loss in the middle of a sector write.
+            _require(process.poll() is None, "QEMU exited before fault injection")
+            process.kill()
+            process.wait(timeout=30)
+            _require(process.returncode == -9, "QEMU SIGKILL was not observed")
+        else:
+            process.wait(timeout=50)
+            _require(process.returncode == 0, "QEMU guest did not shut down successfully")
+            _require(not stream.read(1), "Unexpected trailing guest output")
+            log_text = guest_log.read_text(encoding="utf-8", errors="replace")
+            _require(
+                "GASLUX_Q4OS_BOUND_GUEST_WRITE=PASS" in log_text,
+                "Missing guest serial evidence of the bounded write",
+            )
         return {
             "guestDiskIdentityVerified": preflight["gptVerified"],
             "transportPeerBoundToQemuPid": True,
             "transportAuthenticated": True,
             "guestAttestation": False,
             "guestWriteCompleted": verified["writeCompleted"],
-            "qemuGuestShutdownObserved": True,
+            "qemuGuestShutdownObserved": not abrupt_power_loss,
+            "qemuProcessKilledAfterAuthenticatedWrite": abrupt_power_loss,
             "qemuNetworkAttached": False,
             "qemuPhysicalDiskAttached": False,
             "qemuAcceleration": accel,
@@ -517,6 +529,7 @@ def run_lab(
         and os.environ.get("GASLUX_Q4OS_SYNTHETIC_WRITE_LAB_ONLY") == "yes",
         "Explicit synthetic QEMU-only write lab opt-in required",
     )
+    abrupt_power_loss = os.environ.get("GASLUX_Q4OS_TEST_KILL_QEMU_AFTER_WRITE") == "yes"
     _require(
         all(
             p.is_absolute() and p.exists() and not p.is_symlink()
@@ -565,7 +578,11 @@ def run_lab(
     evidence.mkdir(mode=0o700)
     checkpoint_state = {
         "schemaVersion": 1,
-        "operation": "isolated-qemu-4k-cow-scratch",
+        "operation": (
+            "isolated-qemu-4k-cow-abrupt-process-kill"
+            if abrupt_power_loss
+            else "isolated-qemu-4k-cow-scratch"
+        ),
         "runId": plan["runId"],
         "planSha256": hashlib.sha256(raw_plan).hexdigest(),
         "snapshotSha256": manifest["snapshotSha256"],
@@ -620,6 +637,7 @@ def run_lab(
             initramfs=initramfs,
             plan=plan,
             evidence=evidence,
+            abrupt_power_loss=abrupt_power_loss,
         )
         checkpoint_state["guestDiskIdentityVerified"] = observed["guestDiskIdentityVerified"]
         _run(["qemu-img", "check", str(overlay)])
@@ -677,6 +695,9 @@ def run_lab(
             "baseImageUnchanged": True,
             "snapshotRestoredAndCompared": True,
             "guestBlockWriteBytes": WRITE_BYTES,
+            "abruptQemuPowerLossInjected": abrupt_power_loss,
+            "hostPowerLossInjected": False,
+            "partialWritePowerLossTested": False,
             "calamaresExecuted": False,
             "windowsDiskAttached": False,
             "guestAttestation": False,
@@ -685,6 +706,10 @@ def run_lab(
         }
         _write_json_durable(evidence / "q4os-bounded-write-recovery-result.json", result)
         success = True
+        if abrupt_power_loss:
+            print("GASLUX_Q4OS_QEMU_SIGKILL_AFTER_WRITE=PASS", flush=True)
+            print("GASLUX_Q4OS_QEMU_SIGKILL_SNAPSHOT_RESTORE=PASS", flush=True)
+            print("GASLUX_Q4OS_HOST_POWER_LOSS_TESTED=FALSE", flush=True)
         print("GASLUX_Q4OS_QEMU_GUEST_BOUND_WRITE=PASS", flush=True)
         print("GASLUX_Q4OS_QEMU_COW_REAL_MUTATION=PASS", flush=True)
         print("GASLUX_Q4OS_QEMU_SNAPSHOT_RESTORE=PASS", flush=True)
