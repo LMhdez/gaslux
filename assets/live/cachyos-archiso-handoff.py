@@ -109,8 +109,11 @@ def _command(runner: Any, argv: list[str]) -> str:
         detail = re.sub(r"[^A-Za-z0-9 _.,:()/-]", "?", response.stderr.strip())
         detail = re.sub(r"/[^ ]+", "<path>", detail)[:160]
         suffix = ("; " + detail) if detail else ""
+        command_label = (
+            "sudo -n blkid" if argv[:3] == ["sudo", "-n", "blkid"] else argv[0]
+        )
         raise HandoffError(
-            "mount verification failed: " + argv[0]
+            "mount verification failed: " + command_label
             + " (exit " + str(response.returncode) + ")" + suffix
         )
     _require(len(response.stdout) < 16_384, "excessive mount verification output")
