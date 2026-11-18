@@ -92,6 +92,15 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
                 host._permit_owned_iso_staging_write(path, mountpoint)
             commands.assert_not_called()
 
+    def test_genuine_vm_apt_stalls_fail_before_guest_launch(self):
+        workflow = (TOOLS.parent / ".github/workflows/"
+                    "cachyos-windows10-shared-root-pacstrap.yml").read_text()
+        self.assertIn("timeout --kill-after=10s 300s sudo apt-get", workflow)
+        self.assertIn("timeout --kill-after=10s 600s sudo DEBIAN_FRONTEND=noninteractive apt-get", workflow)
+        self.assertIn("Acquire::https::Timeout=60", workflow)
+        self.assertIn("real-windows10-archiso-pacstrap-and-discard:", workflow)
+        self.assertIn("if: github.event_name != 'pull_request'", workflow)
+
     def test_trial_firmware_uses_fresh_ovmf_template_not_windows_bootorder(self):
         with tempfile.TemporaryDirectory(prefix="gaslux-ovmf-template-") as temp:
             root = Path(temp)
