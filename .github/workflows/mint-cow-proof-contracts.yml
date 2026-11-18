@@ -14,18 +14,7 @@ on:
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_private_workspace.py
       - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
-  pull_request:
-    branches:
-      - test/mint22-windows10-cow-firstboot
-    paths:
-      - .github/workflows/mint-cow-proof-contracts.yml
-      - auto_tests/tools/validate_mint_cow_boot_evidence.py
-      - auto_tests/test_windows_mint_cow_boot_evidence.py
-      - auto_tests/test_windows_x64_private_workspace.py
-      - auto_tests/tools/windows_mint_overlay_root.py
-      - auto_tests/tools/windows_x64_tcg_firstboot.py
-      - auto_tests/test_windows_mint_overlay_root.py
-      - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -65,7 +54,7 @@ jobs:
           test "$(id -u)" -ne 0
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils libguestfs-tools linux-image-generic fuse3
+            qemu-system-x86 qemu-utils libguestfs-tools linux-image-virtual fuse3
           source auto_tests/tools/windows_x64_libguestfs_kernel.sh
           sudo modprobe fuse
           test -c /dev/fuse && test ! -L /dev/fuse
