@@ -125,8 +125,12 @@ def verify_live_iso_mount(
     observed_fs = store[1]
     valid_fs = ("ntfs", "ntfs3", "fuseblk") if storage_fs == "ntfs" else ("ext4",)
     _require(observed_fs in valid_fs, "unexpected ISO storage filesystem")
+    # Linux loop numbers are recycled between temporary mounts. A cached
+    # libblkid result may refer to the preceding filesystem on /dev/loopN;
+    # probe the *currently mounted block device* without consulting the cache.
+    # The check is read-only and a mismatch still fails closed.
     observed_uuid = _command(runner, [
-        "blkid", "-s", "UUID", "-o", "value", store[0]
+        "blkid", "-p", "-c", "/dev/null", "-s", "UUID", "-o", "value", store[0]
     ])
     _require(observed_uuid.upper() == storage_uuid.upper(), "ISO storage UUID mismatch")
 
