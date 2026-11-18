@@ -250,4 +250,4 @@ def test_fault_injection_result_does_not_misrepresent_recovery():
     assert '"partialWritePowerLossTested": False' in source
     assert '"rollbackVerified": False' in source
     assert '"windowsDiskAttached": False' in source
-    assert '"syntheticWriteRecoveredVerified": True' in source
+    assert 'checkpoint_state["syntheticWriteRecoveredVerified"] = True' in source
