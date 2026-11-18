@@ -1,0 +1,82 @@
+name: Bazzite legacy language-screen target research (prior artifact only)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-legacy-iso-scout-20261118
+    paths:
+      - 'auto_tests/bazzite_legacy_language_gate.py'
+      - 'auto_tests/tests/test_bazzite_legacy_language_gate.py'
+      - '.github/workflows/gaslux-bazzite-legacy-language-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  identify-language-button:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Contract tests, Ruff and syntax gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff PyYAML pillow
+          python -m pytest -q auto_tests/tests/test_bazzite_legacy_language_gate.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_language_gate.py \
+            auto_tests/tests/test_bazzite_legacy_language_gate.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_language_gate.py \
+            auto_tests/tests/test_bazzite_legacy_language_gate.py
+      - name: Verify provenance of the exact prior diskless guest evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh api repos/LMhdez/gaslux/actions/runs/44364282815 \
+            | jq -e '
+                .conclusion == "success"
+                and .head_sha == "44255598cb88c6a93d7beae58fc6a4aa28622d36"
+                and .head_repository.full_name == "LMhdez/gaslux"
+                and .event == "push"
+              ' > /dev/null
+      - name: Inspect exact prior screenshot pixels and screen text without an ISO
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-lang"
+          mkdir -m 700 "$work" bazzite-language-evidence
+          gh run download 44364282815 -R LMhdez/gaslux \
+            --name bazzite-legacy-diskless-ovmf-readonly-evidence \
+            --dir "$work"
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 400s apt-get install -y -qq tesseract-ocr
+          tesseract "$work/screen-4.png" stdout tsv 2>/dev/null > "$work/screen-4.tsv"
+          python3 auto_tests/bazzite_legacy_language_gate.py \
+            --png "$work/screen-4.png" \
+            --ocr "$work/ocr-4.txt" \
+            --tsv "$work/screen-4.tsv" \
+            > bazzite-language-evidence/language-target-preview.json
+          cat bazzite-language-evidence/language-target-preview.json
+      - name: Upload bounded preview only, never ISO, VM or installer instructions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-legacy-language-target-preview
+          path: bazzite-language-evidence/
+          if-no-files-found: warn
+          retention-days: 7
