@@ -250,13 +250,14 @@ jobs:
                 || { echo "Installer partitioning policy not recognized; stopping"; exit 1; }
               echo 'ONE blank 70 GiB disk displayed by native installer; not a Windows target' \
                 > bazzite-evidence/guest-disk-screen-gate.txt
-              # Inspect the explicit custom-partitioning route, never the destructive default.
-              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 600 375 click 1
+              # The new ISO exposes a destructive whole-disk default; never click through it.
+              echo 'STOP: new ISO automatic whole-disk mode is not authorized for shared Windows disks' \
+                > bazzite-evidence/new-iso-installation-blocked.txt
             elif (( phase == 5 )); then
-              grep -Eiq 'custom|partition|storage editor|mount point|filesystem|device|disk' \
+              grep -Eiq 'Remove all partitions|existing operating systems' \
                 "bazzite-evidence/main-ocr-5.txt" \
-                || { echo "Custom storage editor not confirmed; no disk selection or install"; exit 1; }
-              echo "Custom storage editor OBSERVED. No disk selection, partition write or install." \
+                || { echo "Destructive whole-disk warning not confirmed; stop without selection"; exit 1; }
+              echo "NEW ISO BLOCKED: destructive whole-disk default observed. Legacy ISO/manual partitioning requires a separate pinned-ISO lab. No disk selection, partition write or install." \
                 > bazzite-evidence/storage-scout-result.txt
             fi
           done
