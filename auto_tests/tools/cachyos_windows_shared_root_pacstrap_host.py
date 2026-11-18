@@ -149,6 +149,40 @@ def _write_lab_image(path: Path, size_bytes: int, label: str,
     os.chmod(path, 0o600)
 
 
+def _prepare_owned_ext4_iso_copy(iso_image: Path, mount: Path) -> None:
+    """Permit unprivileged exclusive-create only on this exact disposable ext4 loop mount."""
+    _owned(iso_image, iso_image.parent, "cachyos-iso-source.raw", mode=0o600)
+    require(mount.parent == iso_image.parent
+            and mount.name == "cachyos-iso-storage"
+            and mount.is_dir() and not mount.is_symlink()
+            and os.path.ismount(mount),
+            "private ext4 ISO storage is not an exclusive mountpoint")
+    observed = _run(["findmnt", "-n", "-M", str(mount), "-o", "SOURCE,FSTYPE"])
+    fields = observed.stdout.strip().split()
+    require(observed.returncode == 0 and len(fields) == 2
+            and fields[1] == "ext4", "unexpected ISO storage mount filesystem")
+    device = fields[0]
+    require(device.startswith("/dev/loop") and device[len("/dev/loop"):].isdigit(),
+            "ISO storage is not backed by an isolated loop device")
+    associated = _run(["sudo", "losetup", "-j", str(iso_image)])
+    require(associated.returncode == 0 and any(
+                line.split(":", 1)[0] == device
+                for line in associated.stdout.splitlines()
+            ), "ISO storage loop device does not match the owned raw image")
+    # mkfs.ext4 creates a root-owned filesystem root. Limit the owner change to
+    # that freshly verified, loop-backed mount; never chown the host workspace.
+    owner = _run(["sudo", "chown", str(os.getuid()) + ":" + str(os.getgid()),
+                  "--", str(mount)])
+    require(owner.returncode == 0, "could not grant owned ISO root to the runner")
+    mode = _run(["sudo", "chmod", "--", "0700", str(mount)])
+    require(mode.returncode == 0, "could not lock down owned ISO root")
+    actual = mount.stat()
+    require(os.path.ismount(mount) and actual.st_uid == os.getuid()
+            and actual.st_gid == os.getgid()
+            and stat.S_IMODE(actual.st_mode) == 0o700,
+            "ISO loop mount did not retain exclusive runner ownership")
+
+
 def _copy_to_fat(image: Path, source: Path, target: str) -> None:
     require(source.is_file() and not source.is_symlink(),
             "missing control-volume source: " + source.name)
@@ -358,6 +392,7 @@ def run_shared_root_pacstrap(
     require(mount_rw.returncode == 0, "could not mount private ext4 ISO storage")
     storage_iso = storage_root / "cachyos.iso"
     try:
+        _prepare_owned_ext4_iso_copy(iso_image, storage_root)
         require(not storage_iso.exists() and not storage_iso.is_symlink(),
                 "refusing to overwrite ISO inside private storage")
         with iso.open("rb") as source, storage_iso.open("xb") as target:
