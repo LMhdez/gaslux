@@ -29,7 +29,8 @@ class ScreenRefusal(ValueError):
 def _get_words(tsv_text: str) -> list[dict]:
     try:
         rows = csv.DictReader(io.StringIO(tsv_text), delimiter="\t")
-        if not rows.fieldnames or not {"text", "conf", "left", "top", "width", "height", "level"} <= set(rows.fieldnames):
+        required_fields = {"text", "conf", "left", "top", "width", "height", "level"}
+        if not rows.fieldnames or not required_fields <= set(rows.fieldnames):
             raise ScreenRefusal("Missing Tesseract TSV fields")
         words = []
         for row in rows:
@@ -56,7 +57,8 @@ def _get_words(tsv_text: str) -> list[dict]:
 
 
 def inspect(*, width: int, height: int, png_sha: str, ocr: str, tsv: str) -> dict:
-    if type(width) is not int or type(height) is not int or not (1024 <= width <= 1920 and 600 <= height <= 1200):
+    allowed_shape = 1024 <= width <= 1920 and 600 <= height <= 1200
+    if type(width) is not int or type(height) is not int or not allowed_shape:
         raise ScreenRefusal("Unexpected installer screenshot dimensions")
     if png_sha != EXPECTED_SCREEN_SHA:
         raise ScreenRefusal("Screenshot SHA differs from independently audited diskless Actions")
