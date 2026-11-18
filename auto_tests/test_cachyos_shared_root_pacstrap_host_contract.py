@@ -155,6 +155,84 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         self.assertIn("_copy_fresh_ovmf_vars(Path(OVMF_VARS), trial_vars)", source)
         self.assertNotIn("shutil.copyfile(nvram, trial_vars)", source)
 
+    def test_iso_transport_is_uefi_visible_but_only_windows_cow_is_writable(self):
+        source = (TOOLS / "cachyos_windows_shared_root_pacstrap_host.py").read_text()
+        self.assertIn('"usb-storage,drive=liveefi,bootindex=1"', source)
+        self.assertIn('"usb-storage,drive=iso_source,bootindex=2"', source)
+        self.assertIn('"if=none,id=iso_source,format=raw,file=" + str(iso_image) + ",readonly=on"', source)
+        self.assertIn('"virtio-blk-pci,drive=windows_cow,serial=" + SERIAL', source)
+        self.assertNotIn('"virtio-blk-pci,drive=iso_source"', source)
+        self.assertIn("before_iso_image_sha", source)
+
+    def test_grub_missing_iso_uuid_emits_diagnostic_without_fallback(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-grub-iso-uuid-") as td:
+            root = Path(td)
+            iso = root / "cachyos.iso"
+            iso.touch()
+            iso_mount = root / "iso-mounted"
+            iso_mount.mkdir()
+            workspace = root / "work"
+            workspace.mkdir()
+            volume_uuid = "01234567-89ab-cdef-0123-456789abcdef"
+            generated = (
+                "menuentry 'CachyOS Archiso (experimental)' {\n"
+                "    search --no-floppy --fs-uuid --set=gaslux_iso_dev " + volume_uuid + "\n"
+                "    loopback gaslux_iso ($gaslux_iso_dev)/cachyos.iso\n"
+                "    linux (gaslux_iso)/arch/boot/x86_64/vmlinuz-linux-cachyos-lts "
+                "archisobasedir=arch img_dev=UUID=" + volume_uuid + " img_loop=/cachyos.iso\n"
+                "    initrd (gaslux_iso)/arch/boot/x86_64/initramfs-linux-cachyos-lts.img\n"
+                "}\n"
+            )
+
+            def run(argv, **kwargs):
+                if argv[0] == "python3":
+                    Path(argv[-2]).write_text(generated)
+                    Path(argv[-1]).write_text("{}")
+                elif argv[0] != "grub-script-check":
+                    raise AssertionError("unexpected command " + str(argv))
+                return subprocess.CompletedProcess(argv, 0, "", "")
+
+            with mock.patch.object(host, "_run", side_effect=run):
+                cfg = host._create_boot_config(
+                    iso=iso, iso_sha256="a" * 64, iso_uuid=volume_uuid,
+                    iso_mount=iso_mount, workspace=workspace, run_id="run-12345",
+                    nonce="nonce-12345", plan_sha="b" * 64, key_sha="c" * 64,
+                ).read_text()
+            self.assertIn("GASLUX_VM_ISO_UUID_SEARCH_BEGIN", cfg)
+            self.assertIn("GASLUX_VM_ISO_UUID_NOT_VISIBLE", cfg)
+            self.assertEqual(cfg.count("search --no-floppy --fs-uuid"), 1)
+            self.assertIn('if [ -z "$gaslux_iso_dev" ]; then', cfg)
+            self.assertIn("img_dev=UUID=" + volume_uuid, cfg)
+            self.assertNotIn("set gaslux_iso_dev=hd", cfg)
+            self.assertLess(cfg.index("search --no-floppy --fs-uuid"),
+                            cfg.index("GASLUX_VM_ISO_UUID_NOT_VISIBLE"))
+
+    def test_grub_multiple_iso_uuid_searches_are_rejected_before_boot(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-grub-dup-search-") as td:
+            root = Path(td)
+            iso = root / "cachyos.iso"
+            iso.touch()
+            mounted = root / "iso-mounted"
+            mounted.mkdir()
+            workspace = root / "work"
+            workspace.mkdir()
+            line = "    search --no-floppy --fs-uuid --set=gaslux_iso_dev 01234567-89ab-cdef-0123-456789abcdef\n"
+
+            def run(argv, **kwargs):
+                if argv[0] == "python3":
+                    Path(argv[-2]).write_text(line + line)
+                    Path(argv[-1]).write_text("{}")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+
+            with mock.patch.object(host, "_run", side_effect=run):
+                with self.assertRaisesRegex(host.SharedRootPacstrapError, "ISO device lookup is ambiguous"):
+                    host._create_boot_config(
+                        iso=iso, iso_sha256="a" * 64,
+                        iso_uuid="01234567-89ab-cdef-0123-456789abcdef",
+                        iso_mount=mounted, workspace=workspace, run_id="run-12345",
+                        nonce="nonce-12345", plan_sha="b" * 64, key_sha="c" * 64,
+                    )
+
     def test_host_keeps_checkpoint_and_readonly_media_integrity_guards(self):
         source = (TOOLS / "cachyos_windows_shared_root_pacstrap_host.py").read_text()
         for token in (
