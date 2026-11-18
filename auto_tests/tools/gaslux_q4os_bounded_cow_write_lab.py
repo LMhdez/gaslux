@@ -71,8 +71,10 @@ def _require(ok: bool, reason: str) -> None:
 
 def _run(args: list[str], *, timeout: int = 180, expected: int = 0) -> str:
     process = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
-    _require(process.returncode == expected, "Command refused: " + args[0] + ": " +
-             (process.stderr + process.stdout)[-900:])
+    _require(
+        process.returncode == expected,
+        "Command refused: " + args[0] + ": " + (process.stderr + process.stdout)[-900:],
+    )
     return process.stdout
 
 
@@ -98,9 +100,11 @@ def _read_authenticated(stream, label: bytes, secret: str) -> tuple[dict, bytes]
     _require(_read_line(stream, 80, "guest frame") == label, "Wrong guest report frame type")
     raw = _read_line(stream, 16384, "guest report")
     mac = _read_line(stream, 90, "guest HMAC")
-    expected = hmac.new(
-        secret.encode("ascii"), REPORT_DOMAIN + label + b"\n" + raw, hashlib.sha256
-    ).hexdigest().encode("ascii")
+    expected = (
+        hmac.new(secret.encode("ascii"), REPORT_DOMAIN + label + b"\n" + raw, hashlib.sha256)
+        .hexdigest()
+        .encode("ascii")
+    )
     _require(hmac.compare_digest(mac, expected), "Guest report HMAC rejected")
     return json.loads(raw), raw
 
@@ -108,24 +112,43 @@ def _read_authenticated(stream, label: bytes, secret: str) -> tuple[dict, bytes]
 def validate_writable_preflight(raw: bytes, *, plan: dict, serial: str) -> dict:
     """Reuse the independent read-only GPT identity contract without weakening it."""
     fields = {
-        "schemaVersion", "runId", "nonce", "device", "serial", "sizeBytes",
-        "logicalSectorBytes", "physicalSectorBytes", "diskGuid", "partitions",
-        "blockDeviceReadOnly", "readOnlyProbe", "writeAttempted",
-        "writeOffsetBytes", "writeLengthBytes", "markerBeforeSha256",
+        "schemaVersion",
+        "runId",
+        "nonce",
+        "device",
+        "serial",
+        "sizeBytes",
+        "logicalSectorBytes",
+        "physicalSectorBytes",
+        "diskGuid",
+        "partitions",
+        "blockDeviceReadOnly",
+        "readOnlyProbe",
+        "writeAttempted",
+        "writeOffsetBytes",
+        "writeLengthBytes",
+        "markerBeforeSha256",
     }
     data = _strict_json(raw, fields)
     _require(data["blockDeviceReadOnly"] is False, "COW guest was unexpectedly read-only")
-    _require(data["readOnlyProbe"] is True and data["writeAttempted"] is False,
-             "Guest attempted write before authorization")
+
     _require(
-        type(data["writeOffsetBytes"]) is int and data["writeOffsetBytes"] == WRITE_OFFSET
-        and type(data["writeLengthBytes"]) is int and data["writeLengthBytes"] == WRITE_BYTES,
+        data["readOnlyProbe"] is True and data["writeAttempted"] is False,
+        "Guest attempted write before authorization",
+    )
+    _require(
+        type(data["writeOffsetBytes"]) is int
+        and data["writeOffsetBytes"] == WRITE_OFFSET
+        and type(data["writeLengthBytes"]) is int
+        and data["writeLengthBytes"] == WRITE_BYTES,
         "Guest proposed an unbounded or foreign write",
     )
     _require(data["markerBeforeSha256"] == EMPTY_SHA, "Unallocated marker area is not empty")
-    read_only_view = {name: value for name, value in data.items() if name in fields - {
-        "writeOffsetBytes", "writeLengthBytes", "markerBeforeSha256"
-    }}
+    read_only_view = {
+        name: value
+        for name, value in data.items()
+        if name in fields - {"writeOffsetBytes", "writeLengthBytes", "markerBeforeSha256"}
+    }
     read_only_view["blockDeviceReadOnly"] = True
     # This transformation is ONLY to verify the same immutable GPT semantics.
     # The original guest's writable state is checked separately above and
@@ -140,19 +163,35 @@ def validate_writable_preflight(raw: bytes, *, plan: dict, serial: str) -> dict:
 
 def validate_write_result(raw: bytes, *, plan: dict, serial: str) -> dict:
     fields = {
-        "schemaVersion", "runId", "nonce", "serial", "diskGuid",
-        "writeAttempted", "writeCompleted", "writeOffsetBytes",
-        "writeLengthBytes", "markerAfterSha256", "gptUnchanged",
-        "calamaresExecuted", "windowsEspTouched",
+        "schemaVersion",
+        "runId",
+        "nonce",
+        "serial",
+        "diskGuid",
+        "writeAttempted",
+        "writeCompleted",
+        "writeOffsetBytes",
+        "writeLengthBytes",
+        "markerAfterSha256",
+        "gptUnchanged",
+        "calamaresExecuted",
+        "windowsEspTouched",
     }
     value = _strict_json(raw, fields)
     required = {
-        "schemaVersion": 1, "runId": plan["runId"], "nonce": plan["nonce"],
-        "serial": serial, "diskGuid": plan["diskGuid"],
-        "writeAttempted": True, "writeCompleted": True,
-        "writeOffsetBytes": WRITE_OFFSET, "writeLengthBytes": WRITE_BYTES,
-        "markerAfterSha256": MARKER_SHA, "gptUnchanged": True,
-        "calamaresExecuted": False, "windowsEspTouched": False,
+        "schemaVersion": 1,
+        "runId": plan["runId"],
+        "nonce": plan["nonce"],
+        "serial": serial,
+        "diskGuid": plan["diskGuid"],
+        "writeAttempted": True,
+        "writeCompleted": True,
+        "writeOffsetBytes": WRITE_OFFSET,
+        "writeLengthBytes": WRITE_BYTES,
+        "markerAfterSha256": MARKER_SHA,
+        "gptUnchanged": True,
+        "calamaresExecuted": False,
+        "windowsEspTouched": False,
     }
     for key, val in required.items():
         _require(type(value[key]) is type(val) and value[key] == val, "Unsafe write result: " + key)
@@ -169,21 +208,34 @@ def validate_overlay_allocation(mapping: list[dict]) -> list[dict]:
         _require(type(item) is dict, "Bad QEMU block map")
         if item.get("depth") == 0 and item.get("data") is True:
             start, length = item.get("start"), item.get("length")
-            _require(type(start) is int and type(length) is int and length > 0,
-                     "Invalid allocated guest extent")
-            _require(start >= root_low and start + length <= root_high,
-                     "COW write escaped owned proposed root extent")
+            _require(
+                type(start) is int and type(length) is int and length > 0,
+                "Invalid allocated guest extent",
+            )
+            _require(
+                start >= root_low and start + length <= root_high,
+                "COW write escaped owned proposed root extent",
+            )
             extents.append({"start": start, "length": length})
     _require(bool(extents), "No mutated guest-owned COW block observed")
-    _require(any(x["start"] <= WRITE_OFFSET and
-                 x["start"] + x["length"] >= WRITE_OFFSET + WRITE_BYTES for x in extents),
-             "Guest write was not recorded in the allowed COW extent")
+    _require(
+        any(
+            x["start"] <= WRITE_OFFSET and x["start"] + x["length"] >= WRITE_OFFSET + WRITE_BYTES
+            for x in extents
+        ),
+        "Guest write was not recorded in the allowed COW extent",
+    )
     return extents
 
 
 def _authenticate_guest_write(
-    *, workspace: Path, overlay: Path, kernel: Path, initramfs: Path,
-    plan: dict, evidence: Path,
+    *,
+    workspace: Path,
+    overlay: Path,
+    kernel: Path,
+    initramfs: Path,
+    plan: dict,
+    evidence: Path,
 ) -> dict:
     sock_dir = Path(tempfile.mkdtemp(prefix="gq4osw-", dir="/tmp"))
     os.chmod(sock_dir, 0o700)
@@ -195,17 +247,42 @@ def _authenticate_guest_write(
     log = evidence / "q4os-write-qemu.log"
     guest_log = evidence / "q4os-write-guest-serial.log"
     command = [
-        "qemu-system-x86_64", "-no-user-config", "-nodefaults", "-machine",
-        f"q35,accel={accel}", "-cpu", "max", "-smp", "2", "-m", "2048",
-        "-no-reboot", "-display", "none", "-monitor", "none", "-net", "none",
-        "-kernel", str(kernel), "-initrd", str(initramfs),
-        "-append", "console=ttyS0,115200n8 rdinit=/init panic=5 loglevel=4",
-        "-serial", f"file:{guest_log}",
-        "-drive", f"if=none,id=q4oswrite,file={overlay},format=qcow2,readonly=off,cache=none",
-        "-device", f"virtio-blk-pci,drive=q4oswrite,serial={serial}",
-        "-device", "virtio-serial-pci,id=q4osserial",
-        "-chardev", f"socket,id=q4osreport,path={sock},server=on,wait=off",
-        "-device", "virtserialport,chardev=q4osreport,name=org.gaslux.q4os.identity",
+        "qemu-system-x86_64",
+        "-no-user-config",
+        "-nodefaults",
+        "-machine",
+        f"q35,accel={accel}",
+        "-cpu",
+        "max",
+        "-smp",
+        "2",
+        "-m",
+        "2048",
+        "-no-reboot",
+        "-display",
+        "none",
+        "-monitor",
+        "none",
+        "-net",
+        "none",
+        "-kernel",
+        str(kernel),
+        "-initrd",
+        str(initramfs),
+        "-append",
+        "console=ttyS0,115200n8 rdinit=/init panic=5 loglevel=4",
+        "-serial",
+        f"file:{guest_log}",
+        "-drive",
+        f"if=none,id=q4oswrite,file={overlay},format=qcow2,readonly=off,cache=none",
+        "-device",
+        f"virtio-blk-pci,drive=q4oswrite,serial={serial}",
+        "-device",
+        "virtio-serial-pci,id=q4osserial",
+        "-chardev",
+        f"socket,id=q4osreport,path={sock},server=on,wait=off",
+        "-device",
+        "virtserialport,chardev=q4osreport,name=org.gaslux.q4os.identity",
     ]
     process = None
     conn = None
@@ -213,8 +290,12 @@ def _authenticate_guest_write(
     try:
         with log.open("xb") as output:
             process = subprocess.Popen(
-                command, cwd=workspace, stdin=subprocess.DEVNULL,
-                stdout=output, stderr=subprocess.STDOUT, close_fds=True
+                command,
+                cwd=workspace,
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                close_fds=True,
             )
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
@@ -234,44 +315,64 @@ def _authenticate_guest_write(
         )
         _require(pid == process.pid and uid == os.getuid(), "Foreign QEMU report socket")
         stream = conn.makefile("rb")
-        _require(_read_line(stream, 90, "guest hello") == HELLO,
-                 "Guest did not enter bounded write protocol")
+        _require(
+            _read_line(stream, 90, "guest hello") == HELLO,
+            "Guest did not enter bounded write protocol",
+        )
         secret = secrets.token_hex(32)
         challenge = f"{CHALLENGE}:{plan['runId']}:{plan['nonce']}:{secret}\n".encode("ascii")
         conn.sendall(challenge)
-        _require(_read_line(stream, 80, "guest preflight") == PREFLIGHT,
-                 "Missing signed-run guest prewrite identity")
+        _require(
+            _read_line(stream, 80, "guest preflight") == PREFLIGHT,
+            "Missing signed-run guest prewrite identity",
+        )
         pre_raw = _read_line(stream, 16384, "guest preflight report")
         pre_mac = _read_line(stream, 90, "guest preflight mac")
-        expected_pre_mac = hmac.new(
-            secret.encode("ascii"), REPORT_DOMAIN + PREFLIGHT + b"\n\n" + pre_raw, hashlib.sha256
-        ).hexdigest().encode("ascii")
-        _require(hmac.compare_digest(pre_mac, expected_pre_mac),
-                 "Unauthenticated guest preflight")
+        expected_pre_mac = (
+            hmac.new(
+                secret.encode("ascii"),
+                REPORT_DOMAIN + PREFLIGHT + b"\n\n" + pre_raw,
+                hashlib.sha256,
+            )
+            .hexdigest()
+            .encode("ascii")
+        )
+        _require(hmac.compare_digest(pre_mac, expected_pre_mac), "Unauthenticated guest preflight")
         preflight = validate_writable_preflight(pre_raw, plan=plan, serial=serial)
         allow = b":".join(
             (AUTH, str(WRITE_OFFSET).encode(), str(WRITE_BYTES).encode(), MARKER_SHA.encode())
         )
-        allow_mac = hmac.new(
-            secret.encode("ascii"), AUTH_DOMAIN + allow, hashlib.sha256
-        ).hexdigest().encode("ascii")
+        allow_mac = (
+            hmac.new(secret.encode("ascii"), AUTH_DOMAIN + allow, hashlib.sha256)
+            .hexdigest()
+            .encode("ascii")
+        )
         conn.sendall(allow + b":" + allow_mac + b"\n")
-        _require(_read_line(stream, 80, "guest write result") == RESULT,
-                 "Guest did not return final bounded-write report")
+        _require(
+            _read_line(stream, 80, "guest write result") == RESULT,
+            "Guest did not return final bounded-write report",
+        )
         post_raw = _read_line(stream, 16384, "guest write JSON")
         post_mac = _read_line(stream, 90, "guest write HMAC")
-        expected_post_mac = hmac.new(
-            secret.encode("ascii"), REPORT_DOMAIN + RESULT + b"\n\n" + post_raw, hashlib.sha256
-        ).hexdigest().encode("ascii")
-        _require(hmac.compare_digest(post_mac, expected_post_mac),
-                 "Unauthenticated guest write report")
+        expected_post_mac = (
+            hmac.new(
+                secret.encode("ascii"), REPORT_DOMAIN + RESULT + b"\n\n" + post_raw, hashlib.sha256
+            )
+            .hexdigest()
+            .encode("ascii")
+        )
+        _require(
+            hmac.compare_digest(post_mac, expected_post_mac), "Unauthenticated guest write report"
+        )
         verified = validate_write_result(post_raw, plan=plan, serial=serial)
         process.wait(timeout=50)
         _require(process.returncode == 0, "QEMU guest did not shut down successfully")
         _require(not stream.read(1), "Unexpected trailing guest output")
         log_text = guest_log.read_text(encoding="utf-8", errors="replace")
-        _require("GASLUX_Q4OS_BOUND_GUEST_WRITE=PASS" in log_text,
-                 "Missing guest serial evidence of the bounded write")
+        _require(
+            "GASLUX_Q4OS_BOUND_GUEST_WRITE=PASS" in log_text,
+            "Missing guest serial evidence of the bounded write",
+        )
         return {
             "guestDiskIdentityVerified": preflight["gptVerified"],
             "transportPeerBoundToQemuPid": True,
@@ -306,10 +407,13 @@ def _authenticate_guest_write(
             pass
 
 
-def _verify_prewrite_snapshot(snapshot_dir: Path, plan: dict, raw_plan: bytes,
-                              backing: Path) -> tuple[Path, dict]:
-    _require(snapshot_dir.is_absolute() and snapshot_dir.is_dir()
-             and not snapshot_dir.is_symlink(), "Missing private snapshot directory")
+def _verify_prewrite_snapshot(
+    snapshot_dir: Path, plan: dict, raw_plan: bytes, backing: Path
+) -> tuple[Path, dict]:
+    _require(
+        snapshot_dir.is_absolute() and snapshot_dir.is_dir() and not snapshot_dir.is_symlink(),
+        "Missing private snapshot directory",
+    )
     manifest_path = snapshot_dir / "q4os-recovery-snapshot-manifest.json"
     manifest = verify_signed_manifest(
         manifest_path.read_bytes(),
@@ -324,52 +428,75 @@ def _verify_prewrite_snapshot(snapshot_dir: Path, plan: dict, raw_plan: bytes,
         "Recovery snapshot is not bound to signed plan",
     )
     snapshot = snapshot_dir / SNAPSHOT_NAME
-    _require(snapshot.is_file() and not snapshot.is_symlink()
-             and snapshot.stat().st_nlink == 1, "Unowned recovery snapshot")
+    _require(
+        snapshot.is_file() and not snapshot.is_symlink() and snapshot.stat().st_nlink == 1,
+        "Unowned recovery snapshot",
+    )
     info = _qemu_img_info(snapshot)
-    _require(info.get("format") == "qcow2"
-             and info.get("virtual-size") == DISK_BYTES
-             and info.get("backing-filename") in (None, ""),
-             "Recovery snapshot is not self-contained")
+    _require(
+        info.get("format") == "qcow2"
+        and info.get("virtual-size") == DISK_BYTES
+        and info.get("backing-filename") in (None, ""),
+        "Recovery snapshot is not self-contained",
+    )
     actual_hash = hashlib.sha256()
     with snapshot.open("rb") as stream:
         for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
             actual_hash.update(chunk)
-    _require(actual_hash.hexdigest() == manifest["snapshotSha256"],
-             "Recovery snapshot SHA-256 mismatch")
+    _require(
+        actual_hash.hexdigest() == manifest["snapshotSha256"], "Recovery snapshot SHA-256 mismatch"
+    )
     _run(["qemu-img", "check", str(snapshot)], timeout=120)
-    _run(["qemu-img", "compare", "-f", "qcow2", "-F", "raw",
-          str(snapshot), str(backing)], timeout=600)
+    _run(
+        ["qemu-img", "compare", "-f", "qcow2", "-F", "raw", str(snapshot), str(backing)],
+        timeout=600,
+    )
     return snapshot, manifest
 
 
 def _restore_verified_snapshot(
-    *, workspace: Path, snapshot: Path, base: Path, expected_plan: dict,
+    *,
+    workspace: Path,
+    snapshot: Path,
+    base: Path,
+    expected_plan: dict,
 ) -> bool:
     restored = workspace / "q4os-write-restored.raw"
-    _require(not restored.exists() and not restored.is_symlink(),
-             "Recovery destination already exists")
+    _require(
+        not restored.exists() and not restored.is_symlink(), "Recovery destination already exists"
+    )
     try:
-        _run([
-            "qemu-img", "convert", "-f", "qcow2", "-O", "raw", "-S", "4k",
-            str(snapshot), str(restored)
-        ], timeout=600)
+        _run(
+            [
+                "qemu-img",
+                "convert",
+                "-f",
+                "qcow2",
+                "-O",
+                "raw",
+                "-S",
+                "4k",
+                str(snapshot),
+                str(restored),
+            ],
+            timeout=600,
+        )
         _fsync_file(restored)
         _fsync_directory(workspace)
-        _run(["qemu-img", "compare", "-f", "raw", "-F", "raw",
-              str(base), str(restored)], timeout=600)
+        _run(
+            ["qemu-img", "compare", "-f", "raw", "-F", "raw", str(base), str(restored)], timeout=600
+        )
         _run(["sgdisk", "--verify", str(restored)], timeout=60)
         with restored.open("rb") as stream:
-            gpt = inspect_gpt_fd(
-                stream.fileno(), disk_size_bytes=DISK_BYTES, sector_bytes=512
-            )
+            gpt = inspect_gpt_fd(stream.fileno(), disk_size_bytes=DISK_BYTES, sector_bytes=512)
             marker = os.pread(stream.fileno(), WRITE_BYTES, WRITE_OFFSET)
-        _require(gpt["diskGuid"] == expected_plan["diskGuid"]
-                 and len(gpt["partitions"]) == 1
-                 and gpt["partitions"][0]["partGuid"] == expected_plan["espGuid"],
-                 "Restored GPT failed signed target identity")
-        _require(marker == bytes(WRITE_BYTES),
-                 "Recovered snapshot retained guest scratch mutation")
+        _require(
+            gpt["diskGuid"] == expected_plan["diskGuid"]
+            and len(gpt["partitions"]) == 1
+            and gpt["partitions"][0]["partGuid"] == expected_plan["espGuid"],
+            "Restored GPT failed signed target identity",
+        )
+        _require(marker == bytes(WRITE_BYTES), "Recovered snapshot retained guest scratch mutation")
         return True
     finally:
         if restored.exists() and restored.is_file() and not restored.is_symlink():
@@ -377,38 +504,64 @@ def _restore_verified_snapshot(
             _fsync_directory(workspace)
 
 
-def run_lab(workspace: Path, plan_dir: Path, snapshot_dir: Path,
-            evidence: Path, kernel: Path, initramfs: Path) -> dict:
-    _require(os.environ.get("GITHUB_ACTIONS") == "true"
-             and os.environ.get("GASLUX_Q4OS_SYNTHETIC_WRITE_LAB_ONLY") == "yes",
-             "Explicit synthetic QEMU-only write lab opt-in required")
-    _require(all(p.is_absolute() and p.exists() and not p.is_symlink()
-                 for p in (workspace, plan_dir, snapshot_dir, kernel, initramfs)),
-             "Invalid owner-controlled QEMU write inputs")
-    _require(workspace.is_dir() and workspace.stat().st_uid == os.getuid(),
-             "QEMU owner workspace mismatch")
-    _require(not evidence.exists() and not evidence.is_symlink(),
-             "QEMU recovery evidence path exists")
+def run_lab(
+    workspace: Path,
+    plan_dir: Path,
+    snapshot_dir: Path,
+    evidence: Path,
+    kernel: Path,
+    initramfs: Path,
+) -> dict:
+    _require(
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("GASLUX_Q4OS_SYNTHETIC_WRITE_LAB_ONLY") == "yes",
+        "Explicit synthetic QEMU-only write lab opt-in required",
+    )
+    _require(
+        all(
+            p.is_absolute() and p.exists() and not p.is_symlink()
+            for p in (workspace, plan_dir, snapshot_dir, kernel, initramfs)
+        ),
+        "Invalid owner-controlled QEMU write inputs",
+    )
+    _require(
+        workspace.is_dir() and workspace.stat().st_uid == os.getuid(),
+        "QEMU owner workspace mismatch",
+    )
+    _require(
+        not evidence.exists() and not evidence.is_symlink(), "QEMU recovery evidence path exists"
+    )
     plan, raw_plan, verification = _verify_plan(workspace, plan_dir)
-    _require(plan["runId"] == "q4os-actions-" + os.environ.get("GITHUB_RUN_ID", ""),
-             "Signed plan is not from current Actions run")
-    _require(verification["signatureVerified"] and verification["gptMetadataVerified"],
-             "Unsigned host disk")
-    _require(plan["installationAuthorized"] is False
-             and plan["calamaresJobsAuthorized"] is False
-             and plan["windowsEspWritesAuthorized"] is False,
-             "Signed plan granted production writes")
+    _require(
+        plan["runId"] == "q4os-actions-" + os.environ.get("GITHUB_RUN_ID", ""),
+        "Signed plan is not from current Actions run",
+    )
+    _require(
+        verification["signatureVerified"] and verification["gptMetadataVerified"],
+        "Unsigned host disk",
+    )
+    _require(
+        plan["installationAuthorized"] is False
+        and plan["calamaresJobsAuthorized"] is False
+        and plan["windowsEspWritesAuthorized"] is False,
+        "Signed plan granted production writes",
+    )
     base = workspace / "efi-disk.img"
     snapshot, manifest = _verify_prewrite_snapshot(snapshot_dir, plan, raw_plan, base)
     checkpoint = evidence / "q4os-bounded-write-recovery-checkpoint.json"
     overlay = workspace / "q4os-bound-write-only.qcow2"
-    _require(not overlay.exists() and not overlay.is_symlink(),
-             "Bound-write overlay already exists")
+    _require(
+        not overlay.exists() and not overlay.is_symlink(), "Bound-write overlay already exists"
+    )
     base_before = sparse_content_sha256(base)
-    _require(base_before == manifest["baseImageSparseSha256Before"],
-             "Prewrite base no longer matches durable snapshot")
-    _require(os.stat(base).st_nlink == 1 and os.stat(base).st_size == DISK_BYTES,
-             "Base disk ownership mismatch")
+    _require(
+        base_before == manifest["baseImageSparseSha256Before"],
+        "Prewrite base no longer matches durable snapshot",
+    )
+    _require(
+        os.stat(base).st_nlink == 1 and os.stat(base).st_size == DISK_BYTES,
+        "Base disk ownership mismatch",
+    )
     evidence.mkdir(mode=0o700)
     checkpoint_state = {
         "schemaVersion": 1,
@@ -431,49 +584,83 @@ def run_lab(workspace: Path, plan_dir: Path, snapshot_dir: Path,
     _write_json_durable(checkpoint, checkpoint_state)
     success = False
     try:
-        _run([
-            "qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(base),
-            str(overlay)
-        ], timeout=60)
+        _run(
+            ["qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(base), str(overlay)],
+            timeout=60,
+        )
         info = _qemu_img_info(overlay)
-        _require(info.get("format") == "qcow2"
-                 and info.get("virtual-size") == DISK_BYTES
-                 and info.get("backing-filename") == str(base)
-                 and info.get("backing-filename-format") == "raw",
-                 "Unsafe COW image backing chain")
+        _require(
+            info.get("format") == "qcow2"
+            and info.get("virtual-size") == DISK_BYTES
+            and info.get("backing-filename") == str(base)
+            and info.get("backing-filename-format") == "raw",
+            "Unsafe COW image backing chain",
+        )
         _run(["qemu-img", "check", str(overlay)])
         _fsync_file(overlay)
         _fsync_directory(workspace)
-        _run(["qemu-io", "-f", "qcow2",
-              "-c", f"read -P 0x00 {WRITE_OFFSET} {WRITE_BYTES}", str(overlay)])
+        _run(
+            [
+                "qemu-io",
+                "-f",
+                "qcow2",
+                "-c",
+                f"read -P 0x00 {WRITE_OFFSET} {WRITE_BYTES}",
+                str(overlay),
+            ]
+        )
         # The snapshot and private overlay are durable BEFORE arming the write.
         checkpoint_state["guestWritesAuthorized"] = True
         checkpoint_state["snapshotDurableBeforeWrite"] = True
         _write_json_durable(checkpoint, checkpoint_state)
         observed = _authenticate_guest_write(
-            workspace=workspace, overlay=overlay, kernel=kernel,
-            initramfs=initramfs, plan=plan, evidence=evidence,
+            workspace=workspace,
+            overlay=overlay,
+            kernel=kernel,
+            initramfs=initramfs,
+            plan=plan,
+            evidence=evidence,
         )
         checkpoint_state["guestDiskIdentityVerified"] = observed["guestDiskIdentityVerified"]
         _run(["qemu-img", "check", str(overlay)])
-        _run(["qemu-io", "-f", "qcow2",
-              "-c", f"read -P 0xa5 {WRITE_OFFSET} {WRITE_BYTES}", str(overlay)])
-        allocation = validate_overlay_allocation(
-            json.loads(_run(["qemu-img", "map", "--output=json", "-f", "qcow2",
-                             str(overlay)]))
+        _run(
+            [
+                "qemu-io",
+                "-f",
+                "qcow2",
+                "-c",
+                f"read -P 0xa5 {WRITE_OFFSET} {WRITE_BYTES}",
+                str(overlay),
+            ]
         )
-        _run(["qemu-img", "compare", "-f", "qcow2", "-F", "raw",
-              str(overlay), str(base)], expected=1, timeout=600)
+        allocation = validate_overlay_allocation(
+            json.loads(_run(["qemu-img", "map", "--output=json", "-f", "qcow2", str(overlay)]))
+        )
+        _run(
+            ["qemu-img", "compare", "-f", "qcow2", "-F", "raw", str(overlay), str(base)],
+            expected=1,
+            timeout=600,
+        )
         checkpoint_state["guestWriteObserved"] = True
         _write_json_durable(checkpoint, checkpoint_state)
-        _require(sparse_content_sha256(base) == base_before,
-                 "Immutable backing changed after guest scratch write")
+        _require(
+            sparse_content_sha256(base) == base_before,
+            "Immutable backing changed after guest scratch write",
+        )
         _verify_plan(workspace, plan_dir)
-        _require(_restore_verified_snapshot(
-            workspace=workspace, snapshot=snapshot, base=base, expected_plan=plan,
-        ), "Snapshot did not recover expected original bytes")
-        _require(sparse_content_sha256(base) == base_before,
-                 "Base image differs after independent recovery")
+        _require(
+            _restore_verified_snapshot(
+                workspace=workspace,
+                snapshot=snapshot,
+                base=base,
+                expected_plan=plan,
+            ),
+            "Snapshot did not recover expected original bytes",
+        )
+        _require(
+            sparse_content_sha256(base) == base_before,
+            "Base image differs after independent recovery",
+        )
         overlay.unlink()
         _fsync_directory(workspace)
         _require(not overlay.exists(), "Guest COW overlay was not discarded")
@@ -512,8 +699,10 @@ def run_lab(workspace: Path, plan_dir: Path, snapshot_dir: Path,
             # A failed discard or base validation is a hard failure, never success.
             overlay.unlink()
             _fsync_directory(workspace)
-            _require(sparse_content_sha256(base) == base_before,
-                     "Failure compensation did not preserve original base")
+            _require(
+                sparse_content_sha256(base) == base_before,
+                "Failure compensation did not preserve original base",
+            )
             checkpoint_state["guestWritesAuthorized"] = False
             _write_json_durable(checkpoint, checkpoint_state)
 

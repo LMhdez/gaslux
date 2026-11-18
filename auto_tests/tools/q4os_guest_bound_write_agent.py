@@ -60,7 +60,8 @@ def _report(fd: int, label: bytes, data: dict, secret: str) -> None:
 
 def _read_identity(serial: str) -> tuple[Path, dict]:
     paths = [
-        p for p in Path("/sys/block").glob("*/serial")
+        p
+        for p in Path("/sys/block").glob("*/serial")
         if p.is_file() and p.read_text(encoding="ascii").strip() == serial
     ]
     _require(len(paths) == 1, "Exactly one bound VirtIO serial required")
@@ -77,20 +78,26 @@ def _read_identity(serial: str) -> tuple[Path, dict]:
     with os.fdopen(os.open(device, os.O_RDONLY | os.O_CLOEXEC), "rb", closefd=True) as reader:
         gpt = inspect_gpt_fd(reader.fileno(), disk_size_bytes=DISK_BYTES, sector_bytes=logical)
         existing = os.pread(reader.fileno(), WRITE_LENGTH, WRITE_OFFSET)
-    _require(len(existing) == WRITE_LENGTH and existing == bytes(WRITE_LENGTH),
-             "Proposed free-space marker is not empty")
+    _require(
+        len(existing) == WRITE_LENGTH and existing == bytes(WRITE_LENGTH),
+        "Proposed free-space marker is not empty",
+    )
     _require(len(gpt["partitions"]) == 1, "Foreign partitions in Q4OS write guest")
     esp = gpt["partitions"][0]
     _require(
-        esp["number"] == 1 and esp["label"] == "GASLUX-LAB-ESP"
-        and esp["startLba"] == 2048 and esp["endLba"] == ESP_END_LBA
+        esp["number"] == 1
+        and esp["label"] == "GASLUX-LAB-ESP"
+        and esp["startLba"] == 2048
+        and esp["endLba"] == ESP_END_LBA
         and esp["filesystem"] == "vfat"
         and esp["typeGuid"] == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
         "Unknown ESP geometry or filesystem",
     )
-    _require(WRITE_OFFSET >= (ROOT_START_LBA + 2048) * 512
-             and WRITE_OFFSET + WRITE_LENGTH < (DISK_BYTES - 34 * 512),
-             "Write extent is not strictly inside guest-free area")
+    _require(
+        WRITE_OFFSET >= (ROOT_START_LBA + 2048) * 512
+        and WRITE_OFFSET + WRITE_LENGTH < (DISK_BYTES - 34 * 512),
+        "Write extent is not strictly inside guest-free area",
+    )
     return device, {
         "schemaVersion": 1,
         "device": str(device),
@@ -117,8 +124,10 @@ def run() -> dict:
         challenge = _read_line(fd, 512).split(b":")
         _require(len(challenge) == 4 and challenge[0] == CHALLENGE, "Missing one-time challenge")
         run_id, nonce, secret = [field.decode("ascii") for field in challenge[1:]]
-        _require(bool(RUN_RE.fullmatch(run_id)) and bool(NONCE_RE.fullmatch(nonce)),
-                 "Untrusted run identity")
+        _require(
+            bool(RUN_RE.fullmatch(run_id)) and bool(NONCE_RE.fullmatch(nonce)),
+            "Untrusted run identity",
+        )
         _require(bool(SECRET_RE.fullmatch(secret)), "Invalid host challenge key")
         serial = derive_virtio_serial(run_id, nonce)
         device, preflight = _read_identity(serial)
@@ -128,37 +137,49 @@ def run() -> dict:
         command = _read_line(fd, 512).split(b":")
         _require(len(command) == 5 and command[0] == AUTH, "Host did not authorize marker")
         offset, length, digest, received_mac = command[1:]
-        _require(offset == str(WRITE_OFFSET).encode("ascii")
-                 and length == str(WRITE_LENGTH).encode("ascii")
-                 and digest == DIGEST.encode("ascii"), "Host authorization outside allowed area")
+        _require(
+            offset == str(WRITE_OFFSET).encode("ascii")
+            and length == str(WRITE_LENGTH).encode("ascii")
+            and digest == DIGEST.encode("ascii"),
+            "Host authorization outside allowed area",
+        )
         payload = b":".join(command[:4])
-        expected_mac = hmac.new(
-            secret.encode("ascii"), AUTH_DOMAIN + payload, hashlib.sha256
-        ).hexdigest().encode("ascii")
+        expected_mac = (
+            hmac.new(secret.encode("ascii"), AUTH_DOMAIN + payload, hashlib.sha256)
+            .hexdigest()
+            .encode("ascii")
+        )
         _require(hmac.compare_digest(received_mac, expected_mac), "Invalid host write capability")
 
         # Reopen the exact serial-discovered disk; verify GPT and empty extent
         # again immediately before the one bounded mutation.
         observed_device, current = _read_identity(serial)
-        _require(observed_device == device and current["diskGuid"] == preflight["diskGuid"],
-                 "Guest disk changed before write")
+        _require(
+            observed_device == device and current["diskGuid"] == preflight["diskGuid"],
+            "Guest disk changed before write",
+        )
         handle = os.open(device, os.O_RDWR | os.O_CLOEXEC | os.O_EXCL)
         try:
-            _require(os.pread(handle, WRITE_LENGTH, WRITE_OFFSET) == bytes(WRITE_LENGTH),
-                     "Target scratch extent became occupied")
-            _require(os.pwrite(handle, PATTERN, WRITE_OFFSET) == WRITE_LENGTH,
-                     "Short bounded guest write")
-            os.fsync(handle)
-            _require(os.pread(handle, WRITE_LENGTH, WRITE_OFFSET) == PATTERN,
-                     "Guest write readback differs")
-            gpt_after = inspect_gpt_fd(
-                handle, disk_size_bytes=DISK_BYTES, sector_bytes=512
+            _require(
+                os.pread(handle, WRITE_LENGTH, WRITE_OFFSET) == bytes(WRITE_LENGTH),
+                "Target scratch extent became occupied",
             )
+            _require(
+                os.pwrite(handle, PATTERN, WRITE_OFFSET) == WRITE_LENGTH,
+                "Short bounded guest write",
+            )
+            os.fsync(handle)
+            _require(
+                os.pread(handle, WRITE_LENGTH, WRITE_OFFSET) == PATTERN,
+                "Guest write readback differs",
+            )
+            gpt_after = inspect_gpt_fd(handle, disk_size_bytes=DISK_BYTES, sector_bytes=512)
         finally:
             os.close(handle)
-        _require(gpt_after == {
-            "diskGuid": preflight["diskGuid"], "partitions": preflight["partitions"]
-        }, "GPT changed during single bounded write")
+        _require(
+            gpt_after == {"diskGuid": preflight["diskGuid"], "partitions": preflight["partitions"]},
+            "GPT changed during single bounded write",
+        )
         report = {
             "schemaVersion": 1,
             "runId": run_id,

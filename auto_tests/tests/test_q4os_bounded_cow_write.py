@@ -122,9 +122,7 @@ def test_guest_prewrite_identity_is_verified_before_any_write(pair):
 def test_prewrite_refuses_foreign_identity_or_unapproved_extent(pair, field, value):
     plan, serial, preflight, _ = pair
     with pytest.raises((BoundVmWriteRefusal, ValueError)):
-        validate_writable_preflight(
-            encoded({**preflight, field: value}), plan=plan, serial=serial
-        )
+        validate_writable_preflight(encoded({**preflight, field: value}), plan=plan, serial=serial)
 
 
 def test_prewrite_rejects_extra_partitions_and_json_duplicate_keys(pair):
@@ -169,8 +167,7 @@ def test_guest_postwrite_refuses_any_untrusted_semantics(pair, field, value):
 
 
 def test_cow_map_must_show_real_allocation_only_inside_free_root():
-    block = {"start": (WRITE_OFFSET // 65536) * 65536, "length": 65536,
-             "depth": 0, "data": True}
+    block = {"start": (WRITE_OFFSET // 65536) * 65536, "length": 65536, "depth": 0, "data": True}
     assert validate_overlay_allocation([block]) == [
         {"start": block["start"], "length": block["length"]}
     ]
@@ -185,9 +182,9 @@ def test_cow_map_must_show_real_allocation_only_inside_free_root():
 
 
 def test_guest_write_agent_never_formats_partitions_or_calls_calamares():
-    guest = (
-        ROOT / "auto_tests" / "tools" / "q4os_guest_bound_write_agent.py"
-    ).read_text(encoding="utf-8")
+    guest = (ROOT / "auto_tests" / "tools" / "q4os_guest_bound_write_agent.py").read_text(
+        encoding="utf-8"
+    )
     assert "os.pwrite(handle, PATTERN, WRITE_OFFSET)" in guest
     assert "os.fsync(handle)" in guest
     assert "inspect_gpt_fd" in guest
@@ -212,7 +209,7 @@ def test_old_read_only_initramfs_is_never_modified():
     new = (ROOT / "auto_tests/tools/gaslux_q4os_bounded_write_initramfs.sh").read_text()
     assert "exec /usr/bin/python3 /guest_probe.py" in old
     assert "GASLUX_Q4OS_SYNTHETIC_WRITE_LAB_ONLY" in new
-    assert 'exec /usr/bin/python3 /guest_write.py' in new
+    assert "exec /usr/bin/python3 /guest_write.py" in new
     assert "Guest agent not found" in new
 
 
