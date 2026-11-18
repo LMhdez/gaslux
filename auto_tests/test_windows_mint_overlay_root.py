@@ -266,6 +266,18 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertLess(prepare, update)
 
 
+    def test_bind_and_fuse_unmounts_are_checked_and_verified(self):
+        source = Path(mint.__file__).read_text(encoding="utf-8")
+        bind_cleanup = source.index("for bind_mount in (target /")
+        fuse_unmount = source.index('run(["sudo", "guestunmount", str(target)]')
+        fallback = source.index('["sudo", "fusermount3", "-u", str(target)]')
+        verify = source.index('["sudo", "findmnt", "-rn", "--mountpoint", str(target)]')
+        self.assertLess(bind_cleanup, fuse_unmount)
+        self.assertLess(fuse_unmount, fallback)
+        self.assertLess(fallback, verify)
+        self.assertNotIn('str(bind_mount)], check=False', source)
+
+
 
 if __name__ == "__main__":
     unittest.main()
