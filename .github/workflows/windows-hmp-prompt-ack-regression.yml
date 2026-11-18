@@ -1,0 +1,82 @@
+name: Windows HMP complete prompt and COM1 regressions (no guest)
+on:
+  push:
+    branches:
+      - fix/windows-hmp-prompt-ack-regression
+      - fix/windows-hmp-native-com1-regressions-20261118
+    paths:
+      - .github/workflows/windows-hmp-prompt-ack-regression.yml
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/test_windows_x64_iso_boot_key.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-guest-unittests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require full HMP prompt, then recheck Windows boot proof guards
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_iso_boot_key.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_two_stage_boot.py' -v
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path('auto_tests/tools/windows_x64_tcg_firstboot.py').read_text()
+          start=source.index('def send_first_iso_boot_key(')
+          end=source.index('\nMAX_GUEST_TOKEN_BYTES',start)
+          function=source[start:end]
+          assert function.count('monitor.sendall(')==1
+          assert 'until_prompt().lower()' in function
+          assert 'data.endswith(b"(qemu) ")' in function
+          assert 'monitor.recv(8192)' in function
+          assert 'closed before acknowledging boot key' in function
+          print('PASS: one HMP key, complete bounded command acknowledgment; no Windows boot claimed')
+          PY
+  diskless-real-hmp:
+    runs-on: ubuntu-24.04
+    needs: no-guest-unittests
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check real QEMU HMP acknowledgment without ISO, disk or network
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86
+          vm_dir="$(mktemp -d -p "$RUNNER_TEMP" gaslux-win-x64-XXXXXX)"
+          chmod 700 "$vm_dir"
+          vm_pid=
+          trap 'if [[ -n "$vm_pid" ]]; then kill "$vm_pid" 2>/dev/null || true; wait "$vm_pid" 2>/dev/null || true; fi; rm -rf -- "$vm_dir"' EXIT
+          sock="$vm_dir/initial-installer-hmp.sock"
+          qemu-system-x86_64 -machine q35,accel=tcg -cpu qemu64 -m 384 -smp 1 \
+            -display none -vga std -net none -serial none -S \
+            -monitor "unix:$sock,server,nowait" > "$vm_dir/stdout" 2> "$vm_dir/stderr" &
+          vm_pid=$!
+          python3 - "$sock" <<'PY'
+          import pathlib,sys,time
+          sys.path.insert(0,'auto_tests/tools')
+          from windows_x64_tcg_firstboot import send_first_iso_boot_key
+          sock=pathlib.Path(sys.argv[1])
+          for _ in range(80):
+              if sock.is_socket():break
+              time.sleep(.1)
+          if not sock.is_socket():raise SystemExit('no owned QEMU HMP socket')
+          send_first_iso_boot_key(sock)
+          print('GASLUX_QEMU_HMP_COMMAND_ACK_ONLY=1')
+          print('NO Windows media, target disk, Windows boot, dual boot or recovery tested')
+          PY
