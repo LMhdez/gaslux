@@ -29,7 +29,10 @@ class LabRefusal(RuntimeError):
 def _owned_root(root: Path, runner_temp: Path, *, must_exist: bool) -> Path:
     if not root.is_absolute() or not runner_temp.is_absolute():
         raise LabRefusal("Both paths must be absolute")
-    if root.name != ROOT_NAME or root.parent.resolve(strict=True) != runner_temp.resolve(strict=True):
+    if (
+        root.name != ROOT_NAME
+        or root.parent.resolve(strict=True) != runner_temp.resolve(strict=True)
+    ):
         raise LabRefusal("Target must be a direct child of the private runner temp directory")
     if root.is_symlink():
         raise LabRefusal("Symlink lab directory refused")
