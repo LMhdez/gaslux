@@ -278,6 +278,13 @@ def _verify_installed_root(
                 and g.vfs_uuid(root_part).lower() == plan["rootFsUuid"]
                 and g.blockdev_getsize64(root_part) == 24 * 1024**3,
                 "post-pacstrap fifth ext4 identity/geometry changed")
+        # A guest with a still-busy installation mount may only pass after
+        # VM poweroff if its ext4 superblock is demonstrably clean. Query
+        # the readonly COW snapshot before attempting any root mount.
+        fs_state = g.tune2fs_l(root_part)
+        require(isinstance(fs_state, dict)
+                and fs_state.get("Filesystem state") == "clean",
+                "post-poweroff installed ext4 is not clean")
         g.mount_ro(root_part, "/")
         try:
             os_release = g.read_file("/etc/os-release").decode("utf-8")
@@ -580,6 +587,17 @@ def run_shared_root_pacstrap(
     serial_bytes = serial.read_bytes()
     pass_marker = ("GASLUX_SHARED_COW_ROOT_PACSTRAP_PASS:"
                    + run_id + ":" + root_uuid).encode("ascii")
+    ordinary_umount = serial_bytes.count(
+        b"GASLUX_SHARED_COW_ROOT_UNMOUNTED_IN_GUEST=1")
+    deferred_umount = serial_bytes.count(
+        b"GASLUX_SHARED_COW_ROOT_UNMOUNT_DEFERRED_TO_POWEROFF=1")
+    require(ordinary_umount + deferred_umount == 1,
+            "missing or ambiguous fifth root mount-cleanup evidence")
+    if deferred_umount:
+        require(serial_bytes.count(
+            b"All filesystems, swaps, loop devices, MD devices and DM devices detached."
+        ) == 1 and serial_bytes.count(b"Powering off.") >= 1,
+                "guest did not report complete orderly systemd unmount")
     require(serial_bytes.count(pass_marker) == 1
             and serial_bytes.count(
                 b"GASLUX_SHARED_COW_NATIVE_CACHYOS_PACSTRAP_ROOT_ONLY=1") == 1
@@ -635,6 +653,8 @@ def run_shared_root_pacstrap(
         **root_status,
         "cachyosRootPacstrapped": True,
         "pacstrapExecuted": True,
+        "rootUnmountedInGuest": ordinary_umount == 1,
+        "rootUnmountCompletedByGuestShutdown": deferred_umount == 1,
         "labOnlyPacstrapCompleted": True,
         "cachyosInstalled": False,
         "cachyosFirstBootVerified": False,
