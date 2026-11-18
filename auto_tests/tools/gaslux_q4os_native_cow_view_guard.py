@@ -67,13 +67,16 @@ def _inputs(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path)
         and os.environ.get("GASLUX_Q4OS_NATIVE_COW_VIEW_ONLY") == "yes",
         "Native Calamares COW view requires disposable Actions-only opt-in",
     )
+    require(
+        os.environ.get("GITHUB_RUN_ID", "").isdigit(),
+        "Trusted unique Actions run ID is required",
+    )
     _owner_dir(workspace)
     require(workspace.name.startswith("gaslux-q4os-graphics-"), "Not a fresh Q4OS GUI workspace")
     for folder in (plan_dir, snapshot_dir, evidence):
         require(folder.is_absolute() and not folder.is_symlink(), "Unsafe evidence location")
         require(folder.parent.is_dir() and folder.parent.stat().st_uid == os.getuid(), "Foreign evidence parent")
-        require(folder != workspace and folder != plan_dir if folder == snapshot_dir else True,
-                "Evidence and snapshot cannot collide")
+        require(folder != workspace, "Evidence overlaps live workspace")
     require(plan_dir != snapshot_dir and evidence not in (plan_dir, snapshot_dir),
             "Recovery artifact destinations overlap")
     require(
