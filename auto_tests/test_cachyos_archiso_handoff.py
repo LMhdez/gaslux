@@ -193,7 +193,7 @@ class HandoffTests(unittest.TestCase):
         mock_loop = "/dev/loop2"
         expected = {
             ("findmnt", "-rn", "-M", str(self.disk), "-o", "SOURCE,FSTYPE"): "/dev/vda3 ntfs3",
-            ("blkid", "-p", "-c", "/dev/null", "-s", "UUID", "-o", "value", "/dev/vda3"): GOOD["isoStorageUuid"],
+            ("sudo", "-n", "blkid", "-p", "-c", "/dev/null", "-s", "UUID", "-o", "value", "/dev/vda3"): GOOD["isoStorageUuid"],
             ("findmnt", "-rn", "-M", str(self.iso), "-o", "SOURCE,FSTYPE,OPTIONS"): "/dev/loop2 iso9660 ro,nosuid",
             ("losetup", "--noheadings", "--output", "BACK-FILE", mock_loop): str(self.source.resolve()),
         }
@@ -214,7 +214,7 @@ class HandoffTests(unittest.TestCase):
                 output = "/dev/loop7 ext4"
             elif argv[0] == "findmnt":
                 output = "/dev/loop8 iso9660 ro,nosuid"
-            elif argv[0] == "blkid":
+            elif argv[0] == "sudo" and argv[1:3] == ["-n", "blkid"]:
                 output = "01234567-89ab-cdef-0123-456789abcdef"
             else:
                 output = str(self.source.resolve())
@@ -224,7 +224,7 @@ class HandoffTests(unittest.TestCase):
         result = handoff.prepare(plan, storage_root=self.disk, iso_root=self.iso,
                                  require_mounted_iso=True, mount_runner=cmd)
         self.assertTrue(result["isoMountedFromVerifiedSource"])
-        self.assertIn(("blkid", "-p", "-c", "/dev/null", "-s", "UUID",
+        self.assertIn(("sudo", "-n", "blkid", "-p", "-c", "/dev/null", "-s", "UUID",
                        "-o", "value", "/dev/loop7"), calls)
         self.assertNotIn(("blkid", "-s", "UUID", "-o", "value", "/dev/loop7"), calls)
 
@@ -234,7 +234,7 @@ class HandoffTests(unittest.TestCase):
                 output = "/dev/vda3 ntfs3"
             elif argv[0] == "findmnt":
                 output = "/dev/loop2 iso9660 ro"
-            elif argv[0] == "blkid":
+            elif argv[0] == "sudo" and argv[1:3] == ["-n", "blkid"]:
                 output = GOOD["isoStorageUuid"]
             else:
                 output = "/mnt/another.iso"
@@ -260,7 +260,7 @@ class HandoffTests(unittest.TestCase):
         def cmd(argv, **kwargs):
             if argv[0] == "findmnt" and str(self.disk) in argv:
                 return subprocess.CompletedProcess(argv, 0, "/dev/loop7 ext4\n", "")
-            if argv[0] == "blkid":
+            if argv[0] == "sudo" and argv[1:3] == ["-n", "blkid"]:
                 return subprocess.CompletedProcess(
                     argv, 2, "", "probe of /dev/loop7 at /private/runner/path failed: bad magic"
                 )
