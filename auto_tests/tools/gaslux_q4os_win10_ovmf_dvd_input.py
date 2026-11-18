@@ -128,6 +128,7 @@ def _send_key(sock: Path, pid: int) -> None:
             stream.write((json.dumps(request, separators=(",", ":")) + "\r\n").encode())
             _read_qmp_reply(stream, "gaslux-ovmf-space")
 
+
 def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list[str]) -> None:
     _require(
         os.environ.get("GITHUB_ACTIONS") == "true"
