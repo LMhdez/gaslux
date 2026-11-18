@@ -93,6 +93,18 @@ def inspect(*, width: int, height: int, png_sha: str, ocr: str, tsv: str) -> dic
         "bottomRightCandidateCount": len(bottom_right),
         "unambiguousContinueLabelCandidate": unique,
         "candidateCenter": bottom_right[0] if unique else None,
+        "ocrExcerptTail": ocr[-1400:],
+        "lowerRightDetectedWords": [
+            {
+                "word": word["text"][:50],
+                "x": word["left"] + word["width"] // 2,
+                "y": word["top"] + word["height"] // 2,
+                "confidence": round(word["confidence"], 1),
+            }
+            for word in words
+            if word["left"] + word["width"] // 2 >= width * 0.52
+            and word["top"] + word["height"] // 2 >= height * 0.60
+        ][:50],
         "candidateIsUiPositionOnly": True,
         "runLocalScreenshotRevalidationRequired": True,
         "actualInstallerBinaryVerified": False,
