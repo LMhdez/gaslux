@@ -81,10 +81,30 @@ def audit(directory: Path) -> dict:
     }
     if any(source[key] is not value for key, value in parsed.items()):
         raise EvidenceRefusal("OCR contradicts previously published visual evidence")
+    install_versions = re.findall(r"\bbazzite\s+([0-9]{2,3})\s+installation\b", combined)
+    welcome_versions = re.findall(r"\bwelcome to bazzite\s+([0-9]{2,3})\b", combined)
+    if bool(install_versions) != bool(welcome_versions):
+        raise EvidenceRefusal("Incomplete legacy installer version banner")
+    if install_versions and len(set(install_versions + welcome_versions)) != 1:
+        raise EvidenceRefusal("Conflicting legacy installer version banners")
+    displayed_version = install_versions[0] if install_versions else None
+    repeated_welcome = (
+        sum(
+            f"bazzite {displayed_version} installation" in text.lower()
+            and f"welcome to bazzite {displayed_version}" in text.lower()
+            for text in texts
+        )
+        >= 2
+        if displayed_version
+        else False
+    )
     return {
         "distributionId": "bazzite",
         "evidenceType": "diskless-ovmf-ocr-second-review",
         "screenCount": 4,
+        "legacyInstallerWelcomeVersionAdvertised": displayed_version,
+        "repeatedLegacyInstallerWelcomeObserved": repeated_welcome,
+        "advertisedVersionBoundToInstalledPayload": False,
         "screenSha256": hashes,
         "boundedOcrExcerpts": [text[:1200] for text in texts],
         **parsed,

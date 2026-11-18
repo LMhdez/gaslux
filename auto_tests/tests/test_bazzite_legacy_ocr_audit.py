@@ -37,6 +37,22 @@ def test_generic_install_text_is_not_anaconda_proof(tmp_path):
     assert report["installationAuthorized"] is False
 
 
+def test_repeated_bazzite_42_welcome_is_ui_evidence_not_payload_identity(tmp_path):
+    text = "BAZZITE 42 INSTALLATION\nWELCOME TO BAZZITE 42."
+    report = audit(fixture_dir(tmp_path, text))
+    assert report["legacyInstallerWelcomeVersionAdvertised"] == "42"
+    assert report["repeatedLegacyInstallerWelcomeObserved"] is True
+    assert report["advertisedVersionBoundToInstalledPayload"] is False
+    assert report["actualInstallerBinaryVerified"] is False
+    assert report["installationAuthorized"] is False
+
+
+def test_conflicting_legacy_welcome_version_refused(tmp_path):
+    text = "BAZZITE 42 INSTALLATION\nWELCOME TO BAZZITE 43."
+    with pytest.raises(EvidenceRefusal, match="Conflicting"):
+        audit(fixture_dir(tmp_path, text))
+
+
 def test_specific_ui_words_still_do_not_authorize_install(tmp_path):
     report = audit(fixture_dir(tmp_path, "Anaconda Installation Summary Blivet Bazzite"))
     assert report["anacondaSpecificTextCandidate"] is True

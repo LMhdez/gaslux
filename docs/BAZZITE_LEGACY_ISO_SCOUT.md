@@ -32,6 +32,32 @@ screenshot must not be conflated with Anaconda/Blivet installation, a
 disk-write authorization or Windows ESP preservation. Unsigned/unattested
 legacy ISO execution is restricted to this short-lived isolated lab.
 
+## Actual diskless ISO welcome screen (18 November 2026)
+
+- [GitHub Actions #44364282815](https://github.com/LMhdez/gaslux/actions/runs/44364282815):
+  **SUCCESS** on commit `44255598`. An 8-GiB KVM/OVMF guest was observed
+  without any hard disk, network adapter, scripted input or Windows device.
+  Four nonblank screenshots were collected.
+- [Independent OCR Actions #44367448297](https://github.com/LMhdez/gaslux/actions/runs/44367448297):
+  **SUCCESS**. Screenshot phase 1 contains Linux/systemd startup text;
+  phases 2–4 independently show **BAZZITE 42 INSTALLATION** and
+  **WELCOME TO BAZZITE 42**, with the installation language picker.
+  [Evidence #14456692397](https://github.com/LMhdez/gaslux/actions/runs/44367448297/artifacts/14456692397).
+- This establishes visual evidence of a **legacy installer welcome screen**,
+  not the Anaconda executable's validated identity, Blivet-GUI availability,
+  a disk write, Atomic deployment or Linux first boot after installation.
+- **Important version ambiguity:** the installer advertises `42`, while
+  [official Bazzite releases](https://github.com/ublue-os/bazzite/releases)
+  include `45.20261117.1`. The installed payload/version is **not bound**
+  to the banner or a signed catalogue record. Never silently assume that
+  the old legacy media installs/updates to the current upstream release.
+
+The next candidate milestone is independent authentication of a currently
+supported legacy ISO and a **strictly no-write** exploration of the native
+storage/Blivet screen on authenticated runner-owned virtual media. No Windows
+disk may be attached or written until signed ownership, exact guest identity
+and transaction rollback have been established.
+
 ## Why this separate experiment exists
 
 The official Bazzite legacy installer documentation still describes
