@@ -1,0 +1,27 @@
+name: CachyOS read-only target verifier contract
+
+on:
+  push:
+    branches:
+      - integration/cachyos-readonly-target-verifier-pr2-20261118
+  pull_request:
+    paths:
+      - 'assets/live/cachyos-target-verify.py'
+      - 'auto_tests/test_cachyos_target_verify.py'
+      - '.github/workflows/cachyos-readonly-target-verifier.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verifier-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check syntax
+        run: python -m py_compile assets/live/cachyos-target-verify.py auto_tests/test_cachyos_target_verify.py
+      - name: Run read-only target verification tests
+        run: python -m unittest discover -s auto_tests -p test_cachyos_target_verify.py -v
