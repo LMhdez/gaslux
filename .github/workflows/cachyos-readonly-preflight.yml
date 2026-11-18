@@ -1,0 +1,27 @@
+name: CachyOS read-only Archiso identity contract
+
+on:
+  push:
+    branches:
+      - integration/cachyos-readonly-preflight-pr1-11-20261118
+  pull_request:
+    paths:
+      - 'assets/live/libertix-cachyos-preflight.py'
+      - 'auto_tests/test_cachyos_preflight.py'
+      - '.github/workflows/cachyos-readonly-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check syntax
+        run: python -m py_compile assets/live/libertix-cachyos-preflight.py auto_tests/test_cachyos_preflight.py
+      - name: Run identity and negative tests
+        run: python -m unittest discover -s auto_tests -p test_cachyos_preflight.py -v
