@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 import unittest
 
 TOOLS = Path(__file__).resolve().parent / "tools"
@@ -12,6 +15,83 @@ import cachyos_windows_shared_root_pacstrap_host as host
 
 
 class SharedRootPacstrapHostContracts(unittest.TestCase):
+    def test_iso_private_loop_permission_fix_requires_exact_backing_identity(self):
+        # Sparse 4 GiB private *file*, never a real block device/mount.
+        with tempfile.TemporaryDirectory(prefix="gaslux-iso-test-") as td:
+            workspace = Path(td)
+            image = workspace / "cachyos-iso-source.raw"
+            with image.open("xb") as file:
+                file.truncate(4 * 1024**3)
+            mountpoint = workspace / "cachyos-iso-storage"
+            mountpoint.mkdir(mode=0o700)
+
+            def run(argv, **kwargs):
+                if argv[0] == "findmnt":
+                    return subprocess.CompletedProcess(
+                        argv, 0, "/dev/loop73 ext4 rw,relatime\\n", "")
+                if argv[0] == "losetup":
+                    return subprocess.CompletedProcess(
+                        argv, 0, str(image) + "\\n", "")
+                if argv[0] == "sudo":
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                raise AssertionError("unexpected command " + str(argv))
+
+            with mock.patch.object(host, "_run", side_effect=run) as commands:
+                host._permit_owned_iso_staging_write(image, mountpoint)
+                seen = [call.args[0] for call in commands.call_args_list]
+                self.assertEqual(seen[0][0], "findmnt")
+                self.assertEqual(seen[1],
+                                 ["losetup", "--noheadings", "--output",
+                                  "BACK-FILE", "/dev/loop73"])
+                self.assertEqual(seen[2],
+                                 ["sudo", "chown", "--",
+                                  f"{os.getuid()}:{os.getgid()}", str(mountpoint)])
+                self.assertEqual(seen[3],
+                                 ["sudo", "chmod", "--", "0700", str(mountpoint)])
+
+    def test_iso_private_loop_fails_before_chown_if_device_is_foreign(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-iso-deny-") as td:
+            workspace = Path(td)
+            image = workspace / "cachyos-iso-source.raw"
+            with image.open("xb") as f:
+                f.truncate(4 * 1024**3)
+            mountpoint = workspace / "cachyos-iso-storage"
+            mountpoint.mkdir(mode=0o700)
+            for source, kind, options, actual_backing in (
+                    ("/dev/sda", "ext4", "rw,relatime", str(image)),
+                    ("/dev/loop4", "vfat", "rw,relatime", str(image)),
+                    ("/dev/loop4", "ext4", "ro,relatime", str(image)),
+                    ("/dev/loop4", "ext4", "rw,relatime", "/tmp/foreign.img")):
+                def run(argv, **kwargs):
+                    if argv[0] == "findmnt":
+                        return subprocess.CompletedProcess(
+                            argv, 0, f"{source} {kind} {options}\\n", "")
+                    if argv[0] == "losetup":
+                        return subprocess.CompletedProcess(
+                            argv, 0, actual_backing + "\\n", "")
+                    raise AssertionError("must refuse before any privileged write")
+                with self.subTest(source=source, kind=kind, options=options,
+                                  backing=actual_backing), \\
+                     mock.patch.object(host, "_run", side_effect=run) as commands, \\
+                     self.assertRaises(host.SharedRootPacstrapError):
+                    host._permit_owned_iso_staging_write(image, mountpoint)
+                self.assertFalse(any(x.args[0][0] == "sudo" for x in
+                                     commands.call_args_list))
+
+    def test_iso_private_mount_cannot_use_symlink_image(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-iso-linked-") as td:
+            folder = Path(td)
+            real = folder / "real-image.raw"
+            real.touch()
+            path = folder / "cachyos-iso-source.raw"
+            path.symlink_to(real)
+            mountpoint = folder / "cachyos-iso-storage"
+            mountpoint.mkdir()
+            with mock.patch.object(host, "_run") as commands, \\
+                 self.assertRaises(host.SharedRootPacstrapError):
+                host._permit_owned_iso_staging_write(path, mountpoint)
+            commands.assert_not_called()
+
     def test_trial_firmware_uses_fresh_ovmf_template_not_windows_bootorder(self):
         with tempfile.TemporaryDirectory(prefix="gaslux-ovmf-template-") as temp:
             root = Path(temp)
