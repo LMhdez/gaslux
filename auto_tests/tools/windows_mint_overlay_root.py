@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import socket
@@ -124,6 +125,93 @@ def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
             guest.shutdown()
         finally:
             guest.close()
+
+
+def _kernel_module_names(modules_root: Path, version: str) -> tuple[set[str], set[str]]:
+    """Return built-in and loadable module names from the exact Mint kernel tree."""
+    root = modules_root / version
+    require(root.is_dir() and not root.is_symlink(),
+            "Mint kernel module directory is missing or unsafe")
+    builtin_file = root / "modules.builtin"
+    dep_file = root / "modules.dep"
+    for metadata in (builtin_file, dep_file):
+        require(metadata.is_file() and not metadata.is_symlink(),
+                f"Mint kernel metadata is missing or unsafe: {metadata.name}")
+
+    def module_name(value: str) -> str | None:
+        name = Path(value).name
+        match = re.fullmatch(r"(.+)\.ko(?:\.(?:xz|zst|gz))?", name)
+        return match.group(1).replace("-", "_") if match else None
+
+    builtins = {
+        name for line in builtin_file.read_text(encoding="utf-8").splitlines()
+        if (name := module_name(line.strip()))
+    }
+    loadable = {
+        name for line in dep_file.read_text(encoding="utf-8").splitlines()
+        if (name := module_name(line.partition(":")[0].strip()))
+    }
+    return builtins, loadable
+
+
+def prepare_initramfs_modules(target: Path, version: str) -> tuple[set[str], set[str]]:
+    """Require storage drivers and explicitly request loadable ones in initramfs."""
+    builtins, loadable = _kernel_module_names(target / "lib/modules", version)
+    required = {"virtio_pci", "virtio_blk", "ext4"}
+    missing = sorted(required - builtins - loadable)
+    require(not missing,
+            "Mint kernel lacks required initramfs drivers: " + ", ".join(missing))
+
+    etc = target / "etc"
+    config_dir = etc / "initramfs-tools"
+    config = config_dir / "modules"
+    require(etc.is_dir() and not etc.is_symlink()
+            and config_dir.is_dir() and not config_dir.is_symlink(),
+            "Mint initramfs-tools configuration directory is missing or unsafe")
+    if config.exists() or config.is_symlink():
+        require(not config.is_symlink() and config.is_file(),
+                "Mint initramfs modules configuration is not a regular file")
+        original = config.read_text(encoding="utf-8")
+    else:
+        original = ""
+    present = {
+        line.split()[0] for line in original.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    additions = sorted(required - builtins - present)
+    if additions:
+        updated = original
+        if updated and not updated.endswith("\n"):
+            updated += "\n"
+        updated += "".join(f"{name}\n" for name in additions)
+        subprocess.run(
+            ["sudo", "tee", str(config)], input=updated, check=True, text=True,
+            stdout=subprocess.DEVNULL,
+        )
+    actual = config.read_text(encoding="utf-8")
+    actual_modules = {
+        line.split()[0] for line in actual.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    require(required <= builtins | actual_modules,
+            "Mint initramfs modules configuration omitted a required driver")
+    return builtins, loadable
+
+
+def validate_initramfs_driver_support(
+    modules_root: Path, version: str, listing: str,
+) -> None:
+    """Accept built-ins or verify each loadable storage driver is in the initramfs."""
+    builtins, loadable = _kernel_module_names(modules_root, version)
+    required = {"virtio_pci", "virtio_blk", "ext4"}
+    require(required <= builtins | loadable,
+            "Mint kernel lacks required virtio/ext4 driver capability")
+    for name in sorted(required - builtins):
+        pattern = re.compile(
+            rf"(?:^|/){re.escape(name)}\.ko(?:\.(?:xz|zst|gz))?$"
+        )
+        require(any(pattern.search(line.strip()) for line in listing.splitlines()),
+                f"Mint initramfs lacks loadable {name} driver")
 
 
 def install_mint_root_and_boot(
@@ -242,6 +330,7 @@ def install_mint_root_and_boot(
         version = kernel.name.removeprefix("vmlinuz-")
         require((unpacked / "lib/modules" / version).is_dir(),
                 "Mint target kernel modules are missing")
+        prepare_initramfs_modules(target, version)
         write_target_configuration(target, root_uuid)
         run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
         run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
@@ -277,8 +366,7 @@ def install_mint_root_and_boot(
         require(initrd_copy.is_file() and initrd_copy.stat().st_size > 1024 * 1024,
                 "Mint initramfs download from ext4 failed")
         listing = run(["lsinitramfs", str(initrd_copy)], timeout=600).stdout
-        require("virtio_blk" in listing or "virtio/virtio_blk" in listing,
-                "Mint initramfs lacks virtio block support")
+        validate_initramfs_driver_support(unpacked / "lib/modules", version, listing)
         require("conf/conf.d/default-boot-to-casper.conf" not in listing,
                 "Mint initramfs still redirects to Casper")
         run(["sudo", "umount", str(iso_mount)], timeout=60)
