@@ -266,7 +266,7 @@ def _permit_owned_iso_staging_write(image: Path, mountpoint: Path) -> None:
             and mountpoint.is_dir() and not mountpoint.is_symlink()
             and image.stat().st_uid == os.getuid()
             and image.stat().st_nlink == 1
-            and image.stat().st_size > 5 * 1024**3
+            and image.stat().st_size > 2 * 1024**3
             and mountpoint.parent.is_dir()
             and not mountpoint.parent.is_symlink()
             and stat.S_IMODE(mountpoint.parent.stat().st_mode) == 0o700,
@@ -407,9 +407,9 @@ def run_shared_root_pacstrap(
     storage_root.mkdir(mode=0o700)
     mount_rw = _run(["sudo", "mount", "-o", "loop,rw", str(iso_image), str(storage_root)])
     require(mount_rw.returncode == 0, "could not mount private ext4 ISO storage")
-    _permit_owned_iso_staging_write(iso_image, storage_root)
     storage_iso = storage_root / "cachyos.iso"
     try:
+        _permit_owned_iso_staging_write(iso_image, storage_root)
         require(not storage_iso.exists() and not storage_iso.is_symlink(),
                 "refusing to overwrite ISO inside private storage")
         with iso.open("rb") as source, storage_iso.open("xb") as target:
