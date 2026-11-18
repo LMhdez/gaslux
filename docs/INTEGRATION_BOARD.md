@@ -441,3 +441,10 @@ Comparação de blobs SHA Git contra o HEAD da [#195](https://github.com/LMhdez/
 - [#6](https://github.com/LMhdez/gaslux/pull/6) fechada sem merge: 8/8 funções do handoff e 26/26 testes antigos preservados por nome em #195 (agora 9 funções/31 testes); scripts de loopback ext4/NTFS mantidos e ampliados, documentação com secções originais, workflow de ISO com 3 etapas antigas e uma nova de boot do kernel/init.
 
 **Limite:** a comparação de nomes/funções e de SHA não equivale a prova de equivalência semântica nem a teste de instalação; #195 continua experimental fora de `dev`, sem dual boot/rollback comprovado. Próximo batch cronológico: #10/#11, com dependências e handoff assinado a auditar antes de fechar.
+
+### Batch #10–#11 — handoff autenticado e evidência série (18/11/2026)
+
+- [#10](https://github.com/LMhdez/gaslux/pull/10) **fechada sem merge**: 5 ficheiros preservados por SHA em [#205](https://github.com/LMhdez/gaslux/pull/205); `test_cachyos_release_gate.py` idêntico; reintroduzida verificação Ed25519 antes de alvo e pacstrap, preservando identidade ISO posterior. [Actions #44262852664](https://github.com/LMhdez/gaslux/actions/runs/44262852664): 43 testes aprovados. A #205 é **draft** e não está integrada em dev; não demonstra trust anchor Windows/EFI ou boot real.
+- [#11](https://github.com/LMhdez/gaslux/pull/11) **mantida aberta**: [#203](https://github.com/LMhdez/gaslux/pull/203) recupera upload `if: always()`, hash do log série e 14 dias de retenção. [Actions #44261956834](https://github.com/LMhdez/gaslux/actions/runs/44261956834) aprovado; artefacto de CI **sintético** [#14408581273](https://github.com/LMhdez/gaslux/actions/runs/44261956834/artifacts/14408581273). Falta comprovar execução da ISO oficial, login série real e upload correspondente; nunca confundir com prova de instalação ou dual boot.
+
+**Política:** nenhum merge automático, nem ativação de CachyOS estável. Encerramento por substituição de PR não equivale a integração de código no `dev`.
