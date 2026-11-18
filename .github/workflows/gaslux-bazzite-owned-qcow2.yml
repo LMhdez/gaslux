@@ -216,7 +216,7 @@ jobs:
             if (( phase <= 2 )); then sleep 90; else sleep 12; fi
             kill -0 "$pid" 2>/dev/null || { echo "Unexpected VM shutdown"; exit 1; }
             image="bazzite-evidence/screen-$phase.png"
-            "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 capture "$image"
+            timeout --signal=TERM --kill-after=5s 30s "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 capture "$image"
             python3 - "$image" "$phase" <<'PY'
           from PIL import Image
           import sys
@@ -233,15 +233,15 @@ jobs:
             if (( phase == 1 )); then
               grep -qi 'Bazzite Portal' "bazzite-evidence/ocr-1.txt" \
                 || { echo "Live desktop not recognized; no scripted input"; exit 1; }
-              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 48 40 click 1 pause 0.2 click 1
+              timeout --signal=TERM --kill-after=5s 30s "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 48 40 click 1 pause 0.2 click 1
             elif (( phase == 2 )); then
               grep -Fq "Welcome. Let's install Bazzite now." "bazzite-evidence/main-ocr-2.txt" \
                 || { echo "Official native installer not recognized; no navigation"; exit 1; }
-              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
+              timeout --signal=TERM --kill-after=5s 30s "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
             elif (( phase == 3 )); then
               grep -Eiq 'Date and time|Time zone' "bazzite-evidence/main-ocr-3.txt" \
                 || { echo "Date/time page not recognized; stopping"; exit 1; }
-              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
+              timeout --signal=TERM --kill-after=5s 30s "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
             elif (( phase == 4 )); then
               grep -Fq 'Virtio Block Device' "bazzite-evidence/main-ocr-4.txt" \
                 || { echo "Expected Virtio target not displayed; stopping"; exit 1; }
