@@ -169,5 +169,103 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertTrue(fake.closed)
 
 
+    def _make_kernel_tree(self, root: Path, builtin: str = "kernel/fs/ext4.ko"):
+        modules = root / "lib/modules/6.8.0-mint"
+        modules.mkdir(parents=True)
+        (modules / "modules.builtin").write_text(builtin + "\n", encoding="utf-8")
+        (modules / "modules.dep").write_text(
+            "kernel/drivers/block/virtio_blk.ko:\n"
+            "kernel/drivers/virtio/virtio_pci.ko:\n",
+            encoding="utf-8",
+        )
+        (root / "etc/initramfs-tools").mkdir(parents=True)
+        (root / "etc/initramfs-tools/modules").write_text(
+            "# keep existing settings\n", encoding="utf-8")
+        return modules
+
+    def test_prepare_initramfs_requests_loadable_storage_drivers(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._make_kernel_tree(root)
+            def fake_run(args, **kwargs):
+                Path(args[-1]).write_text(kwargs["input"], encoding="utf-8")
+                return SimpleNamespace(returncode=0)
+            with patch.object(mint.subprocess, "run", side_effect=fake_run) as run:
+                builtins, loadable = mint.prepare_initramfs_modules(root, "6.8.0-mint")
+            configured = (root / "etc/initramfs-tools/modules").read_text()
+            self.assertEqual(builtins, {"ext4"})
+            self.assertEqual(loadable, {"virtio_blk", "virtio_pci"})
+            self.assertIn("virtio_blk\n", configured)
+            self.assertIn("virtio_pci\n", configured)
+            self.assertNotIn("ext4\n", configured)
+            run.assert_called_once()
+            self.assertEqual(run.call_args.args[0][:2], ["sudo", "tee"])
+
+    def test_prepare_initramfs_accepts_all_drivers_built_into_kernel(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._make_kernel_tree(
+                root,
+                "kernel/fs/ext4.ko\n"
+                "kernel/drivers/block/virtio_blk.ko\n"
+                "kernel/drivers/virtio/virtio_pci.ko",
+            )
+            with patch.object(mint.subprocess, "run") as run:
+                builtins, loadable = mint.prepare_initramfs_modules(root, "6.8.0-mint")
+            self.assertEqual(builtins, {"ext4", "virtio_blk", "virtio_pci"})
+            self.assertEqual(loadable, {"virtio_blk", "virtio_pci"})
+            run.assert_not_called()
+
+    def test_prepare_initramfs_fails_closed_when_kernel_driver_is_missing(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._make_kernel_tree(builtin="kernel/fs/ext4.ko")
+            modules_dep = root / "lib/modules/6.8.0-mint/modules.dep"
+            modules_dep.write_text("kernel/fs/ext4.ko:\n", encoding="utf-8")
+            with patch.object(mint.subprocess, "run") as run:
+                with self.assertRaisesRegex(mint.MintOverlayError, "virtio_blk"):
+                    mint.prepare_initramfs_modules(root, "6.8.0-mint")
+            run.assert_not_called()
+
+    def test_prepare_initramfs_rejects_symlinked_modules_configuration(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._make_kernel_tree()
+            config = root / "etc/initramfs-tools/modules"
+            config.unlink()
+            config.symlink_to(root / "outside")
+            with patch.object(mint.subprocess, "run") as run:
+                with self.assertRaisesRegex(mint.MintOverlayError, "not a regular file"):
+                    mint.prepare_initramfs_modules(root, "6.8.0-mint")
+            run.assert_not_called()
+
+    def test_initramfs_validation_accepts_builtins_and_requires_loadable_modules(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            modules = self._make_kernel_tree(builtin="kernel/fs/ext4.ko")
+            listing = (
+                "usr/lib/modules/6.8.0-mint/kernel/drivers/block/virtio_blk.ko.zst\n"
+                "usr/lib/modules/6.8.0-mint/kernel/drivers/virtio/virtio_pci.ko.xz\n"
+            )
+            mint.validate_initramfs_driver_support(root / "lib/modules", "6.8.0-mint", listing)
+            with self.assertRaisesRegex(mint.MintOverlayError, "virtio_pci"):
+                mint.validate_initramfs_driver_support(
+                    root / "lib/modules", "6.8.0-mint",
+                    "usr/lib/modules/6.8.0-mint/kernel/drivers/block/virtio_blk.ko.zst\n",
+                )
+
+    def test_initramfs_module_preparation_precedes_update_initramfs(self):
+        source = Path(mint.__file__).read_text(encoding="utf-8")
+        prepare = source.index("prepare_initramfs_modules(target, version)")
+        update = source.index('"update-initramfs", "-u", "-k", version')
+        self.assertLess(prepare, update)
+
+
+
 if __name__ == "__main__":
     unittest.main()
