@@ -121,5 +121,9 @@ jobs:
           actual_os_release="$(sudo guestfish --ro -a "$copy_disk" -m /dev/sda cat /etc/os-release)"
           test "$actual_os_release" = "$(printf '%s\n' 'NAME=Linux Mint' 'ID=linuxmint')"
           test "$(sudo guestfish --ro -a "$copy_disk" -m /dev/sda is-file /usr/bin/mint-smoke)" = true
+          downloaded_os_release="$work/downloaded-os-release"
+          sudo guestfish --ro -a "$copy_disk" -m /dev/sda download /etc/os-release "$downloaded_os_release"
+          test "$(cat "$downloaded_os_release")" = "$actual_os_release"
+          echo 'PASS: guestfish read-only download retrieves an ext4 file to runner-local storage'
           echo 'PASS: guestfish copy-in transfers root directory contents directly into ext4'
           echo 'PASS: root-owned guestmount FUSE is readable by the unprivileged runner with default permission checks'
