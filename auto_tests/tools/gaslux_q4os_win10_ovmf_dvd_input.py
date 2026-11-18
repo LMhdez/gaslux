@@ -86,8 +86,15 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
         _owned_private_file_path(item, root)
     _require(len(str(monitor).encode("utf-8")) < 100, "QEMU monitor socket path too long")
     _require(args and args[0] == QEMU_BINARY, "Only the known QEMU binary is allowed")
-    _require("-no-reboot" in args and "-net" in args, "Unexpected Windows QEMU device policy")
-    _require("none" in args, "QEMU networking must be disabled")
+    _require("-no-reboot" in args, "Expected non-rebooting Windows setup cycle")
+    _require(
+        args.count("-net") == 1
+        and args[args.index("-net") + 1] == "none"
+        and "-netdev" not in args
+        and "-nic" not in args,
+        "QEMU networking must be disabled",
+    )
+    _require(args.count("-monitor") == 1, "Exactly one private QEMU monitor required")
     _require(
         "-monitor" in args
         and "unix:" + str(monitor) + ",server=on,wait=off" in args,
@@ -108,13 +115,39 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
             in a and "readonly=on" in a for a in args),
         "Unattend medium must be read-only",
     )
-    for item in args:
+    _require(args.count("-drive") == 5, "Unexpected QEMU disk attachment count")
+    for index, item in enumerate(args):
         _require(
             not item.startswith("/dev/")
             and "file=/dev/" not in item
             and "file=host_device" not in item,
             "Physical host device forbidden",
         )
+        if item == "-drive":
+            _require(index + 1 < len(args), "Truncated QEMU drive declaration")
+            declaration = args[index + 1]
+            is_owned_disk = (
+                "id=system,file=" + str(root / "windows10-enterprise-eval-22h2-uefi-gpt.qcow2")
+                in declaration
+            )
+            is_owned_iso = (
+                "id=install,file=" + str(root / "Windows10_Enterprise_22H2_Eval_EN-US_x64.iso")
+                in declaration
+            )
+            is_owned_unattend = "id=answer,file=" + str(root / "unattend.iso") in declaration
+            is_ovmf_code = (
+                "if=pflash" in declaration
+                and "unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd" in declaration
+            )
+            is_ovmf_vars = (
+                "if=pflash" in declaration and "unit=1,file=" + str(root / "OVMF_VARS.fd")
+                in declaration
+            )
+            _require(
+                is_owned_disk or is_owned_iso or is_owned_unattend
+                or is_ovmf_code or is_ovmf_vars,
+                "Foreign QEMU drive attached",
+            )
 
 
 def run(
