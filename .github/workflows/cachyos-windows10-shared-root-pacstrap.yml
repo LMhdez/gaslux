@@ -6,6 +6,7 @@ on:
       - feature/cachyos-shared-cow-pacstrap-archiso-issue3
       - feature/cachyos-shared-cow-pacstrap-integrated-issue3
       - fix/cachyos-shared-cow-iso-ext4-ownership-issue3
+      - fix/cachyos-ovmf-iso-usb-uuid-20261118
     paths:
       - .github/workflows/cachyos-windows10-shared-root-pacstrap.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -46,6 +47,7 @@ on:
       - auto_tests/tools/windows_cachyos_postext4_cow_rollback.py
       - auto_tests/test_cachyos_windows_shared_root_pacstrap.py
       - auto_tests/test_cachyos_windows_shared_cow_grant.py
+      - auto_tests/test_cachyos_shared_root_pacstrap_host_contract.py
   workflow_dispatch:
 
 permissions:
