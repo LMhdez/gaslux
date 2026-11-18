@@ -170,6 +170,71 @@ def _import_tar_into_exact_owned_root(
             guest.close()
 
 
+def prepare_mint_storage_initramfs_modules(target: Path, version: str) -> set[str]:
+    """Fail closed unless the trusted Mint kernel can boot virtio-blk ext4.
+
+    The SquashFS extraction runs entirely in private runner storage. Rebuild
+    the initramfs *before* opening a Windows-backed overlay for rootfs writes.
+    Ubuntu initramfs-tools must explicitly include these drivers because an
+    offline chroot cannot detect the future guest's virtio PCI block device.
+    """
+    import re
+
+    require(re.fullmatch(r"[A-Za-z0-9.+_-]{1,128}", version) is not None,
+            "unsafe Mint installed kernel version")
+    modules_root = target / "lib" / "modules" / version
+    require(modules_root.is_dir() and not modules_root.is_symlink(),
+            "Mint installed target kernel modules missing or linked")
+    builtin_manifest = modules_root / "modules.builtin"
+    require(builtin_manifest.is_file() and not builtin_manifest.is_symlink(),
+            "Mint installed kernel built-in module manifest missing")
+    builtins = set(
+        name.rsplit("/", 1)[-1].removesuffix(".ko")
+        for name in builtin_manifest.read_text(encoding="utf-8").splitlines()
+        if name.endswith(".ko")
+    )
+    required = ("virtio_pci", "virtio_blk", "ext4")
+    for name in required:
+        loadable = any(
+            module.is_file() and not module.is_symlink()
+            for module in modules_root.rglob(name + ".ko*")
+        )
+        require(loadable or name in builtins,
+                f"Mint kernel is missing required storage driver: {name}")
+
+    tools = target / "etc" / "initramfs-tools"
+    module_list = tools / "modules"
+    require(tools.is_dir() and not tools.is_symlink()
+            and (not module_list.exists() or
+                 (module_list.is_file() and not module_list.is_symlink())),
+            "unsafe Mint initramfs-tools modules path")
+    original = module_list.read_text(encoding="utf-8") if module_list.exists() else ""
+    require(len(original) < 64 * 1024, "Mint initramfs-tools modules file is oversized")
+    present = set(original.splitlines())
+    missing = [name for name in required if name not in present]
+    if missing:
+        new_file = (original + ("\n" if original and not original.endswith("\n") else "")
+                    + "\n".join(missing) + "\n")
+        subprocess.run(
+            ["sudo", "tee", str(module_list)],
+            input=new_file, check=True, text=True, stdout=subprocess.DEVNULL,
+        )
+    return builtins
+
+
+def verify_mint_storage_initramfs(listing: str, builtins: set[str]) -> None:
+    """Assert drivers are present in the installed initramfs or kernel itself."""
+    import re
+
+    for name in ("virtio_pci", "virtio_blk", "ext4"):
+        if name in builtins:
+            continue
+        pattern = re.compile(r"(^|/)" + re.escape(name)
+                             + r"\\.ko(?:\\.[A-Za-z0-9]+)?$", re.MULTILINE)
+        require(pattern.search(listing) is not None,
+                f"Mint installed initramfs lacks required storage module: {name}")
+
+
 def install_mint_root_and_boot(
     *, overlay: Path, base: Path, nvram: Path, workspace: Path,
     ext4_proof: dict, iso: Path, evidence: Path,
@@ -279,6 +344,7 @@ def install_mint_root_and_boot(
         # before making any guest disk write. This is the proven Mint/Zorin
         # installed-root approach from PR #181, without slow host FUSE copies.
         write_target_configuration(unpacked, root_uuid)
+        kernel_builtins = prepare_mint_storage_initramfs_modules(unpacked, version)
         chroot_mounts = [
             (["sudo", "mount", "-t", "proc", "proc", str(unpacked / "proc")],
              unpacked / "proc"),
@@ -298,8 +364,7 @@ def install_mint_root_and_boot(
                     "Mint initramfs was not generated")
             listing = run(["sudo", "chroot", str(unpacked), "lsinitramfs",
                            f"/boot/initrd.img-{version}"], timeout=120).stdout
-            require("virtio_blk" in listing or "virtio/virtio_blk" in listing,
-                    "Mint initramfs lacks virtio block support")
+            verify_mint_storage_initramfs(listing, kernel_builtins)
             require("conf/conf.d/default-boot-to-casper.conf" not in listing,
                     "Mint initramfs still redirects to Casper")
         finally:
