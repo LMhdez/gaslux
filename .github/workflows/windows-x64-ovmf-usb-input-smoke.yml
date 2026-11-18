@@ -1,10 +1,12 @@
-name: Windows ISO lab loopback VNC EFI keyboard smoke (synthetic GRUB only)
+name: Windows ISO owned Unix VNC EFI keyboard smoke (synthetic GRUB only)
 
 on:
   push:
     branches:
       - feature/windows-eval-uefi-usb-keyboard-proof
       - fix/windows-ovmf-grub-enter-witness
+      - fix/windows-eval-owned-unix-vnc
+      - fix/windows-vnc-owned-unix-consolidation-20261118
   workflow_dispatch:
 
 permissions:
@@ -51,55 +53,18 @@ jobs:
           python3 - <<'PY'
           import os
           import shutil
-          import socket
-          import struct
           import subprocess
           import sys
           import tempfile
           import time
           from pathlib import Path
 
+          sys.path.insert(0, "auto_tests/tools")
+          from windows_x64_tcg_firstboot import send_first_iso_boot_key_vnc
+
           assert os.environ["RUNNER_TEMP"] == "/home/runner/work/_temp"
           assert os.environ["RUNNER_ENVIRONMENT"] == "github-hosted"
           assert os.environ["GITHUB_REPOSITORY"] == "LMhdez/gaslux"
-          def recv_exact(conn, count):
-              data = b""
-              while len(data) < count:
-                  chunk = conn.recv(count - len(data))
-                  if not chunk:
-                      raise RuntimeError("RFB server disconnected early")
-                  data += chunk
-              return data
-
-          def send_loopback_vnc_enter():
-              # No external GUI, HMP key, physical host input, or guest network.
-              # This RFB client only connects to QEMU on localhost port 5979.
-              with socket.create_connection(("127.0.0.1", 5979), timeout=5) as conn:
-                  conn.settimeout(5)
-                  version = recv_exact(conn, 12)
-                  if version != b"RFB 003.008\n":
-                      raise RuntimeError("unexpected RFB protocol version")
-                  conn.sendall(version)
-                  count = recv_exact(conn, 1)[0]
-                  if count == 0 or count > 8:
-                      raise RuntimeError("invalid RFB security choices")
-                  types = recv_exact(conn, count)
-                  if 1 not in types:
-                      raise RuntimeError("unexpected loopback RFB security")
-                  conn.sendall(b"\x01")
-                  if recv_exact(conn, 4) != b"\x00\x00\x00\x00":
-                      raise RuntimeError("RFB security handshake refused")
-                  conn.sendall(b"\x01")
-                  server_init = recv_exact(conn, 24)
-                  desktop_name_len = struct.unpack(">I", server_init[20:24])[0]
-                  if not (0 < desktop_name_len <= 1024):
-                      raise RuntimeError("invalid RFB server identity")
-                  recv_exact(conn, desktop_name_len)
-                  # Exactly one X11 Return keysym down/up (0xFF0D).
-                  conn.sendall(struct.pack(">BBHI", 4, 1, 0, 0xFF0D))
-                  time.sleep(.35)
-                  conn.sendall(struct.pack(">BBHI", 4, 0, 0, 0xFF0D))
-
           with tempfile.TemporaryDirectory(
               prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]
           ) as tmp:
@@ -113,7 +78,7 @@ jobs:
                   "terminal_input console\n"
                   "echo GASLUX_USB_GUEST_INPUT_READY=1\n"
                   # grub sleep --interruptible ignores Enter (it accepts ESC/F4/Shift).
-                  # read is the actual keyboard witness for the HMP Enter key.
+                  # read is the actual keyboard witness for the private VNC Enter key.
                   "read gaslux_guest_enter\n"
                   "echo GASLUX_USB_GUEST_INPUT_ACCEPTED=1\n"
                   "sleep 10\n",
@@ -132,9 +97,8 @@ jobs:
                   "qemu-system-x86_64", "-machine", "q35,accel=kvm,smm=on",
                   "-global", "driver=cfi.pflash01,property=secure,value=on",
                   "-cpu", "host", "-smp", "2", "-m", "1024",
-                  # Loopback-only ephemeral VGA frontend; HMP remains private Unix.
-                  # QEMU -display none can leave headless keyboard routing unproven.
-                  "-display", "vnc=127.0.0.1:79", "-vga", "std",
+                  # Private AF_UNIX VNC endpoint in the same 0700 owned directory.
+                  "-vnc", f"unix:{work / 'initial-installer-vnc.sock'}", "-vga", "std",
                   "-monitor", f"unix:{hmp},server,nowait", "-net", "none",
                   # Use built-in Q35 PS/2 firmware keyboard; USB needs separate proof.
                   "-device", "ich9-ahci,id=lab_sata",
@@ -167,7 +131,7 @@ jobs:
                       if ready and not injected:
                           print("GASLUX_SYNTHETIC_OVMF_VNC_KEY_REQUEST=1", flush=True)
                           time.sleep(.6)
-                          send_loopback_vnc_enter()
+                          send_first_iso_boot_key_vnc(hmp, hold_ms=300)
                           print("GASLUX_SYNTHETIC_OVMF_VNC_KEY_SENT=1", flush=True)
                           injected = True
                       time.sleep(.15)
