@@ -390,10 +390,15 @@ def _authenticate_guest_write(
             _require(process.returncode == 0, "QEMU guest did not shut down successfully")
         _require(not stream.read(1), "Unexpected trailing guest output")
         log_text = guest_log.read_text(encoding="utf-8", errors="replace")
-        _require(
-            "GASLUX_Q4OS_BOUND_GUEST_WRITE=PASS" in log_text,
-            "Missing guest serial evidence of the bounded write",
-        )
+        # A real SIGKILL may lose the QEMU serial-file buffer even after
+        # the guest fsyncs its COW data. In that mode, the authenticated
+        # completion report, live barrier, SIGKILL return code and
+        # independently re-read COW bytes are authoritative, not this log.
+        if not simulate_power_cut:
+            _require(
+                "GASLUX_Q4OS_BOUND_GUEST_WRITE=PASS" in log_text,
+                "Missing guest serial evidence of the bounded write",
+            )
         return {
             "guestDiskIdentityVerified": preflight["gptVerified"],
             "transportPeerBoundToQemuPid": True,
