@@ -66,6 +66,14 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertEqual(options, ["allow_other", "default_permissions"])
         self.assertEqual(command[-1], "/tmp/mint-target")
 
+    def test_guestfish_copy_in_uses_direct_libguestfs_transfer(self):
+        command = mint.guestfish_copy_in_command(
+            Path("/tmp/windows-cow.qcow2"), Path("/tmp/unpacked"))
+        self.assertEqual(command, [
+            "sudo", "guestfish", "--rw", "-a", "/tmp/windows-cow.qcow2",
+            "-m", "/dev/sda5", "copy-in", "/tmp/unpacked/.", "/",
+        ])
+
     def test_guestmount_workflow_enables_fuse_allow_other(self):
         root = Path(mint.__file__).resolve().parents[2]
         workflow = root / ".github/workflows/windows-cachyos-post-ext4-fourth-boot.yml"
