@@ -158,6 +158,51 @@ def _copy_to_fat(image: Path, source: Path, target: str) -> None:
             "could not copy verified control artifact: " + target)
 
 
+def _safe_generator_diagnostic(result: subprocess.CompletedProcess[str]) -> str:
+    """Return only a bounded, redacted JSON error from the boot-config generator."""
+    raw = (result.stderr or "").strip()
+    if not raw or len(raw) > 4096:
+        return (
+            f"generator exited with status {result.returncode} "
+            "without bounded structured diagnostics"
+        )
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        payload = None
+    message = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(message, str) or not message.strip():
+        return (
+            f"generator exited with status {result.returncode} "
+            "without structured diagnostics"
+        )
+    message = re.sub(
+        r"(?i)\\b(token|password|secret|authorization|private[_ -]?key)\\b"
+        r"\\s*[:=]\\s*[^\\s,;]+",
+        r"\\1=<redacted>",
+        message,
+    )
+    message = re.sub(
+        r"(?i)(https?://)[^\\s/@:]+:[^\\s/@]+@",
+        r"\\1<redacted>@",
+        message,
+    )
+    message = re.sub(
+        r"(?<![A-Za-z0-9])/(?:[^\\s/:]+/)*[^\\s/:]+",
+        "<private-path>",
+        message,
+    )
+    message = re.sub(
+        r"(?i)\\b[A-Z]:\\\\(?:[^\\s\\\\]+\\\\)*[^\\s\\\\]+",
+        "<private-path>",
+        message,
+    )
+    message = " ".join(
+        "".join(char if char.isprintable() else " " for char in message).split()
+    )
+    return message[:512] or "generator failed without a usable diagnostic"
+
+
 def _create_boot_config(
     *, iso: Path, iso_sha256: str, iso_uuid: str, iso_mount: Path,
     workspace: Path, run_id: str, nonce: str, plan_sha: str, key_sha: str,
@@ -168,9 +213,17 @@ def _create_boot_config(
         "python3", "auto_tests/tools/cachyos_generated_boot_config.py",
         str(iso), iso_sha256, iso_uuid, str(iso_mount), str(grub_cfg), str(report),
     ], timeout=180)
-    require(result.returncode == 0 and grub_cfg.is_file()
-            and not grub_cfg.is_symlink() and report.is_file(),
-            "Gaslux CachyOS backend could not render the verified live ISO boot")
+    if result.returncode != 0:
+        diagnostic = _safe_generator_diagnostic(result)
+        raise SharedRootPacstrapError(
+            "Gaslux CachyOS backend could not render the verified live ISO boot: "
+            + diagnostic
+        )
+    require(
+        grub_cfg.is_file() and not grub_cfg.is_symlink()
+        and report.is_file() and not report.is_symlink(),
+        "CachyOS boot generator reported success without safe output files",
+    )
     lines = grub_cfg.read_text(encoding="utf-8").splitlines(keepends=True)
     kernel_lines = [i for i, line in enumerate(lines)
                     if line.startswith("    linux (gaslux_iso)/")]
