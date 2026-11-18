@@ -225,6 +225,18 @@ def _create_boot_config(
         "CachyOS boot generator reported success without safe output files",
     )
     lines = grub_cfg.read_text(encoding="utf-8").splitlines(keepends=True)
+    # Only in the disposable lab boot: diagnose missing firmware-visible ISO.
+    search_lines = [i for i, line in enumerate(lines)
+                    if line.startswith("    search --no-floppy --fs-uuid --set=gaslux_iso_dev ")]
+    require(len(search_lines) == 1, "generated CachyOS ISO device lookup is ambiguous")
+    lines[search_lines[0]] = (
+        "    echo 'GASLUX_VM_ISO_UUID_SEARCH_BEGIN'\n"
+        + lines[search_lines[0]]
+        + "    if [ -z \"$gaslux_iso_dev\" ]; then\n"
+        + "        echo 'GASLUX_VM_ISO_UUID_NOT_VISIBLE'\n"
+        + "        ls\n"
+        + "    fi\n"
+    )
     kernel_lines = [i for i, line in enumerate(lines)
                     if line.startswith("    linux (gaslux_iso)/")]
     require(len(kernel_lines) == 1 and lines[kernel_lines[0]].endswith("\n"),
@@ -539,7 +551,10 @@ def run_shared_root_pacstrap(
         "-drive", "if=none,id=liveefi,format=raw,file=" + str(boot_efi) + ",readonly=on",
         "-device", "usb-storage,drive=liveefi,bootindex=1",
         "-drive", "if=none,id=iso_source,format=raw,file=" + str(iso_image) + ",readonly=on",
-        "-device", "virtio-blk-pci,drive=iso_source",
+        # Keep the ISO carrier read-only, using the same firmware-visible USB
+        # transport as our GRUB EFI launcher. OVMF/GRUB failed to discover
+        # the old virtio-blk source by its exact ext4 filesystem UUID.
+        "-device", "usb-storage,drive=iso_source,bootindex=2",
         # The sole writable Windows-containing disk is this owned COW overlay.
         # QEMU opens its protected backing QCOW2 read-only; it is never attached separately.
         "-drive", "if=none,id=windows_cow,format=qcow2,file=" + str(overlay),
