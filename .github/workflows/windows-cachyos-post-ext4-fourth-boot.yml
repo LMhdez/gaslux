@@ -35,6 +35,7 @@ on:
       - auto_tests/tools/windows_cachyos_ext4_synthetic_guestfs.py
       - auto_tests/tools/windows_x64_libguestfs_kernel.sh
       - auto_tests/tools/windows_mint_overlay_root.py
+      - auto_tests/tools/windows_mint_synthetic_tar_guestfs.py
       - auto_tests/test_windows_mint_overlay_root.py
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
       - auto_tests/test_windows_mint_cow_boot_evidence.py
@@ -62,6 +63,7 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py auto_tests/tools/windows_mint_overlay_root.py auto_tests/tools/validate_mint_cow_boot_evidence.py auto_tests/test_windows_x64_private_workspace.py
+          python3 -m py_compile auto_tests/tools/windows_mint_synthetic_tar_guestfs.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_readonly_baseline_gate.py auto_tests/test_windows_cachyos_readonly_baseline_gate.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_cow_checkpoint.py auto_tests/test_windows_cachyos_cow_checkpoint.py
@@ -128,7 +130,8 @@ jobs:
           set -Eeuo pipefail
           source auto_tests/tools/windows_x64_libguestfs_kernel.sh
           python3 auto_tests/tools/windows_cachyos_ext4_synthetic_guestfs.py
-          echo 'Synthetic guestfs fifth ext4 real API PASS; ZERO Windows/Linux install/boot/rollback claims.' >> "$GITHUB_STEP_SUMMARY"
+          python3 auto_tests/tools/windows_mint_synthetic_tar_guestfs.py
+          echo 'Synthetic ext4 and direct libguestfs tar-in API PASS; no real Windows/Linux boot proof.' >> "$GITHUB_STEP_SUMMARY"
 
   genuine-client-two-stage-firstboot:
     name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
