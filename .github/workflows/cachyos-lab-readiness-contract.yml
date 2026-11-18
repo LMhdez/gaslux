@@ -1,0 +1,22 @@
+name: CachyOS lab readiness read-only contracts
+on:
+  push:
+    branches:
+      - integration/cachyos-lab-readiness-pr8-20261118
+  pull_request:
+    paths:
+      - 'auto_tests/tools/cachyos_lab_readiness.py'
+      - 'auto_tests/test_cachyos_lab_readiness.py'
+      - '.github/workflows/cachyos-lab-readiness-contract.yml'
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m py_compile auto_tests/tools/cachyos_lab_readiness.py auto_tests/test_cachyos_lab_readiness.py
+      - run: python -m unittest discover -s auto_tests -p test_cachyos_lab_readiness.py -v
