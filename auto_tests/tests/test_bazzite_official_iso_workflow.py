@@ -95,7 +95,8 @@ def test_no_target_writes_or_private_iso_in_artifacts():
 def test_official_iso_immutable_pin_not_promoted_to_catalog():
     """The trusted upstream ISO must be checked against independent fixed pins."""
     source = WORKFLOW.read_text(encoding="utf-8")
-    assert "expected_sha='6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5'" in source
+    sha_pin = "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5"
+    assert f"expected_sha='{sha_pin}'" in source
     assert "expected_size='8377878528'" in source
     assert 'if [[ "$sha" != "$expected_sha" || "$size" != "$expected_size" ]]; then' in source
     assert 'obj["pinDiscoveryOnly"] = True' in source
