@@ -110,6 +110,66 @@ def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
             guest.close()
 
 
+def _import_tar_into_exact_owned_root(
+    overlay: Path, archive: Path, root_uuid: str, windows_hashes: list[str],
+) -> None:
+    """Write only an authenticated fifth ext4 root via libguestfs, never FUSE cp.
+
+    Caller has verified the private Windows-backed COW path, its backing chain,
+    signed media and the pre-existing ext4 checkpoint. All disk/partition/hash
+    comparisons happen before guestfs mounts anything writable.
+    """
+    import guestfs
+
+    require(archive.is_file() and not archive.is_symlink()
+            and archive.stat().st_uid == os.getuid()
+            and stat.S_IMODE(archive.stat().st_mode) == 0o600
+            and archive.stat().st_size > 1024 * 1024,
+            "private Mint target archive missing or unsafe")
+    require(type(root_uuid) is str and len(root_uuid) == 36
+            and type(windows_hashes) is list and len(windows_hashes) == 4
+            and all(type(digest) is str and len(digest) == 64
+                    and all(c in "0123456789abcdef" for c in digest)
+                    for digest in windows_hashes),
+            "Mint COW write grant lacks exact filesystem or Windows hashes")
+
+    guest = guestfs.GuestFS(python_return_dict=True)
+    try:
+        guest.add_drive_opts(str(overlay), format="qcow2", readonly=0)
+        guest.launch()
+        devices = guest.list_devices()
+        require(len(devices) == 1, "Mint archive import requires exactly one virtual disk")
+        disk = devices[0]
+        require(guest.blockdev_getsize64(disk) == 128 * 1024**3,
+                "Mint archive import disk geometry changed")
+        suffix = "p" if disk[-1].isdigit() else ""
+        parts = [disk + suffix + str(i) for i in range(1, 6)]
+        require(guest.list_partitions() == parts,
+                "Mint archive import requires the exact five-partition Windows layout")
+        require(guest.blockdev_getsize64(parts[4]) == 24 * 1024**3
+                and guest.vfs_type(parts[4]) == "ext4"
+                and guest.vfs_uuid(parts[4]) == root_uuid,
+                "Mint archive import fifth ext4 ownership or UUID changed")
+        require([guest.checksum_device("sha256", p) for p in parts[:4]]
+                == windows_hashes,
+                "Windows partition hashes changed before Mint archive import")
+
+        # Never mount or write any Windows partition or the Windows ESP.
+        guest.mount(parts[4], "/")
+        guest.tar_in(str(archive), "/", compress="gzip", xattrs=True, acls=True)
+        require(guest.vfs_uuid(parts[4]) == root_uuid,
+                "Mint archive import changed the owned root UUID")
+        require([guest.checksum_device("sha256", p) for p in parts[:4]]
+                == windows_hashes,
+                "Windows partitions changed during Mint archive import")
+        guest.sync()
+    finally:
+        try:
+            guest.shutdown()
+        finally:
+            guest.close()
+
+
 def install_mint_root_and_boot(
     *, overlay: Path, base: Path, nvram: Path, workspace: Path,
     ext4_proof: dict, iso: Path, evidence: Path,
@@ -185,7 +245,6 @@ def install_mint_root_and_boot(
     target = temp / "target"
     iso_mount.mkdir(mode=0o700)
     target.mkdir(mode=0o700)
-    guest_mounted = False
     iso_mounted = False
     try:
         run(["sudo", "mount", "-o", "loop,ro,nosuid,nodev,noexec", str(iso), str(iso_mount)])
@@ -207,10 +266,6 @@ def install_mint_root_and_boot(
         unpacked.mkdir(mode=0o700)
         run(["sudo", "unsquashfs", "-f", "-processors", "2", "-d", str(unpacked), str(rootfs)],
             timeout=900, capture=False)
-        run(guestmount_command(overlay, target), timeout=120)
-        guest_mounted = True
-        run(["sudo", "cp", "-a", str(unpacked) + "/.", str(target) + "/"],
-            timeout=1200, capture=False)
         os_release = unpacked / "etc/os-release"
         require(os_release.is_file() and "ID=linuxmint" in os_release.read_text(),
                 "extracted target is not Linux Mint")
@@ -220,37 +275,68 @@ def install_mint_root_and_boot(
         version = kernel.name.removeprefix("vmlinuz-")
         require((unpacked / "lib/modules" / version).is_dir(),
                 "Mint target kernel modules are missing")
-        write_target_configuration(target, root_uuid)
-        run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
-        run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
-        run(["sudo", "mount", "-t", "sysfs", "sysfs", str(target / "sys")])
-        run(["sudo", "mount", "--bind", "/dev/pts", str(target / "dev/pts")])
+        # Prepare the installed initramfs on the SHA-verified extracted root
+        # before making any guest disk write. This is the proven Mint/Zorin
+        # installed-root approach from PR #181, without slow host FUSE copies.
+        write_target_configuration(unpacked, root_uuid)
+        chroot_mounts = [
+            (["sudo", "mount", "-t", "proc", "proc", str(unpacked / "proc")],
+             unpacked / "proc"),
+            (["sudo", "mount", "--bind", "/dev", str(unpacked / "dev")],
+             unpacked / "dev"),
+            (["sudo", "mount", "--bind", "/dev/pts", str(unpacked / "dev/pts")],
+             unpacked / "dev/pts"),
+        ]
         try:
-            run(["sudo", "chroot", str(target), "/usr/bin/env", "-u",
+            for command, _ in chroot_mounts:
+                run(command, timeout=60)
+            run(["sudo", "chroot", str(unpacked), "/usr/bin/env", "-u",
                  "CASPER_GENERATE_UUID", "update-initramfs", "-u", "-k", version],
                 timeout=600)
-            initrd = target / "boot" / f"initrd.img-{version}"
+            initrd = unpacked / "boot" / f"initrd.img-{version}"
             require(initrd.is_file() and initrd.stat().st_size > 1024 * 1024,
                     "Mint initramfs was not generated")
-            listing = run(["sudo", "chroot", str(target), "lsinitramfs",
+            listing = run(["sudo", "chroot", str(unpacked), "lsinitramfs",
                            f"/boot/initrd.img-{version}"], timeout=120).stdout
             require("virtio_blk" in listing or "virtio/virtio_blk" in listing,
                     "Mint initramfs lacks virtio block support")
             require("conf/conf.d/default-boot-to-casper.conf" not in listing,
                     "Mint initramfs still redirects to Casper")
         finally:
-            for path in (target / "dev/pts", target / "dev", target / "sys", target / "proc"):
-                subprocess.run(["sudo", "umount", str(path)], check=False,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Do not tar host /dev or proc into the guest, nor recursively
+            # delete the workspace when any chroot mount survived a failure.
+            for _, path in reversed(chroot_mounts):
+                if subprocess.run(["findmnt", "-rn", "-M", str(path)],
+                                  check=False, stdout=subprocess.DEVNULL).returncode == 0:
+                    run(["sudo", "umount", str(path)], timeout=90)
+            for _, path in chroot_mounts:
+                require(subprocess.run(
+                    ["findmnt", "-rn", "-M", str(path)], check=False,
+                    stdout=subprocess.DEVNULL).returncode != 0,
+                    "refusing rootfs import with host chroot filesystem still mounted")
+
         kernel_copy = temp / "vmlinuz"
         initrd_copy = temp / "initrd.img"
         run(["sudo", "cp", str(kernel), str(kernel_copy)])
         run(["sudo", "cp", str(initrd), str(initrd_copy)])
-        run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}", str(kernel_copy), str(initrd_copy)])
+        run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}",
+             str(kernel_copy), str(initrd_copy)])
         kernel_copy.chmod(0o644)
         initrd_copy.chmod(0o644)
-        run(["sudo", "guestunmount", str(target)], timeout=120)
-        guest_mounted = False
+
+        # Compress once on the local filesystem; libguestfs unpacks inside
+        # its isolated appliance directly to the validated fifth ext4 root.
+        # Preserve numeric ownership, extended attributes, and POSIX ACLs.
+        archive = temp / "mint-root.tar.gz"
+        require(not archive.exists() and not archive.is_symlink(),
+                "refusing reused Mint root archive")
+        run(["sudo", "tar", "--numeric-owner", "--xattrs", "--acls",
+             "-C", str(unpacked), "-czf", str(archive), "."],
+            timeout=900, capture=False)
+        run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}", str(archive)])
+        archive.chmod(0o600)
+        _import_tar_into_exact_owned_root(overlay, archive, root_uuid, windows_before)
+        archive.unlink()
         run(["sudo", "umount", str(iso_mount)], timeout=60)
         iso_mounted = False
         root_uuid_after_copy, windows_after_copy = _guest_disk_audit(overlay, expected_uuid)
@@ -358,11 +444,6 @@ def install_mint_root_and_boot(
             f"{serial_hash}  {serial.name}\n", encoding="ascii")
         return proof
     finally:
-        if guest_mounted:
-            result = subprocess.run(["sudo", "guestunmount", str(target)],
-                                    check=False, stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL)
-            guest_mounted = result.returncode != 0
         if iso_mounted:
             result = subprocess.run(["sudo", "umount", str(iso_mount)],
                                     check=False, stdout=subprocess.DEVNULL,
@@ -374,7 +455,7 @@ def install_mint_root_and_boot(
         nested_active = any(path == str(target) or path.startswith(str(target) + "/")
                             or path == str(iso_mount) or path.startswith(str(iso_mount) + "/")
                             for path in active)
-        if not guest_mounted and not iso_mounted and not nested_active:
+        if not iso_mounted and not nested_active:
             subprocess.run(["sudo", "rm", "-rf", "--one-file-system", "--", str(temp)],
                        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
