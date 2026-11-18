@@ -205,8 +205,8 @@ def prepare_mint_storage_initramfs_modules(target: Path, version: str) -> set[st
     tools = target / "etc" / "initramfs-tools"
     module_list = tools / "modules"
     require(tools.is_dir() and not tools.is_symlink()
-            and (not module_list.exists() or
-                 (module_list.is_file() and not module_list.is_symlink())),
+            and not module_list.is_symlink()
+            and (not module_list.exists() or module_list.is_file()),
             "unsafe Mint initramfs-tools modules path")
     original = module_list.read_text(encoding="utf-8") if module_list.exists() else ""
     require(len(original) < 64 * 1024, "Mint initramfs-tools modules file is oversized")
