@@ -206,16 +206,17 @@ class MintOverlayContracts(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self._make_kernel_tree(
+            modules = self._make_kernel_tree(
                 root,
                 "kernel/fs/ext4.ko\n"
                 "kernel/drivers/block/virtio_blk.ko\n"
                 "kernel/drivers/virtio/virtio_pci.ko",
             )
+            (modules / "modules.dep").write_text("", encoding="utf-8")
             with patch.object(mint.subprocess, "run") as run:
                 builtins, loadable = mint.prepare_initramfs_modules(root, "6.8.0-mint")
             self.assertEqual(builtins, {"ext4", "virtio_blk", "virtio_pci"})
-            self.assertEqual(loadable, {"virtio_blk", "virtio_pci"})
+            self.assertEqual(loadable, set())
             run.assert_not_called()
 
     def test_prepare_initramfs_fails_closed_when_kernel_driver_is_missing(self):
