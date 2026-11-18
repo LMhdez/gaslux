@@ -523,6 +523,78 @@ class SharedRootOnlySafety(unittest.TestCase):
         self.assertTrue(all(cmd[:2] != ["umount", "-R"] for cmd in operations))
         self.assertFalse(any("-l" in cmd or "-f" in cmd for cmd in operations))
 
+    def test_verified_fifth_root_can_defer_only_after_all_children_detached(self):
+        root, source = shared.ROOT, Path("/dev/vdb5")
+        mount_graph = f"{root} {source} ext4\n{root}/proc proc proc"
+        attempts, delays = [], []
+        roots_after_child = f"{root} {source} ext4"
+        def runner(argv):
+            if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
+                return mount_graph if not attempts else roots_after_child
+            if argv[:3] == ["findmnt", "-rn", "-M"]:
+                return ("proc proc" if argv[3] == str(root / "proc")
+                        else f"{source} ext4")
+            if argv[:2] == ["umount", "--"]:
+                attempts.append(argv[2])
+                if argv[2] == str(root):
+                    raise shared.SharedDiskHandoffRejected("root busy")
+                return ""
+            raise AssertionError(argv)
+        # The source and identity must be checked after the final failure.
+        # Simulated no-device/no-physical-disk fixture; os.sync mocked.
+        with patch.object(shared.os, "sync") as sync:
+            result = shared.unmount_owned_root_tree(
+                root, source, run=runner, sleeper=delays.append,
+                defer_busy_owned_root=True)
+        self.assertIs(result, False)
+        self.assertEqual(attempts.count(str(root)), 4)
+        self.assertEqual(attempts[0], str(root / "proc"))
+        self.assertEqual(delays, [1, 1, 1])
+        sync.assert_called_once()
+
+    def test_deferred_cleanup_rejects_remaining_child_or_changed_identity(self):
+        root, source = shared.ROOT, Path("/dev/vdb5")
+        expected = f"{root} {source} ext4"
+        for leftover in (
+            f"{root} {source} ext4\n{root}/proc proc proc",
+            f"{root} /dev/vdc5 ext4",
+            f"{root} {source} ext4\n{root}/efi /dev/vdb1 vfat",
+        ):
+            actions = []
+            def runner(argv):
+                actions.append(argv)
+                if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
+                    return expected if len([x for x in actions if x[0] == "umount"]) < 4 else leftover
+                if argv[:3] == ["findmnt", "-rn", "-M"]:
+                    return f"{source} ext4"
+                if argv[:2] == ["umount", "--"]:
+                    raise shared.SharedDiskHandoffRejected("busy")
+                raise AssertionError(argv)
+            with self.subTest(leftover=leftover), \
+                 patch.object(shared.os, "sync") as sync, \
+                 self.assertRaises(shared.SharedDiskHandoffRejected):
+                shared.unmount_owned_root_tree(
+                    root, source, run=runner, sleeper=lambda seconds: None,
+                    defer_busy_owned_root=True)
+            sync.assert_not_called()
+
+    def test_clean_root_unmount_does_not_report_deferred(self):
+        root, source = shared.ROOT, Path("/dev/vdb5")
+        calls = []
+        def runner(argv):
+            calls.append(argv)
+            if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
+                return f"{root} {source} ext4"
+            if argv[:3] == ["findmnt", "-rn", "-M"]:
+                return f"{source} ext4"
+            if argv[:2] == ["umount", "--"]:
+                return ""
+            raise AssertionError(argv)
+        self.assertIs(shared.unmount_owned_root_tree(
+            root, source, run=runner, sleeper=lambda x: None,
+            defer_busy_owned_root=True), True)
+        self.assertEqual(len([c for c in calls if c[0] == "umount"]), 1)
+
     def test_source_protection_is_required_on_both_mount_paths(self):
         source = (HERE / "tools/cachyos_windows_shared_root_pacstrap.py").read_text()
         self.assertIn("verify_mounted_source(Path(temp), source, mount_type,",
