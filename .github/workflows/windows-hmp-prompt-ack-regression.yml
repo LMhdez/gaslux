@@ -8,6 +8,7 @@ on:
       - .github/workflows/windows-hmp-prompt-ack-regression.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/test_windows_x64_iso_boot_key.py
+      - auto_tests/test_windows_x64_noprompt_one_shot.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,6 +26,7 @@ jobs:
           set -Eeuo pipefail
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_iso_boot_key.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_noprompt_one_shot.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_clean_poweroff_gate.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_x64_two_stage_boot.py' -v
           python3 - <<'PY'
@@ -38,6 +40,8 @@ jobs:
           assert 'data.endswith(b"(qemu) ")' in function
           assert 'monitor.recv(8192)' in function
           assert 'closed before acknowledging boot key' in function
+          assert 'require_initial_dvd_boot=args.one_shot_install_only' in source
+          assert 'one-shot EFI DVD startup was not observed exactly once' in source
           print('PASS: one HMP key, complete bounded command acknowledgment; no Windows boot claimed')
           PY
   diskless-real-hmp:
