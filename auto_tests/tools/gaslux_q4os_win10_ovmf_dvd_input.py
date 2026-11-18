@@ -154,8 +154,7 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
     )
     _require(args.count("-drive") == 5, "Unexpected QEMU disk attachment count")
     _require(
-        args.count("qemu-xhci,id=usbctrl") == 1
-        and args.count("usb-kbd,bus=usbctrl.0") == 1,
+        args.count("qemu-xhci,id=usbctrl") == 1 and args.count("usb-kbd,bus=usbctrl.0") == 1,
         "No explicitly routed USB keyboard for OVMF",
     )
     for index, item in enumerate(args):
