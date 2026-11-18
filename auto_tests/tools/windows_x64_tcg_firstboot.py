@@ -701,7 +701,6 @@ def main(argv: list[str] | None = None) -> int:
                 "-global", "driver=cfi.pflash01,property=secure,value=on",
                 "-cpu", ("host" if args.accel == "kvm" else "max"),
                 "-smp", "2", "-m", "4096",
-                "-display", "none",
                 "-vga", "std",
                 "-monitor", f"unix:{monitor_path},server,nowait", "-net", "none",
                 "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
@@ -730,6 +729,9 @@ def main(argv: list[str] | None = None) -> int:
                 require(not vnc_path.exists() and not vnc_path.is_symlink(),
                         "refusing reused QEMU RFB socket")
                 base.extend(["-vnc", f"unix:{vnc_path}"])
+            else:
+                # Never create a display endpoint for the non-VNC lab path.
+                base.extend(["-display", "none"])
             tpm = None
             if args.profile.startswith("win11"):
                 require(shutil.which("swtpm") is not None, "Windows 11 requires TPM 2.0")
