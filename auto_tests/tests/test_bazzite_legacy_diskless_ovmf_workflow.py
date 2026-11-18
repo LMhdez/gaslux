@@ -21,7 +21,10 @@ def test_only_hosted_kvm_diskless_readonly_guest_is_allowed():
     assert wf["jobs"]["legacy-ovmf-diskless"]["needs"] == "contracts"
     assert wf["jobs"]["legacy-ovmf-diskless"]["runs-on"] == "ubuntu-24.04"
     assert "-nodefaults -machine q35,accel=kvm" in source
-    sandbox_option = "-sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny"
+    sandbox_option = (
+        "-sandbox on,obsolete=deny,elevateprivileges=deny,"
+        "spawn=deny,resourcecontrol=deny"
+    )
     assert sandbox_option in source
     assert "-nic none -monitor none" in source
     assert "readonly=on,file=$iso" in source
