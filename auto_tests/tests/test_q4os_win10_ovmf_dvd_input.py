@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -52,6 +51,10 @@ def make_args(root: Path) -> list[str]:
         f"if=none,id=install,file={root / 'Windows10_Enterprise_22H2_Eval_EN-US_x64.iso'},format=raw,readonly=on",
         "-drive",
         f"if=none,id=answer,file={root / 'unattend.iso'},format=raw,readonly=on",
+        "-drive",
+        "if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
+        "-drive",
+        f"if=pflash,format=raw,unit=1,file={root / 'OVMF_VARS.fd'}",
     ]
 
 
@@ -82,6 +85,7 @@ def test_private_qemu_only_authorized_in_actions(paths):
         ("missing-iso", lambda a: [x for x in a if "id=install" not in x]),
         ("missing-disk", lambda a: [x for x in a if "id=system" not in x]),
         ("missing-answer", lambda a: [x for x in a if "id=answer" not in x]),
+        ("extra-drive", lambda a: [*a, "-drive", "if=none,id=other,file=/tmp/foreign.img"]),
     ],
 )
 def test_qemu_argv_refuses_foreign_targets(paths, name, change):
