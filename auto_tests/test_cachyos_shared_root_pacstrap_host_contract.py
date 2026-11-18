@@ -39,7 +39,7 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
                 host._prepare_owned_ext4_iso_copy(image, mount)
                 self.assertEqual(
                     [argv[1] for argv in commands if argv[0] == "sudo"],
-                    ["losetup", "chown", "chmod"])
+                    ["losetup"])
                 commands.clear()
 
                 def wrong_loop(argv, **kwargs):
@@ -54,7 +54,7 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
                     with self.assertRaisesRegex(host.SharedRootPacstrapError,
                                                 "does not match the owned raw image"):
                         host._prepare_owned_ext4_iso_copy(image, mount)
-                self.assertFalse(any("chown" in c for c in commands))
+                self.assertFalse(any("chown" in c or "chmod" in c for c in commands))
 
             with patch.object(host.os.path, "ismount", return_value=False), \
                  patch.object(host, "_run") as never:
