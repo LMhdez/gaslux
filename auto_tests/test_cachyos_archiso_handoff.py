@@ -256,6 +256,24 @@ class HandoffTests(unittest.TestCase):
             handoff.prepare(self.plan, storage_root=self.disk, iso_root=self.iso,
                             require_mounted_iso=True, mount_runner=cmd)
 
+    def test_mount_probe_failure_retains_bounded_redacted_diagnostic(self):
+        def cmd(argv, **kwargs):
+            if argv[0] == "findmnt" and str(self.disk) in argv:
+                return subprocess.CompletedProcess(argv, 0, "/dev/loop7 ext4\\n", "")
+            if argv[0] == "blkid":
+                return subprocess.CompletedProcess(
+                    argv, 2, "", "probe of /dev/loop7 at /private/runner/path failed: bad magic"
+                )
+            return subprocess.CompletedProcess(argv, 0, "/dev/loop8 iso9660 ro\\n", "")
+        plan = dict(self.plan, isoStorageFilesystem="ext4",
+                    isoStorageUuid="01234567-89ab-cdef-0123-456789abcdef")
+        with self.assertRaisesRegex(
+            handoff.HandoffError,
+            r"blkid \\(exit 2\\).*<path>.*bad magic"
+        ):
+            handoff.prepare(plan, storage_root=self.disk, iso_root=self.iso,
+                            require_mounted_iso=True, mount_runner=cmd)
+
     def test_mismatched_disk_uuid_rejected_before_loopback(self):
         def cmd(argv, **kwargs):
             output = "/dev/vda3 ntfs3" if argv[0] == "findmnt" else "FFFFFFFFFFFFFFFF"
