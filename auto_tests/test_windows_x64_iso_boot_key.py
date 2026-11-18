@@ -5,6 +5,9 @@ Never boots Windows or accepts a synthetic serial marker as boot evidence.
 from __future__ import annotations
 
 import importlib.util
+import os
+import stat
+from types import SimpleNamespace
 import pathlib
 import sys
 import tempfile
@@ -161,24 +164,82 @@ class OfficialISOBootPromptTests(unittest.TestCase):
 
 
 class LocalVncIsoBootKeyTests(unittest.TestCase):
-    def test_vnc_rejects_foreign_monitor_before_network_access(self):
+    """RFB uses only a socket owned by the disposable QEMU process."""
+
+    def test_vnc_rejects_foreign_monitor_before_socket_access(self):
         with self.assertRaisesRegex(vm.LabError, "unapproved"):
             vm.send_first_iso_boot_key_vnc(
                 pathlib.Path("/home/runner/work/_temp/gaslux-win-x64-lab/hmp.sock"),
                 hold_ms=12000,
             )
-        with patch.dict(vm.os.environ, {
-            "GITHUB_ACTIONS": "true",
-            "RUNNER_ENVIRONMENT": "github-hosted",
-            "RUNNER_OS": "Linux",
-        }):
+        with patch.dict(vm.os.environ, self.hosted()):
             with self.assertRaisesRegex(vm.LabError, "unowned QEMU monitor"):
                 vm.send_first_iso_boot_key_vnc(pathlib.Path("/tmp/foreign.sock"))
 
-    def test_loopback_rfb_sends_exactly_one_return_pair(self):
-        monitor = pathlib.Path(
-            "/home/runner/work/_temp/gaslux-win-x64-vnc/initial-installer-hmp.sock"
-        )
+    @staticmethod
+    def hosted():
+        return {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "github-hosted",
+            "RUNNER_OS": "Linux",
+        }
+
+    @staticmethod
+    def paths():
+        root = pathlib.Path("/home/runner/work/_temp/gaslux-win-x64-vnc")
+        return root / "initial-installer-hmp.sock", root / "initial-installer-vnc.sock"
+
+    @staticmethod
+    def inode(path):
+        mode = stat.S_IFDIR | 0o700 if path.name.startswith(
+            "gaslux-win-x64-"
+        ) else stat.S_IFSOCK | 0o600
+        return SimpleNamespace(st_mode=mode, st_uid=os.getuid())
+
+    def test_unowned_vnc_socket_rejected_before_connect(self):
+        monitor, vnc = self.paths()
+        with patch.dict(vm.os.environ, self.hosted()), patch.object(
+            pathlib.Path, "is_socket", autospec=True,
+            side_effect=lambda p: p != vnc
+        ), patch.object(pathlib.Path, "is_dir", return_value=True), patch.object(
+            pathlib.Path, "is_symlink", return_value=False
+        ), patch.object(pathlib.Path, "resolve", lambda p: p), patch.object(
+            pathlib.Path, "stat", self.inode
+        ), patch.object(vm.socket, "socket") as maker:
+            with self.assertRaisesRegex(vm.LabError, "foreign or missing"):
+                vm.send_first_iso_boot_key_vnc(monitor)
+            maker.assert_not_called()
+
+    def test_world_readable_workspace_rejected_before_connect(self):
+        monitor, _ = self.paths()
+
+        def bad_inode(path):
+            info = self.inode(path)
+            if path == monitor.parent:
+                return SimpleNamespace(st_mode=stat.S_IFDIR | 0o755,
+                                       st_uid=os.getuid())
+            return info
+
+        with patch.dict(vm.os.environ, self.hosted()), patch.object(
+            pathlib.Path, "is_socket", return_value=True
+        ), patch.object(pathlib.Path, "is_dir", return_value=True), patch.object(
+            pathlib.Path, "is_symlink", return_value=False
+        ), patch.object(pathlib.Path, "resolve", lambda p: p), patch.object(
+            pathlib.Path, "stat", bad_inode
+        ), patch.object(vm.socket, "socket") as maker:
+            with self.assertRaisesRegex(vm.LabError, "unowned QEMU monitor"):
+                vm.send_first_iso_boot_key_vnc(monitor)
+            maker.assert_not_called()
+
+    def test_vnc_never_uses_fixed_tcp_port_or_foreign_process(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertNotIn("vnc=127.0.0.1:79", source)
+        self.assertNotIn("socket.create_connection", source)
+        self.assertIn('base.extend(["-vnc", f"unix:{vnc_path}"])', source)
+        self.assertIn('vnc_path.stat().st_uid == os.getuid()', source)
+
+    def test_unix_rfb_sends_exactly_one_return_pair(self):
+        monitor, vnc = self.paths()
         sock = MagicMock()
         sock.__enter__.return_value = sock
         name = b"QEMU"
@@ -186,18 +247,17 @@ class LocalVncIsoBootKeyTests(unittest.TestCase):
         sock.recv.side_effect = [
             b"RFB 003.008\n", b"\x01", b"\x01", b"\x00" * 4, server_init, name
         ]
-        hosted = {
-            "GITHUB_ACTIONS": "true",
-            "RUNNER_ENVIRONMENT": "github-hosted",
-            "RUNNER_OS": "Linux",
-        }
-        with patch.dict(vm.os.environ, hosted), patch.object(
+        with patch.dict(vm.os.environ, self.hosted()), patch.object(
             pathlib.Path, "is_socket", return_value=True
-        ), patch.object(pathlib.Path, "is_symlink", return_value=False), patch.object(
-            vm.socket, "create_connection", return_value=sock
+        ), patch.object(pathlib.Path, "is_dir", return_value=True), patch.object(
+            pathlib.Path, "is_symlink", return_value=False
+        ), patch.object(pathlib.Path, "resolve", lambda p: p), patch.object(
+            pathlib.Path, "stat", self.inode
+        ), patch.object(vm.socket, "socket", return_value=sock
         ) as maker, patch.object(vm.time, "sleep", return_value=None):
             vm.send_first_iso_boot_key_vnc(monitor)
-        maker.assert_called_once_with(("127.0.0.1", 5979), timeout=5)
+        maker.assert_called_once_with(vm.socket.AF_UNIX, vm.socket.SOCK_STREAM)
+        sock.connect.assert_called_once_with(str(vnc))
         self.assertEqual(
             [call.args[0] for call in sock.sendall.call_args_list],
             [
@@ -206,7 +266,6 @@ class LocalVncIsoBootKeyTests(unittest.TestCase):
                 vm.struct.pack(">BBHI", 4, 0, 0, 0xFF0D),
             ],
         )
-
 
 
 if __name__ == "__main__":
