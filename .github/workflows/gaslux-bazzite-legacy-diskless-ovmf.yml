@@ -103,7 +103,7 @@ jobs:
             || { echo 'UEFI El Torito not found'; exit 1; }
           printf '%s\n' 'ISO lab bytes verified against discovery pin; not signed or attested' \
             > bazzite-legacy-diskless-evidence/media-gate.txt
-      - name: Quarantined OVMF boot: optical only, no disk, network or installer input
+      - name: "Quarantined OVMF boot: optical only, no disk, network or installer input"
         shell: bash
         timeout-minutes: 15
         run: |
