@@ -13,7 +13,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "assets" / "live"))
 sys.path.insert(0, str(ROOT / "auto_tests" / "tools"))
 
-from gaslux_q4os_guest_disk_probe import expected_virtio_serial  # noqa: E402
 from gaslux_q4os_bounded_cow_write_lab import (  # noqa: E402
     EMPTY_SHA,
     MARKER_SHA,
@@ -24,6 +23,7 @@ from gaslux_q4os_bounded_cow_write_lab import (  # noqa: E402
     validate_writable_preflight,
     validate_write_result,
 )
+from gaslux_q4os_guest_disk_probe import expected_virtio_serial  # noqa: E402
 
 RUN = "q4os-actions-1234567890"
 NONCE = "1" * 32
@@ -97,7 +97,7 @@ def test_guest_prewrite_identity_is_verified_before_any_write(pair):
     result = validate_writable_preflight(encoded(preflight), plan=plan, serial=serial)
     assert result["gptVerified"] is True
     assert result["device"] == "/dev/vda"
-    assert WRITE_OFFSET > (plan["espEndLba"] + 1) * 512
+    assert (plan["espEndLba"] + 1) * 512 < WRITE_OFFSET
 
 
 @pytest.mark.parametrize(

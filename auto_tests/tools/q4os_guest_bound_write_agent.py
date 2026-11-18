@@ -17,11 +17,11 @@ import sys
 from pathlib import Path
 
 from guest_probe import (
+    _read_line,
+    _write_all,
     derive_virtio_serial,
     find_virtio_port,
     inspect_gpt_fd,
-    _read_line,
-    _write_all,
 )
 
 HELLO = b"GQ4OS-WRITE-HELLO-V1\n"
