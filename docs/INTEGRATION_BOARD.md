@@ -448,3 +448,12 @@ Comparação de blobs SHA Git contra o HEAD da [#195](https://github.com/LMhdez/
 - [#11](https://github.com/LMhdez/gaslux/pull/11) **mantida aberta**: [#203](https://github.com/LMhdez/gaslux/pull/203) recupera upload `if: always()`, hash do log série e 14 dias de retenção. [Actions #44261956834](https://github.com/LMhdez/gaslux/actions/runs/44261956834) aprovado; artefacto de CI **sintético** [#14408581273](https://github.com/LMhdez/gaslux/actions/runs/44261956834/artifacts/14408581273). Falta comprovar execução da ISO oficial, login série real e upload correspondente; nunca confundir com prova de instalação ou dual boot.
 
 **Política:** nenhum merge automático, nem ativação de CachyOS estável. Encerramento por substituição de PR não equivale a integração de código no `dev`.
+
+### Batch #10–#11 — validação final e fecho (18/11/2026, após reteste ISO)
+
+**Este registo substitui o estado pendente da #11 na secção anterior.**
+
+- [#10](https://github.com/LMhdez/gaslux/pull/10) **CLOSED, not merged**: handoff Ed25519 e gates restaurados em [#205](https://github.com/LMhdez/gaslux/pull/205), [Actions #44262852664](https://github.com/LMhdez/gaslux/actions/runs/44262852664), 43 testes aprovados. A #205 continua draft.
+- [#11](https://github.com/LMhdez/gaslux/pull/11) **CLOSED, not merged**: 10/12 ficheiros idênticos por blob SHA em [#203](https://github.com/LMhdez/gaslux/pull/203); teste de arranque e workflow de evidências corrigidos sem perder os critérios anteriores. [Actions #44269754905](https://github.com/LMhdez/gaslux/actions/runs/44269754905) **SUCCESS**: ISO oficial CachyOS 260809 SHA-256 validada; QEMU/OVMF arrancou CachyOS LTS até login série e systemd concluído; verificação hash do log e [artefacto real #14411653470](https://github.com/LMhdez/gaslux/actions/runs/44269754905/artifacts/14411653470) publicado. ZIP descarregado e conferido: 36 323 bytes; SHA-256 log `0f8b591e9d820e10a7ad0483f2ff04812cdce6b657581ee177bb83daf9c8368d` consistente com o manifesto incluído. [Actions #44269795863](https://github.com/LMhdez/gaslux/actions/runs/44269795863) contratos aprovados. A #203 continua draft.
+
+**Limites**: fechos administrativos sem merge para `dev` ou `main`; evidência **ISO live boot**, não boot de CachyOS instalado nem dual boot Windows/Linux, atualizações de kernel/bootloader, recuperação Windows ou hardware real. A issue [#3](https://github.com/LMhdez/gaslux/issues/3) mantém-se aberta; CachyOS não é estável.
