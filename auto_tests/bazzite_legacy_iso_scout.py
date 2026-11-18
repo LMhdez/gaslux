@@ -60,9 +60,10 @@ def inspect_candidate(
     require_uefi_gpt(firmware, partition_style, secure_boot_enabled)
     if iso_url != OFFICIAL_CANDIDATE:
         raise LegacyRefusal("Only the exact historical official CDN URL is in scope")
-    if any(type(status) is not int or not 100 <= status <= 599 for status in (
-        iso_http_status, checksum_http_status, signature_http_status
-    )):
+    if any(
+        type(status) is not int or not 100 <= status <= 599
+        for status in (iso_http_status, checksum_http_status, signature_http_status)
+    ):
         raise LegacyRefusal("Missing or invalid CDN HTTP response")
     result = {
         "distributionId": "bazzite",
@@ -110,16 +111,22 @@ def inspect_partition_preview(preview: dict) -> dict:
     if not isinstance(preview, dict):
         raise LegacyRefusal("Invalid hypothetical layout")
     required = {
-        "firmware", "partitionStyle", "secureBootEnabled", "transactionId",
-        "windowsEspPartuuid", "ownedEspPartuuid", "ownedBootPartuuid",
-        "ownedRootPartuuid", "windowsEspAction", "ownedEspFilesystem",
-        "ownedBootFilesystem", "ownedRootFilesystem",
+        "firmware",
+        "partitionStyle",
+        "secureBootEnabled",
+        "transactionId",
+        "windowsEspPartuuid",
+        "ownedEspPartuuid",
+        "ownedBootPartuuid",
+        "ownedRootPartuuid",
+        "windowsEspAction",
+        "ownedEspFilesystem",
+        "ownedBootFilesystem",
+        "ownedRootFilesystem",
     }
     if set(preview) != required:
         raise LegacyRefusal("Unknown or missing layout properties")
-    require_uefi_gpt(
-        preview["firmware"], preview["partitionStyle"], preview["secureBootEnabled"]
-    )
+    require_uefi_gpt(preview["firmware"], preview["partitionStyle"], preview["secureBootEnabled"])
     if not isinstance(preview["transactionId"], str) or not re.fullmatch(
         r"[a-zA-Z0-9][a-zA-Z0-9_-]{15,63}", preview["transactionId"]
     ):
@@ -169,16 +176,18 @@ def main() -> int:
     args = parser.parse_args()
     try:
         checksum = (
-            args.checksum_file.read_text(encoding="utf-8")
-            if args.checksum_status == 200
-            else ""
+            args.checksum_file.read_text(encoding="utf-8") if args.checksum_status == 200 else ""
         )
         evidence = inspect_candidate(
-            firmware=args.firmware, partition_style=args.partition_style,
-            secure_boot_enabled=args.secure_boot_enabled, iso_url=args.iso_url,
-            iso_http_status=args.iso_status, checksum_http_status=args.checksum_status,
+            firmware=args.firmware,
+            partition_style=args.partition_style,
+            secure_boot_enabled=args.secure_boot_enabled,
+            iso_url=args.iso_url,
+            iso_http_status=args.iso_status,
+            checksum_http_status=args.checksum_status,
             signature_http_status=args.signature_status,
-            content_length=args.content_length, checksum_text=checksum,
+            content_length=args.content_length,
+            checksum_text=checksum,
         )
     except (LegacyRefusal, OSError, UnicodeError) as exc:
         parser.exit(2, f"REFUSED: {exc}\n")

@@ -19,10 +19,22 @@ def test_no_iso_download_or_guest_mutation_in_workflow():
     jobs = workflow["jobs"]
     assert jobs["legacy-cdn-discovery"]["needs"] == "contracts"
     for term in (
-        "qemu-system", "qemu-img create", "losetup ", "mkfs.", "parted ",
-        "sgdisk ", "wipefs ", "bootc install", "efibootmgr ", "bcdedit ",
-        "dd if=", "windows10.qcow2", "windows11.qcow2",
-        "curl --get", "curl -o iso", "installationAuthorized=true",
+        "qemu-system",
+        "qemu-img create",
+        "losetup ",
+        "mkfs.",
+        "parted ",
+        "sgdisk ",
+        "wipefs ",
+        "bootc install",
+        "efibootmgr ",
+        "bcdedit ",
+        "dd if=",
+        "windows10.qcow2",
+        "windows11.qcow2",
+        "curl --get",
+        "curl -o iso",
+        "installationAuthorized=true",
     ):
         assert term not in content, term
     assert "curl --head" in content
@@ -38,7 +50,6 @@ def test_all_shell_steps_parse():
         for step in job["steps"]:
             if "run" in step:
                 result = subprocess.run(
-                    ["bash", "-n"], input=step["run"], capture_output=True,
-                    text=True, check=False
+                    ["bash", "-n"], input=step["run"], capture_output=True, text=True, check=False
                 )
                 assert result.returncode == 0, (step.get("name"), result.stderr)

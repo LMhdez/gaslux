@@ -39,12 +39,17 @@ def candidate(**overrides):
 def preview(**overrides):
     ids = [f"00000000-0000-4000-8000-{i:012d}" for i in range(1, 5)]
     options = {
-        "firmware": "uefi", "partitionStyle": "gpt", "secureBootEnabled": False,
+        "firmware": "uefi",
+        "partitionStyle": "gpt",
+        "secureBootEnabled": False,
         "transactionId": "bazzite-lab-txn-0001",
-        "windowsEspPartuuid": ids[0], "ownedEspPartuuid": ids[1],
-        "ownedBootPartuuid": ids[2], "ownedRootPartuuid": ids[3],
+        "windowsEspPartuuid": ids[0],
+        "ownedEspPartuuid": ids[1],
+        "ownedBootPartuuid": ids[2],
+        "ownedRootPartuuid": ids[3],
         "windowsEspAction": "preserve-no-mount-no-format",
-        "ownedEspFilesystem": "vfat", "ownedBootFilesystem": "ext4",
+        "ownedEspFilesystem": "vfat",
+        "ownedBootFilesystem": "ext4",
         "ownedRootFilesystem": "btrfs",
     }
     options.update(overrides)
@@ -57,19 +62,31 @@ def test_official_metadata_is_not_media_or_installation_trust():
     assert result["advertisedSha256"] == SHA
     assert result["detachedSignatureAdvertised"] is True
     for key in (
-        "detachedSignatureVerified", "isoBytesDownloaded", "isoSha256Verified",
-        "immutableReleasePinAuthorized", "installerIdentityVerified",
-        "manualPartitioningInGuestVerified", "windowsEspPreservedInGuest",
-        "installationAuthorized", "partitionWriteAuthorized",
-        "windowsEspWriteAuthorized", "nativeInstallationVerified",
-        "windowsDualBootVerified", "windowsRecoveryVerified",
+        "detachedSignatureVerified",
+        "isoBytesDownloaded",
+        "isoSha256Verified",
+        "immutableReleasePinAuthorized",
+        "installerIdentityVerified",
+        "manualPartitioningInGuestVerified",
+        "windowsEspPreservedInGuest",
+        "installationAuthorized",
+        "partitionWriteAuthorized",
+        "windowsEspWriteAuthorized",
+        "nativeInstallationVerified",
+        "windowsDualBootVerified",
+        "windowsRecoveryVerified",
     ):
         assert result[key] is False, key
 
 
-@pytest.mark.parametrize("firmware,style", [
-    ("bios", "mbr"), ("bios", "gpt"), ("uefi", "mbr"),
-])
+@pytest.mark.parametrize(
+    "firmware,style",
+    [
+        ("bios", "mbr"),
+        ("bios", "gpt"),
+        ("uefi", "mbr"),
+    ],
+)
 def test_unsupported_modes_refused_first(firmware, style):
     with pytest.raises(LegacyRefusal, match="UEFI/GPT"):
         candidate(firmware=firmware, partition_style=style, checksum_text="malformed")
@@ -81,12 +98,15 @@ def test_secure_boot_and_ambiguous_state_refused(secure_boot):
         candidate(secure_boot_enabled=secure_boot)
 
 
-@pytest.mark.parametrize("url", [
-    "http://download.bazzite.gg/bazzite-stable-amd64.iso",
-    "https://example.com/bazzite-stable-amd64.iso",
-    "https://download.bazzite.gg/bazzite-stable-live-amd64.iso",
-    "https://download.bazzite.gg/bazzite-stable-amd64.iso?latest=1",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://download.bazzite.gg/bazzite-stable-amd64.iso",
+        "https://example.com/bazzite-stable-amd64.iso",
+        "https://download.bazzite.gg/bazzite-stable-live-amd64.iso",
+        "https://download.bazzite.gg/bazzite-stable-amd64.iso?latest=1",
+    ],
+)
 def test_unknown_source_refused(url):
     with pytest.raises(LegacyRefusal, match="exact historical"):
         candidate(iso_url=url)
@@ -111,13 +131,16 @@ def test_unexpected_iso_size_refused(length):
         candidate(content_length=length)
 
 
-@pytest.mark.parametrize("bad", [
-    f"{SHA}  wrong.iso\n",
-    f"{SHA}  {ISO}\n{SHA}  {ISO}\n",
-    f"{SHA.upper()}  {ISO}\n",
-    "not-a-checksum",
-    "",
-])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        f"{SHA}  wrong.iso\n",
+        f"{SHA}  {ISO}\n{SHA}  {ISO}\n",
+        f"{SHA.upper()}  {ISO}\n",
+        "not-a-checksum",
+        "",
+    ],
+)
 def test_invalid_checksum_refused(bad):
     with pytest.raises(LegacyRefusal):
         parse_advertised_checksum(bad)
@@ -132,26 +155,31 @@ def test_static_layout_requires_separate_esp_boot_and_btrfs():
     result = preview()
     assert result["hypotheticalLayoutPassesStaticPolicy"] is True
     for key in (
-        "onDiskIdentityVerified", "anacondaWriteSetVerified",
-        "windowsEspPreservedInGuest", "installationAuthorized",
+        "onDiskIdentityVerified",
+        "anacondaWriteSetVerified",
+        "windowsEspPreservedInGuest",
+        "installationAuthorized",
         "partitionWriteAuthorized",
     ):
         assert result[key] is False
 
 
-@pytest.mark.parametrize("change", [
-    {"secureBootEnabled": True},
-    {"firmware": "bios", "partitionStyle": "mbr"},
-    {"windowsEspAction": "format"},
-    {"windowsEspAction": "preserve"},
-    {"ownedEspFilesystem": "ext4"},
-    {"ownedRootFilesystem": "ext4"},
-    {"ownedBootFilesystem": "btrfs"},
-    {"transactionId": "weak"},
-    {"ownedEspPartuuid": "00000000-0000-4000-8000-000000000001"},
-    {"ownedBootPartuuid": "INVALID"},
-    {"extra": True},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"secureBootEnabled": True},
+        {"firmware": "bios", "partitionStyle": "mbr"},
+        {"windowsEspAction": "format"},
+        {"windowsEspAction": "preserve"},
+        {"ownedEspFilesystem": "ext4"},
+        {"ownedRootFilesystem": "ext4"},
+        {"ownedBootFilesystem": "btrfs"},
+        {"transactionId": "weak"},
+        {"ownedEspPartuuid": "00000000-0000-4000-8000-000000000001"},
+        {"ownedBootPartuuid": "INVALID"},
+        {"extra": True},
+    ],
+)
 def test_unsafe_hypothetical_layout_rejected(change):
     with pytest.raises(LegacyRefusal):
         preview(**change)
