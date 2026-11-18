@@ -9,6 +9,7 @@ fail within a bounded time if the prompt never appears.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
 import socket
@@ -41,7 +42,7 @@ def _owned_private_file_path(path: Path, root: Path) -> None:
         in {
             "windows10-qemu-serial.log",
             "windows10-qemu-process.log",
-            "windows10-qemu-hmp.sock",
+            "windows10-qemu-qmp.sock",
         },
         "Unexpected Windows QEMU evidence path",
     )
@@ -57,31 +58,30 @@ def inspect_serial_for_boot_prompt(raw: bytes) -> str:
     return "pending"
 
 
-def _read_hmp_ready(channel: socket.socket) -> bytes:
-    """Require a real HMP command prompt/response, not a successful sendall."""
-    payload = bytearray()
-    while len(payload) < 8192:
-        fragment = channel.recv(4096)
-        _require(bool(fragment), "QEMU HMP channel closed without acknowledgement")
-        payload.extend(fragment)
-        if b"(qemu)" in payload:
-            break
-    data = bytes(payload)
-    _require(b"(qemu)" in data, "Missing QEMU HMP response prompt")
-    lower = data.lower()
-    _require(
-        b"unknown command" not in lower
-        and b"invalid parameter" not in lower
-        and b"error:" not in lower,
-        "QEMU HMP rejected optical boot key",
-    )
-    return data
+def _read_qmp_reply(stream, expected_id: str) -> dict:
+    """Read newline-delimited QMP messages until the matching reply arrives."""
+    while True:
+        line = stream.readline()
+        _require(bool(line), "QEMU QMP channel closed without acknowledgement")
+        _require(len(line) <= 8192, "Oversized QEMU QMP response")
+        try:
+            message = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise WindowsDvdRefusal("Malformed QEMU QMP response") from exc
+        _require(isinstance(message, dict), "Unexpected QEMU QMP response")
+        if "event" in message:
+            continue
+        if message.get("id") != expected_id:
+            continue
+        _require("error" not in message, "QEMU QMP rejected optical boot key")
+        _require("return" in message, "QEMU QMP response has no return value")
+        return message
 
 
 def _send_key(sock: Path, pid: int) -> None:
     st = sock.lstat()
-    _require(stat.S_ISSOCK(st.st_mode), "QEMU monitor endpoint is not a socket")
-    _require(st.st_uid == os.getuid(), "Foreign QEMU monitor socket owner")
+    _require(stat.S_ISSOCK(st.st_mode), "QEMU QMP endpoint is not a socket")
+    _require(st.st_uid == os.getuid(), "Foreign QEMU QMP socket owner")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
         channel.settimeout(3)
         channel.connect(str(sock))
@@ -91,15 +91,42 @@ def _send_key(sock: Path, pid: int) -> None:
         )
         _require(
             peer_pid == pid and peer_uid == os.getuid(),
-            "QEMU HMP peer does not match the exact launched process",
+            "QEMU QMP peer does not match the exact launched process",
         )
-        _read_hmp_ready(channel)
-        # A short Space key is recognized by the Windows UEFI optical
-        # prompt. USB keyboard is explicit in the VM hardware contract.
-        # Never continue sending keys after the installer may take over.
-        channel.sendall(b"sendkey spc 250\n")
-        _read_hmp_ready(channel)
-
+        with channel.makefile("rwb", buffering=0) as stream:
+            greeting = stream.readline()
+            _require(bool(greeting) and len(greeting) <= 8192, "Missing QEMU QMP greeting")
+            try:
+                greeting_data = json.loads(greeting)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise WindowsDvdRefusal("Malformed QEMU QMP greeting") from exc
+            _require(
+                isinstance(greeting_data, dict) and isinstance(greeting_data.get("QMP"), dict),
+                "QEMU endpoint is not a QMP monitor",
+            )
+            stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-capabilities"}\\r\\n')
+            _read_qmp_reply(stream, "gaslux-capabilities")
+            # Explicit key-down/key-up events go through QEMU's input event
+            # API, rather than HMP's legacy sendkey command. This is the
+            # firmware-level USB HID path used by the attached usb-kbd.
+            request = {
+                "execute": "input-send-event",
+                "arguments": {
+                    "events": [
+                        {
+                            "type": "key",
+                            "data": {"key": {"type": "qcode", "data": "spc"}, "down": True},
+                        },
+                        {
+                            "type": "key",
+                            "data": {"key": {"type": "qcode", "data": "spc"}, "down": False},
+                        },
+                    ]
+                },
+                "id": "gaslux-ovmf-space",
+            }
+            stream.write((json.dumps(request, separators=(",", ":")) + "\\r\\n").encode())
+            _read_qmp_reply(stream, "gaslux-ovmf-space")
 
 def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list[str]) -> None:
     _require(
@@ -115,7 +142,7 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
     )
     for item in (serial, monitor, log):
         _owned_private_file_path(item, root)
-    _require(len(str(monitor).encode("utf-8")) < 100, "QEMU monitor socket path too long")
+    _require(len(str(monitor).encode("utf-8")) < 100, "QEMU QMP socket path too long")
     _require(args and args[0] == QEMU_BINARY, "Only the known QEMU binary is allowed")
     _require("-no-reboot" in args, "Expected non-rebooting Windows setup cycle")
     _require(
@@ -125,10 +152,10 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
         and "-nic" not in args,
         "QEMU networking must be disabled",
     )
-    _require(args.count("-monitor") == 1, "Exactly one private QEMU monitor required")
+    _require(args.count("-qmp") == 1, "Exactly one private QEMU monitor required")
     _require(
-        "-monitor" in args and "unix:" + str(monitor) + ",server=on,wait=off" in args,
-        "QEMU monitor must be a private Unix socket",
+        "-qmp" in args and "unix:" + str(monitor) + ",server=on,wait=off" in args,
+        "QEMU QMP must be a private Unix socket",
     )
     _require(
         any(
@@ -240,8 +267,8 @@ def run(
                     with serial.open("rb") as capture:
                         raw = capture.read(64 * 1024)
                     if inspect_serial_for_boot_prompt(raw) == "prompt":
-                        _require(monitor.is_socket(), "QEMU monitor not ready at EFI prompt")
-                        _send_key(monitor, proc.pid)
+                        _require(monitor.is_socket(), "QEMU QMP not ready at EFI prompt")
+                        time.sleep(0.5)\n                        _send_key(monitor, proc.pid)
                         sent = True
                         print("GASLUX_WIN10_OVMF_DVD_KEY_SENT=PASS", flush=True)
                         break
