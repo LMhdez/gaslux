@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
       - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
+      - 'auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py'
+      - 'auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py'
   workflow_dispatch:
 
 permissions:
@@ -206,7 +208,7 @@ jobs:
               -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code"
               -drive "if=pflash,format=raw,unit=1,file=$vars"
               -device ich9-ahci,id=sata
-              # Firmware-level HID input is explicit; HMP sendkey without
+              # Firmware-level HID input is explicit; legacy HMP input without
               # a guest keyboard did not satisfy the OVMF DVD key prompt.
               -device qemu-xhci,id=usbctrl
               -device usb-kbd,bus=usbctrl.0
@@ -228,7 +230,7 @@ jobs:
             set +e
             if (( attempt == 1 )); then
               # Official EFI DVD requires an explicit key. The helper watches
-              # the genuine OVMF serial prompt and only sends a USB HID Space event to the
+              # the genuine OVMF serial prompt and sends a USB HID Space key-down/key-up event to the
               # exact QEMU PID through a private QMP Unix monitor socket.
               first_cycle_limit=$(( remaining < 1500 ? remaining : 1500 ))
               python3 auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py \
