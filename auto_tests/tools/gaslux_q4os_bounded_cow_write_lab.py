@@ -377,9 +377,11 @@ def _authenticate_guest_write(
             process.wait(timeout=30)
             _require(process.returncode == -9, "QEMU SIGKILL was not observed")
         else:
-            finish_mac = hmac.new(
-                secret.encode("ascii"), AUTH_DOMAIN + FINISH, hashlib.sha256
-            ).hexdigest().encode("ascii")
+            finish_mac = (
+                hmac.new(secret.encode("ascii"), AUTH_DOMAIN + FINISH, hashlib.sha256)
+                .hexdigest()
+                .encode("ascii")
+            )
             conn.sendall(FINISH + b":" + finish_mac + b"\n")
             process.wait(timeout=50)
             _require(process.returncode == 0, "QEMU guest did not shut down successfully")
