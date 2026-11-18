@@ -123,7 +123,7 @@ jobs:
           assert obj["detachedSignatureVerified"] is True
           assert obj["installationAuthorized"] is False
           obj["catalogPinAuthorized"] = False
-          obj["PIN_DISCOVERY_ONLY"] = False
+          obj["pinDiscoveryOnly"] = True
           obj["upstreamBuildEvidence"] = "https://github.com/ublue-os/bazzite/actions/runs/44121421800"
           obj["observedIsoSha256"] = sys.argv[1]
           obj["observedIsoSizeBytes"] = int(sys.argv[2])

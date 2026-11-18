@@ -67,7 +67,7 @@ def test_media_must_be_cosign_verified_and_never_authorized():
             continue
         assert required in source, required
     assert "catalogPinAuthorized" in source
-    assert "PIN_DISCOVERY_ONLY" in source
+    assert 'obj["pinDiscoveryOnly"] = True' in source
 
 
 def test_no_target_writes_or_private_iso_in_artifacts():
@@ -90,3 +90,16 @@ def test_no_target_writes_or_private_iso_in_artifacts():
     assert '-drive "if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso"' in source
     assert "persist-credentials: false" in source
     assert "if-no-files-found: warn" in source
+
+
+def test_official_iso_immutable_pin_not_promoted_to_catalog():
+    """The trusted upstream ISO must be checked against independent fixed pins."""
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "expected_sha='6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5'" in source
+    assert "expected_size='8377878528'" in source
+    assert 'if [[ "$sha" != "$expected_sha" || "$size" != "$expected_size" ]]; then' in source
+    assert 'obj["pinDiscoveryOnly"] = True' in source
+    assert 'obj["catalogPinAuthorized"] = False' in source
+    assert 'obj["installerIdentityVerified"] = False' in source
+    assert 'assert obj["installationAuthorized"] is False' in source
+    assert "Native Bazzite installer UI confirmed at phase" in source
