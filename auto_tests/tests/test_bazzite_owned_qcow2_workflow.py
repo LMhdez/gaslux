@@ -25,9 +25,7 @@ def test_permissions_and_vm_only_on_branch_push():
     assert jobs["owned-qcow2-storage-discovery"]["needs"] == "contracts"
     assert jobs["owned-qcow2-storage-discovery"]["if"] == "github.event_name != 'pull_request'"
     assert jobs["owned-qcow2-storage-discovery"]["runs-on"] == "ubuntu-24.04"
-    assert "feature/bazzite-owned-qcow2-storage-discovery" in str(
-        wf.get("on", wf.get(True))
-    )
+    assert "feature/bazzite-owned-qcow2-storage-discovery" in str(wf.get("on", wf.get(True)))
 
 
 def test_signed_real_iso_is_always_verified_before_guest_disk_is_attached():
@@ -51,9 +49,9 @@ def test_only_one_blank_private_qcow2_and_no_windows_image_or_disk_writers():
     source = WF.read_text(encoding="utf-8")
     assert "bazzite_owned_qcow2.py prepare" in source
     assert "bazzite_owned_qcow2.py discard" in source
-    assert source.count("-device \"virtio-blk-pci,drive=owned-target,serial=$serial\"") == 1
-    assert source.count('id=owned-target,format=qcow2,file=$owned/scratch-overlay.qcow2') == 1
-    assert 'readonly=on,file=$iso' in source
+    assert source.count('-device "virtio-blk-pci,drive=owned-target,serial=$serial"') == 1
+    assert source.count("id=owned-target,format=qcow2,file=$owned/scratch-overlay.qcow2") == 1
+    assert "readonly=on,file=$iso" in source
     assert "-nic none" in source
     assert "-nodefaults" in source
     assert 'assert plan["windowsGuestAttached"] is False' in source
