@@ -474,6 +474,55 @@ class SharedRootOnlySafety(unittest.TestCase):
             shared.unmount_owned_root_tree(root, device, run=runner)
         self.assertFalse(any(c[0] == "umount" for c in calls))
 
+    def test_cleanup_busy_owned_api_mount_bounded_retry(self):
+        root, source = shared.ROOT, Path("/dev/vdb5")
+        dev = str(root / "dev")
+        graph = f"{root} {source} ext4\n{dev} devtmpfs devtmpfs"
+        attempts = []
+        delays = []
+        records = {str(root): f"{source} ext4", dev: "devtmpfs devtmpfs"}
+
+        def runner(argv):
+            if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
+                return graph
+            if argv[:3] == ["findmnt", "-rn", "-M"]:
+                return records[argv[3]]
+            if argv[:2] == ["umount", "--"]:
+                attempts.append(argv[2])
+                if argv[2] == dev and attempts.count(dev) == 1:
+                    raise shared.SharedDiskHandoffRejected("lab command failed: umount")
+                return ""
+            raise AssertionError(argv)
+
+        shared.unmount_owned_root_tree(root, source, run=runner,
+                                       sleeper=delays.append)
+        self.assertEqual(attempts, [dev, dev, str(root)])
+        self.assertEqual(delays, [1])
+
+    def test_cleanup_persistent_busy_fails_without_force(self):
+        root, source = shared.ROOT, Path("/dev/vdb5")
+        graph = f"{root} {source} ext4"
+        operations = []
+        delays = []
+        def runner(argv):
+            operations.append(argv)
+            if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
+                return graph
+            if argv[:3] == ["findmnt", "-rn", "-M"]:
+                return f"{source} ext4"
+            if argv[:2] == ["umount", "--"]:
+                raise shared.SharedDiskHandoffRejected("lab command failed: umount")
+            raise AssertionError(argv)
+
+        with self.assertRaisesRegex(shared.SharedDiskHandoffRejected,
+                                    "bounded retries: root"):
+            shared.unmount_owned_root_tree(root, source, run=runner,
+                                           sleeper=delays.append)
+        self.assertEqual(delays, [1, 1, 1])
+        self.assertEqual(sum(cmd[0] == "umount" for cmd in operations), 4)
+        self.assertTrue(all(cmd[:2] != ["umount", "-R"] for cmd in operations))
+        self.assertFalse(any("-l" in cmd or "-f" in cmd for cmd in operations))
+
     def test_source_protection_is_required_on_both_mount_paths(self):
         source = (HERE / "tools/cachyos_windows_shared_root_pacstrap.py").read_text()
         self.assertIn("verify_mounted_source(Path(temp), source, mount_type,",
