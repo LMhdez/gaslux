@@ -1,0 +1,99 @@
+name: CachyOS QEMU OVMF ext4 ISO UUID visibility (no Windows, no writes)
+
+on:
+  push:
+    branches:
+      - fix/cachyos-ovmf-iso-usb-uuid-20261118
+    paths:
+      - .github/workflows/cachyos-ovmf-iso-uuid-smoke.yml
+      - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
+      - auto_tests/test_cachyos_shared_root_pacstrap_host_contract.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ovmf-usb-ext4-uuid:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Verify disposable hosted-runner boundary and install EFI tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          timeout --kill-after=10s 300s sudo apt-get update -qq
+          timeout --kill-after=10s 300s sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            grub-efi-amd64-bin grub-common qemu-system-x86 ovmf mtools dosfstools e2fsprogs
+      - name: Boot only regular-file QEMU USB images; attest ext4 filesystem UUID from GRUB
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          lab="$(mktemp -d -p "$RUNNER_TEMP" gaslux-ovmf-usb-uuid-XXXXXXXX)"
+          chmod 0700 "$lab"
+          trap 'rm -rf -- "$lab"' EXIT
+          test ! -L "$lab"
+          test "$(stat -c %a "$lab")" = 700
+          uuid="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+          truncate -s 160M "$lab/iso-carrier.raw"
+          mkfs.ext4 -q -F -U "$uuid" "$lab/iso-carrier.raw"
+          truncate -s 96M "$lab/efi-launch.raw"
+          mkfs.vfat -F 32 -n GASLUXBOOT "$lab/efi-launch.raw"
+          cat > "$lab/grub.cfg" <<'GRUB'
+          serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
+          terminal_input serial
+          terminal_output serial
+          set default=gaslux-smoke
+          set timeout=0
+          menuentry 'Gaslux QEMU firmware ext4 lookup (no installer)' --id gaslux-smoke {
+              insmod ext2
+              search --no-floppy --fs-uuid --set=gaslux_iso_dev __UUID__
+              if [ -z "$gaslux_iso_dev" ]; then
+                  echo GASLUX_VM_ISO_UUID_NOT_VISIBLE
+                  ls
+                  reboot
+              fi
+              if [ ! -f ($gaslux_iso_dev)/gaslux-test-marker ]; then
+                  echo GASLUX_VM_ISO_UUID_WRONG_VOLUME
+                  reboot
+              fi
+              echo GASLUX_VM_OVMF_EXT4_USB_UUID_PASS
+              reboot
+          }
+          GRUB
+          sed -i "s/__UUID__/$uuid/" "$lab/grub.cfg"
+          # The ISO carrier is never exposed as a host block device. Populate
+          # only this private regular file, then never mount it writable again.
+          printf 'gaslux-private-iso-uuid-probe\n' > "$lab/gaslux-test-marker"
+          debugfs -w -R "write $lab/gaslux-test-marker /gaslux-test-marker" "$lab/iso-carrier.raw" >/dev/null
+          grub-script-check "$lab/grub.cfg"
+          grub-mkstandalone --format=x86_64-efi \
+            --output="$lab/BOOTX64.EFI" "boot/grub/grub.cfg=$lab/grub.cfg"
+          mmd -i "$lab/efi-launch.raw" ::/EFI
+          mmd -i "$lab/efi-launch.raw" ::/EFI/BOOT
+          mcopy -i "$lab/efi-launch.raw" "$lab/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+          code=/usr/share/OVMF/OVMF_CODE_4M.fd
+          vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          test -s "$code"
+          test -s "$vars"
+          cp -- "$vars" "$lab/ovmf-vars.fd"
+          before="$(sha256sum "$lab/iso-carrier.raw" | cut -d' ' -f1)"
+          timeout --kill-after=5s 120s qemu-system-x86_64 \
+            -machine q35,accel=tcg,smm=on \
+            -global driver=cfi.pflash01,property=secure,value=on \
+            -m 1024 -smp 1 -display none -monitor none -no-reboot \
+            -drive "if=pflash,format=raw,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,file=$lab/ovmf-vars.fd" \
+            -device qemu-xhci \
+            -drive "if=none,id=liveefi,format=raw,file=$lab/efi-launch.raw,readonly=on" \
+            -device usb-storage,drive=liveefi,bootindex=1 \
+            -drive "if=none,id=iso_source,format=raw,file=$lab/iso-carrier.raw,readonly=on" \
+            -device usb-storage,drive=iso_source,bootindex=2 \
+            -serial "file:$lab/serial.log"
+          test "$(sha256sum "$lab/iso-carrier.raw" | cut -d' ' -f1)" = "$before"
+          test "$(grep -Fc GASLUX_VM_OVMF_EXT4_USB_UUID_PASS "$lab/serial.log" || true)" = 1
+          ! grep -Eq 'GASLUX_VM_ISO_UUID_NOT_VISIBLE|GASLUX_VM_ISO_UUID_WRONG_VOLUME' "$lab/serial.log"
+          echo 'PASS: genuine OVMF GRUB firmware saw exact ext4 UUID on read-only USB file. No Windows, Archiso, pacstrap or rollback tested.' >> "$GITHUB_STEP_SUMMARY"
