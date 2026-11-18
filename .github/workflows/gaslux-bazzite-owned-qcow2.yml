@@ -28,9 +28,11 @@ jobs:
           python-version: '3.11'
       - name: Install QEMU image tool for real QCOW2 ownership tests
         shell: bash
+        timeout-minutes: 15
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-utils
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=30s 600s apt-get install -y -qq qemu-utils
       - name: Syntax, Ruff and fail-closed contracts
         shell: bash
         run: |
