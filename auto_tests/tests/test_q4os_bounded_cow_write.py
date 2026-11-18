@@ -239,7 +239,7 @@ def test_sigkill_fault_injection_requires_separate_explicit_opt_in():
     assert "process.returncode == -signal.SIGKILL" in host
     assert host.index("verified = validate_write_result") < host.index("process.kill()")
     lab = inspect.getsource(run_lab)
-    assert 'GASLUX_Q4OS_POWER_CUT_LAB_ONLY' in lab
+    assert "GASLUX_Q4OS_POWER_CUT_LAB_ONLY" in lab
     assert '"rollbackVerified": False' in lab or '"rollbackVerified"' in lab
 
 
