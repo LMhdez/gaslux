@@ -219,7 +219,7 @@ jobs:
               args+=(
                 -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on"
                 -device ide-cd,drive=install,bus=sata.1,bootindex=1
-                -monitor "unix:$work/windows10-qemu-hmp.sock,server=on,wait=off"
+                -qmp "unix:$work/windows10-qemu-qmp.sock,server=on,wait=off"
               )
             else
               args+=(-monitor none)
@@ -228,8 +228,8 @@ jobs:
             set +e
             if (( attempt == 1 )); then
               # Official EFI DVD requires an explicit key. The helper watches
-              # the genuine OVMF serial prompt and only sends Enter to the
-              # exact QEMU PID through a private HMP Unix monitor socket.
+              # the genuine OVMF serial prompt and only sends a USB HID Space event to the
+              # exact QEMU PID through a private QMP Unix monitor socket.
               first_cycle_limit=$(( remaining < 1500 ? remaining : 1500 ))
               python3 auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py \
                 "$work" "$serial" "$work/windows10-qemu-hmp.sock" "$qemu_log" \
