@@ -74,6 +74,26 @@ class MintOverlayContracts(unittest.TestCase):
             "-m", "/dev/sda5", "copy-in", "/tmp/unpacked/.", "/",
         ])
 
+    def test_guestfish_download_uses_readonly_guest_access(self):
+        command = mint.guestfish_download_command(
+            Path("/tmp/windows-cow.qcow2"),
+            "/boot/initrd.img-6.14.0-37-generic",
+            Path("/tmp/initrd.img"))
+        self.assertEqual(command, [
+            "sudo", "guestfish", "--ro", "-a", "/tmp/windows-cow.qcow2",
+            "-m", "/dev/sda5", "download",
+            "/boot/initrd.img-6.14.0-37-generic", "/tmp/initrd.img",
+        ])
+
+    def test_initramfs_is_downloaded_after_fuse_unmount_before_host_inspection(self):
+        source = Path(mint.__file__).read_text(encoding="utf-8")
+        unmount = source.index('run(["sudo", "guestunmount", str(target)], timeout=120)')
+        download = source.index("guestfish_download_command(overlay, f\"/boot/initrd.img-{version}\"")
+        inspect = source.index('run(["lsinitramfs", str(initrd_copy)], timeout=600)')
+        self.assertLess(unmount, download)
+        self.assertLess(download, inspect)
+        self.assertNotIn('"chroot", str(target), "lsinitramfs"', source)
+
     def test_guestmount_workflow_enables_fuse_allow_other(self):
         root = Path(mint.__file__).resolve().parents[2]
         workflow = root / ".github/workflows/windows-cachyos-post-ext4-fourth-boot.yml"
