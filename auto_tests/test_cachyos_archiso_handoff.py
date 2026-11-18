@@ -233,7 +233,7 @@ class HandoffTests(unittest.TestCase):
 
     def test_ext4_superblock_uuid_probe_reads_exact_bytes(self):
         device = Path(self.temp.name) / "synthetic-loop-device"
-        device.write_bytes(b"\\x00" * 4096)
+        device.write_bytes(bytes(4096))
         expected_uuid = "01234567-89ab-cdef-0123-456789abcdef"
         with device.open("r+b") as stream:
             stream.seek(1024 + 56)
@@ -266,7 +266,7 @@ class HandoffTests(unittest.TestCase):
                 output = "/dev/vda3 ntfs3"
             elif argv[0] == "findmnt":
                 output = "/dev/loop2 iso9660 ro"
-            elif argv[0] == "sudo" and argv[1:3] == ["-n", "python3"]:
+            elif argv[0] == "sudo" and argv[1:3] == ["-n", "blkid"]:
                 output = GOOD["isoStorageUuid"]
             else:
                 output = "/mnt/another.iso"
@@ -301,7 +301,7 @@ class HandoffTests(unittest.TestCase):
                     isoStorageUuid="01234567-89ab-cdef-0123-456789abcdef")
         with self.assertRaisesRegex(
             handoff.HandoffError,
-            r"blkid \(exit 2\).*<path>.*bad magic"
+            r"ext4-superblock probe \(exit 2\).*<path>.*bad magic"
         ):
             handoff.prepare(plan, storage_root=self.disk, iso_root=self.iso,
                             require_mounted_iso=True, mount_runner=cmd)
