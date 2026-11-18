@@ -96,8 +96,18 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         workflow = (TOOLS.parent.parent / ".github/workflows/"
                     "cachyos-windows10-shared-root-pacstrap.yml").read_text()
         self.assertIn("timeout --kill-after=10s 300s sudo apt-get", workflow)
-        self.assertIn("timeout --kill-after=10s 600s sudo DEBIAN_FRONTEND=noninteractive apt-get", workflow)
+        self.assertIn("timeout --kill-after=10s 1800s sudo DEBIAN_FRONTEND=noninteractive apt-get", workflow)
         self.assertIn("Acquire::https::Timeout=60", workflow)
+        self.assertIn("mirrorlist=/etc/apt/apt-mirrors.txt", workflow)
+        self.assertIn("sources=/etc/apt/sources.list.d/ubuntu.sources", workflow)
+        self.assertIn("Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg", workflow)
+        self.assertIn("grep -Fxq 'https://archive.ubuntu.com/ubuntu/'", workflow)
+        # Fail if the mirrorlist has a literal backslash-n rather than newline.
+        mirror_line = "printf '%s" + chr(92) + "n' 'https://archive.ubuntu.com/ubuntu/'"
+        self.assertIn(mirror_line, workflow)
+        self.assertNotIn("printf '%s" + chr(92) * 2 + "n' 'https://archive.ubuntu.com/ubuntu/'", workflow)
+        self.assertNotIn("--allow-unauthenticated", workflow)
+        self.assertNotIn("Acquire::AllowInsecureRepositories", workflow)
         # The firmware meta depends on hundreds of MB of unrelated GPU,
         # Wi-Fi, and device firmware. The guestfs Linux VM needs only the
         # authenticated kernel image and matching signed module packages.
