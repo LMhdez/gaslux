@@ -45,8 +45,8 @@ def make_args(root: Path) -> list[str]:
         "qemu-xhci,id=usbctrl",
         "-device",
         "usb-kbd,bus=usbctrl.0",
-        "-monitor",
-        f"unix:{root / 'windows10-qemu-hmp.sock'},server=on,wait=off",
+        "-qmp",
+        f"unix:{root / 'windows10-qemu-qmp.sock'},server=on,wait=off",
         "-net",
         "none",
         "-drive",
@@ -75,7 +75,7 @@ def paths(monkeypatch, tmp_path):
     return (
         tmp_path,
         tmp_path / "windows10-qemu-serial.log",
-        tmp_path / "windows10-qemu-hmp.sock",
+        tmp_path / "windows10-qemu-qmp.sock",
         tmp_path / "windows10-qemu-process.log",
     )
 
@@ -132,10 +132,10 @@ def test_efi_prompt_gate_never_runs_actual_installer_in_unit_tests(monkeypatch, 
 def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github/workflows/gaslux-q4os-windows10-qcow2.yml").read_text()
-    assert "gaslux_q4os_win10_ovmf_dvd_input.py" in workflow
+    assert "gaslux_q4os_win10_ovmf_dvd_input.py" in workflow\n    assert "input-send-event" in (root / "auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py").read_text()
     assert "GASLUX_WIN10_UEFI_OPTICAL_INPUT_LAB_ONLY: 'yes'" in workflow
     assert "timeout-minutes: 90" in workflow
-    assert "windows10-qemu-hmp.sock" in workflow
+    assert "windows10-qemu-qmp.sock" in workflow
     assert "cycle_limit" in workflow
     assert "-no-reboot" in workflow
     assert "qemu-nbd --read-only" in workflow
