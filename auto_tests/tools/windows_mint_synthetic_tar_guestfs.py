@@ -59,7 +59,9 @@ def main() -> None:
             "qemu-img", "create", "-f", "qcow2", "-F", "raw",
             "-b", str(backing), str(overlay),
         ], check=True, capture_output=True, timeout=60)
-        original_backing_hash = hashlib.sha256(backing.read_bytes()[:4 * 1024 * 1024]).hexdigest()
+        backing.chmod(0o400)
+        with backing.open("rb") as stream:
+            original_backing_hash = hashlib.sha256(stream.read(4 * 1024 * 1024)).hexdigest()
         # qcow2 is never attached alongside its backing as a writable QEMU disk.
         g = guestfs.GuestFS(python_return_dict=True)
         try:
@@ -103,7 +105,8 @@ def main() -> None:
                 check.shutdown()
             finally:
                 check.close()
-        assert hashlib.sha256(backing.read_bytes()[:4 * 1024 * 1024]).hexdigest() == original_backing_hash
+        with backing.open("rb") as stream:
+            assert hashlib.sha256(stream.read(4 * 1024 * 1024)).hexdigest() == original_backing_hash
         print("PASS: real libguestfs gzip tar import to fifth ext4 only; synthetic backing unchanged")
         print("NOT TESTED: real Windows, Mint boot, production GRUB, updates, rollback")
 
