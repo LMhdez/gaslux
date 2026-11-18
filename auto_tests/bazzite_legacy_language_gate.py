@@ -97,10 +97,12 @@ def inspect(*, width: int, height: int, png_sha: str, ocr: str, tsv: str) -> dic
         ]
         row_text = re.sub(r"[^a-z]", "", " ".join(peer["text"] for peer in row).lower())
         if "englishunitedkingdom" in row_text:
-            english_uk.append({
-                "x": word["left"] + word["width"] // 2,
-                "y": y,
-            })
+            english_uk.append(
+                {
+                    "x": word["left"] + word["width"] // 2,
+                    "y": y,
+                }
+            )
     return {
         "distributionId": "bazzite",
         "observedVersionBanner": "42",
