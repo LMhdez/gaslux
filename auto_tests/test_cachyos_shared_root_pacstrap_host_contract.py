@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -181,6 +182,59 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         self.assertIn("GASLUX_SHARED_COW_ESP_BOOTLOADER_NOT_INSTALLED=1", source)
         for forbidden in ("sgdisk --clear", "grub-install", "efibootmgr -c", "mkfs.ext4"):
             self.assertNotIn(forbidden, source)
+
+
+    def test_boot_config_failure_surfaces_sanitized_generator_diagnostic(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-boot-diagnostic-") as td:
+            root = Path(td)
+            iso = root / "cachyos.iso"
+            iso.touch()
+            iso_mount = root / "mounted-iso"
+            iso_mount.mkdir()
+            workspace = root / "workspace"
+            workspace.mkdir()
+            raw_error = (
+                f"unsafe ISO directory: {iso_mount}; token=private-token-value"
+            )
+            result = subprocess.CompletedProcess(
+                [], 1, "", json.dumps({"ok": False, "error": raw_error})
+            )
+            with mock.patch.object(host, "_run", return_value=result):
+                with self.assertRaises(host.SharedRootPacstrapError) as caught:
+                    host._create_boot_config(
+                        iso=iso, iso_sha256="a" * 64, iso_uuid="01234567-89ab-cdef-0123-456789abcdef",
+                        iso_mount=iso_mount, workspace=workspace, run_id="run-12345",
+                        nonce="nonce-12345", plan_sha="b" * 64, key_sha="c" * 64,
+                    )
+            message = str(caught.exception)
+            self.assertIn("unsafe ISO directory", message)
+            self.assertIn("<private-path>", message)
+            self.assertNotIn(str(iso_mount), message)
+            self.assertNotIn("private-token-value", message)
+
+    def test_boot_config_failure_does_not_publish_unstructured_output(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-boot-unstructured-") as td:
+            root = Path(td)
+            iso = root / "cachyos.iso"
+            iso.touch()
+            iso_mount = root / "mounted-iso"
+            iso_mount.mkdir()
+            workspace = root / "workspace"
+            workspace.mkdir()
+            result = subprocess.CompletedProcess(
+                [], 1, "", "Traceback at /home/runner/work/private/path " + "x" * 5000
+            )
+            with mock.patch.object(host, "_run", return_value=result):
+                with self.assertRaises(host.SharedRootPacstrapError) as caught:
+                    host._create_boot_config(
+                        iso=iso, iso_sha256="a" * 64, iso_uuid="01234567-89ab-cdef-0123-456789abcdef",
+                        iso_mount=iso_mount, workspace=workspace, run_id="run-12345",
+                        nonce="nonce-12345", plan_sha="b" * 64, key_sha="c" * 64,
+                    )
+            message = str(caught.exception)
+            self.assertIn("without bounded structured diagnostics", message)
+            self.assertNotIn("/home/runner", message)
+            self.assertNotIn("Traceback", message)
 
 
 if __name__ == "__main__":
