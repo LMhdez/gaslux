@@ -191,7 +191,7 @@ jobs:
               "distributionId": "bazzite",
               "labOnly": True,
               "firmware": "uefi",
-              "partitionStyle": "gpt",
+              "partitionStyleObserved": None,
               "diskCount": 0,
               "networkEnabled": False,
               "guestHardDiskAttached": False,

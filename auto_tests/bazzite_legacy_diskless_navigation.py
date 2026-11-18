@@ -105,11 +105,12 @@ def main() -> None:
         if any(p.is_symlink() for p in (args.png, args.ocr, args.tsv, args.coords)):
             raise NavigationRefusal("Symlink evidence path")
         with Image.open(args.png) as im:
+            im.verify()
+        with Image.open(args.png) as im:
             if im.size != (WIDTH, HEIGHT):
                 raise NavigationRefusal("Unexpected guest framebuffer")
             if len(im.convert("RGB").getcolors(maxcolors=1000000) or []) <= 2:
                 raise NavigationRefusal("Blank screenshot")
-            im.verify()
         ocr = args.ocr.read_text(encoding="utf-8")
         tsv = args.tsv.read_text(encoding="utf-8")
         locator = locate_english_uk if args.phase == "locale" else locate_continue

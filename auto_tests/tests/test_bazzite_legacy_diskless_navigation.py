@@ -24,6 +24,44 @@ LOCALE = (
 CONTINUE = "5\t99\t1110\t740\t90\t24\tContinue\n"
 
 
+def test_cli_accepts_valid_png_after_independent_verify(tmp_path):
+    import subprocess
+
+    from PIL import Image
+
+    picture = tmp_path / "screenshot.png"
+    im = Image.new("RGB", (1280, 800), "white")
+    im.putpixel((0, 0), (255, 0, 0))
+    im.putpixel((1, 1), (0, 0, 255))
+    im.save(picture)
+    ocr = tmp_path / "screenshot.ocr"
+    tsv = tmp_path / "screenshot.tsv"
+    coords = tmp_path / "coords.txt"
+    ocr.write_text(BANNER, encoding="utf-8")
+    tsv.write_text(TSV_HEAD + LOCALE, encoding="utf-8")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "auto_tests/bazzite_legacy_diskless_navigation.py"),
+            "--phase",
+            "locale",
+            "--png",
+            str(picture),
+            "--ocr",
+            str(ocr),
+            "--tsv",
+            str(tsv),
+            "--coords",
+            str(coords),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert coords.read_text(encoding="ascii") == "778 216\n"
+
+
 def test_unique_locale_target_only_in_diskless_guest():
     result = locate_english_uk(BANNER, TSV_HEAD + LOCALE, 1280, 800)
     assert result["coordinate"] == {"x": 778, "y": 216}

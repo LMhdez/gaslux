@@ -31,6 +31,7 @@ def test_isolation_and_fail_closed_keyboard_mouse_scope():
     assert text.count("click 1") == 2
     assert "locale-coordinate" in text
     assert "continue-coordinate" in text
+    assert '"partitionStyleObserved": None' in text
     assert '"installationAuthorized": False' in text
     assert '"windowsEspWriteAuthorized": False' in text
     for forbidden in (
