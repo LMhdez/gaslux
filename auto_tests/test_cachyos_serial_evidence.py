@@ -21,7 +21,12 @@ class CachyosSerialEvidenceContract(unittest.TestCase):
         smoke = SMOKE.read_text(encoding="utf-8")
         self.assertIn('install -m 0600 -- "$w/serial.log"', smoke)
         self.assertIn("sha256sum cachyos-live-serial.log > cachyos-live-serial.sha256", smoke)
-        self.assertLess(smoke.index("sha256sum cachyos-live-serial.log"), smoke.index("if ! grep -Eq 'Linux version"))
+        self.assertLess(smoke.index("sha256sum cachyos-live-serial.log"),
+                        smoke.index("if ! grep -Eq 'CachyOS [0-9]"))
+        self.assertIn("CachyOS login:", smoke)
+        self.assertIn("Startup finished in .*", smoke)
+        self.assertIn("PASS: official CachyOS LTS kernel and systemd reached real serial login", smoke)
+        self.assertNotIn("PASS: real CachyOS live Linux kernel executed", smoke)
         self.assertIn('[[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" && -f "$w/serial.log" ]]', smoke)
 
 
