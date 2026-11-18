@@ -15,6 +15,7 @@ def test_workflow_is_isolated_and_never_grants_install():
     assert wf["permissions"] == {"contents": "read", "attestations": "read"}
     assert "feature/bazzite-legacy-iso-scout-20261118" in str(wf.get("on", wf.get(True)))
     assert wf["jobs"]["pinned-media-bytes"]["needs"] == "contracts"
+    assert wf["jobs"]["pinned-media-bytes"]["if"] == "github.event_name != 'pull_request'"
     assert "9c8d06cd8e57f2274678edeb14b4b13a79b8117c70571a65199919a66305b5c7" in content
     assert "7907770368" in content
     assert "https://download.bazzite.gg/bazzite-stable-amd64.iso" in content
