@@ -177,23 +177,23 @@ def _safe_generator_diagnostic(result: subprocess.CompletedProcess[str]) -> str:
             "without structured diagnostics"
         )
     message = re.sub(
-        r"(?i)\\b(token|password|secret|authorization|private[_ -]?key)\\b"
-        r"\\s*[:=]\\s*[^\\s,;]+",
-        r"\\1=<redacted>",
+        r"(?i)\b(token|password|secret|authorization|private[_ -]?key)\b"
+        r"\s*[:=]\s*[^\s,;]+",
+        r"\1=<redacted>",
         message,
     )
     message = re.sub(
-        r"(?i)(https?://)[^\\s/@:]+:[^\\s/@]+@",
-        r"\\1<redacted>@",
+        r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@",
+        r"\1<redacted>@",
         message,
     )
     message = re.sub(
-        r"(?<![A-Za-z0-9])/(?:[^\\s/:]+/)*[^\\s/:]+",
+        r"(?<![A-Za-z0-9])/(?:[^\s/:]+/)*[^\s/:]+",
         "<private-path>",
         message,
     )
     message = re.sub(
-        r"(?i)\\b[A-Z]:\\\\(?:[^\\s\\\\]+\\\\)*[^\\s\\\\]+",
+        r"(?i)\b[A-Z]:\\(?:[^\s\\]+\\)*[^\s\\]+",
         "<private-path>",
         message,
     )
