@@ -84,6 +84,13 @@ def guestfish_copy_in_command(overlay: Path, source: Path) -> list[str]:
         "copy-in", str(source) + "/.", "/",
     ]
 
+def guestfish_download_command(overlay: Path, guest_path: str, destination: Path) -> list[str]:
+    """Download one guest file through read-only libguestfs, outside FUSE."""
+    return [
+        "sudo", "guestfish", "--ro", "-a", str(overlay), "-m", "/dev/sda5",
+        "download", guest_path, str(destination),
+    ]
+
 
 def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
     import guestfs
@@ -247,25 +254,33 @@ def install_mint_root_and_boot(
             initrd = target / "boot" / f"initrd.img-{version}"
             require(initrd.is_file() and initrd.stat().st_size > 1024 * 1024,
                     "Mint initramfs was not generated")
-            listing = run(["sudo", "chroot", str(target), "lsinitramfs",
-                           f"/boot/initrd.img-{version}"], timeout=120).stdout
-            require("virtio_blk" in listing or "virtio/virtio_blk" in listing,
-                    "Mint initramfs lacks virtio block support")
-            require("conf/conf.d/default-boot-to-casper.conf" not in listing,
-                    "Mint initramfs still redirects to Casper")
         finally:
             for path in (target / "dev/pts", target / "dev", target / "sys", target / "proc"):
                 subprocess.run(["sudo", "umount", str(path)], check=False,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Release FUSE before reading large boot artifacts. guestfish downloads
+        # directly from ext4 to runner-local storage, avoiding slow initramfs
+        # traversal through the mounted guest filesystem.
+        run(["sudo", "guestunmount", str(target)], timeout=120)
+        guest_mounted = False
         kernel_copy = temp / "vmlinuz"
         initrd_copy = temp / "initrd.img"
-        run(["sudo", "cp", str(kernel), str(kernel_copy)])
-        run(["sudo", "cp", str(initrd), str(initrd_copy)])
+        run(guestfish_download_command(overlay, f"/boot/{kernel.name}", kernel_copy),
+            timeout=300)
+        run(guestfish_download_command(overlay, f"/boot/initrd.img-{version}", initrd_copy),
+            timeout=600)
         run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}", str(kernel_copy), str(initrd_copy)])
         kernel_copy.chmod(0o644)
         initrd_copy.chmod(0o644)
-        run(["sudo", "guestunmount", str(target)], timeout=120)
-        guest_mounted = False
+        require(kernel_copy.is_file() and kernel_copy.stat().st_size > 1024 * 1024,
+                "Mint kernel download from ext4 failed")
+        require(initrd_copy.is_file() and initrd_copy.stat().st_size > 1024 * 1024,
+                "Mint initramfs download from ext4 failed")
+        listing = run(["lsinitramfs", str(initrd_copy)], timeout=600).stdout
+        require("virtio_blk" in listing or "virtio/virtio_blk" in listing,
+                "Mint initramfs lacks virtio block support")
+        require("conf/conf.d/default-boot-to-casper.conf" not in listing,
+                "Mint initramfs still redirects to Casper")
         run(["sudo", "umount", str(iso_mount)], timeout=60)
         iso_mounted = False
         root_uuid_after_copy, windows_after_copy = _guest_disk_audit(overlay, expected_uuid)
