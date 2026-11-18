@@ -1,8 +1,36 @@
 # Bazzite legacy ISO investigation — 18 November 2026
 
-Status: **experimental, discovery-only**. No independent immutable SHA-256/size
-pin for a genuine legacy ISO has yet been established. Bazzite installation is
-**not authorized**, even if a CDN checksum is obtained.
+Status: **experimental, laboratory-only**. A complete ISO byte hash has been
+checked against the earlier CDN discovery value, but no independent immutable
+upstream signature or GitHub attestation has been verified. Bazzite installation
+is **not authorized**.
+
+## Checked official-domain legacy ISO bytes (18 November 2026)
+
+- [Actions #44358709061](https://github.com/LMhdez/gaslux/actions/runs/44358709061):
+  both `contracts` and `pinned-media-bytes` **SUCCESS** on
+  [commit 928634d2](https://github.com/LMhdez/gaslux/commit/928634d2ba392ddb2fbee91f2ac2065fc2d20b19).
+- The exact downloaded `bazzite-stable-amd64.iso` had **7,907,770,368 bytes**
+  and SHA-256 `9c8d06cd8e57f2274678edeb14b4b13a79b8117c70571a65199919a66305b5c7`.
+  Its EFI El Torito boot metadata was independently inspected by `xorriso`.
+- The job returned `officialGithubAttestationVerified=false` and
+  `detachedCosignSignatureVerified=false`. The earlier CDN checksum came
+  from the same mutable origin and is **not** an independent trust anchor.
+- The digest is a **lab observation pin**, not a signed release pin.
+  `catalogPinAuthorized`, `installationAuthorized`, and
+  `windowsEspWriteAuthorized` remain false.
+
+### Quarantined diskless OVMF research
+
+The experimental workflow
+[`gaslux-bazzite-legacy-diskless-ovmf.yml`](../.github/workflows/gaslux-bazzite-legacy-diskless-ovmf.yml)
+checks the lab bytes again, then runs the ISO with **only read-only optical
+media**, private disposable OVMF variables, 8 GiB guest RAM, no attached
+hard disk, no guest network and no automated keyboard/mouse input. It saves
+bounded screenshots/OCR for independent inspection. Even an accepted
+screenshot must not be conflated with Anaconda/Blivet installation, a
+disk-write authorization or Windows ESP preservation. Unsigned/unattested
+legacy ISO execution is restricted to this short-lived isolated lab.
 
 ## Why this separate experiment exists
 
