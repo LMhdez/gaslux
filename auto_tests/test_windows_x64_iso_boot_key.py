@@ -236,6 +236,7 @@ class LocalVncIsoBootKeyTests(unittest.TestCase):
         self.assertNotIn("vnc=127.0.0.1:79", source)
         self.assertNotIn("socket.create_connection", source)
         self.assertIn('base.extend(["-vnc", f"unix:{vnc_path}"])', source)
+        self.assertIn('base.extend(["-display", "none"])', source)
         self.assertIn('vnc_path.stat().st_uid == os.getuid()', source)
 
     def test_unix_rfb_sends_exactly_one_return_pair(self):
