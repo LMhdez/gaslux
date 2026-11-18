@@ -25,8 +25,28 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
-          timeout --kill-after=10s 300s sudo apt-get update -qq
-          timeout --kill-after=10s 300s sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          # The first hashed-evidence rerun hit the runner's slow regional
+          # EC2 Ubuntu mirror and timed out before QEMU. Reuse the verified
+          # Canonical HTTPS mirror policy from the Windows COW lab workflow.
+          mirrorlist=/etc/apt/apt-mirrors.txt
+          sources=/etc/apt/sources.list.d/ubuntu.sources
+          [[ -f "$mirrorlist" && ! -L "$mirrorlist" &&
+             -f "$sources" && ! -L "$sources" &&
+             -f /usr/share/keyrings/ubuntu-archive-keyring.gpg ]] || {
+            echo 'Refusing untrusted hosted-runner Ubuntu sources' >&2
+            exit 1
+          }
+          grep -Fq 'mirror+file:/etc/apt/apt-mirrors.txt' "$sources"
+          grep -Fq 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' "$sources"
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' |
+            sudo tee "$mirrorlist" >/dev/null
+          grep -Fxq 'https://archive.ubuntu.com/ubuntu/' "$mirrorlist"
+          timeout --kill-after=10s 300s sudo apt-get \
+            -o Acquire::Retries=2 -o Acquire::http::Timeout=60 \
+            -o Acquire::https::Timeout=60 update -qq
+          timeout --kill-after=10s 600s sudo DEBIAN_FRONTEND=noninteractive apt-get \
+            -o Acquire::Retries=2 -o Acquire::http::Timeout=60 \
+            -o Acquire::https::Timeout=60 install -y --no-install-recommends \
             grub-efi-amd64-bin grub-common qemu-system-x86 ovmf mtools dosfstools e2fsprogs
       - name: Boot only regular-file QEMU USB images; attest ext4 filesystem UUID from GRUB
         shell: bash
