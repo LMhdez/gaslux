@@ -54,8 +54,7 @@ def locate_english_uk(ocr: str, tsv: str, width: int, height: int) -> dict:
         raise NavigationRefusal("No unique English (United Kingdom) locale row")
     target = matches[0]
     inside_locale_list = (
-        width * 0.55 < target["x"] < width * 0.85
-        and height * 0.15 < target["y"] < height * 0.55
+        width * 0.55 < target["x"] < width * 0.85 and height * 0.15 < target["y"] < height * 0.55
     )
     if not inside_locale_list:
         raise NavigationRefusal("Locale target outside expected safe list")
@@ -119,7 +118,7 @@ def main() -> None:
         parser.exit(2, f"REFUSED: {exc}\n")
     if result["coordinate"] is not None:
         args.coords.write_text(
-            f'{result["coordinate"]["x"]} {result["coordinate"]["y"]}\n',
+            f"{result['coordinate']['x']} {result['coordinate']['y']}\n",
             encoding="ascii",
         )
     print(json.dumps(result, indent=2, sort_keys=True))

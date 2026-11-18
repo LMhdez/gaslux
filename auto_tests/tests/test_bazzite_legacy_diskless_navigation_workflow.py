@@ -59,7 +59,7 @@ def test_clicks_follow_ocr_checks_not_hardcoded_targets():
     content = WF.read_text(encoding="utf-8")
     assert content.index("--phase locale") < content.index("locale-coordinate")
     assert content.index("--phase continue") < content.index("continue-coordinate")
-    assert "if [[ -s \"$work/continue-coordinate\" ]]" in content
+    assert 'if [[ -s "$work/continue-coordinate" ]]' in content
     assert content.count('move "$lx" "$ly" click 1') == 1
     assert content.count('move "$cx" "$cy" click 1') == 1
     assert "no guest hard disk" in content.lower()
