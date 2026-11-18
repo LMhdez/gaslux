@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -248,6 +249,56 @@ def _verify_installed_root(
             g.close()
 
 
+
+def _permit_owned_iso_staging_write(image: Path, mountpoint: Path) -> None:
+    """Give the runner access only to the root of its newly mounted ext4 ISO.
+
+    sudo mount makes the ext4 filesystem root owned by root even though the
+    mountpoint directory was runner-owned. Refuse to chmod/chown anything until
+    the kernel mount source is independently bound to this *specific* private
+    regular file and its loop device, and never accept a host block device.
+    """
+    require(image.is_absolute() and mountpoint.is_absolute()
+            and image.parent == mountpoint.parent
+            and image.name == "cachyos-iso-source.raw"
+            and mountpoint.name == "cachyos-iso-storage"
+            and image.is_file() and not image.is_symlink()
+            and mountpoint.is_dir() and not mountpoint.is_symlink()
+            and image.stat().st_uid == os.getuid()
+            and image.stat().st_nlink == 1
+            and image.stat().st_size > 5 * 1024**3
+            and mountpoint.parent.is_dir()
+            and not mountpoint.parent.is_symlink()
+            and stat.S_IMODE(mountpoint.parent.stat().st_mode) == 0o700,
+            "ISO staging is not an exclusive runner-owned private image")
+    observed = _run(["findmnt", "-rn", "-M", str(mountpoint),
+                     "-o", "SOURCE,FSTYPE,OPTIONS"])
+    require(observed.returncode == 0 and len(observed.stdout) < 2048,
+            "private ISO staging mount is not observable")
+    tokens = observed.stdout.strip().split(None, 2)
+    require(len(tokens) == 3
+            and re.fullmatch(r"/dev/loop[0-9]+", tokens[0]) is not None
+            and tokens[1] == "ext4"
+            and "rw" in tokens[2].split(",")
+            and "ro" not in tokens[2].split(","),
+            "ISO staging is not the expected read-write ext4 loop mount")
+    backing = _run(["losetup", "--noheadings", "--output", "BACK-FILE",
+                    tokens[0]])
+    require(backing.returncode == 0
+            and backing.stdout.strip() == str(image),
+            "ISO staging loop is not backed by the owned private image")
+    owner = f"{os.getuid()}:{os.getgid()}"
+    for argv in (["sudo", "chown", "--", owner, str(mountpoint)],
+                 ["sudo", "chmod", "--", "0700", str(mountpoint)]):
+        result = _run(argv)
+        require(result.returncode == 0,
+                "cannot authorize runner writes to owned ISO staging only")
+    st = mountpoint.stat()
+    require(st.st_uid == os.getuid() and st.st_gid == os.getgid()
+            and stat.S_IMODE(st.st_mode) == 0o700,
+            "private ISO staging root did not acquire runner ownership")
+
+
 def run_shared_root_pacstrap(
     *,
     iso: Path,
@@ -356,6 +407,7 @@ def run_shared_root_pacstrap(
     storage_root.mkdir(mode=0o700)
     mount_rw = _run(["sudo", "mount", "-o", "loop,rw", str(iso_image), str(storage_root)])
     require(mount_rw.returncode == 0, "could not mount private ext4 ISO storage")
+    _permit_owned_iso_staging_write(iso_image, storage_root)
     storage_iso = storage_root / "cachyos.iso"
     try:
         require(not storage_iso.exists() and not storage_iso.is_symlink(),
