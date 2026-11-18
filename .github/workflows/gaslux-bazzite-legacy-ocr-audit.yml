@@ -1,0 +1,89 @@
+name: Bazzite legacy isolated OVMF artifact OCR review (no ISO or VM)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-legacy-iso-scout-20261118
+    paths:
+      - '.github/workflows/gaslux-bazzite-legacy-ocr-audit.yml'
+      - 'auto_tests/bazzite_legacy_ocr_audit.py'
+      - 'auto_tests/tests/test_bazzite_legacy_ocr_audit.py'
+      - 'auto_tests/tests/test_bazzite_legacy_ocr_workflow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  independent-ocr-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test artifact audit policy and formatting
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff PyYAML
+          python -m pytest -q \
+            auto_tests/tests/test_bazzite_legacy_ocr_audit.py \
+            auto_tests/tests/test_bazzite_legacy_ocr_workflow.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_ocr_audit.py \
+            auto_tests/tests/test_bazzite_legacy_ocr_audit.py \
+            auto_tests/tests/test_bazzite_legacy_ocr_workflow.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_ocr_audit.py \
+            auto_tests/tests/test_bazzite_legacy_ocr_audit.py \
+            auto_tests/tests/test_bazzite_legacy_ocr_workflow.py
+      - name: Authenticate exact successful diskless Actions source and commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          id=44364282815
+          sha='44255598cb88c6a93d7beae58fc6a4aa28622d36'
+          gh api "repos/LMhdez/gaslux/actions/runs/$id" \
+            | jq -e --arg sha "$sha" '
+              .conclusion == "success"
+              and .head_sha == $sha
+              and .head_repository.full_name == "LMhdez/gaslux"
+              and .event == "push"
+              and (.path | contains("gaslux-bazzite-legacy-diskless-ovmf.yml"))
+            ' > /dev/null
+          echo 'Authenticated source workflow, not ISO provenance'
+      - name: Retrieve bounded diskless screenshot and OCR evidence only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/bazzite-prior-ocr"
+          gh run download 44364282815 -R LMhdez/gaslux \
+            --name bazzite-legacy-diskless-ovmf-readonly-evidence \
+            --dir "$RUNNER_TEMP/bazzite-prior-ocr"
+          [[ -f "$RUNNER_TEMP/bazzite-prior-ocr/guest-observation.json" ]]
+      - name: Independently compare OCR screenshots and no-install flags
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir bazzite-legacy-ocr-audit-evidence
+          python3 auto_tests/bazzite_legacy_ocr_audit.py \
+            --artifact-dir "$RUNNER_TEMP/bazzite-prior-ocr" \
+            > bazzite-legacy-ocr-audit-evidence/independent-ocr-audit.json
+          cat bazzite-legacy-ocr-audit-evidence/independent-ocr-audit.json
+      - name: Publish compact reviewed text without ISO or firmware state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-legacy-independent-ocr-review
+          path: bazzite-legacy-ocr-audit-evidence/
+          if-no-files-found: warn
+          retention-days: 7
