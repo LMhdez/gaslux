@@ -243,9 +243,8 @@ def test_sigkill_fault_injection_requires_separate_explicit_opt_in():
 
 
 def test_normal_guest_shutdown_requires_authenticated_host_finish():
-    import inspect
-
     from pathlib import Path
+    import inspect
 
     from gaslux_q4os_bounded_cow_write_lab import _authenticate_guest_write
 
