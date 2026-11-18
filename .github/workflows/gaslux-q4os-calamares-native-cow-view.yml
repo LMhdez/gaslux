@@ -1,0 +1,115 @@
+name: Q4OS signed native Calamares disposable COW preview (NO INSTALL)
+
+on:
+  push:
+    branches:
+      - feature/q4os-calamares-native-owned-cow-view
+    paths:
+      - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
+      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
+      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
+      - 'auto_tests/tests/test_q4os_vnc_visual_gate.py'
+      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
+      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
+      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
+      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
+      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
+      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
+  workflow_dispatch:
+
+concurrency:
+  group: q4os-native-cow-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  graphical-installer-lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install disposable QEMU, OVMF, GRUB and screenshot tools
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 qemu-utils grub-common grub-efi-amd64-bin mtools dosfstools gdisk acl
+          python -m pip install vncdotool Pillow 'cryptography>=46,<51' \
+            'jsonschema>=4,<5' 'pytest>=9,<10' 'ruff>=0.8,<1'
+          if [[ -c /dev/kvm ]]; then
+            sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
+          fi
+          if [[ -w /dev/kvm ]]; then
+            echo "KVM available to this disposable hosted job"
+          else
+            echo "KVM unavailable; QEMU will use software TCG"
+          fi
+      - name: Compile, Ruff and refuse unsafe native Calamares preview
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
+          python -m compileall -q \
+            auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
+            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
+            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
+            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py
+          python -m pytest -q auto_tests/tests/test_q4os_native_cow_view_lab.py
+
+      - name: Download and re-verify pinned Q4OS 6.10 r2 native ISO
+        shell: bash
+        env:
+          Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+          Q4OS_SOURCE: https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/q4os-native-target"
+          cd "$RUNNER_TEMP/q4os-native-target"
+          aria2c --continue=true --split=4 --max-connection-per-server=4 --max-tries=5 --retry-wait=8 --timeout=60 --connect-timeout=30 --file-allocation=none --check-integrity=true --checksum="sha-256=$Q4OS_SHA256" -o q4os.iso "$Q4OS_SOURCE"
+          printf '%s  %s\n' "$Q4OS_SHA256" q4os.iso | sha256sum --check --status
+          echo "GASLUX_Q4OS_ISO=$RUNNER_TEMP/q4os-native-target/q4os.iso" >> "$GITHUB_ENV"
+      - name: Snapshot owned synthetic GPT then gate native Calamares radio without writing
+        shell: bash
+        env:
+          Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+          GASLUX_Q4OS_GRAPHICS_LAB_ONLY: '1'
+          GASLUX_Q4OS_NATIVE_COW_VIEW_ONLY: 'yes'
+          GASLUX_Q4OS_LAUNCH_INSTALLER: 'yes'
+          GASLUX_Q4OS_ADVANCE_WELCOME: 'yes'
+          GASLUX_Q4OS_ADVANCE_LOCATION: 'yes'
+          GASLUX_Q4OS_ADVANCE_KEYBOARD: 'yes'
+          GASLUX_Q4OS_SELECT_SOFTWARE: 'yes'
+          GASLUX_Q4OS_ADVANCE_SOFTWARE: 'yes'
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/q4os-native-target/evidence
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
+          python3 -m py_compile auto_tests/tools/gaslux_q4os_vnc_visual_gate.py
+          bash auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh q4os "$GASLUX_Q4OS_ISO" "$Q4OS_SHA256"
+      - name: Preserve exact first-run screenshot transition, kernel logs and SHA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-native-calamares-owned-signed-cow-preview-only
+          path: |
+            ${{ runner.temp }}/q4os-native-target/evidence/
+            ${{ runner.temp }}/q4os-native-target/q4os-cow-plan-${{ github.run_id }}/
+            ${{ runner.temp }}/q4os-native-target/q4os-cow-snapshot-${{ github.run_id }}/
+          if-no-files-found: warn
+          retention-days: 7
