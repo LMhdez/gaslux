@@ -1,0 +1,33 @@
+name: CachyOS official ISO serial evidence contract
+
+on:
+  push:
+    paths:
+      - .github/workflows/cachyos-serial-evidence-contract.yml
+      - .github/workflows/cachyos-official-iso.yml
+      - auto_tests/tools/cachyos_real_live_kernel_smoke.sh
+      - auto_tests/test_cachyos_serial_evidence.py
+  pull_request:
+    paths:
+      - .github/workflows/cachyos-serial-evidence-contract.yml
+      - .github/workflows/cachyos-official-iso.yml
+      - auto_tests/tools/cachyos_real_live_kernel_smoke.sh
+      - auto_tests/test_cachyos_serial_evidence.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  serial-evidence-contract:
+    name: Validate official ISO serial witness retention (no disk writes)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Shell syntax check
+        run: bash -n auto_tests/tools/cachyos_real_live_kernel_smoke.sh
+      - name: Validate serial witness workflow contract
+        run: python3 -m unittest -v auto_tests.test_cachyos_serial_evidence
