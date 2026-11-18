@@ -240,8 +240,15 @@ jobs:
                 echo 'QEMU human monitor socket did not become ready' >&2
                 exit 1
               fi
-              sleep 2
-              printf 'sendkey ret\n' | socat - "UNIX-CONNECT:$monitor"
+              # Allow OVMF to reach the optical-media confirmation screen
+              # before injecting Enter; the monitor remains local to this job.
+              sleep 5
+              monitor_reply="$(printf 'sendkey ret\n' | socat -T 5 - "UNIX-CONNECT:$monitor")"
+              printf '%s\n' "$monitor_reply" | grep -qi 'QEMU' || {
+                echo 'QEMU HMP did not acknowledge the local monitor connection' >&2
+                exit 1
+              }
+              echo 'GASLUX_WINDOWS_ISO_BOOT_KEY_SENT=PASS'
             fi
 
             set +e
