@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Q4OS Windows 10 QCOW2-only OVMF CD prompt input. No physical devices.
 
-Run exactly one disposable QEMU first-boot process, inject Enter only when
+Run exactly one disposable QEMU first-boot process, inject Space only when
 the OVMF serial log proves the official Windows ISO asks for a key, and
 fail within a bounded time if the prompt never appears.
 """
@@ -57,6 +57,27 @@ def inspect_serial_for_boot_prompt(raw: bytes) -> str:
     return "pending"
 
 
+def _read_hmp_ready(channel: socket.socket) -> bytes:
+    """Require a real HMP command prompt/response, not a successful sendall."""
+    payload = bytearray()
+    while len(payload) < 8192:
+        fragment = channel.recv(4096)
+        _require(bool(fragment), "QEMU HMP channel closed without acknowledgement")
+        payload.extend(fragment)
+        if b"(qemu)" in payload:
+            break
+    data = bytes(payload)
+    _require(b"(qemu)" in data, "Missing QEMU HMP response prompt")
+    lower = data.lower()
+    _require(
+        b"unknown command" not in lower
+        and b"invalid parameter" not in lower
+        and b"error:" not in lower,
+        "QEMU HMP rejected optical boot key",
+    )
+    return data
+
+
 def _send_key(sock: Path, pid: int) -> None:
     st = sock.lstat()
     _require(stat.S_ISSOCK(st.st_mode), "QEMU monitor endpoint is not a socket")
@@ -72,7 +93,12 @@ def _send_key(sock: Path, pid: int) -> None:
             peer_pid == pid and peer_uid == os.getuid(),
             "QEMU HMP peer does not match the exact launched process",
         )
-        channel.sendall(b"sendkey ret\n")
+        _read_hmp_ready(channel)
+        # A short Space key is recognized by the Windows UEFI optical
+        # prompt. USB keyboard is explicit in the VM hardware contract.
+        # Never continue sending keys after the installer may take over.
+        channel.sendall(b"sendkey spc 250\n")
+        _read_hmp_ready(channel)
 
 
 def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list[str]) -> None:
@@ -127,6 +153,11 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
         "Unattend medium must be read-only",
     )
     _require(args.count("-drive") == 5, "Unexpected QEMU disk attachment count")
+    _require(
+        args.count("qemu-xhci,id=usbctrl") == 1
+        and args.count("usb-kbd,bus=usbctrl.0") == 1,
+        "No explicitly routed USB keyboard for OVMF",
+    )
     for index, item in enumerate(args):
         _require(
             not item.startswith("/dev/")
@@ -134,6 +165,13 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
             and "file=host_device" not in item,
             "Physical host device forbidden",
         )
+        if item == "-device":
+            _require(index + 1 < len(args), "Truncated QEMU device declaration")
+            device_kind = args[index + 1].split(",", 1)[0]
+            _require(
+                device_kind in {"ich9-ahci", "ide-hd", "ide-cd", "qemu-xhci", "usb-kbd"},
+                "Foreign or host-passthrough QEMU device forbidden",
+            )
         if item == "-drive":
             _require(index + 1 < len(args), "Truncated QEMU drive declaration")
             declaration = args[index + 1]
@@ -210,6 +248,17 @@ def run(
                         break
                 time.sleep(0.075)
             _require(sent, "OVMF did not show its Windows DVD boot prompt")
+            # No Windows Setup serial output is required. We only reject
+            # observable EFI failure without waiting 1500s in a shell.
+            failure_deadline = time.monotonic() + 20
+            while time.monotonic() < failure_deadline and proc.poll() is None:
+                with serial.open("rb") as capture:
+                    recent = capture.read(128 * 1024)
+                _require(
+                    SHELL not in recent and FAILED not in recent,
+                    "USB keyboard injection did not boot the Windows ISO",
+                )
+                time.sleep(0.25)
             remaining = cycle_seconds - (time.monotonic() - started)
             _require(remaining > 0, "No Windows first-boot budget remains")
             try:
