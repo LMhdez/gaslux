@@ -255,6 +255,7 @@ def test_normal_guest_shutdown_requires_authenticated_host_finish():
     assert 'conn.sendall(FINISH + b":" + finish_mac' in host
     assert 'finish = _read_line(fd, 256).split(b":")' in guest
     assert "hmac.compare_digest(finish[1], finish_mac)" in guest
+    assert guest.index("if power_cut:") < guest.index("finish = _read_line(fd, 256)")
 
 
 def test_sigkill_recovery_does_not_claim_host_power_loss_or_windows_rollback():
