@@ -434,3 +434,10 @@ Comparação de blobs SHA Git contra o HEAD da [#195](https://github.com/LMhdez/
 ### Encerramento da PR #4 — 18/11/2026
 
 [#4](https://github.com/LMhdez/gaslux/pull/4) fechada sem merge após comparação com [#195](https://github.com/LMhdez/gaslux/pull/195) (`86926665`). `cachyos-uefi-config.py`, 13 testes UEFI config e 7 testes UEFI lab idênticos por SHA; 17/17 testes antigos de verificação do alvo presentes por nome (21 atuais). `cachyos-uefi-lab.py` e `cachyos-target-verify.py` conservam as funções originais; stage-target mantém pacstrap/interface com restrições VM e identidade ISO corrigida. Documentação e workflow ampliados. **Código substituto permanece experimental fora de dev; nenhuma evidência de dual boot/rollback implicada.** Próxima PR antiga: #5.
+
+### Batch de encerramento #5–#6 — 18/11/2026
+
+- [#5](https://github.com/LMhdez/gaslux/pull/5) fechada sem merge: cinco componentes principais idênticos por SHA Git em [#195](https://github.com/LMhdez/gaslux/pull/195) (`86926665`), incluindo auditoria primeiro boot, testes de transação UEFI, OVMF smoke e matriz de validação. Restantes testes/verificadores idênticos, stage-target reforçado.
+- [#6](https://github.com/LMhdez/gaslux/pull/6) fechada sem merge: 8/8 funções do handoff e 26/26 testes antigos preservados por nome em #195 (agora 9 funções/31 testes); scripts de loopback ext4/NTFS mantidos e ampliados, documentação com secções originais, workflow de ISO com 3 etapas antigas e uma nova de boot do kernel/init.
+
+**Limite:** a comparação de nomes/funções e de SHA não equivale a prova de equivalência semântica nem a teste de instalação; #195 continua experimental fora de `dev`, sem dual boot/rollback comprovado. Próximo batch cronológico: #10/#11, com dependências e handoff assinado a auditar antes de fechar.
