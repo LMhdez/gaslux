@@ -127,7 +127,7 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
             marker = f"json.dumps({proof}, sort_keys=True, indent=2)"
             self.assertEqual(source.count(marker), 1)
             serialized = source.split(marker, 1)[1].split(').encode("utf-8")', 1)[0]
-            self.assertIn('+ "\n"', serialized)
+            self.assertIn(r'+ "\n"', serialized)
 
     def test_guest_installer_remains_root_only_and_never_installs_efi(self):
         source = (TOOLS / "cachyos_windows_shared_root_pacstrap.py").read_text()
