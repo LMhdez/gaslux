@@ -83,7 +83,11 @@ def test_scripted_input_stops_at_storage_page_before_install_review():
     assert "Storage page OBSERVED." in source
     assert "no disk selection or install" in source.lower()
     assert "Welcome. Let's install Bazzite now." in source
-    assert "Installation method page not recognized" in source
+    assert "Expected Virtio target not displayed" in source
+    assert "Ambiguous installer disk count" in source
+    assert "Guest target size mismatch for 70 GiB QCOW2" in source
+    assert "75.2 GB disk" in source
+    assert "Use entire disk" in source
     assert "Storage page not confirmed" in source
     assert source.count("move 407 712 click 1") == 3
     assert "phase in 1 2 3 4 5" in source
