@@ -1,0 +1,53 @@
+name: Q4OS native Calamares owned-COW refusal contracts (NO VM writes)
+
+on:
+  push:
+    branches:
+      - feature/q4os-calamares-native-owned-cow-view
+    paths:
+      - '.github/workflows/gaslux-q4os-native-cow-contracts.yml'
+      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
+      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
+      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
+      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-native-cow-contracts.yml'
+      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
+      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
+      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
+      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
+
+permissions:
+  contents: read
+
+jobs:
+  native-cow-refusals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lightweight Python test dependencies (no ISO/QEMU)
+        run: python -m pip install 'pytest>=9,<10' 'cryptography>=46,<51' 'jsonschema>=4,<5' 'Pillow>=11,<13' 'ruff>=0.8,<1'
+      - name: Check bash, Ruff and fail-closed synthetic-COW GUI contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
+          python -m compileall -q auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
+            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
+            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
+            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py
+          python -m pytest -q auto_tests/tests/test_q4os_native_cow_view_lab.py
