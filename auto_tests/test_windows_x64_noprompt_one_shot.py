@@ -96,6 +96,128 @@ class OneShotHostedWindowsLabTests(unittest.TestCase):
             self.assertIn("retried one-shot", reason)
             self.assertTrue(vm_guest.killed)
 
+    def test_chunked_firmware_counter_retains_start_older_than_400k(self):
+        first = b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM'
+        second = b'BdsDxe: starting Boot00AF "UEFI QEMU DVD-ROM'
+        count, carry = vm.scan_dvd_firmware_starts(first)
+        self.assertEqual(count, 1)
+        count, carry = vm.scan_dvd_firmware_starts(b"x" * 500_000, carry)
+        self.assertEqual(count, 0)
+        count, carry = vm.scan_dvd_firmware_starts(second, carry)
+        self.assertEqual(count, 1)
+
+    def test_fragmented_hex_firmware_boot_start_counted_once(self):
+        marker = b'BdsDxe: starting Boot0A3F "UEFI QEMU DVD-ROM'
+        carry = b""
+        total = 0
+        for chunk in (
+            b'BdsDxe: loading Boot0001 "UEFI QEMU DVD-ROM',
+            marker[:13],
+            marker[13:30],
+            marker[30:],
+        ):
+            found, carry = vm.scan_dvd_firmware_starts(chunk, carry)
+            total += found
+        self.assertEqual(total, 1)
+
+    def test_repeated_dvd_start_with_large_serial_gap_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            serial = pathlib.Path(temp) / "win-serial.log"
+            serial.write_bytes(
+                b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM'
+                + b"z" * 500_000
+                + b'BdsDxe: starting Boot00AF "UEFI QEMU DVD-ROM'
+            )
+            guest = FakeGuest()
+            with patch.object(vm.subprocess, "Popen", return_value=guest), (
+                patch.object(
+                    vm.time, "monotonic", side_effect=iter(range(0, 1000, 5))
+                )
+            ), patch.object(vm.time, "sleep", return_value=None):
+                ok, reason = vm.boot_vm(
+                    ["qemu-system-x86_64"], serial, 400,
+                    "win10_22h2_en_us_x64", reject_repeated_dvd_boot=True, require_initial_dvd_boot=True,
+                )
+            self.assertFalse(ok)
+            self.assertIn("retried one-shot", reason)
+            self.assertTrue(guest.killed)
+
+    def test_no_firmware_start_cannot_prove_guest_firstboot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            serial = pathlib.Path(temp) / "win-serial.log"
+            serial.write_bytes(
+                b'GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win10_22h2_en_us_x64\n'
+                b'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1\n'
+                b'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1\n'
+                b'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1\n'
+                b'GASLUX_WINDOWS_X64_WINRE_ENABLED=1\n'
+                b'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1\n'
+                b'GASLUX_WINDOWS_X64_BOOT_BUILD=19045\n'
+            )
+            guest = FakeGuest()
+            guest.rc = 0
+            with patch.object(vm.subprocess, "Popen", return_value=guest):
+                ok, reason = vm.boot_vm(
+                    ["qemu-system-x86_64"], serial, 400,
+                    "win10_22h2_en_us_x64", reject_repeated_dvd_boot=True, require_initial_dvd_boot=True,
+                )
+            self.assertFalse(ok)
+            self.assertIn("startup was not observed exactly once", reason)
+
+    def test_windows_build_prefix_is_not_sufficient_firstboot_witness(self):
+        with tempfile.TemporaryDirectory() as temp:
+            serial = pathlib.Path(temp) / "win-serial.log"
+            serial.write_bytes(
+                b'BdsDxe: starting Boot0001 "UEFI QEMU DVD-ROM\n'
+                b'GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win10_22h2_en_us_x64\n'
+                b'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1\n'
+                b'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1\n'
+                b'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1\n'
+                b'GASLUX_WINDOWS_X64_WINRE_ENABLED=1\n'
+                b'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1\n'
+                b'GASLUX_WINDOWS_X64_BOOT_BUILD=190450\n'
+            )
+            guest = FakeGuest()
+            guest.rc = 0
+            with patch.object(vm.subprocess, "Popen", return_value=guest):
+                ok, reason = vm.boot_vm(
+                    ["qemu-system-x86_64"], serial, 400,
+                    "win10_22h2_en_us_x64", reject_repeated_dvd_boot=True, require_initial_dvd_boot=True,
+                )
+            self.assertFalse(ok)
+            self.assertIn("before installed Windows first-logon witness", reason)
+
+    def test_disk_only_stage_two_can_verify_windows_without_dvd_start(self):
+        # Synthetic contract only; stage two has no optical media.
+        with tempfile.TemporaryDirectory() as temp:
+            serial = pathlib.Path(temp) / "win-serial.log"
+            serial.write_bytes(
+                b'GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT=win10_22h2_en_us_x64\n'
+                b'GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1\n'
+                b'GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1\n'
+                b'GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1\n'
+                b'GASLUX_WINDOWS_X64_WINRE_ENABLED=1\n'
+                b'GASLUX_WINDOWS_X64_BCD_ENUMERATED=1\n'
+                b'GASLUX_WINDOWS_X64_BOOT_BUILD=19045\n'
+            )
+            guest = FakeGuest()
+            guest.rc = 0
+            with patch.object(vm.subprocess, "Popen", return_value=guest):
+                ok, reason = vm.boot_vm(
+                    ["qemu-system-x86_64"], serial, 400,
+                    "win10_22h2_en_us_x64",
+                    reject_repeated_dvd_boot=True,
+                    require_initial_dvd_boot=False,
+                )
+            self.assertTrue(ok, reason)
+
+    def test_one_shot_boot_gate_cannot_be_enabled_without_counter(self):
+        with self.assertRaisesRegex(vm.LabError, "requires explicit"):
+            vm.boot_vm(["qemu-system-x86_64"], pathlib.Path("/nonexistent"),
+                       400, "win10_22h2_en_us_x64",
+                       reject_repeated_dvd_boot=False,
+                       require_initial_dvd_boot=True)
+
     def test_only_once_dvd_boot_and_hosted_vm_storage_source(self):
         source = SRC.read_text()
         self.assertIn('"-boot", ("order=c,once=d" if args.one_shot_install_only',
