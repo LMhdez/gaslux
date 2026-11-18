@@ -75,6 +75,7 @@ jobs:
           chmod 0600 "$vars"
           qemu-img create -f qcow2 -o compat=1.1 "$image" 48G
           password="Gaslux-$(openssl rand -hex 16)!"
+          printf '::add-mask::%s\n' "$password"
           printf 'GASLUX_WIN10_LAB_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
           cat > "$unattend" <<XML
           <?xml version="1.0" encoding="utf-8"?>
@@ -205,6 +206,10 @@ jobs:
               -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code"
               -drive "if=pflash,format=raw,unit=1,file=$vars"
               -device ich9-ahci,id=sata
+              # Firmware-level HID input is explicit; HMP sendkey without
+              # a guest keyboard did not satisfy the OVMF DVD key prompt.
+              -device qemu-xhci,id=usbctrl
+              -device usb-kbd,bus=usbctrl.0
               -drive "if=none,id=system,file=$image,format=qcow2,cache=writeback"
               -device ide-hd,drive=system,bus=sata.0,bootindex=$disk_bootindex
               -drive "if=none,id=answer,file=$answer,format=raw,media=cdrom,readonly=on"
