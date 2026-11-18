@@ -42,7 +42,7 @@ jobs:
 
   owned-qcow2-storage-discovery:
     needs: contracts
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref == 'feature/bazzite-owned-qcow2-storage-discovery'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
