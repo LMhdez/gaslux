@@ -68,8 +68,36 @@ jobs:
           mountpoint="$work/target"
           mkdir -m 700 "$mountpoint"
           cleanup() {
-            sudo guestunmount "$mountpoint" >/dev/null 2>&1 || true
-            rm -rf -- "$work"
+            local original_status=$?
+            trap - EXIT
+
+            if mountpoint -q "$mountpoint"; then
+              if ! sudo guestunmount "$mountpoint" >/dev/null 2>&1; then
+                echo "ERROR: guestunmount failed; preserving private workspace: $work" >&2
+                exit 1
+              fi
+            fi
+            if mountpoint -q "$mountpoint"; then
+              echo "ERROR: FUSE mount remains active; preserving private workspace: $work" >&2
+              exit 1
+            fi
+
+            if [[ ! -d "$work" || -L "$work" || "$(stat -c '%u' -- "$work")" != "$(id -u)" ]]; then
+              echo "ERROR: refusing to remove an unowned or non-directory workspace: $work" >&2
+              exit 1
+            fi
+            local work_real runner_temp_real
+            work_real="$(realpath -e -- "$work")"
+            runner_temp_real="$(realpath -e -- "$RUNNER_TEMP")"
+            case "$work_real" in
+              "$runner_temp_real"/gaslux-fuse-smoke-*) ;;
+              *)
+                echo "ERROR: refusing to remove workspace outside RUNNER_TEMP: $work_real" >&2
+                exit 1
+                ;;
+            esac
+            rm -rf --one-file-system -- "$work_real"
+            exit "$original_status"
           }
           trap cleanup EXIT
           truncate -s 64M "$disk"
