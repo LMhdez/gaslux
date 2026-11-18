@@ -121,10 +121,13 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
 
     def test_pacstrap_and_discard_evidence_are_valid_json_whitespace(self):
         source = (TOOLS / "windows_x64_tcg_firstboot.py").read_text()
-        self.assertNotIn(r'+ "\n"', source)
-        self.assertIn("json.dumps(pacstrap_proof, sort_keys=True, indent=2)", source)
-        self.assertIn("json.dumps(discard_proof, sort_keys=True, indent=2)", source)
-        self.assertIn('+ "\n"', source)
+        # Check each report's serialization independently; the old test
+        # required and forbade the exact same '+ "\\n"' source text.
+        for proof in ("pacstrap_proof", "discard_proof"):
+            marker = f"json.dumps({proof}, sort_keys=True, indent=2)"
+            self.assertEqual(source.count(marker), 1)
+            serialized = source.split(marker, 1)[1].split(').encode("utf-8")', 1)[0]
+            self.assertIn('+ "\n"', serialized)
 
     def test_guest_installer_remains_root_only_and_never_installs_efi(self):
         source = (TOOLS / "cachyos_windows_shared_root_pacstrap.py").read_text()
