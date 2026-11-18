@@ -5,6 +5,7 @@ on:
     branches:
       - test/mint-cow-proof-validation
       - fix/mint-cow-guestfs-tar-stage-20261118
+      - test/mint-win10-fourth-bcd-winre-evidence-20261118
     paths:
       - .github/workflows/mint-cow-proof-contracts.yml
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
