@@ -12,6 +12,7 @@ import hmac
 import json
 import os
 import secrets
+import signal
 import socket
 import struct
 import subprocess
@@ -49,6 +50,8 @@ HELLO = b"GQ4OS-WRITE-HELLO-V1"
 RESULT = b"GQ4OS-WRITE-RESULT-V1"
 CHALLENGE = "GQ4OS-WRITE-CHALLENGE-V1"
 AUTH = b"GQ4OS-WRITE-ALLOW-V1"
+POWER_CUT_MODE = "SIMULATE-POWER-CUT"
+POWER_CUT_READY = b"GQ4OS-WRITE-SYNCED-BLOCKED-V1"
 REPORT_DOMAIN = b"GASLUX-Q4OS-BOUND-WRITE-REPORT-V1\n"
 AUTH_DOMAIN = b"GASLUX-Q4OS-BOUND-WRITE-AUTH-V1\n"
 ESP_END_LBA = 1050623
@@ -236,7 +239,9 @@ def _authenticate_guest_write(
     initramfs: Path,
     plan: dict,
     evidence: Path,
+    simulate_power_cut: bool = False,
 ) -> dict:
+    _require(type(simulate_power_cut) is bool, "Power-cut mode must be boolean")
     sock_dir = Path(tempfile.mkdtemp(prefix="gq4osw-", dir="/tmp"))
     os.chmod(sock_dir, 0o700)
     sock = sock_dir / "report.sock"
@@ -320,7 +325,8 @@ def _authenticate_guest_write(
             "Guest did not enter bounded write protocol",
         )
         secret = secrets.token_hex(32)
-        challenge = f"{CHALLENGE}:{plan['runId']}:{plan['nonce']}:{secret}\n".encode("ascii")
+        mode = ":" + POWER_CUT_MODE if simulate_power_cut else ""
+        challenge = f"{CHALLENGE}:{plan['runId']}:{plan['nonce']}:{secret}{mode}\n".encode("ascii")
         conn.sendall(challenge)
         _require(
             _read_line(stream, 80, "guest preflight") == PREFLIGHT,
@@ -365,8 +371,23 @@ def _authenticate_guest_write(
             hmac.compare_digest(post_mac, expected_post_mac), "Unauthenticated guest write report"
         )
         verified = validate_write_result(post_raw, plan=plan, serial=serial)
-        process.wait(timeout=50)
-        _require(process.returncode == 0, "QEMU guest did not shut down successfully")
+        if simulate_power_cut:
+            _require(
+                _read_line(stream, 80, "guest power-cut barrier") == POWER_CUT_READY,
+                "Guest failed to remain active after durable write",
+            )
+            _require(process.poll() is None, "Guest shut down before injected power cut")
+            # Kill the actual QEMU VM, not the agent or a host-side simulator.
+            # After the barrier, no graceful device flush/shutdown is permitted.
+            process.kill()
+            process.wait(timeout=30)
+            _require(
+                process.returncode == -signal.SIGKILL,
+                "QEMU process did not die from SIGKILL",
+            )
+        else:
+            process.wait(timeout=50)
+            _require(process.returncode == 0, "QEMU guest did not shut down successfully")
         _require(not stream.read(1), "Unexpected trailing guest output")
         log_text = guest_log.read_text(encoding="utf-8", errors="replace")
         _require(
@@ -379,7 +400,10 @@ def _authenticate_guest_write(
             "transportAuthenticated": True,
             "guestAttestation": False,
             "guestWriteCompleted": verified["writeCompleted"],
-            "qemuGuestShutdownObserved": True,
+            "qemuGuestShutdownObserved": not simulate_power_cut,
+            "qemuPowerCutInjected": simulate_power_cut,
+            "qemuKilledBySigkill": simulate_power_cut,
+            "powerCutAfterGuestFsync": simulate_power_cut,
             "qemuNetworkAttached": False,
             "qemuPhysicalDiskAttached": False,
             "qemuAcceleration": accel,
@@ -511,7 +535,15 @@ def run_lab(
     evidence: Path,
     kernel: Path,
     initramfs: Path,
+    *,
+    simulate_power_cut: bool = False,
 ) -> dict:
+    _require(type(simulate_power_cut) is bool, "Power-cut mode must be boolean")
+    if simulate_power_cut:
+        _require(
+            os.environ.get("GASLUX_Q4OS_POWER_CUT_LAB_ONLY") == "yes",
+            "Explicit power-cut-only QEMU lab opt-in required",
+        )
     _require(
         os.environ.get("GITHUB_ACTIONS") == "true"
         and os.environ.get("GASLUX_Q4OS_SYNTHETIC_WRITE_LAB_ONLY") == "yes",
@@ -565,7 +597,9 @@ def run_lab(
     evidence.mkdir(mode=0o700)
     checkpoint_state = {
         "schemaVersion": 1,
-        "operation": "isolated-qemu-4k-cow-scratch",
+        "operation": (
+            "isolated-qemu-powercut-after-fsync" if simulate_power_cut else "isolated-qemu-4k-cow-scratch"
+        ),
         "runId": plan["runId"],
         "planSha256": hashlib.sha256(raw_plan).hexdigest(),
         "snapshotSha256": manifest["snapshotSha256"],
@@ -580,6 +614,9 @@ def run_lab(
         "calamaresJobsAuthorized": False,
         "windowsEspWritesAuthorized": False,
         "productionDiskWritesAuthorized": False,
+        "powerCutRequested": simulate_power_cut,
+        "powerCutObserved": False,
+        "postPowerCutRecoveryVerified": False,
     }
     _write_json_durable(checkpoint, checkpoint_state)
     success = False
@@ -620,7 +657,16 @@ def run_lab(
             initramfs=initramfs,
             plan=plan,
             evidence=evidence,
+            simulate_power_cut=simulate_power_cut,
         )
+        if simulate_power_cut:
+            _require(
+                observed["qemuKilledBySigkill"] is True
+                and observed["qemuGuestShutdownObserved"] is False,
+                "Power-cut experiment did not actually kill the QEMU guest",
+            )
+            checkpoint_state["powerCutObserved"] = True
+            _write_json_durable(checkpoint, checkpoint_state)
         checkpoint_state["guestDiskIdentityVerified"] = observed["guestDiskIdentityVerified"]
         _run(["qemu-img", "check", str(overlay)])
         _run(
@@ -667,6 +713,7 @@ def run_lab(
         _verify_plan(workspace, plan_dir)
         checkpoint_state["guestWritesAuthorized"] = False
         checkpoint_state["syntheticWriteRecoveredVerified"] = True
+        checkpoint_state["postPowerCutRecoveryVerified"] = simulate_power_cut
         _write_json_durable(checkpoint, checkpoint_state)
         result = {
             **checkpoint_state,
@@ -677,6 +724,8 @@ def run_lab(
             "baseImageUnchanged": True,
             "snapshotRestoredAndCompared": True,
             "guestBlockWriteBytes": WRITE_BYTES,
+            "powerCutAfterFsync": simulate_power_cut,
+            "powerCutRecoveryInSyntheticLab": simulate_power_cut,
             "calamaresExecuted": False,
             "windowsDiskAttached": False,
             "guestAttestation": False,
@@ -689,6 +738,9 @@ def run_lab(
         print("GASLUX_Q4OS_QEMU_COW_REAL_MUTATION=PASS", flush=True)
         print("GASLUX_Q4OS_QEMU_SNAPSHOT_RESTORE=PASS", flush=True)
         print("GASLUX_Q4OS_QEMU_BASE_AND_GPT_UNCHANGED=PASS", flush=True)
+        if simulate_power_cut:
+            print("GASLUX_Q4OS_SIGKILL_POWER_CUT=PASS", flush=True)
+            print("GASLUX_Q4OS_SYNTHETIC_RECOVERY_AFTER_POWER_CUT=PASS", flush=True)
         print("GASLUX_Q4OS_CALAMARES_EXECUTED=FALSE", flush=True)
         print("GASLUX_Q4OS_WINDOWS_DISK_ATTACHED=FALSE", flush=True)
         print("GASLUX_Q4OS_FULL_ROLLBACK_VERIFIED=FALSE", flush=True)
@@ -708,11 +760,18 @@ def run_lab(
 
 
 def main() -> int:
-    if len(sys.argv) != 7:
-        print("REFUSED: WORKSPACE PLAN_DIR SNAPSHOT_DIR EVIDENCE KERNEL INITRAMFS", file=sys.stderr)
+    args = sys.argv[1:]
+    simulate_power_cut = len(args) == 7 and args[-1] == "--power-cut"
+    if simulate_power_cut:
+        args = args[:-1]
+    if len(args) != 6:
+        print(
+            "REFUSED: WORKSPACE PLAN_DIR SNAPSHOT_DIR EVIDENCE KERNEL INITRAMFS [--power-cut]",
+            file=sys.stderr,
+        )
         return 2
     try:
-        run_lab(*(Path(p) for p in sys.argv[1:]))
+        run_lab(*(Path(p) for p in args), simulate_power_cut=simulate_power_cut)
     except (BoundVmWriteRefusal, OSError, ValueError, subprocess.SubprocessError) as exc:
         print(f"GASLUX_Q4OS_BOUNDED_VM_WRITE_REFUSED={exc}", file=sys.stderr, flush=True)
         return 1

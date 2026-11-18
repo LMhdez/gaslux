@@ -27,6 +27,8 @@ from guest_probe import (
 HELLO = b"GQ4OS-WRITE-HELLO-V1\n"
 CHALLENGE = b"GQ4OS-WRITE-CHALLENGE-V1"
 AUTH = b"GQ4OS-WRITE-ALLOW-V1"
+POWER_CUT_MODE = b"SIMULATE-POWER-CUT"
+POWER_CUT_READY = b"GQ4OS-WRITE-SYNCED-BLOCKED-V1"
 PREFLIGHT = b"GQ4OS-WRITE-PREFLIGHT-V1\n"
 RESULT = b"GQ4OS-WRITE-RESULT-V1\n"
 REPORT_DOMAIN = b"GASLUX-Q4OS-BOUND-WRITE-REPORT-V1\n"
@@ -122,8 +124,12 @@ def run() -> dict:
     try:
         _write_all(fd, HELLO)
         challenge = _read_line(fd, 512).split(b":")
-        _require(len(challenge) == 4 and challenge[0] == CHALLENGE, "Missing one-time challenge")
-        run_id, nonce, secret = [field.decode("ascii") for field in challenge[1:]]
+        power_cut = len(challenge) == 5 and challenge[4] == POWER_CUT_MODE
+        _require(
+            (len(challenge) == 4 or power_cut) and challenge[0] == CHALLENGE,
+            "Missing or malformed one-time challenge",
+        )
+        run_id, nonce, secret = [field.decode("ascii") for field in challenge[1:4]]
         _require(
             bool(RUN_RE.fullmatch(run_id)) and bool(NONCE_RE.fullmatch(nonce)),
             "Untrusted run identity",
@@ -198,6 +204,13 @@ def run() -> dict:
         _report(fd, RESULT, report, secret)
         print("GASLUX_Q4OS_BOUND_GUEST_WRITE=PASS", flush=True)
         print("GASLUX_Q4OS_BOUND_GUEST_BYTES=4096", flush=True)
+        if power_cut:
+            # The host can only inject a cut AFTER fsync, the independent
+            # GPT check and receipt of the authenticated completion report.
+            # Remain running: no guest-initiated shutdown or fake power cut.
+            _write_all(fd, POWER_CUT_READY + b"\n")
+            _read_line(fd, 64)  # never acknowledged; host SIGKILLs QEMU
+            raise BoundWriteRefusal("Host did not simulate abrupt QEMU power loss")
         return report
     finally:
         os.close(fd)
