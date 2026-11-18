@@ -67,6 +67,17 @@ def test_cut_barrier_only_reachable_after_guest_fsync_and_gpt_verification():
     assert "SIMULATE-POWER-CUT" in src
 
 
+def test_sigkill_uses_authenticated_report_instead_of_buffered_serial_log():
+    src = (ROOT / "auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py").read_text(
+        encoding="utf-8"
+    )
+    assert "if not simulate_power_cut:" in src
+    assert "Missing guest serial evidence of the bounded write" in src
+    assert "guest power-cut barrier" in src
+    assert "Unauthenticated guest write report" in src
+    assert "process.returncode == -signal.SIGKILL" in src
+
+
 def test_host_kills_live_qemu_process_not_agent_or_graceful_guest():
     src = (ROOT / "auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py").read_text(
         encoding="utf-8"
