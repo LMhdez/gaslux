@@ -36,10 +36,15 @@ def _require(value: bool, reason: str) -> None:
 
 def _owned_private_file_path(path: Path, root: Path) -> None:
     _require(path.is_absolute() and path.parent == root, "Foreign file destination")
-    _require(path.name in {
-        "windows10-qemu-serial.log", "windows10-qemu-process.log",
-        "windows10-qemu-hmp.sock",
-    }, "Unexpected Windows QEMU evidence path")
+    _require(
+        path.name
+        in {
+            "windows10-qemu-serial.log",
+            "windows10-qemu-process.log",
+            "windows10-qemu-hmp.sock",
+        },
+        "Unexpected Windows QEMU evidence path",
+    )
     _require(not path.is_symlink(), "Symlink in Windows QEMU evidence path")
 
 
@@ -96,23 +101,29 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
     )
     _require(args.count("-monitor") == 1, "Exactly one private QEMU monitor required")
     _require(
-        "-monitor" in args
-        and "unix:" + str(monitor) + ",server=on,wait=off" in args,
+        "-monitor" in args and "unix:" + str(monitor) + ",server=on,wait=off" in args,
         "QEMU monitor must be a private Unix socket",
     )
     _require(
-        any("id=system,file=" + str(root / "windows10-enterprise-eval-22h2-uefi-gpt.qcow2")
-            in a and "format=qcow2" in a for a in args),
+        any(
+            "id=system,file=" + str(root / "windows10-enterprise-eval-22h2-uefi-gpt.qcow2") in a
+            and "format=qcow2" in a
+            for a in args
+        ),
         "Unrecognized Windows QCOW2 target",
     )
     _require(
-        any("id=install,file=" + str(root / "Windows10_Enterprise_22H2_Eval_EN-US_x64.iso")
-            in a and "readonly=on" in a for a in args),
+        any(
+            "id=install,file=" + str(root / "Windows10_Enterprise_22H2_Eval_EN-US_x64.iso") in a
+            and "readonly=on" in a
+            for a in args
+        ),
         "Missing verified Windows ISO attached read-only",
     )
     _require(
-        any("id=answer,file=" + str(root / "unattend.iso")
-            in a and "readonly=on" in a for a in args),
+        any(
+            "id=answer,file=" + str(root / "unattend.iso") in a and "readonly=on" in a for a in args
+        ),
         "Unattend medium must be read-only",
     )
     _require(args.count("-drive") == 5, "Unexpected QEMU disk attachment count")
@@ -140,12 +151,11 @@ def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list
                 and "unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd" in declaration
             )
             is_ovmf_vars = (
-                "if=pflash" in declaration and "unit=1,file=" + str(root / "OVMF_VARS.fd")
-                in declaration
+                "if=pflash" in declaration
+                and "unit=1,file=" + str(root / "OVMF_VARS.fd") in declaration
             )
             _require(
-                is_owned_disk or is_owned_iso or is_owned_unattend
-                or is_ovmf_code or is_ovmf_vars,
+                is_owned_disk or is_owned_iso or is_owned_unattend or is_ovmf_code or is_ovmf_vars,
                 "Foreign QEMU drive attached",
             )
 
@@ -162,20 +172,28 @@ def run(
 ) -> None:
     _validate_lab(root, serial, monitor, log, command)
     _require(
-        type(prompt_seconds) is int and 5 <= prompt_seconds <= 90
-        and type(cycle_seconds) is int and 30 <= cycle_seconds <= 1800,
+        type(prompt_seconds) is int
+        and 5 <= prompt_seconds <= 90
+        and type(cycle_seconds) is int
+        and 30 <= cycle_seconds <= 1800,
         "Unbounded Windows setup boot budget",
     )
-    _require(not log.exists() and not serial.exists() and not monitor.exists(),
-             "Refusing to overwrite previous Windows QEMU evidence")
+    _require(
+        not log.exists() and not serial.exists() and not monitor.exists(),
+        "Refusing to overwrite previous Windows QEMU evidence",
+    )
     started = time.monotonic()
     sent = False
     proc = None
     try:
         with log.open("xb") as log_file:
             proc = subprocess.Popen(
-                command, cwd=root, stdin=subprocess.DEVNULL,
-                stdout=log_file, stderr=subprocess.STDOUT, close_fds=True,
+                command,
+                cwd=root,
+                stdin=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                close_fds=True,
             )
             prompt_deadline = time.monotonic() + prompt_seconds
             while time.monotonic() < prompt_deadline:
@@ -228,15 +246,22 @@ def main() -> int:
     parser.add_argument("qemu_log", type=Path)
     parser.add_argument("--prompt-seconds", type=int, default=45)
     parser.add_argument("--cycle-seconds", type=int, default=1500)
-    parser.add_argument("command", nargs=argparse.REMAINDER)
-    args = parser.parse_args()
-    command = args.command
-    if command and command[0] == "--":
-        command = command[1:]
+    argv = sys.argv[1:]
+    if "--" not in argv:
+        print("GASLUX_WIN10_OVMF_DVD_REFUSED=Missing explicit QEMU argv separator", file=sys.stderr)
+        return 2
+    separator = argv.index("--")
+    args = parser.parse_args(argv[:separator])
+    command = argv[separator + 1 :]
     try:
         run(
-            args.workspace, args.serial_log, args.monitor_socket, args.qemu_log, command,
-            prompt_seconds=args.prompt_seconds, cycle_seconds=args.cycle_seconds,
+            args.workspace,
+            args.serial_log,
+            args.monitor_socket,
+            args.qemu_log,
+            command,
+            prompt_seconds=args.prompt_seconds,
+            cycle_seconds=args.cycle_seconds,
         )
     except (WindowsDvdRefusal, OSError, ValueError, subprocess.SubprocessError) as exc:
         print(f"GASLUX_WIN10_OVMF_DVD_REFUSED={exc}", file=sys.stderr, flush=True)
