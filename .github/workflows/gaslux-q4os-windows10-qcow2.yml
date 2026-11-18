@@ -17,7 +17,7 @@ concurrency:
 jobs:
   windows10-uefi-gpt:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,6 +136,8 @@ jobs:
 
       - name: Install Windows 10 and complete first logon across UEFI reboot cycles
         shell: bash
+        env:
+          GASLUX_WIN10_UEFI_OPTICAL_INPUT_LAB_ONLY: 'yes'
         run: |
           set -Eeuo pipefail
           work="$GASLUX_WIN10_WORK"
@@ -180,9 +182,9 @@ jobs:
           # after the first boot and the next cycle must boot from the QCOW2.
           completed=0
           for attempt in $(seq 1 8); do
-            remaining=$((18000-SECONDS))
-            if (( remaining <= 0 )); then
-              echo 'Windows setup exceeded the five-hour guest budget' >&2
+            remaining=$((3600-SECONDS))
+            if (( remaining <= 30 )); then
+              echo 'Windows setup exceeded its one-hour guest budget' >&2
               exit 1
             fi
             disk_bootindex=1
@@ -199,7 +201,6 @@ jobs:
               -display none
               -vga std
               -serial "file:$serial"
-              -monitor none
               -net none
               -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code"
               -drive "if=pflash,format=raw,unit=1,file=$vars"
@@ -213,12 +214,29 @@ jobs:
               args+=(
                 -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on"
                 -device ide-cd,drive=install,bus=sata.1,bootindex=1
+                -monitor "unix:$work/windows10-qemu-hmp.sock,server=on,wait=off"
               )
+            else
+              args+=(-monitor none)
             fi
             echo "Starting Windows setup/boot cycle $attempt (install media attached: $((attempt == 1 ? 1 : 0)))"
             set +e
-            timeout --signal=TERM --kill-after=60s "${remaining}s" qemu-system-x86_64 "${args[@]}" > "$qemu_log" 2>&1
-            status=$?
+            if (( attempt == 1 )); then
+              # Official EFI DVD requires an explicit key. The helper watches
+              # the genuine OVMF serial prompt and only sends Enter to the
+              # exact QEMU PID through a private HMP Unix monitor socket.
+              first_cycle_limit=$(( remaining < 1500 ? remaining : 1500 ))
+              python3 auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py \
+                "$work" "$serial" "$work/windows10-qemu-hmp.sock" "$qemu_log" \
+                --prompt-seconds 45 --cycle-seconds "$first_cycle_limit" \
+                -- qemu-system-x86_64 "${args[@]}"
+              status=$?
+            else
+              cycle_limit=$(( remaining < 1500 ? remaining : 1500 ))
+              timeout --signal=TERM --kill-after=30s "${cycle_limit}s" \
+                qemu-system-x86_64 "${args[@]}" > "$qemu_log" 2>&1
+              status=$?
+            fi
             set -e
             if [[ $status -eq 124 || $status -eq 137 ]]; then
               tail -n 120 "$qemu_log" || true
