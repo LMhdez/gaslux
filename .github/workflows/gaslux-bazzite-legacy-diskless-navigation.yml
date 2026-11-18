@@ -8,10 +8,13 @@ on:
       - '.github/workflows/gaslux-bazzite-legacy-diskless-navigation.yml'
       - 'auto_tests/bazzite_legacy_diskless_navigation.py'
       - 'auto_tests/tests/test_bazzite_legacy_diskless_navigation.py'
+      - 'auto_tests/bazzite_legacy_blue_button.py'
+      - 'auto_tests/tests/test_bazzite_legacy_blue_button.py'
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   contracts:
@@ -31,18 +34,80 @@ jobs:
           python -m pip install pytest ruff PyYAML pillow
           python -m pytest -q \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
-            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
+            auto_tests/tests/test_bazzite_legacy_blue_button.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_legacy_diskless_navigation.py \
+            auto_tests/bazzite_legacy_blue_button.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
-            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
+            auto_tests/tests/test_bazzite_legacy_blue_button.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_legacy_diskless_navigation.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py
 
-  diskless-locale-stage2:
+  prior-blue-button:
     needs: contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Authenticate prior diskless optical-only guest screenshot source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh api repos/LMhdez/gaslux/actions/runs/44375068915 \
+            | jq -e '
+                .conclusion == "success"
+                and .head_sha == "2a41ed0a3246a72a2cf492e488f60e9ae97b23bf"
+                and .head_repository.full_name == "LMhdez/gaslux"
+                and .event == "push"
+              ' > /dev/null
+      - name: Verify high-contrast Continue OCR from exact previous GUI evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-stage2-blue-review"
+          mkdir -m 700 "$work"
+          gh run download 44375068915 -R LMhdez/gaslux \
+            --name bazzite-legacy-diskless-locale-navigation-evidence \
+            --dir "$work"
+          python -m pip install pillow
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 400s apt-get install -y -qq \
+              tesseract-ocr
+          python3 auto_tests/bazzite_legacy_blue_button.py \
+            --png "$work/language-after.png" \
+            --ocr "$work/language-after.ocr" \
+            --coords "$work/continue-coordinate" > "$work/blue-gate.json"
+          python3 - "$work/blue-gate.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          gate = json.loads(Path(sys.argv[1]).read_text())
+          assert gate["blueContinueTextVerified"] is True
+          assert gate["blueContinueGeometryVerified"] is True
+          assert gate["coordinate"] == {"x": 1225, "y": 770}
+          assert gate["installationAuthorized"] is False
+          assert gate["partitionWriteAuthorized"] is False
+          assert gate["windowsEspWriteAuthorized"] is False
+          print("PREVIOUS VM GUI: blue Continue positively located, no disk")
+          PY
+
+  diskless-locale-stage2:
+    needs: [contracts, prior-blue-button]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 80
@@ -160,11 +225,9 @@ jobs:
           echo 'Only the run-local verified English UK locale was clicked; no guest hard disk'
           sleep 15
           capture language-after
-          python3 auto_tests/bazzite_legacy_diskless_navigation.py \
-            --phase continue \
+          python3 auto_tests/bazzite_legacy_blue_button.py \
             --png bazzite-legacy-stage2-evidence/language-after.png \
             --ocr bazzite-legacy-stage2-evidence/language-after.ocr \
-            --tsv bazzite-legacy-stage2-evidence/language-after.tsv \
             --coords "$work/continue-coordinate" \
             > bazzite-legacy-stage2-evidence/continue-gate.json
           if [[ -s "$work/continue-coordinate" ]]; then

@@ -16,8 +16,9 @@ def _workflow():
 def test_isolation_and_fail_closed_keyboard_mouse_scope():
     text = WF.read_text(encoding="utf-8")
     wf = _workflow()
-    assert wf["permissions"] == {"contents": "read"}
-    assert wf["jobs"]["diskless-locale-stage2"]["needs"] == "contracts"
+    assert wf["permissions"] == {"contents": "read", "actions": "read"}
+    assert wf["jobs"]["diskless-locale-stage2"]["needs"] == ["contracts", "prior-blue-button"]
+    assert wf["jobs"]["prior-blue-button"]["needs"] == "contracts"
     assert wf["jobs"]["diskless-locale-stage2"]["if"] == "github.event_name != 'pull_request'"
     assert "9c8d06cd8e57f2274678edeb14b4b13a79b8117c70571a65199919a66305b5c7" in text
     assert "7907770368" in text
@@ -59,7 +60,11 @@ def test_isolation_and_fail_closed_keyboard_mouse_scope():
 def test_clicks_follow_ocr_checks_not_hardcoded_targets():
     content = WF.read_text(encoding="utf-8")
     assert content.index("--phase locale") < content.index("locale-coordinate")
-    assert content.index("--phase continue") < content.index("continue-coordinate")
+    assert content.index("auto_tests/bazzite_legacy_blue_button.py") < content.rindex("--coords")
+    assert "gh run download 44375068915" in content
+    assert "blueContinueTextVerified" in content
+    assert "blueContinueGeometryVerified" in content
+    assert "prior-blue-button" in content
     assert 'if [[ -s "$work/continue-coordinate" ]]' in content
     assert content.count('move "$lx" "$ly" click 1') == 1
     assert content.count('move "$cx" "$cy" click 1') == 1
