@@ -97,8 +97,7 @@ def _inputs(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path)
         "Unsigned or foreign Q4OS GUI transaction evidence location",
     )
     require(
-        (workspace / "efi-disk.img").is_file()
-        and not (workspace / "efi-disk.img").is_symlink(),
+        (workspace / "efi-disk.img").is_file() and not (workspace / "efi-disk.img").is_symlink(),
         "No transaction-owned synthetic base GPT",
     )
 
@@ -106,8 +105,10 @@ def _inputs(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path)
 def prepare(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) -> dict:
     _inputs(workspace, plan_dir, snapshot_dir, evidence)
     require(
-        all(not p.exists() and not p.is_symlink() for p in
-            (plan_dir, snapshot_dir, workspace / OVERLAY, workspace / SERIAL_FILE)),
+        all(
+            not p.exists() and not p.is_symlink()
+            for p in (plan_dir, snapshot_dir, workspace / OVERLAY, workspace / SERIAL_FILE)
+        ),
         "Refuse preexisting signed plan, snapshot or overlay",
     )
     _owner_dir(evidence)
@@ -128,16 +129,27 @@ def prepare(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path)
         plan["runId"] == "q4os-actions-" + os.environ["GITHUB_RUN_ID"],
         "Signed plan does not match current Actions transaction",
     )
-    require(plan["installationAuthorized"] is False and plan["calamaresJobsAuthorized"] is False,
-            "Signed target unexpectedly permits native job execution")
+    require(
+        plan["installationAuthorized"] is False and plan["calamaresJobsAuthorized"] is False,
+        "Signed target unexpectedly permits native job execution",
+    )
     serial = expected_virtio_serial(plan)
     (workspace / SERIAL_FILE).write_text(serial + "\n", encoding="ascii")
     _fsync_file(workspace / SERIAL_FILE)
     overlay = workspace / OVERLAY
-    process([
-        "qemu-img", "create", "-f", "qcow2", "-F", "raw",
-        "-b", str(base), str(overlay),
-    ])
+    process(
+        [
+            "qemu-img",
+            "create",
+            "-f",
+            "qcow2",
+            "-F",
+            "raw",
+            "-b",
+            str(base),
+            str(overlay),
+        ]
+    )
     info = _qemu_img_info(overlay)
     require(
         info.get("format") == "qcow2"
@@ -206,10 +218,18 @@ def verify(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) 
         "Guest changed backing image instead of exclusively owned overlay",
     )
     process(["qemu-img", "check", str(overlay)])
-    process([
-        "qemu-img", "compare", "-f", "qcow2", "-F", "raw",
-        str(overlay), str(base),
-    ])
+    process(
+        [
+            "qemu-img",
+            "compare",
+            "-f",
+            "qcow2",
+            "-F",
+            "raw",
+            str(overlay),
+            str(base),
+        ]
+    )
     # Selecting a radio-button is never storage authorization. If Calamares
     # wrote anything during this preview, compare exits 1 and we fail hard.
     snapshot = snapshot_dir / "q4os-recovery-snapshot.qcow2"
@@ -243,20 +263,24 @@ def verify(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) 
     )
     overlay.unlink()
     _fsync_directory(workspace)
-    require(not overlay.exists() and sparse_content_sha256(base) == report["baseSparseSha256"],
-            "Guest overlay discard failed to preserve original GPT")
-    report.update({
-        "calamaresPagesViewed": True,
-        "partitionChoiceSelectedInMemory": True,
-        "guestCOWUnchanged": True,
-        "originalSignedBaseUnchanged": True,
-        "recoverySnapshotStillMatchesBase": True,
-        "overlayDiscarded": True,
-        "installationAuthorized": False,
-        "calamaresJobsExecuted": False,
-        "windowsDiskAttached": False,
-        "rollbackVerified": False,
-    })
+    require(
+        not overlay.exists() and sparse_content_sha256(base) == report["baseSparseSha256"],
+        "Guest overlay discard failed to preserve original GPT",
+    )
+    report.update(
+        {
+            "calamaresPagesViewed": True,
+            "partitionChoiceSelectedInMemory": True,
+            "guestCOWUnchanged": True,
+            "originalSignedBaseUnchanged": True,
+            "recoverySnapshotStillMatchesBase": True,
+            "overlayDiscarded": True,
+            "installationAuthorized": False,
+            "calamaresJobsExecuted": False,
+            "windowsDiskAttached": False,
+            "rollbackVerified": False,
+        }
+    )
     _write_json_durable(evidence / AUDIT, report)
     print("GASLUX_Q4OS_NATIVE_COW_PREVIEW_NO_WRITES=PASS", flush=True)
     print("GASLUX_Q4OS_NATIVE_COW_SNAPSHOT_BASE_REVALIDATED=PASS", flush=True)

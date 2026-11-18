@@ -102,13 +102,13 @@ def test_native_cow_guard_never_uses_user_disk_or_writes_gpt():
 
 def test_gui_script_proves_radio_select_only_with_signed_snapshot():
     src = (ROOT / "auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh").read_text()
-    assert 'GASLUX_Q4OS_NATIVE_COW_VIEW_ONLY' in src
+    assert "GASLUX_Q4OS_NATIVE_COW_VIEW_ONLY" in src
     assert "gaslux_q4os_native_cow_view_guard.py" in src
     assert "calamares-synthetic-cow-partitions" in src
     assert "q4os-native-calamares-view-only.qcow2" in src
     assert "GASLUX_Q4OS_CALAMARES_INSTALL_CLICKED=NO" in src
-    assert "python3 \"$guard_script\" prepare" in src
-    assert "python3 \"$guard_script\" verify" in src
+    assert 'python3 "$guard_script" prepare' in src
+    assert 'python3 "$guard_script" verify' in src
     assert src.index('python3 "$guard_script" prepare') < src.index("720s qemu-system-x86_64")
     assert "move 334 280 click 1" in src
     assert "move 1002 644 click 1" in src  # existing non-destructive wizard navigation
