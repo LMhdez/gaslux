@@ -74,10 +74,7 @@ def locate_continue(
             x0, x1 = min(x for x, _ in blue), max(x for x, _ in blue)
             y0, y1 = min(y for _, y in blue), max(y for _, y in blue)
             if not (
-                1174 <= x0 <= 1181
-                and 1269 <= x1 <= 1277
-                and 752 <= y0 <= 759
-                and 784 <= y1 <= 791
+                1174 <= x0 <= 1181 and 1269 <= x1 <= 1277 and 752 <= y0 <= 759 and 784 <= y1 <= 791
             ):
                 raise ButtonRefusal("Unexpected blue control boundary")
             area = (x1 - x0 + 1) * (y1 - y0 + 1)
@@ -128,9 +125,7 @@ def main() -> None:
     try:
         if any(path.is_symlink() for path in (args.png, args.ocr, args.coords)):
             raise ButtonRefusal("Symlink evidence path")
-        result = locate_continue(
-            args.png.read_bytes(), args.ocr.read_text(encoding="utf-8")
-        )
+        result = locate_continue(args.png.read_bytes(), args.ocr.read_text(encoding="utf-8"))
         point = result["coordinate"]
         args.coords.write_text(f"{point['x']} {point['y']}\n", encoding="ascii")
     except (OSError, ButtonRefusal, UnicodeError) as exc:

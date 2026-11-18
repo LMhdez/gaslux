@@ -26,9 +26,7 @@ def synthetic_screenshot(*, fill=(35, 121, 226), offset=0):
 
 
 def test_known_blue_button_is_coordinate_only_not_install_authority():
-    result = locate_continue(
-        synthetic_screenshot(), BANNER, ocr_engine=lambda _bytes: "Continue"
-    )
+    result = locate_continue(synthetic_screenshot(), BANNER, ocr_engine=lambda _bytes: "Continue")
     assert result["blueContinueTextVerified"] is True
     assert result["blueContinueGeometryVerified"] is True
     assert result["coordinate"] == {"x": 1225, "y": 770}
