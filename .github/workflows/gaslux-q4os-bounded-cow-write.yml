@@ -47,6 +47,10 @@ on:
       - 'auto_tests/tests/test_q4os_bounded_cow_write.py'
   workflow_dispatch:
 
+concurrency:
+  group: q4os-write-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -67,8 +71,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          timeout 300s sudo apt-get update -qq
+          timeout 600s sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+            apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils linux-image-generic busybox-static kmod cpio \
             gdisk dosfstools python3 acl
           python -m pip install 'pytest>=9,<10' 'cryptography>=46,<51' \
