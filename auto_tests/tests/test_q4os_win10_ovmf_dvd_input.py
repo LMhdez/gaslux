@@ -111,7 +111,7 @@ def test_lab_refuses_nonowned_or_unbounded_input(paths):
     root, serial, monitor, log = paths
     with pytest.raises(WindowsDvdRefusal, match="bounded"):
         run(root, serial, monitor, log, make_args(root), prompt_seconds=3600)
-    with pytest.raises(WindowsDvdRefusal, match="Foreign"):
+    with pytest.raises(WindowsDvdRefusal, match="Unexpected Windows QEMU evidence path"):
         _validate_lab(root, root / "foreign.log", monitor, log, make_args(root))
 
 
