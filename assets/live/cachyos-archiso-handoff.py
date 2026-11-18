@@ -102,7 +102,17 @@ def _command(runner: Any, argv: list[str]) -> str:
         response = runner(argv, capture_output=True, text=True, check=False, timeout=20)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise HandoffError("mount verification cannot execute: " + argv[0]) from error
-    _require(response.returncode == 0, "mount verification failed: " + argv[0])
+    if response.returncode != 0:
+        # Preserve a bounded, path-redacted diagnostic. The live Archiso
+        # preflight runs before guest launch; hiding stderr made blkid failures
+        # indistinguishable from UUID mismatches and caused blind retries.
+        detail = re.sub(r"[^A-Za-z0-9 _.,:()/-]", "?", response.stderr.strip())
+        detail = re.sub(r"/[^ ]+", "<path>", detail)[:160]
+        suffix = ("; " + detail) if detail else ""
+        raise HandoffError(
+            "mount verification failed: " + argv[0]
+            + " (exit " + str(response.returncode) + ")" + suffix
+        )
     _require(len(response.stdout) < 16_384, "excessive mount verification output")
     return response.stdout.strip()
 
