@@ -3,7 +3,7 @@ name: Q4OS bounded guest write fast contracts (no VM or disk writes)
 on:
   push:
     branches:
-      - feature/q4os-bounded-cow-guest-write-lab
+      - feature/q4os-abrupt-qemu-power-loss-recovery
     paths:
       - '.github/workflows/gaslux-q4os-bounded-cow-contracts.yml'
       - 'auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py'
