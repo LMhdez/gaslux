@@ -142,25 +142,25 @@ class MintCowBootEvidenceTests(unittest.TestCase):
 
     def test_rejects_missing_guest_winre_marker(self):
         self._replace_fourth_serial(FOURTH_SERIAL.replace(
-            b"GASLUX_COW_WIN10_REBOOT_WINRE=1\\n", b""))
+            b"GASLUX_COW_WIN10_REBOOT_WINRE=1\n", b""))
         with self.assertRaisesRegex(validator.MintBootEvidenceError, "unique ESP/BCD/WinRE"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
     def test_rejects_duplicate_guest_esp_marker(self):
         self._replace_fourth_serial(
-            FOURTH_SERIAL + b"GASLUX_COW_WIN10_REBOOT_ESP=1\\n")
+            FOURTH_SERIAL + b"GASLUX_COW_WIN10_REBOOT_ESP=1\n")
         with self.assertRaisesRegex(validator.MintBootEvidenceError, "unique ESP/BCD/WinRE"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
     def test_rejects_guest_audit_failure_even_with_all_markers(self):
         self._replace_fourth_serial(
-            FOURTH_SERIAL + b"GASLUX_COW_WIN10_REBOOT_FAIL=1\\n")
+            FOURTH_SERIAL + b"GASLUX_COW_WIN10_REBOOT_FAIL=1\n")
         with self.assertRaisesRegex(validator.MintBootEvidenceError, "audit failure"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
     def test_rejects_unbound_fourth_serial_hash(self):
         path = self.directory / f"{PROFILE}-fourth-boot-serial.log"
-        path.write_bytes(FOURTH_SERIAL + b"tampering\\n")
+        path.write_bytes(FOURTH_SERIAL + b"tampering\n")
         with self.assertRaisesRegex(validator.MintBootEvidenceError, "digest disagrees"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
@@ -168,11 +168,11 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         digest = hashlib.sha256(serial).hexdigest()
         (self.directory / f"{PROFILE}-fourth-boot-serial.log").write_bytes(serial)
         (self.directory / f"{PROFILE}-fourth-boot-serial.sha256").write_text(
-            f"{digest}  {PROFILE}-fourth-boot-serial.log\\n", encoding="ascii")
+            f"{digest}  {PROFILE}-fourth-boot-serial.log\n", encoding="ascii")
         fourth_path = self.directory / f"{PROFILE}-fourth-post-ext4.json"
         fourth = json.loads(fourth_path.read_text())
         fourth["fourthGuestSerialSha256"] = digest
-        fourth_bytes = (json.dumps(fourth, sort_keys=True, indent=2) + "\\n").encode()
+        fourth_bytes = (json.dumps(fourth, sort_keys=True, indent=2) + "\n").encode()
         fourth_path.write_bytes(fourth_bytes)
         report_path = self.directory / f"{PROFILE}-result.json"
         report = json.loads(report_path.read_text())
