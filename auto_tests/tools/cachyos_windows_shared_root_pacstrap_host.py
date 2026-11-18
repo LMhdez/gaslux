@@ -395,13 +395,22 @@ def run_shared_root_pacstrap(
         _prepare_owned_ext4_iso_copy(iso_image, storage_root)
         require(not storage_iso.exists() and not storage_iso.is_symlink(),
                 "refusing to overwrite ISO inside private storage")
-        with iso.open("rb") as source, storage_iso.open("xb") as target:
-            shutil.copyfileobj(source, target, length=4 * 1024 * 1024)
-            target.flush()
-            os.fsync(target.fileno())
+        # The ext4 image is created by root; even after the verified mount-root
+        # ownership adjustment, hosted-runner mount permission semantics can
+        # deny an unprivileged create. Perform this one file copy as root, with
+        # the destination constrained to the verified private loop mount.
+        copied = _run([
+            "sudo", "install", "-m", "0444", "--", str(iso), str(storage_iso),
+        ], timeout=900)
+        require(copied.returncode == 0 and storage_iso.is_file()
+                and not storage_iso.is_symlink(),
+                "could not copy pinned ISO into verified private ext4 storage")
         os.sync()
-        require(_sha(storage_iso) == pinned_sha256
-                and storage_iso.stat().st_size == iso_size,
+        stored = storage_iso.lstat()
+        require(stat.S_ISREG(stored.st_mode) and stored.st_nlink == 1
+                and stat.S_IMODE(stored.st_mode) == 0o444
+                and _sha(storage_iso) == pinned_sha256
+                and stored.st_size == iso_size,
                 "copy into private ISO storage differs from pinned source")
     finally:
         unmount_rw = _run(["sudo", "umount", str(storage_root)])
