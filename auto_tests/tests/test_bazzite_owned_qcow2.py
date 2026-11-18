@@ -12,7 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests"))
 
-from bazzite_owned_qcow2 import LabRefusal, SIZE_GIB, audit, prepare  # noqa: E402
+from bazzite_owned_qcow2 import SIZE_GIB, LabRefusal, audit, prepare  # noqa: E402
 
 
 def test_requires_exact_private_temp_child(tmp_path):
