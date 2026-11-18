@@ -418,7 +418,7 @@ class SharedRootOnlySafety(unittest.TestCase):
             if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
                 self.assertEqual(argv[4:], ["TARGET,SOURCE,FSTYPE", str(root)])
                 return graph
-            if argv[:4] == ["findmnt", "-rn", "-M",]:
+            if argv[:3] == ["findmnt", "-rn", "-M"]:
                 self.assertEqual(argv[-1], "SOURCE,FSTYPE")
                 source, kind = records[argv[3]]
                 return f"{source} {kind}\n"
