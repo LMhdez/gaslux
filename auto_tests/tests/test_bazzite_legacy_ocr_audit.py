@@ -9,7 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests"))
 
-from bazzite_legacy_ocr_audit import EvidenceRefusal, REQUIRED, audit  # noqa: E402
+from bazzite_legacy_ocr_audit import REQUIRED, EvidenceRefusal, audit  # noqa: E402
 
 
 def fixture_dir(tmp_path, text="Install Bazzite"):
