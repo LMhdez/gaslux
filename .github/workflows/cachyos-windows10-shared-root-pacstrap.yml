@@ -149,12 +149,29 @@ jobs:
           timeout --kill-after=10s 300s sudo apt-get \
             -o Acquire::Retries=2 -o Acquire::http::Timeout=60 \
             -o Acquire::https::Timeout=60 update -qq
+          # ubuntu-24.04 runners require a complete generic kernel for
+          # libguestfs/supermin. The generic *meta* package additionally pulls
+          # huge linux-firmware archives that the isolated virtio appliance
+          # neither boots nor needs. Resolve the exact signed kernel via apt's
+          # currently authenticated Noble metadata, with matching extra modules.
+          generic_kernel="$(apt-cache depends linux-image-generic |
+            awk '$1 == "Depends:" && $2 ~ /^linux-image-[0-9]+[.][0-9]+[.][0-9]+-[0-9]+-generic$/ { print $2; exit }')"
+          [[ "$generic_kernel" =~ ^linux-image-[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic$ ]] || {
+            echo 'Refusing unresolvable signed Ubuntu generic kernel' >&2; exit 1;
+          }
+          extra_modules="linux-modules-extra-${generic_kernel#linux-image-}"
+          apt-cache show "$generic_kernel" "$extra_modules" >/dev/null
+          if apt-cache depends "$generic_kernel" "$extra_modules" |
+              grep -Eq '^[[:space:]]*Depends: linux-firmware([[:space:]]|$)'; then
+            echo 'Kernel packaging unexpectedly requires firmware; fail closed' >&2
+            exit 1
+          fi
           timeout --kill-after=10s 600s sudo DEBIAN_FRONTEND=noninteractive apt-get \
             -o Acquire::Retries=2 -o Acquire::http::Timeout=60 \
             -o Acquire::https::Timeout=60 install -y --no-install-recommends \
             aria2 qemu-system-x86 qemu-utils ovmf swtpm gdisk \
             dosfstools mtools p7zip-full genisoimage \
-            python3-guestfs libguestfs-tools linux-image-generic \
+            python3-guestfs libguestfs-tools "$generic_kernel" "$extra_modules" \
             grub-efi-amd64-bin grub-common e2fsprogs openssl
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
