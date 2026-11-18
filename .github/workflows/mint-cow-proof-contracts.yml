@@ -97,15 +97,12 @@ jobs:
           truncate -s 64M "$copy_disk"
           sudo mkfs.ext4 -F "$copy_disk" >/dev/null
           mkdir -p "$source_dir/etc" "$source_dir/usr/bin"
-          printf 'NAME=Linux Mint\nID=linuxmint\n' > "$source_dir/etc/os-release"
-          printf '#!/bin/sh\nexit 0\n' > "$source_dir/usr/bin/mint-smoke"
+          printf '%s\n' 'NAME=Linux Mint' 'ID=linuxmint' > "$source_dir/etc/os-release"
+          printf '%s\n' '#!/bin/sh' 'exit 0' > "$source_dir/usr/bin/mint-smoke"
           chmod 0755 "$source_dir/usr/bin/mint-smoke"
-          sudo guestfish --rw -a "$copy_disk" -m /dev/sda \
-            copy-in "$source_dir/." /
-          actual_os_release="$(sudo guestfish --ro -a "$copy_disk" -m /dev/sda \
-            cat /etc/os-release)"
-          test "$actual_os_release" = "$(printf 'NAME=Linux Mint\nID=linuxmint')"
-          test "$(sudo guestfish --ro -a "$copy_disk" -m /dev/sda \
-            is-file /usr/bin/mint-smoke)" = true
+          sudo guestfish --rw -a "$copy_disk" -m /dev/sda copy-in "$source_dir/." /
+          actual_os_release="$(sudo guestfish --ro -a "$copy_disk" -m /dev/sda cat /etc/os-release)"
+          test "$actual_os_release" = "$(printf '%s\n' 'NAME=Linux Mint' 'ID=linuxmint')"
+          test "$(sudo guestfish --ro -a "$copy_disk" -m /dev/sda is-file /usr/bin/mint-smoke)" = true
           echo 'PASS: guestfish copy-in transfers root directory contents directly into ext4'
           echo 'PASS: root-owned guestmount FUSE is readable by the unprivileged runner with default permission checks'
