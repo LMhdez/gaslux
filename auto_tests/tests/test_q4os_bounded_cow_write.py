@@ -246,9 +246,9 @@ def test_normal_guest_shutdown_requires_authenticated_host_finish():
     import inspect
     from pathlib import Path
 
-    from gaslux_q4os_bounded_cow_write_lab import _authenticate_guest_write
-
-    host = inspect.getsource(_authenticate_guest_write)
+    host = Path("auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py").read_text(
+        encoding="utf-8"
+    )
     guest = Path("auto_tests/tools/q4os_guest_bound_write_agent.py").read_text(encoding="utf-8")
     assert 'FINISH = b"GQ4OS-WRITE-FINISH-V1"' in host
     assert 'hmac.new(secret.encode("ascii"), AUTH_DOMAIN + FINISH' in host
