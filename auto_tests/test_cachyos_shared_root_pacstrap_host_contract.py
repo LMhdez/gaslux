@@ -93,7 +93,7 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
             commands.assert_not_called()
 
     def test_genuine_vm_apt_stalls_fail_before_guest_launch(self):
-        workflow = (TOOLS.parent / ".github/workflows/"
+        workflow = (TOOLS.parent.parent / ".github/workflows/"
                     "cachyos-windows10-shared-root-pacstrap.yml").read_text()
         self.assertIn("timeout --kill-after=10s 300s sudo apt-get", workflow)
         self.assertIn("timeout --kill-after=10s 600s sudo DEBIAN_FRONTEND=noninteractive apt-get", workflow)
