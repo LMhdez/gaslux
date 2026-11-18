@@ -84,6 +84,23 @@ def inspect(*, width: int, height: int, png_sha: str, ocr: str, tsv: str) -> dic
     # diskless VM ownership, live screenshot and a manual review of the artifact.
     bottom_right = [c for c in candidates if c["x"] >= width * 0.60 and c["y"] >= height * 0.65]
     unique = len(candidates) == 1 and len(bottom_right) == 1
+    english_uk = []
+    for word in words:
+        if word["text"].lower() != "english" or word["left"] < width * 0.52:
+            continue
+        y = word["top"] + word["height"] // 2
+        row = [
+            peer
+            for peer in words
+            if abs(peer["top"] + peer["height"] // 2 - y) <= 10
+            and word["left"] <= peer["left"] <= word["left"] + 250
+        ]
+        row_text = re.sub(r"[^a-z]", "", " ".join(peer["text"] for peer in row).lower())
+        if "englishunitedkingdom" in row_text:
+            english_uk.append({
+                "x": word["left"] + word["width"] // 2,
+                "y": y,
+            })
     return {
         "distributionId": "bazzite",
         "observedVersionBanner": "42",
@@ -91,6 +108,9 @@ def inspect(*, width: int, height: int, png_sha: str, ocr: str, tsv: str) -> dic
         "sourceScreenshotSha256": png_sha,
         "targetWordCount": len(candidates),
         "bottomRightCandidateCount": len(bottom_right),
+        "englishUkVariantCandidateCount": len(english_uk),
+        "englishUkVariantCenter": english_uk[0] if len(english_uk) == 1 else None,
+        "localeSelectionAuthorized": False,
         "unambiguousContinueLabelCandidate": unique,
         "candidateCenter": bottom_right[0] if unique else None,
         "ocrExcerptTail": ocr[-1400:],
