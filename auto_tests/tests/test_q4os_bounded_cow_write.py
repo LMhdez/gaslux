@@ -248,7 +248,8 @@ def test_sigkill_recovery_does_not_claim_host_power_loss_or_windows_rollback():
     from gaslux_q4os_bounded_cow_write_lab import run_lab
 
     source = inspect.getsource(run_lab)
-    assert '"powerCutAfterGuestFsync": simulate_power_cut' in source
+    assert '"powerCutAfterFsync": simulate_power_cut' in source
+    assert '"powerCutRecoveryInSyntheticLab": simulate_power_cut' in source
     assert '"rollbackVerified": False' in source
     assert '"windowsDiskAttached": False' in source
     assert '"calamaresExecuted": False' in source
