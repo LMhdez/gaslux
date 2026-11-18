@@ -242,6 +242,21 @@ def test_sigkill_fault_injection_requires_separate_explicit_opt_in():
     assert '"rollbackVerified": False' in lab or '"rollbackVerified"' in lab
 
 
+def test_normal_guest_shutdown_requires_authenticated_host_finish():
+    import inspect
+
+    from gaslux_q4os_bounded_cow_write_lab import _authenticate_guest_write
+    from q4os_guest_bound_write_agent import run
+
+    host = inspect.getsource(_authenticate_guest_write)
+    guest = inspect.getsource(run)
+    assert "FINISH = b\"GQ4OS-WRITE-FINISH-V1\"" in host
+    assert "hmac.new(secret.encode(\"ascii\"), AUTH_DOMAIN + FINISH" in host
+    assert "conn.sendall(FINISH + b\":\" + finish_mac" in host
+    assert "finish = _read_line(fd, 256).split(b\":\")" in guest
+    assert "hmac.compare_digest(finish[1], finish_mac)" in guest
+
+
 def test_sigkill_recovery_does_not_claim_host_power_loss_or_windows_rollback():
     import inspect
 
