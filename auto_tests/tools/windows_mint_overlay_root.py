@@ -230,7 +230,7 @@ def verify_mint_storage_initramfs(listing: str, builtins: set[str]) -> None:
         if name in builtins:
             continue
         pattern = re.compile(r"(^|/)" + re.escape(name)
-                             + r"\\.ko(?:\\.[A-Za-z0-9]+)?$", re.MULTILINE)
+                             + r"\.ko(?:\.[A-Za-z0-9]+)?$", re.MULTILINE)
         require(pattern.search(listing) is not None,
                 f"Mint installed initramfs lacks required storage module: {name}")
 
