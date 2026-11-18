@@ -76,19 +76,45 @@ jobs:
           timeout 300s sudo apt-get update -qq
           timeout 600s sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
             apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils linux-image-generic busybox-static kmod cpio \
+            qemu-system-x86 qemu-utils busybox-static kmod cpio \
             gdisk dosfstools python3 acl
+          # Linux-image-generic pulls ~841MB of unused host firmware on this
+          # runner; use an existing packaged kernel with full modules first.
+          host_kernel_ready=0
+          for candidate in /boot/vmlinuz-*; do
+            [[ -f "$candidate" ]] || continue
+            candidate_version="${candidate##*/vmlinuz-}"
+            if [[ -s "/lib/modules/$candidate_version/modules.dep" ]]; then
+              host_kernel_ready=1
+              break
+            fi
+          done
+          if (( host_kernel_ready == 0 )); then
+            timeout 480s sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+              apt-get install -y --no-install-recommends linux-image-virtual
+          fi
           python -m pip install 'pytest>=9,<10' 'cryptography>=46,<51' \
             'jsonschema>=4,<5' 'ruff>=0.8,<1'
           if [[ -c /dev/kvm ]]; then
             sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
           fi
           mapfile -t kernels < <(find -L /boot -maxdepth 1 -type f \
-            -name 'vmlinuz-*' -print | sort -V)
-          [[ ${#kernels[@]} -gt 0 ]] || { echo 'No runner kernel found' >&2; exit 1; }
-          kernel_source="$(readlink -f "${kernels[-1]}")"
-          kernel_version="${kernel_source##*/vmlinuz-}"
-          [[ -s "$kernel_source" && -s "/lib/modules/$kernel_version/modules.dep" ]]
+            -name 'vmlinuz-*' -print | sort -Vr)
+          kernel_source=''
+          kernel_version=''
+          for candidate in "${kernels[@]}"; do
+            resolved="$(readlink -f "$candidate")"
+            version="${resolved##*/vmlinuz-}"
+            if [[ -s "$resolved" && -s "/lib/modules/$version/modules.dep" ]]; then
+              kernel_source="$resolved"
+              kernel_version="$version"
+              break
+            fi
+          done
+          [[ -n "$kernel_source" && -n "$kernel_version" ]] || {
+            echo 'No runner kernel with actual module dependencies' >&2
+            exit 1
+          }
           kernel_dir="$RUNNER_TEMP/q4os-integrated-kernel-$GITHUB_RUN_ID"
           mkdir -m 0700 -p "$kernel_dir"
           kernel="$kernel_dir/vmlinuz-$kernel_version"
