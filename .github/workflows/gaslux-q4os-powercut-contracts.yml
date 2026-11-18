@@ -1,0 +1,53 @@
+name: Q4OS power-cut VM recovery negative contracts (no disk writes)
+
+on:
+  push:
+    branches:
+      - feature/q4os-powercut-cow-recovery
+    paths:
+      - '.github/workflows/gaslux-q4os-powercut-contracts.yml'
+      - 'auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py'
+      - 'auto_tests/tools/q4os_guest_bound_write_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_bounded_write_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_bounded_cow_write.py'
+      - 'auto_tests/tests/test_q4os_powercut_recovery.py'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-powercut-contracts.yml'
+      - 'auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py'
+      - 'auto_tests/tools/q4os_guest_bound_write_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_bounded_write_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_bounded_cow_write.py'
+      - 'auto_tests/tests/test_q4os_powercut_recovery.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lightweight validation dependencies (no QEMU)
+        run: python -m pip install 'pytest>=9,<10' 'cryptography>=46,<51' 'jsonschema>=4,<5' 'ruff>=0.8,<1'
+      - name: Compile, Ruff, Bash syntax and negative contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sources=(auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py
+            auto_tests/tools/q4os_guest_bound_write_agent.py
+            auto_tests/tests/test_q4os_bounded_cow_write.py
+            auto_tests/tests/test_q4os_powercut_recovery.py)
+          python -m compileall -q "${sources[@]}"
+          python -m ruff check --config auto_tests/pyproject.toml "${sources[@]}"
+          python -m ruff format --check --config auto_tests/pyproject.toml "${sources[@]}"
+          bash -n auto_tests/tools/gaslux_q4os_bounded_write_initramfs.sh
+          python -m pytest -q auto_tests/tests/test_q4os_bounded_cow_write.py \
+            auto_tests/tests/test_q4os_powercut_recovery.py
