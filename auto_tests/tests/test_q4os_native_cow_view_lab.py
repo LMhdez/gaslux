@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -110,7 +109,7 @@ def test_gui_script_proves_radio_select_only_with_signed_snapshot():
     assert "GASLUX_Q4OS_CALAMARES_INSTALL_CLICKED=NO" in src
     assert "python3 \"$guard_script\" prepare" in src
     assert "python3 \"$guard_script\" verify" in src
-    assert src.index('python3 "$guard_script" prepare') < src.index("qemu-system-x86_64")
+    assert src.index('python3 "$guard_script" prepare') < src.index("720s qemu-system-x86_64")
     assert "move 334 280 click 1" in src
     assert "move 1002 644 click 1" in src  # existing non-destructive wizard navigation
     assert "GASLUX_Q4OS_CALAMARES_SYNTHETIC_RADIO_SELECTED=PASS" in src
