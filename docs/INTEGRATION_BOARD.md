@@ -384,3 +384,23 @@ A integração passa a ser avaliada por **ordem de criação das PRs abertas**, 
 **Conclusão de segurança:** a cadeia #10 e #11 **diverge depois da #8**. A #195 preserva ficheiros de #11 mas não os dois módulos de autenticação de #10. Portanto, fazer merge linear de todas as PRs antigas ou encerrar #10 como obsoleta seria incorreto. Primeiro isolar e rever o contrato Ed25519/boot autenticado, confrontá-lo com os contratos posteriores, e só depois preparar uma integração de âmbito limitado. Nenhum merge, fecho ou promoção de catálogo é autorizado por esta auditoria.
 
 **Prova de leitura:** metadados, base/head e patches de #1/#2/#4/#5/#6/#8/#10/#11; blobs dos módulos de preflight/handoff nas branches #11/#195; ausência verificada de todos os dez caminhos de backend selecionados em `main` e `dev`. Não foram executados testes nem builds novos nesta auditoria cronológica.
+
+### Continuação cronológica — PRs #15–#34 (18/11/2026)
+
+Revistos os **16 PRs abertos** neste intervalo (#15, #16, #17, #18, #20, #23, #24, #25, #26, #27, #28, #30, #31, #32, #33, #34), com base/head, descrição e patches. Esta classificação é uma triagem técnica, não uma autorização de merge.
+
+| PRs | Família / dependência | Tratamento |
+| --- | --- | --- |
+| [#15](https://github.com/LMhdez/gaslux/pull/15) → [#16](https://github.com/LMhdez/gaslux/pull/16) | Evidência Windows/WinRE/BCD/ESP e isolamento Proxmox; #16 depende de #15 | **Preservar e consolidar** verificadores antes de executar qualquer laboratório com escrita; não confundir evidência read-only com rollback comprovado |
+| [#17](https://github.com/LMhdez/gaslux/pull/17), [#18](https://github.com/LMhdez/gaslux/pull/18) | CachyOS: preflight dentro do Archiso e GRUB gerado; ambos partem da #11 em ramos paralelos | **Consolidar**, distinguindo boot live de instalação |
+| [#20](https://github.com/LMhdez/gaslux/pull/20) | Pop!_OS: preflight nativo, baseado em `dev` | **Preservar**; cadeia independente de CachyOS |
+| [#23](https://github.com/LMhdez/gaslux/pull/23) | Windows 11 ARM: leitura de APIs do runner | **Manter como prova auxiliar**, não equivalente a Windows x64/dual boot |
+| [#24](https://github.com/LMhdez/gaslux/pull/24) → [#25](https://github.com/LMhdez/gaslux/pull/25) → [#27](https://github.com/LMhdez/gaslux/pull/27) | CachyOS: verificação da política de assinatura, auditoria da ISO e configuração pacman estrita | **Preservar bloqueios fail-closed**; nunca reutilizar `Optional TrustAll` da live como política de instalação |
+| [#26](https://github.com/LMhdez/gaslux/pull/26) → [#28](https://github.com/LMhdez/gaslux/pull/28) → [#31](https://github.com/LMhdez/gaslux/pull/31) | CachyOS: integra autenticação #10 e ISO real #17; prova Secure Boot OVMF e execução do GRUB assinado | **Cadeia de autenticação a integrar separadamente**, com revisão do binding ao disco/transação |
+| [#30](https://github.com/LMhdez/gaslux/pull/30) | CachyOS: isolamento de alvo `pacstrap` e módulos de autenticação #10, mas baseia-se em #6 | **Reconciliar com #26 e com o plano de disco moderno**, evitando a suposição insegura de que uma letra `/dev/vdX` identifica por si só o disco autorizado |
+| [#32](https://github.com/LMhdez/gaslux/pull/32) → [#33](https://github.com/LMhdez/gaslux/pull/33) | Pop!_OS: ISO OVMF e identidade ELF do `distinst`; ambas dependem da #20 | **Consolidar no backend System76**, sem promover para estável |
+| [#34](https://github.com/LMhdez/gaslux/pull/34) | CachyOS: tentativa de pacstrap/primeiro arranque em VM, baseada na #18 | **Consolidar com ensaios posteriores**, sem inferir êxito de boot ou dual boot do título |
+
+**Resolução parcial da divergência #10/#11:** a [#26](https://github.com/LMhdez/gaslux/pull/26) já contém os **mesmos blobs Git** `assets/live/cachyos-handoff-auth.py` (`2c2d220baead7352521edd3840ef5177a864dde9`) e `assets/live/cachyos-signed-grub-handoff.py` (`40bf60a9b31e7b1fda3c8164185e1cdfaccbd08c`) que a #10. A #30 também os contém. Contudo, ambos estão **ausentes** do HEAD da #195. A #195 contém `cachyos-strict-pacman.py` com o **mesmo blob** que a #34 (`ec880ec288f9ca8a875e52c18d3f8338af786f8f`). Há, portanto, **duas linhas funcionais distintas** (autenticação de handoff e instalação pacman estrita) que precisam de integração explícita; não é seguro afirmar que uma substitui a outra.
+
+**Bloqueio antes de qualquer merge:** revisão dos pontos de ligação entre o plano autenticado #26/#30 e a identidade/ownership do alvo #195, testes de replay/tampering, e CI do conjunto combinado. A leitura de patches e comparação de blobs não equivalem a testes de integração. Não houve escrita em disco, merge, fecho de PR ou alteração ao catálogo estável.
