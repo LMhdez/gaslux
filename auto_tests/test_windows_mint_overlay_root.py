@@ -270,13 +270,55 @@ class MintOverlayContracts(unittest.TestCase):
     def test_bind_and_fuse_unmounts_are_checked_and_verified(self):
         source = Path(mint.__file__).read_text(encoding="utf-8")
         bind_cleanup = source.index("for bind_mount in (target /")
+        recursive_cleanup = source.index("unmount_private_tree(bind_mount)")
         fuse_unmount = source.index('run(["sudo", "guestunmount", str(target)]')
         fallback = source.index('["sudo", "fusermount3", "-u", str(target)]')
         verify = source.index('["sudo", "findmnt", "-rn", "--mountpoint", str(target)]')
-        self.assertLess(bind_cleanup, fuse_unmount)
+        self.assertLess(bind_cleanup, recursive_cleanup)
+        self.assertLess(recursive_cleanup, fuse_unmount)
         self.assertLess(fuse_unmount, fallback)
         self.assertLess(fallback, verify)
         self.assertNotIn('str(bind_mount)], check=False', source)
+
+
+    def test_unmount_private_tree_recursively_cleans_nested_mounts(self):
+        calls = []
+        def fake_run(args, **kwargs):
+            calls.append(args)
+            if args[1:3] == ["umount", "--recursive"]:
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        with patch.object(mint.subprocess, "run", side_effect=fake_run):
+            mint.unmount_private_tree(Path("/tmp/private/target/sys"))
+        self.assertEqual(calls[0], [
+            "sudo", "umount", "--recursive", "/tmp/private/target/sys",
+        ])
+        self.assertEqual(calls[1], ["sudo", "findmnt", "-rn", "-o", "TARGET"])
+
+    def test_unmount_private_tree_fails_closed_when_nested_mount_remains(self):
+        def fake_run(args, **kwargs):
+            if args[1:3] == ["umount", "--recursive"]:
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="/tmp/private/target/sys\n/tmp/private/target/sys/fs/cgroup\n",
+                stderr="",
+            )
+        with patch.object(mint.subprocess, "run", side_effect=fake_run):
+            with self.assertRaisesRegex(mint.MintOverlayError, "remaining=.*cgroup"):
+                mint.unmount_private_tree(Path("/tmp/private/target/sys"))
+
+    def test_unmount_private_tree_rejects_symlinked_path_before_commands(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            link = root / "sys"
+            link.symlink_to(root, target_is_directory=True)
+            with patch.object(mint.subprocess, "run") as run:
+                with self.assertRaisesRegex(mint.MintOverlayError, "unsafe chroot mount"):
+                    mint.unmount_private_tree(link)
+            run.assert_not_called()
+
 
 
 
