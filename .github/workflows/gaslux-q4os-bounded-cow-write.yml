@@ -3,7 +3,7 @@ name: Q4OS bounded guest COW write and durable recovery (synthetic VM only)
 on:
   push:
     branches:
-      - feature/q4os-bounded-cow-guest-write-lab
+      - feature/q4os-abrupt-qemu-power-loss-recovery
     paths:
       - '.github/workflows/gaslux-q4os-bounded-cow-write.yml'
       - 'assets/live/gaslux_q4os_vm_target_plan.py'
@@ -289,6 +289,51 @@ jobs:
           print("GASLUX_Q4OS_FULL_INSTALLATION_ROLLBACK=NOT_PROVEN")
           PY
 
+      - name: Inject abrupt QEMU SIGKILL after authenticated guest write and recover
+        shell: bash
+        env:
+          GASLUX_Q4OS_SYNTHETIC_WRITE_LAB_ONLY: 'yes'
+          GASLUX_Q4OS_TEST_KILL_QEMU_AFTER_WRITE: 'yes'
+        run: |
+          set -Eeuo pipefail
+          crash_evidence="$RUNNER_TEMP/q4os-abrupt-kill-$GITHUB_RUN_ID"
+          printf 'GASLUX_Q4OS_ABRUPT_EVIDENCE=%s\n' "$crash_evidence" >> "$GITHUB_ENV"
+          python auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py \
+            "$GASLUX_Q4OS_WORK" "$GASLUX_Q4OS_PLAN" \
+            "$GASLUX_Q4OS_SNAPSHOT_EVIDENCE" "$crash_evidence" \
+            "$GASLUX_Q4OS_KERNEL" "$GASLUX_Q4OS_WORK/write-guest-initramfs.cpio.gz"
+
+      - name: Verify forced-QEMU-exit recovery evidence without claiming host power-loss
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - "$GASLUX_Q4OS_ABRUPT_EVIDENCE" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          folder = Path(sys.argv[1])
+          result = json.loads((folder / "q4os-bounded-write-recovery-result.json").read_text())
+          checkpoint = json.loads((folder / "q4os-bounded-write-recovery-checkpoint.json").read_text())
+          assert result["qemuProcessKilledAfterAuthenticatedWrite"] is True
+          assert result["qemuGuestShutdownObserved"] is False
+          assert result["abruptQemuPowerLossInjected"] is True
+          assert result["hostPowerLossInjected"] is False
+          assert result["partialWritePowerLossTested"] is False
+          assert result["guestDiskIdentityVerified"] is True
+          assert result["guestWriteCompleted"] is True
+          assert result["cowModifiedOnlyInProposedRootExtent"] is True
+          assert result["snapshotRestoredAndCompared"] is True
+          assert result["syntheticWriteRecoveredVerified"] is True
+          assert result["overlayDiscarded"] is True
+          assert result["baseImageUnchanged"] is True
+          assert result["windowsDiskAttached"] is False
+          assert result["rollbackVerified"] is False
+          assert checkpoint["guestWritesAuthorized"] is False
+          print("GASLUX_Q4OS_SIGKILL_AFTER_FSYNC_RECOVERY=PASS")
+          print("GASLUX_Q4OS_HOST_POWER_LOSS=NOT_TESTED")
+          print("GASLUX_Q4OS_WINDOWS_ROLLBACK=NOT_TESTED")
+          PY
+
       - name: Upload signed snapshot, QEMU identity, writable COW and recovery evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -299,5 +344,6 @@ jobs:
             ${{ runner.temp }}/q4os-integrated-snapshot-${{ github.run_id }}/
             ${{ runner.temp }}/q4os-integrated-qemu-${{ github.run_id }}/
             ${{ runner.temp }}/q4os-bounded-write-${{ github.run_id }}/
+            ${{ runner.temp }}/q4os-abrupt-kill-${{ github.run_id }}/
           if-no-files-found: warn
           retention-days: 7
