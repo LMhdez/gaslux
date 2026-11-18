@@ -250,12 +250,13 @@ jobs:
                 || { echo "Installer partitioning policy not recognized; stopping"; exit 1; }
               echo 'ONE blank 70 GiB disk displayed by native installer; not a Windows target' \
                 > bazzite-evidence/guest-disk-screen-gate.txt
-              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
+              # Inspect the explicit custom-partitioning route, never the destructive default.
+              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 600 375 click 1
             elif (( phase == 5 )); then
-              grep -Eiq 'Storage configuration|Select storage|Select disk' \
+              grep -Eiq 'custom|partition|storage editor|mount point|filesystem|device|disk' \
                 "bazzite-evidence/main-ocr-5.txt" \
-                || { echo "Storage page not confirmed; no disk selection or install"; exit 1; }
-              echo "Storage page OBSERVED. No partition write or final installation click." \
+                || { echo "Custom storage editor not confirmed; no disk selection or install"; exit 1; }
+              echo "Custom storage editor OBSERVED. No disk selection, partition write or install." \
                 > bazzite-evidence/storage-scout-result.txt
             fi
           done
