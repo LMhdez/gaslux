@@ -223,3 +223,31 @@ def test_restore_checkpoint_does_not_claim_full_windows_rollback():
     assert "qemu-io" in src
     assert "sgdisk" in src
     assert '"syntheticWriteRecoveredVerified"' in src
+
+
+def test_fault_injection_is_explicit_and_does_not_claim_full_power_loss():
+    from gaslux_q4os_bounded_cow_write_lab import _authenticate_guest_write
+
+    import inspect
+
+    source = inspect.getsource(_authenticate_guest_write)
+    assert "if abrupt_power_loss:" in source
+    assert "process.kill()" in source
+    assert "process.returncode == -9" in source
+    assert "verified = validate_write_result" in source
+    assert source.index("verified = validate_write_result") < source.index("process.kill()")
+    assert '"qemuGuestShutdownObserved": not abrupt_power_loss' in source
+
+
+def test_fault_injection_result_does_not_misrepresent_recovery():
+    from gaslux_q4os_bounded_cow_write_lab import run_lab
+
+    import inspect
+
+    source = inspect.getsource(run_lab)
+    assert 'GASLUX_Q4OS_TEST_KILL_QEMU_AFTER_WRITE' in source
+    assert '"hostPowerLossInjected": False' in source
+    assert '"partialWritePowerLossTested": False' in source
+    assert '"rollbackVerified": False' in source
+    assert '"windowsDiskAttached": False' in source
+    assert '"syntheticWriteRecoveredVerified": True' in source
