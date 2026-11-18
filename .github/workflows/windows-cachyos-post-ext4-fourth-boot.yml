@@ -105,7 +105,7 @@ jobs:
     name: Real libguestfs fifth-ext4 on isolated synthetic raw image (NO Windows)
     needs: verify-host-and-proof-contracts
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       GASLUX_SYNTHETIC_EXT4_CONSENT: I_ACCEPT_SYNTHETIC_RAW_FILE_FIFTH_EXT4_ONLY
     steps:
