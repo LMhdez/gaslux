@@ -1,0 +1,150 @@
+name: Bazzite legacy ISO pinned-byte lab audit (no boot, no disks)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-legacy-iso-scout-20261118
+    paths:
+      - '.github/workflows/gaslux-bazzite-legacy-pinned-media.yml'
+      - 'auto_tests/tests/test_bazzite_legacy_pinned_media_workflow.py'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-bazzite-legacy-pinned-media.yml'
+      - 'auto_tests/tests/test_bazzite_legacy_pinned_media_workflow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  attestations: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate non-executable ISO inspection scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff PyYAML
+          python -m pytest -q auto_tests/tests/test_bazzite_legacy_pinned_media_workflow.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tests/test_bazzite_legacy_pinned_media_workflow.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tests/test_bazzite_legacy_pinned_media_workflow.py
+
+  pinned-media-bytes:
+    needs: contracts
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref == 'feature/bazzite-legacy-iso-scout-20261118'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the historical official CDN metadata still matches the lab pin
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          url='https://download.bazzite.gg/bazzite-stable-amd64.iso'
+          expected_sha='9c8d06cd8e57f2274678edeb14b4b13a79b8117c70571a65199919a66305b5c7'
+          expected_size=7907770368
+          work="$RUNNER_TEMP/bazzite-legacy-pinned"
+          mkdir -m 700 "$work" bazzite-legacy-pinned-evidence
+          curl --fail --silent --show-error --location --head --retry 2 \
+            --connect-timeout 20 --max-time 90 \
+            --proto '=https' --proto-redir '=https' \
+            "$url" -o "$work/iso.head"
+          length=$(tr -d '\r' < "$work/iso.head" \
+            | awk 'tolower($1)=="content-length:" {n=$2} END {print n}')
+          [[ "$length" == "$expected_size" ]] \
+            || { echo 'Legacy upstream bytes changed; refusing before download' >&2; exit 1; }
+          curl --fail --silent --show-error --location --retry 2 \
+            --max-filesize 4096 --connect-timeout 20 --max-time 90 \
+            --proto '=https' --proto-redir '=https' \
+            "$url-CHECKSUM" -o "$work/iso.checksum"
+          python3 - "$work/iso.checksum" "$expected_sha" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "auto_tests")
+          from bazzite_legacy_iso_scout import parse_advertised_checksum
+          assert parse_advertised_checksum(Path(sys.argv[1]).read_text()) == sys.argv[2]
+          PY
+          free_bytes=$(df -PB1 "$work" | awk 'NR==2 {print $4}')
+          if (( free_bytes < expected_size + 2*1024*1024*1024 )); then
+            echo 'No safe scratch capacity for full legacy ISO; no download' >&2
+            exit 1
+          fi
+          printf 'CDN bytes pin verified as metadata only; no independent signature yet.\n'
+      - name: Download exact candidate bytes and verify pinned SHA-256 (no execution)
+        shell: bash
+        timeout-minutes: 65
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-legacy-pinned"
+          iso="$work/bazzite-stable-amd64.iso"
+          url='https://download.bazzite.gg/bazzite-stable-amd64.iso'
+          curl --fail --silent --show-error --location \
+            --retry 7 --retry-all-errors --retry-delay 5 --continue-at - \
+            --connect-timeout 30 --max-time 3400 \
+            --proto '=https' --proto-redir '=https' \
+            "$url" -o "$iso"
+          actual_size=$(stat -c '%s' "$iso")
+          actual_sha=$(sha256sum "$iso" | awk '{print $1}')
+          [[ "$actual_size" == 7907770368 ]] \
+            || { echo 'Legacy ISO has unexpected byte size' >&2; exit 1; }
+          [[ "$actual_sha" == '9c8d06cd8e57f2274678edeb14b4b13a79b8117c70571a65199919a66305b5c7' ]] \
+            || { echo 'Legacy ISO differs from historical lab pin' >&2; exit 1; }
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 600s apt-get install -y -qq xorriso
+          xorriso -indev "$iso" -report_el_torito plain \
+            > "$work/el-torito.txt" 2>&1
+          grep -Eiq 'efi|uefi|0xef' "$work/el-torito.txt" \
+            || { echo 'No demonstrated EFI El Torito media; refusing' >&2; exit 1; }
+          xorriso -indev "$iso" -ls / > "$work/iso-root.txt" 2>&1
+          echo 'ISO header and EFI boot catalog read-only inspection completed'
+          # Attestation is independent of the CDN checksum. Its absence never grants trust.
+          upstream_attested=false
+          if gh attestation verify "$iso" --repo ublue-os/bazzite \
+            > "$work/upstream-attestation.txt" 2>&1; then
+            upstream_attested=true
+          fi
+          python3 - "$actual_sha" "$actual_size" "$upstream_attested" <<'PY' \
+            > bazzite-legacy-pinned-evidence/pinned-byte-audit.json
+          import json
+          import sys
+          print(json.dumps({
+              "distributionId": "bazzite",
+              "sourceFormat": "legacy-anaconda-iso-candidate",
+              "labDiscoveredSha256": sys.argv[1],
+              "labDiscoveredSizeBytes": int(sys.argv[2]),
+              "downloadedBytesMatchDiscoveredPin": True,
+              "officialGithubAttestationVerified": sys.argv[3] == "true",
+              "detachedCosignSignatureVerified": False,
+              "isoMediaUefiElToritoObserved": True,
+              "catalogPinAuthorized": False,
+              "independentInstallerIdentityVerified": False,
+              "manualPartitioningInGuestVerified": False,
+              "installationAuthorized": False,
+              "windowsEspWriteAuthorized": False,
+              "windowsEspPreservationProven": False,
+              "windowsDualBootVerified": False,
+          }, indent=2, sort_keys=True))
+          PY
+          cat bazzite-legacy-pinned-evidence/pinned-byte-audit.json
+      - name: Publish bounded lab evidence without ISO or firmware state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-legacy-pinned-iso-byte-evidence
+          path: bazzite-legacy-pinned-evidence/
+          if-no-files-found: warn
+          retention-days: 7
