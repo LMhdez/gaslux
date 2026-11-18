@@ -93,6 +93,37 @@ def guestfish_download_command(overlay: Path, guest_path: str, destination: Path
     ]
 
 
+def unmount_private_tree(mountpoint: Path) -> None:
+    """Unmount one private chroot mount and all nested mounts, without lazy detach."""
+    require(mountpoint.is_absolute() and not mountpoint.is_symlink(),
+            "refusing unsafe chroot mount cleanup path")
+    path = str(mountpoint)
+    result = subprocess.run(
+        ["sudo", "umount", "--recursive", path],
+        check=False, text=True, capture_output=True, timeout=90,
+    )
+    mounts = subprocess.run(
+        ["sudo", "findmnt", "-rn", "-o", "TARGET"],
+        check=False, text=True, capture_output=True, timeout=30,
+    )
+    remaining = [
+        line.strip() for line in mounts.stdout.splitlines()
+        if line.strip() == path or line.strip().startswith(path + "/")
+    ]
+    if result.returncode != 0 or mounts.returncode != 0 or remaining:
+        holders = subprocess.run(
+            ["sudo", "fuser", "-vm", path],
+            check=False, text=True, capture_output=True, timeout=30,
+        )
+        detail = (result.stderr or result.stdout or "").strip()
+        holder_detail = (holders.stderr or holders.stdout or "").strip()
+        raise MintOverlayError(
+            f"chroot mount tree remains busy at {path}; "
+            f"umount_rc={result.returncode}; findmnt_rc={mounts.returncode}; "
+            f"remaining={remaining!r}; umount={detail}; holders={holder_detail}"
+        )
+
+
 def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
     import guestfs
 
@@ -344,11 +375,11 @@ def install_mint_root_and_boot(
             require(initrd.is_file() and initrd.stat().st_size > 1024 * 1024,
                     "Mint initramfs was not generated")
         finally:
-            # Unmount nested bind mounts explicitly and fail closed if any remain.
-            # Silently ignoring an umount failure leaves guestmount busy and makes
-            # the later guestunmount error obscure the original mount leak.
-            for bind_mount in (target / "dev/pts", target / "dev", target / "sys", target / "proc"):
-                run(["sudo", "umount", str(bind_mount)], timeout=60)
+            # Reverse the mount dependency order. Recursive unmount handles
+            # nested sysfs/procfs mounts created by initramfs tooling; lazy detach
+            # is deliberately forbidden because it would hide live references.
+            for bind_mount in (target / "dev/pts", target / "sys", target / "proc", target / "dev"):
+                unmount_private_tree(bind_mount)
         # Release FUSE before reading large boot artifacts. guestfish downloads
         # directly from ext4 to runner-local storage, avoiding slow initramfs
         # traversal through the mounted guest filesystem. If guestunmount cannot
