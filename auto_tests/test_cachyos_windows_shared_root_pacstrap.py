@@ -467,7 +467,7 @@ class SharedRootOnlySafety(unittest.TestCase):
             calls.append(argv)
             if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
                 return graph
-            if argv[:4] == ["findmnt", "-rn", "-M"]:
+            if argv[:3] == ["findmnt", "-rn", "-M"]:
                 return "/dev/vdc3 ntfs3"
             raise AssertionError("foreign mount must never be detached")
         with self.assertRaises(shared.SharedDiskHandoffRejected):
