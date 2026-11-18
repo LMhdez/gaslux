@@ -211,7 +211,8 @@ class HandoffTests(unittest.TestCase):
         calls = []
         def cmd(argv, **kwargs):
             calls.append(tuple(argv))
-            if argv[0] == "findmnt" and str(self.disk) in argv:
+            if (argv[0] == "findmnt" and "-M" in argv
+                    and argv[argv.index("-M") + 1] == str(self.disk)):
                 output = "/dev/loop7 ext4"
             elif argv[0] == "findmnt":
                 output = "/dev/loop8 iso9660 ro,nosuid"
