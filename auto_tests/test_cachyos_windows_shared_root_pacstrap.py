@@ -397,6 +397,83 @@ class SharedRootOnlySafety(unittest.TestCase):
                              "mount source, filesystem or access flags"):
                         check(**mutation)
 
+    def test_cleanup_only_owned_root_and_pacstrap_api_mounts(self):
+        root = shared.ROOT
+        device = Path("/dev/vdb5")
+        graph = "\n".join((
+            f"{root} {device} ext4",
+            f"{root}/dev devtmpfs devtmpfs",
+            f"{root}/dev/pts devpts devpts",
+            f"{root}/proc proc proc",
+            f"{root}/sys sysfs sysfs",
+            f"{root}/sys/fs/cgroup cgroup2 cgroup2",
+            f"{root}/run tmpfs tmpfs",
+        ))
+        records = {cells[0]: (cells[1], cells[2])
+                   for row in graph.splitlines()
+                   for cells in [row.split()]}
+        removed = []
+
+        def runner(argv):
+            if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
+                self.assertEqual(argv[4:], ["TARGET,SOURCE,FSTYPE", str(root)])
+                return graph
+            if argv[:4] == ["findmnt", "-rn", "-M",]:
+                self.assertEqual(argv[-1], "SOURCE,FSTYPE")
+                source, kind = records[argv[3]]
+                return f"{source} {kind}\n"
+            if argv[:2] == ["umount", "--"]:
+                removed.append(argv[2])
+                return ""
+            raise AssertionError(f"unexpected cleanup command: {argv}")
+
+        shared.unmount_owned_root_tree(root, device, run=runner)
+        self.assertEqual(len(removed), len(records))
+        self.assertEqual(removed[-1], str(root))
+        self.assertLess(removed.index(f"{root}/dev/pts"),
+                        removed.index(f"{root}/dev"))
+        self.assertLess(removed.index(f"{root}/sys/fs/cgroup"),
+                        removed.index(f"{root}/sys"))
+
+    def test_cleanup_rejects_foreign_or_unknown_mount_before_any_umount(self):
+        root = shared.ROOT
+        device = Path("/dev/vdb5")
+        cases = (
+            f"{root} /dev/vdc5 ext4",
+            f"{root} {device} ext4\n{root}/windows /dev/vdb3 ntfs3",
+            f"{root} {device} ext4\n{root}/dev /dev/vdc3 ext4",
+            f"{root} {device} ext4\n{root}/dev devtmpfs devtmpfs\n"
+            f"{root}/dev devtmpfs devtmpfs",
+            f"{root} {device} ext4\n/mnt/foreign proc proc",
+        )
+        for graph in cases:
+            calls = []
+            def runner(argv):
+                calls.append(argv)
+                if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
+                    return graph
+                raise AssertionError("cleanup must reject the mount graph before mutation")
+            with self.subTest(graph=graph), self.assertRaises(
+                    shared.SharedDiskHandoffRejected):
+                shared.unmount_owned_root_tree(root, device, run=runner)
+            self.assertFalse(any(c[0] == "umount" for c in calls))
+
+    def test_cleanup_rechecks_source_immediately_before_unmount(self):
+        root = shared.ROOT
+        device = Path("/dev/vdb5")
+        graph = f"{root} {device} ext4\n{root}/dev devtmpfs devtmpfs"
+        calls = []
+        def runner(argv):
+            calls.append(argv)
+            if argv[:4] == ["findmnt", "-rn", "-R", "-o"]:
+                return graph
+            if argv[:4] == ["findmnt", "-rn", "-M"]:
+                return "/dev/vdc3 ntfs3"
+            raise AssertionError("foreign mount must never be detached")
+        with self.assertRaises(shared.SharedDiskHandoffRejected):
+            shared.unmount_owned_root_tree(root, device, run=runner)
+        self.assertFalse(any(c[0] == "umount" for c in calls))
+
     def test_source_protection_is_required_on_both_mount_paths(self):
         source = (HERE / "tools/cachyos_windows_shared_root_pacstrap.py").read_text()
         self.assertIn("verify_mounted_source(Path(temp), source, mount_type,",
