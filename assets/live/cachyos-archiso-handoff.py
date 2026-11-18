@@ -109,9 +109,12 @@ def _command(runner: Any, argv: list[str]) -> str:
         detail = re.sub(r"[^A-Za-z0-9 _.,:()/-]", "?", response.stderr.strip())
         detail = re.sub(r"/[^ ]+", "<path>", detail)[:160]
         suffix = ("; " + detail) if detail else ""
-        command_label = (
-            "sudo -n blkid" if argv[:3] == ["sudo", "-n", "blkid"] else argv[0]
-        )
+        if argv[:3] == ["sudo", "-n", "blkid"]:
+            command_label = "sudo -n blkid"
+        elif argv[:3] == ["sudo", "-n", "python3"]:
+            command_label = "sudo -n python3 ext4-superblock probe"
+        else:
+            command_label = argv[0]
         raise HandoffError(
             "mount verification failed: " + command_label
             + " (exit " + str(response.returncode) + ")" + suffix
@@ -146,10 +149,31 @@ def verify_live_iso_mount(
     # hosted Ubuntu, the resulting /dev/loopN is root:disk (0660), while the
     # unprivileged runner is not in disk. Keep the probe read-only, but execute
     # it non-interactively with sudo so device permissions cannot hide UUID.
-    observed_uuid = _command(runner, [
-        "sudo", "-n", "blkid", "-p", "-c", "/dev/null",
-        "-s", "UUID", "-o", "value", store[0]
-    ])
+    if storage_fs == "ext4":
+        # libblkid's low-level probe can be denied by the Archiso loop-device
+        # policy even under non-interactive sudo. Read only the ext4 superblock
+        # UUID directly instead: magic at byte 1080, UUID at byte 1128.
+        # This avoids udev/cache ambiguity and performs no filesystem writes.
+        probe = (
+            "import os,sys,uuid\n"
+            "fd=os.open(sys.argv[1], os.O_RDONLY | getattr(os,'O_CLOEXEC',0))\n"
+            "try:\n"
+            " magic=os.pread(fd,2,1024+56)\n"
+            " raw=os.pread(fd,16,1024+104)\n"
+            "finally:\n"
+            " os.close(fd)\n"
+            "if magic != bytes((0x53,0xef)) or len(raw) != 16: "
+            "raise SystemExit('invalid ext4 superblock')\n"
+            "print(str(uuid.UUID(bytes=raw)))\n"
+        )
+        observed_uuid = _command(runner, [
+            "sudo", "-n", "python3", "-c", probe, store[0]
+        ])
+    else:
+        observed_uuid = _command(runner, [
+            "sudo", "-n", "blkid", "-p", "-c", "/dev/null",
+            "-s", "UUID", "-o", "value", store[0]
+        ])
     _require(observed_uuid.upper() == storage_uuid.upper(), "ISO storage UUID mismatch")
 
     mounted = _command(runner, [
