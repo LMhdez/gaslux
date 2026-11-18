@@ -158,7 +158,7 @@ jobs:
           }
           grep -Fq 'mirror+file:/etc/apt/apt-mirrors.txt' "$sources"
           grep -Fq 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' "$sources"
-          printf '%s\\n' 'https://archive.ubuntu.com/ubuntu/' |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' |
             sudo tee "$mirrorlist" >/dev/null
           [[ "$(wc -l < "$mirrorlist")" == 1 ]]
           grep -Fxq 'https://archive.ubuntu.com/ubuntu/' "$mirrorlist"
