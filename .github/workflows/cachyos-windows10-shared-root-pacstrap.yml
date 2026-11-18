@@ -144,8 +144,27 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           test "$(uname -m)" = x86_64
-          # Bound hosted apt mirror stalls. A timeout FAILS CLOSED and never
-          # starts the Windows/Archiso guest or authorizes a disk operation.
+          # GitHub hosted Ubuntu mirrors currently point at the slow EC2
+          # regional archive. Switch ONLY the runner's root-owned mirrorlist
+          # to Canonical's official HTTPS archive. Keep the existing deb822
+          # Signed-By key and all APT Release/Packages signature/hash checks.
+          # Never rewrite a foreign or unverified source configuration.
+          mirrorlist=/etc/apt/apt-mirrors.txt
+          sources=/etc/apt/sources.list.d/ubuntu.sources
+          [[ -f "$mirrorlist" && ! -L "$mirrorlist" &&
+             -f "$sources" && ! -L "$sources" &&
+             -f /usr/share/keyrings/ubuntu-archive-keyring.gpg ]] || {
+            echo 'Refusing untrusted GitHub runner Ubuntu sources' >&2; exit 1;
+          }
+          grep -Fq 'mirror+file:/etc/apt/apt-mirrors.txt' "$sources"
+          grep -Fq 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' "$sources"
+          printf '%s\\n' 'https://archive.ubuntu.com/ubuntu/' |
+            sudo tee "$mirrorlist" >/dev/null
+          [[ "$(wc -l < "$mirrorlist")" == 1 ]]
+          grep -Fxq 'https://archive.ubuntu.com/ubuntu/' "$mirrorlist"
+          # APT still validates the Ubuntu archive signatures; never allow
+          # insecure repos or unauthenticated packages on this disposable VM.
+          # Bound hosted apt mirror stalls before ANY guest disk writes.
           timeout --kill-after=10s 300s sudo apt-get \
             -o Acquire::Retries=2 -o Acquire::http::Timeout=60 \
             -o Acquire::https::Timeout=60 update -qq
@@ -166,7 +185,7 @@ jobs:
             echo 'Kernel packaging unexpectedly requires firmware; fail closed' >&2
             exit 1
           fi
-          timeout --kill-after=10s 600s sudo DEBIAN_FRONTEND=noninteractive apt-get \
+          timeout --kill-after=10s 1800s sudo DEBIAN_FRONTEND=noninteractive apt-get \
             -o Acquire::Retries=2 -o Acquire::http::Timeout=60 \
             -o Acquire::https::Timeout=60 install -y --no-install-recommends \
             aria2 qemu-system-x86 qemu-utils ovmf swtpm gdisk \
