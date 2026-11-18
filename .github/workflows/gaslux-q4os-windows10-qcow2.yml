@@ -246,7 +246,7 @@ jobs:
               # VNC binds to loopback only; the guest has no network adapter.
               sleep 8
               for key_attempt in 1 2 3; do
-                printf 'screendump %s\\nsendkey ret\\n' "$work/windows10-cycle-${attempt}-boot.ppm" |
+                printf 'screendump %s\nsendkey ret\n' "$work/windows10-cycle-${attempt}-boot.ppm" |
                   socat -T 10 - "UNIX-CONNECT:$monitor" >> "$work/windows10-monitor.log" 2>&1 || true
                 sleep 8
               done
@@ -257,7 +257,7 @@ jobs:
             # the guest runs, without exposing the monitor beyond this runner.
             (
               while kill -0 "$qemu_pid" 2>/dev/null; do
-                printf 'info status\\nscreendump %s\\n' "$work/windows10-cycle-${attempt}-latest.ppm" |
+                printf 'info status\nscreendump %s\n' "$work/windows10-cycle-${attempt}-latest.ppm" |
                   socat -T 10 - "UNIX-CONNECT:$monitor" >> "$work/windows10-monitor.log" 2>&1 || true
                 sleep 120
               done
@@ -270,6 +270,7 @@ jobs:
             set -e
             kill "$monitor_watch_pid" 2>/dev/null || true
             wait "$monitor_watch_pid" 2>/dev/null || true
+            rm -f "$monitor"
             if [[ $status -eq 124 || $status -eq 137 ]]; then
               tail -n 120 "$qemu_log" || true
               tail -n 120 "$serial" || true
