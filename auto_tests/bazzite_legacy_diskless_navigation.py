@@ -53,7 +53,11 @@ def locate_english_uk(ocr: str, tsv: str, width: int, height: int) -> dict:
     if len(matches) != 1:
         raise NavigationRefusal("No unique English (United Kingdom) locale row")
     target = matches[0]
-    if not (width * 0.55 < target["x"] < width * 0.85 and height * 0.15 < target["y"] < height * 0.55):
+    inside_locale_list = (
+        width * 0.55 < target["x"] < width * 0.85
+        and height * 0.15 < target["y"] < height * 0.55
+    )
+    if not inside_locale_list:
         raise NavigationRefusal("Locale target outside expected safe list")
     return {
         "phase": "locale-choice",
