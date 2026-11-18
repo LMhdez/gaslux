@@ -30,6 +30,7 @@ from gaslux_q4os_qemu_identity_lab import (  # noqa: E402
     _write_json_durable,
     sparse_content_sha256,
 )
+from gaslux_q4os_snapshot_manifest import verify_signed_manifest  # noqa: E402
 from gaslux_q4os_snapshot_recovery_lab import run_lab as snapshot_lab  # noqa: E402
 from gaslux_q4os_vm_target_plan import DISK_BYTES  # noqa: E402
 from gaslux_q4os_vm_target_plan_lab import run_lab as signed_plan_lab  # noqa: E402
@@ -57,7 +58,10 @@ def process(argv: list[str]) -> str:
 def _owner_dir(path: Path) -> None:
     require(path.is_absolute() and path.is_dir() and not path.is_symlink(), "Unsafe VM path")
     data = path.stat()
-    require(stat.S_ISDIR(data.st_mode) and data.st_uid == os.getuid(), "VM directory owner mismatch")
+    require(
+        stat.S_ISDIR(data.st_mode) and data.st_uid == os.getuid(),
+        "VM directory owner mismatch",
+    )
     require(data.st_mode & 0o077 == 0, "VM directory must have private permissions")
 
 
@@ -75,10 +79,23 @@ def _inputs(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path)
     require(workspace.name.startswith("gaslux-q4os-graphics-"), "Not a fresh Q4OS GUI workspace")
     for folder in (plan_dir, snapshot_dir, evidence):
         require(folder.is_absolute() and not folder.is_symlink(), "Unsafe evidence location")
-        require(folder.parent.is_dir() and folder.parent.stat().st_uid == os.getuid(), "Foreign evidence parent")
+        require(
+            folder.parent.is_dir() and folder.parent.stat().st_uid == os.getuid(),
+            "Foreign evidence parent",
+        )
         require(folder != workspace, "Evidence overlaps live workspace")
-    require(plan_dir != snapshot_dir and evidence not in (plan_dir, snapshot_dir),
-            "Recovery artifact destinations overlap")
+    require(
+        plan_dir != snapshot_dir and evidence not in (plan_dir, snapshot_dir),
+        "Recovery artifact destinations overlap",
+    )
+    run_id = os.environ["GITHUB_RUN_ID"]
+    require(
+        plan_dir.parent == snapshot_dir.parent == evidence.parent
+        and plan_dir.name == "q4os-cow-plan-" + run_id
+        and snapshot_dir.name == "q4os-cow-snapshot-" + run_id
+        and evidence.name == "evidence",
+        "Unsigned or foreign Q4OS GUI transaction evidence location",
+    )
     require(
         (workspace / "efi-disk.img").is_file()
         and not (workspace / "efi-disk.img").is_symlink(),
@@ -96,12 +113,21 @@ def prepare(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path)
     _owner_dir(evidence)
     base = workspace / "efi-disk.img"
     before = sparse_content_sha256(base)
-    plan_result = signed_plan_lab(workspace, plan_dir, run_id="q4os-actions-" + os.environ["GITHUB_RUN_ID"])
+    plan_result = signed_plan_lab(
+        workspace, plan_dir, run_id="q4os-actions-" + os.environ["GITHUB_RUN_ID"]
+    )
     require(plan_result["installationAuthorized"] is False, "Unexpected installed-write authority")
     snapshot_result = snapshot_lab(workspace, plan_dir, snapshot_dir)
-    require(snapshot_result["restoreCompareVerified"] is True, "No independently restored checkpoint")
+    require(
+        snapshot_result["restoreCompareVerified"] is True,
+        "No independently restored checkpoint",
+    )
     plan, raw, verification = _verify_plan(workspace, plan_dir)
     require(verification["gptMetadataVerified"] is True, "Invalid signed GPT")
+    require(
+        plan["runId"] == "q4os-actions-" + os.environ["GITHUB_RUN_ID"],
+        "Signed plan does not match current Actions transaction",
+    )
     require(plan["installationAuthorized"] is False and plan["calamaresJobsAuthorized"] is False,
             "Signed target unexpectedly permits native job execution")
     serial = expected_virtio_serial(plan)
@@ -167,10 +193,18 @@ def verify(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) 
     )
     plan, raw_plan, verification = _verify_plan(workspace, plan_dir)
     require(verification["signatureVerified"] is True, "Signed plan cannot be reverified")
-    require(hashlib.sha256(raw_plan).hexdigest() == report["planSha256"],
-            "Signed plan changed across native Calamares GUI session")
-    require(sparse_content_sha256(base) == report["baseSparseSha256"],
-            "Guest changed backing image instead of exclusively owned overlay")
+    require(
+        hashlib.sha256(raw_plan).hexdigest() == report["planSha256"],
+        "Signed plan changed across native Calamares GUI session",
+    )
+    require(
+        plan["runId"] == "q4os-actions-" + os.environ["GITHUB_RUN_ID"],
+        "Signed Calamares GUI proposal replayed from another Actions run",
+    )
+    require(
+        sparse_content_sha256(base) == report["baseSparseSha256"],
+        "Guest changed backing image instead of exclusively owned overlay",
+    )
     process(["qemu-img", "check", str(overlay)])
     process([
         "qemu-img", "compare", "-f", "qcow2", "-F", "raw",
@@ -180,9 +214,27 @@ def verify(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) 
     # wrote anything during this preview, compare exits 1 and we fail hard.
     snapshot = snapshot_dir / "q4os-recovery-snapshot.qcow2"
     require(snapshot.is_file() and not snapshot.is_symlink(), "Missing self-contained recovery")
-    process([
-        "qemu-img", "compare", "-f", "qcow2", "-F", "raw", str(snapshot), str(base)
-    ])
+    manifest = verify_signed_manifest(
+        (snapshot_dir / "q4os-recovery-snapshot-manifest.json").read_bytes(),
+        (snapshot_dir / "q4os-recovery-snapshot-manifest.ed25519").read_bytes(),
+        (snapshot_dir / "q4os-recovery-snapshot-public-key.bin").read_bytes(),
+        (snapshot_dir / "q4os-recovery-snapshot-public-key.sha256").read_text().strip(),
+    )
+    actual_snapshot_sha = hashlib.sha256()
+    with snapshot.open("rb") as snapshot_stream:
+        for chunk in iter(lambda: snapshot_stream.read(8 * 1024 * 1024), b""):
+            actual_snapshot_sha.update(chunk)
+    require(
+        actual_snapshot_sha.hexdigest() == manifest["snapshotSha256"]
+        and snapshot.stat().st_size == manifest["snapshotFileSizeBytes"]
+        and manifest["planSha256"] == report["planSha256"]
+        and manifest["runId"] == plan["runId"]
+        and manifest["nonce"] == plan["nonce"]
+        and manifest["snapshotSelfContained"] is True
+        and manifest["installationAuthorized"] is False,
+        "Snapshot signature, bytes or transaction identity changed",
+    )
+    process(["qemu-img", "compare", "-f", "qcow2", "-F", "raw", str(snapshot), str(base)])
     require(
         plan["installationAuthorized"] is False
         and plan["calamaresJobsAuthorized"] is False
