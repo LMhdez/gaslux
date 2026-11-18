@@ -48,7 +48,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: cachyos-shared-root-pacstrap-${{ github.ref }}
+  # Separate bounded-apt retry from an earlier unbounded setup job; never
+  # cancel a guest run while it may be writing its own disposable COW.
+  group: cachyos-shared-root-pacstrap-bounded-apt-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
