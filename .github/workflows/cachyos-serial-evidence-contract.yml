@@ -31,3 +31,22 @@ jobs:
         run: bash -n auto_tests/tools/cachyos_real_live_kernel_smoke.sh
       - name: Validate serial witness workflow contract
         run: python3 -m unittest -v auto_tests.test_cachyos_serial_evidence
+      - name: Create and verify synthetic serial evidence fixture (NOT a real boot)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p gaslux-boot-evidence
+          printf '%s\n' 'SYNTHETIC CI FIXTURE -- NOT CACHYOS BOOT EVIDENCE' > gaslux-boot-evidence/cachyos-live-serial.log
+          (
+            cd gaslux-boot-evidence
+            sha256sum cachyos-live-serial.log > cachyos-live-serial.sha256
+            sha256sum --check --status cachyos-live-serial.sha256
+          )
+      - name: Prove GitHub Actions artifact retention for synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cachyos-serial-synthetic-ci-witness
+          path: gaslux-boot-evidence/
+          if-no-files-found: error
+          retention-days: 2
