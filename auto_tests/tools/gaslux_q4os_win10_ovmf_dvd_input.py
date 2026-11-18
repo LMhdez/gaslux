@@ -197,7 +197,9 @@ def run(
             try:
                 proc.wait(timeout=remaining)
             except subprocess.TimeoutExpired as exc:
-                raise WindowsDvdRefusal("QEMU Windows first-boot cycle exceeded bounded budget") from exc
+                raise WindowsDvdRefusal(
+                    "QEMU Windows first-boot cycle exceeded bounded budget"
+                ) from exc
             _require(proc.returncode == 0, "Windows QEMU cycle did not reset/shut down cleanly")
             with serial.open("rb") as capture:
                 raw = capture.read(4 * 1024 * 1024)
