@@ -344,13 +344,35 @@ def install_mint_root_and_boot(
             require(initrd.is_file() and initrd.stat().st_size > 1024 * 1024,
                     "Mint initramfs was not generated")
         finally:
-            for path in (target / "dev/pts", target / "dev", target / "sys", target / "proc"):
-                subprocess.run(["sudo", "umount", str(path)], check=False,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Unmount nested bind mounts explicitly and fail closed if any remain.
+            # Silently ignoring an umount failure leaves guestmount busy and makes
+            # the later guestunmount error obscure the original mount leak.
+            for bind_mount in (target / "dev/pts", target / "dev", target / "sys", target / "proc"):
+                run(["sudo", "umount", str(bind_mount)], timeout=60)
         # Release FUSE before reading large boot artifacts. guestfish downloads
         # directly from ext4 to runner-local storage, avoiding slow initramfs
-        # traversal through the mounted guest filesystem.
-        run(["sudo", "guestunmount", str(target)], timeout=120)
+        # traversal through the mounted guest filesystem. If guestunmount cannot
+        # talk to its daemon, try the standard FUSE unmount once and verify that
+        # the mount is actually gone; never continue with a live guestmount.
+        try:
+            run(["sudo", "guestunmount", str(target)], timeout=120)
+        except subprocess.CalledProcessError as exc:
+            fallback = subprocess.run(
+                ["sudo", "fusermount3", "-u", str(target)],
+                check=False, text=True, capture_output=True, timeout=60,
+            )
+            mounted = subprocess.run(
+                ["sudo", "findmnt", "-rn", "--mountpoint", str(target)],
+                check=False, text=True, capture_output=True, timeout=30,
+            )
+            if fallback.returncode != 0 or mounted.stdout.strip():
+                detail = (fallback.stderr or fallback.stdout or "").strip()
+                raise MintOverlayError(
+                    "guestmount FUSE could not be safely unmounted; "
+                    f"guestunmount exit={exc.returncode}; "
+                    f"fusermount3 exit={fallback.returncode}; "
+                    f"remaining mount={mounted.stdout.strip()!r}; {detail}"
+                ) from exc
         guest_mounted = False
         kernel_copy = temp / "vmlinuz"
         initrd_copy = temp / "initrd.img"
