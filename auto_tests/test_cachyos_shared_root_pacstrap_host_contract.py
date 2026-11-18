@@ -28,10 +28,10 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
             def run(argv, **kwargs):
                 if argv[0] == "findmnt":
                     return subprocess.CompletedProcess(
-                        argv, 0, "/dev/loop73 ext4 rw,relatime\\n", "")
+                        argv, 0, "/dev/loop73 ext4 rw,relatime\n", "")
                 if argv[0] == "losetup":
                     return subprocess.CompletedProcess(
-                        argv, 0, str(image) + "\\n", "")
+                        argv, 0, str(image) + "\n", "")
                 if argv[0] == "sudo":
                     return subprocess.CompletedProcess(argv, 0, "", "")
                 raise AssertionError("unexpected command " + str(argv))
@@ -65,14 +65,14 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
                 def run(argv, **kwargs):
                     if argv[0] == "findmnt":
                         return subprocess.CompletedProcess(
-                            argv, 0, f"{source} {kind} {options}\\n", "")
+                            argv, 0, f"{source} {kind} {options}\n", "")
                     if argv[0] == "losetup":
                         return subprocess.CompletedProcess(
-                            argv, 0, actual_backing + "\\n", "")
+                            argv, 0, actual_backing + "\n", "")
                     raise AssertionError("must refuse before any privileged write")
                 with self.subTest(source=source, kind=kind, options=options,
-                                  backing=actual_backing), \\
-                     mock.patch.object(host, "_run", side_effect=run) as commands, \\
+                                  backing=actual_backing), \
+                     mock.patch.object(host, "_run", side_effect=run) as commands, \
                      self.assertRaises(host.SharedRootPacstrapError):
                     host._permit_owned_iso_staging_write(image, mountpoint)
                 self.assertFalse(any(x.args[0][0] == "sudo" for x in
@@ -87,7 +87,7 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
             path.symlink_to(real)
             mountpoint = folder / "cachyos-iso-storage"
             mountpoint.mkdir()
-            with mock.patch.object(host, "_run") as commands, \\
+            with mock.patch.object(host, "_run") as commands, \
                  self.assertRaises(host.SharedRootPacstrapError):
                 host._permit_owned_iso_staging_write(path, mountpoint)
             commands.assert_not_called()
@@ -142,10 +142,10 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
 
     def test_pacstrap_and_discard_evidence_are_valid_json_whitespace(self):
         source = (TOOLS / "windows_x64_tcg_firstboot.py").read_text()
-        self.assertNotIn(r'+ "\\n"', source)
+        self.assertNotIn(r'+ "\n"', source)
         self.assertIn("json.dumps(pacstrap_proof, sort_keys=True, indent=2)", source)
         self.assertIn("json.dumps(discard_proof, sort_keys=True, indent=2)", source)
-        self.assertIn('+ "\\n"', source)
+        self.assertIn('+ "\n"', source)
 
     def test_guest_installer_remains_root_only_and_never_installs_efi(self):
         source = (TOOLS / "cachyos_windows_shared_root_pacstrap.py").read_text()
