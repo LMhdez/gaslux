@@ -24,13 +24,16 @@ from gaslux_q4os_native_cow_view_guard import (  # noqa: E402
 
 def _paths(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     workspace = tmp_path / "gaslux-q4os-graphics-ABCDEFG"
-    workspace.mkdir(mode=0o700)
-    evidence = tmp_path / "evidence"
-    evidence.mkdir(mode=0o700)
+    workspace.mkdir(mode=0o700, exist_ok=True)
+    transaction = tmp_path / "q4os-transaction"
+    transaction.mkdir(mode=0o700, exist_ok=True)
+    evidence = transaction / "evidence"
+    evidence.mkdir(mode=0o700, exist_ok=True)
+    run_id = "1234567890"
     return (
         workspace,
-        tmp_path / "q4os-cow-plan-12345",
-        tmp_path / "q4os-cow-snapshot-12345",
+        transaction / f"q4os-cow-plan-{run_id}",
+        transaction / f"q4os-cow-snapshot-{run_id}",
         evidence,
     )
 
