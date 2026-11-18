@@ -5,6 +5,23 @@ checked against the earlier CDN discovery value, but no independent immutable
 upstream signature or GitHub attestation has been verified. Bazzite installation
 is **not authorized**.
 
+## Official upstream source attestation boundary
+
+The official Bazzite
+[`42.20250513` ISO workflow](https://github.com/ublue-os/bazzite/blob/42.20250513/.github/workflows/build_iso.yml)
+generated the `*-stable-amd64.iso` legacy media via
+`jasonn3/build-container-installer` and uploaded a `-CHECKSUM` sidecar.
+That specific workflow did **not** contain a Cosign ISO signature or
+`actions/attest-build-provenance` step. Its `secure_boot_key_url` is a
+firmware/boot trust input, **not** a detached signature for ISO bytes.
+
+By contrast, the official
+[current ISO build workflow](https://github.com/ublue-os/bazzite/blob/main/.github/workflows/build_iso.yml)
+uses Titanoboa for `*-live-amd64.iso` and does sign the output and create
+an attestation. The new-format signed ISO does not authenticate the legacy ISO
+from the old installer pipeline. The digest in this Gaslux lab remains a
+**discovery hash**, not a cryptographically authorized release pin.
+
 ## Checked official-domain legacy ISO bytes (18 November 2026)
 
 - [Actions #44358709061](https://github.com/LMhdez/gaslux/actions/runs/44358709061):
