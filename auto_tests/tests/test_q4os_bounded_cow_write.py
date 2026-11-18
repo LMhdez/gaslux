@@ -245,7 +245,7 @@ def test_fault_injection_result_does_not_misrepresent_recovery():
     from gaslux_q4os_bounded_cow_write_lab import run_lab
 
     source = inspect.getsource(run_lab)
-    assert 'GASLUX_Q4OS_TEST_KILL_QEMU_AFTER_WRITE' in source
+    assert "GASLUX_Q4OS_TEST_KILL_QEMU_AFTER_WRITE" in source
     assert '"hostPowerLossInjected": False' in source
     assert '"partialWritePowerLossTested": False' in source
     assert '"rollbackVerified": False' in source
