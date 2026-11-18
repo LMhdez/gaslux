@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/mint-cow-proof-validation
+      - fix/mint-cow-guestfs-tar-stage-20261118
     paths:
       - .github/workflows/mint-cow-proof-contracts.yml
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
@@ -17,6 +18,7 @@ on:
   pull_request:
     branches:
       - test/mint22-windows10-cow-firstboot
+      - test/mint-cow-proof-validation
     paths:
       - .github/workflows/mint-cow-proof-contracts.yml
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
