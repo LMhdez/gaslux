@@ -47,6 +47,19 @@ advance_software="${GASLUX_Q4OS_ADVANCE_SOFTWARE:-no}"
 if [[ "$advance_software" == yes && "$select_software" != yes ]]; then
   die 'Software Next requires SHA-verified Q4OS Desktop selection'
 fi
+native_cow_view="${GASLUX_Q4OS_NATIVE_COW_VIEW_ONLY:-no}"
+[[ "$native_cow_view" == yes || "$native_cow_view" == no ]] ||
+  die 'Unrecognized Q4OS native COW view mode'
+if [[ "$native_cow_view" == yes ]]; then
+  [[ "${GITHUB_ACTIONS:-}" == true &&
+     "$launch_installer" == yes && "$advance_welcome" == yes &&
+     "$advance_location" == yes && "$advance_keyboard" == yes &&
+     "$select_software" == yes && "$advance_software" == yes ]] ||
+    die 'Native COW selection requires complete pinned read-only GUI path'
+  [[ -n "${GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR:-}" &&
+     -n "${RUNNER_TEMP:-}" ]] ||
+    die 'Native COW lab needs owned Actions evidence and temporary folders'
+fi
 [[ "$digest" == '1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d' ]] ||
   die 'Official Q4OS 6.10 r2 SHA-256 is not the independently pinned digest'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
@@ -204,6 +217,37 @@ echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
 echo "GASLUX_GUEST_INITRD=$initrd"
 echo 'GASLUX_GUEST_MEDIA=isolated-virtio-readonly-iso'
+# The following mode is restricted to a preview of a proposed installation
+# on a synthetic, exclusively owned COW. No Calamares storage job or Install
+# button is permitted. A self-contained signed snapshot exists before QEMU.
+vm_drive_format=raw
+vm_drive_file="$work/efi-disk.img"
+vm_device_args=(-device virtio-blk-pci,drive=labefi,bootindex=1)
+if [[ "$native_cow_view" == yes ]]; then
+  for tool in qemu-img python3; do
+    command -v "$tool" >/dev/null || die "Missing signed COW prerequisite: $tool"
+  done
+  evidence_root="$(dirname "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR")"
+  [[ -d "$evidence_root" && ! -L "$evidence_root" &&
+     -O "$evidence_root" ]] ||
+    die 'Q4OS preview evidence root is not runner-owned'
+  mkdir -m 0700 -p "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"
+  calamares_plan_dir="$evidence_root/q4os-cow-plan-$GITHUB_RUN_ID"
+  calamares_snapshot_dir="$evidence_root/q4os-cow-snapshot-$GITHUB_RUN_ID"
+  guard_script="$(dirname "$0")/gaslux_q4os_native_cow_view_guard.py"
+  [[ -f "$guard_script" && ! -L "$guard_script" ]] ||
+    die 'Cannot locate signed Q4OS COW preview safety guard'
+  python3 "$guard_script" prepare "$work" "$calamares_plan_dir" \
+    "$calamares_snapshot_dir" "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR" ||
+    die 'Signed source, self-contained snapshot or owned COW preflight failed'
+  vm_drive_format=qcow2
+  vm_drive_file="$work/q4os-native-calamares-view-only.qcow2"
+  vm_serial="$(cat "$work/q4os-native-calamares-virtio-serial.txt")"
+  [[ "$vm_serial" =~ ^GQ4OS-[A-F0-9]{14}$ ]] ||
+    die 'Signed plan did not produce a safe VirtIO identity'
+  vm_device_args=(-device "virtio-blk-pci,drive=labefi,bootindex=1,serial=$vm_serial")
+  printf 'GASLUX_Q4OS_NATIVE_CALAMARES_COW_SNAPSHOT=PASS\n'
+fi
 # QEMU/OVMF GRUB does not consistently enumerate the emulated CD-ROM on the
 # hosted runner. Attach the independently SHA-256-verified hybrid ISO as a
 # second, explicit read-only virtio-blk device instead (same as Pop!_OS lab).
@@ -221,8 +265,8 @@ timeout --kill-after=5s 720s qemu-system-x86_64 \
   -display none -vnc 127.0.0.1:1 -vga virtio -monitor none -no-reboot -net none \
   -drive if=pflash,format=raw,readonly=on,file="$code" \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
-  -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
-  -device virtio-blk-pci,drive=labefi,bootindex=1 \
+  -drive "if=none,id=labefi,format=$vm_drive_format,file=$vm_drive_file" \
+  "${vm_device_args[@]}" \
   "${iso_args[@]}" \
   -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
@@ -263,6 +307,7 @@ q4os_desktop_profile_clicked=0
 q4os_desktop_selected_frame=0
 q4os_desktop_next_clicked=0
 calamares_partitions_frame=0
+calamares_cow_radio_clicked=0
 
 for tick in $(seq 1 "$max_ticks"); do
   sleep 5
@@ -371,6 +416,26 @@ for tick in $(seq 1 "$max_ticks"); do
                  "$work/vnc-software-selected.png" "$work/vnc-$tick.png"; then
             calamares_partitions_frame=1
             cp "$work/vnc-$tick.png" "$work/vnc-partitions-page.png"
+            if [[ "$native_cow_view" == yes ]]; then
+              # Screen bound to official pinned ISO. This is ONLY the
+              # Erase-disk RADIO on an exclusively owned, signed COW preview:
+              # never Next, Summary, Install or any executable job.
+              python3 "$visual_gate" calamares-synthetic-cow-partitions \
+                "$work/vnc-partitions-page.png" ||
+                die 'Unknown Q4OS synthetic Partitions screen; refuse radio click'
+              timeout 20s vncdo -s 127.0.0.1:1 move 334 280 click 1 ||
+                die 'Synthetic-only partition radio click failed'
+              sleep 3
+              timeout 20s vncdo -s 127.0.0.1:1 capture \
+                "$work/vnc-partitions-radio-selected.png" ||
+                die 'Q4OS native preview selection evidence unavailable'
+              python3 "$visual_gate" changed-centre \
+                "$work/vnc-partitions-page.png" "$work/vnc-partitions-radio-selected.png" ||
+                die 'Native Calamares radio selection did not change visible GUI'
+              calamares_cow_radio_clicked=1
+              echo 'GASLUX_Q4OS_CALAMARES_SYNTHETIC_RADIO_SELECTED=PASS'
+              echo 'GASLUX_Q4OS_CALAMARES_INSTALL_CLICKED=NO'
+            fi
           fi
         fi
       fi
@@ -398,6 +463,13 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
      [[ "$q4os_desktop_profile_clicked" -eq 1 && "$q4os_desktop_selected_frame" -eq 1 ]]; } &&
    { [[ "$advance_software" == no ]] ||
      [[ "$q4os_desktop_next_clicked" -eq 1 && "$calamares_partitions_frame" -eq 1 ]]; }; then
+  if [[ "$native_cow_view" == yes ]]; then
+    [[ "$calamares_cow_radio_clicked" -eq 1 ]] ||
+      die 'No source-verified synthetic COW partition proposal was selected'
+    python3 "$guard_script" verify "$work" "$calamares_plan_dir" \
+      "$calamares_snapshot_dir" "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR" ||
+      die 'Synthetic Calamares GUI preview mutated disk or recovery evidence'
+  fi
   echo 'PASS: Q4OS first-run modal and audited graphical desktop transitioned under SHA-bound VNC actions.'
   if [[ "$launch_installer" == yes ]]; then
     echo 'PASS: Q4OS launcher icon was clicked after two-stage image checks and centre changed.'
