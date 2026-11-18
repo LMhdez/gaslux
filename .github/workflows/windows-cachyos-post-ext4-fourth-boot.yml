@@ -128,7 +128,7 @@ jobs:
             env DEBIAN_FRONTEND=noninteractive \
             apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
             install -y --no-install-recommends \
-            gdisk python3-guestfs libguestfs-tools linux-image-generic
+            gdisk python3-guestfs libguestfs-tools linux-image-virtual
           echo "Synthetic libguestfs package setup completed $(date -u +%FT%TZ)"
       - name: Verify ext4 and all four SHA256 digests with REAL guestfs, without any Windows
         shell: bash
@@ -186,7 +186,7 @@ jobs:
             apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
             install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
-            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic \
+            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-virtual \
             aria2 squashfs-tools fuse3
           sudo modprobe fuse
           test -c /dev/fuse && test ! -L /dev/fuse
