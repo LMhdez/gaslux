@@ -76,6 +76,15 @@ def guestmount_command(overlay: Path, target: Path) -> list[str]:
     ]
 
 
+
+def guestfish_copy_in_command(overlay: Path, source: Path) -> list[str]:
+    """Transfer a root tree through libguestfs, not per-file FUSE syscalls."""
+    return [
+        "sudo", "guestfish", "--rw", "-a", str(overlay), "-m", "/dev/sda5",
+        "copy-in", str(source) + "/.", "/",
+    ]
+
+
 def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
     import guestfs
 
@@ -207,13 +216,19 @@ def install_mint_root_and_boot(
         unpacked.mkdir(mode=0o700)
         run(["sudo", "unsquashfs", "-f", "-processors", "2", "-d", str(unpacked), str(rootfs)],
             timeout=900, capture=False)
+        # libguestfs copy-in streams a tar transfer into the ext4 guest directly.
+        # Copying ~323k SquashFS entries through guestmount/FUSE incurred 20m
+        # timeouts on hosted runners; keep FUSE only for chroot bind mounts.
+        run(guestfish_copy_in_command(overlay, unpacked), timeout=1800, capture=False)
         run(guestmount_command(overlay, target), timeout=120)
         guest_mounted = True
-        run(["sudo", "cp", "-a", str(unpacked) + "/.", str(target) + "/"],
-            timeout=1200, capture=False)
         os_release = unpacked / "etc/os-release"
         require(os_release.is_file() and "ID=linuxmint" in os_release.read_text(),
-                "extracted target is not Linux Mint")
+                "extracted source is not Linux Mint")
+        target_os_release = target / "etc/os-release"
+        require(target_os_release.is_file()
+                and "ID=linuxmint" in target_os_release.read_text(),
+                "libguestfs transfer did not populate Mint root at ext4 /")
         kernels = sorted((unpacked / "boot").glob("vmlinuz-*"))
         require(len(kernels) == 1, "Mint target must contain one unambiguous kernel")
         kernel = kernels[0]
