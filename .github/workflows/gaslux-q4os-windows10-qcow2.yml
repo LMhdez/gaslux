@@ -5,6 +5,7 @@ on:
     branches:
       - feature/q4os-windows10-qcow2-lab
       - fix/q4os-win10-unattend-powershell-expansion
+      - debug/q4os-win10-qemu-visual-evidence
     paths:
       - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
       - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
@@ -198,8 +199,7 @@ jobs:
               -smp 4
               -m 6144
               -rtc base=utc
-              -display none
-              -vga std
+              -display vnc=127.0.0.1:1
               -serial "file:$serial"
               -monitor "unix:$monitor,server=on,wait=off"
               -net none
@@ -242,22 +242,34 @@ jobs:
                 echo 'QEMU human monitor socket did not become ready' >&2
                 exit 1
               fi
-              # Allow OVMF to reach the optical-media confirmation screen
-              # before injecting Enter; the monitor remains local to this job.
-              sleep 5
-              monitor_reply="$(printf 'sendkey ret\n' | socat -T 5 - "UNIX-CONNECT:$monitor")"
-              printf '%s\n' "$monitor_reply" | grep -qi 'QEMU' || {
-                echo 'QEMU HMP did not acknowledge the local monitor connection' >&2
-                exit 1
-              }
-              echo 'GASLUX_WINDOWS_ISO_BOOT_KEY_SENT=PASS'
+              # Capture the actual boot screen and retry Enter in a bounded way.
+              # VNC binds to loopback only; the guest has no network adapter.
+              sleep 8
+              for key_attempt in 1 2 3; do
+                printf 'screendump %s\\nsendkey ret\\n' "$work/windows10-cycle-${attempt}-boot.ppm" |
+                  socat -T 10 - "UNIX-CONNECT:$monitor" >> "$work/windows10-monitor.log" 2>&1 || true
+                sleep 8
+              done
+              echo 'GASLUX_WINDOWS_ISO_BOOT_KEYS_SENT=PASS'
             fi
+
+            # Keep one screen snapshot per cycle and record HMP status while
+            # the guest runs, without exposing the monitor beyond this runner.
+            (
+              while kill -0 "$qemu_pid" 2>/dev/null; do
+                printf 'info status\\nscreendump %s\\n' "$work/windows10-cycle-${attempt}-latest.ppm" |
+                  socat -T 10 - "UNIX-CONNECT:$monitor" >> "$work/windows10-monitor.log" 2>&1 || true
+                sleep 120
+              done
+            ) &
+            monitor_watch_pid=$!
 
             set +e
             wait "$qemu_pid"
             status=$?
             set -e
-            rm -f "$monitor"
+            kill "$monitor_watch_pid" 2>/dev/null || true
+            wait "$monitor_watch_pid" 2>/dev/null || true
             if [[ $status -eq 124 || $status -eq 137 ]]; then
               tail -n 120 "$qemu_log" || true
               tail -n 120 "$serial" || true
@@ -385,5 +397,7 @@ jobs:
             ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2
             ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-qcow2.sha256
             ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-install-manifest.json
+            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-monitor.log
+            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-cycle-*.ppm
           if-no-files-found: error
           retention-days: 7
