@@ -598,7 +598,9 @@ def run_lab(
     checkpoint_state = {
         "schemaVersion": 1,
         "operation": (
-            "isolated-qemu-powercut-after-fsync" if simulate_power_cut else "isolated-qemu-4k-cow-scratch"
+            "isolated-qemu-powercut-after-fsync"
+            if simulate_power_cut
+            else "isolated-qemu-4k-cow-scratch"
         ),
         "runId": plan["runId"],
         "planSha256": hashlib.sha256(raw_plan).hexdigest(),

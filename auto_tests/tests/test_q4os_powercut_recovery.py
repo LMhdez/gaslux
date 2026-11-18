@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import signal
 import sys
 from pathlib import Path
@@ -14,9 +13,9 @@ sys.path.insert(0, str(ROOT / "assets" / "live"))
 sys.path.insert(0, str(ROOT / "auto_tests" / "tools"))
 
 from gaslux_q4os_bounded_cow_write_lab import (  # noqa: E402
-    BoundVmWriteRefusal,
     POWER_CUT_MODE,
     POWER_CUT_READY,
+    BoundVmWriteRefusal,
     _authenticate_guest_write,
     run_lab,
 )
