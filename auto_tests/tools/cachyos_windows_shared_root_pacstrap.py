@@ -221,13 +221,17 @@ _PACSTRAP_API_MOUNTS = {
 }
 
 
-def unmount_owned_root_tree(root: Path, root_partition: Path, *, run=execute) -> None:
+def unmount_owned_root_tree(root: Path, root_partition: Path, *,
+                            run=execute, sleeper=None) -> None:
     """Release only the attested ext4 root and known pacstrap pseudo mounts.
 
     Enumerate/validate the *complete* subtree before unmounting any path.
     No foreign block-backed mount, additional partition or unexpected target
     may be detached by this helper, even in the disposable guest.
     """
+    if sleeper is None:
+        import time
+        sleeper = time.sleep
     require(root == ROOT and root.is_absolute() and not root.is_symlink()
             and root_partition.is_absolute()
             and root_partition.parent == Path("/dev"),
@@ -254,15 +258,29 @@ def unmount_owned_root_tree(root: Path, root_partition: Path, *, run=execute) ->
         found[target] = (source, kind)
     require(found.get(str(root)) == (str(root_partition), "ext4"),
             "transaction-owned ext4 root is not mounted")
-    # Deepest children first; no recursive/lazy/forced unmount. Recheck each
-    # mount immediately before detaching it to reject unexpected replacement.
+    # Deepest children first; no recursive/lazy/forced unmount. A mounted
+    # pacstrap API filesystem can still briefly be busy after the package
+    # process exits. Retry only after rechecking its exact original identity.
+    # Unmount failures must never trigger a fallback to unverified devices.
     for target in sorted(found, key=lambda p: (p.count("/"), p), reverse=True):
         source, kind = found[target]
-        observed = run(["findmnt", "-rn", "-M", target,
-                        "-o", "SOURCE,FSTYPE"]).strip().split()
-        require(observed == [source, kind],
-                "mount identity changed during owned-root cleanup")
-        run(["umount", "--", target])
+        name = "root" if target == str(root) else target[len(str(root)) + 1:]
+        for attempt in range(4):
+            observed = run(["findmnt", "-rn", "-M", target,
+                            "-o", "SOURCE,FSTYPE"]).strip().split()
+            require(observed == [source, kind],
+                    "mount identity changed during owned-root cleanup: " + name)
+            try:
+                run(["umount", "--", target])
+                break
+            except SharedDiskHandoffRejected as error:
+                if attempt == 3:
+                    raise SharedDiskHandoffRejected(
+                        "owned pacstrap cleanup failed after bounded retries: "
+                        + name) from error
+                # No forced/lazy/recursive unmount and no mutation of a new
+                # mount: the next attempt checks SOURCE and FSTYPE anew.
+                sleeper(1)
 
 
 
@@ -595,6 +613,10 @@ def pacstrap_only(args: argparse.Namespace) -> None:
             "cachyos-hooks", "sudo", "e2fsprogs", "dosfstools", "python",
         ]
         execute(["pacstrap", "-K", "-C", str(strict_config), str(ROOT), *packages], timeout=2200)
+        # This is a stage witness, NOT proof of completed installation:
+        # root artifact checks, unmount, Windows GPT and protected hashes
+        # must all pass before the final root-only pacstrap success marker.
+        print("GASLUX_SHARED_COW_PACSTRAP_COMMAND_EXIT_ZERO=1", flush=True)
         # Retain exact, signed-only repository policy for installed updates.
         import shutil
         shutil.copyfile(strict_folder / "pacman-target.conf", ROOT / "etc/pacman.conf")
