@@ -80,16 +80,18 @@ def test_only_one_blank_private_qcow2_and_no_windows_image_or_disk_writers():
 def test_scripted_input_stops_at_storage_page_before_install_review():
     source = WF.read_text(encoding="utf-8")
     assert "elif (( phase == 5 )); then" in source
-    assert "Storage page OBSERVED." in source
-    assert "no disk selection or install" in source.lower()
+    assert "Custom storage editor OBSERVED." in source
+    assert "no disk selection, partition write or install" in source.lower()
+    assert "explicit custom-partitioning route" in source
+    assert "move 600 375 click 1" in source
     assert "Welcome. Let's install Bazzite now." in source
     assert "Expected Virtio target not displayed" in source
     assert "Ambiguous installer disk count" in source
     assert "Guest target size mismatch for 70 GiB QCOW2" in source
     assert "75.2 GB disk" in source
     assert "Use entire disk" in source
-    assert "Storage page not confirmed" in source
-    assert source.count("move 407 712 click 1") == 3
+    assert "Custom storage editor not confirmed" in source
+    assert source.count("move 407 712 click 1") == 2
     assert "phase in 1 2 3 4 5" in source
     assert "persist-credentials: false" in source
 
