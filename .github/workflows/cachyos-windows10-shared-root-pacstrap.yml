@@ -5,6 +5,7 @@ on:
     branches:
       - feature/cachyos-shared-cow-pacstrap-archiso-issue3
       - feature/cachyos-shared-cow-pacstrap-integrated-issue3
+      - fix/cachyos-shared-cow-iso-ext4-ownership-issue3
     paths:
       - .github/workflows/cachyos-windows10-shared-root-pacstrap.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
