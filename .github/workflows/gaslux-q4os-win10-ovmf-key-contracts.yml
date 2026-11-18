@@ -1,0 +1,49 @@
+name: Q4OS Windows 10 OVMF DVD prompt contracts (no VM writes)
+
+on:
+  push:
+    branches:
+      - fix/q4os-win10-ovmf-dvd-input-gate
+    paths:
+      - '.github/workflows/gaslux-q4os-win10-ovmf-key-contracts.yml'
+      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
+      - 'auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py'
+      - 'auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-win10-ovmf-key-contracts.yml'
+      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
+      - 'auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py'
+      - 'auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  optical-boot-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lint and test dependencies (no ISO/QEMU)
+        run: python -m pip install 'pytest>=9,<10' 'ruff>=0.8,<1' 'pyyaml>=6,<7'
+      - name: Compile, Ruff and isolated DVD prompt refusal tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q \
+            auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py \
+            auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py \
+            auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py \
+            auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py
+          python -m pytest -q auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py
