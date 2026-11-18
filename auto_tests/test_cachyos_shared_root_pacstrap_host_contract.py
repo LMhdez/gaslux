@@ -68,7 +68,10 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         end = source.index('unmount_rw = _run(["sudo", "umount"', start)
         segment = source[start:end]
         self.assertLess(segment.index("_prepare_owned_ext4_iso_copy("),
-                        segment.index('storage_iso.open("xb")'))
+                        segment.index('"sudo", "install", "-m", "0444"'))
+        self.assertIn("storage_iso.lstat()", segment)
+        self.assertIn("stat.S_ISREG(stored.st_mode)", segment)
+        self.assertIn("stored.st_nlink == 1", segment)
         self.assertIn("finally:", segment)
 
     def test_trial_firmware_uses_fresh_ovmf_template_not_windows_bootorder(self):
