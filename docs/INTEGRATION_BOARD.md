@@ -14,9 +14,9 @@
 
 | Backend | Base em dev | PRs relevantes | Bloqueio até estabilidade |
 |---|---|---|---|
-| Linux Mint | Backend Debian/Ubuntu legado; prewrite em #175 ainda não integrado em `dev` | #167 #175 #181 #185 #190 (absorveu #169/#174) | Instalação pelo fluxo Gaslux, boot nativo/Windows, atualizações e rollback por provar |
+| Linux Mint | Backend Debian/Ubuntu legado; prewrite em #175 ainda não integrado em `dev` | #167 #175 #181 #185 #190 #197 (absorveu #169/#174) | Instalação pelo fluxo Gaslux, boot nativo/Windows, atualizações e rollback por provar |
 | Zorin OS | Backend Debian/Ubuntu legado; prewrite em #175 ainda não integrado em `dev` | #167 #175 #176 #181 | Validação real por firmware/layout, menu nativo e recuperação |
-| CachyOS | Archiso/pacstrap experimental; writes apenas em QCOW2 descartável | #34 #36 #159 #161 #162 #165 #171 #180 #184 #193 #195 | Boot Linux e Windows após `pacstrap` no mesmo disco, updates, NVRAM/ESP e rollback (#3, #71) |
+| CachyOS | Archiso/pacstrap experimental; writes apenas em QCOW2 descartável | #34 #36 #159 #161 #162 #165 #171 #180 #184 #193 #195 #196 (sobreposto a #195) | Boot Linux e Windows após `pacstrap` no mesmo disco, updates, NVRAM/ESP e rollback (#3, #71) |
 | Pop!_OS | System76/distinst experimental, não mutável em produção | #20 #38 #39 #47 #50 #61 #63 #177 #178 | ESP própria/Windows protegidos, instalação nativa, dual boot, atualização e recuperação |
 | Q4OS | ISO/Calamares nativo experimental; proposta assinada em VM | #35 #37 #44 #45 #55 #59 #182 #183 #186 #187 #188 #189 | Fixture Windows real ainda não validada na #189; Calamares, boot Linux/Windows e recuperação pendentes |
 | Bazzite | Fedora Atomic experimental; assinatura ISO em #175 | #175 #179 (absorveu #172) | Só UEFI/GPT; recusar BIOS/MBR antes de escrever; instalação Atomic, dual boot e rollback sem provas |
