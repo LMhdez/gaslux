@@ -97,3 +97,14 @@ jobs:
           test "$(grep -Fc GASLUX_VM_OVMF_EXT4_USB_UUID_PASS "$lab/serial.log" || true)" = 1
           ! grep -Eq 'GASLUX_VM_ISO_UUID_NOT_VISIBLE|GASLUX_VM_ISO_UUID_WRONG_VOLUME' "$lab/serial.log"
           echo 'PASS: genuine OVMF GRUB firmware saw exact ext4 UUID on read-only USB file. No Windows, Archiso, pacstrap or rollback tested.' >> "$GITHUB_STEP_SUMMARY"
+          mkdir -m 0700 "$GITHUB_WORKSPACE/ovmf-iso-uuid-evidence"
+          cp -- "$lab/serial.log" "$GITHUB_WORKSPACE/ovmf-iso-uuid-evidence/serial.log"
+          printf '%s\n' "$uuid" > "$GITHUB_WORKSPACE/ovmf-iso-uuid-evidence/expected-uuid.txt"
+          (cd "$GITHUB_WORKSPACE/ovmf-iso-uuid-evidence" && sha256sum serial.log expected-uuid.txt > evidence.sha256)
+      - name: Upload bounded GRUB serial and SHA-256 witness (no Windows media)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cachyos-ovmf-iso-uuid-serial
+          path: ovmf-iso-uuid-evidence/
+          if-no-files-found: error
+          retention-days: 7
