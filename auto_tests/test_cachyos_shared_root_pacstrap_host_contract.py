@@ -98,6 +98,14 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         self.assertIn("timeout --kill-after=10s 300s sudo apt-get", workflow)
         self.assertIn("timeout --kill-after=10s 600s sudo DEBIAN_FRONTEND=noninteractive apt-get", workflow)
         self.assertIn("Acquire::https::Timeout=60", workflow)
+        # The firmware meta depends on hundreds of MB of unrelated GPU,
+        # Wi-Fi, and device firmware. The guestfs Linux VM needs only the
+        # authenticated kernel image and matching signed module packages.
+        self.assertIn("apt-cache depends linux-image-generic", workflow)
+        self.assertIn('extra_modules="linux-modules-extra-', workflow)
+        self.assertIn('"$generic_kernel" "$extra_modules"', workflow)
+        self.assertNotIn('libguestfs-tools linux-image-generic', workflow)
+        self.assertIn("Kernel packaging unexpectedly requires firmware", workflow)
         self.assertIn("real-windows10-archiso-pacstrap-and-discard:", workflow)
         self.assertIn("if: github.event_name != 'pull_request'", workflow)
 
