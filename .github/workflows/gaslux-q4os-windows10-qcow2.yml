@@ -1,6 +1,13 @@
 name: Q4OS Windows 10 installed QCOW2 UEFI/GPT lab
 
 on:
+  push:
+    branches:
+      - fix/q4os-win10-ovmf-dvd-input-gate
+    paths:
+      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
+      - 'auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py'
+      - 'auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py'
   pull_request:
     paths:
       - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
