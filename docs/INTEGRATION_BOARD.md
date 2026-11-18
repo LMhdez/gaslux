@@ -1,4 +1,4 @@
-# Gaslux integration board — 2026-11-17
+# Gaslux integration board — 2026-11-18
 
 > **Triage provisória por metadados GitHub, não é autorização de merge ou fecho.** Confirmar sempre patches, ancestralidade, testes e artefactos antes de qualquer alteração.
 
@@ -6,7 +6,7 @@
 
 - `main`: [`3eb74c6e`](https://github.com/LMhdez/gaslux/commit/3eb74c6e1f609319fe8ee706dd152c09f466dd44).
 - `dev`: [`34d50646`](https://github.com/LMhdez/gaslux/commit/34d50646783498000eb13dbaf8a63220e63ff719) — 96 commits à frente de `main`, 0 atrás no snapshot.
-- 165 PRs abertas (todas draft); 2 issues abertas (#3 e #71); 14 PRs integradas e 5 fechadas sem merge. Inventário obtido por paginação REST: 100 PRs na página 1 + 65 na página 2; página 3 vazia.
+- **173 PRs abertas e 2 issues abertas** (#3 e #71) na consulta REST de 18/11/2026. Foram acrescentadas oito PRs ao inventário de 165 já documentadas. A #191 está pronta para revisão (não draft); não inferir o estado de revisão das demais a partir do snapshot anterior. Os totais históricos de integrações/fechos abaixo devem ser novamente auditados antes de qualquer fecho.
 - CI do HEAD `dev`: seis check runs concluídos com sucesso, apenas contratos/fixtures e verificações não destrutivas.
 - Catálogo estável (`release-config.json`): Mint 22.3 e Zorin 18.1. Os outros quatro backends continuam bloqueados.
 
@@ -14,12 +14,12 @@
 
 | Backend | Base em dev | PRs relevantes | Bloqueio até estabilidade |
 |---|---|---|---|
-| Linux Mint | Backend Debian/Ubuntu legado; gate seguro | #167 #175 (absorveu #169/#174) | Validação real por firmware/layout e recuperação |
-| Zorin OS | Backend Debian/Ubuntu legado; gate seguro | #167 #175 #176 | Validação real por firmware/layout e recuperação |
-| CachyOS | Archiso experimental | #34 #36 #159 #161 #162 #165 #166 #170 #171 #173 | Archiso/pacstrap real com Windows no mesmo disco, Linux+Windows boots, updates e rollback (#3, #71) |
-| Pop!_OS | Preflight System76 não mutável | #20 #38 #39 #47 #50 #61 #63 #177 #178 | distinst nativo, proteção ESP, boot Windows+Linux, recuperação |
-| Q4OS | Preflight de ISO nativa | #35 #37 #40 #44 #45 #49 #52 #55 #59 | Calamares nativo, Windows+Linux, recuperação |
-| Bazzite | Preflight Fedora Atomic | Contratos `dev`, #175 (absorveu #172) | Só UEFI/GPT; BIOS/MBR rejeitado antes de escrita; Atomic dual boot e rollback por provar |
+| Linux Mint | Backend Debian/Ubuntu legado; prewrite em #175 ainda não integrado em `dev` | #167 #175 #181 #185 #190 (absorveu #169/#174) | Instalação pelo fluxo Gaslux, boot nativo/Windows, atualizações e rollback por provar |
+| Zorin OS | Backend Debian/Ubuntu legado; prewrite em #175 ainda não integrado em `dev` | #167 #175 #176 #181 | Validação real por firmware/layout, menu nativo e recuperação |
+| CachyOS | Archiso/pacstrap experimental; writes apenas em QCOW2 descartável | #34 #36 #159 #161 #162 #165 #171 #180 #184 #193 #195 | Boot Linux e Windows após `pacstrap` no mesmo disco, updates, NVRAM/ESP e rollback (#3, #71) |
+| Pop!_OS | System76/distinst experimental, não mutável em produção | #20 #38 #39 #47 #50 #61 #63 #177 #178 | ESP própria/Windows protegidos, instalação nativa, dual boot, atualização e recuperação |
+| Q4OS | ISO/Calamares nativo experimental; proposta assinada em VM | #35 #37 #44 #45 #55 #59 #182 #183 #186 #187 #188 #189 | Fixture Windows real ainda não validada na #189; Calamares, boot Linux/Windows e recuperação pendentes |
+| Bazzite | Fedora Atomic experimental; assinatura ISO em #175 | #175 #179 (absorveu #172) | Só UEFI/GPT; recusar BIOS/MBR antes de escrever; instalação Atomic, dual boot e rollback sem provas |
 
 ## Disposição
 
@@ -200,6 +200,14 @@ A dependência é a `base.ref` real de cada PR aberta. Quando o nome coincide co
 | [#184 — security(cachyos): bind Windows and Linux mount identities before root-only pacstrap](https://github.com/LMhdez/gaslux/pull/184) | CachyOS | Armazenamento/GPT/recuperação | Corrigir | [#171](https://github.com/LMhdez/gaslux/pull/171) | `security/cachyos-shared-cow-protected-mount-identity-issue3` | `2d8cdf0a0822` | `86b38b510d61` |
 | [#185 — test(mint+win10): install and boot Mint root on the Windows 10 disposable COW](https://github.com/LMhdez/gaslux/pull/185) | Mint/Zorin | Armazenamento/GPT/recuperação | Bloquear | [#161](https://github.com/LMhdez/gaslux/pull/161) | `test/mint22-windows10-cow-firstboot` | `26def172fe34` | `d1b967377e3e` |
 | [#186 — test(q4os): boot QEMU with signed-plan virtio identity and authenticated report](https://github.com/LMhdez/gaslux/pull/186) | Q4OS | Boot/firmware/handoff | Bloquear | [#183](https://github.com/LMhdez/gaslux/pull/183) | `feature/q4os-qemu-identity-transport` | `1345fd1bffee` | `89958ac63e4b` |
+| [#187 — test(q4os): create signed self-contained snapshot and verify restore](https://github.com/LMhdez/gaslux/pull/187) | Q4OS | Armazenamento/GPT/recuperação | Consolidar | [#186](https://github.com/LMhdez/gaslux/pull/186) | `feature/q4os-durable-snapshot-recovery` | `89958ac63e4b` | `7633aa467034` |
+| [#188 — test(q4os): integrate durable snapshot with QEMU identity lab](https://github.com/LMhdez/gaslux/pull/188) | Q4OS | Laboratório Windows/VM/CI | Corrigir | [#187](https://github.com/LMhdez/gaslux/pull/187) | `feature/q4os-qemu-snapshot-integration` | `295fccc844b1` | `e2c052154616` |
+| [#189 — test(q4os): provision real Windows 10 UEFI/GPT QCOW2 fixture](https://github.com/LMhdez/gaslux/pull/189) | Q4OS | Laboratório Windows/VM/CI | Bloquear | [#188](https://github.com/LMhdez/gaslux/pull/188) | `feature/q4os-windows10-qcow2-lab` | `8adbf0a0927c` | `a76b53609220` |
+| [#190 — test(mint): validate same-COW rootfs boot evidence independently](https://github.com/LMhdez/gaslux/pull/190) | Linux Mint | Laboratório Windows/VM/CI | Corrigir | [#185](https://github.com/LMhdez/gaslux/pull/185) | `test/mint-cow-proof-validation` | `d1b967377e3e` | `7647973f2b1d` |
+| [#191 — ci: add 15-minute read-only integration audit](https://github.com/LMhdez/gaslux/pull/191) | Windows/VM/common | CI/governação | Corrigir | `dev` | `automation/gaslux-15m-integration-audit` | `34d506467834` | `65ade7efb223` |
+| [#192 — test(win10): replay BCD and Linux GPT COW chain on third-boot baseline](https://github.com/LMhdez/gaslux/pull/192) | Windows/VM/common | Armazenamento/GPT/recuperação | Consolidar | [#155](https://github.com/LMhdez/gaslux/pull/155) | `integration/windows-cow-bcd-rebased-20261117` | `162e41e37e91` | `062684ad443c` |
+| [#193 — CachyOS: real Archiso pacstrap on Windows-backed disposable COW](https://github.com/LMhdez/gaslux/pull/193) | CachyOS | Backend nativo/ISO | Bloquear | [#184](https://github.com/LMhdez/gaslux/pull/184) | `feature/cachyos-shared-cow-pacstrap-archiso-issue3` | `86b38b510d61` | `221fdce1cbb0` |
+| [#195 — fix(cachyos): secure shared-root Archiso boot and validate host COW evidence](https://github.com/LMhdez/gaslux/pull/195) | CachyOS | Boot/firmware/handoff | Bloquear | [#193](https://github.com/LMhdez/gaslux/pull/193) | `feature/cachyos-shared-cow-pacstrap-integrated-issue3` | `316bc8f89898` | `c4769e624ed7` |
 
 
 ## Agrupamento transversal por subsistema (165 PRs, classificação primária)
@@ -332,3 +340,19 @@ Os checks de #159/#163 em SUCCESS demonstram sobretudo boot Windows de ISO genu�
 2. CachyOS: manter duas linhas de integração (read-only Archiso e candidato pacstrap), sem autorizar instalação até existir emissor do grant independente, checkpoint real, pacstrap no COW e primeiro boot comprovado.
 3. Q4OS e Pop!_OS: preservar cadeias paralelas até o diff/contrato provar equivalência; Actions verdes atuais não autorizam promoção.
 4. **Nenhuma PR foi encerrada, nenhuma branch apagada ou reescrita, e nenhum merge foi feito em `main`.** A main não deve receber backends experimentais. A PR #168 continua draft e os seus próprios checks de integração ainda não estão todos concluídos.
+
+
+## Atualização auditada — 18/11/2026
+
+- **Refs verificadas:** [`main` `3eb74c6e`](https://github.com/LMhdez/gaslux/commit/3eb74c6e1f609319fe8ee706dd152c09f466dd44) e [`dev` `34d50646`](https://github.com/LMhdez/gaslux/commit/34d50646783498000eb13dbaf8a63220e63ff719). Total REST: 173 PRs abertas, duas issues (#3, #71). Classificação provisória de 173 linhas: Corrigir 88, Consolidar 54, Bloquear 31. Não há autorização implícita para merge.
+- **Prioridade de integração para `dev`:** [#175](https://github.com/LMhdez/gaslux/pull/175), que consolida [#167](https://github.com/LMhdez/gaslux/pull/167), [#172](https://github.com/LMhdez/gaslux/pull/172) e [#174](https://github.com/LMhdez/gaslux/pull/174). No HEAD `dd755200a64a`, sete workflows Actions terminaram SUCCESS (incluindo prewrite Mint/Zorin, live Mint em OVMF, gate Bazzite, contratos legados e recuperação apenas não destrutiva). Exigem-se revisão humana, validação da proveniência dos commits e revalidação imediatamente antes de merge; **a #175 não está integrada em `dev`**. Pré-validação no live não substitui o preflight antes da escrita no Windows.
+- **Não promover para `main`:** [#168](https://github.com/LMhdez/gaslux/pull/168) mantém-se draft até incorporar/rever o resultado de #175, verificar a totalidade dos contratos e garantir que nenhum backend experimental pode ser ativado. Os dois workflows associados ao HEAD #168 não são, por si, uma prova de build e regressão completos.
+- **CachyOS:** [#184](https://github.com/LMhdez/gaslux/pull/184) → [#193](https://github.com/LMhdez/gaslux/pull/193) → [#195](https://github.com/LMhdez/gaslux/pull/195) constitui uma cadeia experimental de identidades de mount, grant e Archiso/pacstrap num QCOW2 Windows descartável. [Actions #44189407232](https://github.com/LMhdez/gaslux/actions/runs/44189407232) terminou SUCCESS, mas existe também um run FAILURE no mesmo SHA [#44189399227](https://github.com/LMhdez/gaslux/actions/runs/44189399227). É obrigatório inspecionar os jobs e os relatórios para afirmar exactamente o que foi executado; nenhuma das duas conclusões constitui prova isolada de dual boot, atualização ou rollback.
+- **Windows COW:** [#155](https://github.com/LMhdez/gaslux/pull/155) → [#192](https://github.com/LMhdez/gaslux/pull/192) reconstrói seletivamente as alterações de #157 e #163 para evitar repetição do commit de FirstLogon. Confirmar `git patch-id` e regressões no HEAD #192 antes de propor fecho de PRs substituídas. A cadeia #192 não autoriza modificar discos físicos.
+- **Q4OS:** [#186](https://github.com/LMhdez/gaslux/pull/186) → [#187](https://github.com/LMhdez/gaslux/pull/187) → [#188](https://github.com/LMhdez/gaslux/pull/188) → [#189](https://github.com/LMhdez/gaslux/pull/189). O snapshot/restore anterior é sobretudo sintético; o Windows 10 QCOW2 da #189 não está comprovado pelos dados desta auditoria. Não correr Calamares contra o Windows até autenticar identidade de disco, geometria e restauro.
+- **Mint:** [#161](https://github.com/LMhdez/gaslux/pull/161) → [#185](https://github.com/LMhdez/gaslux/pull/185) → [#190](https://github.com/LMhdez/gaslux/pull/190) comprova apenas as fases correspondentes aos relatórios efetivamente auditados; o boot via kernel direto não prova GRUB nem dual boot de produção. O ensaio isolado de raiz instalada #181 também não prova a sequência completa Gaslux.
+- **Pop!_OS:** #134 → #177 → #178 mantém-se independente da cadeia distinst #47 → #50 → #61 → #63. Conciliar proteção da ESP e contratos antes de unir; sem dual boot/rollback aceite.
+- **Bazzite:** [#179](https://github.com/LMhdez/gaslux/pull/179) conserva os gates de assinatura/boot sem disco. A [documentação oficial](https://docs.bazzite.gg/General/Installation_Guide/install-guide/) distingue a viabilidade de dual boot upstream da autorização do Gaslux: **BIOS/MBR deve falhar previamente** e a gestão das chaves Secure Boot nunca é automática.
+- **Governação:** #191 agenda uma auditoria de 15 em 15 minutos; requer revisão do custo, limites de concorrência e valor acrescentado face aos workflows existentes antes da sua eventual integração. Não instalar um agente autónomo que escreva no repositório. Preservar as issues [#3](https://github.com/LMhdez/gaslux/issues/3) e [#71](https://github.com/LMhdez/gaslux/issues/71) abertas.
+
+Esta atualização é **documental**: não executa instalação, compilação Windows, escrita de disco, dual boot, atualizações, remoção ou recuperação. Não substitui a revisão do código e da CI exata de cada PR.
