@@ -104,7 +104,7 @@ def _send_key(sock: Path, pid: int) -> None:
                 isinstance(greeting_data, dict) and isinstance(greeting_data.get("QMP"), dict),
                 "QEMU endpoint is not a QMP monitor",
             )
-            stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-capabilities"}\\r\\n')
+            stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-capabilities"}\r\n')
             _read_qmp_reply(stream, "gaslux-capabilities")
             # Explicit key-down/key-up events go through QEMU's input event
             # API, rather than HMP's legacy sendkey command. This is the
@@ -125,7 +125,7 @@ def _send_key(sock: Path, pid: int) -> None:
                 },
                 "id": "gaslux-ovmf-space",
             }
-            stream.write((json.dumps(request, separators=(",", ":")) + "\\r\\n").encode())
+            stream.write((json.dumps(request, separators=(",", ":")) + "\r\n").encode())
             _read_qmp_reply(stream, "gaslux-ovmf-space")
 
 def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list[str]) -> None:
