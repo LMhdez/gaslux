@@ -100,6 +100,14 @@ def test_scripted_input_stops_at_storage_page_before_install_review():
     assert "persist-credentials: false" in source
 
 
+def test_contract_qcow2_dependency_setup_has_bounded_apt_deadlines():
+    job = _workflow()["jobs"]["contracts"]
+    step = next(s for s in job["steps"] if "Install QEMU image tool" in s.get("name", ""))
+    assert step["timeout-minutes"] == 15
+    assert "timeout --signal=TERM --kill-after=30s 300s apt-get update" in step["run"]
+    assert "timeout --signal=TERM --kill-after=30s 600s apt-get install" in step["run"]
+
+
 def test_runner_dependency_setup_has_bounded_apt_deadlines():
     job = _workflow()["jobs"]["owned-qcow2-storage-discovery"]
     step = next(s for s in job["steps"] if "Install QEMU, OVMF" in s.get("name", ""))
