@@ -46,9 +46,15 @@ def make_args(root: Path) -> list[str]:
         "-net",
         "none",
         "-drive",
-        f"if=none,id=system,file={root / 'windows10-enterprise-eval-22h2-uefi-gpt.qcow2'},format=qcow2",
+        (
+            f"if=none,id=system,file={root / 'windows10-enterprise-eval-22h2-uefi-gpt.qcow2'},"
+            "format=qcow2"
+        ),
         "-drive",
-        f"if=none,id=install,file={root / 'Windows10_Enterprise_22H2_Eval_EN-US_x64.iso'},format=raw,readonly=on",
+        (
+            f"if=none,id=install,file={root / 'Windows10_Enterprise_22H2_Eval_EN-US_x64.iso'},"
+            "format=raw,readonly=on"
+        ),
         "-drive",
         f"if=none,id=answer,file={root / 'unattend.iso'},format=raw,readonly=on",
         "-drive",
