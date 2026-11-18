@@ -240,8 +240,16 @@ jobs:
                 || { echo "Date/time page not recognized; stopping"; exit 1; }
               "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
             elif (( phase == 4 )); then
-              grep -Eiq 'Installation method' "bazzite-evidence/main-ocr-4.txt" \
-                || { echo "Installation method page not recognized; stopping"; exit 1; }
+              grep -Fq 'Virtio Block Device' "bazzite-evidence/main-ocr-4.txt" \
+                || { echo "Expected Virtio target not displayed; stopping"; exit 1; }
+              [[ $(grep -ci 'Virtio Block Device' "bazzite-evidence/main-ocr-4.txt") == 1 ]] \
+                || { echo "Ambiguous installer disk count; stopping"; exit 1; }
+              grep -Fq '75.2 GB disk' "bazzite-evidence/main-ocr-4.txt" \
+                || { echo "Guest target size mismatch for 70 GiB QCOW2; stopping"; exit 1; }
+              grep -Fq 'Use entire disk' "bazzite-evidence/main-ocr-4.txt" \
+                || { echo "Installer partitioning policy not recognized; stopping"; exit 1; }
+              echo 'ONE blank 70 GiB disk displayed by native installer; not a Windows target' \
+                > bazzite-evidence/guest-disk-screen-gate.txt
               "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
             elif (( phase == 5 )); then
               grep -Eiq 'Storage configuration|Select storage|Select disk' \
