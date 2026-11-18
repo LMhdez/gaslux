@@ -62,6 +62,25 @@ class CachyosReleaseGateTests(unittest.TestCase):
         self.assertLess(install.index('check_disposable_vm'),
                         install.index('check_target'))
 
+    def test_target_provisioning_requires_cryptographic_handoff(self):
+        code = STAGE.read_text()
+        start = code.index('install_target() {')
+        end = code.index('\n}', start)
+        install = code[start:end]
+        self.assertIn('check_authenticated_handoff "$run_id" "$root_uuid"', install)
+        self.assertLess(install.index('check_authenticated_handoff'),
+                        install.index('check_target'))
+        self.assertLess(install.index('check_authenticated_handoff'),
+                        install.index('pacstrap -K'))
+
+    def test_no_legacy_unsigned_install_fallback(self):
+        code = STAGE.read_text()
+        self.assertIn('cachyos-handoff-auth.py', code)
+        self.assertIn('GASLUX_HANDOFF_SIGNATURE', code)
+        self.assertIn('GASLUX_HANDOFF_PUBLIC_KEY', code)
+        self.assertIn('GASLUX_HANDOFF_ENVELOPE', code)
+        self.assertNotIn('|| true\n  check_target', code)
+
     def test_script_requires_explicit_install_arguments(self):
         proc = subprocess.run(['bash', str(STAGE), '--install'],
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
