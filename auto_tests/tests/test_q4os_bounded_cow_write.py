@@ -250,10 +250,10 @@ def test_normal_guest_shutdown_requires_authenticated_host_finish():
 
     host = inspect.getsource(_authenticate_guest_write)
     guest = inspect.getsource(run)
-    assert "FINISH = b\"GQ4OS-WRITE-FINISH-V1\"" in host
-    assert "hmac.new(secret.encode(\"ascii\"), AUTH_DOMAIN + FINISH" in host
-    assert "conn.sendall(FINISH + b\":\" + finish_mac" in host
-    assert "finish = _read_line(fd, 256).split(b\":\")" in guest
+    assert 'FINISH = b"GQ4OS-WRITE-FINISH-V1"' in host
+    assert 'hmac.new(secret.encode("ascii"), AUTH_DOMAIN + FINISH' in host
+    assert 'conn.sendall(FINISH + b":" + finish_mac' in host
+    assert 'finish = _read_line(fd, 256).split(b":")' in guest
     assert "hmac.compare_digest(finish[1], finish_mac)" in guest
 
 
