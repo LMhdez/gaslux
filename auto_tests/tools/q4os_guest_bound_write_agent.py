@@ -27,6 +27,7 @@ from guest_probe import (
 HELLO = b"GQ4OS-WRITE-HELLO-V1\n"
 CHALLENGE = b"GQ4OS-WRITE-CHALLENGE-V1"
 AUTH = b"GQ4OS-WRITE-ALLOW-V1"
+FINISH = b"GQ4OS-WRITE-FINISH-V1"
 PREFLIGHT = b"GQ4OS-WRITE-PREFLIGHT-V1\n"
 RESULT = b"GQ4OS-WRITE-RESULT-V1\n"
 REPORT_DOMAIN = b"GASLUX-Q4OS-BOUND-WRITE-REPORT-V1\n"
@@ -198,6 +199,14 @@ def run() -> dict:
         _report(fd, RESULT, report, secret)
         print("GASLUX_Q4OS_BOUND_GUEST_WRITE=PASS", flush=True)
         print("GASLUX_Q4OS_BOUND_GUEST_BYTES=4096", flush=True)
+        # The guest stays alive until the host explicitly finishes. In the
+        # crash lab, QEMU is SIGKILLed while the guest is blocked here.
+        finish = _read_line(fd, 256).split(b":")
+        _require(len(finish) == 2 and finish[0] == FINISH, "Missing host finish")
+        finish_mac = hmac.new(
+            secret.encode("ascii"), AUTH_DOMAIN + FINISH, hashlib.sha256
+        ).hexdigest().encode("ascii")
+        _require(hmac.compare_digest(finish[1], finish_mac), "Invalid host finish")
         return report
     finally:
         os.close(fd)
