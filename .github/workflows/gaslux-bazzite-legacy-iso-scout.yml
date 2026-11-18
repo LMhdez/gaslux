@@ -1,0 +1,105 @@
+name: Bazzite legacy ISO metadata scout (read-only, not installer)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-legacy-iso-scout-20261118
+    paths:
+      - '.github/workflows/gaslux-bazzite-legacy-iso-scout.yml'
+      - 'auto_tests/bazzite_legacy_iso_scout.py'
+      - 'auto_tests/tests/test_bazzite_legacy_iso_scout*.py'
+      - 'docs/BAZZITE_LEGACY_ISO_SCOUT.md'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-bazzite-legacy-iso-scout.yml'
+      - 'auto_tests/bazzite_legacy_iso_scout.py'
+      - 'auto_tests/tests/test_bazzite_legacy_iso_scout*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Python negative contracts and lint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff PyYAML
+          python -m pytest -q \
+            auto_tests/tests/test_bazzite_legacy_iso_scout.py \
+            auto_tests/tests/test_bazzite_legacy_iso_scout_workflow.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_iso_scout.py \
+            auto_tests/tests/test_bazzite_legacy_iso_scout.py \
+            auto_tests/tests/test_bazzite_legacy_iso_scout_workflow.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_iso_scout.py \
+            auto_tests/tests/test_bazzite_legacy_iso_scout.py \
+            auto_tests/tests/test_bazzite_legacy_iso_scout_workflow.py
+
+  legacy-cdn-discovery:
+    needs: contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inspect only HTTPS response headers and bounded checksum metadata
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/bazzite-legacy-cdn" bazzite-legacy-evidence
+          base='https://download.bazzite.gg/bazzite-stable-amd64.iso'
+          probe_head() {
+            local suffix="$1" name="$2"
+            local result
+            result=$(curl --head --silent --show-error --location --retry 2 \
+              --connect-timeout 15 --max-time 70 --proto '=https' --proto-redir '=https' \
+              --output "$RUNNER_TEMP/bazzite-legacy-cdn/$name.head" \
+              --write-out '%{http_code}' "$base$suffix") || result=000
+            [[ "$result" =~ ^[1-5][0-9][0-9]$ ]] || result=599
+            printf '%s\n' "$result"
+          }
+          iso_status=$(probe_head '' iso)
+          signature_status=$(probe_head '.sig' sig)
+          checksum_status=$(probe_head '-CHECKSUM' checksum)
+          : > "$RUNNER_TEMP/bazzite-legacy-cdn/checksum.txt"
+          if [[ "$checksum_status" == 200 ]]; then
+            curl --fail --silent --show-error --location --retry 2 \
+              --connect-timeout 15 --max-time 70 --max-filesize 4096 \
+              --proto '=https' --proto-redir '=https' \
+              "$base-CHECKSUM" -o "$RUNNER_TEMP/bazzite-legacy-cdn/checksum.txt"
+          fi
+          content_length=$(tr -d '\r' < "$RUNNER_TEMP/bazzite-legacy-cdn/iso.head" \
+            | awk 'tolower($1)=="content-length:" {n=$2} END {print n}')
+          python3 auto_tests/bazzite_legacy_iso_scout.py \
+            --iso-status "$iso_status" \
+            --checksum-status "$checksum_status" \
+            --signature-status "$signature_status" \
+            --content-length "$content_length" \
+            --checksum-file "$RUNNER_TEMP/bazzite-legacy-cdn/checksum.txt" \
+            > bazzite-legacy-evidence/legacy-cdn-discovery.json
+          echo 'DISCOVERY ONLY: no ISO bytes fetched, signature unverified; no disk writes or install'
+          cat bazzite-legacy-evidence/legacy-cdn-discovery.json
+      - name: Publish bounded non-sensitive read-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-legacy-metadata-scout
+          path: bazzite-legacy-evidence/
+          if-no-files-found: warn
+          retention-days: 7
