@@ -225,7 +225,6 @@ def test_restore_checkpoint_does_not_claim_full_windows_rollback():
     assert '"syntheticWriteRecoveredVerified"' in src
 
 
-
 def test_sigkill_fault_injection_requires_separate_explicit_opt_in():
     import inspect
 
