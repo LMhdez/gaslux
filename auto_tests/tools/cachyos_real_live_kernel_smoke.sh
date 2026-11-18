@@ -83,6 +83,12 @@ set +e
 wait "$vm_pid"
 rc=$?
 set -e
+# Preserve the disposable VM's serial witness even when boot assertions fail.
+if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" && -f "$w/serial.log" ]]; then
+  mkdir -p -- "$GASLUX_BOOT_EVIDENCE_DIR"
+  install -m 0600 -- "$w/serial.log" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-live-serial.log"
+  ( cd "$GASLUX_BOOT_EVIDENCE_DIR" && sha256sum cachyos-live-serial.log > cachyos-live-serial.sha256 )
+fi
 if ! grep -Eq 'Linux version [0-9]' "$w/serial.log"; then
   echo "FAIL: real CachyOS kernel execution unverified (QEMU status=$rc)" >&2
   tail -c 5000 "$w/serial.log" >&2 || true
