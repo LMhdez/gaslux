@@ -23,7 +23,10 @@ def test_permissions_and_vm_only_on_branch_push():
     assert "contracts" in jobs
     assert "owned-qcow2-storage-discovery" in jobs
     assert jobs["owned-qcow2-storage-discovery"]["needs"] == "contracts"
-    assert jobs["owned-qcow2-storage-discovery"]["if"] == "github.event_name != 'pull_request'"
+    assert jobs["owned-qcow2-storage-discovery"]["if"] == (
+        "github.event_name != 'pull_request' || "
+        "github.event.pull_request.head.ref == 'feature/bazzite-owned-qcow2-storage-discovery'"
+    )
     assert jobs["owned-qcow2-storage-discovery"]["runs-on"] == "ubuntu-24.04"
     assert "feature/bazzite-owned-qcow2-storage-discovery" in str(wf.get("on", wf.get(True)))
 
