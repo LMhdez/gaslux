@@ -591,13 +591,17 @@ def scan_windows_guest_tokens(
 
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
-            reject_repeated_dvd_boot: bool = False) -> tuple[bool, str]:
+            reject_repeated_dvd_boot: bool = False,
+            require_initial_dvd_boot: bool = False) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
     requests ACPI Windows shutdown after the read-only audit, and QEMU must
     exit successfully before the host may claim a clean installed firstboot.
     """
+    require(type(require_initial_dvd_boot) is bool and
+            (not require_initial_dvd_boot or reject_repeated_dvd_boot),
+            "one-shot DVD gate requires explicit incremental boot counting")
     build_by_profile = {
         "win10_22h2_en_us_x64": "19045",
         "win11_26h2_en_us_x64": "26300",
@@ -759,6 +763,8 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     if (witnessed_at is None and required.issubset(seen_proofs)
                             and build_line in seen_proofs):
                         witnessed_at = time.monotonic()
+                    if require_initial_dvd_boot and dvd_start_count != 1:
+                        return False, "one-shot EFI DVD startup was not observed exactly once"
                     if witnessed_at is not None and rc == 0:
                         return True, "installed Windows client audit and clean VM poweroff verified"
                     if witnessed_at is not None:
@@ -1347,6 +1353,7 @@ def main(argv: list[str] | None = None) -> int:
                         monitor_socket=(None if args.one_shot_install_only
                                         else monitor_path),
                         reject_repeated_dvd_boot=args.one_shot_install_only,
+                        require_initial_dvd_boot=args.one_shot_install_only,
                     )
                 if not args.boot_probe_only:
                     report["windowsClientBootVerified"] = ok
