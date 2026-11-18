@@ -141,7 +141,10 @@ jobs:
 
   genuine-client-two-stage-firstboot:
     name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
-    needs: [verify-host-and-proof-contracts, synthetic-guestfs-fifth-ext4]
+    # The genuine Windows job must prove the synthetic tar importer on its
+    # OWN runner before creating any Windows disk. Do not depend on a separate
+    # runner's heavyweight apt install, which can stall independently.
+    needs: verify-host-and-proof-contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -176,8 +179,12 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           test "$(uname -m)" = x86_64
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          sudo timeout --signal=TERM --kill-after=15s 600s \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 update -qq
+          sudo timeout --signal=TERM --kill-after=15s 900s \
+            env DEBIAN_FRONTEND=noninteractive \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
+            install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
             p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic \
             aria2 squashfs-tools fuse3
@@ -197,6 +204,18 @@ jobs:
           set -Eeuo pipefail
           source auto_tests/tools/windows_x64_libguestfs_kernel.sh
           python3 -c 'import guestfs; print("PASS: guestfs binding available, only QCOW2 file attachment allowed")'
+      - name: Mandatory real synthetic fifth-ext4 tar import and COW discard on THIS runner
+        shell: bash
+        env:
+          GASLUX_SYNTHETIC_EXT4_CONSENT: I_ACCEPT_SYNTHETIC_RAW_FILE_FIFTH_EXT4_ONLY
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 auto_tests/tools/windows_mint_synthetic_tar_guestfs.py
+          echo 'PASS: real libguestfs fifth-partition tar transfer on this hosted runner; Windows test still pending.' >> "$GITHUB_STEP_SUMMARY"
       - name: Download and verify the exact catalog-pinned Linux Mint 22.3 ISO
         shell: bash
         env:
