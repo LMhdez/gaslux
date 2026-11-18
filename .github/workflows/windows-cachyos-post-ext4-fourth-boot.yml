@@ -121,9 +121,15 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_TEMP" = /home/runner/work/_temp
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          echo "Synthetic libguestfs package setup began $(date -u +%FT%TZ)"
+          sudo timeout --signal=TERM --kill-after=15s 600s \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 update -qq
+          sudo timeout --signal=TERM --kill-after=15s 900s \
+            env DEBIAN_FRONTEND=noninteractive \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
+            install -y --no-install-recommends \
             gdisk python3-guestfs libguestfs-tools linux-image-generic
+          echo "Synthetic libguestfs package setup completed $(date -u +%FT%TZ)"
       - name: Verify ext4 and all four SHA256 digests with REAL guestfs, without any Windows
         shell: bash
         run: |
