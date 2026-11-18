@@ -1,0 +1,308 @@
+name: Q4OS QEMU SIGKILL power-loss and signed snapshot recovery (synthetic only)
+
+on:
+  push:
+    branches:
+      - feature/q4os-powercut-cow-recovery
+    paths:
+      - '.github/workflows/gaslux-q4os-powercut-recovery.yml'
+      - 'assets/live/gaslux_q4os_vm_target_plan.py'
+      - 'assets/live/gaslux_q4os_guest_disk_probe.py'
+      - 'auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_manifest.py'
+      - 'auto_tests/tools/q4os_guest_identity_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_identity_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tests/test_q4os_snapshot_recovery.py'
+      - 'schemas/gaslux-q4os-vm-target-plan.schema.json'
+      - 'schemas/gaslux-q4os-guest-disk-report.schema.json'
+      - 'schemas/gaslux-q4os-durable-snapshot-manifest.schema.json'
+      - 'docs/Q4OS_QEMU_SNAPSHOT_INTEGRATION_LAB.md'
+      - 'auto_tests/tools/q4os_guest_bound_write_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_bounded_write_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_bounded_cow_write.py'
+      - 'auto_tests/tests/test_q4os_powercut_recovery.py'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-powercut-recovery.yml'
+      - 'assets/live/gaslux_q4os_vm_target_plan.py'
+      - 'assets/live/gaslux_q4os_guest_disk_probe.py'
+      - 'auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_snapshot_manifest.py'
+      - 'auto_tests/tools/q4os_guest_identity_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_identity_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_qemu_identity_lab.py'
+      - 'auto_tests/tests/test_q4os_snapshot_recovery.py'
+      - 'schemas/gaslux-q4os-vm-target-plan.schema.json'
+      - 'schemas/gaslux-q4os-guest-disk-report.schema.json'
+      - 'schemas/gaslux-q4os-durable-snapshot-manifest.schema.json'
+      - 'docs/Q4OS_QEMU_SNAPSHOT_INTEGRATION_LAB.md'
+      - 'auto_tests/tools/q4os_guest_bound_write_agent.py'
+      - 'auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_bounded_write_initramfs.sh'
+      - 'auto_tests/tests/test_q4os_bounded_cow_write.py'
+      - 'auto_tests/tests/test_q4os_powercut_recovery.py'
+  workflow_dispatch:
+
+concurrency:
+  group: q4os-powercut-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qemu-sigkill-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install isolated QEMU and snapshot lab dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout 300s sudo apt-get update -qq
+          timeout 600s sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+            apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils linux-image-generic busybox-static kmod cpio \
+            gdisk dosfstools python3 acl
+          python -m pip install 'pytest>=9,<10' 'cryptography>=46,<51' \
+            'jsonschema>=4,<5' 'ruff>=0.8,<1'
+          if [[ -c /dev/kvm ]]; then
+            sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
+          fi
+          mapfile -t kernels < <(find -L /boot -maxdepth 1 -type f \
+            -name 'vmlinuz-*' -print | sort -V)
+          [[ ${#kernels[@]} -gt 0 ]] || { echo 'No runner kernel found' >&2; exit 1; }
+          kernel_source="$(readlink -f "${kernels[-1]}")"
+          kernel_version="${kernel_source##*/vmlinuz-}"
+          [[ -s "$kernel_source" && -s "/lib/modules/$kernel_version/modules.dep" ]]
+          kernel_dir="$RUNNER_TEMP/q4os-integrated-kernel-$GITHUB_RUN_ID"
+          mkdir -m 0700 -p "$kernel_dir"
+          kernel="$kernel_dir/vmlinuz-$kernel_version"
+          sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" "$kernel_source" "$kernel"
+          printf 'GASLUX_Q4OS_KERNEL=%s\n' "$kernel" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_KERNEL_VERSION=%s\n' "$kernel_version" >> "$GITHUB_ENV"
+          if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+            echo 'QEMU accelerator: KVM'
+          else
+            echo 'QEMU accelerator: TCG'
+          fi
+
+      - name: Compile, lint and run QEMU and snapshot regression contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q \
+            assets/live/gaslux_q4os_vm_target_plan.py \
+            assets/live/gaslux_q4os_guest_disk_probe.py \
+            auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py \
+            auto_tests/tools/gaslux_q4os_qemu_identity_lab.py \
+            auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py \
+            auto_tests/tools/gaslux_q4os_snapshot_manifest.py \
+            auto_tests/tools/q4os_guest_identity_agent.py \
+            auto_tests/tools/q4os_guest_bound_write_agent.py \
+            auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py \
+            auto_tests/tests/test_q4os_qemu_identity_lab.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py \
+            auto_tests/tests/test_q4os_bounded_cow_write.py \
+            auto_tests/tests/test_q4os_powercut_recovery.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            assets/live/gaslux_q4os_vm_target_plan.py \
+            assets/live/gaslux_q4os_guest_disk_probe.py \
+            auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py \
+            auto_tests/tools/gaslux_q4os_qemu_identity_lab.py \
+            auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py \
+            auto_tests/tools/gaslux_q4os_snapshot_manifest.py \
+            auto_tests/tools/q4os_guest_identity_agent.py \
+            auto_tests/tools/q4os_guest_bound_write_agent.py \
+            auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py \
+            auto_tests/tests/test_q4os_qemu_identity_lab.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py \
+            auto_tests/tests/test_q4os_bounded_cow_write.py \
+            auto_tests/tests/test_q4os_powercut_recovery.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            assets/live/gaslux_q4os_vm_target_plan.py \
+            assets/live/gaslux_q4os_guest_disk_probe.py \
+            auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py \
+            auto_tests/tools/gaslux_q4os_qemu_identity_lab.py \
+            auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py \
+            auto_tests/tools/gaslux_q4os_snapshot_manifest.py \
+            auto_tests/tools/q4os_guest_identity_agent.py \
+            auto_tests/tools/q4os_guest_bound_write_agent.py \
+            auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py \
+            auto_tests/tests/test_q4os_qemu_identity_lab.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py \
+            auto_tests/tests/test_q4os_bounded_cow_write.py \
+            auto_tests/tests/test_q4os_powercut_recovery.py
+          python -m pytest -q \
+            auto_tests/tests/test_q4os_qemu_identity_lab.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py \
+            auto_tests/tests/test_q4os_bounded_cow_write.py \
+            auto_tests/tests/test_q4os_powercut_recovery.py
+
+      - name: Create disposable signed 32-GiB UEFI GPT target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          work="$(mktemp -d -p "$RUNNER_TEMP" gaslux-q4os-integrated-XXXXXXXX)"
+          plan_dir="$RUNNER_TEMP/q4os-integrated-plan-$GITHUB_RUN_ID"
+          snapshot_evidence="$RUNNER_TEMP/q4os-integrated-snapshot-$GITHUB_RUN_ID"
+          qemu_evidence="$RUNNER_TEMP/q4os-integrated-qemu-$GITHUB_RUN_ID"
+          for path in "$plan_dir" "$snapshot_evidence" "$qemu_evidence"; do
+            [[ ! -e "$path" && ! -L "$path" ]] || exit 1
+          done
+          printf 'GASLUX_Q4OS_WORK=%s\n' "$work" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_PLAN=%s\n' "$plan_dir" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_SNAPSHOT_EVIDENCE=%s\n' "$snapshot_evidence" >> "$GITHUB_ENV"
+          printf 'GASLUX_Q4OS_QEMU_EVIDENCE=%s\n' "$qemu_evidence" >> "$GITHUB_ENV"
+          truncate -s 32G "$work/efi-disk.img"
+          sgdisk --zap-all --new=1:2048:+512M --typecode=1:EF00 \
+            --change-name=1:GASLUX-LAB-ESP "$work/efi-disk.img" >/dev/null
+          truncate -s 512M "$work/efi-part.img"
+          mkfs.vfat -F 32 -n GASLUXLAB "$work/efi-part.img" >/dev/null
+          dd if="$work/efi-part.img" of="$work/efi-disk.img" \
+            bs=1M seek=1 conv=notrunc,sparse status=none
+          sgdisk --verify "$work/efi-disk.img"
+          python auto_tests/tools/gaslux_q4os_vm_target_plan_lab.py "$work" "$plan_dir"
+
+      - name: Snapshot and restore the exact target before QEMU starts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/tools/gaslux_q4os_snapshot_recovery_lab.py \
+            "$GASLUX_Q4OS_WORK" "$GASLUX_Q4OS_PLAN" "$GASLUX_Q4OS_SNAPSHOT_EVIDENCE"
+          # Snapshot validation leaves the signed source read-only. Restore owner
+          # write permission only for the next lab's own read-only QEMU overlay setup.
+          chmod 0600 "$GASLUX_Q4OS_WORK/efi-disk.img"
+          python - "$GASLUX_Q4OS_SNAPSHOT_EVIDENCE" <<'PY'
+          import json, sys
+          from pathlib import Path
+          from jsonschema import Draft202012Validator, FormatChecker
+          root = Path(sys.argv[1])
+          schema = json.loads(Path("schemas/gaslux-q4os-durable-snapshot-manifest.schema.json").read_text())
+          manifest = json.loads((root / "q4os-recovery-snapshot-manifest.json").read_text())
+          Draft202012Validator(schema, format_checker=FormatChecker()).validate(manifest)
+          print("GASLUX_Q4OS_INTEGRATED_SNAPSHOT_SCHEMA=PASS")
+          PY
+
+      - name: Build isolated read-only identity guest initramfs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_q4os_identity_initramfs.sh
+          bash auto_tests/tools/gaslux_q4os_identity_initramfs.sh \
+            "$GASLUX_Q4OS_KERNEL" "$GASLUX_Q4OS_WORK/guest-rootfs" \
+            "$GASLUX_Q4OS_WORK/guest-initramfs.cpio.gz"
+
+      - name: Build separate explicitly enabled bounded-write guest initramfs
+        shell: bash
+        env:
+          GASLUX_Q4OS_SYNTHETIC_WRITE_LAB_ONLY: 'yes'
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_q4os_bounded_write_initramfs.sh
+          bash auto_tests/tools/gaslux_q4os_bounded_write_initramfs.sh \
+            "$GASLUX_Q4OS_KERNEL" "$GASLUX_Q4OS_WORK/write-rootfs" \
+            "$GASLUX_Q4OS_WORK/write-guest-initramfs.cpio.gz"
+
+      - name: SIGKILL the real QEMU guest after fsync and recover the owned COW
+        shell: bash
+        env:
+          GASLUX_Q4OS_SYNTHETIC_WRITE_LAB_ONLY: 'yes'
+          GASLUX_Q4OS_POWER_CUT_LAB_ONLY: 'yes'
+        run: |
+          set -Eeuo pipefail
+          write_evidence="$RUNNER_TEMP/q4os-bounded-write-$GITHUB_RUN_ID"
+          printf 'GASLUX_Q4OS_WRITE_EVIDENCE=%s\n' "$write_evidence" >> "$GITHUB_ENV"
+          python auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py \
+            "$GASLUX_Q4OS_WORK" "$GASLUX_Q4OS_PLAN" \
+            "$GASLUX_Q4OS_SNAPSHOT_EVIDENCE" "$write_evidence" \
+            "$GASLUX_Q4OS_KERNEL" "$GASLUX_Q4OS_WORK/write-guest-initramfs.cpio.gz" \
+            --power-cut
+
+      - name: Assert bounded mutation, real recovery and protected Windows boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - "$GASLUX_Q4OS_WRITE_EVIDENCE" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          evidence = Path(sys.argv[1])
+          result = json.loads((evidence / "q4os-bounded-write-recovery-result.json").read_text())
+          checkpoint = json.loads((evidence / "q4os-bounded-write-recovery-checkpoint.json").read_text())
+          assert result["guestDiskIdentityVerified"] is True
+          assert result["transportPeerBoundToQemuPid"] is True
+          assert result["transportAuthenticated"] is True
+          assert result["guestWriteCompleted"] is True
+          assert result["qemuKilledBySigkill"] is True
+          assert result["qemuGuestShutdownObserved"] is False
+          assert result["powerCutAfterGuestFsync"] is True
+          assert result["powerCutRecoveryInSyntheticLab"] is True
+          assert checkpoint["powerCutObserved"] is True
+          assert checkpoint["postPowerCutRecoveryVerified"] is True
+          assert result["guestBlockWriteBytes"] == 4096
+          assert result["cowModifiedOnlyInProposedRootExtent"] is True
+          assert result["snapshotRestoredAndCompared"] is True
+          assert result["syntheticWriteRecoveredVerified"] is True
+          assert result["overlayDiscarded"] is True
+          assert result["baseImageUnchanged"] is True
+          assert result["windowsDiskAttached"] is False
+          assert result["installationAuthorized"] is False
+          assert result["rollbackVerified"] is False
+          assert result["calamaresExecuted"] is False
+          assert checkpoint["guestWritesAuthorized"] is False
+          assert checkpoint["syntheticWriteRecoveredVerified"] is True
+          print("GASLUX_Q4OS_REAL_GUEST_4K_COW_MUTATION_AND_RESTORE=PASS")
+          print("GASLUX_Q4OS_FULL_INSTALLATION_ROLLBACK=NOT_PROVEN")
+          PY
+
+      - name: Reboot recovered signed base in a fresh QEMU guest after forced SIGKILL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/tools/gaslux_q4os_qemu_identity_lab.py \
+            "$GASLUX_Q4OS_WORK" "$GASLUX_Q4OS_PLAN" "$GASLUX_Q4OS_QEMU_EVIDENCE" \
+            "$GASLUX_Q4OS_KERNEL" "$GASLUX_Q4OS_WORK/guest-initramfs.cpio.gz"
+          python - "$GASLUX_Q4OS_QEMU_EVIDENCE" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          guest = json.loads(
+              (Path(sys.argv[1]) / "q4os-qemu-guest-identity.json").read_text()
+          )
+          assert guest["qemuBootObserved"] is True
+          assert guest["guestDiskIdentityVerified"] is True
+          assert guest["transportAuthenticated"] is True
+          assert guest["baseImageUnchanged"] is True
+          assert guest["overlayDiscarded"] is True
+          assert guest["rollbackVerified"] is False
+          print("GASLUX_Q4OS_SYNTHETIC_BASE_POST_POWER_CUT_GUEST_BOOT=PASS")
+          PY
+
+      - name: Upload signed snapshot, QEMU identity, power-cut and recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-synthetic-powercut-signed-recovery-proof
+          path: |
+            ${{ runner.temp }}/q4os-integrated-plan-${{ github.run_id }}/
+            ${{ runner.temp }}/q4os-integrated-snapshot-${{ github.run_id }}/
+            ${{ runner.temp }}/q4os-integrated-qemu-${{ github.run_id }}/
+            ${{ runner.temp }}/q4os-bounded-write-${{ github.run_id }}/
+          if-no-files-found: warn
+          retention-days: 7
