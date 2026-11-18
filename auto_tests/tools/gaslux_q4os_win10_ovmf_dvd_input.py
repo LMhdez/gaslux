@@ -268,7 +268,8 @@ def run(
                         raw = capture.read(64 * 1024)
                     if inspect_serial_for_boot_prompt(raw) == "prompt":
                         _require(monitor.is_socket(), "QEMU QMP not ready at EFI prompt")
-                        time.sleep(0.5)\n                        _send_key(monitor, proc.pid)
+                        time.sleep(0.5)
+                        _send_key(monitor, proc.pid)
                         sent = True
                         print("GASLUX_WIN10_OVMF_DVD_KEY_SENT=PASS", flush=True)
                         break
