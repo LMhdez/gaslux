@@ -70,8 +70,8 @@ def test_missing_or_changed_summary_markers_refuse(ocr):
     [
         HEADER,
         TSV + TSV.split(HEADER, 1)[1],
-        TSV.replace("\t".join(ROW_ONE[6:8]), "974\\t322"),
-        TSV.replace("\t".join(ROW_TWO[6:8]), "900\\t322"),
+        TSV.replace("674", "974", 1),
+        TSV.replace("759", "900", 1),
     ],
 )
 def test_ambiguous_or_out_of_bounds_tile_refuses(tsv):
