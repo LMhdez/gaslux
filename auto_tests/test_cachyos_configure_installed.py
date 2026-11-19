@@ -83,7 +83,7 @@ class CachyOSInstalledConfigurationContractTests(unittest.TestCase):
                         stream.write("gaslux-lab:x:1000:1000::/home/gaslux-lab:/bin/bash\n")
                 elif argv[0] == "arch-chroot" and argv[2] == "usermod":
                     with (root / "etc/shadow").open("a") as stream:
-                        stream.write("gaslux-lab:" + argv[5] + ":1::::::\n")
+                        stream.write("gaslux-lab:" + argv[4] + ":1::::::\n")
                 elif argv[0] == "arch-chroot" and argv[2] == "ln":
                     (root / "etc/localtime").symlink_to(argv[4])
                 return subprocess.CompletedProcess(argv, 0, "", "")
