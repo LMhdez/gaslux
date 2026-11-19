@@ -89,6 +89,24 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+## Anexo técnico — descoberta de instalador, assinatura e boot real (19-11-2026)
+
+### Identidade e origem exacta
+[DOCUMENTADO] A distribuição fixada em `main/release-config.json` é **Linux Mint 22.3 Cinnamon**, ISO de 3 091 660 800 bytes, SHA-256 `a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4`. O [guia oficial de autenticação](https://linuxmint-installation-guide.readthedocs.io/en/latest/verify.html) requer `sha256sum.txt` e a assinatura `sha256sum.txt.gpg`, emitida pela chave cujo fingerprint é `27DEB15644C6B3CF3BD7D291300F846BA25BAE09`. A assinatura do catálogo Gaslux é **independente** da assinatura dos hashes Linux Mint: exigir ambas quando o trust model reclamar proveniência upstream. [PENDENTE] Guardar o resultado da verificação GPG exacta para a ISO 22.3 juntamente com versão/fingerprint e data da consulta.
+
+### Instalador upstream vs. backend Gaslux
+[DOCUMENTADO em código upstream] O projecto [linuxmint/ubiquity](https://github.com/linuxmint/ubiquity) é um instalador mantido pela Linux Mint. [PENDENTE] Determinar o **pacote, versão e binário realmente incluídos** na ISO Cinnamon 22.3; não deduzir isso apenas pela existência do repositório. [IMPLEMENTADO em `dev`] O Gaslux **não chama necessariamente o Ubiquity**: [`assets/live/libertix-distribution-common.sh`](https://github.com/LMhdez/gaslux/blob/dev/assets/live/libertix-distribution-common.sh) resolve exactamente um `filesystem.squashfs`, exige `/etc/os-release`, `var/lib/dpkg/status`, `usr/sbin/update-grub`, `usr/sbin/update-initramfs` e `usr/bin/lsinitramfs`. [`assets/live/libertix-install-main.sh`](https://github.com/LMhdez/gaslux/blob/dev/assets/live/libertix-install-main.sh) orquestra o target, não sendo sinónimo de execução do instalador upstream. Não reescrever este backend sem prova de falha, mas distinguir instalação configurada pelo Gaslux de instalação feita pelo Ubiquity.
+
+### Arranque, parâmetros e testes reproduzíveis
+[IMPLEMENTADO] A mini-ISO Libertix usa os parâmetros **da própria mini-ISO**, não necessariamente da ISO Mint: [`Scripts/config/Libertix.BootArguments.json`](https://github.com/LMhdez/gaslux/blob/dev/Scripts/config/Libertix.BootArguments.json) contém `boot=live toram components ... console=ttyS0,115200n8`; `Installation/LiveBootArguments.cs` escolhe `/live/vmlinuz` e `/live/initrd.img` para GRUB4DOS BIOS e usa `find --set-root /installation-plan.json`. Não copiar `boot=live` para arranque directo da ISO Mint sem ensaio: Mint tem `casper` e argumentos próprios por versão. [PENDENTE] Extrair configuração GRUB/isolinux da ISO exacta e provar discovery da mídia no initramfs.
+
+[COMPROVADO com limites] [Run #44147851503](https://github.com/LMhdez/gaslux/actions/runs/44147851503) cobre Mint 22.3 Live e login série em OVMF. [Run #44572398014](https://github.com/LMhdez/gaslux/actions/runs/44572398014) confirmou preparação Windows 10 genuíno, GPT/quinta ext4 em overlay, mas o job real **FAILED**: `MintOverlayError: Mint guest did not emit a systemd/kernel orderly-shutdown witness`. [PR #233](https://github.com/LMhdez/gaslux/pull/233), HEAD `0f3613a67e542ab630ba933e0f96c12325367199`, propõe novas testemunhas; o erro de encerramento não se pode ignorar nem converter em sucesso. O relatório da própria PR indica `nativeGrubDualBootVerified=false`, `updatesVerified=false` e `rollbackVerified=false`.
+
+**Próxima execução one-shot:** (1) confirmar se `PR #233` já foi consolidada, (2) verificar testemunho no log série íntegro, (3) provar Windows após staging Mint em **COW**, (4) executar especificamente o fluxo `libertix-install-main.sh` na VM segura, (5) comparar com instalação Ubiquity do upstream sem confundir os dois métodos, (6) só então estudar updates e rollback. Parar se a identidade da quinta GPT ou o shutdown witness falhar.
+
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
