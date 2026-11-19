@@ -126,8 +126,9 @@ def verify_advanced_custom_selected(png: Path, ocr_path: Path, tsv_path: Path) -
     with Image.open(png) as image:
         rgb = image.convert("RGB")
         selected = list(rgb.crop((438, 470, 459, 491)).get_flattened_data())
-        custom = list(rgb.crop((229, 470, 250, 491)).getdata())
-        automatic = list(rgb.crop((20, 470, 41, 491)).getdata())
+        custom = list(rgb.crop((229, 470, 250, 491)).get_flattened_data())
+        automatic = list(rgb.crop((20, 470, 41, 491)).get_flattened_data())
+
     def blue_count(samples):
         return sum(
             1
@@ -155,6 +156,7 @@ def verify_advanced_custom_selected(png: Path, ocr_path: Path, tsv_path: Path) -
         "windowsEspWriteAuthorized": False,
         "windowsDualBootVerified": False,
     }
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
