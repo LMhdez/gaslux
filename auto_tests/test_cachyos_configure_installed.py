@@ -67,6 +67,33 @@ class CachyOSInstalledConfigurationContractTests(unittest.TestCase):
                 validate_profile(root, "gaslux-cachyos-test-20261119")
 
 
+    def test_short_command_failure_reports_original_command_not_index_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            self.make_root(root)
+
+            def runner(argv, **kwargs):
+                if argv[:3] == ["openssl", "passwd", "-6"]:
+                    return subprocess.CompletedProcess(
+                        argv, 0, "$6$salt$" + "A" * 86, "")
+                if argv[0] == "arch-chroot" and argv[-1] == "locale-gen":
+                    return subprocess.CompletedProcess(
+                        argv, 17, "", "locale database unavailable")
+                if argv[0] == "arch-chroot" and argv[2] == "useradd":
+                    (root / "home/gaslux-lab").mkdir(parents=True)
+                    with (root / "etc/passwd").open("a") as stream:
+                        stream.write("gaslux-lab:x:1000:1000::/home/gaslux-lab:/bin/bash\\n")
+                elif argv[0] == "arch-chroot" and argv[2] == "usermod":
+                    with (root / "etc/shadow").open("a") as stream:
+                        stream.write("gaslux-lab:" + argv[4] + ":1::::::\\n")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+
+            with self.assertRaises(InstalledConfigurationError) as caught:
+                configure(root, "gaslux-cachyos-test-20261119", runner=runner)
+            self.assertIn("configuration command failed: locale-gen", str(caught.exception))
+            self.assertIn("exit 17", str(caught.exception))
+            self.assertIn("locale database unavailable", str(caught.exception))
+
     def test_configure_creates_lab_account_locale_timezone_and_services(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
