@@ -39,6 +39,7 @@ SIGNATURE_NAME = "root-write-grant.sig"
 
 PROGRAM_FIELDS = {
     "cachyos_windows_shared_root_pacstrap.py": "sharedRootPacstrapSha256",
+    "cachyos_configure_installed.py": "installedConfiguratorSha256",
     "cachyos_windows_shared_archiso_handoff.py": "archisoHandoffVerifierSha256",
     "cachyos_windows_shared_archiso_guest_probe.py": "archisoGuestProbeSha256",
     "windows_cachyos_qcow2_gpt_readonly.py": "gptReaderSha256",
