@@ -8,6 +8,10 @@ on:
       - .github/workflows/popos-native-child-contract.yml
       - auto_tests/tools/windows10_popos_native_child_vm_checkpoint.py
       - auto_tests/test_windows10_popos_native_child_vm_checkpoint.py
+      - auto_tests/tools/windows10_popos_native_prewrite_guest.py
+      - auto_tests/test_windows10_popos_native_prewrite_guest.py
+      - auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
+      - auto_tests/tools/windows10_popos_native_realwin10_firstboot_guest.sh
       - auto_tests/tools/windows10_popos_official_iso_signed_lab.py
       - auto_tests/test_windows10_popos_real_live_contract.py
       - auto_tests/tools/windows10_popos_genuine_live_guest_probe.py
@@ -33,21 +37,28 @@ jobs:
           for source in \
               windows10_popos_official_iso_signed_lab.py \
               windows10_popos_native_child_vm_checkpoint.py \
+              windows10_popos_native_prewrite_guest.py \
               windows10_popos_genuine_live_console.py \
               windows10_popos_genuine_live_same_cow_vm.py \
               windows10_popos_genuine_live_guest_probe.py \
               windows10_popos_live_readonly_gpt_probe.py; do
             python3 -m py_compile "auto_tests/tools/$source"
           done
+      - name: Check native guest shell scripts without invoking them
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
+          bash -n auto_tests/tools/windows10_popos_native_realwin10_firstboot_guest.sh
       - name: Validate separate child backing and signed ISO identity fail-closed
         shell: bash
         run: |
           set -Eeuo pipefail
           for name in \
               test_windows10_popos_native_child_vm_checkpoint.py \
+              test_windows10_popos_native_prewrite_guest.py \
               test_windows10_popos_real_live_contract.py \
               test_windows10_popos_live_readonly_gpt_probe.py \
               test_windows10_popos_native_readonly_handoff_candidate.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
-          echo 'All tests synthetic/inert: NO ISO downloaded, VM booted, native distinst executed, Windows returned after Pop installation, updates or rollback demonstrated.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'VM-only Ed25519 signed plan verified with genuine OpenSSL, all mutations refused. NO ISO downloaded, guest booted, native distinst executed, update or rollback demonstrated.' >> "$GITHUB_STEP_SUMMARY"
