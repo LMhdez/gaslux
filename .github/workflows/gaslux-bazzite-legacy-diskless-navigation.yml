@@ -10,6 +10,8 @@ on:
       - 'auto_tests/tests/test_bazzite_legacy_diskless_navigation.py'
       - 'auto_tests/bazzite_legacy_blue_button.py'
       - 'auto_tests/tests/test_bazzite_legacy_blue_button.py'
+      - 'auto_tests/bazzite_legacy_destination_gate.py'
+      - 'auto_tests/tests/test_bazzite_legacy_destination_gate.py'
   workflow_dispatch:
 
 permissions:
@@ -35,19 +37,24 @@ jobs:
           python -m pytest -q \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
-            auto_tests/tests/test_bazzite_legacy_blue_button.py
+            auto_tests/tests/test_bazzite_legacy_blue_button.py \
+            auto_tests/tests/test_bazzite_legacy_destination_gate.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_legacy_diskless_navigation.py \
             auto_tests/bazzite_legacy_blue_button.py \
+            auto_tests/bazzite_legacy_destination_gate.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
-            auto_tests/tests/test_bazzite_legacy_blue_button.py
+            auto_tests/tests/test_bazzite_legacy_blue_button.py \
+            auto_tests/tests/test_bazzite_legacy_destination_gate.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_legacy_diskless_navigation.py \
             auto_tests/bazzite_legacy_blue_button.py \
+            auto_tests/bazzite_legacy_destination_gate.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
             auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
-            auto_tests/tests/test_bazzite_legacy_blue_button.py
+            auto_tests/tests/test_bazzite_legacy_blue_button.py \
+            auto_tests/tests/test_bazzite_legacy_destination_gate.py
 
   prior-blue-button:
     needs: contracts
@@ -106,6 +113,45 @@ jobs:
           assert gate["partitionWriteAuthorized"] is False
           assert gate["windowsEspWriteAuthorized"] is False
           print("PREVIOUS VM GUI: blue Continue positively located, no disk")
+          PY
+
+
+      - name: Authenticate and verify prior diskless Installation Destination target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh api repos/LMhdez/gaslux/actions/runs/44378715492 \
+            | jq -e '
+                .conclusion == "success"
+                and .head_sha == "5ebe64d41beeeeec82fc74bfb9e30bcfa934adfa"
+                and .head_repository.full_name == "LMhdez/gaslux"
+                and .event == "push"
+              ' > /dev/null
+          work="$RUNNER_TEMP/bazzite-prior-summary"
+          mkdir -m 700 "$work"
+          gh run download 44378715492 -R LMhdez/gaslux \
+            --name bazzite-legacy-diskless-locale-navigation-evidence \
+            --dir "$work"
+          python -m pip install pillow
+          python3 auto_tests/bazzite_legacy_destination_gate.py \
+            --png "$work/after-continue.png" \
+            --ocr "$work/after-continue.ocr" \
+            --tsv "$work/after-continue.tsv" \
+            --coords "$work/destination-coordinate" > "$work/destination-gate.json"
+          python3 - "$work/destination-gate.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          gate = json.loads(Path(sys.argv[1]).read_text())
+          assert gate["coordinate"] == {"x": 758, "y": 328}
+          assert gate["noDisksSelectedTextVerified"] is True
+          assert gate["noNetworkDevicesTextVerified"] is True
+          assert gate["installationAuthorized"] is False
+          assert gate["partitionWriteAuthorized"] is False
+          assert gate["windowsEspWriteAuthorized"] is False
+          print("DODO lab screenshot: exact diskless Installation Destination target verified")
           PY
 
   diskless-locale-stage2:
@@ -242,6 +288,21 @@ jobs:
             capture after-continue
             echo 'Attempted only safe Continue on diskless guest' \
               > bazzite-legacy-stage2-evidence/continue-observed.txt
+            python3 auto_tests/bazzite_legacy_destination_gate.py \
+              --png bazzite-legacy-stage2-evidence/after-continue.png \
+              --ocr bazzite-legacy-stage2-evidence/after-continue.ocr \
+              --tsv bazzite-legacy-stage2-evidence/after-continue.tsv \
+              --coords "$work/destination-coordinate" \
+              > bazzite-legacy-stage2-evidence/destination-gate.json
+            read -r dx dy < "$work/destination-coordinate"
+            [[ "$dx" =~ ^[0-9]{1,4}$ && "$dy" =~ ^[0-9]{1,4}$ ]] || exit 1
+            timeout --signal=TERM --kill-after=5s 30s \
+              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 \
+              move "$dx" "$dy" click 1
+            sleep 20
+            capture after-destination
+            echo 'Only the diskless Installation Destination tile was opened' \
+              > bazzite-legacy-stage2-evidence/destination-observed.txt
           else
             echo 'BLOCKED: No unique Continue control after selecting locale' \
               > bazzite-legacy-stage2-evidence/no-continue.txt
@@ -252,6 +313,8 @@ jobs:
           root = Path("bazzite-legacy-stage2-evidence")
           moved = (root / "after-continue.ocr").is_file()
           text = (root / "after-continue.ocr").read_text(errors="replace").lower() if moved else ""
+          storage = (root / "after-destination.ocr")
+          storage_text = storage.read_text(errors="replace").lower() if storage.is_file() else ""
           print(json.dumps({
               "distributionId": "bazzite",
               "labOnly": True,
@@ -264,6 +327,12 @@ jobs:
               "continueInputOnlyAfterRuntimeOCRGate": moved,
               "installationSummaryTextObserved": "installation summary" in text,
               "installationDestinationTextObserved": "installation destination" in text,
+              "disklessDestinationPageCaptureCollected": storage.is_file(),
+              "destinationPageTitleCandidateObserved": "installation destination" in storage_text,
+              "noDisksAvailableAfterClickCandidateObserved": (
+                  "no disks" in storage_text or "no available disks" in storage_text
+              ),
+              "beginInstallationButtonClicked": False,
               "anacondaBinaryIdentityVerified": False,
               "blivetGuiVerified": False,
               "isoProvenanceSignatureVerified": False,

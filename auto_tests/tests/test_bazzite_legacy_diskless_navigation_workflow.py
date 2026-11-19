@@ -29,9 +29,12 @@ def test_isolation_and_fail_closed_keyboard_mouse_scope():
     assert "-nic none -monitor none" in text
     assert "-vnc 127.0.0.1:1" in text
     assert "disposable-ovmf-vars.fd" in text
-    assert text.count("click 1") == 2
+    assert text.count("click 1") == 3
     assert "locale-coordinate" in text
     assert "continue-coordinate" in text
+    assert "destination-coordinate" in text
+    assert "noDisksSelectedTextVerified" in text
+    assert '"beginInstallationButtonClicked": False' in text
     assert '"partitionStyleObserved": None' in text
     assert '"installationAuthorized": False' in text
     assert '"windowsEspWriteAuthorized": False' in text
@@ -68,6 +71,16 @@ def test_clicks_follow_ocr_checks_not_hardcoded_targets():
     assert 'if [[ -s "$work/continue-coordinate" ]]' in content
     assert content.count('move "$lx" "$ly" click 1') == 1
     assert content.count('move "$cx" "$cy" click 1') == 1
+    assert content.count('move "$dx" "$dy" click 1') == 1
+    assert "gh run download 44378715492" in content
+    assert ".head_sha == \"5ebe64d41beeeeec82fc74bfb9e30bcfa934adfa\"" in content
+    assert content.index("capture after-continue") < content.index(
+        "--png bazzite-legacy-stage2-evidence/after-continue.png"
+    )
+    assert content.index("auto_tests/bazzite_legacy_destination_gate.py") < content.index(
+        'move "$dx" "$dy" click 1'
+    )
+    assert content.index('move "$dx" "$dy" click 1') < content.index("capture after-destination")
     assert "no guest hard disk" in content.lower()
 
 
