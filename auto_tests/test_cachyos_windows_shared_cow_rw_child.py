@@ -16,7 +16,7 @@ UUID = "a1111111-2222-4333-8444-55555555555a"
 RUN = "gaslux-test-run-01"
 
 
-def witness(uuid=UUID, run_id=RUN) -> bytes:
+def witness(uuid=UUID, run_id=RUN, *, second_boot=False) -> bytes:
     return (
         "GASLUX_VM_INSTALLED_RW_ROOT_UUID_SELECTED:" + uuid + "\n"
         "[    0.000000] Linux version 6.18.60-2-cachyos-lts (CachyOS)\n"
@@ -24,7 +24,8 @@ def witness(uuid=UUID, run_id=RUN) -> bytes:
         + " rw console=ttyS0,115200n8 systemd.unit=multi-user.target\n"
         "[ OK ] Reached target Switch Root.\n"
         "Welcome to CachyOS!\n"
-        "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:" + run_id + ":" + uuid + "\n"
+        ("GASLUX_VM_INSTALLED_RW_CHILD_SECONDBOOT_PASS:" if second_boot
+         else "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:") + run_id + ":" + uuid + "\n"
         "[ OK ] Reached target System Power Off.\n"
         "[   45.058170] reboot: Power down\n"
     ).encode("ascii")
@@ -93,6 +94,47 @@ class WritableChildContracts(unittest.TestCase):
         ):
             with self.subTest(len=len(invalid)), self.assertRaises(child.ChildCOWBootError):
                 child.verify_rw_serial(invalid, RUN, UUID)
+
+    def test_second_rw_boot_requires_distinct_marker_and_rejects_first_replay(self):
+        child.verify_rw_serial(witness(second_boot=True), RUN, UUID,
+                               second_boot=True)
+        with self.assertRaises(child.ChildCOWBootError):
+            child.verify_rw_serial(witness(), RUN, UUID, second_boot=True)
+        with self.assertRaises(child.ChildCOWBootError):
+            child.verify_rw_serial(witness(second_boot=True), RUN, UUID)
+        for altered in (
+            witness(second_boot=True).replace(
+                b"RW_CHILD_SECONDBOOT_PASS", b"RW_CHILD_FIRSTBOOT_PASS"),
+            witness(second_boot=True) + witness(),
+            witness(second_boot=True).replace(RUN.encode(), b"foreign-run"),
+            witness(second_boot=True).replace(
+                b"System Power Off", b"Poweroff Incomplete"),
+            witness(second_boot=True).replace(
+                b"rw console", b"ro console"),
+            witness(second_boot=True) + b"Kernel panic",
+        ):
+            with self.subTest(sample=len(altered)), self.assertRaises(
+                    child.ChildCOWBootError):
+                child.verify_rw_serial(altered, RUN, UUID, second_boot=True)
+
+    def test_second_rw_marker_can_only_follow_owned_first(self):
+        script, _ = child.installed_rw_service(RUN, UUID)
+        for required in (
+            b'if [[ -e "$first" || -L "$first" ]]; then',
+            b'[[ -f "$first" && ! -L "$first" && ! -e "$second" && ! -L "$second" ]]',
+            b'[[ "$(cat "$first")" == "$run_id" ]]',
+            b'printf \x27%s\\n\x27 "$run_id" > "$second"',
+            b'GASLUX_VM_INSTALLED_RW_CHILD_SECONDBOOT_PASS:',
+        ):
+            self.assertIn(required, script)
+        source = (TOOLS / "cachyos_windows_shared_cow_rw_child.py").read_text()
+        self.assertIn("second_boot=True", source)
+        self.assertIn("installedWritableChildSecondBootVerified", source)
+        self.assertIn("installedWritableChildSecondBootPersistentMarkerVerified", source)
+        self.assertIn("second_serial.read_bytes()", source)
+        self.assertIn("_read_child_marker(child, root_uuid, run_id, second_boot=True)", source)
+        self.assertIn("child.unlink()", source)
+        self.assertIn('"-net", "none"', source)
 
     def test_invalid_lab_context_does_not_create_child_or_launch_qemu(self):
         with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}, clear=True), \
