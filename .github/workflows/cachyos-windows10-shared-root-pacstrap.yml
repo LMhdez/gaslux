@@ -359,7 +359,7 @@ jobs:
           assert child_digest == hashlib.sha256(child_raw).hexdigest()
           assert child_digest == pacstrap["installedWritableChildSerialSha256"]
           from cachyos_windows_shared_cow_rw_child import verify_rw_serial
-          verify_rw_serial(child_raw, pacstrap["runId"], expected_root_uuid)
+          verify_rw_serial(child_raw, pacstrap["installedWritableChildRunId"], expected_root_uuid)
           assert b"Kernel panic" not in child_raw
           fifth = root / (profile + "-fifth-post-pacstrap-discard-serial.log")
           assert fifth.is_file() and not fifth.is_symlink()
