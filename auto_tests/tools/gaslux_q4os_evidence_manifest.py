@@ -8,6 +8,7 @@ prevents a path or symlink swap between directory enumeration and file open.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import os
 import re
@@ -45,7 +46,11 @@ def _open_root(path: Path) -> int:
     except OSError as exc:
         raise EvidenceManifestError("evidence directory is missing or unsafe") from exc
     metadata = os.fstat(descriptor)
-    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o077
+    ):
         os.close(descriptor)
         raise EvidenceManifestError("evidence directory ownership or permissions are unsafe")
     return descriptor
@@ -61,7 +66,9 @@ def _regular_files(directory_fd: int) -> set[str]:
         try:
             metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
         except OSError as exc:
-            raise EvidenceManifestError("evidence changed during directory inspection: " + name) from exc
+            raise EvidenceManifestError(
+                "evidence changed during directory inspection: " + name
+            ) from exc
         if not stat.S_ISREG(metadata.st_mode):
             raise EvidenceManifestError("evidence contains a non-regular file: " + name)
         files.add(name)
@@ -110,10 +117,8 @@ def create_manifest(directory: Path) -> Path:
             )
             os.fsync(directory_fd)
         finally:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporary, dir_fd=directory_fd)
-            except FileNotFoundError:
-                pass
         return directory / MANIFEST_NAME
     finally:
         os.close(directory_fd)
