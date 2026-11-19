@@ -5,6 +5,7 @@ on:
     branches:
       - test/bazzite-custom-radio-selection-cow-20261119
       - test/bazzite-blivet-gui-observer-cow-20261119
+      - fix/bazzite-blivet-observer-ruff-20261119
     paths:
       - '.github/workflows/gaslux-bazzite-legacy-readonly-gpt.yml'
       - 'auto_tests/bazzite_legacy_diskless_navigation.py'
