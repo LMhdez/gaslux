@@ -1,0 +1,41 @@
+name: Pop!_OS native shared-Windows handoff contract (read-only lab candidate)
+
+on:
+  push:
+    branches:
+      - test/popos-native-six-partition-readonly-handoff-20261119
+    paths:
+      - .github/workflows/popos-native-win10-handoff-candidate.yml
+      - auto_tests/tools/windows10_popos_native_readonly_handoff_candidate.py
+      - auto_tests/test_windows10_popos_native_readonly_handoff_candidate.py
+      - auto_tests/tools/windows10_popos_independent_esp_root_stage.py
+      - auto_tests/tools/windows10_popos_independent_esp_plan.py
+      - auto_tests/tools/windows10_popos_gpt_mirror_gate.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inert-native-handoff-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Read-only checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check Python source without opening disks
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/windows10_popos_native_readonly_handoff_candidate.py \
+            auto_tests/test_windows10_popos_native_readonly_handoff_candidate.py
+      - name: Negative contracts for all six GPT partition identities
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover \
+            -s auto_tests -p 'test_windows10_popos_native_readonly_handoff_candidate.py' -v
+          python3 -m unittest discover \
+            -s auto_tests -p 'test_windows10_popos_independent_esp_root_stage.py' -v
+          python3 -m unittest discover \
+            -s auto_tests -p 'test_windows10_popos_gpt_mirror_gate.py' -v
+          echo 'PASS: inert GPT/Pop native selector contracts only; NO signed handoff, native distinst invocation, installation, boot or recovery tested.' >> "$GITHUB_STEP_SUMMARY"
