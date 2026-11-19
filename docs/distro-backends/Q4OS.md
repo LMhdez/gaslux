@@ -135,6 +135,15 @@ O laboratório **nunca** clica `Install`, `Done`, confirmação de formatação 
 
 ---
 
+## Investigação operacional adicional — duas VMs com ISO 6.10 r2 (19-11-2026)
+
+O trabalho de reconhecimento experimental usa [`boot-maps/q4os.md`](boot-maps/q4os.md), [`ui-maps/q4os.json`](ui-maps/q4os.json) e [`evidence/q4os-manifest.json`](evidence/q4os-manifest.json). Os dois schemas de prova estão em [`schemas/distro-ui-map.schema.json`](../../schemas/distro-ui-map.schema.json) e [`schemas/distro-ui-evidence.schema.json`](../../schemas/distro-ui-evidence.schema.json); a [suite](../../auto_tests/tests/test_q4os_ui_map_contract.py) recusa promoção de transições sem artefactos e SHA por VM.
+
+[EXPERIMENTO EM CURSO] O [workflow `q4os-ui-repro-2vm.yml`](../../.github/workflows/q4os-ui-repro-2vm.yml) usa a ISO oficial `q4os-6.10-x64.r2.iso` após SHA-256, executa o harness exacto no commit `6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb`, e tem uma matrix de **dois runners/OVMF/COW independentes** sem disco Windows. Pretende verificar visualmente nove estados e oito transições até Users **em branco** e obter capturas PNG e OCR. A existência da execução não comprova a transição; o manifesto deve conter o ID dos dois artefactos e os hashes dos PNG originais antes de mudar `pending` para `verified`. Nenhum comando de instalação nativa, password ou Summary foi autorizado.
+
+Os primeiros ensaios revelaram erros novos no pipeline de evidências: `unsquashfs -cat | awk` produziu `Broken pipe` com `pipefail` e o refactor para output temporário foi inicialmente inserido com escapes de newline literais. Ambos foram corrigidos **no workflow de laboratório, não no instalador Gaslux**; registar nova CI no manifesto. A inspeção da ISO confirmou `installEFIFallback=true` e `nativeCalamaresConfigVerified=true`. A versão do executável Calamares (pacote `dpkg`) e screenshots da execução devem ser recolhidas antes de assumir estados observados.
+
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
