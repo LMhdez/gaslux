@@ -1,5 +1,12 @@
 # Gaslux integration board — 2026-11-18
 
+### HEAD main alterado durante a triagem de 19/11/2026
+
+- **Reconsulta obrigatória antes de merges:** `main` está em [`90b044ba`](https://github.com/LMhdez/gaslux/commit/90b044ba435b2b4b4db6c5813ca4698b37e4a555) (commit `test(q4os): wrap long Calamares preview assertion`), enquanto a PR experimental [#239](https://github.com/LMhdez/gaslux/pull/239) permanece OPEN/DRAFT com o mesmo HEAD. A comparação `main...feature/q4os-calamares-users-view-lab` é `identical` (0/0).
+- `dev` está agora 96 commits à frente e **1 atrás** de `main`, com merge-base `3eb74c6e`. Isto **não ocorreu por qualquer merge efetuado nesta intervenção**; a origem da mudança exige auditoria de eventos GitHub. Não inferir promoção/aprovação da PR #239 nem reverter sem revisão humana.
+- `release-config.json` em `main` foi relido: só **Mint** e **Zorin**, blob `47042b92`. Nenhuma promoção observada no catálogo.
+- As notas anteriores sobre `main=3eb74c6e` eram snapshots corretos no momento da consulta, mas foram ultrapassadas por esta reconsulta. Bloquear qualquer integração antes de verificar proteção de branch, commits e Actions no novo HEAD.
+
 ## Fechos documentados — 2026-11-19 (terceiro lote Windows 11)
 
 - [#124](https://github.com/LMhdez/gaslux/pull/124): **encerrada sem merge** após a comparação da variante Windows 11 do workflow. [Actions #44099402062](https://github.com/LMhdez/gaslux/actions/runs/44099402062): contratos SUCCESS, Windows 11 KVM guest **FAILURE**. [Decisão de fecho](https://github.com/LMhdez/gaslux/pull/124#issuecomment-7012059290). O único patch de workflow foi conscientemente rejeitado, sem alegar integração.
