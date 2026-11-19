@@ -4,6 +4,7 @@
 This gate authorizes only one GUI navigation click. It does not identify a
 physical disk, select a partition, or authorize installation or writes.
 """
+
 from __future__ import annotations
 
 import argparse
