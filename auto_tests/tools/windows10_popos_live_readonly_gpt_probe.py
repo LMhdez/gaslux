@@ -95,6 +95,17 @@ def measure_six_gpt_windows(
         "windowsPartitionEntriesUnchanged": True,
         "ownedPopEspGuid": measured["popEsp"]["guid"],
         "ownedPopRootGuid": measured["linuxRoot"]["guid"],
+        "observedPartitionEntries": [
+            {
+                "index": row["number"],
+                "guid": row["guid"],
+                "typeGuid": row["type"],
+                "firstLba": row["startLba"],
+                "lastLba": row["endLba"],
+            }
+            for row in (measured["windowsPartitions"]
+                        + [measured["popEsp"], measured["linuxRoot"]])
+        ],
         "primaryAndBackupGptCrcVerified": True,
         "gptPrimaryWindowSha256": hashlib.sha256(front).hexdigest(),
         "gptBackupWindowSha256": hashlib.sha256(back).hexdigest(),
@@ -115,12 +126,6 @@ def _run_readonly(argv: list[str]) -> subprocess.CompletedProcess[str]:
         (len(argv) == 5 and argv[:4] == [
             "lsblk", "-dn", "-o", "SERIAL",
         ]) or
-        (len(argv) == 6 and argv[:5] == [
-            "blkid", "-p", "-s", "TYPE", "-o",
-        ] and False) or
-        (len(argv) == 7 and argv[:5] == [
-            "blkid", "-p", "-s", "TYPE", "-o",
-        ] and argv[5] == "value") or
         argv == ["systemd-detect-virt", "--vm"],
         "unexpected guest diagnostic command",
     )
@@ -146,8 +151,8 @@ def _test_qemu_readonly_guest_environment() -> None:
             name + "-8be4df61-93ca-11d2-aa0d-00e098032b8c"
         )
         require(path.is_file() and not path.is_symlink()
-                and path.read_bytes() == b"\x07\x00\x00\x00" + bytes([expected])
-                or False,
+                and len(path.read_bytes()) == 5
+                and path.read_bytes()[4] == expected,
                 "untrusted virtual UEFI SecureBoot/SetupMode",
         )
 
@@ -160,7 +165,9 @@ def _block_geometry(fd: int) -> tuple[int, int]:
     return size[0], sector[0]
 
 
-def _probe_unformatted_owned_partitions(disk_name: str) -> None:
+def _probe_unformatted_owned_partitions(
+    disk_name: str, partitions: list[dict],
+) -> None:
     """No filesystem signatures or mount points on owned parts 5 and 6.
 
     Windows partitions must also remain unmounted; the Pop guest must not
@@ -169,6 +176,18 @@ def _probe_unformatted_owned_partitions(disk_name: str) -> None:
     mountinfo = Path("/proc/self/mountinfo").read_text(encoding="utf-8")
     mounted = {line.split()[2] for line in mountinfo.splitlines()
                if len(line.split()) >= 3}
+    require(
+        type(partitions) is list and len(partitions) == 6
+        and [p["index"] for p in partitions] == list(range(1, 7)),
+        "invalid Linux partition inventory identity",
+    )
+    sys_block = Path("/sys/class/block")
+    actual = {
+        p.name for p in sys_block.iterdir()
+        if re.fullmatch(re.escape(disk_name) + r"[0-9]+", p.name)
+    }
+    require(actual == {f"{disk_name}{n}" for n in range(1, 7)},
+            "Linux kernel partition count differs from six-GPT plan")
     for index in range(1, 7):
         path = Path("/dev") / f"{disk_name}{index}"
         require(path.exists() and not path.is_symlink()
@@ -176,6 +195,15 @@ def _probe_unformatted_owned_partitions(disk_name: str) -> None:
                 "missing or untrusted Windows/Pop partition block device",
         )
         real = os.stat(path)
+        sys_part = sys_block / f"{disk_name}{index}"
+        row = partitions[index - 1]
+        require(
+            (sys_part / "partition").read_text().strip() == str(index)
+            and int((sys_part / "start").read_text()) == row["firstLba"]
+            and int((sys_part / "size").read_text())
+            == row["lastLba"] - row["firstLba"] + 1,
+            "kernel partition geometry differs from primary/backup GPT",
+        )
         require(f"{os.major(real.st_rdev)}:{os.minor(real.st_rdev)}"
                 not in mounted,
                 "Windows/Pop partition unexpectedly mounted in live guest",
@@ -229,7 +257,9 @@ def probe_linux_guest_gpt(
             lambda offset, n: os.pread(fd, n, offset),
             capacity, logical_sector, before, after, plan, report,
         )
-        _probe_unformatted_owned_partitions(resolved.name)
+        _probe_unformatted_owned_partitions(
+            resolved.name, measured["observedPartitionEntries"],
+        )
     finally:
         os.close(fd)
     # Use the already validated candidate; overwrite claims that the guest
@@ -238,16 +268,7 @@ def probe_linux_guest_gpt(
     observed.update({
         "diskSerial": LAB_VIRTIO_SERIAL,
         "diskGuid": measured["diskGuid"],
-        "partitionEntries": [
-            {
-                "index": row["number"],
-                "guid": row["guid"],
-                "typeGuid": row["type"],
-                "firstLba": row["startLba"],
-                "lastLba": row["endLba"],
-            }
-            for row in after["windowsPartitions"] + [after["popEsp"], after["linuxRoot"]]
-        ],
+        "partitionEntries": measured["observedPartitionEntries"],
         "popEspFilesystem": None,
         "popRootFilesystem": None,
         "windowsEspMounted": False,
