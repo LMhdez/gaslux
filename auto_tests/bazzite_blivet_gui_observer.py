@@ -4,6 +4,7 @@
 OCR text and TSV are re-extracted from the supplied screenshot and must match
 the sidecars byte-for-byte before any UI decision is made.
 """
+
 from __future__ import annotations
 
 import argparse
