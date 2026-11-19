@@ -264,6 +264,25 @@ jobs:
           PY
           chmod 0400 "$disk"
           sha256sum "$disk" > "$work/owned-raw-before.sha256"
+          # The guest must see a writable disk for Anaconda/Blivet discovery.
+          # All guest writes land in this disposable QCOW2 overlay; the raw GPT
+          # backing remains host-owned, mode 0400, and hash-verified.
+          overlay="$work/glx-synthetic-gpt-overlay.qcow2"
+          [[ ! -e "$overlay" && ! -L "$overlay" ]] || exit 1
+          qemu-img create -f qcow2 -F raw -b "$disk" "$overlay" > "$work/overlay-create.txt"
+          python3 - "$overlay" "$disk" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+          info = json.loads(subprocess.check_output(
+              ["qemu-img", "info", "--output=json", sys.argv[1]], text=True
+          ))
+          assert info["format"] == "qcow2"
+          assert info["backing-filename-format"] == "raw"
+          backing = Path(info.get("full-backing-filename", info["backing-filename"])).resolve()
+          assert backing == Path(sys.argv[2]).resolve()
+          PY
           pid=''
           audit_owned_base() {
             local status=$?
@@ -275,6 +294,25 @@ jobs:
             sha256sum --check --strict "$work/owned-raw-before.sha256" \
               > bazzite-legacy-readonly-gpt-evidence/immutable-base-check.txt 2>&1 \
               || status=1
+            if [[ -f "$overlay" && ! -L "$overlay" ]]; then
+              python3 - "$overlay" "$disk" <<'PY' || status=1
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+          info = json.loads(subprocess.check_output(
+              ["qemu-img", "info", "--output=json", sys.argv[1]], text=True
+          ))
+          assert info["format"] == "qcow2"
+          assert info["backing-filename-format"] == "raw"
+          backing = Path(info.get("full-backing-filename", info["backing-filename"])).resolve()
+          assert backing == Path(sys.argv[2]).resolve()
+          PY
+              rm -f -- "$overlay"
+            else
+              status=1
+            fi
+            [[ ! -e "$overlay" && ! -L "$overlay" ]] || status=1
             if (( status != 0 )); then
               echo 'Guest/fixture operation failed or backing changed'
             else
@@ -288,7 +326,8 @@ jobs:
           printf '%s\n' \
             'guestDiskCountConfigured=1' \
             'syntheticGptOnly=true' \
-            'diskReadonlyInQemu=true' \
+            'guestDiskWritableCOWOverlay=true' \
+            'hostBackingImmutable=true' \
             'diskSerialConfigured=GLXBAZRO001' \
             'windowsDiskAttached=false' \
             'catalogPinAuthorized=false' \
@@ -304,7 +343,7 @@ jobs:
             -vga std -device ich9-ahci,id=sata \
             -drive "if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso" \
             -device ide-cd,drive=optical,bus=sata.0 \
-            -drive "if=none,id=glx-owned,format=raw,readonly=on,file=$disk" \
+            -drive "if=none,id=glx-owned,format=qcow2,file=$overlay" \
             -device virtio-blk-pci,drive=glx-owned,serial=GLXBAZRO001 \
             -boot order=d -nic none -monitor none \
             -serial "file:bazzite-legacy-readonly-gpt-evidence/serial.txt" \
@@ -354,7 +393,7 @@ jobs:
               move "$cx" "$cy" click 1
             sleep 45
             capture after-continue
-            echo 'Attempted only safe Continue on owned readonly GPT guest' \
+            echo 'Attempted only safe Continue on owned COW-backed synthetic GPT guest' \
               > bazzite-legacy-readonly-gpt-evidence/continue-observed.txt
             python3 auto_tests/bazzite_legacy_destination_gate.py \
               --png bazzite-legacy-readonly-gpt-evidence/after-continue.png \
@@ -369,7 +408,7 @@ jobs:
               move "$dx" "$dy" click 1
             sleep 20
             capture after-destination
-            echo 'Only the readonly-GPT Installation Destination tile was opened' \
+            echo 'Only the COW-backed synthetic GPT Installation Destination tile was opened' \
               > bazzite-legacy-readonly-gpt-evidence/destination-observed.txt
           else
             echo 'BLOCKED: No unique Continue control after selecting locale' \
@@ -390,7 +429,8 @@ jobs:
               "partitionStyleObserved": None,
               "diskCount": 1,
               "syntheticGuestGptOnly": True,
-              "diskReadonlyInQemu": True,
+              "guestDiskWritableCOWOverlay": True,
+              "hostBackingImmutable": True,
               "guestDiskSerialConfigured": "GLXBAZRO001",
               "guestDiskIdentityIndependentlyVerified": False,
               "networkEnabled": False,
