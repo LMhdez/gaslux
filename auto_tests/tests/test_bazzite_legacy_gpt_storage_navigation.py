@@ -7,7 +7,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests"))
 from bazzite_legacy_gpt_storage_navigation import (  # noqa: E402
-    StorageNavigationRefusal, locate_storage_tile,
+    StorageNavigationRefusal,
+    locate_storage_tile,
 )
 
 OCR = """INSTALLATION SUMMARY,
@@ -20,7 +21,7 @@ No network devices available
 BAZZITE 42 INSTALLATION
 Quit Begin Installation
 """
-HEADER = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+HEADER = (\n    "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\t"\n    "height\tconf\ttext\n"\n)
 TSV = HEADER + (
     "5\t1\t11\t1\t1\t1\t674\t322\t81\t12\t96.8\tInstallation\n"
     "5\t1\t11\t1\t1\t2\t759\t322\t83\t12\t92.8\tDestination\n"
