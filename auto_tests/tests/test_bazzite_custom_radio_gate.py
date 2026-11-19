@@ -1,4 +1,5 @@
 """Fail-closed contracts for the Bazzite Custom radio selection gate."""
+
 import csv
 import sys
 from pathlib import Path
@@ -20,8 +21,20 @@ INSTALLATION DESTINATION
 Storage Configuration
 Automatic Custom Advanced Custom (Blivet-GUI)
 """
-HEADER = ["level", "page_num", "block_num", "par_num", "line_num", "word_num",
-          "left", "top", "width", "height", "conf", "text"]
+HEADER = [
+    "level",
+    "page_num",
+    "block_num",
+    "par_num",
+    "line_num",
+    "word_num",
+    "left",
+    "top",
+    "width",
+    "height",
+    "conf",
+    "text",
+]
 ROWS = [
     ["5", "1", "1", "1", "1", "1", "42", "475", "61", "10", "96.0", "Automatic"],
     ["5", "1", "2", "1", "1", "1", "252", "475", "45", "10", "96.0", "Custom"],
