@@ -72,3 +72,10 @@ def test_manifest_requires_all_declared_artifacts(tmp_path):
     create_manifest(directory)
     with pytest.raises(EvidenceManifestError, match="required evidence missing"):
         verify_manifest(directory, {"serial.log", "gpt-audit.txt"})
+
+
+def test_manifest_refuses_platform_without_o_nofollow(tmp_path, monkeypatch):
+    directory = _evidence(tmp_path)
+    monkeypatch.delattr("os.O_NOFOLLOW", raising=False)
+    with pytest.raises(EvidenceManifestError, match="does not expose O_NOFOLLOW"):
+        create_manifest(directory)
