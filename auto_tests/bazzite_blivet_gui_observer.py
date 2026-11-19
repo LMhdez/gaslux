@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Fail-closed OCR observer for opening, but not operating, Bazzite Blivet-GUI.
 
-The only permitted input is the uniquely identified Advanced Custom (Blivet-GUI)
-launch control on the synthetic COW-backed lab guest. No partition controls are
-clicked and no installation or write authorization is produced.
+OCR text and TSV are re-extracted from the supplied screenshot and must match
+the sidecars byte-for-byte before any UI decision is made.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -13,6 +11,7 @@ import csv
 import io
 import json
 import re
+import subprocess
 from pathlib import Path
 
 from PIL import Image
@@ -39,7 +38,22 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
     with Image.open(png) as image:
         if image.size != (WIDTH, HEIGHT):
             raise BlivetObserverRefusal("Unexpected framebuffer geometry")
-    normalized = re.sub(r"\s+", " ", ocr).lower()
+
+    try:
+        extracted_text = subprocess.run(
+            ["tesseract", str(png), "stdout"],
+            check=True, capture_output=True, text=True, timeout=20,
+        ).stdout
+        extracted_tsv = subprocess.run(
+            ["tesseract", str(png), "stdout", "tsv"],
+            check=True, capture_output=True, text=True, timeout=20,
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise BlivetObserverRefusal("Screenshot OCR extraction failed") from exc
+    if extracted_text != ocr or extracted_tsv != tsv:
+        raise BlivetObserverRefusal("OCR/TSV sidecars do not match screenshot extraction")
+
+    normalized = re.sub(r"\\s+", " ", extracted_text).lower()
     if require_storage_page:
         markers = (
             "bazzite 42 installation",
@@ -50,7 +64,7 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
         for marker in markers:
             if marker not in normalized:
                 raise BlivetObserverRefusal(f"Missing storage-page marker: {marker}")
-    rows = list(csv.DictReader(io.StringIO(tsv), delimiter="\t"))
+    rows = list(csv.DictReader(io.StringIO(extracted_tsv), delimiter="\\t"))
     words = []
     for row in rows:
         try:
@@ -76,17 +90,15 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         if first["text"] != "advanced" or first["confidence"] < 60:
             continue
         line = [
-            item
-            for item in words
+            item for item in words
             if abs(item["top"] - first["top"]) <= 8
-            and abs((item["top"] + item["height"] // 2) - (first["top"] + first["height"] // 2))
-            <= 8
+            and abs((item["top"] + item["height"] // 2) - (first["top"] + first["height"] // 2)) <= 8
         ]
         line.sort(key=lambda item: item["left"])
         for index, item in enumerate(line):
             if item is not first:
                 continue
-            phrase = line[index : index + 3]
+            phrase = line[index:index + 3]
             labels = [x["text"] for x in phrase]
             if len(phrase) != 3 or labels != ["advanced", "custom", "blivet-gui"]:
                 continue
@@ -119,8 +131,6 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
 
 def verify_editor(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     text, words = _read(png, ocr_path, tsv_path, require_storage_page=False)
-    # Require the named editor and the exact serial assigned to the disposable
-    # guest disk. Generic words such as "device" or "disk" are not identity.
     tokens = set(re.findall(r"[a-z0-9][a-z0-9._-]*", text))
     if "blivet-gui" not in tokens or "partition" not in tokens:
         raise BlivetObserverRefusal("Blivet-GUI partition editor identity not observed")
@@ -159,9 +169,9 @@ def main() -> None:
             if args.coords is None or args.coords.is_symlink():
                 raise BlivetObserverRefusal("Safe coordinate output path required")
             point = result["coordinate"]
-            args.coords.write_text(f"{point['x']} {point['y']}\n", encoding="ascii")
+            args.coords.write_text(f"{point['x']} {point['y']}\\n", encoding="ascii")
     except (OSError, ValueError, UnicodeError) as exc:
-        parser.exit(2, f"REFUSED: {exc}\n")
+        parser.exit(2, f"REFUSED: {exc}\\n")
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
