@@ -85,8 +85,20 @@ def _read_private_regular(path: Path, max_bytes: int) -> bytes:
             require(total <= max_bytes, "Evidence file grew beyond its size limit")
         after = os.fstat(fd)
         require(
-            (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
-            == (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns)
+            (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            )
+            == (
+                opened.st_dev,
+                opened.st_ino,
+                opened.st_size,
+                opened.st_mtime_ns,
+                opened.st_ctime_ns,
+            )
             and total == opened.st_size,
             "Evidence file changed during read",
         )
@@ -293,7 +305,9 @@ def verify(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) 
         _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-manifest.json", 1024 * 1024),
         _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-manifest.ed25519", 128),
         _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-public-key.bin", 128),
-        _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-public-key.sha256", 128).decode("ascii").strip(),
+        _read_private_regular(
+            snapshot_dir / "q4os-recovery-snapshot-public-key.sha256", 128
+        ).decode("ascii").strip(),
     )
     actual_snapshot_sha = hashlib.sha256()
     with snapshot.open("rb") as snapshot_stream:
