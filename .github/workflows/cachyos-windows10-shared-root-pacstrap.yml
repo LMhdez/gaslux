@@ -8,6 +8,7 @@ on:
       - fix/cachyos-shared-cow-iso-ext4-ownership-issue3
       - fix/cachyos-ovmf-iso-usb-uuid-20261118
       - feature/cachyos-shared-cow-installed-readonly-boot-issue3
+      - feature/cachyos-writable-child-cow-firstboot-issue3
     paths:
       - .github/workflows/cachyos-windows10-shared-root-pacstrap.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -15,6 +16,7 @@ on:
       - auto_tests/tools/cachyos_windows_shared_cow_grant.py
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
       - auto_tests/tools/cachyos_windows_shared_cow_firstboot.py
+      - auto_tests/tools/cachyos_windows_shared_cow_rw_child.py
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -31,6 +33,7 @@ on:
       - auto_tests/test_cachyos_windows_shared_cow_grant.py
       - auto_tests/test_cachyos_shared_root_pacstrap_host_contract.py
       - auto_tests/test_cachyos_windows_shared_cow_firstboot.py
+      - auto_tests/test_cachyos_windows_shared_cow_rw_child.py
       - auto_tests/test_windows_cachyos_postext4_cow_rollback.py
       - assets/live/cachyos-strict-pacman.py
       - assets/live/cachyos-pacman-trust.py
@@ -42,6 +45,7 @@ on:
       - auto_tests/tools/cachyos_windows_shared_cow_grant.py
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
       - auto_tests/tools/cachyos_windows_shared_cow_firstboot.py
+      - auto_tests/tools/cachyos_windows_shared_cow_rw_child.py
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -53,6 +57,7 @@ on:
       - auto_tests/test_cachyos_windows_shared_cow_grant.py
       - auto_tests/test_cachyos_shared_root_pacstrap_host_contract.py
       - auto_tests/test_cachyos_windows_shared_cow_firstboot.py
+      - auto_tests/test_cachyos_windows_shared_cow_rw_child.py
   workflow_dispatch:
 
 permissions:
@@ -87,6 +92,7 @@ jobs:
             auto_tests/tools/cachyos_windows_shared_cow_grant.py \
             auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py \
             auto_tests/tools/cachyos_windows_shared_cow_firstboot.py \
+            auto_tests/tools/cachyos_windows_shared_cow_rw_child.py \
             auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \
             auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
             auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py \
@@ -97,6 +103,7 @@ jobs:
             auto_tests/test_cachyos_windows_shared_cow_grant.py \
             auto_tests/test_cachyos_shared_root_pacstrap_host_contract.py \
             auto_tests/test_cachyos_windows_shared_cow_firstboot.py \
+            auto_tests/test_cachyos_windows_shared_cow_rw_child.py \
             auto_tests/test_windows_cachyos_postext4_cow_rollback.py \
             assets/live/cachyos-strict-pacman.py \
             assets/live/cachyos-pacman-trust.py
@@ -110,6 +117,7 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_grant.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_shared_root_pacstrap_host_contract.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_firstboot.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_rw_child.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_cow_rollback.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_windows.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_ext4_only.py' -v
@@ -146,6 +154,7 @@ jobs:
       GASLUX_CACHYOS_ARCHISO_READONLY_CONSENT: I_ACCEPT_PINNED_ARCHISO_READONLY_WINDOWS10_QCOW2_COW
       GASLUX_CACHYOS_SHARED_ROOT_PACSTRAP_CONSENT: I_ACCEPT_CACHYOS_SHARED_ROOT_PACSTRAP_ON_DISPOSABLE_WINDOWS_COW
       GASLUX_CACHYOS_INSTALLED_RO_BOOT_CONSENT: I_ACCEPT_READONLY_CACHYOS_INSTALLED_ROOT_POWER_OFF_VM_ONLY
+      GASLUX_CACHYOS_RW_CHILD_CONSENT: I_ACCEPT_CHILD_QCOW2_WRITABLE_CACHYOS_FIRSTBOOT_VM_ONLY
       GASLUX_CACHYOS_VERIFIED_ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -276,6 +285,16 @@ jobs:
           assert pacstrap["installedReadOnlyBootWindowsCOWUnchanged"] is True
           assert pacstrap["installedReadOnlyBootWindowsNVRAMUnchanged"] is True
           assert pacstrap["installedReadOnlyBootEFIUnchanged"] is True
+          # RW guest may write ONLY a new disposable child QCOW2; all original
+          # Windows and installed-Linux parent images stay byte-identical.
+          assert pacstrap["installedWritableChildKernelAndSystemdBootVerified"] is True
+          assert pacstrap["installedWritableChildNativeRootMarkerVerified"] is True
+          assert pacstrap["installedWritableChildWindowsGptUnchanged"] is True
+          assert pacstrap["installedWritableChildWindowsProtectedHashesUnchanged"] is True
+          assert pacstrap["installedWritableChildParentCOWUnchanged"] is True
+          assert pacstrap["installedWritableChildBaseWindowsUnchanged"] is True
+          assert pacstrap["installedWritableChildOverlayDiscarded"] is True
+          assert pacstrap["firstBootWithWritableSystemVerified"] is False
           assert pacstrap["firstBootWithWritableSystemVerified"] is False
           assert pacstrap["installedReadOnlyBootloaderInstalledToWindowsESP"] is False
           assert pacstrap["nativeCachyOSOsReleaseVerified"] is True
@@ -330,6 +349,18 @@ jobs:
           assert (b"Powering off." in installed_raw
                   or b"reboot: Power down" in installed_raw)
           assert b"Kernel panic" not in installed_raw
+          child_serial = root / (profile + "-cachyos-installed-rw-child-serial.log")
+          assert child_serial.is_file() and not child_serial.is_symlink()
+          child_manifest = child_serial.with_suffix(".sha256")
+          assert child_manifest.is_file() and not child_manifest.is_symlink()
+          child_digest, child_name = child_manifest.read_text().split()
+          assert child_name == child_serial.name
+          child_raw = child_serial.read_bytes()
+          assert child_digest == hashlib.sha256(child_raw).hexdigest()
+          assert child_digest == pacstrap["installedWritableChildSerialSha256"]
+          from cachyos_windows_shared_cow_rw_child import verify_rw_serial
+          verify_rw_serial(child_raw, pacstrap["runId"], expected_root_uuid)
+          assert b"Kernel panic" not in child_raw
           fifth = root / (profile + "-fifth-post-pacstrap-discard-serial.log")
           assert fifth.is_file() and not fifth.is_symlink()
           # The evidence producer replaces .log with .sha256; it does not append.
@@ -345,6 +376,7 @@ jobs:
           assert b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1" not in fifth_raw
           print("PASS: genuine Archiso pacstrap populated the existing fifth ext4 partition on a Windows-backed disposable COW.")
           print("PASS: minimal READ-ONLY installed kernel/systemd poweroff without Archiso or Windows ESP writes.")
+          print("PASS: native RW child-only root witness; Windows/backing/ESP preserved; nested COW discarded.")
           print("PASS: Windows GPT/ESP/BCD/WinRE hashes and immutable base stayed unchanged; COW discarded; clean Windows baseline booted.")
           print("NOT PROVEN: native CachyOS bootloader, first boot, same-disk dual boot, updates, in-place recovery, physical hardware or production safety.")
           PY
