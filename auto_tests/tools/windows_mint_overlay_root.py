@@ -34,6 +34,16 @@ def require(condition: bool, message: str) -> None:
         raise MintOverlayError(message)
 
 
+def has_orderly_shutdown_witness(serial_log: bytes) -> bool:
+    """Accept systemd's shutdown unit and the Linux kernel's final poweroff line."""
+    return any(marker in serial_log for marker in (
+        b"systemd-shutdown",
+        b"systemd-poweroff.service",
+        b"Powering off",
+        b"reboot: Power down",
+    ))
+
+
 def run(args: list[str], *, timeout: int = 120, capture: bool = True):
     return subprocess.run(
         args, check=True, text=True, capture_output=capture, timeout=timeout,
@@ -505,8 +515,8 @@ def install_mint_root_and_boot(
                 ) from exc
             require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after systemd poweroff")
             shutdown_log = serial.read_bytes()
-            require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
-                    "Mint guest did not emit a systemd shutdown witness")
+            require(has_orderly_shutdown_witness(shutdown_log),
+                    "Mint guest did not emit a systemd/kernel orderly-shutdown witness")
         finally:
             if qemu.poll() is None:
                 qemu.terminate()
