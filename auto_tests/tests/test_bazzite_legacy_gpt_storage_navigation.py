@@ -21,13 +21,13 @@ No network devices available
 BAZZITE 42 INSTALLATION
 Quit Begin Installation
 """
-HEADER = "\\t".join(
+HEADER = "\t".join(
     ["level", "page_num", "block_num", "par_num", "line_num", "word_num",
      "left", "top", "width", "height", "conf", "text"]
-) + "\\n"
+) + "\n"
 TSV = HEADER + (
-    "\\t".join(["5", "1", "11", "1", "1", "1", "674", "322", "81", "12", "96.8", "Installation"]) + "\\n"
-    + "\\t".join(["5", "1", "11", "1", "1", "2", "759", "322", "83", "12", "92.8", "Destination"]) + "\\n"
+    "\t".join(["5", "1", "11", "1", "1", "1", "674", "322", "81", "12", "96.8", "Installation"]) + "\n"
+    + "\t".join(["5", "1", "11", "1", "1", "2", "759", "322", "83", "12", "92.8", "Destination"]) + "\n"
 )
 
 
@@ -65,8 +65,8 @@ def test_missing_or_changed_summary_markers_refuse(ocr):
     [
         HEADER,
         TSV + TSV.split(HEADER, 1)[1],
-        TSV.replace("674\\t322", "974\\t322"),
-        TSV.replace("759\\t322", "900\\t322"),
+        TSV.replace("674\t322", "974\t322"),
+        TSV.replace("759\t322", "900\t322"),
     ],
 )
 def test_ambiguous_or_out_of_bounds_tile_refuses(tsv):
