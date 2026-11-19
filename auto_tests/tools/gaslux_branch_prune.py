@@ -42,8 +42,8 @@ def get_collection(path):
     raise RuntimeError("incomplete GitHub API pagination")
 
 def protected_refs():
-    protect = {"main", "dev", CONTROL}
-    keep = {"main", "dev"}
+    protect = {"main", "dev", CONTROL, ARCHIVE}
+    keep = {"main", "dev", ARCHIVE}
     for pr in get_collection("pulls?state=open"):
         for side in ("head", "base"):
             ref = pr[side]
@@ -111,9 +111,125 @@ def audit(refs, protect, keep):
             "keeper_refs": sorted(keep), "candidate_count": len(candidates),
             "excluded": excludes, "candidates": candidates}
 
+
+ARCHIVE = "archive/gaslux-experiments-preserved-20261119"
+ARCHIVE_MIN_IDLE = 12 * 3600
+ARCHIVE_MAX_BATCH = 15
+
+def archive_candidates(refs, protect, keep):
+    """Only old, non-PR, non-running, uniquely reachable experimental tips."""
+    if ARCHIVE not in refs or ARCHIVE not in keep:
+        raise RuntimeError("missing trusted permanent archive branch")
+    marker = git("show", refs[ARCHIVE] + ":docs/ARCHIVED_EXPERIMENT_HISTORY.md",
+                 check=False)
+    if marker.returncode != 0 or "não integra código no instalador" not in marker.stdout:
+        raise RuntimeError("archive marker is absent or differs")
+    now = int(time.time())
+    result = []
+    for name, sha in sorted(refs.items()):
+        if name in protect or not name.startswith(PREFIX):
+            continue
+        stamp = int(git("show", "-s", "--format=%ct", sha).stdout.strip())
+        if now - stamp < ARCHIVE_MIN_IDLE:
+            continue
+        # Do not archive material already retained by a protected keeper;
+        # that material can be handled by the previous proven prune gate.
+        if any(name != k and is_ancestor(sha, refs[k]) for k in keep):
+            continue
+        result.append({"branch": name, "sha": sha,
+                       "tip_date": datetime.fromtimestamp(
+                           stamp, timezone.utc).isoformat()})
+    result.sort(key=lambda entry: (entry["tip_date"], entry["branch"]))
+    return result
+
+def remote_ref(name):
+    raw = git("ls-remote", "--heads", "origin",
+              "refs/heads/" + name).stdout.strip()
+    if not raw:
+        return None
+    lines = raw.splitlines()
+    if len(lines) != 1:
+        raise RuntimeError("ambiguous remote reference " + name)
+    sha, sep, ref = lines[0].partition("\t")
+    if not sep or ref != "refs/heads/" + name or not re.fullmatch("[0-9a-f]{40}", sha):
+        raise RuntimeError("unexpected remote reference response " + name)
+    return sha
+
+def archive_history_and_delete(report, candidates, refs):
+    """Create real two-parent archive commits; delete refs only after proof."""
+    if os.getenv("GASLUX_ARCHIVE_APPROVED") != "PRESERVE_HISTORY_LEASE_15":
+        raise RuntimeError("explicit bounded archive authorization missing")
+    archive_tip = refs[ARCHIVE]
+    if remote_ref(ARCHIVE) != archive_tip:
+        raise RuntimeError("archive tip changed before authorization")
+    for candidate in candidates[:ARCHIVE_MAX_BATCH]:
+        name, sha = candidate["branch"], candidate["sha"]
+        # API snapshot is refreshed for every deletion; a newly opened
+        # PR or running workflow must stop the deletion.
+        current_protect, current_keep = protected_refs()
+        if (name in current_protect or ARCHIVE not in current_keep
+                or remote_ref(name) != sha
+                or int(time.time()) - int(
+                    git("show", "-s", "--format=%ct", sha).stdout.strip()
+                ) < ARCHIVE_MIN_IDLE):
+            report["refused"].append({"branch": name, "reason": "changed or protected"})
+            continue
+        if remote_ref(ARCHIVE) != archive_tip:
+            raise RuntimeError("concurrent archive writer detected")
+        # Archive only: keep the exact existing tree, adding the original
+        # history as the second parent. This is not a source-code merge.
+        archive_tree = git("rev-parse", archive_tip + "^{tree}").stdout.strip()
+        message = (
+            "archive(gaslux): preserve independent experimental Git history\n\n"
+            "Source-ref: refs/heads/" + name + "\n"
+            "Source-sha: " + sha + "\n"
+            "Archive-only: no experimental code included in working tree\n"
+            "Production-merge: false\n"
+            "Generated-by: GPT-6"
+        )
+        new_tip = git(
+            "commit-tree", archive_tree, "-p", archive_tip,
+            "-p", sha, "-m", message).stdout.strip()
+        if (not re.fullmatch("[0-9a-f]{40}", new_tip)
+                or not is_ancestor(sha, new_tip)
+                or git("rev-parse", new_tip + "^{tree}").stdout.strip() != archive_tree):
+            raise RuntimeError("archive did not retain exact original history and tree")
+        pushed = git(
+            "push", "--porcelain",
+            "--force-with-lease=refs/heads/" + ARCHIVE + ":" + archive_tip,
+            "origin", new_tip + ":refs/heads/" + ARCHIVE, check=False)
+        if pushed.returncode != 0 or remote_ref(ARCHIVE) != new_tip:
+            raise RuntimeError("archive promotion failed, source not deleted: "
+                               + pushed.stderr[-350:])
+        archive_tip = new_tip
+        report["archived"].append({"branch": name, "source_sha": sha,
+                                   "archive_commit": new_tip})
+        # Verify remote archive after successful push and block all mutations
+        # if either the old source tip or PR/Actions protection changed.
+        current_protect, _ = protected_refs()
+        if name in current_protect or remote_ref(name) != sha:
+            report["refused"].append({"branch": name, "reason": "protected after archive"})
+            continue
+        if not is_ancestor(sha, archive_tip) or remote_ref(ARCHIVE) != archive_tip:
+            raise RuntimeError("archive proof disappeared; source retained")
+        deleted = git(
+            "push", "--porcelain",
+            "--force-with-lease=refs/heads/" + name + ":" + sha,
+            "origin", ":refs/heads/" + name, check=False)
+        if deleted.returncode == 0 and "deleted" in deleted.stdout and remote_ref(name) is None:
+            report["deleted"].append({"branch": name, "sha": sha,
+                                      "archive_commit": archive_tip})
+        else:
+            report["refused"].append({"branch": name, "reason": "lease or policy",
+                                      "code": deleted.returncode,
+                                      "stderr": deleted.stderr[-300:]})
+        print("ARCHIVE", name, sha, new_tip,
+              "DELETED" if report["deleted"] and report["deleted"][-1]["branch"] == name
+              else "PRESERVED", flush=True)
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=("audit", "prune"))
+    ap.add_argument("mode", choices=("audit", "prune", "archive"))
     ap.add_argument("--output", type=Path, required=True)
     args = ap.parse_args()
     if (os.getenv("GITHUB_ACTIONS") != "true"
@@ -125,13 +241,20 @@ def main():
     protect, keep = protected_refs()
     refs = inventory()
     report = audit(refs, protect, keep)
-    report.update(mode=args.mode, deleted=[], refused=[])
+    report.update(mode=args.mode, deleted=[], refused=[], archived=[])
+    archiveable = archive_candidates(refs, protect, keep)
+    report["archive_candidate_count"] = len(archiveable)
+    print("ARCHIVE_AUDIT", len(archiveable), flush=True)
+    for item in archiveable[:60]:
+        print("ARCHIVE_CANDIDATE", item["branch"], item["sha"], item["tip_date"], flush=True)
     print("AUDIT", json.dumps({k: v for k, v in report.items()
                               if k not in ("keeper_refs", "candidates")}),
           flush=True)
     for c in report["candidates"][:80]:
         print("CANDIDATE", c["branch"], c["sha"],
               ",".join(c["reachable_from"][:3]), flush=True)
+    if args.mode == "archive":
+        archive_history_and_delete(report, archiveable, refs)
     if args.mode == "prune":
         if os.getenv("GASLUX_PRUNE_APPROVED") != "LEASE_GUARDED_30":
             raise RuntimeError("no bounded user-authorized prune gate")
