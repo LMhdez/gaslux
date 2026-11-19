@@ -27,8 +27,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: q4os-native-cow-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  # Keep independent evidence runs isolated; reruns must not cancel a live VM/ISO audit.
+  group: q4os-native-cow-${{ github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
