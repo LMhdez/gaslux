@@ -1,5 +1,12 @@
 # Gaslux integration board — 2026-11-18
 
+## Fechos documentados — 2026-11-19 (sexto lote: CI QCOW2)
+
+- [#148](https://github.com/LMhdez/gaslux/pull/148) **encerrada sem merge** depois de transportar os **6 testes negativos** QCOW2, byte a byte, para a [#192](https://github.com/LMhdez/gaslux/pull/192). Identidade de blob: `6996e5907a3f28481d0618939f46f03770040da5`. Commits no HEAD da #192: [`9916b12e`](https://github.com/LMhdez/gaslux/commit/9916b12e88c079f0eb1bfc2aabe62926378c48a0), [`f85764c4`](https://github.com/LMhdez/gaslux/commit/f85764c4c64f0e429c6af411016752b9139a6673), [`cbd89e0c`](https://github.com/LMhdez/gaslux/commit/cbd89e0ca375be494d623f3caa12cc4a06a602e8). [Actions #44550569737](https://github.com/LMhdez/gaslux/actions/runs/44550569737) **SUCCESS** no HEAD exato: job `overlay-no-write-contracts` devolveu `Ran 6 tests`, `OK`. [Comentário de fecho](https://github.com/LMhdez/gaslux/pull/148#issuecomment-7012979270). A #192 continua OPEN/DRAFT; esta CI não envolve VM.
+- [#43](https://github.com/LMhdez/gaslux/pull/43) **encerrada sem merge**, linha gráfica Plasma/SDDM experimental conscientemente arquivada. [Actions #43965589684](https://github.com/LMhdez/gaslux/actions/runs/43965589684): job `inspect-official-cachyos` **FAILURE**, sem prova de sessão KDE funcional. Sem PR abertas com base nessa branch. Código de teste gráfico não integrado nos atuais #193/#225/#241. [Comentário de fecho](https://github.com/LMhdez/gaslux/pull/43#issuecomment-7013002842).
+- Consulta após fechos: **54 PRs abertas** e **2 issues abertas**. `main` [`90b044ba`](https://github.com/LMhdez/gaslux/commit/90b044ba435b2b4b4db6c5813ca4698b37e4a555); `dev` 96 à frente, 1 atrás. Sem merges ou escrita física.
+- **Prova limitada:** testes negativos de pré-escrita não aprovam dual boot, pacstrap, rootfs instalado nem rollback de Windows modificado in-place.
+
 ## Fechos documentados — 2026-11-19 (quinto lote)
 
 - [#163](https://github.com/LMhdez/gaslux/pull/163): **closed sem merge**, [justificação técnica](https://github.com/LMhdez/gaslux/pull/163#issuecomment-7012711448). O patch e o blob `a453f630` de `windows_cachyos_real_windows_gpt_cow_transaction.py` são idênticos na [#192](https://github.com/LMhdez/gaslux/pull/192). [Actions #44183745518](https://github.com/LMhdez/gaslux/actions/runs/44183745518): 2/2 jobs SUCCESS; o log do Windows 10 contém adição/remoção GPT #5, recuperação de interrupted-add COW, hashes GPT/ESP/BCD/WinRE e terceiro arranque. A #192 fica OPEN/DRAFT.
