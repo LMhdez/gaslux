@@ -117,20 +117,33 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     }
 
 
-def verify_editor(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
+def verify_advanced_custom_selected(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
+    """Verify radio selection only; the editor has not been opened."""
     text, words = _read(png, ocr_path, tsv_path, require_storage_page=False)
-    # Require a distinct editor identity and visible device/partition context.
-    editor_markers = ("blivet", "partition")
-    if not all(marker in text for marker in editor_markers):
-        raise BlivetObserverRefusal("Blivet partition editor identity not observed")
-    device_markers = ("device", "disk", "nvme", "virtio", "vda", "glxbazro001")
-    if not any(marker in text for marker in device_markers):
-        raise BlivetObserverRefusal("No device context observed in editor")
+    required = ("installation destination", "advanced custom", "blivet-gui")
+    if not all(marker in text for marker in required):
+        raise BlivetObserverRefusal("Advanced Custom selection page identity not observed")
+    with Image.open(png) as image:
+        rgb = image.convert("RGB")
+        selected = list(rgb.crop((438, 470, 459, 491)).getdata())
+        custom = list(rgb.crop((229, 470, 250, 491)).getdata())
+        automatic = list(rgb.crop((20, 470, 41, 491)).getdata())
+    def blue_count(samples):
+        return sum(1 for red, green, blue in samples if blue >= 170 and blue > red * 1.25 and blue > green * 1.05)
+    selected_blue = blue_count(selected)
+    other_blue = max(blue_count(custom), blue_count(automatic))
+    if selected_blue < 8 or other_blue > 2:
+        raise BlivetObserverRefusal("Advanced Custom radio selection is not uniquely visible")
     return {
-        "phase": "editor-observed",
-        "blivetGuiIdentityTextObserved": True,
-        "partitionEditorContextObserved": True,
-        "ocrWordCount": len(words),
+        "phase": "advanced-custom-selected",
+        "advancedCustomTextObserved": True,
+        "advancedCustomRadioSelected": True,
+        "automaticRadioUnselected": True,
+        "customRadioUnselected": True,
+        "selectedRadioBluePixelCount": selected_blue,
+        "otherRadioBluePixelCount": other_blue,
+        "blivetGuiLaunched": False,
+        "partitionEditorContextObserved": False,
         "partitionControlClicked": False,
         "partitionMutationAttempted": False,
         "installationAuthorized": False,
@@ -138,7 +151,6 @@ def verify_editor(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         "windowsEspWriteAuthorized": False,
         "windowsDualBootVerified": False,
     }
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -152,7 +164,7 @@ def main() -> None:
         result = (
             locate_launch_control(args.png, args.ocr, args.tsv)
             if args.phase == "before"
-            else verify_editor(args.png, args.ocr, args.tsv)
+            else verify_advanced_custom_selected(args.png, args.ocr, args.tsv)
         )
         if args.phase == "before":
             if args.coords is None or args.coords.is_symlink():
