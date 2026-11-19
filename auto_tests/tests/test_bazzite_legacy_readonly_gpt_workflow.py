@@ -41,10 +41,10 @@ def test_only_disposable_owned_raw_gpt_and_ovmf_var_file_are_writable():
     assert "-device virtio-blk-pci,drive=synthetic-ro" in text
     assert "serial=GASLUX-ROGPT-42" in text
     assert "OVMF_VARS.disposable.fd" in text
-    assert '\"installationAuthorized\": False' in text
-    assert '\"windowsEspWriteAuthorized\": False' in text
-    assert '\"installerStorageWriteTested\": False' in text
-    assert '\"guestDiskDetectedByInstaller\": None' in text
+    assert '"installationAuthorized": False' in text
+    assert '"windowsEspWriteAuthorized": False' in text
+    assert '"installerStorageWriteTested": False' in text
+    assert '"guestDiskDetectedByInstaller": None' in text
     assert text.count("click 1") == 3
 
 
