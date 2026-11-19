@@ -89,6 +89,30 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+## Anexo técnico — System76 24.04, distinst e prova de ISO (19-11-2026)
+
+### ISO oficial, identidade e trust model
+[DOCUMENTADO — upstream] O [repositório System76 da imagem Pop!_OS](https://github.com/pop-os/iso) e o [instalador distinst](https://github.com/pop-os/distinst) definem as responsabilidades dos componentes `casper`, `distinst` e `pop-installer`; confirmar sempre o conteúdo da variante concreta. [IMPLEMENTADO — laboratório da PR #232] [`windows10_popos_official_iso_signed_lab.py`](https://github.com/LMhdez/gaslux/blob/85c9ea30b75c763314e775d4daddf10d5357109e/auto_tests/tools/windows10_popos_official_iso_signed_lab.py) consulta a API oficial `https://api.pop-os.org/builds/24.04/intel`, exige URL com build inteiro em `iso.pop-os.org`, valida `SHA256SUMS` com `SHA256SUMS.gpg` e fingerprint System76 `63C46DF0140D738961429F4E204DD8AEC33A7AFF`, e confronta nome, tamanho, digest e bytes locais. A PR #228 fixou **experimentalmente** a ISO Intel build 20, 2 955 067 392 bytes, SHA `a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c`; isso **não** acrescenta Pop a `release-config.json`. Como a API devolve builds variáveis, fixar a versão e assinar o manifesto antes de qualquer candidato de produção; não inferir que o build 20 continua actual.
+
+### Ficheiros e argumentos de arranque observados
+[IMPLEMENTADO — código de laboratório] [`gaslux_q4os_calamares_gui_laboratory.sh`](https://github.com/LMhdez/gaslux/blob/6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb/auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh) possui um caminho Pop que pesquisa exactamente uma pasta ISO de nome `casper_pop-os_24.04_amd64_intel_<build>`, exige nela `vmlinuz.efi` e `initrd.gz`, e lança kernel/initramfs por GRUB OVMF com `boot=casper live-media-path=/<pasta>` e consola série. Este é **um mecanismo de laboratório isolado** e não uma garantia de que o initramfs da versão detecta o staging NTFS do Windows sem USB. [PENDENTE] Capturar `grub.cfg`, El Torito, EFI binaries, `filesystem.squashfs`, `*.manifest-remove`, `os-release` e versão binária de `/usr/bin/distinst` de ISO autenticada para regressões futuras.
+
+### Instalador nativo: diferenças operacionais verificáveis
+[DOCUMENTADO — código upstream] [`pop-os/distinst`](https://github.com/pop-os/distinst) expõe integração Rust, C e Vala; a instalação envolve extracção do SquashFS, remoções por manifesto e configuração no destino, não equivale a copiar uma raiz Live do Gaslux. [IMPLEMENTADO — **preview inerte**, PR #232] [`gaslux_popos_distinst_preview.py`](https://github.com/LMhdez/gaslux/blob/85c9ea30b75c763314e775d4daddf10d5357109e/auto_tests/tools/gaslux_popos_distinst_preview.py) gera argumentos de `distinst` para VM sintética com `--squashfs`, `--remove`, `--hostname`, `--keyboard`, `--lang`, `--block`, `--use` e `--no-efi-vars`. **Não executa o comando**. Em especial, `--use DISK:ESP:reuse:mount=/boot/efi` pretende reutilizar a ESP, enquanto `fat32` pode **formatá-la**. Em Windows/Gaslux, não basta passar `reuse`: é obrigatório provar a ausência de escritas a `EFI/Microsoft`, preservação de BootOrder e totalidade do write-set; até lá o instalador nativo continua BLOQUEADO. UEFI recorre a systemd-boot; BIOS/MBR GRUB necessita prova da variante concreta. Secure Boot habilitado e full-disk encryption de Linux no mesmo disco Windows são rejeitados pelo actual [`gaslux_popos_preflight.py`](https://github.com/LMhdez/gaslux/blob/dev/assets/live/gaslux_popos_preflight.py).
+
+### Resultados CI actuais e causa específica
+[COMPROVADO — apenas Live e diagnóstico] [PR #232](https://github.com/LMhdez/gaslux/pull/232) HEAD `85c9ea30b75c763314e775d4daddf10d5357109e`, [Actions #44561473570](https://github.com/LMhdez/gaslux/actions/runs/44561473570), job genuíno Win10+Pop **FAILURE**. O log mostra guest Pop iniciado, FAT de controlo montada, SHA de scripts validado; depois a leitura da quinta partição recusou **`owned Pop partition 5 signature probe refused: blkid exit=0 type='' stderr=''`**. [Artefacto #14552075432](https://github.com/LMhdez/gaslux/actions/runs/44561473570/artifacts/14552075432). A prova `popSignedIsoGpgVerified` saiu **false** no relatório desta execução; o helper GPG existe no código, mas a saída do ensaio falhado NÃO permite classificá-la como assinada/verificada. [PENDENTE] Esclarecer se a quinta partição foi propositadamente criada sem FS e ajustar os critérios *pré-instalação* sem permitir contornar a identificação GUID/offset; só então repetir a auditoria Live e confirmar assinatura upstream com logs completos.
+
+### Sequência one-shot específica e STOP
+1. Resolver ISO imutável/API e verificar GPG fingerprint+manifesto+SHA/tamanho; obter `distinst --version`, estruturas de `casper` e `manifest-remove`.
+2. Provar Live no mesmo Windows 10 COW só-leitura e identificar cada partição com GUID/offset/sector e sem falsos positivos de `blkid`; comparar GPT primária/secundária e Windows ESP/BCD/WinRE.
+3. Assinar/autenticar plano com ESP de Windows **reuse sem format**, Linux root exclusivamente possuída; preparar recovery/snapshot antes de qualquer escrita, e disallow NVRAM/ESP unowned.
+4. Exercitar `distinst` real apenas em child QCOW2 com autorização e prova do write-set; configurar utilizador, língua, teclado e timezone sem depender de prompts GUI.
+5. Arrancar Pop instalado sem ISO, arranque Windows, actualização de kernel/systemd-boot, dois novos boots, remoção e rollback in-place sob injecção de falhas.
+**STOP** para desconhecimento de CLI/ISO ou tentativa de formatar FAT Windows; este anexo não fornece comando de instalação autorizado.
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
