@@ -99,6 +99,7 @@ def test_advanced_custom_radio_selected_but_editor_not_claimed(tmp_path):
     assert result["partitionMutationAttempted"] is False
     assert result["installationAuthorized"] is False
 
+
 @pytest.mark.parametrize("selected_region", ["custom", "automatic", "none"])
 def test_wrong_or_missing_radio_selection_refused(tmp_path, selected_region):
     text = "INSTALLATION DESTINATION BAZZITE 42 INSTALLATION ADVANCED CUSTOM (BLIVET-GUI)"
