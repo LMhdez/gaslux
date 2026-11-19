@@ -76,7 +76,11 @@ def test_manifest_requires_all_declared_artifacts(tmp_path):
 
 def test_manifest_refuses_platform_without_o_nofollow(tmp_path, monkeypatch):
     directory = _evidence(tmp_path)
+    create_manifest(directory)
     monkeypatch.delattr("os.O_NOFOLLOW", raising=False)
+    with pytest.raises(EvidenceManifestError, match="does not expose O_NOFOLLOW"):
+        verify_manifest(directory)
+    (directory / "evidence.sha256").unlink()
     with pytest.raises(EvidenceManifestError, match="does not expose O_NOFOLLOW"):
         create_manifest(directory)
 
