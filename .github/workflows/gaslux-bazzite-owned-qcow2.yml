@@ -1,0 +1,288 @@
+name: Bazzite owned QCOW2 installer storage discovery (experimental)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-official-gpt-discovery-20261119
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-bazzite-owned-qcow2.yml'
+      - 'auto_tests/bazzite_owned_qcow2.py'
+      - 'auto_tests/tests/test_bazzite_owned_qcow2.py'
+      - 'auto_tests/tests/test_bazzite_owned_qcow2_workflow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install QEMU image tool for real QCOW2 ownership tests
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=30s 600s apt-get install -y -qq qemu-utils
+      - name: Syntax, Ruff and fail-closed contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff PyYAML cryptography
+          python -m pytest -q auto_tests/tests/test_bazzite_owned_qcow2_workflow.py auto_tests/tests/test_bazzite_owned_qcow2.py auto_tests/tests/test_bazzite_iso_signature.py auto_tests/tests/test_bazzite_atomic_preflight.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_owned_qcow2.py auto_tests/tests/test_bazzite_owned_qcow2.py auto_tests/tests/test_bazzite_owned_qcow2_workflow.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_owned_qcow2.py auto_tests/tests/test_bazzite_owned_qcow2.py auto_tests/tests/test_bazzite_owned_qcow2_workflow.py
+
+  owned-qcow2-storage-discovery:
+    needs: contracts
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref == 'feature/bazzite-official-gpt-discovery-20261119'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify pinned key, network endpoints and ephemeral runner capacity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p bazzite-evidence
+          echo 'af78ecfda6eb21c35195af3739341715e9cfc3f2f5911dd9c10b0670547bf6e8  assets/keys/bazzite-upstream-cosign.pub' | sha256sum --check --strict
+          base='https://download.bazzite.gg/bazzite-stable-live-amd64.iso'
+          for suffix in '' '.sig'; do
+            code=$(curl --silent --show-error --fail --location --head --retry 2 --connect-timeout 15 --max-time 90 --proto '=https' --proto-redir '=https' --write-out '%{http_code}' --output /dev/null "$base$suffix")
+            [[ "$code" == 200 ]] || { echo "Unreachable official ISO or .sig: HTTP $code" >&2; exit 1; }
+          done
+          free_bytes=$(df -PB1 "$RUNNER_TEMP" | awk 'NR==2 {print $4}')
+          host_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+          echo "RUNNER: available disk bytes=$free_bytes, memory KiB=$host_kib"
+          if (( free_bytes < 9*1024*1024*1024 )); then
+            echo 'Insufficient ephemeral storage; no ISO downloaded' >&2; exit 1
+          fi
+      - name: Install QEMU, OVMF, ISO tools and VNC client
+        shell: bash
+        timeout-minutes: 20
+        run: |
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=30s 900s apt-get install -y -qq qemu-system-x86 qemu-utils ovmf xorriso python3-pip tesseract-ocr
+          python -m pip install --user vncdotool Pillow
+      - name: Install Cosign version used by signed blob gate
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        with:
+          cosign-release: 'v2.6.5'
+      - name: Download real official ISO and verify its detached upstream signature
+        shell: bash
+        timeout-minutes: 60
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-official"
+          mkdir -p "$work" bazzite-evidence
+          iso="$work/bazzite-stable-live-amd64.iso"
+          url='https://download.bazzite.gg/bazzite-stable-live-amd64.iso'
+          length=$(curl --silent --show-error --fail --location --head --retry 2 --max-time 90 --proto '=https' --proto-redir '=https' "$url" | tr -d '\r' | awk 'tolower($1)=="content-length:" {n=$2} END {print n}')
+          [[ "$length" =~ ^[1-9][0-9]*$ ]] || { echo 'No official Content-Length'; exit 1; }
+          if (( length < 1024*1024*1024 || length > 16*1024*1024*1024 )); then
+            echo 'Unexpected live ISO byte size' >&2; exit 1
+          fi
+          free_bytes=$(df -PB1 "$work" | awk 'NR==2 {print $4}')
+          if (( free_bytes < length + 2*1024*1024*1024 )); then
+            echo 'Runner storage insufficient for current ISO plus reserved space' >&2; exit 1
+          fi
+          echo 'Downloading official ISO with bounded HTTPS retries and byte-range resume; SHA pin remains mandatory' > bazzite-evidence/download-scope.txt
+          curl --fail --location --show-error --silent \
+            --retry 7 --retry-all-errors --retry-delay 5 --continue-at - \
+            --connect-timeout 20 --max-time 3200 \
+            --proto '=https' --proto-redir '=https' "$url" -o "$iso"
+          curl --fail --location --show-error --silent --retry 2 --connect-timeout 20 --max-time 180 --proto '=https' --proto-redir '=https' "$url.sig" -o "$iso.sig"
+          size=$(stat -c '%s' "$iso")
+          sha=$(sha256sum "$iso" | awk '{print $1}')
+          [[ "$size" == "$length" ]] || { echo 'ISO download size changed'; exit 1; }
+          # Pinned official signed ISO from ublue-os/bazzite Actions #44121421800.
+          expected_sha='6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5'
+          expected_size='8377878528'
+          if [[ "$sha" != "$expected_sha" || "$size" != "$expected_size" ]]; then
+            echo 'Official stable ISO bytes no longer match pinned upstream build; refusing' >&2
+            exit 1
+          fi
+          python3 assets/live/gaslux_bazzite_iso_signature.py \
+            --iso "$iso" --signature "$iso.sig" \
+            --public-key "$GITHUB_WORKSPACE/assets/keys/bazzite-upstream-cosign.pub" \
+            --trusted-key-sha256 af78ecfda6eb21c35195af3739341715e9cfc3f2f5911dd9c10b0670547bf6e8 \
+            --expected-iso-sha256 "$sha" --expected-iso-size "$size" \
+            --firmware uefi --partition-style gpt > bazzite-evidence/iso-trust.json
+          xorriso -indev "$iso" -report_el_torito plain > bazzite-evidence/eltorito.txt 2>&1
+          grep -qi EFI bazzite-evidence/eltorito.txt || { echo 'Missing ISO EFI boot entry'; exit 1; }
+          python3 - "$sha" "$size" <<'PY'
+          import json
+          import pathlib
+          import sys
+          p = pathlib.Path("bazzite-evidence/iso-trust.json")
+          obj = json.loads(p.read_text())
+          assert obj["detachedSignatureVerified"] is True
+          assert obj["installationAuthorized"] is False
+          obj["catalogPinAuthorized"] = False
+          obj["pinDiscoveryOnly"] = True
+          obj["upstreamBuildEvidence"] = "https://github.com/ublue-os/bazzite/actions/runs/44121421800"
+          obj["observedIsoSha256"] = sys.argv[1]
+          obj["observedIsoSizeBytes"] = int(sys.argv[2])
+          obj["installerIdentityVerified"] = False
+          p.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n")
+          print("SIGNED OFFICIAL ISO DISCOVERED. Digest not approved for release catalog.")
+          PY
+      - name: Prepare newly created private 70 GiB QCOW2 with immutable backing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/bazzite_owned_qcow2.py prepare \
+            --root "$RUNNER_TEMP/bazzite-owned-qcow2" --runner-temp "$RUNNER_TEMP" \
+            > bazzite-evidence/owned-target.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          plan = json.loads(Path("bazzite-evidence/owned-target.json").read_text())
+          assert plan["labOnly"] and plan["storageInspectionOnly"]
+          assert plan["installationAuthorized"] is False
+          assert plan["windowsGuestAttached"] is False
+          assert plan["guestDiskCount"] == 1
+          assert plan["virtualSizeBytes"] == 70 * 1024**3
+          print("PREPARED: one new runner-owned blank QCOW2; Windows absent; no install consent")
+          PY
+
+      - name: Boot official ISO with one blank COW disk; navigate only as far as storage page
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-official"
+          owned="$RUNNER_TEMP/bazzite-owned-qcow2"
+          iso="$work/bazzite-stable-live-amd64.iso"
+          [[ -f "$owned/manifest.json" && -f "$owned/scratch-overlay.qcow2" ]] || exit 1
+          serial=$(python3 - "$owned/manifest.json" <<'PY'
+          import json
+          import sys
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              plan = json.load(stream)
+          assert plan["guestDiskCount"] == 1
+          assert plan["windowsGuestAttached"] is False
+          assert plan["installationAuthorized"] is False
+          print(plan["guestDiskSerial"])
+          PY
+          )
+          if [[ -f /usr/share/OVMF/OVMF_CODE_4M.fd && -f /usr/share/OVMF/OVMF_VARS_4M.fd ]]; then
+            code=/usr/share/OVMF/OVMF_CODE_4M.fd
+            vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          elif [[ -f /usr/share/OVMF/OVMF_CODE.fd && -f /usr/share/OVMF/OVMF_VARS.fd ]]; then
+            code=/usr/share/OVMF/OVMF_CODE.fd
+            vars=/usr/share/OVMF/OVMF_VARS.fd
+          else
+            echo 'No matching OVMF templates'; exit 1
+          fi
+          cp "$vars" "$work/OVMF_VARS.disposable.fd"
+          host_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+          (( host_kib >= 11*1024*1024 )) || { echo "Runner too small for 8 GiB guest"; exit 1; }
+          [[ -c /dev/kvm ]] || { echo "KVM unavailable; refuse slow TCG"; exit 1; }
+          sudo chmod 0666 /dev/kvm
+          [[ -r /dev/kvm && -w /dev/kvm ]] || { echo "KVM inaccessible"; exit 1; }
+          echo "OVMF/KVM, RAM=8192MiB, one blank owned disk ($serial), no Windows, NO installation" \
+            > bazzite-evidence/vm-config.txt
+          qemu-system-x86_64 \
+            -nodefaults -machine q35,accel=kvm -cpu max -smp 2 -m 8192 \
+            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,unit=1,file=$work/OVMF_VARS.disposable.fd" \
+            -vga std -device ich9-ahci,id=sata \
+            -drive "if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso" \
+            -device ide-cd,drive=optical,bus=sata.0 \
+            -drive "if=none,id=owned-target,format=qcow2,file=$owned/scratch-overlay.qcow2" \
+            -device "virtio-blk-pci,drive=owned-target,serial=$serial" \
+            -boot order=d -nic none -monitor none \
+            -serial "file:bazzite-evidence/serial.log" \
+            -vnc 127.0.0.1:1 -no-reboot \
+            > bazzite-evidence/qemu-stdout.txt 2> bazzite-evidence/qemu-stderr.txt &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || :; wait "$pid" 2>/dev/null || :' EXIT
+          for phase in 1 2 3 4 5; do
+            if (( phase <= 2 )); then sleep 90; else sleep 12; fi
+            kill -0 "$pid" 2>/dev/null || { echo "Unexpected VM shutdown"; exit 1; }
+            image="bazzite-evidence/screen-$phase.png"
+            timeout --signal=TERM --kill-after=5s 30s "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 capture "$image"
+            python3 - "$image" "$phase" <<'PY'
+          from PIL import Image
+          import sys
+          picture = Image.open(sys.argv[1]).convert("RGB")
+          assert picture.size == (1280, 800), "Unexpected guest desktop geometry"
+          assert len(picture.getcolors(maxcolors=1000000) or []) > 2, "Blank guest screen"
+          picture.crop((250, 75, 1250, 660)).save(
+              f"bazzite-evidence/main-screen-{sys.argv[2]}.png"
+          )
+          PY
+            tesseract "$image" stdout 2>/dev/null > "bazzite-evidence/ocr-$phase.txt" || :
+            tesseract "bazzite-evidence/main-screen-$phase.png" stdout 2>/dev/null \
+              > "bazzite-evidence/main-ocr-$phase.txt" || :
+            if (( phase == 1 )); then
+              grep -qi 'Bazzite Portal' "bazzite-evidence/ocr-1.txt" \
+                || { echo "Live desktop not recognized; no scripted input"; exit 1; }
+              timeout --signal=TERM --kill-after=5s 30s "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 48 40 click 1 pause 0.2 click 1
+            elif (( phase == 2 )); then
+              grep -Fq "Welcome. Let's install Bazzite now." "bazzite-evidence/main-ocr-2.txt" \
+                || { echo "Official native installer not recognized; no navigation"; exit 1; }
+              timeout --signal=TERM --kill-after=5s 30s "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
+            elif (( phase == 3 )); then
+              grep -Eiq 'Date and time|Time zone' "bazzite-evidence/main-ocr-3.txt" \
+                || { echo "Date/time page not recognized; stopping"; exit 1; }
+              timeout --signal=TERM --kill-after=5s 30s "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 move 407 712 click 1
+            elif (( phase == 4 )); then
+              grep -Fq 'Virtio Block Device' "bazzite-evidence/main-ocr-4.txt" \
+                || { echo "Expected Virtio target not displayed; stopping"; exit 1; }
+              [[ $(grep -ci 'Virtio Block Device' "bazzite-evidence/main-ocr-4.txt") == 1 ]] \
+                || { echo "Ambiguous installer disk count; stopping"; exit 1; }
+              grep -Fq '75.2 GB disk' "bazzite-evidence/main-ocr-4.txt" \
+                || { echo "Guest target size mismatch for 70 GiB QCOW2; stopping"; exit 1; }
+              grep -Fq 'Use entire disk' "bazzite-evidence/main-ocr-4.txt" \
+                || { echo "Installer partitioning policy not recognized; stopping"; exit 1; }
+              echo 'ONE blank 70 GiB disk displayed by native installer; not a Windows target' \
+                > bazzite-evidence/guest-disk-screen-gate.txt
+              # The new ISO exposes a destructive whole-disk default; never click through it.
+              echo 'STOP: new ISO automatic whole-disk mode is not authorized for shared Windows disks' \
+                > bazzite-evidence/new-iso-installation-blocked.txt
+            elif (( phase == 5 )); then
+              grep -Eiq 'Remove all partitions|existing operating systems' \
+                "bazzite-evidence/main-ocr-5.txt" \
+                || { echo "Destructive whole-disk warning not confirmed; stop without selection"; exit 1; }
+              echo "NEW ISO BLOCKED: destructive whole-disk default observed. Legacy ISO/manual partitioning requires a separate pinned-ISO lab. No disk selection, partition write or install." \
+                > bazzite-evidence/storage-scout-result.txt
+            fi
+          done
+
+      - name: Verify private QCOW2 backing has not changed and discard COW
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$RUNNER_TEMP/bazzite-owned-qcow2/manifest.json" ]]; then
+            python3 auto_tests/bazzite_owned_qcow2.py discard \
+              --root "$RUNNER_TEMP/bazzite-owned-qcow2" --runner-temp "$RUNNER_TEMP" \
+              > bazzite-evidence/qcow2-discard-evidence.json
+            echo "Discarded isolated overlay; no Windows recovery claim."
+          fi
+
+      - name: Publish limited read-only evidence (never ISO or private NVRAM)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-official-iso-ovmf-evidence
+          path: bazzite-evidence/
+          if-no-files-found: error
+          retention-days: 3
