@@ -81,6 +81,39 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         self.assertFalse(result["updatesVerified"])
         self.assertFalse(result["rollbackVerified"])
 
+    def test_accepts_systemd_poweroff_unit_as_orderly_shutdown(self):
+        serial = SERIAL.replace(
+            b"systemd-shutdown[1]: Powering off.\n",
+            b"[  OK  ] Finished systemd-poweroff.service - System Power Off.\n",
+        )
+        self._replace_serial(serial)
+        self.assertTrue(validator.has_orderly_shutdown_witness(serial))
+        self.assertTrue(validator.validate_mint_cow_boot_evidence(
+            self.directory, PROFILE
+        ))
+
+    def test_accepts_kernel_power_down_as_orderly_shutdown(self):
+        serial = SERIAL.replace(
+            b"systemd-shutdown[1]: Powering off.\n",
+            b"[   23.521817] reboot: Power down\n",
+        )
+        self._replace_serial(serial)
+        self.assertTrue(validator.has_orderly_shutdown_witness(serial))
+        self.assertTrue(validator.validate_mint_cow_boot_evidence(
+            self.directory, PROFILE
+        ))
+
+    def test_rejects_login_without_any_shutdown_witness(self):
+        serial = SERIAL.replace(
+            b"systemd-shutdown[1]: Powering off.\n", b""
+        )
+        self._replace_serial(serial)
+        self.assertFalse(validator.has_orderly_shutdown_witness(serial))
+        with self.assertRaisesRegex(
+            validator.MintBootEvidenceError, "orderly shutdown"
+        ):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
     def test_rejects_missing_serial_login(self):
         self._replace_serial(SERIAL.replace(b"GASLUXMINT login:", b""))
         with self.assertRaisesRegex(validator.MintBootEvidenceError, "serial login prompt"):
