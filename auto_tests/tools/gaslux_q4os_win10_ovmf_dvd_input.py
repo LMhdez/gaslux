@@ -92,6 +92,7 @@ def _send_key_events(stream, *, sleep=time.sleep) -> None:
     _read_qmp_reply(stream, "gaslux-ovmf-send-space")
     sleep(1.0)
 
+
 def _send_key(sock: Path, pid: int) -> None:
     st = sock.lstat()
     _require(stat.S_ISSOCK(st.st_mode), "QEMU QMP endpoint is not a socket")
@@ -120,7 +121,7 @@ def _send_key(sock: Path, pid: int) -> None:
             )
             stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-capabilities"}\r\n')
             _read_qmp_reply(stream, "gaslux-capabilities")
-            # Separate acknowledged key-down and key-up let OVMF poll USB HID.
+            # QMP send-key holds Space for the configured duration, then releases it.
             _send_key_events(stream)
 
 
