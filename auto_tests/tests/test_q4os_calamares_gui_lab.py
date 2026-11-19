@@ -320,6 +320,11 @@ def test_partitions_next_without_signed_cow_is_refused_before_disk_setup(tmp_pat
     env = os.environ.copy()
     env["GITHUB_ACTIONS"] = "true"
     env["GASLUX_Q4OS_GRAPHICS_LAB_ONLY"] = "1"
+    env["GASLUX_Q4OS_LAUNCH_INSTALLER"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_WELCOME"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_LOCATION"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_KEYBOARD"] = "yes"
+    env["GASLUX_Q4OS_SELECT_SOFTWARE"] = "yes"
     env["GASLUX_Q4OS_ADVANCE_SOFTWARE"] = "yes"
     env["GASLUX_Q4OS_ADVANCE_PARTITIONS"] = "yes"
     result = subprocess.run(
