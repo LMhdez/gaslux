@@ -290,7 +290,9 @@ jobs:
           assert b"GASLUX_SHARED_COW_ROOT_PACSTRAP_FAILED" not in raw
           fifth = root / (profile + "-fifth-post-pacstrap-discard-serial.log")
           assert fifth.is_file() and not fifth.is_symlink()
-          manifest = fifth.with_name(fifth.name + ".sha256")
+          # The evidence producer replaces .log with .sha256; it does not append.
+          manifest = fifth.with_suffix(".sha256")
+          assert manifest.is_file() and not manifest.is_symlink()
           recorded, filename = manifest.read_text().split()
           assert filename == fifth.name
           assert recorded == hashlib.sha256(fifth.read_bytes()).hexdigest()
