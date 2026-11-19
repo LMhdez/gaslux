@@ -93,14 +93,14 @@ jobs:
           work="$RUNNER_TEMP/bazzite-stage2-blue-review"
           mkdir -m 700 "$work"
           gh run download 44375068915 -R LMhdez/gaslux \
-            --name bazzite-legacy-readonly-gpt-storage-evidence \
+            --name bazzite-legacy-diskless-locale-navigation-evidence \
             --dir "$work"
           python -m pip install pillow
           sudo env DEBIAN_FRONTEND=noninteractive \
             timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
           sudo env DEBIAN_FRONTEND=noninteractive \
             timeout --signal=TERM --kill-after=30s 400s apt-get install -y -qq \
-              tesseract-ocr qemu-utils gdisk
+              tesseract-ocr
           python3 auto_tests/bazzite_legacy_blue_button.py \
             --png "$work/language-after.png" \
             --ocr "$work/language-after.ocr" \
@@ -136,7 +136,7 @@ jobs:
           work="$RUNNER_TEMP/bazzite-prior-summary"
           mkdir -m 700 "$work"
           gh run download 44378715492 -R LMhdez/gaslux \
-            --name bazzite-legacy-readonly-gpt-storage-evidence \
+            --name bazzite-legacy-diskless-locale-navigation-evidence \
             --dir "$work"
           python -m pip install pillow
           python3 auto_tests/bazzite_legacy_destination_gate.py \
@@ -194,7 +194,7 @@ jobs:
             timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
           sudo env DEBIAN_FRONTEND=noninteractive \
             timeout --signal=TERM --kill-after=30s 900s apt-get install -y -qq \
-              qemu-system-x86 ovmf tesseract-ocr
+              qemu-system-x86 ovmf tesseract-ocr qemu-utils gdisk
           python -m pip install --user Pillow vncdotool
       - name: Download exact laboratory bytes and SHA gate before guest execution
         shell: bash
