@@ -17,7 +17,9 @@ from bazzite_gpt_fixture import Refusal, audit, prepare  # noqa: E402
     shutil.which("sgdisk") is None or shutil.which("qemu-img") is None,
     reason="gdisk and qemu-utils are required",
 )
-def test_real_gpt_fixture_has_only_synthetic_partition_types_and_discardable_cow(tmp_path):
+def test_real_gpt_fixture_has_only_synthetic_partition_types_and_discardable_cow(
+    tmp_path,
+):
     root = tmp_path / "bazzite-gpt-fixture"
     plan = prepare(root, tmp_path)
     assert plan["partitionTable"] == "gpt"
