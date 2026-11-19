@@ -13,3 +13,5 @@ Critérios cumulativos: branch fora das referências protegidas por PRs abertas,
 - Outros lotes só devem ser contabilizados após confirmação da API e evidência Actions.
 
 O histórico dos commits permanece em `main`, `dev` ou nas branches ainda abertas, conforme prova de ancestralidade Git. Esta operação não valida a estabilidade dos backends.
+
+- [Segunda execução — Actions #44586998974](https://github.com/LMhdez/gaslux/actions/runs/44586998974): `SUCCESS`, 30 eliminações adicionais, 231 branches inicial → 201 previstas; 62 candidatas no início. Zero recusas reportadas.
