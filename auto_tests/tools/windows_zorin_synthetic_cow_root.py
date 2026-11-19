@@ -140,6 +140,26 @@ def run_synthetic_zorin(iso: Path, evidence: Path) -> dict:
     mounted_iso = False
     chroot_paths: list[Path] = []
     try:
+        cmd("sudo", "mount", "-t", "iso9660", "-o", "ro,loop,nosuid,nodev,noexec",
+            str(iso), str(iso_mount))
+        mounted_iso = True
+        verification = (
+            'set -Eeuo pipefail; '
+            'source assets/live/libertix-distribution-common.sh; '
+            'source assets/live/libertix-install-runtime-common.sh; '
+            'rootfs="$(resolve_distribution_rootfs_or_die "$1")"; '
+            'assert_distribution_rootfs_compatible_or_die "$rootfs" zorin; '
+            'printf "%s" "$rootfs"'
+        )
+        rootfs = Path(cmd("bash", "-c", verification,
+                          "gaslux-zorin-synthetic", str(iso_mount)).stdout.strip())
+        require(rootfs.is_file() and not rootfs.is_symlink()
+                and rootfs.is_relative_to(iso_mount),
+                "Zorin ISO has no unique trusted SquashFS root")
+        cmd("sudo", "unsquashfs", "-f", "-processors", "2", "-d",
+            str(unpacked), str(rootfs), timeout=1100, capture=False)
+        cmd("sudo", "umount", str(iso_mount))
+        mounted_iso = False
         backing = workspace / "synthetic-no-windows.raw"
         overlay = workspace / "synthetic-zorin-cow.qcow2"
         archive = workspace / "zorin-root.tar.gz"
@@ -194,26 +214,6 @@ def run_synthetic_zorin(iso: Path, evidence: Path) -> dict:
             finally:
                 guest.close()
 
-        cmd("sudo", "mount", "-t", "iso9660", "-o", "ro,loop,nosuid,nodev,noexec",
-            str(iso), str(iso_mount))
-        mounted_iso = True
-        verification = StringShell = (
-            'set -Eeuo pipefail; '
-            'source assets/live/libertix-distribution-common.sh; '
-            'source assets/live/libertix-install-runtime-common.sh; '
-            'rootfs="$(resolve_distribution_rootfs_or_die "$1")"; '
-            'assert_distribution_rootfs_compatible_or_die "$rootfs" zorin; '
-            'printf "%s" "$rootfs"'
-        )
-        rootfs = Path(cmd("bash", "-c", verification,
-                          "gaslux-zorin-synthetic", str(iso_mount)).stdout.strip())
-        require(rootfs.is_file() and not rootfs.is_symlink()
-                and rootfs.is_relative_to(iso_mount),
-                "Zorin ISO has no unique trusted SquashFS root")
-        cmd("sudo", "unsquashfs", "-f", "-processors", "2", "-d",
-            str(unpacked), str(rootfs), timeout=1100, capture=False)
-        cmd("sudo", "umount", str(iso_mount))
-        mounted_iso = False
         os_release = cmd("sudo", "cat", str(unpacked / "etc/os-release")).stdout
         require(re.search(r"(?m)^ID=zorin$", os_release) is not None,
                 "extracted installed root has incorrect ID")
@@ -225,26 +225,119 @@ def run_synthetic_zorin(iso: Path, evidence: Path) -> dict:
                 "unsafe Zorin kernel version")
         require((unpacked / "lib/modules" / version).is_dir(),
                 "Zorin installed kernel modules are absent")
-        # Writes only into the extracted tree, before the private QCOW2 root import.
-        cmd("sudo", "tee", str(unpacked / "etc/fstab"), timeout=15,
-            capture=False, stdin_unsupported=True)
-        # tee above is intentionally not used: write with a bounded stdin only.
-        # This line is unreachable unless the code is replaced by a safe helper.
-        raise ZorinSyntheticError("target configuration writer not yet authorized")
+        # Update only the runner-local extracted Zorin tree. No Windows partition
+        # is mounted anywhere, even inside the synthetic libguestfs appliance.
+        for check in (unpacked / "etc", unpacked / "etc/initramfs-tools"):
+            require(check.is_dir() and not check.is_symlink(),
+                    "unsafe extracted Zorin configuration directory")
+        for name in ("fstab", "hostname"):
+            require(not (unpacked / "etc" / name).is_symlink(),
+                    "refusing symlink in Zorin target config")
+        subprocess.run(
+            ["sudo", "tee", str(unpacked / "etc/fstab")],
+            input=f"UUID={uuid} / ext4 defaults 0 1\n", text=True,
+            check=True, timeout=30, stdout=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["sudo", "tee", str(unpacked / "etc/hostname")],
+            input="GASLUXZORIN\n", text=True,
+            check=True, timeout=30, stdout=subprocess.DEVNULL,
+        )
+
+        builtins = prepare_mint_storage_initramfs_modules(unpacked, version)
+        for source, target in (
+            (("sudo", "mount", "-t", "proc", "proc"), unpacked / "proc"),
+            (("sudo", "mount", "--bind", "/dev"), unpacked / "dev"),
+            (("sudo", "mount", "--bind", "/dev/pts"), unpacked / "dev/pts"),
+        ):
+            # Register before opening a mount; failed mounts are inspected
+            # during cleanup, preventing recursive deletion into host devices.
+            chroot_paths.append(target)
+            cmd(*source, str(target), timeout=45)
+        cmd("sudo", "chroot", str(unpacked), "/usr/bin/env", "-u",
+            "CASPER_GENERATE_UUID", "update-initramfs", "-u", "-k", version,
+            timeout=900, capture=False)
+        initrd = unpacked / "boot" / f"initrd.img-{version}"
+        require(initrd.is_file() and not initrd.is_symlink()
+                and initrd.stat().st_size > 1024 * 1024,
+                "Zorin native initramfs was not generated")
+        listing = cmd("sudo", "chroot", str(unpacked), "lsinitramfs",
+                      f"/boot/initrd.img-{version}", timeout=120).stdout
+        verify_mint_storage_initramfs(listing, builtins)
+        require("default-boot-to-casper.conf" not in listing,
+                "native Zorin initramfs still boots Casper")
+        for path in reversed(chroot_paths):
+            cmd("sudo", "umount", str(path), timeout=90)
+        chroot_paths.clear()
+
+        require(not archive.exists() and not archive.is_symlink(),
+                "refusing reused private Zorin root archive")
+        cmd("sudo", "tar", "--numeric-owner", "--xattrs", "--acls",
+            "-C", str(unpacked), "-czf", str(archive), ".",
+            timeout=1800, capture=False)
+        cmd("sudo", "chown", f"{os.getuid()}:{os.getgid()}", str(archive))
+        archive.chmod(0o600)
+        require(archive.is_file() and archive.stat().st_size > 1024 * 1024,
+                "Zorin tar payload invalid")
+        # Reuse the existing libguestfs importer from the Mint experiment.
+        # It checks root UUID and hashes of all four other partitions before
+        # opening any writable mount, and again after completing tar_in.
+        _import_tar_into_exact_owned_root(overlay, archive, uuid, windows_hashes)
+        archive.unlink()
+
+        inspect_fifth(overlay, uuid, windows_hashes)
+        require(sha256_window(backing) == backing_before,
+                "immutable synthetic backing changed during Zorin import")
+        report = {
+            "source": "authentic-zorin-18.1-core-squashfs",
+            "isoSha256": ZORIN_SHA256,
+            "installedKernel": kernel.name,
+            "installedRootUuid": uuid,
+            "rootImportedIntoOwnedFifthExt4": True,
+            "syntheticWindowsShapedPartitionsUnchanged": True,
+            "syntheticWindowsPartitionSha256": windows_hashes,
+            "syntheticBackingSampleSha256": backing_before,
+            "installedZorinFirstBootVerified": False,
+            "realWindowsInstalledInBacking": False,
+            "sameDiskDualBootVerified": False,
+            "productionGrubVerified": False,
+            "updatesVerified": False,
+            "rollbackVerified": False,
+            "stable": False,
+        }
+        evidence.mkdir(mode=0o700)
+        (evidence / "zorin-synthetic-cow-import.json").write_text(
+            json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        )
+        print("PASS: genuine pinned Zorin 18.1 root imported into owned fifth ext4; "
+              "four synthetic Windows-shaped partition hashes preserved", flush=True)
+        print("NOT TESTED: installed Windows, boot, GRUB, updates, rollback", flush=True)
+        return report
     finally:
         for path in reversed(chroot_paths):
-            cmd("sudo", "umount", str(path))
+            subprocess.run(["sudo", "umount", str(path)], check=False,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if mounted_iso:
             subprocess.run(["sudo", "umount", str(iso_mount)], check=False,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        table = cmd("findmnt", "-rn", "-o", "TARGET").stdout.splitlines()
+        mounts = subprocess.run(
+            ["findmnt", "-rn", "-o", "TARGET"],
+            check=False, capture_output=True, text=True, timeout=20,
+        )
+        active = (
+            mounts.stdout.splitlines() if mounts.returncode == 0
+            else [str(workspace)]
+        )
         busy = any(path == str(workspace) or path.startswith(str(workspace) + "/")
-                   for path in table)
-        if not busy:
-            subprocess.run(["sudo", "rm", "-rf", "--one-file-system", "--", str(workspace)],
-                           check=False)
-        else:
-            raise ZorinSyntheticError("preserving mounted synthetic COW workspace")
+                   for path in active)
+        if busy:
+            raise ZorinSyntheticError(
+                "active mount or mount-table failure: preserve private Zorin workspace"
+            )
+        require(workspace.parent == runner and not workspace.is_symlink(),
+                "unsafe private cleanup scope")
+        subprocess.run(["sudo", "rm", "-rf", "--one-file-system", "--", str(workspace)],
+                       check=True, timeout=90)
 
 
 def sha256_window(backing: Path) -> str:
