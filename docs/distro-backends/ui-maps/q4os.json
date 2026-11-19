@@ -1,0 +1,515 @@
+{
+  "schemaVersion": 1,
+  "distribution": "q4os",
+  "iso": {
+    "version": "6.10 r2",
+    "url": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso",
+    "sha256": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d",
+    "sizeBytes": null,
+    "integrityGate": "sha256-matches-pinned-lab-digest; upstream-signature-not-proven"
+  },
+  "lab": {
+    "sourceCommit": "6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb",
+    "workflow": ".github/workflows/q4os-ui-repro-2vm.yml",
+    "vmReplicasRequired": 2,
+    "resolution": [
+      1280,
+      800
+    ],
+    "displayScaleFactor": null,
+    "windowsDiskAttached": false,
+    "secureBootMeasured": null
+  },
+  "states": [
+    {
+      "id": "desktop-before-launch",
+      "order": 0,
+      "screenshot": "vnc-before-icon-click.png",
+      "visualGate": "verified_after_close",
+      "title": "Q4OS Desktop",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Install Q4OS icon",
+          "type": "desktop-launcher",
+          "qtId": null,
+          "boundingBox": [
+            0,
+            0,
+            150,
+            160
+          ],
+          "action": "double-click installer icon"
+        }
+      ],
+      "proofs": []
+    },
+    {
+      "id": "calamares-welcome",
+      "order": 1,
+      "screenshot": "vnc-after-installer-icon.png",
+      "visualGate": "verified_native_calamares_welcome",
+      "title": "Welcome",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Next",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": [
+            955,
+            619,
+            1044,
+            668
+          ],
+          "action": "advance to Location"
+        }
+      ],
+      "proofs": []
+    },
+    {
+      "id": "calamares-location",
+      "order": 2,
+      "screenshot": "vnc-location-page.png",
+      "visualGate": "verified_native_calamares_location",
+      "title": "Location",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Next",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": [
+            961,
+            626,
+            1044,
+            663
+          ],
+          "action": "advance to Keyboard"
+        }
+      ],
+      "proofs": []
+    },
+    {
+      "id": "calamares-keyboard",
+      "order": 3,
+      "screenshot": "vnc-keyboard-page.png",
+      "visualGate": "verified_native_calamares_keyboard",
+      "title": "Keyboard",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Next",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": [
+            960,
+            626,
+            1044,
+            663
+          ],
+          "action": "advance to Software"
+        }
+      ],
+      "proofs": []
+    },
+    {
+      "id": "calamares-software-unselected",
+      "order": 4,
+      "screenshot": "vnc-software-page.png",
+      "visualGate": "verified_native_calamares_software_unselected",
+      "title": "Software",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Q4OS Desktop",
+          "type": "radio",
+          "qtId": null,
+          "boundingBox": [
+            327,
+            155,
+            500,
+            249
+          ],
+          "action": "select native desktop profile"
+        }
+      ],
+      "proofs": []
+    },
+    {
+      "id": "calamares-software-desktop-selected",
+      "order": 5,
+      "screenshot": "vnc-software-selected.png",
+      "visualGate": "verified_native_calamares_desktop_selected",
+      "title": "Software",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Next",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": [
+            961,
+            626,
+            1044,
+            663
+          ],
+          "action": "advance to Partitions"
+        }
+      ],
+      "proofs": []
+    },
+    {
+      "id": "calamares-partitions",
+      "order": 6,
+      "screenshot": "vnc-partitions-page.png",
+      "visualGate": "verified_synthetic_calamares_partitions_view",
+      "title": "Partitions",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Erase disk proposal (synthetic disposable COW only)",
+          "type": "radio",
+          "qtId": null,
+          "boundingBox": [
+            320,
+            250,
+            350,
+            310
+          ],
+          "action": "select proposal only, never execute installer"
+        }
+      ],
+      "proofs": []
+    },
+    {
+      "id": "calamares-partitions-proposal-only",
+      "order": 7,
+      "screenshot": "vnc-partitions-radio-selected.png",
+      "visualGate": "verified_synthetic_calamares_partitions_selected",
+      "title": "Partitions",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Next",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": [
+            957,
+            622,
+            1051,
+            663
+          ],
+          "action": "advance to Users without installation"
+        }
+      ],
+      "proofs": []
+    },
+    {
+      "id": "calamares-users-unfilled",
+      "order": 8,
+      "screenshot": "vnc-users-page.png",
+      "visualGate": "verified_native_calamares_users",
+      "title": "Users",
+      "visibleTextObserved": null,
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Account and password",
+          "type": "text-fields",
+          "qtId": null,
+          "boundingBox": [
+            320,
+            220,
+            740,
+            365
+          ],
+          "action": "DO NOT ENTER: read-only stop state"
+        }
+      ],
+      "proofs": []
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t1-desktop-before-launch-to-calamares-welcome",
+      "from": "desktop-before-launch",
+      "to": "calamares-welcome",
+      "action": "double-click installer icon",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 57,
+        "y": 39,
+        "boundingBox": [
+          0,
+          0,
+          150,
+          160
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "pending",
+      "proofs": []
+    },
+    {
+      "id": "t2-calamares-welcome-to-calamares-location",
+      "from": "calamares-welcome",
+      "to": "calamares-location",
+      "action": "advance to Location",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 1002,
+        "y": 644,
+        "boundingBox": [
+          955,
+          619,
+          1044,
+          668
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "pending",
+      "proofs": []
+    },
+    {
+      "id": "t3-calamares-location-to-calamares-keyboard",
+      "from": "calamares-location",
+      "to": "calamares-keyboard",
+      "action": "advance to Keyboard",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 1002,
+        "y": 644,
+        "boundingBox": [
+          961,
+          626,
+          1044,
+          663
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "pending",
+      "proofs": []
+    },
+    {
+      "id": "t4-calamares-keyboard-to-calamares-software-unselected",
+      "from": "calamares-keyboard",
+      "to": "calamares-software-unselected",
+      "action": "advance to Software",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 1002,
+        "y": 644,
+        "boundingBox": [
+          960,
+          626,
+          1044,
+          663
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "pending",
+      "proofs": []
+    },
+    {
+      "id": "t5-calamares-software-unselected-to-calamares-software-desktop-selected",
+      "from": "calamares-software-unselected",
+      "to": "calamares-software-desktop-selected",
+      "action": "select native desktop profile",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 392,
+        "y": 166,
+        "boundingBox": [
+          327,
+          155,
+          500,
+          249
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "pending",
+      "proofs": []
+    },
+    {
+      "id": "t6-calamares-software-desktop-selected-to-calamares-partitions",
+      "from": "calamares-software-desktop-selected",
+      "to": "calamares-partitions",
+      "action": "advance to Partitions",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 1002,
+        "y": 644,
+        "boundingBox": [
+          961,
+          626,
+          1044,
+          663
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "pending",
+      "proofs": []
+    },
+    {
+      "id": "t7-calamares-partitions-to-calamares-partitions-proposal-only",
+      "from": "calamares-partitions",
+      "to": "calamares-partitions-proposal-only",
+      "action": "select proposal only, never execute installer",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 334,
+        "y": 280,
+        "boundingBox": [
+          320,
+          250,
+          350,
+          310
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "pending",
+      "proofs": []
+    },
+    {
+      "id": "t8-calamares-partitions-proposal-only-to-calamares-users-unfilled",
+      "from": "calamares-partitions-proposal-only",
+      "to": "calamares-users-unfilled",
+      "action": "advance to Users without installation",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 1002,
+        "y": 644,
+        "boundingBox": [
+          957,
+          622,
+          1051,
+          663
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "pending",
+      "proofs": []
+    }
+  ],
+  "stopBoundary": {
+    "lastObservedState": "calamares-users-unfilled",
+    "nextStateUnobserved": "calamares-summary",
+    "nativeCalamaresInstallExecuted": false,
+    "windowsDiskModified": false,
+    "accountInputAttempted": false,
+    "reason": "The lab intentionally stops at the blank Users screen: no credentials, Summary navigation, Install confirmation or Calamares execution is authorized."
+  }
+}
