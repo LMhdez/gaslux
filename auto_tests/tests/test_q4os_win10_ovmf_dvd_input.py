@@ -155,8 +155,8 @@ def test_qmp_keyboard_press_is_separate_acknowledged_down_and_up():
         def __init__(self):
             self.writes = []
             self.replies = [
-                b'{"return":{},"id":"gaslux-ovmf-space-down"}\\n',
-                b'{"return":{},"id":"gaslux-ovmf-space-up"}\\n',
+                b'{"return":{},"id":"gaslux-ovmf-space-down"}\n',
+                b'{"return":{},"id":"gaslux-ovmf-space-up"}\n',
             ]
 
         def write(self, payload):
