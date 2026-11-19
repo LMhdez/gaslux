@@ -98,6 +98,43 @@ def configure_lab_power_button(target: Path) -> None:
             "Mint logind power-button policy was not written exactly")
 
 
+def configure_ephemeral_shutdown_service(target: Path) -> None:
+    """Install a one-boot shutdown witness in the disposable CI-only COW root."""
+    require(target.is_dir() and not target.is_symlink(),
+            "Mint target mount is not a real directory")
+    system_dir = target / "etc/systemd/system"
+    wants_dir = system_dir / "multi-user.target.wants"
+    unit = system_dir / "gaslux-ci-shutdown.service"
+    link = wants_dir / "gaslux-ci-shutdown.service"
+    require(system_dir.is_dir() and not system_dir.is_symlink(),
+            "Mint systemd unit directory is missing or unsafe")
+    require(not unit.exists() and not unit.is_symlink()
+            and not link.exists() and not link.is_symlink(),
+            "refusing to replace an existing Mint shutdown unit")
+    subprocess.run(["sudo", "install", "-d", "-m", "0755", str(wants_dir)],
+                   check=True, text=True, capture_output=True, timeout=30)
+    contents = (
+        "[Unit]\\n"
+        "Description=Gaslux disposable COW shutdown witness\\n"
+        "After=multi-user.target\\n"
+        "[Service]\\n"
+        "Type=oneshot\\n"
+        "ExecStartPre=/bin/sleep 15\\n"
+        "ExecStart=/bin/systemctl poweroff\\n"
+        "[Install]\\n"
+        "WantedBy=multi-user.target\\n"
+    )
+    subprocess.run(["sudo", "tee", str(unit)], input=contents, check=True,
+                   text=True, stdout=subprocess.DEVNULL, timeout=30)
+    subprocess.run(["sudo", "ln", "-s", "../gaslux-ci-shutdown.service", str(link)],
+                   check=True, text=True, capture_output=True, timeout=30)
+    require(unit.is_file() and not unit.is_symlink()
+            and unit.read_text(encoding="utf-8") == contents
+            and link.is_symlink()
+            and link.readlink() == Path("../gaslux-ci-shutdown.service"),
+            "ephemeral Mint shutdown witness was not installed exactly")
+
+
 def guestmount_command(overlay: Path, target: Path) -> list[str]:
     """Mount the stopped COW through FUSE for the runner with kernel permission checks."""
     return [
@@ -392,6 +429,7 @@ def install_mint_root_and_boot(
                 "Mint target kernel modules are missing")
         prepare_initramfs_modules(target, version)
         write_target_configuration(target, root_uuid)
+        configure_ephemeral_shutdown_service(target)
         configure_lab_power_button(target)
         run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
         run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
@@ -461,13 +499,9 @@ def install_mint_root_and_boot(
         serial = evidence / "mint-same-windows-cow-serial.log"
         require(not serial.exists() and not serial.is_symlink(),
                 "refusing reused Mint boot evidence")
-        monitor = temp / "mint-qemu-monitor.sock"
-        require(not monitor.exists() and not monitor.is_symlink(),
-                "refusing reused Mint QEMU monitor socket")
         qemu = subprocess.Popen([
             "qemu-system-x86_64", "-machine", "q35,accel=kvm", "-cpu", "host",
             "-smp", "2", "-m", "4096", "-display", "none",
-            "-monitor", f"unix:{monitor},server,nowait",
             "-net", "none", "-no-reboot", "-drive",
             f"if=none,id=windows-cow,format=qcow2,file={overlay}",
             "-device", "virtio-blk-pci,drive=windows-cow,bootindex=1",
@@ -485,32 +519,20 @@ def install_mint_root_and_boot(
                     if b"GASLUXMINT login:" in raw and b"Linux version" in raw:
                         break
                 if qemu.poll() is not None:
-                    raise MintOverlayError("QEMU stopped before Mint installed-root login")
+                    raise MintOverlayError("QEMU stopped before Mint live-root serial login")
                 time.sleep(3)
             else:
                 raise MintOverlayError("Mint same-COW firstboot timed out")
-            monitor_deadline = time.monotonic() + 30
-            channel = None
-            while time.monotonic() < monitor_deadline:
-                if monitor.exists() and monitor.is_socket():
-                    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    channel.connect(str(monitor))
-                    break
-                time.sleep(0.5)
-            require(channel is not None, "Mint QEMU monitor did not become available")
             try:
-                channel.recv(4096)
-                channel.sendall(b"system_powerdown\n")
-            finally:
-                channel.close()
-            try:
-                qemu.wait(timeout=90)
+                qemu.wait(timeout=120)
             except subprocess.TimeoutExpired as exc:
-                raise MintOverlayError("Mint guest did not complete ACPI poweroff") from exc
-            require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after guest poweroff")
+                raise MintOverlayError(
+                    "ephemeral systemd shutdown witness did not power off the Mint guest"
+                ) from exc
+            require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after systemd poweroff")
             shutdown_log = serial.read_bytes()
             require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
-                    "Mint guest did not emit a shutdown witness")
+                    "Mint guest did not emit a systemd shutdown witness")
         finally:
             if qemu.poll() is None:
                 qemu.terminate()
