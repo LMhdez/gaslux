@@ -116,7 +116,8 @@ def configure_ephemeral_shutdown_service(target: Path) -> None:
     contents = (
         "[Unit]\n"
         "Description=Gaslux disposable COW shutdown witness\n"
-        "After=multi-user.target\n"
+        "After=serial-getty@ttyS0.service\n"
+        "Wants=serial-getty@ttyS0.service\n"
         "[Service]\n"
         "Type=oneshot\n"
         "ExecStartPre=/bin/sleep 15\n"
