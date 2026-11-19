@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/q4os-win10-qmp-path-and-boot-proof
+      - fix/q4os-win10-first-logon-and-ovmf-diagnostics
     paths:
       - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
       - 'auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py'
@@ -86,6 +87,7 @@ jobs:
           image="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
           vars="$work/OVMF_VARS.fd"
           unattend="$work/Autounattend.xml"
+          first_logon="$work/GasluxFirstLogon.ps1"
           answer_iso="$work/unattend.iso"
           cp /usr/share/OVMF/OVMF_VARS_4M.fd "$vars"
           chmod 0600 "$vars"
@@ -93,6 +95,28 @@ jobs:
           password="Gaslux-$(openssl rand -hex 16)!"
           printf '::add-mask::%s\n' "$password"
           printf 'GASLUX_WIN10_LAB_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
+          # Keep PowerShell source out of a Bash-expanded inline command.
+          # The quoted heredoc preserves every PowerShell variable literally.
+          cat > "$first_logon" <<'PS1'
+          $ErrorActionPreference = 'Stop'
+          $evidence = 'C:\GasluxEvidence'
+          $recovery = 'R:\Recovery\WindowsRE'
+          New-Item -Force -ItemType Directory $evidence | Out-Null
+          New-Item -Force -ItemType Directory $recovery | Out-Null
+          $source = 'C:\Windows\System32\Recovery\Winre.wim'
+          if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw 'Windows RE image is missing' }
+          Copy-Item -LiteralPath $source -Destination (Join-Path $recovery 'Winre.wim') -Force
+          & reagentc.exe /setreimage /path $recovery
+          if ($LASTEXITCODE -ne 0) { throw "reagentc /setreimage failed: $LASTEXITCODE" }
+          & reagentc.exe /enable
+          if ($LASTEXITCODE -ne 0) { throw "reagentc /enable failed: $LASTEXITCODE" }
+          $info = & reagentc.exe /info 2>&1
+          $info | Set-Content -Encoding UTF8 (Join-Path $evidence 'winre-info.txt')
+          if (($info -join "`n") -notmatch 'Enabled') { throw 'Windows RE is not enabled' }
+          'GASLUX_WINDOWS_WINRE=PASS' | Set-Content -Encoding ASCII (Join-Path $evidence 'winre-status.txt')
+          'GASLUX_WINDOWS_FIRST_LOGON=PASS' | Set-Content -Encoding ASCII (Join-Path $evidence 'first-logon.txt')
+          shutdown.exe /s /t 20
+          PS1
           cat > "$unattend" <<XML
           <?xml version="1.0" encoding="utf-8"?>
           <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
@@ -137,12 +161,12 @@ jobs:
                 <OOBE><HideEULAPage>true</HideEULAPage><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE><NetworkLocation>Work</NetworkLocation><ProtectYourPC>3</ProtectYourPC><SkipMachineOOBE>true</SkipMachineOOBE><SkipUserOOBE>true</SkipUserOOBE></OOBE>
                 <UserAccounts><LocalAccounts><LocalAccount wcm:action="add"><Name>GasluxLab</Name><Group>Administrators</Group><Password><Value>$password</Value><PlainText>true</PlainText></Password></LocalAccount></LocalAccounts></UserAccounts>
                 <AutoLogon><Password><Value>$password</Value><PlainText>true</PlainText></Password><Enabled>true</Enabled><LogonCount>1</LogonCount><Username>GasluxLab</Username></AutoLogon>
-                <FirstLogonCommands><SynchronousCommand wcm:action="add"><Order>1</Order><Description>Write Gaslux first-logon evidence and power off</Description><CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "\$ErrorActionPreference='Stop'; New-Item -Force -ItemType Directory 'C:\GasluxEvidence' | Out-Null; New-Item -Force -ItemType Directory 'R:\Recovery\WindowsRE' | Out-Null; Copy-Item 'C:\Windows\System32\Recovery\Winre.wim' 'R:\Recovery\WindowsRE\Winre.wim' -Force; reagentc.exe /setreimage /path 'R:\Recovery\WindowsRE'; if (\$LASTEXITCODE -ne 0) { exit 31 }; reagentc.exe /enable; if (\$LASTEXITCODE -ne 0) { exit 32 }; reagentc.exe /info | Out-File 'C:\GasluxEvidence\winre-info.txt'; if ((Get-Content 'C:\GasluxEvidence\winre-info.txt' -Raw) -notmatch 'Enabled') { exit 33 }; 'GASLUX_WINDOWS_WINRE=PASS' | Set-Content 'C:\GasluxEvidence\winre-status.txt'; 'GASLUX_WINDOWS_FIRST_LOGON=PASS' | Set-Content 'C:\GasluxEvidence\first-logon.txt'; shutdown.exe /s /t 20"</CommandLine><RequiresUserInput>false</RequiresUserInput></SynchronousCommand></FirstLogonCommands>
+                <FirstLogonCommands><SynchronousCommand wcm:action="add"><Order>1</Order><Description>Configure WinRE and write first-logon evidence</Description><CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\GasluxFirstLogon.ps1</CommandLine><RequiresUserInput>false</RequiresUserInput></SynchronousCommand></FirstLogonCommands>
               </component>
             </settings>
           </unattend>
           XML
-          xorriso -as mkisofs -quiet -o "$answer_iso" -V GASLUXANSWER -J -r "$unattend"
+          xorriso -as mkisofs -quiet -o "$answer_iso" -V GASLUXANSWER -J -r "$unattend" "$first_logon"
           xmllint --noout "$unattend" 2>/dev/null || python - "$unattend" <<'PY'
           import sys
           import xml.etree.ElementTree as ET
