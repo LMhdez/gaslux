@@ -41,7 +41,10 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
     try:
         extracted_text = subprocess.run(
             ["tesseract", str(png), "stdout"],
-            check=True, capture_output=True, text=True, timeout=20,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
         ).stdout
         extracted_tsv = subprocess.run(
             ["tesseract", str(png), "stdout", "tsv"],
@@ -87,18 +90,17 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         if first["text"] != "advanced" or first["confidence"] < 60:
             continue
         line = [
-            item for item in words
+            item
+            for item in words
             if abs(item["top"] - first["top"]) <= 8
-            and abs(
-                (item["top"] + item["height"] // 2)
-                - (first["top"] + first["height"] // 2)
-            ) <= 8
+            and abs((item["top"] + item["height"] // 2) - (first["top"] + first["height"] // 2))
+            <= 8
         ]
         line.sort(key=lambda item: item["left"])
         for index, item in enumerate(line):
             if item is not first:
                 continue
-            phrase = line[index:index + 3]
+            phrase = line[index : index + 3]
             labels = [x["text"] for x in phrase]
             if len(phrase) != 3 or labels != ["advanced", "custom", "blivet-gui"]:
                 continue
