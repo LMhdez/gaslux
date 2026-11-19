@@ -48,7 +48,10 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
         ).stdout
         extracted_tsv = subprocess.run(
             ["tesseract", str(png), "stdout", "tsv"],
-            check=True, capture_output=True, text=True, timeout=20,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
         ).stdout
     except (OSError, subprocess.SubprocessError) as exc:
         raise BlivetObserverRefusal("Screenshot OCR extraction failed") from exc
