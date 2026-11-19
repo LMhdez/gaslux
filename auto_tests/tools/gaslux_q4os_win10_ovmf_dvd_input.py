@@ -43,6 +43,7 @@ def _owned_private_file_path(path: Path, root: Path) -> None:
             "windows10-qemu-serial.log",
             "windows10-qemu-process.log",
             "windows10-qemu-qmp.sock",
+            "windows10-ovmf-timeout.ppm",
         },
         "Unexpected Windows QEMU evidence path",
     )
@@ -127,6 +128,39 @@ def _send_key(sock: Path, pid: int) -> None:
             }
             stream.write((json.dumps(request, separators=(",", ":")) + "\r\n").encode())
             _read_qmp_reply(stream, "gaslux-ovmf-space")
+
+
+
+def _capture_timeout_diagnostics(sock: Path, pid: int, root: Path) -> None:
+    """Capture the actual OVMF/Windows screen and QMP run state before teardown."""
+    screenshot = root / "windows10-ovmf-timeout.ppm"
+    _owned_private_file_path(screenshot, root)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
+        channel.settimeout(5)
+        channel.connect(str(sock))
+        _require(hasattr(socket, "SO_PEERCRED"), "Unix peer credentials unavailable")
+        peer_pid, peer_uid, _ = struct.unpack(
+            "3i", channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
+        )
+        _require(peer_pid == pid and peer_uid == os.getuid(), "QMP diagnostic peer mismatch")
+        with channel.makefile("rwb", buffering=0) as stream:
+            greeting = stream.readline()
+            _require(bool(greeting) and len(greeting) <= 8192, "Missing QMP diagnostic greeting")
+            data = json.loads(greeting)
+            _require(isinstance(data, dict) and isinstance(data.get("QMP"), dict), "Invalid QMP greeting")
+            stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-diag-capabilities"}\\r\\n')
+            _read_qmp_reply(stream, "gaslux-diag-capabilities")
+            stream.write(b'{"execute":"query-status","id":"gaslux-diag-status"}\\r\\n')
+            status = _read_qmp_reply(stream, "gaslux-diag-status")
+            request = {
+                "execute": "screendump",
+                "arguments": {"filename": str(screenshot), "format": "ppm"},
+                "id": "gaslux-diag-screendump",
+            }
+            stream.write((json.dumps(request, separators=(",", ":")) + "\\r\\n").encode())
+            _read_qmp_reply(stream, "gaslux-diag-screendump")
+            print("GASLUX_WIN10_QMP_TIMEOUT_STATUS=" + json.dumps(status.get("return", {}), sort_keys=True), flush=True)
+            print("GASLUX_WIN10_OVMF_TIMEOUT_SCREENSHOT=" + str(screenshot), flush=True)
 
 
 def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list[str]) -> None:
@@ -292,8 +326,12 @@ def run(
             try:
                 proc.wait(timeout=remaining)
             except subprocess.TimeoutExpired as exc:
+                try:
+                    _capture_timeout_diagnostics(monitor, proc.pid, root)
+                except (WindowsDvdRefusal, OSError, ValueError, subprocess.SubprocessError) as diagnostic_error:
+                    print(f"GASLUX_WIN10_QMP_DIAGNOSTICS_UNAVAILABLE={diagnostic_error}", flush=True)
                 raise WindowsDvdRefusal(
-                    "QEMU Windows first-boot cycle exceeded bounded budget"
+                    "QEMU Windows first-boot cycle exceeded bounded budget; QMP status and screen captured when available"
                 ) from exc
             _require(proc.returncode == 0, "Windows QEMU cycle did not reset/shut down cleanly")
             with serial.open("rb") as capture:
