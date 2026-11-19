@@ -8,6 +8,11 @@ on:
       - auto_tests/test_windows_cachyos_qcow2_overlay_discard.py
       - auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
       - .github/workflows/windows-cachyos-overlay-guard-unit.yml
+  pull_request:
+    paths:
+      - auto_tests/test_windows_cachyos_qcow2_overlay_discard.py
+      - auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
+      - .github/workflows/windows-cachyos-overlay-guard-unit.yml
   workflow_dispatch:
 
 permissions:
