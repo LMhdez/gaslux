@@ -137,7 +137,7 @@ def _inspect(root: Path, manifest: dict) -> None:
         details = _run("sgdisk", f"--info={number}", str(image))
         normalized = details.upper()
         first_match = re.search(r"^First sector: (\d+)$", details, re.MULTILINE)
-        last_match = re.search(r"^Last sector: (\\d+)$", details, re.MULTILINE)
+        last_match = re.search(r"^Last sector: (\d+)$", details, re.MULTILINE)
         if (
             type_guid not in normalized
             or label.upper() not in normalized
