@@ -1,0 +1,132 @@
+name: Zorin genuine root import to synthetic Windows-shaped fifth GPT COW (VM only)
+
+on:
+  push:
+    branches:
+      - test/zorin181-synthetic-windows-cow-root-20261119
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Parse scripts and exercise read-only synthetic Zorin safety contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/windows_zorin_synthetic_cow_root.py \
+            auto_tests/test_windows_zorin_synthetic_cow_root.py \
+            auto_tests/tools/windows_mint_overlay_root.py
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_zorin_synthetic_cow_root.py' -v
+          if python3 auto_tests/tools/windows_zorin_synthetic_cow_root.py \
+              /missing/zorin.iso /tmp/unowned-evidence > /tmp/zorin-deny.log 2>&1; then
+            echo "::error::synthetic COW authorized without GitHub-only consent"
+            exit 1
+          fi
+          grep -q 'consent required\|consent' /tmp/zorin-deny.log
+          echo 'PASS: Zorin ISO/identity/disk fail-closed contracts'
+
+  genuine-zorin-fifth-root:
+    needs: fail-closed-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+      ZORIN_BYTES: '3909091328'
+      ZORIN_URL: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+      GASLUX_ZORIN_SYNTHETIC_COW_CONSENT: I_ACCEPT_ZORIN_ROOT_ON_SYNTHETIC_HOSTED_COW_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require exact GitHub runner, release and scratch space
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(id -u)" -ne 0
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+          cfg = json.loads(Path("release-config.json").read_text())
+          entry, = (d for d in cfg["distributions"] if d["id"] == "zorin")
+          assert entry["name"] == "Zorin OS 18.1 Core"
+          assert entry["osReleaseId"] == "zorin"
+          assert entry["isoInstallerSha256"] == os.environ["ZORIN_SHA"]
+          assert entry["isoInstallerSizeBytes"] == int(os.environ["ZORIN_BYTES"])
+          assert entry["isoInstaller"] == os.environ["ZORIN_URL"]
+          assert shutil.disk_usage(os.environ["RUNNER_TEMP"]).free > 22 * 1024**3
+          print("PASS: authenticated runner metadata and exact Zorin version pin")
+          PY
+      - name: Install synthetic GPT, immutable QCOW2 and real libguestfs dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo timeout --signal=TERM --kill-after=15s 600s \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 update -qq
+          sudo timeout --signal=TERM --kill-after=15s 900s \
+            env DEBIAN_FRONTEND=noninteractive \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
+            install -y --no-install-recommends \
+            aria2 squashfs-tools gdisk dosfstools e2fsprogs util-linux \
+            python3-guestfs libguestfs-tools qemu-system-x86 \
+            qemu-utils linux-image-virtual
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 -c 'import guestfs; print("PASS: real guestfs is available")'
+      - name: Obtain real Zorin ISO and independently verify every source byte
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/zorin-synthetic-iso"
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=5 --retry-wait=10 --timeout=90 --connect-timeout=30 \
+            --check-integrity=true --checksum="sha-256=$ZORIN_SHA" \
+            --dir="$RUNNER_TEMP/zorin-synthetic-iso" --out=zorin.iso "$ZORIN_URL"
+          iso="$RUNNER_TEMP/zorin-synthetic-iso/zorin.iso"
+          test -f "$iso" && test ! -L "$iso"
+          test "$(stat -c %s "$iso")" = "$ZORIN_BYTES"
+          printf '%s  %s\n' "$ZORIN_SHA" "$iso" | sha256sum -c --status
+      - name: Import genuine installed Zorin root only into synthetic fifth ext4; verify other hashes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_zorin_synthetic_cow_root.py \
+            "$RUNNER_TEMP/zorin-synthetic-iso/zorin.iso" \
+            "$RUNNER_TEMP/zorin-synthetic-cow-evidence"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads((Path(os.environ["RUNNER_TEMP"])
+              / "zorin-synthetic-cow-evidence/zorin-synthetic-cow-import.json").read_text())
+          assert report["rootImportedIntoOwnedFifthExt4"] is True
+          assert report["syntheticWindowsShapedPartitionsUnchanged"] is True
+          assert len(report["syntheticWindowsPartitionSha256"]) == 4
+          for field in ("realWindowsInstalledInBacking", "installedZorinFirstBootVerified",
+                        "sameDiskDualBootVerified", "productionGrubVerified",
+                        "updatesVerified", "rollbackVerified", "stable"):
+              assert report[field] is False, field
+          print("PASS: genuine Zorin root imported into private synthetic COW; no Windows claims")
+          PY
+          echo 'NOT TESTED: Windows installed, independent Linux boot, GRUB, rollback, hardware'
+      - name: Retain bounded JSON evidence only, not Windows, disk, ISO or SquashFS
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-181-authentic-root-synthetic-fifth-cow-evidence
+          path: ${{ runner.temp }}/zorin-synthetic-cow-evidence/
+          retention-days: 14
+          if-no-files-found: warn
