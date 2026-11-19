@@ -24,10 +24,11 @@ def witness(uuid=UUID, run_id=RUN, *, second_boot=False) -> bytes:
         + " rw console=ttyS0,115200n8 systemd.unit=multi-user.target\n"
         "[ OK ] Reached target Switch Root.\n"
         "Welcome to CachyOS!\n"
-        ("GASLUX_VM_INSTALLED_RW_CHILD_SECONDBOOT_PASS:" if second_boot
-         else "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:") + run_id + ":" + uuid + "\n"
-        "[ OK ] Reached target System Power Off.\n"
-        "[   45.058170] reboot: Power down\n"
+        + ("GASLUX_VM_INSTALLED_RW_CHILD_SECONDBOOT_PASS:" if second_boot
+           else "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:")
+        + run_id + ":" + uuid + "\n"
+        + "[ OK ] Reached target System Power Off.\n"
+        + "[   45.058170] reboot: Power down\n"
     ).encode("ascii")
 
 
