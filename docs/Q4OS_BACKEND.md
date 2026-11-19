@@ -294,18 +294,30 @@ profile builder compares the entire execution order with the
 ISO-verified, allowlisted sequence and rechecks all 12 extracted
 Q4OS process-hook/script SHA-256 records.
 
-A newly generated, **inert and non-activatable** Calamares overlay
-keeps the original job order but blocks the three native Q4OS
-process hooks (`command: /bin/false`), GRUB installation, GRUB
-configuration and `efibootmgr` (`/bin/false`), disables upstream
-`installEFIFallback: true`, and removes the unattended
-`packages` removal list. This is intentionally an **abort-by-default**
-configuration, not a deployable Calamares installation profile. A
+The source **29-job graph is preserved only in the audit JSON**, never
+as an effective executable list. The generated `settings.conf` has
+`exec: []`, with only inert `welcome` and `finished` views: it
+cannot run even its first `partition` job if accidentally activated.
+Defence in depth also replaces the three upstream Q4OS process hooks
+with `command: /bin/false`, blocks GRUB installation/configuration
+and `efibootmgr` (`/bin/false`), disables the upstream
+`installEFIFallback: true` and removes the native unattended APT
+removal list. This is an **abort-by-default diagnostic profile**, not
+a deployable installer. A
 missing source, changed module command, changed execution sequence,
 tampered per-file SHA, symlink or existing output directory causes
 a refusal before generating the profile. The output is written only
 within the isolated GitHub Actions evidence directory, not to
 `/etc/calamares` on the host or an installed system.
+
+
+[Full pinned-ISO and two-boot QEMU run #43989978204](https://github.com/LMhdez/gaslux/actions/runs/43989978204)
+passed at `123d0c5`, with independent artifact inspection showing
+the native 29-job source sequence and previous owned-GRUB boot.
+**That run preceded the zero-effective-job safety change**. The
+latest version has been checked by Python/Ruff regressions, and
+its own full ISO/QEMU run must be checked independently before
+claiming exact-head end-to-end coverage.
 
 The profile audit sets
 `calamaresJobEngineExecuted=false`,
