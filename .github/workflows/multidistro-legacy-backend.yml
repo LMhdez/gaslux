@@ -5,6 +5,7 @@ on:
     branches:
       - dev
       - feature/multidistro-legacy-backend-gate
+      - test/mint-squashfs-identity-contracts-20261119
   pull_request:
     paths:
       - 'Installation/**'
