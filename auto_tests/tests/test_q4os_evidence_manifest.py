@@ -93,3 +93,18 @@ def test_manifest_refuses_symlinked_manifest(tmp_path):
     manifest.symlink_to(directory / "serial.log")
     with pytest.raises(EvidenceManifestError, match="manifest is missing or unsafe"):
         verify_manifest(directory)
+
+
+def test_manifest_refuses_symlinked_evidence_directory(tmp_path):
+    directory = _evidence(tmp_path)
+    alias = tmp_path / "evidence-alias"
+    alias.symlink_to(directory, target_is_directory=True)
+    with pytest.raises(EvidenceManifestError, match="directory is missing or unsafe"):
+        verify_manifest(alias)
+
+
+def test_manifest_requires_directory_open_flag(tmp_path, monkeypatch):
+    directory = _evidence(tmp_path)
+    monkeypatch.delattr("os.O_DIRECTORY", raising=False)
+    with pytest.raises(EvidenceManifestError, match="does not expose O_DIRECTORY"):
+        create_manifest(directory)
