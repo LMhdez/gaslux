@@ -25,11 +25,13 @@ RUN_ID = "gaslux-test-run-01"
 
 
 def witness(uuid=ROOT_UUID):
-    # Modeled on the genuine independent installed-CachyOS first boot
-    # from Actions #43991443719 (artifact #14289991307); no fabricated
-    # "Linux version" or "Powering off." line which that COM1 lacks.
+    # Modeled on the genuine Windows-backed installed CachyOS first boot:
+    # Actions #44434724549, artifact #14489666084. The kernel's version
+    # and command-line records must match our signed root-only plan.
     return (
         "GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:" + uuid + "\n"
+        "[    0.000000] Linux version 6.18.60-2-cachyos-lts (linux-cachyos-lts@cachyos)\n"
+        "[    0.114074] Kernel command line: root=UUID=" + uuid + " ro systemd.unit=poweroff.target\n"
         "[    0.699368] virt/tdx: TDX not supported by the host platform\n"
         "\x1b]3008;user=root;pid=1;comm=systemd;type=boot\x1b\\\n"
         "[ OK ] Reached target Switch Root.\n"
@@ -62,9 +64,12 @@ class InstalledReadOnlyFirstbootContracts(unittest.TestCase):
     def test_native_kernel_systemd_and_clean_poweroff_are_all_required(self):
         firstboot.verify_installed_poweroff_serial(witness(), ROOT_UUID)
         for failure in (
-            witness().replace(b"[    0.699368] virt/tdx",
-                              b"GRUB version plus virt/tdx").replace(
-                b"[   45.058170] reboot: Power down", b"reboot: Power down"),
+            witness().replace(b"Linux version", b"GRUB version"),
+            witness().replace(b"Kernel command line", b"GRUB command line"),
+            witness().replace(b"root=UUID=", b"root=PARTUUID="),
+            witness().replace(b" ro systemd.unit=", b" rw systemd.unit="),
+            witness().replace(b"systemd.unit=poweroff.target",
+                              b"systemd.unit=multi-user.target"),
             witness().replace(b"comm=systemd;type=boot",
                               b"comm=not-systemd;type=boot"),
             witness().replace(b"CachyOS", b"foreign-os"),
