@@ -409,7 +409,8 @@ def verify_lab_root_write_grant(
         "hostOverlayBackingProofSha256", "sourceImageReadOnly",
         "discardableOverlay", "windowsEspWritesAllowed",
         "strictPacmanBuilderSha256", "pacmanTrustGuardSha256",
-        "sharedRootPacstrapSha256", "archisoHandoffVerifierSha256",
+        "sharedRootPacstrapSha256", "installedConfigurationSha256",
+        "archisoHandoffVerifierSha256",
         "archisoGuestProbeSha256", "gptReaderSha256",
         "guestInstallScriptSha256", "guestLaunchScriptSha256",
     }
@@ -499,6 +500,7 @@ def verify_lab_root_write_grant(
     # The real guest control medium is attached readonly=on and mounted ro.
     for filename, field in (
         ("cachyos_windows_shared_root_pacstrap.py", "sharedRootPacstrapSha256"),
+        ("cachyos_configure_installed.py", "installedConfigurationSha256"),
         ("cachyos_windows_shared_archiso_handoff.py", "archisoHandoffVerifierSha256"),
         ("cachyos_windows_shared_archiso_guest_probe.py", "archisoGuestProbeSha256"),
         ("windows_cachyos_qcow2_gpt_readonly.py", "gptReaderSha256"),
