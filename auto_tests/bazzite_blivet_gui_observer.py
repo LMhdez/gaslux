@@ -125,11 +125,15 @@ def verify_advanced_custom_selected(png: Path, ocr_path: Path, tsv_path: Path) -
         raise BlivetObserverRefusal("Advanced Custom selection page identity not observed")
     with Image.open(png) as image:
         rgb = image.convert("RGB")
-        selected = list(rgb.crop((438, 470, 459, 491)).getdata())
+        selected = list(rgb.crop((438, 470, 459, 491)).get_flattened_data())
         custom = list(rgb.crop((229, 470, 250, 491)).getdata())
         automatic = list(rgb.crop((20, 470, 41, 491)).getdata())
     def blue_count(samples):
-        return sum(1 for red, green, blue in samples if blue >= 170 and blue > red * 1.25 and blue > green * 1.05)
+        return sum(
+            1
+            for red, green, blue in samples
+            if blue >= 170 and blue > red * 1.25 and blue > green * 1.05
+        )
     selected_blue = blue_count(selected)
     other_blue = max(blue_count(custom), blue_count(automatic))
     if selected_blue < 8 or other_blue > 2:
