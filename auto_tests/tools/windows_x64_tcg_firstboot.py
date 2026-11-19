@@ -1004,6 +1004,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verify-pop-post-pair-windows-reboot", action="store_true",
                     help="hosted Windows 10 only: independent guest serial proof "
                          "after staging ESP+root in disposable child QCOW2")
+    ap.add_argument("--probe-pop-live-post-pair", action="store_true",
+                    help="after real Windows post-pair reboot, boot exactly pinned "
+                         "signed Pop 24.04 live ISO with the same child QCOW2 "
+                         "attached READ-ONLY; no distinst or disk write")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -1019,6 +1023,16 @@ def main(argv: list[str] | None = None) -> int:
     if (args.stage_pop_linux_root_overlay
             and args.stage_pop_independent_esp_root_overlay):
         raise SystemExit("refuse mutually exclusive Pop COW staging modes")
+    if args.probe_pop_live_post_pair and not (
+        args.verify_pop_post_pair_windows_reboot
+        and args.stage_pop_independent_esp_root_overlay
+        and args.profile == "win10_22h2_en_us_x64"
+        and args.accel == "kvm"
+        and os.environ.get("GASLUX_POP_WIN10_LIVE_CONSENT")
+        == "I_ACCEPT_SIGNED_POP_ISO_READ_ONLY_GENUINE_WINDOWS_COW_VM"
+    ):
+        raise SystemExit("signed Pop live lab requires independent genuine "
+                         "Windows third-boot proof and hosted-only consent")
     if args.verify_pop_post_pair_windows_reboot and not (
         args.stage_pop_independent_esp_root_overlay
         and args.audit_installed_gpt_readonly
@@ -1098,6 +1112,8 @@ def main(argv: list[str] | None = None) -> int:
         report["ownedPopEspAndRootGptEntriesStagedInCOW"] = False
     if args.verify_pop_post_pair_windows_reboot:
         report["windowsPostPopPairCOWBootVerified"] = False
+    if args.probe_pop_live_post_pair:
+        report["popOfficialLiveIsoBootedSameWindowsCowReadOnly"] = False
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
@@ -1319,8 +1335,32 @@ def main(argv: list[str] | None = None) -> int:
                                         "windowsGuestPostPairSerialSha256": digest,
                                         "originalWindowsOvmfVarsUnchanged": True,
                                     }
+                            pop_live_callback = None
+                            if args.probe_pop_live_post_pair:
+                                def pop_live_callback(overlay, plan, before, after):
+                                    # Verified Windows has already booted
+                                    # without floppy/DVD; reclaim ONLY the
+                                    # disposable installer ISO files before
+                                    # downloading the separately signed Pop ISO.
+                                    for lab_iso in {iso, boot_iso}:
+                                        require(
+                                            lab_iso.parent == workspace
+                                            and lab_iso.is_file()
+                                            and not lab_iso.is_symlink(),
+                                            "unowned Windows lab ISO cleanup",
+                                        )
+                                        lab_iso.unlink()
+                                    from windows10_popos_live_cow_host import (
+                                        run_official_pop_windows_cow_live_probe,
+                                    )
+                                    return run_official_pop_windows_cow_live_probe(
+                                        overlay, plan, before, after,
+                                        workspace, evidence,
+                                    )
                             pair_proof = stage_owned_esp_root(
-                                disk, evidence, post_boot_callback=post_callback,
+                                disk, evidence,
+                                post_boot_callback=post_callback,
+                                pop_live_callback=pop_live_callback,
                             )
                             require(
                                 pair_proof["ownedPopEspAndRootGptEntriesStagedInCOW"]
@@ -1339,6 +1379,15 @@ def main(argv: list[str] | None = None) -> int:
                                     "Windows post-pair boot was not reconciled",
                                 )
                                 report["windowsPostPopPairCOWBootVerified"] = True
+                            if args.probe_pop_live_post_pair:
+                                require(
+                                    pair_proof["popOfficialLiveIsoBootedSameWindowsCowReadOnly"]
+                                    and pair_proof["windowsCOWQcow2UnchangedByPopLive"]
+                                    and pair_proof["distinstExecutionAuthorized"] is False
+                                    and not pair_proof["sameDiskDualBootVerified"],
+                                    "signed Pop live Windows/Pop readonly evidence missing",
+                                )
+                                report["popOfficialLiveIsoBootedSameWindowsCowReadOnly"] = True
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
