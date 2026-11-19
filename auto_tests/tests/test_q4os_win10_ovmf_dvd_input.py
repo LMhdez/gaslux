@@ -156,3 +156,8 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     assert "cycle_limit" in workflow
     assert "-no-reboot" in workflow
     assert "qemu-nbd --read-only" in workflow
+    # GPTAttributes is not an unattended ModifyPartition setting. Apply it
+    # only inside the disposable guest after WinRE has been registered.
+    assert "<GPTAttributes>" not in workflow
+    assert "gpt attributes=0x8000000000000001" in workflow
+    assert "remove letter=R" in workflow
