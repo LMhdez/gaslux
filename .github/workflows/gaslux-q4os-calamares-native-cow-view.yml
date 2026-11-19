@@ -81,7 +81,8 @@ jobs:
             auto_tests/tests/test_q4os_users_visual_gate.py
           python -m pytest -q \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
+            auto_tests/tests/test_q4os_users_visual_gate.py
 
       - name: Download and re-verify pinned Q4OS 6.10 r2 native ISO
         shell: bash
