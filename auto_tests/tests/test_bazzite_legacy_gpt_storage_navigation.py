@@ -1,4 +1,5 @@
 """Contracts for the GPT guest's one permitted storage-navigation click."""
+
 import sys
 from pathlib import Path
 
@@ -21,19 +22,51 @@ No network devices available
 BAZZITE 42 INSTALLATION
 Quit Begin Installation
 """
-HEADER = "\t".join(
+HEADER = "\\t".join(
     [
-        "level", "page_num", "block_num", "par_num", "line_num", "word_num",
-        "left", "top", "width", "height", "conf", "text",
+        "level",
+        "page_num",
+        "block_num",
+        "par_num",
+        "line_num",
+        "word_num",
+        "left",
+        "top",
+        "width",
+        "height",
+        "conf",
+        "text",
     ]
-) + "\n"
+) + "\\n"
 ROW_ONE = [
-    "5", "1", "11", "1", "1", "1", "674", "322", "81", "12", "96.8", "Installation"
+    "5",
+    "1",
+    "11",
+    "1",
+    "1",
+    "1",
+    "674",
+    "322",
+    "81",
+    "12",
+    "96.8",
+    "Installation",
 ]
 ROW_TWO = [
-    "5", "1", "11", "1", "1", "2", "759", "322", "83", "12", "92.8", "Destination"
+    "5",
+    "1",
+    "11",
+    "1",
+    "1",
+    "2",
+    "759",
+    "322",
+    "83",
+    "12",
+    "92.8",
+    "Destination",
 ]
-TSV = HEADER + "\t".join(ROW_ONE) + "\n" + "\t".join(ROW_TWO) + "\n"
+TSV = HEADER + "\\t".join(ROW_ONE) + "\\n" + "\\t".join(ROW_TWO) + "\\n"
 
 
 def test_locates_only_the_unique_destination_navigation_tile():
