@@ -113,6 +113,12 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+
+### Restrições de produto do instalador novo verificadas em fonte oficial
+[DOCUMENTADO — upstream] O [guia Legacy da Bazzite](https://docs.bazzite.gg/General/Installation_Guide/legacy-install/) declara expressamente que as ISOs Legacy continuam disponíveis porque o **instalador novo ainda não suporta particionamento manual**. O [guia actual](https://docs.bazzite.gg/General/Installation_Guide/install-guide/) remete casos que exigem particionamento manual para a mídia Legacy. Este bloqueio upstream é independente de Bazzite conseguir arrancar em UEFI/GPT: para preservar Windows e controlar cada intervalo, a selecção da ISO/instalador é parte do preflight; **não se pode tratar o novo instalador como pronto para uso desatendido em disco partilhado**. A [documentação Secure Boot](https://docs.bazzite.gg/General/Installation_Guide/secure_boot/) exige confirmação pelo MokManager em certas cadeias, incompatível com a regra Gaslux sem intervenção. 
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
