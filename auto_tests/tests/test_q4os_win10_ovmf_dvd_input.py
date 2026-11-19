@@ -134,10 +134,7 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github/workflows/gaslux-q4os-windows10-qcow2.yml").read_text()
     assert "gaslux_q4os_win10_ovmf_dvd_input.py" in workflow
-    assert (
-        "send-key"
-        in (root / "auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py").read_text()
-    )
+    assert "send-key" in (root / "auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py").read_text()
     assert "GASLUX_WIN10_UEFI_OPTICAL_INPUT_LAB_ONLY: 'yes'" in workflow
     assert "timeout-minutes: 90" in workflow
     assert "windows10-qemu-qmp.sock" in workflow
