@@ -8,6 +8,7 @@ It is for installer discovery only and cannot authorize installation.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -63,11 +64,39 @@ def _file(path: Path) -> os.stat_result:
     return info
 
 
-def _hash(path: Path) -> str:
+def _hash_sparse(path: Path) -> str:
+    """Hash allocated extents and their offsets without reading sparse zero ranges."""
+    info = path.stat()
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(4 * 1024 * 1024), b""):
-            digest.update(chunk)
+    digest.update(b"gaslux-sparse-file-v1\\0")
+    digest.update(info.st_size.to_bytes(8, "big"))
+    digest.update(info.st_blocks.to_bytes(8, "big"))
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        offset = 0
+        while offset < info.st_size:
+            try:
+                data = os.lseek(fd, offset, os.SEEK_DATA)
+            except OSError as exc:
+                if exc.errno == errno.ENXIO:
+                    break
+                raise Refusal("Filesystem cannot prove sparse extent boundaries") from exc
+            hole = os.lseek(fd, data, os.SEEK_HOLE)
+            if hole <= data:
+                raise Refusal("Invalid sparse extent geometry")
+            digest.update(data.to_bytes(8, "big"))
+            digest.update((hole - data).to_bytes(8, "big"))
+            remaining = hole - data
+            os.lseek(fd, data, os.SEEK_SET)
+            while remaining:
+                chunk = os.read(fd, min(4 * 1024 * 1024, remaining))
+                if not chunk:
+                    raise Refusal("Unexpected EOF inside allocated extent")
+                digest.update(chunk)
+                remaining -= len(chunk)
+            offset = hole
+    finally:
+        os.close(fd)
     return digest.hexdigest()
 
 
@@ -84,12 +113,12 @@ def _inspect(root: Path, manifest: dict) -> None:
         raise Refusal("GPT base must be read-only")
     if info.st_size != SIZE_GIB * 1024**3:
         raise Refusal("Unexpected GPT base size")
-    if _hash(image) != manifest["baseSha256"]:
+    if _hash_sparse(image) != manifest["baseSparseIdentitySha256"]:
         raise Refusal("GPT base hash changed")
     _run("sgdisk", "--verify", str(image))
     for number, code, label in PARTITIONS:
         details = _run("sgdisk", f"--info={number}", str(image))
-        if f" {code} " not in details or f" {label}" not in details:
+        if f" {code} " not in details or label not in details:
             raise Refusal(f"GPT partition {number} identity mismatch")
     overlay_info_json = json.loads(
         _run("qemu-img", "info", "--output=json", str(overlay))
@@ -143,7 +172,7 @@ def prepare(root: Path, runner_temp: Path) -> dict:
         "installationAuthorized": False,
         "storageInspectionOnly": True,
         "virtualSizeBytes": SIZE_GIB * 1024**3,
-        "baseSha256": _hash(image),
+        "baseSparseIdentitySha256": _hash_sparse(image),
         "baseIdentity": [image_info.st_dev, image_info.st_ino],
         "overlayIdentity": [overlay_info.st_dev, overlay_info.st_ino],
         "root": str(root),
@@ -193,7 +222,7 @@ def audit(root: Path, runner_temp: Path, *, discard: bool) -> dict:
     }
     if discard:
         (root / OVERLAY_NAME).unlink()
-        if _hash(root / IMAGE_NAME) != manifest["baseSha256"]:
+        if _hash(root / IMAGE_NAME) != manifest["baseSparseIdentitySha256"]:
             raise Refusal("GPT base changed after overlay removal")
         result["overlayDiscarded"] = True
     return result
