@@ -139,7 +139,6 @@ def test_screenshot_gate_is_exact_official_q4os_native_partitions():
     assert "0416af48c325376e056f6ef8707b2ebdaedca7f935f2ddf8fc37bc93684d9512" in gate
 
 
-
 def test_recovery_evidence_reader_accepts_only_owned_regular_files(tmp_path):
     evidence = tmp_path / "owned-evidence.json"
     evidence.write_bytes(b'{"safe":true}')
