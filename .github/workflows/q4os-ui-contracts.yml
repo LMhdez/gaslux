@@ -38,5 +38,5 @@ jobs:
           python -m pip install pytest jsonschema ruff
           python -m compileall -q auto_tests/tests/test_q4os_ui_map_contract.py
           python -m ruff check --config auto_tests/pyproject.toml auto_tests/tests/test_q4os_ui_map_contract.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_q4os_ui_map_contract.py
+          python -m ruff format --diff --check --config auto_tests/pyproject.toml auto_tests/tests/test_q4os_ui_map_contract.py
           python -m pytest -q auto_tests/tests/test_q4os_ui_map_contract.py
