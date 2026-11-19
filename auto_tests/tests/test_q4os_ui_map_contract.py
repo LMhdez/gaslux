@@ -66,8 +66,8 @@ def test_state_machine_order_and_coordinates(documents: tuple[dict, dict]) -> No
         x, y = loc["x"], loc["y"]
         assert isinstance(x, int) and isinstance(y, int)
         assert 0 <= x < 1280 and 0 <= y < 800
-        l, t, r, b = loc["boundingBox"]
-        assert l <= x < r and t <= y < b
+        left, top, right, bottom = loc["boundingBox"]
+        assert left <= x < right and top <= y < bottom
         if transition["status"] == "verified":
             assert len(transition["proofs"]) == 2
         else:
@@ -106,7 +106,10 @@ def test_only_original_images_can_support_a_verified_claim(
         assert all(r["result"] == "success" for r in evidence["runs"])
         assert {r["artifactId"] for r in evidence["runs"]} == artifact_ids
         assert len({r["replica"] for r in evidence["runs"]}) == 2
-        assert all(len(r["screenshots"]) == 9 and len(r["transitions"]) == 8 for r in evidence["runs"])
+        assert all(
+            len(run["screenshots"]) == 9 and len(run["transitions"]) == 8
+            for run in evidence["runs"]
+        )
         assert mapping["iso"]["sizeBytes"] == evidence["iso"]["sizeBytes"]
 
 
