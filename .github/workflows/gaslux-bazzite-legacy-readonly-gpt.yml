@@ -43,7 +43,6 @@ jobs:
             auto_tests/tests/test_bazzite_legacy_blue_button.py \
             auto_tests/tests/test_bazzite_legacy_destination_gate.py \
             auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py \\
-            auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py \\
             auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_legacy_diskless_navigation.py \
