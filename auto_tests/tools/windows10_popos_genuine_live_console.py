@@ -21,6 +21,10 @@ MOUNT = re.compile(rb"(?m)^GASLUX_POP_LAB_CONTROL_MOUNTED=1\r?$")
 HASHES = re.compile(rb"(?m)^GASLUX_POP_LAB_CONTROL_SHA_VERIFIED=1\r?$")
 SUCCESS = re.compile(rb"(?m)^GASLUX_POP_LIVE_GENUINE_WIN10_COW_GPT_VERIFIED=1\r?$")
 REFUSED = re.compile(rb"(?m)^GASLUX_POP_LIVE_WINDOWS_GPT_REFUSED=[^\r\n]+\r?$")
+RESULT = re.compile(
+    rb"(?m)^GASLUX_POP_LIVE_(?:GENUINE_WIN10_COW_GPT_VERIFIED=1|"
+    rb"WINDOWS_GPT_REFUSED=[^\r\n]+)\r?$"
+)
 JSON_MARKER = re.compile(rb"(?m)^GASLUX_POP_LIVE_WINDOWS_GPT_EVIDENCE_JSON=(\{[^\r\n]+\})\r?$")
 SYNCDONE = re.compile(rb"(?m)^GASLUX_POP_LIVE_SYNC_DONE=1\r?$")
 
@@ -72,7 +76,7 @@ def run(port: Path, transcript: bytearray) -> bytes:
                 b"GASLUX_POP_LIVE_GPT_RO_CONSENT="
                 b"I_ACCEPT_DISPOSABLE_GUEST_GPT_READ_ONLY "
                 b"python3 -B windows10_popos_genuine_live_guest_probe.py\r",
-                SUCCESS, 190,
+                RESULT, 190,
             ),
         ]
         for command, expected, secs in stages:
