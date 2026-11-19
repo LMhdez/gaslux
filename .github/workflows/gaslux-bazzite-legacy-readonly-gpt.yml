@@ -511,6 +511,47 @@ jobs:
           }, indent=2, sort_keys=True))
           PY
           cat bazzite-legacy-readonly-gpt-evidence/summary.json
+      - name: Enforce observed Custom-only, no-install and no-write result
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          summary=bazzite-legacy-readonly-gpt-evidence/summary.json
+          gate=bazzite-legacy-readonly-gpt-evidence/custom-after-gate.json
+          [[ -s "$summary" && -s "$gate" ]] || {
+            echo 'Missing mandatory Custom selection evidence' >&2
+            exit 1
+          }
+          python3 - "$summary" "$gate" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          gate = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          required_true = (
+              summary.get("labOnly") is True,
+              summary.get("syntheticGuestGptOnly") is True,
+              summary.get("hostBackingImmutable") is True,
+              summary.get("customRadioClickGatePassed") is True,
+              summary.get("customSelectedObserved") is True,
+              summary.get("automaticUnselectedObserved") is True,
+              gate.get("phase") == "after-custom-click",
+              gate.get("beginInstallationButtonClicked") is False,
+              gate.get("partitionEditorEntered") is False,
+              gate.get("installationAuthorized") is False,
+              gate.get("partitionWriteAuthorized") is False,
+              gate.get("windowsEspWriteAuthorized") is False,
+              summary.get("beginInstallationButtonClicked") is False,
+              summary.get("partitionWriteAuthorized") is False,
+              summary.get("windowsEspWriteAuthorized") is False,
+              summary.get("secureBootEnrollmentAuthorized") is False,
+              summary.get("windowsDualBootVerified") is False,
+          )
+          if not all(required_true):
+              raise SystemExit("FAIL-CLOSED: Custom-only observation or no-write invariants not proven")
+          print("PASS: Custom radio selected; Automatic deselected; no editor, install, partition write, ESP write, Secure Boot change or dual-boot claim")
+          PY
       - name: Publish bounded screenshot/OCR and read-only GPT backing proof
         if: always()
         uses: actions/upload-artifact@v4
