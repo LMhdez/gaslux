@@ -115,3 +115,6 @@ def test_workflow_summary_and_artifact_contract_fail_closed():
     assert '"customSelectedObserved": custom_gate.get("customSelectedObserved") is True' in workflow
     assert "if-no-files-found: error" in workflow
     assert "if-no-files-found: warn" not in workflow
+    assert "Enforce observed Custom-only, no-install and no-write result" in workflow
+    assert 'gate.get("partitionEditorEntered") is False' in workflow
+    assert 'summary.get("windowsDualBootVerified") is False' in workflow
