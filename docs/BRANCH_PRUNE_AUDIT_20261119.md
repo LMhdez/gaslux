@@ -45,3 +45,12 @@ A configuração do workflow foi revertida para **auditoria exclusivamente de le
 ## Verificação final e bloqueios
  
 O workflow foi revertido para `permissions: contents: read`, `persist-credentials: false`, sem token de autorização de archive/prune. A auditoria final de leitura verifica os 101 commits de dois pais, o SHA do segundo pai, a primeira cadeia de pais, a inexistência das referências originais e a identidade exata da árvore de trabalho do arquivo. Nenhum backend foi promovido ao produto estável; mantém-se a revisão humana e os ensaios de dual boot/rollback exigidos pela issue #3 e pela documentação técnica.
+
+- [Limpeza residual — Actions #44602941537](https://github.com/LMhdez/gaslux/actions/runs/44602941537): `SUCCESS`, a última branch redundante `feature/cachyos-writable-child-cow-firstboot-issue3` tinha HEAD `f563013612a4dff21c0f1c2889474bd6fb11b9ad` já ancestral do HEAD da PR #248; foi eliminada com lease exato. A mesma execução manteve `ARCHIVE_DAG_VERIFIED=101`.
+- **Estado após esta intervenção:** 170 branches iniciais, +1 arquivo novo e 102 referências eliminadas = **69 branches restantes**. Nas duas intervenções de limpeza do dia foram eliminadas 194 referências, com redução de 260 para 69 branches Git.
+- **Bloqueio operacional resolvido:** [Actions #44600351938](https://github.com/LMhdez/gaslux/actions/runs/44600351938) falhou antes de apagar qualquer referência porque o validador tinha um limite fixo antigo de 100; substituído por comparação exata e paginada de todos os nomes e SHAs com a API, validada em [#44601401759](https://github.com/LMhdez/gaslux/actions/runs/44601401759).
+- **Evidência independente:** [Actions #44602575012](https://github.com/LMhdez/gaslux/actions/runs/44602575012) comprovou 101 commits de dois pais, 101 SHAs originais ainda ancestrais do arquivo, 101 referências originais ausentes, árvore do arquivo idêntica e nove testes unitários aprovados.
+
+## Estado permanente seguro
+
+O workflow de manutenção regressa definitivamente ao modo de **auditoria apenas de leitura**, sem credenciais Git persistentes nem permissão de escrita: não elimina branches em futuras atualizações. A branch `archive/gaslux-experiments-preserved-20261119` serve apenas de cofre de histórico, com proveniência `Source-ref` e `Source-sha` por commit; nenhum código experimental é fundido no instalador. A promoção de funcionalidades exige CI, instalação nativa, dual boot e recuperação comprovados e revisão humana.
