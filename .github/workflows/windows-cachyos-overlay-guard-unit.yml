@@ -1,0 +1,41 @@
+name: Windows/CachyOS QCOW2 overlay fail-closed unit guards (no VM)
+
+on:
+  push:
+    branches:
+      - integration/windows-cow-bcd-rebased-20261117
+    paths:
+      - auto_tests/test_windows_cachyos_qcow2_overlay_discard.py
+      - auto_tests/test_windows_cachyos_gpt_cow_rebased_contract.py
+      - auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
+      - .github/workflows/windows-cachyos-overlay-guard-unit.yml
+  pull_request:
+    paths:
+      - auto_tests/test_windows_cachyos_qcow2_overlay_discard.py
+      - auto_tests/test_windows_cachyos_gpt_cow_rebased_contract.py
+      - auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py
+      - .github/workflows/windows-cachyos-overlay-guard-unit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  overlay-no-write-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: No QEMU, no Windows ISO, no disk writes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile auto_tests/tools/windows_cachyos_qcow2_overlay_discard.py auto_tests/test_windows_cachyos_qcow2_overlay_discard.py auto_tests/tools/windows_cachyos_real_windows_gpt_cow_transaction.py auto_tests/test_windows_cachyos_gpt_cow_rebased_contract.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_overlay_discard.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_gpt_cow_rebased_contract.py' -v
+          echo 'Only negative, no-write QCOW2 overlay preflight guards verified. No Windows or Linux boot was performed.' >> "$GITHUB_STEP_SUMMARY"

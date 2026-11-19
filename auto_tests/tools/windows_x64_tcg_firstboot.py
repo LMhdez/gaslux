@@ -1167,11 +1167,47 @@ def main(argv: list[str] | None = None) -> int:
                                     and not overlay_result["storageWritesAuthorized"],
                                     "Windows overlay isolation experiment failed")
                             report["disposableOverlayExperiment"] = overlay_result
+                            if os.environ.get("GASLUX_WINDOWS_BCD_OVERLAY_TEST"):
+                                from windows_cachyos_overlay_bcd_fault import corrupt_and_discard_bcd_overlay
+                                bcd_result = corrupt_and_discard_bcd_overlay(disk)
+                                require(bcd_result["bcdActuallyModifiedInsideOverlay"]
+                                        and bcd_result["overlayDiscardRestoredBaseBcdHash"]
+                                        and not bcd_result["storageWritesAuthorized"],
+                                        "Windows-only BCD overlay rollback failed")
+                                report["disposableBcdOverlayExperiment"] = bcd_result
+                            if os.environ.get("GASLUX_WINDOWS_LINUX_GPT_COW_CONSENT"):
+                                from windows_cachyos_real_windows_gpt_cow_transaction import trial
+                                linux_gpt = trial(disk)
+                                require(linux_gpt["windowsBaseGptEspBcdWinreUnchanged"]
+                                        and linux_gpt["interruptedGptAdditionRolledBackByDiscard"]
+                                        and not linux_gpt["storageWritesAuthorized"],
+                                        "Windows Linux GPT COW experiment not verified")
+                                report["disposableLinuxGptOverlayExperiment"] = linux_gpt
                             if os.environ.get("GASLUX_WINDOWS_THIRDBOOT_TEST"):
                                 require(boot_installed_windows_third_time(
                                     base, workspace, args.profile),
                                     "third independent Windows guest not verified")
                                 report["windowsRebootAfterOverlayDiscardVerified"] = True
+                                if "disposableBcdOverlayExperiment" in report:
+                                    report["disposableBcdOverlayExperiment"][
+                                        "windowsRebootAfterBcdOverlayDiscardVerified"
+                                    ] = True
+                                # Persist only bounded third-boot COM1 proof,
+                                # never a Windows image or unbounded logs.
+                                third_log = workspace / "thirdboot-windows-serial.log"
+                                require(third_log.is_file() and not third_log.is_symlink()
+                                        and 0 < third_log.stat().st_size <= 2_000_000,
+                                        "unbounded or missing independent third boot serial")
+                                third_dest = evidence / f"{args.profile}-thirdboot-serial.log"
+                                require(not third_dest.exists() and
+                                        not third_dest.is_symlink(),
+                                        "third-boot evidence path reused")
+                                shutil.copyfile(third_log, third_dest)
+                                digest = hashlib.sha256(third_dest.read_bytes()).hexdigest()
+                                (evidence / f"{args.profile}-thirdboot-serial.sha256").write_text(
+                                    f"{digest}  {third_dest.name}\n", encoding="ascii",
+                                )
+                                report["thirdWindowsBootSerialSha256"] = digest
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
