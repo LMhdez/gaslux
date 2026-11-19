@@ -135,7 +135,7 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     workflow = (root / ".github/workflows/gaslux-q4os-windows10-qcow2.yml").read_text()
     assert "gaslux_q4os_win10_ovmf_dvd_input.py" in workflow
     assert (
-        "input-send-event"
+        "send-key"
         in (root / "auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py").read_text()
     )
     assert "GASLUX_WIN10_UEFI_OPTICAL_INPUT_LAB_ONLY: 'yes'" in workflow
@@ -148,16 +148,13 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     assert "qemu-nbd --read-only" in workflow
 
 
-def test_qmp_keyboard_press_is_separate_acknowledged_down_and_up():
+def test_qmp_keyboard_press_uses_acknowledged_send_key():
     from auto_tests.tools.gaslux_q4os_win10_ovmf_dvd_input import _send_key_events
 
     class FakeStream:
         def __init__(self):
             self.writes = []
-            self.replies = [
-                b'{"return":{},"id":"gaslux-ovmf-space-down"}\n',
-                b'{"return":{},"id":"gaslux-ovmf-space-up"}\n',
-            ]
+            self.replies = [b'{"return":{},"id":"gaslux-ovmf-send-space"}\\n']
 
         def write(self, payload):
             self.writes.append(json.loads(payload))
@@ -169,10 +166,8 @@ def test_qmp_keyboard_press_is_separate_acknowledged_down_and_up():
     stream = FakeStream()
     delays = []
     _send_key_events(stream, sleep=delays.append)
-    assert [item["id"] for item in stream.writes] == [
-        "gaslux-ovmf-space-down",
-        "gaslux-ovmf-space-up",
-    ]
-    assert stream.writes[0]["arguments"]["events"][0]["data"]["down"] is True
-    assert stream.writes[1]["arguments"]["events"][0]["data"]["down"] is False
-    assert delays == [0.25]
+    assert len(stream.writes) == 1
+    assert stream.writes[0]["execute"] == "send-key"
+    assert stream.writes[0]["arguments"]["keys"] == [{"type": "qcode", "data": "spc"}]
+    assert stream.writes[0]["arguments"]["hold-time"] == 1000
+    assert delays == [1.0]
