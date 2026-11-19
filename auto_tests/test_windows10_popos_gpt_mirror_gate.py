@@ -113,10 +113,12 @@ class TestGptCrcReconciliation(unittest.TestCase):
             altered["windowsEntryHex"][2], original["windowsEntryHex"][2],
         )
         self.assertIs(altered["productionInstallationAuthorized"], False)
+        next_front, next_back, plan = make_pair(linux=True)
+        next_stage = parse_windows_pop_gpt(
+            next_front, next_back, expected_count=5,
+        )
         with self.assertRaisesRegex(DiskAuditError, "foreign GPT identity"):
-            reconcile_windows_and_root(original, altered, {
-                "startSector": 0, "endSector": 0, "sizeBytes": 0,
-            })
+            reconcile_windows_and_root(altered, next_stage, plan)
 
     def test_invalid_owned_pop_root_label_is_rejected_even_with_valid_crc(self):
         front, back, _ = make_pair(linux=True)
