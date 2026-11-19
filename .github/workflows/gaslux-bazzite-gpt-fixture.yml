@@ -1,9 +1,6 @@
 name: Bazzite synthetic GPT fixture contracts (experimental)
 
 on:
-  push:
-    branches:
-      - feature/bazzite-gpt-layout-fixture-20261119
   pull_request:
     paths:
       - '.github/workflows/gaslux-bazzite-gpt-fixture.yml'
@@ -13,6 +10,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: bazzite-gpt-fixture-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   gpt-fixture:
