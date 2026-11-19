@@ -1,0 +1,54 @@
+"""Real GPT fixture contracts for Bazzite's isolated installer lab."""
+
+import json
+import shutil
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "auto_tests"))
+
+from bazzite_gpt_fixture import Refusal, audit, prepare  # noqa: E402
+
+
+@pytest.mark.skipif(
+    shutil.which("sgdisk") is None or shutil.which("qemu-img") is None,
+    reason="gdisk and qemu-utils are required",
+)
+def test_real_gpt_fixture_has_only_synthetic_partition_types_and_discardable_cow(tmp_path):
+    root = tmp_path / "bazzite-gpt-fixture"
+    plan = prepare(root, tmp_path)
+    assert plan["partitionTable"] == "gpt"
+    assert plan["containsWindowsInstallation"] is False
+    assert plan["containsFilesystems"] is False
+    assert plan["installationAuthorized"] is False
+    assert [p["typeCode"] for p in plan["partitions"]] == ["EF00", "0C01", "0700"]
+    result = audit(root, tmp_path, discard=True)
+    assert result["gptVerified"] is True
+    assert result["baseUnchanged"] is True
+    assert result["overlayDiscarded"] is True
+    assert (root / "windows-layout-no-os.raw").exists()
+    assert not (root / "gpt-layout-scratch.qcow2").exists()
+
+
+@pytest.mark.skipif(
+    shutil.which("sgdisk") is None or shutil.which("qemu-img") is None,
+    reason="gdisk and qemu-utils are required",
+)
+def test_modified_manifest_refuses_to_discard_overlay(tmp_path):
+    root = tmp_path / "bazzite-gpt-fixture"
+    prepare(root, tmp_path)
+    path = root / "manifest.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["containsWindowsInstallation"] = True
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(Refusal, match="Untrusted"):
+        audit(root, tmp_path, discard=True)
+    assert (root / "gpt-layout-scratch.qcow2").exists()
+
+
+def test_fixture_requires_exact_private_temp_child(tmp_path):
+    with pytest.raises(Refusal, match="direct child"):
+        prepare(tmp_path / "foreign", tmp_path)
