@@ -31,3 +31,5 @@ A configuração do workflow foi revertida para **auditoria exclusivamente de le
 - [Actions #44598682337](https://github.com/LMhdez/gaslux/actions/runs/44598682337): primeiro lote `SUCCESS`, 15 históricos preservados por commits Git de dois pais, com árvore original de arquivo imutável; 15 referências eliminadas por SHA lease; 171 → 156 branches. Os commits originais permanecem alcançáveis pelo arquivo `archive/gaslux-experiments-preserved-20261119`.
 
 **Atenção:** preservar histórico não significa integrar o código experimental em `main`, `dev` nem no instalador. Todos os trabalhos ainda carecem de validação funcional para promoção.
+
+- [Segundo lote de arquivo — Actions #44599193247](https://github.com/LMhdez/gaslux/actions/runs/44599193247): `SUCCESS`, mais 15 arquivos de dois pais, 15 branches eliminadas com lease; inventário confirmado: 141. **Total de arquivo:** 30 branches. O terceiro lote está a executar no workflow de 25 fontes; a próxima execução será serializada.
