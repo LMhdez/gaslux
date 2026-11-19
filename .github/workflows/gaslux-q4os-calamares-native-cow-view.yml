@@ -21,6 +21,7 @@ on:
       - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
       - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
       - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
+      - 'auto_tests/tests/test_q4os_users_visual_gate.py'
   workflow_dispatch:
 
 concurrency:
@@ -64,12 +65,14 @@ jobs:
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
+            auto_tests/tests/test_q4os_users_visual_gate.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
+            auto_tests/tests/test_q4os_users_visual_gate.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
