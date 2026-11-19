@@ -124,6 +124,7 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         self.assertIn("github.event_name != 'pull_request' ||", workflow)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", workflow)
         self.assertIn("github.event.pull_request.head.ref == 'feature/cachyos-writable-child-cow-firstboot-issue3'", workflow)
+        self.assertIn("github.event.pull_request.head.ref == 'fix/cachyos-grant-config-program-binding-issue3'", workflow)
         self.assertIn("github.event.pull_request.base.ref == 'feature/cachyos-shared-cow-installed-readonly-boot-issue3'", workflow)
 
     def test_trial_firmware_uses_fresh_ovmf_template_not_windows_bootorder(self):
