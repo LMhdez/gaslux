@@ -338,6 +338,26 @@ def live_probe_on_windows(
                 if proc.poll() is None:
                     proc.kill()
                     proc.wait(timeout=30)
+                # Preserve bounded failed REAL guest evidence before private
+                # child workdir cleanup. Never archive ISO, QCOW2 or NVRAM.
+                for filename, source in (
+                    ("win10-pop-live-serial.log", serial),
+                    ("win10-pop-live-controller.trace", trace),
+                    ("win10-pop-live-gpt.json", result),
+                    ("win10-pop-live-qemu-stderr.log", stderr),
+                ):
+                    destination = evidence / filename
+                    if (
+                        source.is_file() and not source.is_symlink()
+                        and 0 < source.stat().st_size <= 2_000_000
+                        and not destination.exists()
+                    ):
+                        data = source.read_bytes()
+                        destination.write_bytes(data)
+                        (evidence / (filename + ".sha256")).write_text(
+                            hashlib.sha256(data).hexdigest()
+                            + "  " + filename + "\n", encoding="ascii",
+                        )
 
 
 class _private_workdir:
