@@ -144,6 +144,8 @@ class HostRootGrantTests(unittest.TestCase):
         self.programs = {
             "cachyos_windows_shared_root_pacstrap.py":
                 HERE / "tools/cachyos_windows_shared_root_pacstrap.py",
+            "cachyos_configure_installed.py":
+                HERE / "tools/cachyos_configure_installed.py",
             "cachyos_windows_shared_archiso_handoff.py":
                 HERE / "tools/cachyos_windows_shared_archiso_handoff.py",
             "cachyos_windows_shared_archiso_guest_probe.py":
