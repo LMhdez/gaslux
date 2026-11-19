@@ -106,7 +106,6 @@ def test_official_iso_immutable_pin_not_promoted_to_catalog():
     assert "Native Bazzite installer UI confirmed at phase" in source
 
 
-
 def test_diskless_guest_meets_documented_memory_floor():
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "host_kib < 11*1024*1024" in source
