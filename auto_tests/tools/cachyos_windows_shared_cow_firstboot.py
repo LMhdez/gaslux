@@ -80,13 +80,29 @@ def verify_installed_poweroff_serial(data: bytes, root_uuid: str) -> None:
     require(data.count(("GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:" +
                         root_uuid).encode("ascii")) == 1,
             "GRUB did not select the signed installed ext4 root by UUID")
-    # GRUB's exact UUID selection is independently constrained by the
-    # generated, grub-script-check'd config, which passes root=UUID=... ro.
-    # Real installed CachyOS COM1 (PR #34 artifact #14289991307) does not
-    # print either "Linux version" or the complete kernel command line.
-    # Require a genuine kernel printk and systemd PID 1 boot witness instead.
-    require(re.search(rb"\[\s*[0-9]+\.[0-9]+\]\s", data) is not None,
-            "installed native kernel did not emit a timestamped printk")
+    # The genuine, Windows-backed QEMU firstboot artifact #14489666084
+    # contains both the Linux version and the native kernel command line.
+    # Require those kernel-origin records, not only GRUB console output or
+    # a systemd banner that can appear during an initramfs-only shutdown.
+    require(re.search(
+        rb"\[\s*[0-9]+\.[0-9]+\]\s+Linux version "
+        rb"[0-9][^\r\n]{0,95}cachyos(?:-lts)?\b", data
+    ) is not None, "installed CachyOS kernel version not observed")
+    cmdlines = re.findall(
+        rb"\[\s*[0-9]+\.[0-9]+\]\s+Kernel command line: "
+        rb"([^\r\n]{1,700})", data
+    )
+    require(len(cmdlines) == 1,
+            "missing or ambiguous kernel-origin command line")
+    cmdline = cmdlines[0]
+    require(
+        len(re.findall(rb"(?:^|\s)root=", cmdline)) == 1
+        and (b"root=UUID=" + root_uuid.encode("ascii")) in cmdline.split()
+        and b"ro" in cmdline.split()
+        and b"rw" not in cmdline.split()
+        and b"systemd.unit=poweroff.target" in cmdline.split(),
+        "installed Linux kernel did not use the exact read-only root/poweroff plan"
+    )
     require((re.search(rb"systemd\[1\]|systemd [0-9]{3} running", data)
              is not None
              or re.search(rb"pid=1;[^\r\n]{0,160}comm=systemd;type=boot",
