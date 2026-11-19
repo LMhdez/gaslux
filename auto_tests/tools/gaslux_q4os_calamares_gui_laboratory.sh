@@ -326,6 +326,7 @@ calamares_partitions_frame=0
 calamares_cow_radio_clicked=0
 calamares_partitions_next_clicked=0
 calamares_users_view_captured=0
+calamares_users_view_verified=0
 
 for tick in $(seq 1 "$max_ticks"); do
   sleep 5
@@ -470,10 +471,13 @@ for tick in $(seq 1 "$max_ticks"); do
                   "$calamares_users_view_captured" -eq 0 ]] &&
                python3 "$visual_gate" changed-centre \
                  "$work/vnc-partitions-radio-selected.png" "$work/vnc-$tick.png"; then
-            cp "$work/vnc-$tick.png" "$work/vnc-users-view-unverified.png"
+            cp "$work/vnc-$tick.png" "$work/vnc-users-page.png"
+            python3 "$visual_gate" calamares-users "$work/vnc-users-page.png" ||
+              die 'Unrecognized native Calamares Users page; stop without entering account data'
             calamares_users_view_captured=1
+            calamares_users_view_verified=1
             echo 'GASLUX_Q4OS_CALAMARES_USERS_VIEW_CAPTURED=PASS'
-            echo 'NOT PROVEN: exact Users page identity pending independent screenshot inspection.'
+            echo 'GASLUX_Q4OS_CALAMARES_USERS_VIEW_VERIFIED=PASS'
             echo 'NOT PERFORMED: user creation, password entry, Summary, Install or any exec job.'
           fi
         fi
@@ -504,7 +508,8 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
      [[ "$q4os_desktop_next_clicked" -eq 1 && "$calamares_partitions_frame" -eq 1 ]]; } &&
    { [[ "$advance_partitions" == no ]] ||
      [[ "$calamares_partitions_next_clicked" -eq 1 &&
-        "$calamares_users_view_captured" -eq 1 ]]; }; then
+        "$calamares_users_view_captured" -eq 1 &&
+        "$calamares_users_view_verified" -eq 1 ]]; }; then
   if [[ "$native_cow_view" == yes ]]; then
     [[ "$calamares_cow_radio_clicked" -eq 1 ]] ||
       die 'No source-verified synthetic COW partition proposal was selected'
@@ -532,8 +537,7 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
               echo 'PASS: SHA-gated selected Desktop Next, following view captured.'
               echo 'NOT PERFORMED: any partition selection or native Calamares job.'
               if [[ "$advance_partitions" == yes ]]; then
-                echo 'PASS: one pixel-gated synthetic Partitions Next click; following view captured.'
-                echo 'NOT PROVEN: exact Users page identity pending independent screenshot inspection.'
+                echo 'PASS: one pixel-gated synthetic Partitions Next click; SHA-verified Users page captured.'
                 echo 'NOT PERFORMED: user creation, password entry, Summary, Install or any exec job.'
               fi
             fi
@@ -546,5 +550,5 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
   echo 'NOT PROVEN: native Calamares job execution, full installation, Linux/Windows dual boot or rollback.'
 else
   tail -c 5000 "$work/serial.log" >&2 || true
-  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame welcome=$calamares_welcome_next_clicked location=$calamares_location_frame keyboard=$calamares_keyboard_frame software=$calamares_software_frame selected=$q4os_desktop_selected_frame partitions=$calamares_partitions_frame partitions_next=$calamares_partitions_next_clicked users=$calamares_users_view_captured)"
+  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame welcome=$calamares_welcome_next_clicked location=$calamares_location_frame keyboard=$calamares_keyboard_frame software=$calamares_software_frame selected=$q4os_desktop_selected_frame partitions=$calamares_partitions_frame partitions_next=$calamares_partitions_next_clicked users=$calamares_users_view_captured users_verified=$calamares_users_view_verified)"
 fi
