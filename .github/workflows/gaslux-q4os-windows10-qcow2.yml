@@ -3,7 +3,7 @@ name: Q4OS Windows 10 installed QCOW2 UEFI/GPT lab
 on:
   push:
     branches:
-      - fix/q4os-win10-ovmf-dvd-input-gate
+      - test/q4os-win10-proven-noprompt-reuse-20261119
     paths:
       - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
       - 'auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py'
@@ -32,13 +32,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout proven Microsoft no-prompt installer helper at immutable commit
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 1b01b7a697326bba00ab114d7843464fbfbf4fee
+          path: proven-win10-baseline
+          persist-credentials: false
+
       - name: Install QEMU, OVMF and offline NTFS inspection tools
         shell: bash
         run: |
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl
+            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl p7zip-full genisoimage
           sudo modprobe nbd max_part=8
           if [[ -c /dev/kvm ]]; then
             sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
@@ -55,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          work="$RUNNER_TEMP/gaslux-win10-$GITHUB_RUN_ID"
+          work="$RUNNER_TEMP/gaslux-win-x64-q4os-$GITHUB_RUN_ID"
           mkdir -m 0700 "$work"
           printf 'GASLUX_WIN10_WORK=%s\n' "$work" >> "$GITHUB_ENV"
           iso="$work/Windows10_Enterprise_22H2_Eval_EN-US_x64.iso"
@@ -70,6 +78,54 @@ jobs:
           }
           printf 'GASLUX_WIN10_ISO_SHA256=%s\n' "$actual" >> "$GITHUB_ENV"
           printf 'GASLUX_WIN10_ISO_VERIFIED=PASS\n'
+
+      - name: Derive private no-prompt UEFI DVD from SHA-verified Microsoft source
+        shell: bash
+        env:
+          GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+        run: |
+          set -Eeuo pipefail
+          [[ "$GASLUX_WIN10_ACCEL" == kvm &&
+             "$RUNNER_ENVIRONMENT" == github-hosted &&
+             "$GITHUB_REPOSITORY" == LMhdez/gaslux ]]
+          python3 - "$GASLUX_WIN10_WORK" "$GITHUB_WORKSPACE/proven-win10-baseline" <<'PY'
+          import hashlib
+          import os
+          import stat
+          import sys
+          from pathlib import Path
+
+          work = Path(sys.argv[1])
+          baseline = Path(sys.argv[2])
+          assert work.parent == Path("/home/runner/work/_temp")
+          assert work.name.startswith("gaslux-win-x64-q4os-")
+          assert work.is_dir() and not work.is_symlink()
+          assert work.stat().st_uid == os.getuid()
+          assert work.stat().st_mode & 0o077 == 0
+          assert os.environ["GITHUB_ACTIONS"] == "true"
+          original = work / "Windows10_Enterprise_22H2_Eval_EN-US_x64.iso"
+          expected = "ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668"
+          observed = original.lstat()
+          assert stat.S_ISREG(observed.st_mode) and observed.st_nlink == 1
+          with original.open("rb") as fd:
+              assert hashlib.file_digest(fd, "sha256").hexdigest() == expected
+          sys.path.insert(0, str(baseline / "auto_tests/tools"))
+          from windows_x64_tcg_firstboot import derive_no_prompt_uefi_lab_iso
+
+          derivative = work / "derived-microsoft-noprompt-lab.iso"
+          observed_sha = derive_no_prompt_uefi_lab_iso(original, derivative, work)
+          with derivative.open("rb") as fd:
+              assert hashlib.file_digest(fd, "sha256").hexdigest() == observed_sha
+          with original.open("rb") as fd:
+              assert hashlib.file_digest(fd, "sha256").hexdigest() == expected
+          assert derivative.stat().st_size >= original.stat().st_size // 2
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"GASLUX_WIN10_NOPROMPT_ISO={derivative}\n")
+              env.write(f"GASLUX_WIN10_NOPROMPT_SHA256={observed_sha}\n")
+          print("GASLUX_WIN10_ORIGINAL_OFFICIAL_ISO_UNMODIFIED=PASS")
+          print("GASLUX_WIN10_PROVEN_NOPROMPT_ELTORITO_DERIVATIVE=PASS")
+          print("GASLUX_WIN10_DERIVATIVE_NONPRODUCTION=TRUE")
+          PY
 
       - name: Prepare an isolated UEFI/GPT QCOW2 and unattended evaluation install
         shell: bash
@@ -152,7 +208,7 @@ jobs:
           set -Eeuo pipefail
           work="$GASLUX_WIN10_WORK"
           image="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
-          iso="$work/Windows10_Enterprise_22H2_Eval_EN-US_x64.iso"
+          iso="$GASLUX_WIN10_NOPROMPT_ISO"
           vars="$work/OVMF_VARS.fd"
           answer="$work/unattend.iso"
           code='/usr/share/OVMF/OVMF_CODE_4M.fd'
@@ -161,6 +217,8 @@ jobs:
           mount_root="$work/first-logon-check"
           mkdir -p "$mount_root"
           [[ -s "$code" && -s "$vars" && -s "$iso" && -s "$answer" ]]
+          [[ "$(sha256sum "$iso" | awk '{print $1}')" == "$GASLUX_WIN10_NOPROMPT_SHA256" ]]
+          [[ "$(sha256sum "$work/Windows10_Enterprise_22H2_Eval_EN-US_x64.iso" | awk '{print $1}')" == "$GASLUX_WIN10_ISO_SHA256" ]]
           if [[ "$GASLUX_WIN10_ACCEL" == kvm ]]; then
             accelerator='kvm'
             cpu='host'
@@ -228,29 +286,21 @@ jobs:
               args+=(
                 -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on"
                 -device ide-cd,drive=install,bus=sata.1,bootindex=1
-                -qmp "unix:$work/windows10-qemu-qmp.sock,server=on,wait=off"
+                -monitor none
               )
             else
               args+=(-monitor none)
             fi
             echo "Starting Windows setup/boot cycle $attempt (install media attached: $((attempt == 1 ? 1 : 0)))"
             set +e
-            if (( attempt == 1 )); then
-              # Official EFI DVD requires an explicit key. The helper watches
-              # the genuine OVMF serial prompt and sends a USB HID Space key-down/key-up event to the
-              # exact QEMU PID through a private QMP Unix monitor socket.
-              first_cycle_limit=$(( remaining < 1500 ? remaining : 1500 ))
-              python3 auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py \
-                "$work" "$serial" "$work/windows10-qemu-qmp.sock" "$qemu_log" \
-                --prompt-seconds 45 --cycle-seconds "$first_cycle_limit" \
-                -- qemu-system-x86_64 "${args[@]}"
-              status=$?
-            else
-              cycle_limit=$(( remaining < 1500 ? remaining : 1500 ))
-              timeout --signal=TERM --kill-after=30s "${cycle_limit}s" \
-                qemu-system-x86_64 "${args[@]}" > "$qemu_log" 2>&1
-              status=$?
-            fi
+            # The official source was verified separately. The private
+            # derivative uses Microsoft's own efisys_noprompt.bin, as
+            # already exercised in the proven Windows 10 KVM lab (#163).
+            # No QMP/HMP keyboard input is needed in this isolated variant.
+            cycle_limit=$(( remaining < 1500 ? remaining : 1500 ))
+            timeout --signal=TERM --kill-after=30s "${cycle_limit}s" \
+              qemu-system-x86_64 "${args[@]}" > "$qemu_log" 2>&1
+            status=$?
             set -e
             if [[ $status -eq 124 || $status -eq 137 ]]; then
               tail -n 120 "$qemu_log" || true
@@ -263,6 +313,12 @@ jobs:
               tail -n 120 "$serial" || true
               echo "Windows QEMU cycle $attempt exited with status $status" >&2
               exit "$status"
+            fi
+            if (( attempt == 1 )); then
+              if grep -aFq "Press any key to boot from CD or DVD" "$serial"; then
+                echo "Interactive DVD prompt unexpectedly present in no-prompt derivative" >&2
+                exit 1
+              fi
             fi
             qemu-img check "$image"
             if check_first_logon; then
@@ -376,8 +432,19 @@ jobs:
         with:
           name: gaslux-windows10-enterprise-eval-22h2-uefi-gpt-installed
           path: |
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-qcow2.sha256
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-install-manifest.json
+            ${{ runner.temp }}/gaslux-win-x64-q4os-${{ github.run_id }}/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2
+            ${{ runner.temp }}/gaslux-win-x64-q4os-${{ github.run_id }}/windows10-qcow2.sha256
+            ${{ runner.temp }}/gaslux-win-x64-q4os-${{ github.run_id }}/windows10-install-manifest.json
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload UEFI boot failure diagnostics only, without ISO or credentials
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-windows10-noprompt-uefi-boot-diagnostics
+          path: |
+            ${{ runner.temp }}/gaslux-win-x64-q4os-${{ github.run_id }}/windows10-qemu-serial.log
+            ${{ runner.temp }}/gaslux-win-x64-q4os-${{ github.run_id }}/windows10-qemu-process.log
+          if-no-files-found: ignore
+          retention-days: 3
