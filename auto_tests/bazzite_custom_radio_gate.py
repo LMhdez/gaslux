@@ -122,9 +122,12 @@ def inspect_custom_before(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
 def verify_custom_after(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     image, words = _load(png, ocr_path, tsv_path)
     labels = [
-        w for w in words
-        if w["text"] == "custom" and w["confidence"] >= 75
-        and 245 <= w["left"] <= 305 and 470 <= w["top"] <= 490
+        w
+        for w in words
+        if w["text"] == "custom"
+        and w["confidence"] >= 75
+        and 245 <= w["left"] <= 305
+        and 470 <= w["top"] <= 490
     ]
     if len(labels) != 1:
         raise CustomSelectionRefusal("Custom radio label is not unique after click")
