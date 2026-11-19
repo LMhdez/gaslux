@@ -125,7 +125,8 @@ class SharedDiskGateTests(unittest.TestCase):
     def test_rejects_modified_windows_partitions(self):
         for key, value in (
             ("type", "0fc63daf-8483-4772-8e79-3d69d8477de4"),
-            ("index", 5), ("firstLba", 500), ("lastLba", 0),
+            ("index", 5), ("index", True),
+            ("firstLba", 500), ("lastLba", 0),
             ("lengthBytes", 1),
         ):
             with self.subTest(key=key):
