@@ -147,8 +147,11 @@ def configure(root: Path, run_id: str, *,
     require(any(line.startswith(LAB_USER + ":$6$") for line in shadow.splitlines()),
             "configured lab account does not have a salted password hash")
     for service in ("sddm", "NetworkManager", "systemd-timesyncd"):
-        link = root / "etc/systemd/system" / ("graphical.target.wants" if service == "sddm" else "multi-user.target.wants") / (service + ".service")
-        require(link.is_symlink(), "service was not enabled: " + service)
+        result = runner(
+            ["arch-chroot", str(root), "systemctl", "is-enabled", "--quiet",
+             service + ".service"],
+            capture_output=True, text=True, check=False, timeout=60)
+        require(result.returncode == 0, "service was not enabled: " + service)
     return {
         "configured": True, "labOnly": True, "user": LAB_USER,
         "hostname": HOSTNAME, "locale": LOCALE, "keyboard": KEYMAP,
