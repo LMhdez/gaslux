@@ -1,0 +1,135 @@
+name: Zorin 18.1 installed initramfs regeneration and second OVMF boot (VM only)
+
+on:
+  push:
+    branches:
+      - test/zorin181-initramfs-regeneration-secondboot-20261119
+  pull_request:
+    paths:
+      - '.github/workflows/zorin-installed-initramfs-reboot.yml'
+      - 'auto_tests/tools/gaslux_legacy_installed_target_lab.sh'
+      - 'auto_tests/tools/gaslux_zorin_installed_target_lab.sh'
+      - 'assets/live/libertix-distribution-common.sh'
+      - 'assets/live/libertix-install-runtime-common.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-safety-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Reject invalid distro scope and malformed ISO before any workspace creation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_legacy_installed_target_lab.sh
+          bash -n auto_tests/tools/gaslux_zorin_installed_target_lab.sh
+          if GASLUX_ZORIN_INITRAMFS_REBOOT=1 bash \
+            auto_tests/tools/gaslux_legacy_installed_target_lab.sh mint /fake/image bad-hash \
+            > /tmp/negative.out 2>&1; then
+            echo "::error::Mint was permitted to run Zorin-only update gate"
+            exit 1
+          fi
+          grep -q 'supported only in the Zorin lab' /tmp/negative.out
+          if GASLUX_ZORIN_INITRAMFS_REBOOT=1 bash \
+            auto_tests/tools/gaslux_zorin_installed_target_lab.sh /fake/image bad-hash \
+            > /tmp/negative.out 2>&1; then
+            echo "::error::Zorin lab accepted unsigned media"
+            exit 1
+          fi
+          grep -Eq 'Invalid ISO|unsigned SHA-256' /tmp/negative.out
+          if grep -Eq '/dev/(sd[a-z]|nvme[0-9]|vd[a-z]|hd[a-z])' \
+              auto_tests/tools/gaslux_legacy_installed_target_lab.sh; then
+            echo "::error::Zorin lab references a real host block device"
+            exit 1
+          fi
+          echo "PASS: only Zorin opt-in, strict ISO source and no host disk paths"
+
+  genuine-second-boot:
+    needs: offline-safety-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    env:
+      ZORIN_SHA: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+      ZORIN_BYTES: '3909091328'
+      ZORIN_URL: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+      GASLUX_ZORIN_INITRAMFS_REBOOT: '1'
+      GASLUX_LEGACY_INSTALLED_EVIDENCE: ${{ runner.temp }}/zorin-initramfs-secondboot-evidence
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify original stable Zorin 18.1 catalog metadata and scratch budget
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          releases = json.loads(Path("release-config.json").read_text(encoding="utf-8"))
+          items = [item for item in releases["distributions"] if item["id"] == "zorin"]
+          assert len(items) == 1
+          item = items[0]
+          assert item["osReleaseId"] == "zorin"
+          assert item["name"] == "Zorin OS 18.1 Core"
+          assert item["isoInstaller"] == os.environ["ZORIN_URL"]
+          assert item["isoInstallerSha256"] == os.environ["ZORIN_SHA"]
+          assert item["isoInstallerSizeBytes"] == int(os.environ["ZORIN_BYTES"])
+          assert shutil.disk_usage(os.environ["RUNNER_TEMP"]).free > 15 * 1024**3
+          print("Verified official pinned Zorin and private runner capacity")
+          PY
+      - name: Install disposable QEMU and ISO inspection dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get -qq update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 squashfs-tools gdisk dosfstools e2fsprogs util-linux \
+            grub-efi-amd64-bin grub-common qemu-system-x86 ovmf
+      - name: Download official Zorin ISO, require SHA-256 and exact size
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/zorin-upstream"
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=5 --retry-wait=10 --timeout=90 --connect-timeout=30 \
+            --check-integrity=true --checksum="sha-256=$ZORIN_SHA" \
+            --dir="$RUNNER_TEMP/zorin-upstream" --out=zorin.iso "$ZORIN_URL"
+          iso="$RUNNER_TEMP/zorin-upstream/zorin.iso"
+          test -f "$iso" && test ! -L "$iso"
+          test "$(stat -c %s "$iso")" = "$ZORIN_BYTES"
+          printf '%s  %s\n' "$ZORIN_SHA" "$iso" | sha256sum -c --status
+      - name: Boot genuine installed Zorin, regenerate native initramfs and demand second boot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_legacy_installed_target_lab.sh
+          bash auto_tests/tools/gaslux_zorin_installed_target_lab.sh \
+            "$RUNNER_TEMP/zorin-upstream/zorin.iso" "$ZORIN_SHA"
+          test -f "$GASLUX_LEGACY_INSTALLED_EVIDENCE/installed-check.txt"
+          test -f "$GASLUX_LEGACY_INSTALLED_EVIDENCE/initramfs-reboot-check.txt"
+          grep -Fxq 'installedZorinFirstBootVerified=true' \
+            "$GASLUX_LEGACY_INSTALLED_EVIDENCE/installed-check.txt"
+          grep -Fxq 'installedZorinInitramfsRegenerationRebootVerified=true' \
+            "$GASLUX_LEGACY_INSTALLED_EVIDENCE/initramfs-reboot-check.txt"
+          test -s "$GASLUX_LEGACY_INSTALLED_EVIDENCE/serial.log"
+          test -s "$GASLUX_LEGACY_INSTALLED_EVIDENCE/serial-after-initramfs-update.log"
+          echo 'PASS: two independent disk-only Zorin logins, no Windows disk attached'
+          echo 'NOT TESTED: kernel package upgrade, production GRUB, Windows dual boot, recovery'
+      - name: Upload only bounded text evidence; never ISO or raw disk
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-181-disposable-initramfs-secondboot-evidence
+          path: ${{ runner.temp }}/zorin-initramfs-secondboot-evidence/
+          if-no-files-found: warn
+          retention-days: 14
