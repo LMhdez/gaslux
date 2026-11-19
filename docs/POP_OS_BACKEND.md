@@ -41,4 +41,28 @@ Sources:
 
 ## Isolation from legacy Mint/Zorin installer
 
-This extracted preflight does **not** modify `assets/live/configure-target-main.sh`, dispatch code, the WPF wizard, schema, signed release catalogue, or any disk/EFI writer. The related Ubuntu target refactor remains in experimental PR #20 for separate review and VM regression testing. The installed Pop!_OS boot and Windows recovery path have not been demonstrated here.
+The Pop!_OS preflight does **not** authorize System76 target installation or
+alter the WPF wizard, release catalogue, schema or disk/EFI writer. The
+shared `configure-target-main.sh` refactor from historical PR #20 is
+already present in the `dev` workstream, but it remains **Mint/Zorin only**.
+
+The two explicit phases are `configure_common_ubuntu_target` (account,
+locale, keyboard, time zone, sharing and optional development settings) and
+`configure_legacy_grub_target` (Casper cleanup, initramfs, GRUB, boot-update
+guards and first-boot resize). `validate_legacy_target_backend_or_die`
+executes before target configuration and accepts only the verified
+`mint/linuxmint` or `zorin/zorin` pair under `debian-squashfs`.
+It rejects `popos/pop`, `system76`, unknown identities and mismatched
+firmware/layout; this installed-target check is **not** a pre-disk Windows
+authorization gate.
+
+The existing synthetic tests for `test_ubuntu_target_backend_preflight.py`
+retain original Mint/Zorin operation order and rejection behavior; the
+candidate media CI also runs `bash -n` on the shared installer shell. These
+checks do not execute native `distinst` and do not prove Mint/Zorin reinstall,
+Pop!_OS installation, Windows boot or rollback.
+
+The obsolete official-ISO workflow and older exploratory documentation from
+PR #20 are not production acceptance gates. Any new System76 writer requires
+its own authenticated media/handoff, boot/update policy and disposable
+Windows dual-boot and recovery evidence before catalog promotion.
