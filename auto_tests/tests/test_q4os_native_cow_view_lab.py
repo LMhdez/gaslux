@@ -17,6 +17,8 @@ from gaslux_q4os_native_cow_view_guard import (  # noqa: E402
     SERIAL_FILE,
     CalamaresCowViewRefusal,
     _inputs,
+    _read_private_regular,
+    _unique_json_object,
     prepare,
     verify,
 )
@@ -135,3 +137,42 @@ def test_screenshot_gate_is_exact_official_q4os_native_partitions():
     assert "6975d6f85bebbb4dcd444c9bcdaa6f776880d8a9b5ff361e34b0829684cfb762" in gate
     assert "c62608a7994f551be49ac138c245ab4c11d78c148671b827c2ceda2ac274219e" in gate
     assert "0416af48c325376e056f6ef8707b2ebdaedca7f935f2ddf8fc37bc93684d9512" in gate
+
+
+def test_recovery_evidence_reader_accepts_only_owned_regular_files(tmp_path):
+    evidence = tmp_path / "owned-evidence.json"
+    evidence.write_bytes(b'{"safe":true}')
+    assert _read_private_regular(evidence, 128) == b'{"safe":true}'
+
+
+def test_recovery_evidence_reader_fails_closed_without_nofollow(tmp_path, monkeypatch):
+    evidence = tmp_path / "owned-evidence.json"
+    evidence.write_bytes(b'{"safe":true}')
+    monkeypatch.delattr("gaslux_q4os_native_cow_view_guard.os.O_NOFOLLOW")
+    with pytest.raises(CalamaresCowViewRefusal, match="O_NOFOLLOW is unavailable"):
+        _read_private_regular(evidence, 128)
+
+
+def test_recovery_evidence_reader_rejects_symlink(tmp_path):
+    target = tmp_path / "target"
+    target.write_bytes(b"owned")
+    alias = tmp_path / "alias"
+    alias.symlink_to(target)
+    with pytest.raises(CalamaresCowViewRefusal, match="regular non-symlink"):
+        _read_private_regular(alias, 128)
+
+
+def test_recovery_evidence_reader_rejects_oversized_and_empty_files(tmp_path):
+    oversized = tmp_path / "oversized"
+    oversized.write_bytes(b"12345")
+    empty = tmp_path / "empty"
+    empty.write_bytes(b"")
+    with pytest.raises(CalamaresCowViewRefusal, match="empty or oversized"):
+        _read_private_regular(oversized, 4)
+    with pytest.raises(CalamaresCowViewRefusal, match="empty or oversized"):
+        _read_private_regular(empty, 4)
+
+
+def test_recovery_audit_json_rejects_duplicate_keys():
+    with pytest.raises(CalamaresCowViewRefusal, match="Duplicate key"):
+        _unique_json_object([("installationAuthorized", False), ("installationAuthorized", True)])

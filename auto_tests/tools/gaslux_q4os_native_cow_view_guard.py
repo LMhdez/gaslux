@@ -55,6 +55,73 @@ def process(argv: list[str]) -> str:
     return r.stdout
 
 
+def _read_private_regular(path: Path, max_bytes: int) -> bytes:
+    """Read one owned regular file without following links or accepting swaps."""
+    require(isinstance(path, Path) and path.is_absolute(), "Evidence file path must be absolute")
+    require(type(max_bytes) is int and max_bytes > 0, "Invalid evidence size limit")
+    require(
+        hasattr(os, "O_NOFOLLOW"),
+        "Platform cannot safely reject symlinks: O_NOFOLLOW is unavailable",
+    )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | os.O_NOFOLLOW
+    fd = -1
+    try:
+        before = path.lstat()
+        require(stat.S_ISREG(before.st_mode), "Evidence file is not a regular non-symlink file")
+        require(before.st_uid == os.getuid(), "Evidence file owner mismatch")
+        require(0 < before.st_size <= max_bytes, "Evidence file is empty or oversized")
+        fd = os.open(path, flags)
+        opened = os.fstat(fd)
+        require(
+            stat.S_ISREG(opened.st_mode)
+            and opened.st_uid == os.getuid()
+            and (opened.st_dev, opened.st_ino) == (before.st_dev, before.st_ino),
+            "Evidence file changed identity while opening",
+        )
+        chunks = []
+        total = 0
+        while True:
+            chunk = os.read(fd, min(65536, max_bytes + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            require(total <= max_bytes, "Evidence file grew beyond its size limit")
+        after = os.fstat(fd)
+        require(
+            (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            )
+            == (
+                opened.st_dev,
+                opened.st_ino,
+                opened.st_size,
+                opened.st_mtime_ns,
+                opened.st_ctime_ns,
+            )
+            and total == opened.st_size,
+            "Evidence file changed during read",
+        )
+        return b"".join(chunks)
+    except OSError as exc:
+        raise CalamaresCowViewRefusal("Cannot safely open evidence file: " + path.name) from exc
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "Duplicate key in Q4OS recovery audit")
+        result[key] = value
+    return result
+
+
 def _owner_dir(path: Path) -> None:
     require(path.is_absolute() and path.is_dir() and not path.is_symlink(), "Unsafe VM path")
     data = path.stat()
@@ -196,8 +263,12 @@ def verify(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) 
     base = workspace / "efi-disk.img"
     overlay = workspace / OVERLAY
     require(overlay.is_file() and not overlay.is_symlink(), "Missing owned COW file")
-    raw_audit = (evidence / AUDIT).read_bytes()
-    report = json.loads(raw_audit)
+    raw_audit = _read_private_regular(evidence / AUDIT, 1024 * 1024)
+    try:
+        report = json.loads(raw_audit.decode("utf-8"), object_pairs_hook=_unique_json_object)
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise CalamaresCowViewRefusal("Malformed Q4OS recovery audit") from exc
+    require(isinstance(report, dict), "Q4OS recovery audit must be a JSON object")
     require(
         report["operation"] == "native-calamares-synthetic-cow-partition-view-only"
         and report["installationAuthorized"] is False,
@@ -235,10 +306,12 @@ def verify(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) 
     snapshot = snapshot_dir / "q4os-recovery-snapshot.qcow2"
     require(snapshot.is_file() and not snapshot.is_symlink(), "Missing self-contained recovery")
     manifest = verify_signed_manifest(
-        (snapshot_dir / "q4os-recovery-snapshot-manifest.json").read_bytes(),
-        (snapshot_dir / "q4os-recovery-snapshot-manifest.ed25519").read_bytes(),
-        (snapshot_dir / "q4os-recovery-snapshot-public-key.bin").read_bytes(),
-        (snapshot_dir / "q4os-recovery-snapshot-public-key.sha256").read_text().strip(),
+        _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-manifest.json", 1024 * 1024),
+        _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-manifest.ed25519", 128),
+        _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-public-key.bin", 128),
+        _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-public-key.sha256", 128)
+        .decode("ascii")
+        .strip(),
     )
     actual_snapshot_sha = hashlib.sha256()
     with snapshot.open("rb") as snapshot_stream:
