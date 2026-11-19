@@ -23,6 +23,9 @@ from windows10_popos_live_cow_host import (
 )
 from windows_x64_installed_gpt_ro_audit import DiskAuditError
 from windows_x64_tcg_firstboot import main as windows_main
+from windows10_popos_official_live_probe_guest import (
+    _decode_gpt, Refusal,
+)
 
 
 class PopOfficialRealWindowsReadOnlyContract(unittest.TestCase):
@@ -45,6 +48,21 @@ class PopOfficialRealWindowsReadOnlyContract(unittest.TestCase):
             ISO_SHA256,
             "a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c",
         )
+
+    def test_host_and_actual_guest_gpt_decoders_share_exact_six_partition_contract(self):
+        manifest = gpt_windows_cow_live_manifest(
+            self.before, self.after, self.plan, self.front, self.back,
+        )
+        rows = _decode_gpt(self.front, self.back, manifest)
+        self.assertEqual([x["index"] for x in rows], [1, 2, 3, 4, 5, 6])
+        self.assertEqual(rows[4]["guid"], manifest["popEspGuid"])
+        self.assertEqual(rows[5]["guid"], manifest["popRootGuid"])
+        altered = copy.deepcopy(manifest)
+        altered["frontMiBSha256"] = "0" * 64
+        with self.assertRaises(Refusal):
+            _decode_gpt(self.front, self.back, altered)
+        with self.assertRaises(Refusal):
+            _decode_gpt(self.front, self.back[:-1], manifest)
 
     def test_host_declines_corrupt_gpt_crc_backing_identity_and_guids(self):
         cases = []
