@@ -15,11 +15,11 @@ BlivetObserverRefusal = observer.BlivetObserverRefusal
 locate_launch_control = observer.locate_launch_control
 verify_editor = observer.verify_editor
 
-HEADER = "level\\tconf\\tleft\\ttop\\twidth\\theight\\ttext\\n"
+HEADER = "level\tconf\tleft\ttop\twidth\theight\ttext\n"
 
 
 def tsv(words):
-    return HEADER + "".join(f"5\\t96\\t{x}\\t{y}\\t{w}\\t{h}\\t{word}\\n" for word, x, y, w, h in words)
+    return HEADER + "".join(f"5\t96\t{x}\t{y}\t{w}\t{h}\t{word}\n" for word, x, y, w, h in words)
 
 
 @pytest.fixture(autouse=True)
@@ -27,8 +27,7 @@ def bind_tesseract_to_test_sidecars(monkeypatch):
     def fake_run(command, **kwargs):
         png = Path(command[1])
         suffix = ".tsv" if len(command) == 4 else ".ocr"
-        sidecar = png.with_suffix(suffix)
-        return SimpleNamespace(stdout=sidecar.read_text(encoding="utf-8"))
+        return SimpleNamespace(stdout=png.with_suffix(suffix).read_text(encoding="utf-8"))
     monkeypatch.setattr(observer.subprocess, "run", fake_run)
 
 

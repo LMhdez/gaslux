@@ -38,7 +38,6 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
     with Image.open(png) as image:
         if image.size != (WIDTH, HEIGHT):
             raise BlivetObserverRefusal("Unexpected framebuffer geometry")
-
     try:
         extracted_text = subprocess.run(
             ["tesseract", str(png), "stdout"],
@@ -52,19 +51,17 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
         raise BlivetObserverRefusal("Screenshot OCR extraction failed") from exc
     if extracted_text != ocr or extracted_tsv != tsv:
         raise BlivetObserverRefusal("OCR/TSV sidecars do not match screenshot extraction")
-
-    normalized = re.sub(r"\\s+", " ", extracted_text).lower()
+    normalized = re.sub(r"\s+", " ", extracted_text).lower()
     if require_storage_page:
-        markers = (
+        for marker in (
             "bazzite 42 installation",
             "installation destination",
             "advanced custom",
             "blivet-gui",
-        )
-        for marker in markers:
+        ):
             if marker not in normalized:
                 raise BlivetObserverRefusal(f"Missing storage-page marker: {marker}")
-    rows = list(csv.DictReader(io.StringIO(extracted_tsv), delimiter="\\t"))
+    rows = list(csv.DictReader(io.StringIO(extracted_tsv), delimiter="\t"))
     words = []
     for row in rows:
         try:
@@ -169,9 +166,9 @@ def main() -> None:
             if args.coords is None or args.coords.is_symlink():
                 raise BlivetObserverRefusal("Safe coordinate output path required")
             point = result["coordinate"]
-            args.coords.write_text(f"{point['x']} {point['y']}\\n", encoding="ascii")
+            args.coords.write_text(f"{point['x']} {point['y']}\n", encoding="ascii")
     except (OSError, ValueError, UnicodeError) as exc:
-        parser.exit(2, f"REFUSED: {exc}\\n")
+        parser.exit(2, f"REFUSED: {exc}\n")
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
