@@ -412,6 +412,7 @@ def verify_lab_root_write_grant(
         "sharedRootPacstrapSha256", "archisoHandoffVerifierSha256",
         "archisoGuestProbeSha256", "gptReaderSha256",
         "guestInstallScriptSha256", "guestLaunchScriptSha256",
+        "installedConfiguratorSha256",
     }
     require(type(grant) is dict and set(grant) == expected_keys
             and canonical(grant) == signed_bytes,
@@ -506,6 +507,7 @@ def verify_lab_root_write_grant(
         ("pacman-trust.py", "pacmanTrustGuardSha256"),
         ("gaslux-install.sh", "guestInstallScriptSha256"),
         ("gaslux-launch.sh", "guestLaunchScriptSha256"),
+        ("cachyos_configure_installed.py", "installedConfiguratorSha256"),
     ):
         expected = grant[field]
         require(type(expected) is str and SHA.fullmatch(expected) is not None
