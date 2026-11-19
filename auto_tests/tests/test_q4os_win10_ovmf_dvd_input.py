@@ -140,6 +140,8 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     assert "GASLUX_WIN10_UEFI_OPTICAL_INPUT_LAB_ONLY: 'yes'" in workflow
     assert "timeout-minutes: 90" in workflow
     assert "windows10-qemu-qmp.sock" in workflow
+    assert '"$work/windows10-qemu-qmp.sock" "$qemu_log"' in workflow
+    assert "windows10-qemu-hmp.sock" not in workflow
     assert "cycle_limit" in workflow
     assert "-no-reboot" in workflow
     assert "qemu-nbd --read-only" in workflow
