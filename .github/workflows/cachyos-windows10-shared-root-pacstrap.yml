@@ -289,6 +289,8 @@ jobs:
           # Windows and installed-Linux parent images stay byte-identical.
           assert pacstrap["installedWritableChildKernelAndSystemdBootVerified"] is True
           assert pacstrap["installedWritableChildNativeRootMarkerVerified"] is True
+          assert pacstrap["installedWritableChildSecondBootVerified"] is True
+          assert pacstrap["installedWritableChildSecondBootPersistentMarkerVerified"] is True
           assert pacstrap["installedWritableChildWindowsGptUnchanged"] is True
           assert pacstrap["installedWritableChildWindowsProtectedHashesUnchanged"] is True
           assert pacstrap["installedWritableChildParentCOWUnchanged"] is True
@@ -361,6 +363,19 @@ jobs:
           from cachyos_windows_shared_cow_rw_child import verify_rw_serial
           verify_rw_serial(child_raw, pacstrap["installedWritableChildRunId"], expected_root_uuid)
           assert b"Kernel panic" not in child_raw
+          second_serial = root / (profile + "-cachyos-installed-rw-child-second-serial.log")
+          assert second_serial.is_file() and not second_serial.is_symlink()
+          second_manifest = second_serial.with_suffix(".sha256")
+          assert second_manifest.is_file() and not second_manifest.is_symlink()
+          second_digest, second_name = second_manifest.read_text().split()
+          assert second_name == second_serial.name
+          second_raw = second_serial.read_bytes()
+          assert second_digest == hashlib.sha256(second_raw).hexdigest()
+          assert second_digest == pacstrap["installedWritableChildSecondSerialSha256"]
+          verify_rw_serial(
+              second_raw, pacstrap["installedWritableChildRunId"],
+              expected_root_uuid, second_boot=True)
+          assert b"Kernel panic" not in second_raw
           fifth = root / (profile + "-fifth-post-pacstrap-discard-serial.log")
           assert fifth.is_file() and not fifth.is_symlink()
           # The evidence producer replaces .log with .sha256; it does not append.
