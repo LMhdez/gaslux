@@ -643,14 +643,49 @@ def run_shared_root_pacstrap(
     windows_hashes = read_windows_file_hashes(overlay)
     require(windows_hashes == plan["windowsHashes"],
             "Windows ESP/BCD/loader/WinRE changed during root-only pacstrap")
+    before_root_only_firstboot_overlay_sha = _sha(overlay)
     root_status = _verify_installed_root(overlay, plan, run_id)
     require(_sha(base) == before_base_sha
             and qcow2_file_identity(base) == before_base_identity
             and _sha(nvram) == before_nvram_sha,
             "Windows base or firmware changed during post-install audit")
+    # Experimental *read-only* firstboot smoke, after native pacstrap and
+    # root validation, before the existing Windows COW discard transaction.
+    # The guest receives neither Archiso nor writable Windows-backed storage.
+    # Failure never skips the mandatory COW discard / Windows reboot step.
+    from cachyos_windows_shared_cow_firstboot import (
+        probe_installed_root_readonly,
+    )
+    try:
+        firstboot_status = probe_installed_root_readonly(
+            overlay=overlay, base=base, nvram=nvram,
+            ovmf_code=ovmf_code, workspace=workspace, plan=plan,
+            run_id=run_id)
+    except (ValueError, OSError, subprocess.TimeoutExpired) as error:
+        firstboot_status = {
+            "minimalInstalledReadOnlyBootVerified": False,
+            "installedReadOnlyBootFailureType": type(error).__name__,
+            "installedReadOnlyBootloaderInstalledToWindowsESP": False,
+            "firstBootWithWritableSystemVerified": False,
+        }
+    # Preserve evidence and enforce Windows invariants regardless of whether
+    # the new read-only Linux smoke passed, before discarding the owned COW.
+    require(_sha(base) == before_base_sha
+            and qcow2_file_identity(base) == before_base_identity
+            and _sha(nvram) == before_nvram_sha
+            and _sha(overlay) == before_root_only_firstboot_overlay_sha,
+            "read-only installed boot modified source Windows COW/base/NVRAM")
+    with tempfile.TemporaryDirectory(prefix="gaslux-post-boot-gpt-",
+                                     dir=base.parent) as tmp:
+        after_front, after_back = gpt_windows(overlay, Path(tmp))
+    require(hashlib.sha256(after_front + after_back).hexdigest()
+            == plan["gptWindowsSha256"]
+            and read_windows_file_hashes(overlay) == plan["windowsHashes"],
+            "Windows GPT or protected hashes changed during read-only installed boot")
     return {
         **grant_status,
         **root_status,
+        **firstboot_status,
         "cachyosRootPacstrapped": True,
         "pacstrapExecuted": True,
         "rootUnmountedInGuest": ordinary_umount == 1,
