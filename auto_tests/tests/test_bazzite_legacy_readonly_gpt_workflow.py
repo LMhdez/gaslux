@@ -89,9 +89,9 @@ def test_original_guest_screen_gates_are_reused():
     assert source.index("python3 auto_tests/bazzite_legacy_destination_gate.py") < source.index(
         "readonly-gpt-stage3:"
     )
-    assert source.index("python3 auto_tests/bazzite_legacy_gpt_storage_navigation.py") > source.index(
-        "readonly-gpt-stage3:"
-    )
+    gpt_gate = source.index("python3 auto_tests/bazzite_legacy_gpt_storage_navigation.py")
+    stage3 = source.index("readonly-gpt-stage3:")
+    assert gpt_gate > stage3
     assert source.index("--phase locale") < source.index('move "$lx" "$ly" click 1')
     assert source.index("blue-gate.json") < source.index('move "$cx" "$cy" click 1')
     assert source.index("destination-gate.json") < source.index('move "$dx" "$dy" click 1')
