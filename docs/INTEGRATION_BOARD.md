@@ -1,5 +1,28 @@
 # Gaslux integration board — 2026-11-18
 
+## Snapshot de triagem — 2026-11-19
+
+- Consulta GitHub na conta **LMHDEZ**: **64 PRs abertas** e **2 issues abertas** ([#71](https://github.com/LMhdez/gaslux/issues/71), [#3](https://github.com/LMhdez/gaslux/issues/3)).
+- `main` em [`3eb74c6e`](https://github.com/LMhdez/gaslux/commit/3eb74c6e1f609319fe8ee706dd152c09f466dd44); `dev` 96 commits à frente / zero atrás conforme comparação GitHub. O código não foi promovido.
+- **Inventário apenas por metadados**; o agrupamento abaixo não prova equivalência entre patches, CI atual ou elegibilidade para fecho. Verificar diffs, SHA, árvore de dependências e logs de cada candidata antes de integração.
+- Sucessoras candidatas a consolidação: [#168](https://github.com/LMhdez/gaslux/pull/168) para contratos comuns, [#175](https://github.com/LMhdez/gaslux/pull/175) para guardas Mint/Zorin/Bazzite, [#217](https://github.com/LMhdez/gaslux/pull/217) para COM1/HMP, [#216](https://github.com/LMhdez/gaslux/pull/216) para VNC local e cadeia Q4OS [#237](https://github.com/LMhdez/gaslux/pull/237) → [#239](https://github.com/LMhdez/gaslux/pull/239). As duas últimas são empilhadas: não fechar predecessoras sem preservar deltas.
+- Bloqueios: [#3](https://github.com/LMhdez/gaslux/issues/3), [#71](https://github.com/LMhdez/gaslux/issues/71), instalação/arranque real partilhado, updates e rollback. **Nenhuma configuração adicional considerada estável**, nenhuma promoção de catálogo.
+- **Testes deste snapshot**: apenas verificações de metadados e comparação de refs; não foram executados builds nem QEMU/Actions. Histórico anterior permanece abaixo, com a data original.
+
+| Grupo | PRs abertas observadas |
+|---|---|
+| Integração comum | [#168](https://github.com/LMhdez/gaslux/pull/168), [#175](https://github.com/LMhdez/gaslux/pull/175) |
+| Mint/Zorin | [#201](https://github.com/LMhdez/gaslux/pull/201), [#204](https://github.com/LMhdez/gaslux/pull/204), [#219](https://github.com/LMhdez/gaslux/pull/219), [#224](https://github.com/LMhdez/gaslux/pull/224), [#233](https://github.com/LMhdez/gaslux/pull/233) |
+| CachyOS | [#16](https://github.com/LMhdez/gaslux/pull/16), [#27](https://github.com/LMhdez/gaslux/pull/27), [#30](https://github.com/LMhdez/gaslux/pull/30), [#34](https://github.com/LMhdez/gaslux/pull/34), [#42](https://github.com/LMhdez/gaslux/pull/42), [#43](https://github.com/LMhdez/gaslux/pull/43), [#56](https://github.com/LMhdez/gaslux/pull/56), [#86](https://github.com/LMhdez/gaslux/pull/86), [#146](https://github.com/LMhdez/gaslux/pull/146), [#148](https://github.com/LMhdez/gaslux/pull/148), [#151](https://github.com/LMhdez/gaslux/pull/151), [#159](https://github.com/LMhdez/gaslux/pull/159), [#160](https://github.com/LMhdez/gaslux/pull/160), [#162](https://github.com/LMhdez/gaslux/pull/162), [#163](https://github.com/LMhdez/gaslux/pull/163), [#180](https://github.com/LMhdez/gaslux/pull/180), [#193](https://github.com/LMhdez/gaslux/pull/193), [#195](https://github.com/LMhdez/gaslux/pull/195), [#196](https://github.com/LMhdez/gaslux/pull/196), [#200](https://github.com/LMhdez/gaslux/pull/200), [#203](https://github.com/LMhdez/gaslux/pull/203), [#205](https://github.com/LMhdez/gaslux/pull/205), [#225](https://github.com/LMhdez/gaslux/pull/225), [#227](https://github.com/LMhdez/gaslux/pull/227) |
+| Pop!_OS | [#20](https://github.com/LMhdez/gaslux/pull/20), [#39](https://github.com/LMhdez/gaslux/pull/39), [#53](https://github.com/LMhdez/gaslux/pull/53), [#129](https://github.com/LMhdez/gaslux/pull/129), [#228](https://github.com/LMhdez/gaslux/pull/228), [#232](https://github.com/LMhdez/gaslux/pull/232) |
+| Q4OS | [#40](https://github.com/LMhdez/gaslux/pull/40), [#189](https://github.com/LMhdez/gaslux/pull/189), [#206](https://github.com/LMhdez/gaslux/pull/206), [#213](https://github.com/LMhdez/gaslux/pull/213), [#226](https://github.com/LMhdez/gaslux/pull/226), [#231](https://github.com/LMhdez/gaslux/pull/231), [#234](https://github.com/LMhdez/gaslux/pull/234), [#237](https://github.com/LMhdez/gaslux/pull/237), [#239](https://github.com/LMhdez/gaslux/pull/239) |
+| Bazzite | [#214](https://github.com/LMhdez/gaslux/pull/214), [#236](https://github.com/LMhdez/gaslux/pull/236), [#238](https://github.com/LMhdez/gaslux/pull/238) |
+| Windows/VM comum | [#64](https://github.com/LMhdez/gaslux/pull/64), [#97](https://github.com/LMhdez/gaslux/pull/97), [#106](https://github.com/LMhdez/gaslux/pull/106), [#110](https://github.com/LMhdez/gaslux/pull/110), [#117](https://github.com/LMhdez/gaslux/pull/117), [#123](https://github.com/LMhdez/gaslux/pull/123), [#124](https://github.com/LMhdez/gaslux/pull/124), [#125](https://github.com/LMhdez/gaslux/pull/125), [#156](https://github.com/LMhdez/gaslux/pull/156), [#158](https://github.com/LMhdez/gaslux/pull/158), [#192](https://github.com/LMhdez/gaslux/pull/192), [#216](https://github.com/LMhdez/gaslux/pull/216), [#217](https://github.com/LMhdez/gaslux/pull/217) |
+| Outras (por classificar) | [#241](https://github.com/LMhdez/gaslux/pull/241), [#240](https://github.com/LMhdez/gaslux/pull/240) |
+
+---
+
+
 > **Triage provisória por metadados GitHub, não é autorização de merge ou fecho.** Confirmar sempre patches, ancestralidade, testes e artefactos antes de qualquer alteração.
 
 ## Estado verificado
