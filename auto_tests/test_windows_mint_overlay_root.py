@@ -57,6 +57,44 @@ class MintOverlayContracts(unittest.TestCase):
             with self.assertRaisesRegex(mint.MintOverlayError, "ambiguous"):
                 mint._guest_disk_audit(Path("/tmp/unused"))
 
+    def test_lab_power_button_policy_is_explicit_and_verified(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / "etc/systemd").mkdir(parents=True)
+            def fake_run(args, **kwargs):
+                if args[1] == "install":
+                    Path(args[-1]).mkdir(parents=True, exist_ok=True)
+                elif args[1] == "tee":
+                    Path(args[-1]).write_text(kwargs["input"], encoding="utf-8")
+                return SimpleNamespace(returncode=0)
+            with patch.object(mint.subprocess, "run", side_effect=fake_run) as run:
+                mint.configure_lab_power_button(target)
+            config = (target / "etc/systemd/logind.conf.d/90-gaslux-lab-power-button.conf")
+            self.assertEqual(config.read_text(encoding="utf-8"),
+                             "[Login]\\nHandlePowerKey=poweroff\\nHandlePowerKeyLongPress=poweroff\\n")
+            self.assertEqual(run.call_count, 2)
+
+    def test_lab_power_button_policy_rejects_symlinked_dropin_directory(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "target"
+            (target / "etc/systemd").mkdir(parents=True)
+            outside = root / "outside"
+            outside.mkdir()
+            (target / "etc/systemd/logind.conf.d").symlink_to(outside, target_is_directory=True)
+            with patch.object(mint.subprocess, "run") as run:
+                with self.assertRaisesRegex(mint.MintOverlayError, "drop-in directory is unsafe"):
+                    mint.configure_lab_power_button(target)
+            run.assert_not_called()
+
+    def test_lab_power_button_policy_is_configured_before_guest_boot(self):
+        source = Path(mint.__file__).read_text(encoding="utf-8")
+        configure = source.index("configure_lab_power_button(target)")
+        qemu = source.index("qemu = subprocess.Popen([")
+        self.assertLess(configure, qemu)
+
     def test_guestmount_allows_runner_access_with_kernel_permissions(self):
         command = mint.guestmount_command(
             Path("/tmp/windows-cow.qcow2"), Path("/tmp/mint-target"))
