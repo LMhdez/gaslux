@@ -312,7 +312,23 @@ jobs:
           assert installed_digest == hashlib.sha256(installed_serial.read_bytes()).hexdigest()
           assert installed_digest == pacstrap["installedReadOnlyBootSerialSha256"]
           installed_raw = installed_serial.read_bytes()
-          assert installed_raw.count(b"Powering off.") >= 1
+          # Independently bind the installed-boot COM1 to the fifth ext4 UUID
+          # audited before pacstrap. Reuse the tested native kernel/systemd
+          # witness checker; an initrd-only or GRUB-only shutdown is not valid.
+          ext4 = json.loads((root / (profile + "-fifth-ext4-only.json")).read_text())
+          assert ext4["onlyOwnedOverlayFifthPartitionFormatted"] is True
+          expected_root_uuid = ext4["rootFilesystem"]["filesystemUuid"]
+          import sys
+          sys.path.insert(0, "auto_tests/tools")
+          from cachyos_windows_shared_cow_firstboot import verify_installed_poweroff_serial
+          verify_installed_poweroff_serial(installed_raw, expected_root_uuid)
+          assert installed_raw.count(
+              ("GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:" + expected_root_uuid).encode("ascii")
+          ) == 1
+          assert b"Switch Root" in installed_raw
+          assert b"System Power Off" in installed_raw
+          assert (b"Powering off." in installed_raw
+                  or b"reboot: Power down" in installed_raw)
           assert b"Kernel panic" not in installed_raw
           fifth = root / (profile + "-fifth-post-pacstrap-discard-serial.log")
           assert fifth.is_file() and not fifth.is_symlink()
