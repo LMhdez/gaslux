@@ -6,8 +6,7 @@ die() { printf 'GASLUX_POP_WIN10_LIVE_VM_REFUSED: %s\n' "$*" >&2; exit 1; }
 overlay="$1"; manifest="$2"; workspace="$3"; evidence="$4"
 [[ "$GITHUB_ACTIONS" == true && "$RUNNER_ENVIRONMENT" == github-hosted &&
    "$RUNNER_OS" == Linux && "$GITHUB_REPOSITORY" == LMhdez/gaslux &&
-   "$GASLUX_POP_WIN10_LIVE_CONSENT" ==
-     I_ACCEPT_SIGNED_POP_ISO_READ_ONLY_GENUINE_WINDOWS_COW_VM ]] ||
+   "$GASLUX_POP_WIN10_LIVE_CONSENT" == I_ACCEPT_SIGNED_POP_ISO_READ_ONLY_GENUINE_WINDOWS_COW_VM ]] ||
   die 'Hosted QEMU opt-in missing'
 [[ "$RUNNER_TEMP" == /home/runner/work/_temp &&
    "$workspace" == "$RUNNER_TEMP"/gaslux-win-x64-* &&
