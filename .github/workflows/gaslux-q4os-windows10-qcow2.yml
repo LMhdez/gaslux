@@ -38,8 +38,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 -m pip install --disable-pip-version-check --user pytest
-          python3 -m pytest -q auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py
+          python3 -m venv "$RUNNER_TEMP/gaslux-test-venv"
+          "$RUNNER_TEMP/gaslux-test-venv/bin/python" -m pip install --disable-pip-version-check pytest
+          "$RUNNER_TEMP/gaslux-test-venv/bin/python" -m pytest -q auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py
 
       - name: Install QEMU, OVMF and offline NTFS inspection tools
         shell: bash
