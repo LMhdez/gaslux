@@ -88,12 +88,9 @@ def observe_destination(ocr: str) -> dict:
         "nativeStoragePageObserved": True,
         "automaticOptionTextObserved": "automatic" in s,
         "customOptionTextObserved": "custom" in s,
-        "advancedCustomBlivetOptionTextObserved": (
-            "advanced custom" in s and "blivet-gui" in s
-        ),
+        "advancedCustomBlivetOptionTextObserved": ("advanced custom" in s and "blivet-gui" in s),
         "zeroDisksTextObserved": bool(
-            re.search(r"\b[0o]\s+disks?\s+selected\b", s)
-            or "no disks detected" in s
+            re.search(r"\b[0o]\s+disks?\s+selected\b", s) or "no disks detected" in s
         ),
         "diskModelText": s[:1400],
         "blivetGuiExecutableVerified": False,
@@ -132,9 +129,7 @@ def main() -> None:
                 im.verify()
             with Image.open(args.png) as im:
                 width, height = im.size
-            result = locate_destination(
-                ocr, args.tsv.read_text(encoding="utf-8"), width, height
-            )
+            result = locate_destination(ocr, args.tsv.read_text(encoding="utf-8"), width, height)
             xy = result["coordinate"]
             args.coords.write_text(f"{xy['x']} {xy['y']}\n", encoding="ascii")
         else:

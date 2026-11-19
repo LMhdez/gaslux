@@ -24,13 +24,13 @@ def test_only_disposable_owned_raw_gpt_and_ovmf_var_file_are_writable():
     assert "github.event_name" in text
     assert "$RUNNER_TEMP/bazzite-synthetic-gpt-ro" in text
     assert "gaslux-owned-raw-gpt.img" in text
-    assert "truncate -s 68719476736 \"$disk\"" in text
+    assert 'truncate -s 68719476736 "$disk"' in text
     assert "37566E43-902A-4DF9-901E-25007AF638C2" in text
     assert "GASLUX-LAB-ESP" in text
     assert "GASLUX-LAB-DATA" in text
-    assert "sgdisk --verify \"$disk\"" in text
-    assert "chmod 0400 \"$disk\"" in text
-    assert "sha256sum \"$disk\"" in text
+    assert 'sgdisk --verify "$disk"' in text
+    assert 'chmod 0400 "$disk"' in text
+    assert 'sha256sum "$disk"' in text
     assert text.count("sha256sum --check --strict pre-boot.sha256") >= 2
     assert "-nodefaults -machine q35,accel=kvm" in text
     assert "-sandbox on,obsolete=deny,elevateprivileges=deny," in text
@@ -63,10 +63,7 @@ def test_byte_integrity_before_and_after_and_fail_closed_provenance():
     assert names.index("Download and verify legacy ISO exact lab bytes before optical boot") < (
         names.index("Observe native storage GUI with one synthetic read-only GPT device")
     )
-    assert (
-        steps[-2]["name"]
-        == "Validate sealed owned GPT image is byte-for-byte unchanged"
-    )
+    assert steps[-2]["name"] == "Validate sealed owned GPT image is byte-for-byte unchanged"
     assert steps[-2]["if"] == "always()"
     assert steps[-1]["if"] == "always()"
     assert "no ISO signing claim" in text
@@ -98,7 +95,7 @@ def test_guests_never_see_windows_or_other_disks_and_never_install():
         "qemu-img create",
     ):
         assert forbidden not in text, forbidden
-    assert "move \"$dx\" \"$dy\" click 1" in text
+    assert 'move "$dx" "$dy" click 1' in text
     assert "Begin Installation input" in text
     assert "diskPartitioningAttempted" not in text
 
