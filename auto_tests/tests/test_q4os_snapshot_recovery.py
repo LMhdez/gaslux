@@ -6,13 +6,18 @@ import sys
 from pathlib import Path
 
 import pytest
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests" / "tools"))
 sys.path.insert(0, str(ROOT / "assets" / "live"))
 
 from gaslux_q4os_snapshot_manifest import (  # noqa: E402
+    DOMAIN,
     Q4osSnapshotRecoveryRefusal,
     canonical_manifest,
     sign_manifest,
@@ -87,6 +92,14 @@ def test_manifest_signature_and_read_only_policy():
     assert result == MANIFEST
     assert len(public) == 32
     assert len(signature) == 64
+
+
+def test_manifest_signature_requires_domain_separation_prefix():
+    raw, signature, public, fingerprint = signed()
+    assert fingerprint
+    Ed25519PublicKey.from_public_bytes(public).verify(signature, DOMAIN + raw)
+    with pytest.raises(InvalidSignature):
+        Ed25519PublicKey.from_public_bytes(public).verify(signature, raw)
 
 
 def test_manifest_is_canonical_and_deterministic():
