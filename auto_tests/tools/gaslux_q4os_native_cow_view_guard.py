@@ -305,9 +305,9 @@ def verify(workspace: Path, plan_dir: Path, snapshot_dir: Path, evidence: Path) 
         _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-manifest.json", 1024 * 1024),
         _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-manifest.ed25519", 128),
         _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-public-key.bin", 128),
-        _read_private_regular(
-            snapshot_dir / "q4os-recovery-snapshot-public-key.sha256", 128
-        ).decode("ascii").strip(),
+        _read_private_regular(snapshot_dir / "q4os-recovery-snapshot-public-key.sha256", 128)
+        .decode("ascii")
+        .strip(),
     )
     actual_snapshot_sha = hashlib.sha256()
     with snapshot.open("rb") as snapshot_stream:
