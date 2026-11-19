@@ -3,7 +3,7 @@ name: Bazzite legacy owned read-only GPT storage observation (no install)
 on:
   push:
     branches:
-      - feature/bazzite-legacy-readonly-gpt-20261119
+      - test/bazzite-custom-radio-selection-cow-20261119
     paths:
       - '.github/workflows/gaslux-bazzite-legacy-readonly-gpt.yml'
       - 'auto_tests/bazzite_legacy_diskless_navigation.py'
@@ -15,6 +15,8 @@ on:
       - 'auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py'
       - 'auto_tests/bazzite_legacy_gpt_storage_navigation.py'
       - 'auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py'
+      - 'auto_tests/bazzite_custom_radio_gate.py'
+      - 'auto_tests/tests/test_bazzite_custom_radio_gate.py'
   workflow_dispatch:
 
 permissions:
@@ -43,7 +45,8 @@ jobs:
             auto_tests/tests/test_bazzite_legacy_blue_button.py \
             auto_tests/tests/test_bazzite_legacy_destination_gate.py \
             auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py \
-            auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py
+            auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py \
+            auto_tests/tests/test_bazzite_custom_radio_gate.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_legacy_diskless_navigation.py \
             auto_tests/bazzite_legacy_blue_button.py \
@@ -54,7 +57,9 @@ jobs:
             auto_tests/tests/test_bazzite_legacy_blue_button.py \
             auto_tests/tests/test_bazzite_legacy_destination_gate.py \
             auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py \
-            auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py
+            auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py \
+            auto_tests/bazzite_custom_radio_gate.py \
+            auto_tests/tests/test_bazzite_custom_radio_gate.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_legacy_diskless_navigation.py \
             auto_tests/bazzite_legacy_blue_button.py \
@@ -65,7 +70,9 @@ jobs:
             auto_tests/tests/test_bazzite_legacy_destination_gate.py \
             auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py \
             auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py \
-            auto_tests/bazzite_legacy_gpt_storage_navigation.py
+            auto_tests/bazzite_legacy_gpt_storage_navigation.py \
+            auto_tests/bazzite_custom_radio_gate.py \
+            auto_tests/tests/test_bazzite_custom_radio_gate.py
 
   prior-blue-button:
     needs: contracts
@@ -425,6 +432,28 @@ jobs:
             capture after-destination
             echo 'Only the COW-backed synthetic GPT Installation Destination tile was opened' \
               > bazzite-legacy-readonly-gpt-evidence/destination-observed.txt
+            python3 auto_tests/bazzite_custom_radio_gate.py \
+              --phase before \
+              --png bazzite-legacy-readonly-gpt-evidence/after-destination.png \
+              --ocr bazzite-legacy-readonly-gpt-evidence/after-destination.ocr \
+              --tsv bazzite-legacy-readonly-gpt-evidence/after-destination.tsv \
+              --coords "$work/custom-coordinate" \
+              > bazzite-legacy-readonly-gpt-evidence/custom-before-gate.json
+            read -r ux uy < "$work/custom-coordinate"
+            [[ "$ux" =~ ^[0-9]{1,4}$ && "$uy" =~ ^[0-9]{1,4}$ ]] || exit 1
+            timeout --signal=TERM --kill-after=5s 30s \
+              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 \
+              move "$ux" "$uy" click 1
+            echo 'Clicked only the OCR- and pixel-gated Custom radio; no Done/Begin Installation input' \
+              > bazzite-legacy-readonly-gpt-evidence/custom-click-observed.txt
+            sleep 15
+            capture after-custom
+            python3 auto_tests/bazzite_custom_radio_gate.py \
+              --phase after \
+              --png bazzite-legacy-readonly-gpt-evidence/after-custom.png \
+              --ocr bazzite-legacy-readonly-gpt-evidence/after-custom.ocr \
+              --tsv bazzite-legacy-readonly-gpt-evidence/after-custom.tsv \
+              > bazzite-legacy-readonly-gpt-evidence/custom-after-gate.json
           else
             echo 'BLOCKED: No unique Continue control after selecting locale' \
               > bazzite-legacy-readonly-gpt-evidence/no-continue.txt
@@ -472,7 +501,7 @@ jobs:
               "partitionWriteAuthorized": False,
               "windowsEspWriteAuthorized": False,
               "secureBootEnrollmentAuthorized": False,
-              "windowsDualBootVerified": False,
+              "windowsDualBootVerified": False,\n              "customRadioClickGatePassed": (root / "custom-after-gate.json").is_file(),\n              "customSelectedObserved": (root / "custom-after-gate.json").is_file(),\n              "partitionEditorEntered": False,
           }, indent=2, sort_keys=True))
           PY
           cat bazzite-legacy-readonly-gpt-evidence/summary.json
