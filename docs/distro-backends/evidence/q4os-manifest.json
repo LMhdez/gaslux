@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "distribution": "q4os",
+  "iso": {
+    "version": "6.10 r2",
+    "officialUrl": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso",
+    "sha256": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d",
+    "sizeBytes": null,
+    "upstreamGpgSignatureVerified": false
+  },
+  "labSourceCommit": "6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb",
+  "workflow": ".github/workflows/q4os-ui-repro-2vm.yml",
+  "status": "pending",
+  "runs": [
+    {
+      "replica": 1,
+      "runId": "44640026059",
+      "attempt": 1,
+      "result": "pending",
+      "artifactId": null,
+      "artifactUrl": null,
+      "isoHashVerified": null,
+      "calamaresPolicyAudited": null,
+      "screenshots": [],
+      "transitions": []
+    },
+    {
+      "replica": 2,
+      "runId": "44640026059",
+      "attempt": 1,
+      "result": "pending",
+      "artifactId": null,
+      "artifactUrl": null,
+      "isoHashVerified": null,
+      "calamaresPolicyAudited": null,
+      "screenshots": [],
+      "transitions": []
+    }
+  ],
+  "stateCountVerifiedInTwoGuests": 0,
+  "transitionCountVerifiedInTwoGuests": 0,
+  "blockedAt": "calamares-users-unfilled; no Summary/Install",
+  "limitations": [
+    "No actual Qt accessibility object identifiers were collected from the guest.",
+    "No screenshot hash is asserted until the new 2-VM run completes and its artifact is inspected.",
+    "Full UI Summary cannot be reached by the current zero-credential non-destructive harness.",
+    "No Calamares install job and no Windows disk are attached.",
+    "SHA-256 on official download is not itself independently authenticated upstream GPG provenance."
+  ]
+}
