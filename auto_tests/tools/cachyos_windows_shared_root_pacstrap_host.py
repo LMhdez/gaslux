@@ -505,8 +505,15 @@ def run_shared_root_pacstrap(
         created = _run(["mmd", "-i", str(boot_efi), directory])
         require(created.returncode == 0, "could not create isolated UEFI fallback directory")
     standalone = workspace / "gaslux-cachyos-bootx64.efi"
+    # Make the ISO storage disk discoverable by standalone EFI GRUB.
+    # The previous virtio-blk-only attachment was invisible to the embedded
+    # GRUB image: the guest serial showed "no such device" and never reached
+    # the Archiso kernel. Use explicit AHCI/SATA and preload the required
+    # controller, filesystem, UUID-search, loopback and Linux modules.
     result = _run([
-        "grub-mkstandalone", "--format=x86_64-efi", "--output=" + str(standalone),
+        "grub-mkstandalone", "--format=x86_64-efi",
+        "--modules=ahci ata scsi part_gpt ext2 search search_fs_uuid loopback iso9660 linux normal",
+        "--output=" + str(standalone),
         "boot/grub/grub.cfg=" + str(grub_cfg),
     ], timeout=180)
     require(result.returncode == 0 and standalone.is_file()
@@ -538,8 +545,9 @@ def run_shared_root_pacstrap(
         "-device", "qemu-xhci",
         "-drive", "if=none,id=liveefi,format=raw,file=" + str(boot_efi) + ",readonly=on",
         "-device", "usb-storage,drive=liveefi,bootindex=1",
+        "-device", "ich9-ahci,id=iso_sata",
         "-drive", "if=none,id=iso_source,format=raw,file=" + str(iso_image) + ",readonly=on",
-        "-device", "virtio-blk-pci,drive=iso_source",
+        "-device", "ide-hd,drive=iso_source,bus=iso_sata.0",
         # The sole writable Windows-containing disk is this owned COW overlay.
         # QEMU opens its protected backing QCOW2 read-only; it is never attached separately.
         "-drive", "if=none,id=windows_cow,format=qcow2,file=" + str(overlay),
