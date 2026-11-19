@@ -5,6 +5,7 @@ The only permitted input is the uniquely identified Advanced Custom (Blivet-GUI)
 launch control on the synthetic COW-backed lab guest. No partition controls are
 clicked and no installation or write authorization is produced.
 """
+
 from __future__ import annotations
 
 import argparse
