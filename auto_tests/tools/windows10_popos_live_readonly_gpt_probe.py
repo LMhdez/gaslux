@@ -215,7 +215,12 @@ def _probe_unformatted_owned_partitions(
             )
             require(detected.returncode == 2
                     and detected.stdout == "",
-                    "owned ESP/root already formatted or blkid probe failed",
+                    "owned Pop partition %d signature probe refused: "
+                    "blkid exit=%d type=%r stderr=%r" % (
+                        index, detected.returncode,
+                        detected.stdout.strip()[:80],
+                        detected.stderr.strip()[:120],
+                    ),
             )
     require(not (Path("/dev") / f"{disk_name}7").exists(),
             "unexpected extra seventh partition")
