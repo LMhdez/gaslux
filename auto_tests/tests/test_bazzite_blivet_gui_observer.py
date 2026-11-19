@@ -28,6 +28,7 @@ def bind_tesseract_to_test_sidecars(monkeypatch):
         png = Path(command[1])
         suffix = ".tsv" if len(command) == 4 else ".ocr"
         return SimpleNamespace(stdout=png.with_suffix(suffix).read_text(encoding="utf-8"))
+
     monkeypatch.setattr(observer.subprocess, "run", fake_run)
 
 
@@ -133,11 +134,13 @@ def test_mismatched_ocr_text_sidecar_refused(tmp_path, monkeypatch):
         ],
     )
     original = observer.subprocess.run
+
     def divergent(command, **kwargs):
         result = original(command, **kwargs)
         if len(command) == 3:
             return SimpleNamespace(stdout="TRUSTED TEXT FROM ANOTHER IMAGE")
         return result
+
     monkeypatch.setattr(observer.subprocess, "run", divergent)
     with pytest.raises(BlivetObserverRefusal, match="do not match screenshot"):
         verify_editor(*paths)
@@ -152,11 +155,13 @@ def test_mismatched_tsv_sidecar_refused(tmp_path, monkeypatch):
         ],
     )
     original = observer.subprocess.run
+
     def divergent(command, **kwargs):
         result = original(command, **kwargs)
         if len(command) == 4:
             return SimpleNamespace(stdout=result.stdout + "tampered")
         return result
+
     monkeypatch.setattr(observer.subprocess, "run", divergent)
     with pytest.raises(BlivetObserverRefusal, match="do not match screenshot"):
         verify_editor(*paths)
