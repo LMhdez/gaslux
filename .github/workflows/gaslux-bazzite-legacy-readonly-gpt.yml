@@ -292,7 +292,8 @@ jobs:
           PY
           pid=''
           audit_owned_base() {
-            local status=$?
+            local operation_status=$?
+            local integrity_status=0
             trap - EXIT
             if [[ -n "$pid" ]]; then
               kill "$pid" 2>/dev/null || :
@@ -300,9 +301,9 @@ jobs:
             fi
             sha256sum --check --strict "$work/owned-raw-before.sha256" \
               > bazzite-legacy-readonly-gpt-evidence/immutable-base-check.txt 2>&1 \
-              || status=1
+              || integrity_status=1
             if [[ -f "$overlay" && ! -L "$overlay" ]]; then
-              python3 - "$overlay" "$disk" <<'PY' || status=1
+              python3 - "$overlay" "$disk" <<'PY' || integrity_status=1
           import json
           import subprocess
           import sys
@@ -317,15 +318,22 @@ jobs:
           PY
               rm -f -- "$overlay"
             else
-              status=1
+              integrity_status=1
             fi
-            [[ ! -e "$overlay" && ! -L "$overlay" ]] || status=1
-            if (( status != 0 )); then
-              echo 'Guest/fixture operation failed or backing changed'
+            [[ ! -e "$overlay" && ! -L "$overlay" ]] || integrity_status=1
+            if (( integrity_status == 0 )); then
+              echo 'BASE_INTEGRITY=PASS; COW backing identity verified and overlay discarded'
             else
-              echo 'Synthetic GPT backing unchanged byte-for-byte'
+              echo 'BASE_INTEGRITY=FAIL; inspect immutable-base-check.txt and qemu-img audit'
             fi
-            exit "$status"
+            if (( operation_status != 0 )); then
+              echo "GUEST_PROBE=FAIL; original command exit=$operation_status"
+              exit "$operation_status"
+            fi
+            if (( integrity_status != 0 )); then
+              exit 1
+            fi
+            echo 'GUEST_PROBE=PASS; synthetic GPT backing unchanged byte-for-byte'
           }
           trap audit_owned_base EXIT
           cp "$work/gpt-fixture-layout.txt" \
@@ -402,7 +410,7 @@ jobs:
             capture after-continue
             echo 'Attempted only safe Continue on owned COW-backed synthetic GPT guest' \
               > bazzite-legacy-readonly-gpt-evidence/continue-observed.txt
-            python3 auto_tests/bazzite_legacy_destination_gate.py \
+            python3 auto_tests/bazzite_legacy_gpt_storage_navigation.py \
               --png bazzite-legacy-readonly-gpt-evidence/after-continue.png \
               --ocr bazzite-legacy-readonly-gpt-evidence/after-continue.ocr \
               --tsv bazzite-legacy-readonly-gpt-evidence/after-continue.tsv \
@@ -446,7 +454,7 @@ jobs:
               "continueInputOnlyAfterRuntimeOCRGate": moved,
               "installationSummaryTextObserved": "installation summary" in text,
               "installationDestinationTextObserved": "installation destination" in text,
-              "disklessDestinationPageCaptureCollected": storage.is_file(),
+              "gptDestinationPageCaptureCollected": storage.is_file(),
               "destinationPageTitleCandidateObserved": "installation destination" in storage_text,
               "blivetOptionTextCandidateObserved": "blivet" in storage_text,
               "guestDiskVisibleInGuiCandidate": (
