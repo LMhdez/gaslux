@@ -152,7 +152,7 @@ jobs:
       (github.event.pull_request.head.repo.full_name == github.repository &&
        (github.event.pull_request.head.ref == 'feature/cachyos-writable-child-cow-firstboot-issue3' ||
         github.event.pull_request.head.ref == 'fix/cachyos-grant-config-program-binding-issue3') &&
-       github.event.pull_request.base.ref == 'feature/cachyos-shared-cow-installed-readonly-boot-issue3')
+       github.event.pull_request.base.ref == 'feature/cachyos-writable-child-cow-firstboot-issue3')
     needs: static-and-synthetic-contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 220
