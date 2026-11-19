@@ -412,3 +412,15 @@ jobs:
             ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-install-manifest.json
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload OVMF timeout diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaslux-windows10-ovmf-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-ovmf-timeout.ppm
+            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-qemu-serial.log
+            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-qemu-process.log
+          if-no-files-found: warn
+          retention-days: 7
