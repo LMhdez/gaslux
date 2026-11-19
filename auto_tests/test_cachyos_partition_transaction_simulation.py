@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 from pathlib import Path
+import struct
 import unittest
 
 
@@ -23,6 +25,37 @@ sim = load("transaction_simulation", HERE / "tools/cachyos_partition_transaction
 def fixture():
     front, back = gpt.create_disk_windows()
     report = gpt.gpt.inspect_gpt_windows(front, back)
+
+    # The newer read-only GPT auditor intentionally does NOT publish a
+    # candidate write extent or canonical PMBR authority. The *test fixture*
+    # can reconstruct the old simulation-only fields from these known,
+    # synthetic and already CRC-validated GPT bytes. Never use this adapter
+    # for an actual Windows disk or as proof that writes are permitted.
+    total_sectors = report["virtualDiskBytes"] // 512
+    last_usable = struct.unpack_from("<Q", front, 512 + 48)[0]
+    assert last_usable == total_sectors - 34
+    last_windows_lba = report["windowsPartitions"][-1]["lastLba"]
+    alignment = 2048  # 1 MiB, synthetic GPT only
+    first = ((last_windows_lba + alignment) // alignment) * alignment
+    last = ((last_usable + 1) // alignment) * alignment - 1
+    assert last_windows_lba < first <= last <= last_usable
+    assert (last - first + 1) * 512 >= 40 * 1024**3
+
+    pmbr_start, pmbr_size = struct.unpack_from("<II", front, 446 + 8)
+    canonical_pmbr = pmbr_start == 1 and pmbr_size == total_sectors - 1
+    report["protectiveMbrCanonical"] = canonical_pmbr
+    report["protectiveMbrOversizedWindowsLabException"] = not canonical_pmbr
+    report["gptAuditWindowsSha256"] = hashlib.sha256(front + back).hexdigest()
+    report["observedPostWindowsFreeExtent"] = {
+        "firstLba": first,
+        "lastLba": last,
+        "lengthBytes": (last - first + 1) * 512,
+        "alignmentBytes": alignment * 512,
+        "readOnlyObservation": True,
+        "partitionCreated": False,
+        "linuxWriteAuthorized": False,
+        "recoveryAndOwnershipProofRequired": True,
+    }
     area = report["observedPostWindowsFreeExtent"]
     plan = {
         "transactionId": "a" * 32,
