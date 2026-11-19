@@ -75,15 +75,36 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          sudo timeout --signal=TERM --kill-after=15s 600s \
-            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 update -qq
-          sudo timeout --signal=TERM --kill-after=15s 900s \
+          # The EC2 regional Ubuntu mirror timed out fetching libguestfs
+          # packages on run 44483732038. Use TLS and the Ubuntu archive
+          # keyring for this single private runner job, without modifying
+          # global APT sources or disabling signature verification.
+          test -f /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          sources="$RUNNER_TEMP/gaslux-official-ubuntu.list"
+          test ! -e "$sources" && test ! -L "$sources"
+          cat > "$sources" <<'GASLUX_APT'
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu noble noble-updates main restricted universe multiverse
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse
+          GASLUX_APT
+          chmod 600 "$sources"
+          apt_args=(
+            -o "Dir::Etc::sourcelist=$sources"
+            -o "Dir::Etc::sourceparts=-"
+            -o "Acquire::Retries=2"
+            -o "Acquire::http::Timeout=40"
+            -o "Acquire::https::Timeout=40"
+          )
+          sudo timeout --signal=TERM --kill-after=15s 360s \
+            apt-get "${apt_args[@]}" update -qq
+          # Python libguestfs directly depends on libguestfs0t64, which
+          # supplies qemu-system-x86, qemu-utils and supermin. The large
+          # libguestfs-tools/guestfish/guestmount frontends are NOT needed
+          # by this Python-only archive importer.
+          sudo timeout --signal=TERM --kill-after=15s 660s \
             env DEBIAN_FRONTEND=noninteractive \
-            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
-            install -y --no-install-recommends \
-            aria2 squashfs-tools gdisk dosfstools e2fsprogs util-linux \
-            python3-guestfs libguestfs-tools qemu-system-x86 \
-            qemu-utils linux-image-virtual
+            apt-get "${apt_args[@]}" install -y --no-install-recommends \
+              aria2 squashfs-tools gdisk dosfstools e2fsprogs util-linux \
+              python3-guestfs qemu-utils linux-image-virtual
           # Only in the private GitHub-hosted runner: grant this job's
           # group /dev/kvm access. Otherwise guestfs silently uses TCG,
           # taking >10 minutes for the real multi-GiB tar import.
