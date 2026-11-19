@@ -4,6 +4,7 @@
 Only the Custom radio control may be clicked. The gate never authorizes Done,
 Begin Installation, partition edits, disk writes, or Windows media access.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,11 +19,14 @@ from PIL import Image
 WIDTH = 1280
 HEIGHT = 800
 
+
 def _is_blue(r: int, g: int, b: int) -> bool:
     return 40 <= r <= 120 and 120 <= g <= 180 and 200 <= b <= 255
 
+
 class CustomSelectionRefusal(ValueError):
     """Refuse ambiguous or unexpected installer UI state."""
+
 
 def _load(png: Path, ocr_path: Path, tsv_path: Path):
     paths = (png, ocr_path, tsv_path)
@@ -69,6 +73,7 @@ def _load(png: Path, ocr_path: Path, tsv_path: Path):
             continue
     return image, words
 
+
 def _blue_pixels(image: Image.Image, cx: int, cy: int) -> int:
     return sum(
         1
@@ -76,6 +81,7 @@ def _blue_pixels(image: Image.Image, cx: int, cy: int) -> int:
         for x in range(cx - 5, cx + 6)
         if _is_blue(*image.getpixel((x, y)))
     )
+
 
 def inspect_custom_before(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     image, words = _load(png, ocr_path, tsv_path)
@@ -119,6 +125,7 @@ def inspect_custom_before(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         "windowsEspWriteAuthorized": False,
     }
 
+
 def verify_custom_after(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     image, words = _load(png, ocr_path, tsv_path)
     labels = [
@@ -147,6 +154,7 @@ def verify_custom_after(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         "partitionWriteAuthorized": False,
         "windowsEspWriteAuthorized": False,
     }
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
