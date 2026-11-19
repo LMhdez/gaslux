@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - feature/q4os-calamares-native-owned-cow-view
-      - feature/q4os-users-transition-lab-20261119
     paths:
       - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
       - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
