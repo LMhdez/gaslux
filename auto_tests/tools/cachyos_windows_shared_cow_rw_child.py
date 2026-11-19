@@ -96,11 +96,12 @@ cmdline="$(cat /proc/cmdline)"
 [[ " $cmdline " == *" systemd.unit=multi-user.target "* ]]
 [[ "$(cat /etc/hostname)" == gaslux-cachyos-lab ]]
 grep -Fxq 'LANG=en_US.UTF-8' /etc/locale.conf
+locale -a | grep -Fxq en_US.utf8
 grep -Fxq 'KEYMAP=us' /etc/vconsole.conf
 [[ "$(readlink /etc/localtime)" == /usr/share/zoneinfo/UTC ]]
 getent passwd gaslux-lab | grep -Fq ':/home/gaslux-lab:/bin/bash'
 id -nG gaslux-lab | tr ' ' '\n' | grep -Fxq wheel
-grep -Fq 'gaslux-lab:' /etc/shadow
+awk -F: '$1 == "gaslux-lab" && substr($2,1,3) == "$6$" { ok=1 } END { exit !ok }' /etc/shadow
 grep -Fq '%wheel ALL=(ALL:ALL) ALL' /etc/sudoers.d/10-gaslux-wheel
 systemctl is-enabled --quiet sddm.service
 systemctl is-enabled --quiet NetworkManager.service
