@@ -135,3 +135,48 @@ def test_missing_squashfs_payload_is_rejected_before_inspection(tmp_path: Path) 
     )
     assert result.returncode != 0
     assert "Distribution root filesystem is missing" in result.stderr
+
+@pytest.mark.parametrize(
+    "missing_path",
+    [
+        "etc/os-release",
+        "var/lib/dpkg/status",
+        "usr/sbin/update-grub",
+        "usr/sbin/update-initramfs",
+        "usr/bin/lsinitramfs",
+    ],
+)
+def test_each_required_debian_install_capability_is_enforced(
+    tmp_path: Path, missing_path: str
+) -> None:
+    result = _run_identity_check(
+        tmp_path,
+        expected_id="linuxmint",
+        os_release="ID=linuxmint\\nID_LIKE=ubuntu debian\\n",
+        missing_paths=(missing_path,),
+    )
+    assert result.returncode != 0
+    assert f"missing required capability: {missing_path}" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "os_release",
+    [
+        "ID=\\nID_LIKE=ubuntu debian\\n",
+        "ID=LinuxMint\\nID_LIKE=ubuntu debian\\n",
+        "ID=linuxmint invalid\\nID_LIKE=ubuntu debian\\n",
+    ],
+)
+def test_missing_or_malformed_distribution_id_is_rejected(
+    tmp_path: Path, os_release: str
+) -> None:
+    result = _run_identity_check(
+        tmp_path,
+        expected_id="linuxmint",
+        os_release=os_release,
+    )
+    assert result.returncode != 0
+    assert (
+        "invalid or missing os-release ID" in result.stderr
+        or "Distribution identity mismatch" in result.stderr
+    )
