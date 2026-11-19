@@ -37,7 +37,8 @@ def fixture(tmp_path, *, custom_selected=False, automatic_selected=True):
     draw = ImageDraw.Draw(image)
     # Radio rings with the same blue family used by the captured GTK screen.
     for cx, selected in ((29, automatic_selected), (239, custom_selected)):
-        draw.ellipse((cx - 5, 475, cx + 5, 485), outline=(73, 145, 231), width=2)
+        outline = (73, 145, 231) if selected else (180, 180, 180)
+        draw.ellipse((cx - 5, 475, cx + 5, 485), outline=outline, width=2)
         if selected:
             draw.ellipse((cx - 2, 478, cx + 2, 482), fill=(55, 134, 228))
     image.save(png)
