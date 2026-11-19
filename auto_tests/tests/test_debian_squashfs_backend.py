@@ -167,9 +167,7 @@ def test_each_required_debian_install_capability_is_enforced(
         "ID=linuxmint invalid\\nID_LIKE=ubuntu debian\\n",
     ],
 )
-def test_missing_or_malformed_distribution_id_is_rejected(
-    tmp_path: Path, os_release: str
-) -> None:
+def test_missing_or_malformed_distribution_id_is_rejected(tmp_path: Path, os_release: str) -> None:
     result = _run_identity_check(
         tmp_path,
         expected_id="linuxmint",
