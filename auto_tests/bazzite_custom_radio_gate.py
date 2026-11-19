@@ -55,14 +55,16 @@ def _load(png: Path, ocr_path: Path, tsv_path: Path):
     words = []
     for row in rows:
         try:
-            words.append({
-                "text": row["text"].strip().lower(),
-                "left": int(row["left"]),
-                "top": int(row["top"]),
-                "width": int(row["width"]),
-                "height": int(row["height"]),
-                "confidence": float(row["conf"]),
-            })
+            words.append(
+                {
+                    "text": row["text"].strip().lower(),
+                    "left": int(row["left"]),
+                    "top": int(row["top"]),
+                    "width": int(row["width"]),
+                    "height": int(row["height"]),
+                    "confidence": float(row["conf"]),
+                }
+            )
         except (KeyError, TypeError, ValueError):
             continue
     return image, words
@@ -78,16 +80,22 @@ def _blue_pixels(image: Image.Image, cx: int, cy: int) -> int:
 def inspect_custom_before(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     image, words = _load(png, ocr_path, tsv_path)
     labels = [
-        w for w in words
-        if w["text"] == "custom" and w["confidence"] >= 75
-        and 245 <= w["left"] <= 305 and 470 <= w["top"] <= 490
+        w
+        for w in words
+        if w["text"] == "custom"
+        and w["confidence"] >= 75
+        and 245 <= w["left"] <= 305
+        and 470 <= w["top"] <= 490
     ]
     if len(labels) != 1:
         raise CustomSelectionRefusal("Custom radio label is not unique")
     automatic = [
-        w for w in words
-        if w["text"] == "automatic" and w["confidence"] >= 75
-        and 35 <= w["left"] <= 115 and 470 <= w["top"] <= 490
+        w
+        for w in words
+        if w["text"] == "automatic"
+        and w["confidence"] >= 75
+        and 35 <= w["left"] <= 115
+        and 470 <= w["top"] <= 490
     ]
     if len(automatic) != 1:
         raise CustomSelectionRefusal("Automatic radio label is not unique")
@@ -155,10 +163,12 @@ def main() -> None:
             if args.coords is None or args.coords.is_symlink():
                 raise CustomSelectionRefusal("A safe coordinate output path is required")
             point = result["coordinate"]
-            args.coords.write_text(f'{point["x"]} {point["y"]}\n', encoding="ascii")
+            args.coords.write_text(f"{point['x']} {point['y']}\n", encoding="ascii")
     except (OSError, ValueError, UnicodeError) as exc:
         parser.exit(2, f"REFUSED: {exc}\n")
     print(json.dumps(result, indent=2, sort_keys=True))
+
+
 
 if __name__ == "__main__":
     main()
