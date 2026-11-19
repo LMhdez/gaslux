@@ -62,3 +62,7 @@ Pedido: reduzir branches Git, não encerrar PRs. Inventário REST inicial reconf
 ## Revalidação e arquivo de 20:28 UTC
 
 [Auditoria de leitura #44608983665](https://github.com/LMhdez/gaslux/actions/runs/44608983665) encontrou 1 referência ancestral (`feature/q4os-calamares-users-view-lab` no SHA de `main`) e 1 com histórico antigo exclusivo (`test/cachyos-166-prewrite-contracts-rebase-20261119`). Este último foi preservado no [commit de arquivo de dois pais `2b682636`](https://github.com/LMhdez/gaslux/commit/2b682636b7aacc347a507d525d2bf78ca50c1818), árvore imutável, sem importar código para o instalador. O contrato de verificação passa a exigir 102 históricos exatos. A remoção é limitada aos SHAs já ancestrais e usa `--force-with-lease`, ficando a proteção de PRs e Actions ativa.
+
+- [Execução de limpeza #44609582671](https://github.com/LMhdez/gaslux/actions/runs/44609582671): `SUCCESS`, duas branches obsoletas eliminadas com lease após prova de ancestralidade: `test/cachyos-166-prewrite-contracts-rebase-20261119` (histórico preservado no arquivo `2b682636`) e `feature/q4os-calamares-users-view-lab` (SHA igual a `main`). `ARCHIVE_DAG_VERIFIED=102`, árvore inalterada, sem merge de código de produção; contagem de branches: **69 → 67**.
+
+Workflow novamente limitado a `contents: read` e checkout sem credenciais. As demais referências são preservadas por proteção ou evidências insuficientes. O próximo avanço deverá integrar e testar código de branches distintas, não apagar trabalho experimental indiscriminadamente.
