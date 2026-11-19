@@ -32,13 +32,13 @@ def require(condition: bool, message: str) -> None:
 
 
 def has_orderly_shutdown_witness(serial_bytes: bytes) -> bool:
-    """Accept the systemd and kernel witnesses emitted by an orderly poweroff."""
-    return any(marker in serial_bytes for marker in (
-        b"systemd-shutdown",
-        b"systemd-poweroff.service",
-        b"Powering off",
-        b"reboot: Power down",
-    ))
+    """Require a complete, line-anchored systemd or kernel poweroff witness."""
+    witnesses = (
+        rb"^systemd-shutdown\[\d+\]: Powering off\.$",
+        rb"^\[\s*OK\s*\]\s+Finished systemd-poweroff\.service - System Power Off\.$",
+        rb"^\[\s*\d+(?:\.\d+)?\s*\]\s+reboot: Power down$",
+    )
+    return any(re.search(pattern, serial_bytes, re.MULTILINE) for pattern in witnesses)
 
 
 def read_regular(directory: Path, name: str, maximum: int) -> tuple[Path, bytes]:
