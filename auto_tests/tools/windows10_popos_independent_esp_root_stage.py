@@ -7,6 +7,7 @@ On any error the private COW overlay is discarded; Windows backing is read-only.
 from __future__ import annotations
 
 from contextlib import closing
+from typing import Callable
 import hashlib
 import json
 import os
@@ -103,7 +104,10 @@ def _write_exact_owned_partition(g, p: dict) -> None:
     )
 
 
-def stage_owned_esp_root(base: Path, evidence: Path) -> dict:
+def stage_owned_esp_root(
+    base: Path, evidence: Path,
+    *, post_boot_callback: Callable[[Path, dict], dict] | None = None,
+) -> dict:
     """Stage ONLY two unformatted owned GPT entries after genuine Windows boot."""
     overlay = base.parent / "gaslux-pop-stage.qcow2"
     require_lab_owned(base, overlay, evidence)
@@ -232,6 +236,39 @@ def stage_owned_esp_root(base: Path, evidence: Path) -> dict:
                 p["uniqueGuid"] for p in plan["partitions"]
             ],
         }
+        if post_boot_callback is not None:
+            require(
+                callable(post_boot_callback)
+                and os.environ.get("GASLUX_WIN10_POP_PAIR_POSTBOOT_CONSENT")
+                == "I_ACCEPT_DISPOSABLE_POP_PAIR_WINDOWS_THIRD_BOOT",
+                "missing isolated Windows third-boot consent or callback",
+            )
+            # Caller boots ONLY the pre-verified child overlay with a distinct
+            # OVMF VARS copy and no installer media. Never write the backing.
+            witness = post_boot_callback(overlay, plan)
+            require(
+                type(witness) is dict
+                and witness.get("windowsGuestPostPairBootVerified") is True
+                and witness.get("originalWindowsOvmfVarsUnchanged") is True
+                and isinstance(witness.get("windowsGuestPostPairSerialSha256"), str)
+                and len(witness["windowsGuestPostPairSerialSha256"]) == 64,
+                "genuine Windows post-pair guest proof missing",
+            )
+            post_crc = capture_owned_qcow2(overlay, expected_count=6)
+            reconcile_owned_pair(crc_before, post_crc, plan)
+            with closing(guestfs.GuestFS(python_return_dict=True)) as g:
+                g.add_drive_opts(str(overlay), readonly=1, format="qcow2")
+                g.launch()
+                require(_windows_witness(g, 6) == windows_before,
+                        "postboot Windows EFI/BCD/WinRE/NTFS witness changed")
+            require(_sha256(base) == original_hash,
+                    "postboot Windows QCOW2 backing changed")
+            result["independentWindowsPostStageBootVerified"] = True
+            result["windowsGuestPostPairSerialSha256"] = witness[
+                "windowsGuestPostPairSerialSha256"]
+            result["windowsGuestPostPairBootAndGptReconciled"] = True
+            print("GASLUX_WIN10_POP_PAIR_WINDOWS_THIRD_BOOT_RECONCILED=1",
+                  flush=True)
         dest = evidence / "win10-pop-independent-esp-root-stage.json"
         with dest.open("x", encoding="utf-8") as out:
             out.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
