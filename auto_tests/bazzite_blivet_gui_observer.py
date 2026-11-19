@@ -23,7 +23,7 @@ class BlivetObserverRefusal(ValueError):
     """Refuse unexpected, ambiguous, or unbounded installer evidence."""
 
 
-def _read(png: Path, ocr_path: Path, tsv_path: Path):
+def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool = True):
     paths = (png, ocr_path, tsv_path)
     if any(path.is_symlink() for path in paths):
         raise BlivetObserverRefusal("Symlink evidence refused")
@@ -39,9 +39,10 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path):
         if image.size != (WIDTH, HEIGHT):
             raise BlivetObserverRefusal("Unexpected framebuffer geometry")
     normalized = re.sub(r"\s+", " ", ocr).lower()
-    for marker in ("bazzite 42 installation", "installation destination", "advanced custom", "blivet-gui"):
-        if marker not in normalized:
-            raise BlivetObserverRefusal(f"Missing storage-page marker: {marker}")
+    if require_storage_page:
+        for marker in ("bazzite 42 installation", "installation destination", "advanced custom", "blivet-gui"):
+            if marker not in normalized:
+                raise BlivetObserverRefusal(f"Missing storage-page marker: {marker}")
     rows = list(csv.DictReader(io.StringIO(tsv), delimiter="\t"))
     words = []
     for row in rows:
@@ -106,7 +107,7 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
 
 
 def verify_editor(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
-    text, words = _read(png, ocr_path, tsv_path)
+    text, words = _read(png, ocr_path, tsv_path, require_storage_page=False)
     # Require a distinct editor identity and visible device/partition context.
     editor_markers = ("blivet", "partition")
     if not all(marker in text for marker in editor_markers):
