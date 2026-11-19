@@ -58,3 +58,7 @@ O workflow de manutenção regressa definitivamente ao modo de **auditoria apena
 ## Reauditoria de 20:25 UTC
 
 Pedido: reduzir branches Git, não encerrar PRs. Inventário REST inicial reconfirmado: 69 branches, 22 PRs abertas e três issues. A verificação CI permaneceu em modo de leitura. A auditoria reavalia candidatas conforme estado atual antes de qualquer eliminação. A preservação da árvore experimental e as proteções das PRs continuam obrigatórias.
+
+## Revalidação e arquivo de 20:28 UTC
+
+[Auditoria de leitura #44608983665](https://github.com/LMhdez/gaslux/actions/runs/44608983665) encontrou 1 referência ancestral (`feature/q4os-calamares-users-view-lab` no SHA de `main`) e 1 com histórico antigo exclusivo (`test/cachyos-166-prewrite-contracts-rebase-20261119`). Este último foi preservado no [commit de arquivo de dois pais `2b682636`](https://github.com/LMhdez/gaslux/commit/2b682636b7aacc347a507d525d2bf78ca50c1818), árvore imutável, sem importar código para o instalador. O contrato de verificação passa a exigir 102 históricos exatos. A remoção é limitada aos SHAs já ancestrais e usa `--force-with-lease`, ficando a proteção de PRs e Actions ativa.
