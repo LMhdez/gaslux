@@ -79,43 +79,18 @@ def _read_qmp_reply(stream, expected_id: str) -> dict:
 
 
 def _send_key_events(stream, *, sleep=time.sleep) -> None:
-    """Hold Space long enough for OVMF USB HID polling, with QMP acknowledgements."""
-    key_down = {
-        "execute": "input-send-event",
+    """Use QMP send-key to drive the guest keyboard path used by OVMF."""
+    request = {
+        "execute": "send-key",
         "arguments": {
-            "events": [
-                {
-                    "type": "key",
-                    "data": {
-                        "key": {"type": "qcode", "data": "spc"},
-                        "down": True,
-                    },
-                }
-            ]
+            "keys": [{"type": "qcode", "data": "spc"}],
+            "hold-time": 1000,
         },
-        "id": "gaslux-ovmf-space-down",
+        "id": "gaslux-ovmf-send-space",
     }
-    stream.write((json.dumps(key_down, separators=(",", ":")) + "\r\n").encode())
-    _read_qmp_reply(stream, "gaslux-ovmf-space-down")
-    sleep(0.25)
-    key_up = {
-        "execute": "input-send-event",
-        "arguments": {
-            "events": [
-                {
-                    "type": "key",
-                    "data": {
-                        "key": {"type": "qcode", "data": "spc"},
-                        "down": False,
-                    },
-                }
-            ]
-        },
-        "id": "gaslux-ovmf-space-up",
-    }
-    stream.write((json.dumps(key_up, separators=(",", ":")) + "\r\n").encode())
-    _read_qmp_reply(stream, "gaslux-ovmf-space-up")
-
+    stream.write((json.dumps(request, separators=(",", ":")) + "\\r\\n").encode())
+    _read_qmp_reply(stream, "gaslux-ovmf-send-space")
+    sleep(1.0)
 
 def _send_key(sock: Path, pid: int) -> None:
     st = sock.lstat()
