@@ -50,7 +50,7 @@ def test_only_synthetic_private_cow_backed_disk_is_attached():
 
 def test_no_windows_storage_or_installer_mutation_code():
     source = WORKFLOW.read_text(encoding="utf-8")
-    assert source.count("click 1") == 3
+    assert source.count("click 1") == 4
     assert '"beginInstallationButtonClicked": False' in source
     assert '"installationAuthorized": False' in source
     assert '"partitionWriteAuthorized": False' in source
@@ -96,6 +96,10 @@ def test_original_guest_screen_gates_are_reused():
     assert source.index("blue-gate.json") < source.index('move "$cx" "$cy" click 1')
     assert source.index("destination-gate.json") < source.index('move "$dx" "$dy" click 1')
     assert "capture after-destination" in source
+    assert "bazzite_custom_radio_gate.py" in source
+    assert "capture after-custom" in source
+    assert source.index("custom-before-gate.json") < source.index('move "$ux" "$uy" click 1')
+    assert source.index("custom-after-gate.json") < source.index("summary.json")
 
 
 def test_every_embedded_bash_script_parses():
