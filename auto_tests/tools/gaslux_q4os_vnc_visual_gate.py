@@ -125,6 +125,29 @@ _CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_RADIO = (
     (320, 250, 350, 310),
     "be18b916129a47587ca7fc6576d18f275828679c494302d406abff24a5e6b145",
 )
+# Stable RGB regions independently reviewed in the native Q4OS 6.10 r2
+# Users page screenshot from Actions run #44544993517. The gate is
+# observation-only: no user data, password, or Next/Install action is allowed.
+_CALAMARES_USERS_TITLE_PAGE = (
+    (128, 118, 1152, 180),
+    "b565add1ff9d5061918278f5cd8871a26b136dfdb04df78e6bcf74c8341b41e5",
+)
+_CALAMARES_USERS_SIDEBAR = (
+    (128, 436, 318, 478),
+    "afabb9afa668803a507dac9a4458cc51b54dbda969162f5f248034142c773693",
+)
+_CALAMARES_USERS_FIELDS = (
+    (320, 220, 740, 365),
+    "85f768249afb41deec46b9361dfd4a886bac27f367c82555d4477f394bc3ecd4",
+)
+_CALAMARES_USERS_PASSWORD_VALIDATION = (
+    (320, 365, 850, 480),
+    "4020b9656b5d9e434b24e2ecf884920c4652cfb6ba5f20c3307bfdb35c20b93a",
+)
+_CALAMARES_USERS_DISABLED_NEXT = (
+    (957, 622, 1051, 663),
+    "0416af48c325376e056f6ef8707b2ebdaedca7f935f2ddf8fc37bc93684d9512",
+)
 
 
 def _open_verified_screen(path: Path) -> Image.Image | None:
@@ -253,6 +276,23 @@ def verified_synthetic_calamares_partitions_selected(path: Path) -> bool:
     )
 
 
+def verified_native_calamares_users(path: Path) -> bool:
+    """Verify the native Users page without authorizing any form interaction."""
+    screen = _open_verified_screen(path)
+    if screen is None:
+        return False
+    return all(
+        _roi_sha(screen, box) == digest
+        for box, digest in (
+            _CALAMARES_USERS_TITLE_PAGE,
+            _CALAMARES_USERS_SIDEBAR,
+            _CALAMARES_USERS_FIELDS,
+            _CALAMARES_USERS_PASSWORD_VALIDATION,
+            _CALAMARES_USERS_DISABLED_NEXT,
+        )
+    )
+
+
 def verified_centre_changed(before: Path, after: Path) -> bool:
     """Taskbar-clock updates alone must never satisfy a GUI transition."""
     previous = _open_verified_screen(before)
@@ -285,6 +325,8 @@ def main() -> int:
         passed = verified_synthetic_calamares_partitions_view(Path(sys.argv[2]))
     elif mode == "calamares-synthetic-cow-partitions-selected" and len(sys.argv) == 3:
         passed = verified_synthetic_calamares_partitions_selected(Path(sys.argv[2]))
+    elif mode == "calamares-users" and len(sys.argv) == 3:
+        passed = verified_native_calamares_users(Path(sys.argv[2]))
     elif mode == "changed-centre" and len(sys.argv) == 4:
         passed = verified_centre_changed(Path(sys.argv[2]), Path(sys.argv[3]))
     else:
