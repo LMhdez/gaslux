@@ -1004,6 +1004,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verify-pop-post-pair-windows-reboot", action="store_true",
                     help="hosted Windows 10 only: independent guest serial proof "
                          "after staging ESP+root in disposable child QCOW2")
+    ap.add_argument("--probe-pop-live-on-six-gpt", action="store_true",
+                    help="hosted VM only: AFTER third genuine Windows boot, GPG-verify "
+                         "official Pop live ISO; boot read-only against same Win10 COW")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -1030,6 +1033,20 @@ def main(argv: list[str] | None = None) -> int:
     ):
         raise SystemExit("third Windows boot requires separate hosted-VM consent "
                          "and the owned Pop ESP+root COW pair-stage gate")
+    if args.probe_pop_live_on_six_gpt and not (
+        args.verify_pop_post_pair_windows_reboot
+        and args.stage_pop_independent_esp_root_overlay
+        and args.audit_installed_gpt_readonly
+        and args.two_stage_install_only
+        and args.profile == "win10_22h2_en_us_x64"
+        and args.accel == "kvm"
+        and os.environ.get("GASLUX_POP_WINDOWS_COW_LIVE_CONSENT")
+        == "I_ACCEPT_AUTHENTIC_POP_LIVE_WITH_READONLY_WIN10_COW"
+        and os.environ.get("GASLUX_POP_WINDOWS_COW_LIVE_ISO_CONSENT")
+        == "I_ACCEPT_VERIFIED_POP_ISO_IN_DISPOSABLE_WINDOWS_KVM_VM"
+    ):
+        raise SystemExit("real Pop ISO/live read-only guest requires independently "
+                         "verified Windows post-pair reboot, hosted consent, UEFI/GPT")
     if args.stage_pop_independent_esp_root_overlay and not (
         args.audit_installed_gpt_readonly
         and args.two_stage_install_only
@@ -1098,6 +1115,13 @@ def main(argv: list[str] | None = None) -> int:
         report["ownedPopEspAndRootGptEntriesStagedInCOW"] = False
     if args.verify_pop_post_pair_windows_reboot:
         report["windowsPostPopPairCOWBootVerified"] = False
+    if args.probe_pop_live_on_six_gpt:
+        report["popSignedIsoGpgVerified"] = False
+        report["popLiveGenuineWindowsGptGuestVerified"] = False
+        report["popLiveQemuCleanPoweroffVerified"] = False
+        report["popSystemInstalled"] = False
+        report["dualBootVerified"] = False
+        report["rollbackVerified"] = False
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
@@ -1314,6 +1338,30 @@ def main(argv: list[str] | None = None) -> int:
                                     )
                                     print("GASLUX_WINDOWS10_POST_POP_PAIR_GPT_GUEST_BOOT=1",
                                           flush=True)
+                                    if args.probe_pop_live_on_six_gpt:
+                                        # After real Windows COM1 + poweroff,
+                                        # boot the separately signed System76
+                                        # ISO with this SAME child QCOW2
+                                        # attached strictly read-only. The COW
+                                        # is discarded by the staging context.
+                                        from windows10_popos_genuine_live_same_cow_vm import (
+                                            live_probe_on_windows,
+                                        )
+                                        proof = live_probe_on_windows(
+                                            disk, overlay, workspace, evidence, plan,
+                                            windows_postboot_serial_verified=verified,
+                                            original_windows_iso=iso,
+                                            derived_windows_iso=derived,
+                                        )
+                                        require(
+                                            proof["popSignedIsoGpgVerified"] is True
+                                            and proof["popLiveGenuineWindowsGptGuestVerified"] is True
+                                            and proof["popLiveQemuCleanPoweroffVerified"] is True
+                                            and proof["popInstalled"] is False
+                                            and proof["rollbackVerified"] is False,
+                                            "authentic read-only Pop live witness absent",
+                                        )
+                                        report.update(proof)
                                     return {
                                         "windowsGuestPostPairBootVerified": True,
                                         "windowsGuestPostPairSerialSha256": digest,
