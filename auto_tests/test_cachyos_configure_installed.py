@@ -3,7 +3,9 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
 from cachyos_configure_installed import (
     InstalledConfigurationError, RUN_ID, validate_profile,
 )
