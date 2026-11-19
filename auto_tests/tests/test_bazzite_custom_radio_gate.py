@@ -105,3 +105,13 @@ def test_refuses_wrong_ui_version(tmp_path):
     ocr.write_text(OCR.replace("BAZZITE 42", "BAZZITE 43"), encoding="utf-8")
     with pytest.raises(CustomSelectionRefusal, match="Missing storage UI marker"):
         inspect_custom_before(png, ocr, tsv)
+
+
+def test_workflow_summary_and_artifact_contract_fail_closed():
+    workflow = (ROOT / ".github/workflows/gaslux-bazzite-legacy-readonly-gpt.yml").read_text(
+        encoding="utf-8"
+    )
+    assert '"windowsDualBootVerified": False,\\n' not in workflow
+    assert '"customSelectedObserved": custom_gate.get("customSelectedObserved") is True' in workflow
+    assert "if-no-files-found: error" in workflow
+    assert "if-no-files-found: warn" not in workflow
