@@ -11,6 +11,8 @@ on:
       - auto_tests/test_cachyos_signed_handoff.py
       - auto_tests/test_cachyos_signed_grub_handoff.py
       - auto_tests/test_cachyos_release_gate.py
+      - auto_tests/test_windows_cachyos_archiso_shared_disk_gate.py
+      - auto_tests/tools/windows_cachyos_archiso_shared_disk_gate.py
   pull_request:
     paths:
       - .github/workflows/cachyos-signed-handoff-tests.yml
@@ -21,6 +23,8 @@ on:
       - auto_tests/test_cachyos_signed_handoff.py
       - auto_tests/test_cachyos_signed_grub_handoff.py
       - auto_tests/test_cachyos_release_gate.py
+      - auto_tests/test_windows_cachyos_archiso_shared_disk_gate.py
+      - auto_tests/tools/windows_cachyos_archiso_shared_disk_gate.py
   workflow_dispatch:
 
 permissions:
@@ -48,3 +52,13 @@ jobs:
             auto_tests.test_cachyos_signed_handoff \
             auto_tests.test_cachyos_signed_grub_handoff \
             auto_tests.test_cachyos_release_gate
+      - name: Windows/CachyOS shared GPT prewrite refusal contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/windows_cachyos_archiso_shared_disk_gate.py \
+            auto_tests/test_windows_cachyos_archiso_shared_disk_gate.py
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_cachyos_archiso_shared_disk_gate.py' -v
+          echo 'Read-only evidence candidate only; Archiso writes, pacstrap, dual boot and rollback NOT verified.' >> "$GITHUB_STEP_SUMMARY"
