@@ -116,8 +116,8 @@ class MintCowBootEvidenceTests(unittest.TestCase):
 
     def test_rejects_shutdown_words_embedded_in_unrelated_log_line(self):
         serial = SERIAL.replace(
-            b"systemd-shutdown[1]: Powering off.\\n",
-            b"kernel: previous command mentioned systemd-shutdown Powering off.\\n",
+            b"systemd-shutdown[1]: Powering off.\n",
+            b"kernel: previous command mentioned systemd-shutdown Powering off.\n",
         )
         self._replace_serial(serial)
         self.assertFalse(validator.has_orderly_shutdown_witness(serial))
