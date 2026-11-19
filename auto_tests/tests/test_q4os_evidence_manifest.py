@@ -11,7 +11,7 @@ from gaslux_q4os_evidence_manifest import (
     EvidenceManifestError,
     create_manifest,
     verify_manifest,
-)  # noqa: E402
+)  # noqa: E402, I001
 
 
 def _evidence(tmp_path: Path) -> Path:
