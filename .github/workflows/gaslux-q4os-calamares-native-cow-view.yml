@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/q4os-calamares-native-owned-cow-view
+      - feature/q4os-users-transition-lab-20261119
     paths:
       - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
       - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
@@ -16,9 +17,11 @@ on:
     paths:
       - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
       - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
+      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
       - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
       - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
       - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
+      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
   workflow_dispatch:
 
 concurrency:
@@ -61,16 +64,22 @@ jobs:
           python -m compileall -q \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
-            auto_tests/tests/test_q4os_native_cow_view_lab.py
+            auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
-            auto_tests/tests/test_q4os_native_cow_view_lab.py
+            auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
-            auto_tests/tests/test_q4os_native_cow_view_lab.py
-          python -m pytest -q auto_tests/tests/test_q4os_native_cow_view_lab.py
+            auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py
+          python -m pytest -q \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py
 
       - name: Download and re-verify pinned Q4OS 6.10 r2 native ISO
         shell: bash
@@ -96,6 +105,7 @@ jobs:
           GASLUX_Q4OS_ADVANCE_KEYBOARD: 'yes'
           GASLUX_Q4OS_SELECT_SOFTWARE: 'yes'
           GASLUX_Q4OS_ADVANCE_SOFTWARE: 'yes'
+          GASLUX_Q4OS_ADVANCE_PARTITIONS: 'yes'
           GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/q4os-native-target/evidence
         run: |
           set -Eeuo pipefail
