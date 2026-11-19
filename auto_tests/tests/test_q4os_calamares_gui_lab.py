@@ -296,3 +296,35 @@ def test_refuse_software_next_without_q4os_desktop_selection(tmp_path):
     )
     assert result.returncode != 0
     assert "Software Next requires SHA-verified Q4OS Desktop selection" in result.stderr
+
+def test_partitions_next_is_pixel_gated_and_never_installs():
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'advance_partitions="${GASLUX_Q4OS_ADVANCE_PARTITIONS:-no}"' in source
+    assert "Partitions Next requires the signed disposable COW view" in source
+    assert 'calamares-synthetic-cow-partitions-selected' in source
+    assert "GASLUX_Q4OS_CALAMARES_PARTITIONS_NEXT_CLICKED=PASS" in source
+    assert "GASLUX_Q4OS_CALAMARES_USERS_VIEW_CAPTURED=PASS" in source
+    assert "vnc-users-view-unverified.png" in source
+    assert "NOT PERFORMED: user creation, password entry, Summary, Install or any exec job." in source
+    assert "GASLUX_Q4OS_CALAMARES_INSTALL_CLICKED=NO" in source
+    assert "calamares -d" not in source
+    assert "mkfs.ext4" not in source
+
+
+def test_partitions_next_without_signed_cow_is_refused_before_disk_setup(tmp_path):
+    iso = tmp_path / "fake.iso"
+    iso.write_bytes(b"not Q4OS")
+    env = os.environ.copy()
+    env["GITHUB_ACTIONS"] = "true"
+    env["GASLUX_Q4OS_GRAPHICS_LAB_ONLY"] = "1"
+    env["GASLUX_Q4OS_ADVANCE_SOFTWARE"] = "yes"
+    env["GASLUX_Q4OS_ADVANCE_PARTITIONS"] = "yes"
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "q4os", str(iso), "0" * 64],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Partitions Next requires the signed disposable COW view" in result.stderr
