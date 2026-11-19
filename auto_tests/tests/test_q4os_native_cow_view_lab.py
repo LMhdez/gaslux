@@ -145,6 +145,14 @@ def test_recovery_evidence_reader_accepts_only_owned_regular_files(tmp_path):
     assert _read_private_regular(evidence, 128) == b'{"safe":true}'
 
 
+def test_recovery_evidence_reader_fails_closed_without_nofollow(tmp_path, monkeypatch):
+    evidence = tmp_path / "owned-evidence.json"
+    evidence.write_bytes(b'{"safe":true}')
+    monkeypatch.delattr("gaslux_q4os_native_cow_view_guard.os.O_NOFOLLOW")
+    with pytest.raises(CalamaresCowViewRefusal, match="O_NOFOLLOW is unavailable"):
+        _read_private_regular(evidence, 128)
+
+
 def test_recovery_evidence_reader_rejects_symlink(tmp_path):
     target = tmp_path / "target"
     target.write_bytes(b"owned")
