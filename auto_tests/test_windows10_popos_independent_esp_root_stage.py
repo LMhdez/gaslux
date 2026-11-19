@@ -123,6 +123,58 @@ class ExactOwnedGuidWriterTests(unittest.TestCase):
             _write_exact_owned_partition(disk, plan["partitions"][0])
 
 
+class WindowsPostPairBootWitnessContracts(unittest.TestCase):
+    def setUp(self):
+        from windows10_popos_independent_esp_root_stage import (
+            POSTBOOT_IMMUTABLE_WINDOWS, POSTBOOT_WINDOWS_STATE,
+        )
+        keys = POSTBOOT_IMMUTABLE_WINDOWS + POSTBOOT_WINDOWS_STATE
+        self.before = {
+            "diskGuid": "b65d18c0-d3ac-40b3-930d-b259c857b63a",
+            "windowsPartitions": [(1, 2048, 532480, "esp", "windows-guid")],
+            "windowsFilesSha256": {
+                key: f"{i+1:x}" * 64 for i, key in enumerate(keys)
+            },
+        }
+
+    def test_windows_guest_changes_runtime_hive_and_bcd_without_changing_boot_exes(self):
+        from windows10_popos_independent_esp_root_stage import (
+            reconcile_windows_postboot_witness,
+        )
+        after = copy.deepcopy(self.before)
+        after["windowsFilesSha256"]["/EFI/Microsoft/Boot/BCD"] = "a"*64
+        after["windowsFilesSha256"]["/Windows/System32/config/SYSTEM"] = "b"*64
+        result = reconcile_windows_postboot_witness(self.before, after)
+        self.assertTrue(result["windowsPostbootBcdStateSha256Changed"])
+        self.assertTrue(result["windowsPostbootSystemHiveSha256Changed"])
+        self.assertTrue(result["windowsPostbootBootManagerExeSha256Unchanged"])
+        self.assertTrue(result["windowsPostbootWinloadExeSha256Unchanged"])
+
+    def test_postboot_refuses_any_foreign_geometry_or_executable_hash_change(self):
+        from windows10_popos_independent_esp_root_stage import (
+            reconcile_windows_postboot_witness,
+        )
+        for kind in ("diskGuid", "partitionGeometry", "bootmgfw", "winload",
+                     "missingBcd", "extraFile", "invalidDigest"):
+            after = copy.deepcopy(self.before)
+            if kind == "diskGuid":
+                after["diskGuid"] = str(uuid.uuid4())
+            elif kind == "partitionGeometry":
+                after["windowsPartitions"][0] = (1, 2048, 532481, "esp", "windows-guid")
+            elif kind == "bootmgfw":
+                after["windowsFilesSha256"]["/EFI/Microsoft/Boot/bootmgfw.efi"] = "c"*64
+            elif kind == "winload":
+                after["windowsFilesSha256"]["/Windows/System32/winload.efi"] = "c"*64
+            elif kind == "missingBcd":
+                del after["windowsFilesSha256"]["/EFI/Microsoft/Boot/BCD"]
+            elif kind == "extraFile":
+                after["windowsFilesSha256"]["/Windows/System32/foreign.sys"] = "c"*64
+            else:
+                after["windowsFilesSha256"]["/Windows/System32/config/SYSTEM"] = "INVALID"
+            with self.subTest(kind=kind), self.assertRaises(DiskAuditError):
+                reconcile_windows_postboot_witness(self.before, after)
+
+
 class PopOwnedPairStageContracts(unittest.TestCase):
     def test_crc_and_entire_windows_pmbr_unchanged_with_two_owned_entries(self):
         f0, b0, f1, b1, before, after, plan = staged_fixture()
