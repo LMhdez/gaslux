@@ -115,7 +115,6 @@ else
   printf '%s\n' "$run_id" > "$first"
   chmod 0600 "$first"
   sync
-  echo "GASLUX_VM_INSTALLED_CONFIGURED_DESKTOP_ACCOUNT_PASS:$run_id:$root_uuid"
   echo "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:$run_id:$root_uuid"
 fi
 """
@@ -488,6 +487,7 @@ pacman -Q plasma-desktop >/dev/null
 pacman -Q dolphin >/dev/null
 pacman -Q konsole >/dev/null
 install -d -m 0700 /var/lib/gaslux-lab
+echo "GASLUX_VM_INSTALLED_CONFIGURED_DESKTOP_ACCOUNT_PASS:$run_id:$root_uuid"
 first=/var/lib/gaslux-lab/child-rw-firstboot
 second=/var/lib/gaslux-lab/child-rw-secondboot
 if [[ -e "$first" || -L "$first" ]]; then
