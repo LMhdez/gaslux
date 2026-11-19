@@ -17,3 +17,9 @@ O histórico dos commits permanece em `main`, `dev` ou nas branches ainda aberta
 - [Segunda execução — Actions #44586998974](https://github.com/LMhdez/gaslux/actions/runs/44586998974): `SUCCESS`, 30 eliminações adicionais, 231 branches inicial → 201 previstas; 62 candidatas no início. Zero recusas reportadas.
 
 - [Terceira execução — Actions #44587286014](https://github.com/LMhdez/gaslux/actions/runs/44587286014): `SUCCESS`, 30 eliminações adicionais; GitHub API confirmou 171 branches restantes. Tinham sido identificadas 32 referências elegíveis no início do lote.
+
+- [Quarta execução — Actions #44587629589](https://github.com/LMhdez/gaslux/actions/runs/44587629589): `SUCCESS`; duas referências obsoletas adicionais eliminadas com lease. **Total da operação: 92 branches eliminadas, 261 → 169 (incluindo a nova branch de controlo).**
+
+## Encerramento da operação
+
+A configuração do workflow foi revertida para **auditoria exclusivamente de leitura**: `contents: read`, checkout sem credenciais persistentes, comando `audit`. Não há mais exclusões automáticas por futuras atualizações desta branch. Provas de execução e inventário de SHAs estão nos artefactos GitHub Actions e no histórico desta branch. A existência de referências ainda não consolidadas **não** autoriza a sua eliminação nem a promoção de backends experimentais.
