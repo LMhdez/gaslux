@@ -25,13 +25,16 @@ RUN_ID = "gaslux-test-run-01"
 
 
 def witness(uuid=ROOT_UUID):
+    # Modeled on the genuine independent installed-CachyOS first boot
+    # from Actions #43991443719 (artifact #14289991307); no fabricated
+    # "Linux version" or "Powering off." line which that COM1 lacks.
     return (
         "GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:" + uuid + "\n"
-        "Linux version 6.12.0-1-cachyos (gcc)\n"
-        "Kernel command line: root=UUID=" + uuid + " ro console=ttyS0\n"
-        "systemd[1]: systemd 257.1 running in system mode\n"
+        "[    0.699368] virt/tdx: TDX not supported by the host platform\n"
+        "\x1b]3008;user=root;pid=1;comm=systemd;type=boot\x1b\\\n"
+        "Welcome to \x1b[0m\x1b[38;2;23;147;209mCachyOS\x1b[0m!\n"
         "[ OK ] Reached target System Power Off.\n"
-        "systemd-shutdown[1]: Powering off.\n"
+        "[   45.058170] reboot: Power down\n"
     ).encode("ascii")
 
 
@@ -58,10 +61,13 @@ class InstalledReadOnlyFirstbootContracts(unittest.TestCase):
     def test_native_kernel_systemd_and_clean_poweroff_are_all_required(self):
         firstboot.verify_installed_poweroff_serial(witness(), ROOT_UUID)
         for failure in (
-            witness().replace(b"Linux version", b"GRUB version"),
-            witness().replace(b"systemd[1]", b"not-systemd"),
-            witness().replace(b"Powering off.", b"Guest restarted."),
-            witness().replace(b"root=UUID=", b"root=PARTUUID="),
+            witness().replace(b"[    0.699368] virt/tdx",
+                              b"GRUB version plus virt/tdx"),
+            witness().replace(b"comm=systemd;type=boot",
+                              b"comm=not-systemd;type=boot"),
+            witness().replace(b"CachyOS", b"foreign-os"),
+            witness().replace(b"System Power Off", b"Shutdown incomplete"),
+            witness().replace(b"reboot: Power down", b"Guest restarted"),
             witness().replace(b"GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:",
                               b"GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:other-"),
             witness()+b"Kernel panic",
