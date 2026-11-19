@@ -1,5 +1,13 @@
 # Gaslux integration board — 2026-11-18
 
+## Fechos documentados — 2026-11-19 (terceiro lote Windows 11)
+
+- [#124](https://github.com/LMhdez/gaslux/pull/124): **encerrada sem merge** após a comparação da variante Windows 11 do workflow. [Actions #44099402062](https://github.com/LMhdez/gaslux/actions/runs/44099402062): contratos SUCCESS, Windows 11 KVM guest **FAILURE**. [Decisão de fecho](https://github.com/LMhdez/gaslux/pull/124#issuecomment-7012059290). O único patch de workflow foi conscientemente rejeitado, sem alegar integração.
+- [#125](https://github.com/LMhdez/gaslux/pull/125): **encerrada sem merge** após verificar [Actions #44099490755](https://github.com/LMhdez/gaslux/actions/runs/44099490755) SUCCESS para revalidação de ZIP histórico, sem VM. [Decisão de fecho](https://github.com/LMhdez/gaslux/pull/125#issuecomment-7012061925). O trio workflow/parser/testes dependente de artefacto efémero foi conscientemente rejeitado como gate permanente.
+- [#117](https://github.com/LMhdez/gaslux/pull/117) preservada: [Actions #44094951108](https://github.com/LMhdez/gaslux/actions/runs/44094951108) tem ambos os jobs SUCCESS, incluindo Win11 26H2 instalado e segundo arranque via Windows Boot Manager em VM descartável. **Isto não prova dual boot/rollback**.
+- Sem PRs abertas diretamente empilhadas sobre os HEADs das #124/#125 à data de triagem. `main` inalterada e `dev` 96 commits à frente, 1 atrás.
+- Consulta posterior aos fechos: **61 PRs abertas** e **2 issues abertas**. Sem novos builds, novos ensaios de VM ou merges nesta intervenção.
+
 ## Fechos documentados — 2026-11-19 (segundo lote Windows)
 
 - [#97](https://github.com/LMhdez/gaslux/pull/97): **closed sem merge**, reprodução de logs COM1 históricos falhados [Actions #44060165860](https://github.com/LMhdez/gaslux/actions/runs/44060165860), [decisão](https://github.com/LMhdez/gaslux/pull/97#issuecomment-7011927629). Não usar artefactos temporários como release gate; código único conscientemente arquivado, não incorporado em #217.
