@@ -1,0 +1,53 @@
+name: Real Windows Pop native COW child and signed ISO lab contracts (no media)
+
+on:
+  push:
+    branches:
+      - test/popos-genuine-windows-native-live-20261119
+    paths:
+      - .github/workflows/popos-native-child-contract.yml
+      - auto_tests/tools/windows10_popos_native_child_vm_checkpoint.py
+      - auto_tests/test_windows10_popos_native_child_vm_checkpoint.py
+      - auto_tests/tools/windows10_popos_official_iso_signed_lab.py
+      - auto_tests/test_windows10_popos_real_live_contract.py
+      - auto_tests/tools/windows10_popos_genuine_live_guest_probe.py
+      - auto_tests/tools/windows10_popos_genuine_live_console.py
+      - auto_tests/tools/windows10_popos_genuine_live_same_cow_vm.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-child-no-writer-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile native/lab source without guest or media
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for source in \
+              windows10_popos_official_iso_signed_lab.py \
+              windows10_popos_native_child_vm_checkpoint.py \
+              windows10_popos_genuine_live_console.py \
+              windows10_popos_genuine_live_same_cow_vm.py \
+              windows10_popos_genuine_live_guest_probe.py \
+              windows10_popos_live_readonly_gpt_probe.py; do
+            python3 -m py_compile "auto_tests/tools/$source"
+          done
+      - name: Validate separate child backing and signed ISO identity fail-closed
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for name in \
+              test_windows10_popos_native_child_vm_checkpoint.py \
+              test_windows10_popos_real_live_contract.py \
+              test_windows10_popos_live_readonly_gpt_probe.py \
+              test_windows10_popos_native_readonly_handoff_candidate.py; do
+            python3 -m unittest discover -s auto_tests -p "$name" -v
+          done
+          echo 'All tests synthetic/inert: NO ISO downloaded, VM booted, native distinst executed, Windows returned after Pop installation, updates or rollback demonstrated.' >> "$GITHUB_STEP_SUMMARY"
