@@ -44,6 +44,17 @@ def flag(k):
 if flag('SecureBoot')!=0 or flag('SetupMode')!=1:
     raise SystemExit('no-key OVMF state mismatch')
 PY
+# The reviewed PR34 strict-policy tools are copied from checkout to this
+# ephemeral FAT volume with independent SHA-256 evidence. Refuse replacement
+# or execution of unchecked scripts before any guest disk mutation.
+[[ -d /run/gaslux-lab && ! -L /run/gaslux-lab ]] || die 'lab control mount absent'
+for guard in strict-pacman pacman-trust; do
+  [[ -f "/run/gaslux-lab/$guard.py" && ! -L "/run/gaslux-lab/$guard.py" &&
+     -f "/run/gaslux-lab/$guard.sha256" && ! -L "/run/gaslux-lab/$guard.sha256" ]] ||
+    die "missing trusted VM-only $guard tool"
+  (cd /run/gaslux-lab && sha256sum --check --status "$guard.sha256") ||
+    die "VM-only $guard source hash mismatch"
+done
 [[ -L "$LINK" ]] || die 'unique virtio target serial not found'
 disk="$(readlink -f -- "$LINK")"
 [[ -b "$disk" && "$disk" == /dev/vd? ]] || die 'unexpected target disk'
@@ -90,9 +101,23 @@ pacman-key --gpgdir "$TARGET/etc/pacman.d/gnupg" --list-keys \
   882DCFE48E2051D48E2562ABF3B607488DB35A47 >/dev/null ||
   die 'CachyOS repository signing key absent from trusted ISO keyring'
 echo 'GASLUX_LAB_OFFICIAL_KEYRING_POPULATED=1'
-# Minimal, REAL CachyOS packages from official live pacman repos, with
-# pacman's signature verification unchanged. NOT a finished desktop installer.
-pacstrap -K "$TARGET" \
+# Native Arch/CachyOS signed-key setup has completed; generate the pinned,
+# HTTPS-only strict repository policy on the guest's /run tmpfs. Never inherit
+# live ISO's weak effective signing policy for the actual pacstrap transaction.
+strict_dir="/run/gaslux-pacman-$TX"
+python3 /run/gaslux-lab/strict-pacman.py --root / --run-id "$TX" --prepare-vm ||
+  die 'signed-only pacman renderer rejected pinned live Archiso'
+[[ -s "$strict_dir/pacman-install.conf" &&
+   -s "$strict_dir/pacman-target.conf" ]] || die 'strict pacman configs missing'
+python3 /run/gaslux-lab/pacman-trust.py --config "$strict_dir/pacman-install.conf" ||
+  die 'weak or unknown effective pacman signature trust'
+grep -Fxq 'LocalFileSigLevel = Required TrustedOnly' "$strict_dir/pacman-install.conf" ||
+  die 'local file signature policy missing'
+grep -Fxq 'RemoteFileSigLevel = Required TrustedOnly' "$strict_dir/pacman-install.conf" ||
+  die 'remote file signature policy missing'
+echo 'GASLUX_LAB_STRICT_SIGNED_ONLY_POLICY_PASS=1'
+# Minimal native CachyOS installation. Never copy the Archiso live rootfs.
+pacstrap -K -C "$strict_dir/pacman-install.conf" "$TARGET" \
   base linux-cachyos-lts mkinitcpio grub efibootmgr \
   cachyos-keyring cachyos-mirrorlist cachyos-settings cachyos-hooks \
   sudo e2fsprogs dosfstools python
@@ -114,6 +139,53 @@ fi
 arch-chroot "$TARGET" pacman -Q cachyos-hooks linux-cachyos-lts >/dev/null ||
   die 'native CachyOS branding/kernel packages not installed'
 echo 'GASLUX_LAB_OFFICIAL_BRANDING_VERIFIED=1'
+# Reuse the identical, reviewed signing policy and HTTPS mirror filter for
+# the installed system. Only the three allowlisted signed native repos exist.
+for mirror in mirrorlist cachyos-mirrorlist; do
+  [[ -s "$strict_dir/$mirror" && ! -L "$strict_dir/$mirror" ]] ||
+    die "strict verified $mirror missing"
+  install -m 0644 "$strict_dir/$mirror" "$TARGET/etc/pacman.d/$mirror"
+  cmp -s "$strict_dir/$mirror" "$TARGET/etc/pacman.d/$mirror" ||
+    die "installed $mirror was altered"
+done
+install -m 0644 "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf"
+cmp -s "$strict_dir/pacman-target.conf" "$TARGET/etc/pacman.conf" ||
+  die 'installed pacman config changed after copy'
+# Refuse any drift from EXACTLY the three signed native repositories.
+# PR34's strict builder emits core, extra, cachyos in that order. Pacman
+# repository order is not a trust property; the old literal comparison
+# rejected a genuine native pacstrap (Actions 44034323601). Reject
+# duplicates, empty lines, whitespace and additional repos fail-closed.
+repos="$(arch-chroot "$TARGET" pacman-conf --repo-list)" ||
+  die 'cannot enumerate installed native pacman repositories'
+python3 - "$repos" <<'PY' || die 'installed repo set does not match signed CachyOS/core/extra policy'
+import sys
+repos = sys.argv[1].splitlines()
+if len(repos) != 3 or set(repos) != {'cachyos', 'core', 'extra'}:
+    raise SystemExit('unexpected, duplicated or missing installed repository')
+PY
+# Pacman-conf reports normalized *effective* signature tokens. Exact
+# string equality falsely rejected a signed install in run 43998900405.
+# Match policy semantics and fail on every unknown/weakening token.
+for repo in cachyos core extra; do
+  level="$(arch-chroot "$TARGET" pacman-conf --repo "$repo" SigLevel)" ||
+    die "cannot inspect installed $repo signature policy"
+  python3 - "$repo" "$level" <<'PY' || die "installed $repo package-signature policy rejected"
+import sys
+repo, raw = sys.argv[1:]
+tokens = raw.split()
+allowed = {'Required', 'PackageRequired', 'DatabaseRequired',
+           'DatabaseOptional', 'TrustedOnly', 'PackageTrustedOnly',
+           'DatabaseTrustedOnly'}
+if (not tokens or len(tokens) != len(set(tokens))
+        or not set(tokens).issubset(allowed)
+        or not ({'Required', 'PackageRequired'} & set(tokens))
+        or not ({'TrustedOnly', 'PackageTrustedOnly'} & set(tokens))):
+    print(f'Unacceptable effective SigLevel for {repo}: {raw!r}', file=sys.stderr)
+    raise SystemExit(1)
+PY
+done
+echo 'GASLUX_LAB_SIGNED_INSTALLED_REPOS_CONFIGURED=1'
 [[ -s "$TARGET/boot/vmlinuz-linux-cachyos-lts" ]] || die 'kernel missing'
 mkdir -p "$TARGET/boot/efi"
 mount "$esp" "$TARGET/boot/efi"
@@ -191,6 +263,44 @@ TimeoutStartSec=40
 WantedBy=multi-user.target
 UNIT
 arch-chroot "$TARGET" systemctl enable gaslux-ci-firstboot.service
+# This separate lab feature installs a disabled-by-default update test service
+# into the disposable VM. It does NOTHING unless QEMU fw_cfg contains the
+# exact, host-provided update phase marker. Not a product update mechanism.
+[[ -f /run/gaslux-lab/update.sh && ! -L /run/gaslux-lab/update.sh &&
+   -f /run/gaslux-lab/update.sha256 && ! -L /run/gaslux-lab/update.sha256 ]] ||
+  die 'missing isolated test updater from signed QEMU boot volume'
+(cd /run/gaslux-lab && sha256sum --check update.sha256) ||
+  die 'update guest script failed SHA-256 verification'
+install -m 0755 /run/gaslux-lab/update.sh "$TARGET/usr/local/sbin/gaslux-ci-vm-update"
+mkdir -p "$TARGET/etc/systemd/network"
+cat > "$TARGET/etc/systemd/network/20-gaslux-disposable-qemu.network" <<'NET'
+[Match]
+Name=en*
+
+[Network]
+DHCP=ipv4
+NET
+[[ -f "$TARGET/usr/lib/systemd/system/systemd-networkd.service" &&
+   -f "$TARGET/usr/lib/systemd/system/systemd-resolved.service" ]] ||
+  die 'native systemd network services missing from minimal target'
+arch-chroot "$TARGET" systemctl enable systemd-networkd systemd-resolved
+ln -sfn /run/systemd/resolve/stub-resolv.conf "$TARGET/etc/resolv.conf"
+cat > "$TARGET/etc/systemd/system/gaslux-ci-vm-update.service" <<'UNIT'
+[Unit]
+Description=Gaslux QEMU-only signed pacman/GRUB update fault injection
+After=gaslux-ci-firstboot.service network-online.target
+Wants=gaslux-ci-firstboot.service network-online.target
+ConditionVirtualization=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/gaslux-ci-vm-update
+TimeoutStartSec=40min
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+arch-chroot "$TARGET" systemctl enable gaslux-ci-vm-update.service
 sync
 echo 'GASLUX_LAB_TARGET_INSTALLED=1'
 echo 'GASLUX_LAB_WINDOWS_RECOVERY_NOT_TESTED=1'

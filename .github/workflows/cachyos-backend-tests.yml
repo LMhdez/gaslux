@@ -13,6 +13,7 @@ on:
       - feature/cachyos-ovmf-secureboot-lab-proof
       - feature/cachyos-signed-grub-qemu-execution
       - feature/cachyos-qemu-pacstrap-firstboot
+      - feature/cachyos-qemu-updates-snapshot-recovery
   pull_request:
     branches:
       - main
@@ -37,6 +38,8 @@ jobs:
           bash -n auto_tests/tools/cachyos_real_live_kernel_smoke.sh
           bash -n auto_tests/tools/cachyos_live_guest_readonly_probe.sh
           bash -n auto_tests/tools/cachyos_guest_vm_only_install.sh
+          bash -n auto_tests/tools/cachyos_vm_update_recovery_guest.sh
+          bash -n auto_tests/tools/cachyos_qemu_update_rollback.sh
       - name: ShellCheck for VM-only installer
         shell: bash
         run: |
@@ -45,7 +48,9 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y --no-install-recommends shellcheck
           fi
-          shellcheck -S warning auto_tests/tools/cachyos_guest_vm_only_install.sh
+          shellcheck -S warning auto_tests/tools/cachyos_guest_vm_only_install.sh \
+            auto_tests/tools/cachyos_vm_update_recovery_guest.sh \
+            auto_tests/tools/cachyos_qemu_update_rollback.sh
       - name: Python syntax check
         run: |
           python3 -m py_compile \
