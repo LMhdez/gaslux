@@ -44,7 +44,9 @@ def _regular_files(root: Path) -> dict[str, Path]:
 
 
 def _sha256(path: Path) -> str:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise EvidenceManifestError("platform does not expose O_NOFOLLOW; refusing unsafe evidence read")
+    flags = os.O_RDONLY | os.O_NOFOLLOW
     descriptor = os.open(path, flags)
     try:
         metadata = os.fstat(descriptor)
