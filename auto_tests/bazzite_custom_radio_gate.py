@@ -99,7 +99,9 @@ def inspect_custom_before(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         w
         for w in words
         if w["text"] == "automatic"
-        and w["confidence"] >= 75
+        # Tesseract often assigns confidence 0 when the radio glyph touches
+        # the label. Exact geometry plus the independent blue-pixel check
+        # below proves the selected state; OCR confidence is not that proof.
         and 35 <= w["left"] <= 115
         and 470 <= w["top"] <= 490
     ]
