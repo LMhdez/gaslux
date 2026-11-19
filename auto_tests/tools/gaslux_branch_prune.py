@@ -114,7 +114,7 @@ def audit(refs, protect, keep):
 
 ARCHIVE = "archive/gaslux-experiments-preserved-20261119"
 ARCHIVE_MIN_IDLE = 12 * 3600
-ARCHIVE_MAX_BATCH = 15
+ARCHIVE_MAX_BATCH = 25
 
 def archive_candidates(refs, protect, keep):
     """Only old, non-PR, non-running, uniquely reachable experimental tips."""
@@ -157,7 +157,7 @@ def remote_ref(name):
 
 def archive_history_and_delete(report, candidates, refs):
     """Create real two-parent archive commits; delete refs only after proof."""
-    if os.getenv("GASLUX_ARCHIVE_APPROVED") != "PRESERVE_HISTORY_LEASE_15":
+    if os.getenv("GASLUX_ARCHIVE_APPROVED") != "PRESERVE_HISTORY_LEASE_25":
         raise RuntimeError("explicit bounded archive authorization missing")
     archive_tip = refs[ARCHIVE]
     if remote_ref(ARCHIVE) != archive_tip:

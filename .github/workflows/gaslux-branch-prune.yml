@@ -1,4 +1,4 @@
-name: Gaslux history-preserving branch archive (max 15 refs)
+name: Gaslux history-preserving branch archive (max 25 refs)
 on:
   push:
     branches:
@@ -23,7 +23,7 @@ jobs:
       - name: Archive only aged independent histories, then delete source with exact SHA lease
         env:
           GH_TOKEN: ${{ github.token }}
-          GASLUX_ARCHIVE_APPROVED: PRESERVE_HISTORY_LEASE_15
+          GASLUX_ARCHIVE_APPROVED: PRESERVE_HISTORY_LEASE_25
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
