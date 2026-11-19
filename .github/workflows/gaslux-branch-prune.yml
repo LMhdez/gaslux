@@ -1,11 +1,11 @@
-name: Gaslux Q4OS closed-PR branch prune after archival
+name: Gaslux archived-branch integrity audit (read-only)
 on:
   push:
     branches:
       - automation/gaslux-branch-prune-20261119
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: gaslux-conservative-branch-prune
@@ -19,17 +19,16 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-          persist-credentials: true
-      - name: Prune only SHA-proven old Q4OS refs and verify 104 archives
+          persist-credentials: false
+      - name: Verify archive DAG and branch inventory without writing
         env:
           GH_TOKEN: ${{ github.token }}
-          GASLUX_PRUNE_APPROVED: LEASE_GUARDED_30
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 -m py_compile auto_tests/tools/gaslux_branch_prune.py
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_branch_archive.py' -v
-          python3 auto_tests/tools/gaslux_branch_prune.py prune --output "$RUNNER_TEMP/gaslux-prune.json"
+          python3 auto_tests/tools/gaslux_branch_prune.py audit --output "$RUNNER_TEMP/gaslux-prune.json"
           python3 -m py_compile auto_tests/tools/gaslux_archive_history_verifier.py
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_archive_verify.py' -v
           python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-verified.json"
@@ -37,7 +36,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: gaslux-archive-104-prune-evidence
+          name: gaslux-archive-104-readonly-final-evidence
           path: |
             ${{ runner.temp }}/gaslux-prune.json
             ${{ runner.temp }}/gaslux-archive-verified.json
