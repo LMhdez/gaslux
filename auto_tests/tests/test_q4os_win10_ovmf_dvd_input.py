@@ -159,3 +159,84 @@ def test_helper_rejects_mismatched_qemu_monitor_path_even_when_owned(paths):
     wrong = root / "windows10-qemu-hmp.sock"
     with pytest.raises(WindowsDvdRefusal, match="Unexpected Windows QEMU evidence path"):
         _validate_lab(root, serial, wrong, log, make_args(root))
+
+
+def test_qmp_hid_hold_survives_firmware_polling_interval(tmp_path):
+    """Actual Unix QMP frames must hold Space before releasing it."""
+    import json
+    import os
+    import socket
+    import threading
+    import time
+
+    from auto_tests.tools.gaslux_q4os_win10_ovmf_dvd_input import _send_key
+
+    endpoint = tmp_path / "windows10-qemu-qmp.sock"
+    observed = []
+    failures = []
+    ready = threading.Event()
+
+    def fake_qmp():
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                server.bind(str(endpoint))
+                server.listen(1)
+                ready.set()
+                connection, _ = server.accept()
+                with connection, connection.makefile("rwb", buffering=0) as stream:
+                    stream.write(b'{"QMP":{"version":{},"capabilities":[]}}\r\n')
+                    for expected in (
+                        "gaslux-capabilities",
+                        "gaslux-ovmf-space-down",
+                        "gaslux-ovmf-space-up",
+                    ):
+                        request = json.loads(stream.readline())
+                        assert request["id"] == expected
+                        observed.append((time.monotonic(), request))
+                        reply = json.dumps({"return": {}, "id": expected}).encode()
+                        stream.write(reply + b"\r\n")
+        except Exception as exc:
+            failures.append(exc)
+
+    server_thread = threading.Thread(target=fake_qmp, daemon=True)
+    server_thread.start()
+    assert ready.wait(timeout=2)
+    _send_key(endpoint, os.getpid())
+    server_thread.join(timeout=3)
+    assert not server_thread.is_alive()
+    assert not failures
+    assert len(observed) == 3
+    down = observed[1][1]["arguments"]["events"]
+    up = observed[2][1]["arguments"]["events"]
+    assert len(down) == len(up) == 1
+    assert down[0]["data"] == {"key": {"type": "qcode", "data": "spc"}, "down": True}
+    assert up[0]["data"] == {"key": {"type": "qcode", "data": "spc"}, "down": False}
+    assert observed[2][0] - observed[1][0] >= 0.24
+
+
+def test_qmp_hid_refuses_foreign_peer_without_input(tmp_path):
+    """SO_PEERCRED must reject the wrong QEMU PID before pressing a key."""
+    import os
+    import socket
+    import threading
+
+    from auto_tests.tools.gaslux_q4os_win10_ovmf_dvd_input import _send_key
+
+    endpoint = tmp_path / "windows10-qemu-qmp.sock"
+    ready = threading.Event()
+
+    def fake_server():
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+            server.bind(str(endpoint))
+            server.listen(1)
+            ready.set()
+            connection, _ = server.accept()
+            connection.close()
+
+    thread = threading.Thread(target=fake_server, daemon=True)
+    thread.start()
+    assert ready.wait(timeout=2)
+    with pytest.raises(WindowsDvdRefusal, match="peer does not match"):
+        _send_key(endpoint, os.getpid() + 100)
+    thread.join(timeout=2)
+    assert not thread.is_alive()
