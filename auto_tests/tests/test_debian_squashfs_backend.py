@@ -17,7 +17,7 @@ case "$1" in
     case " ${MOCK_MISSING_PATHS:-} " in
       *" $path "*) exit 0 ;;
     esac
-    printf 'squashfs-root/%s\\n' "$path"
+    printf 'squashfs-root/%s\n' "$path"
     ;;
   -cat)
     [ "$3" = "etc/os-release" ]
@@ -79,8 +79,8 @@ def _run_identity_check(
 @pytest.mark.parametrize(
     ("expected_id", "os_release"),
     [
-        ("linuxmint", "ID=linuxmint\\nID_LIKE=ubuntu debian\\n"),
-        ("zorin", 'ID=zorin\\nID_LIKE="ubuntu debian"\\n'),
+        ("linuxmint", "ID=linuxmint\nID_LIKE=ubuntu debian\n"),
+        ("zorin", 'ID=zorin\nID_LIKE="ubuntu debian"\n'),
     ],
 )
 def test_official_legacy_distributions_pass_exact_identity_and_family_gate(
@@ -97,7 +97,7 @@ def test_mint_payload_cannot_claim_zorin_identity(tmp_path: Path) -> None:
     result = _run_identity_check(
         tmp_path,
         expected_id="zorin",
-        os_release="ID=linuxmint\\nID_LIKE=ubuntu debian\\n",
+        os_release="ID=linuxmint\nID_LIKE=ubuntu debian\n",
     )
     assert result.returncode != 0
     assert "Distribution identity mismatch" in result.stderr
@@ -109,7 +109,7 @@ def test_debian_family_payload_missing_required_initramfs_tool_is_rejected(
     result = _run_identity_check(
         tmp_path,
         expected_id="linuxmint",
-        os_release="ID=linuxmint\\nID_LIKE=ubuntu debian\\n",
+        os_release="ID=linuxmint\nID_LIKE=ubuntu debian\n",
         missing_paths=("usr/bin/lsinitramfs",),
     )
     assert result.returncode != 0
@@ -122,7 +122,7 @@ def test_exact_identity_outside_debian_ubuntu_family_is_rejected(
     result = _run_identity_check(
         tmp_path,
         expected_id="alpine",
-        os_release="ID=alpine\\nID_LIKE=alpine\\n",
+        os_release="ID=alpine\nID_LIKE=alpine\n",
     )
     assert result.returncode != 0
     assert "not in the Debian/Ubuntu family" in result.stderr
@@ -132,7 +132,7 @@ def test_missing_squashfs_payload_is_rejected_before_inspection(tmp_path: Path) 
     result = _run_identity_check(
         tmp_path,
         expected_id="linuxmint",
-        os_release="ID=linuxmint\\nID_LIKE=ubuntu debian\\n",
+        os_release="ID=linuxmint\nID_LIKE=ubuntu debian\n",
         rootfs_exists=False,
     )
     assert result.returncode != 0
