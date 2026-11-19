@@ -22,11 +22,7 @@ class StorageNavigationRefusal(ValueError):
 
 
 def locate_storage_tile(ocr: str, tsv: str, width: int, height: int) -> dict:
-    if (
-        type(width) is not int
-        or type(height) is not int
-        or (width, height) != (WIDTH, HEIGHT)
-    ):
+    if type(width) is not int or type(height) is not int or (width, height) != (WIDTH, HEIGHT):
         raise StorageNavigationRefusal("Unexpected installer framebuffer size")
     if len(ocr.encode("utf-8")) > 32768 or len(tsv.encode("utf-8")) > 1024 * 1024:
         raise StorageNavigationRefusal("Unbounded OCR input")
@@ -40,9 +36,7 @@ def locate_storage_tile(ocr: str, tsv: str, width: int, height: int) -> dict:
     )
     for required in required_markers:
         if required not in normalized:
-            raise StorageNavigationRefusal(
-                f"Missing GPT guest summary evidence: {required}"
-            )
+            raise StorageNavigationRefusal(f"Missing GPT guest summary evidence: {required}")
 
     words = _get_words(tsv)
     matches = []
