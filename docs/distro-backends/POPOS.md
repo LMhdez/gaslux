@@ -60,7 +60,7 @@ Atualizar kernel, systemd-boot/kernelstub e pacotes através das ferramentas rea
 
 ## 13. PRs, branches e commits relevantes
 
-- [PR #33](https://github.com/LMhdez/gaslux/pull/33), SHA 48be24b6031733646b45192624fe2186bb6c18d0: GPG ISO e binário distinst; [#38](https://github.com/LMhdez/gaslux/pull/38) CLI em convidado; [#39](https://github.com/LMhdez/gaslux/pull/39), SHA 75cdaa2e82053e25eebbbd3f3c51ca294d3da: preflight de ESP, não instalado em dev.
+- [PR #33](https://github.com/LMhdez/gaslux/pull/33), SHA 48be24b6031733646b45192624fe2186bb6c18d0: GPG ISO e binário distinst; [#38](https://github.com/LMhdez/gaslux/pull/38) CLI em convidado; [#39](https://github.com/LMhdez/gaslux/pull/39), SHA 75cdaa2e82053e25eebbbd3fbbc3e51ca294d3da: preflight de ESP, não instalado em dev.
 - [PR #50](https://github.com/LMhdez/gaslux/pull/50), [Actions #43988375734](https://github.com/LMhdez/gaslux/actions/runs/43988375734) e SHA 6295782713b77d4ca98c808cfc9ba7557c917bd9: instalação System76 Linux-only + falha no poweroff numa tentativa; outro commit pode alterar estado.
 - [PR #177](https://github.com/LMhdez/gaslux/pull/177), [#178](https://github.com/LMhdez/gaslux/pull/178), [#221](https://github.com/LMhdez/gaslux/pull/221), SHA 1926df2ecb37eed11805a02f2a683e8ef38feaa4: Windows real após ESP/root staged (sem Pop instalado).
 - [PR #232](https://github.com/LMhdez/gaslux/pull/232), draft aberta, SHA 85c9ea30b75c763314e775d4daddf10d5357109e: Live ISO Pop numa COW real Windows10 read-only. [#67](https://github.com/LMhdez/gaslux/pull/67) Windows entry separada em systemd-boot.
