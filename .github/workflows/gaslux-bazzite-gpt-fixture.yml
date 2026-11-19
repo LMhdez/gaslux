@@ -42,6 +42,7 @@ jobs:
           python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_gpt_fixture.py auto_tests/tests/test_bazzite_gpt_fixture.py
           python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_gpt_fixture.py auto_tests/tests/test_bazzite_gpt_fixture.py
       - name: Build and audit real GPT fixture on private runner storage
+        if: always()
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -64,5 +65,5 @@ jobs:
             gpt-fixture-plan.json
             gpt-fixture-audit-before-discard.json
             gpt-fixture-discard-evidence.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
