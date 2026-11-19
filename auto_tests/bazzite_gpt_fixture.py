@@ -41,7 +41,10 @@ def _run(*args: str, timeout: int = 60) -> str:
 def _root(path: Path, runner_temp: Path, *, exists: bool) -> Path:
     if not path.is_absolute() or not runner_temp.is_absolute():
         raise Refusal("Paths must be absolute")
-    if path.name != ROOT_NAME or path.parent.resolve(strict=True) != runner_temp.resolve(strict=True):
+    if (
+        path.name != ROOT_NAME
+        or path.parent.resolve(strict=True) != runner_temp.resolve(strict=True)
+    ):
         raise Refusal("Fixture must be a direct child of RUNNER_TEMP")
     if path.is_symlink():
         raise Refusal("Fixture symlink refused")
@@ -89,7 +92,9 @@ def _inspect(root: Path, manifest: dict) -> None:
         details = _run("sgdisk", f"--info={number}", str(image))
         if f" {code} " not in details or f" {label}" not in details:
             raise Refusal(f"GPT partition {number} identity mismatch")
-    overlay_info_json = json.loads(_run("qemu-img", "info", "--output=json", str(overlay)))
+    overlay_info_json = json.loads(
+        _run("qemu-img", "info", "--output=json", str(overlay))
+    )
     if (
         overlay_info_json.get("format") != "qcow2"
         or overlay_info_json.get("virtual-size") != SIZE_GIB * 1024**3
