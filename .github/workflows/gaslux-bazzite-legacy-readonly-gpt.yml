@@ -5,6 +5,7 @@ on:
     branches:
       - test/bazzite-custom-radio-selection-cow-20261119
       - test/bazzite-blivet-gui-observer-cow-20261119
+      - feature/bazzite-advanced-custom-selection-evidence-20261119
     paths:
       - '.github/workflows/gaslux-bazzite-legacy-readonly-gpt.yml'
       - 'auto_tests/bazzite_legacy_diskless_navigation.py'
@@ -462,8 +463,8 @@ jobs:
               --ocr bazzite-legacy-readonly-gpt-evidence/after-custom.ocr \
               --tsv bazzite-legacy-readonly-gpt-evidence/after-custom.tsv \
               > bazzite-legacy-readonly-gpt-evidence/custom-after-gate.json
-            # Launch only the Advanced Custom (Blivet-GUI) control. The guest
-            # disk remains a disposable COW overlay; no partition control is used.
+            # Select only Advanced Custom (Blivet-GUI). Anaconda stays on the
+            # destination page; do not claim that the separate editor launched.
             python3 auto_tests/bazzite_blivet_gui_observer.py \
               --phase before \
               --png bazzite-legacy-readonly-gpt-evidence/after-custom.png \
@@ -576,9 +577,12 @@ jobs:
               gate.get("installationAuthorized") is False,
               gate.get("partitionWriteAuthorized") is False,
               gate.get("windowsEspWriteAuthorized") is False,
-              blivet.get("phase") == "editor-observed",
-              blivet.get("blivetGuiIdentityTextObserved") is True,
-              blivet.get("partitionEditorContextObserved") is True,
+              blivet.get("phase") == "advanced-custom-selected",
+              blivet.get("advancedCustomRadioSelected") is True,
+              blivet.get("automaticRadioUnselected") is True,
+              blivet.get("customRadioUnselected") is True,
+              blivet.get("blivetGuiLaunched") is False,
+              blivet.get("partitionEditorContextObserved") is False,
               blivet.get("partitionControlClicked") is False,
               blivet.get("partitionMutationAttempted") is False,
               blivet.get("installationAuthorized") is False,
