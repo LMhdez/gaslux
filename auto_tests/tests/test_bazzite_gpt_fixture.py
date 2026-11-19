@@ -1,6 +1,7 @@
 """Real GPT fixture contracts for Bazzite's isolated installer lab."""
 
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -59,9 +60,11 @@ def test_mutated_allocated_extent_refuses_overlay_discard(tmp_path):
     root = tmp_path / "bazzite-gpt-fixture"
     prepare(root, tmp_path)
     image = root / "windows-layout-no-os.raw"
+    os.chmod(image, 0o644)
     with image.open("r+b") as stream:
         stream.seek(2 * 1024**3)
         stream.write(b"changed")
+    os.chmod(image, 0o444)
     with pytest.raises(Refusal, match="base hash changed"):
         audit(root, tmp_path, discard=True)
     assert (root / "gpt-layout-scratch.qcow2").exists()
