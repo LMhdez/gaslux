@@ -86,7 +86,7 @@ def with_foreign_utf16_label(
     entries = bytearray(primary[2*SECTOR:34*SECTOR])
     # UTF-16LE lone high surrogate in a validly mirrored, CRC-protected row.
     off = (index-1)*128 + 56 + 48
-    entries[off:off+2] = b"\\x00\\xd8"
+    entries[off:off+2] = b"\x00\xd8"
     crc = binascii.crc32(entries) & 0xFFFFFFFF
     primary[2*SECTOR:34*SECTOR] = entries
     backup[WINDOW_BYTES-33*SECTOR:WINDOW_BYTES-SECTOR] = entries
