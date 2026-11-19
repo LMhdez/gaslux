@@ -65,6 +65,7 @@ def candidate(geometry: dict, checkpoint: dict, stage: dict,
     for i, item in enumerate(parts):
         require(
             type(item) is dict
+            and type(item.get("index")) is int
             and item.get("index") == i + 1
             and type(item.get("firstLba")) is int
             and type(item.get("lastLba")) is int
