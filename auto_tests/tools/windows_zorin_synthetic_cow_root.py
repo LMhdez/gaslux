@@ -108,8 +108,13 @@ def inspect_fifth(overlay: Path, expected_uuid: str, windows_hashes: list[str]) 
         actual = [guest.checksum_device("sha256", p) for p in parts[:4]]
         require(actual == windows_hashes, "Windows-shaped partition bytes changed")
         guest.mount_ro(parts[4], "/")
-        require(guest.is_file("/etc/os-release")
-                and "ID=zorin" in guest.cat("/etc/os-release"),
+        # Ubuntu-family media commonly use /etc/os-release as a symlink
+        # into /usr/lib/os-release. libguestfs.is_file defaults to lstat
+        # semantics, so the old check incorrectly rejected a valid root.
+        # Follow links only inside the guest mount, and still require an
+        # exact Zorin release ID in the resolved regular file.
+        require(guest.is_file("/etc/os-release", followsymlinks=True)
+                and re.search(r"(?m)^ID=zorin$", guest.cat("/etc/os-release")) is not None,
                 "imported fifth root is not genuine Zorin")
         require(guest.is_file("/etc/fstab"), "installed root lacks fstab")
         require(guest.is_dir("/boot"), "installed root lacks kernel")
