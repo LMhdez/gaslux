@@ -89,7 +89,10 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         line = [
             item for item in words
             if abs(item["top"] - first["top"]) <= 8
-            and abs((item["top"] + item["height"] // 2) - (first["top"] + first["height"] // 2)) <= 8
+            and abs(
+                (item["top"] + item["height"] // 2)
+                - (first["top"] + first["height"] // 2)
+            ) <= 8
         ]
         line.sort(key=lambda item: item["left"])
         for index, item in enumerate(line):
