@@ -14,6 +14,15 @@ import validate_mint_cow_boot_evidence as validator
 
 ROOT_UUID = "12345678-1234-4234-8234-123456789abc"
 PROFILE = "win10_22h2_en_us_x64"
+FOURTH_SERIAL = (
+    b'BdsDxe: starting Boot0001 "Windows Boot Manager"\n'
+    + b"GASLUX_COW_WIN10_REBOOT_LIVE=1\n"
+    + b"GASLUX_COW_WIN10_REBOOT_BUILD=19045\n"
+    + b"GASLUX_COW_WIN10_REBOOT_ESP=1\n"
+    + b"GASLUX_COW_WIN10_REBOOT_BCD=1\n"
+    + b"GASLUX_COW_WIN10_REBOOT_WINRE=1\n"
+    + b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1\n"
+)
 SERIAL = (
     b"Linux version 6.14.0-generic (builder)\n"
     + f"Kernel command line: root=UUID={ROOT_UUID} rw rootwait console=ttyS0,115200n8\n".encode()
@@ -60,7 +69,31 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         (self.directory / "mint-same-windows-cow-serial.log").write_bytes(SERIAL)
         (self.directory / "mint-same-windows-cow-serial.sha256").write_text(
             f"{serial_hash}  mint-same-windows-cow-serial.log\n", encoding="ascii")
+        fourth_digest = hashlib.sha256(FOURTH_SERIAL).hexdigest()
+        fourth = {
+            "windowsBootAfterExt4Verified": True,
+            "windowsBcdWinreEspAfterExt4Verified": True,
+            "fourthGuestCleanShutdownVerified": True,
+            "fourthGuestSerialSha256": fourth_digest,
+            "fifthExt4UuidSurvivedWindowsBoot": True,
+            "windowsGptUnchangedAfterExt4Boot": True,
+            "windowsBackingUnchangedAfterExt4Boot": True,
+            "originalWindowsUefiUnchangedAfterExt4Boot": True,
+            "sameDiskDualBootVerified": False,
+            "rollbackProven": False,
+            "releaseEligible": False,
+            "storageWritesAuthorized": False,
+            "windowsRecoveryAfterLinuxVerified": False,
+        }
+        fourth_bytes = (json.dumps(fourth, sort_keys=True, indent=2) + "\n").encode()
+        (self.directory / f"{PROFILE}-fourth-post-ext4.json").write_bytes(fourth_bytes)
+        (self.directory / f"{PROFILE}-fourth-boot-serial.log").write_bytes(FOURTH_SERIAL)
+        (self.directory / f"{PROFILE}-fourth-boot-serial.sha256").write_text(
+            f"{fourth_digest}  {PROFILE}-fourth-boot-serial.log\n", encoding="ascii")
         report = {
+            "windowsBootAfterExt4Verified": True,
+            "thirdBootBcdWinreEspVerified": True,
+            "fourthPostExt4EvidenceSha256": hashlib.sha256(fourth_bytes).hexdigest(),
             "mintSquashfsRootCopiedIntoWindowsCow": True,
             "mintFirstBootFromSameWindowsCowVerified": True,
             "windowsBootAfterMintRootVerified": True,
@@ -80,6 +113,71 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         self.assertFalse(result["nativeGrubDualBootVerified"])
         self.assertFalse(result["updatesVerified"])
         self.assertFalse(result["rollbackVerified"])
+
+    def test_rejects_missing_fourth_windows_efi_bcd_winre_proof(self):
+        (self.directory / f"{PROFILE}-fourth-post-ext4.json").unlink()
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "missing evidence file"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def test_rejects_changed_fourth_windows_proof_digest(self):
+        report_path = self.directory / f"{PROFILE}-result.json"
+        report = json.loads(report_path.read_text())
+        report["fourthPostExt4EvidenceSha256"] = "0" * 64
+        report_path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "not bound to"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def test_rejects_efi_bcd_winre_failure_even_if_fourth_proof_is_rehashed(self):
+        fourth_path = self.directory / f"{PROFILE}-fourth-post-ext4.json"
+        fourth = json.loads(fourth_path.read_text())
+        fourth["windowsBcdWinreEspAfterExt4Verified"] = False
+        fourth_bytes = (json.dumps(fourth, sort_keys=True, indent=2) + "\n").encode()
+        fourth_path.write_bytes(fourth_bytes)
+        report_path = self.directory / f"{PROFILE}-result.json"
+        report = json.loads(report_path.read_text())
+        report["fourthPostExt4EvidenceSha256"] = hashlib.sha256(fourth_bytes).hexdigest()
+        report_path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "guest/ESP/BCD/WinRE"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def test_rejects_missing_guest_winre_marker(self):
+        self._replace_fourth_serial(FOURTH_SERIAL.replace(
+            b"GASLUX_COW_WIN10_REBOOT_WINRE=1\n", b""))
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "unique ESP/BCD/WinRE"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def test_rejects_duplicate_guest_esp_marker(self):
+        self._replace_fourth_serial(
+            FOURTH_SERIAL + b"GASLUX_COW_WIN10_REBOOT_ESP=1\n")
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "unique ESP/BCD/WinRE"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def test_rejects_guest_audit_failure_even_with_all_markers(self):
+        self._replace_fourth_serial(
+            FOURTH_SERIAL + b"GASLUX_COW_WIN10_REBOOT_FAIL=1\n")
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "audit failure"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def test_rejects_unbound_fourth_serial_hash(self):
+        path = self.directory / f"{PROFILE}-fourth-boot-serial.log"
+        path.write_bytes(FOURTH_SERIAL + b"tampering\n")
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "digest disagrees"):
+            validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+
+    def _replace_fourth_serial(self, serial: bytes) -> None:
+        digest = hashlib.sha256(serial).hexdigest()
+        (self.directory / f"{PROFILE}-fourth-boot-serial.log").write_bytes(serial)
+        (self.directory / f"{PROFILE}-fourth-boot-serial.sha256").write_text(
+            f"{digest}  {PROFILE}-fourth-boot-serial.log\n", encoding="ascii")
+        fourth_path = self.directory / f"{PROFILE}-fourth-post-ext4.json"
+        fourth = json.loads(fourth_path.read_text())
+        fourth["fourthGuestSerialSha256"] = digest
+        fourth_bytes = (json.dumps(fourth, sort_keys=True, indent=2) + "\n").encode()
+        fourth_path.write_bytes(fourth_bytes)
+        report_path = self.directory / f"{PROFILE}-result.json"
+        report = json.loads(report_path.read_text())
+        report["fourthPostExt4EvidenceSha256"] = hashlib.sha256(fourth_bytes).hexdigest()
+        report_path.write_text(json.dumps(report))
 
     def test_rejects_missing_serial_login(self):
         self._replace_serial(SERIAL.replace(b"GASLUXMINT login:", b""))

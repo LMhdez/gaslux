@@ -1,0 +1,79 @@
+name: Mint synthetic Windows-shaped COW discard after root import
+
+on:
+  push:
+    branches:
+      - test/mint-cow-postroot-discard-20261118
+      - test/mint-win10-fourth-bcd-winre-evidence-20261118
+    paths:
+      - '.github/workflows/mint-cow-postroot-discard.yml'
+      - 'auto_tests/tools/windows_mint_synthetic_tar_guestfs.py'
+      - 'auto_tests/tools/windows_mint_overlay_root.py'
+      - 'auto_tests/tools/windows_cachyos_overlay_ext4_only.py'
+  pull_request:
+    paths:
+      - '.github/workflows/mint-cow-postroot-discard.yml'
+      - 'auto_tests/tools/windows_mint_synthetic_tar_guestfs.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Enforce synthetic-only paths and no rollback overclaims
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_mint_synthetic_tar_guestfs.py auto_tests/tools/windows_mint_overlay_root.py
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_overlay_root.py -v
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("auto_tests/tools/windows_mint_synthetic_tar_guestfs.py").read_text()
+          proof = Path("auto_tests/tools/windows_mint_overlay_root.py").read_text()
+          assert 'overlay.unlink()' in src
+          assert 'format="raw", readonly=1' in src
+          assert 'restore' in src
+          assert 'assert restored.vfs_type(disk + "5") != "ext4"' in src
+          assert '"rollbackVerified": False' in proof
+          assert '"sameDiskDualBootVerified": False' in proof
+          assert '"/dev/nvme' not in src and '"/dev/sdb' not in src
+          print("PASS: COW discard gate is synthetic and release claims remain disabled")
+          PY
+
+  disposable-cow-discard:
+    needs: static-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_SYNTHETIC_EXT4_CONSENT: I_ACCEPT_SYNTHETIC_RAW_FILE_FIFTH_EXT4_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Obtain isolated guestfs tools on GitHub-hosted runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$(id -u)" -ne 0
+          sudo apt-get -qq update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gdisk qemu-utils python3-guestfs libguestfs-tools linux-image-generic
+      - name: Format owned fifth ext4 in synthetic COW, import, discard, and verify base
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 auto_tests/tools/windows_mint_synthetic_tar_guestfs.py
+          echo 'Only SYNTHETIC guestfs+COW-discard verified; real Windows/Mint dual boot, updates and rollback remain UNPROVEN.' >> "$GITHUB_STEP_SUMMARY"
