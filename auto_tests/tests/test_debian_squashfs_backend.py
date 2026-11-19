@@ -17,7 +17,7 @@ case "$1" in
     case " ${MOCK_MISSING_PATHS:-} " in
       *" $path "*) exit 0 ;;
     esac
-    printf 'squashfs-root/%s\n' "$path"
+    printf -- '-rw-r--r-- root/root 16 2026-01-01 00:00 squashfs-root/%s\n' "$path"
     ;;
   -cat)
     [ "$3" = "etc/os-release" ]
