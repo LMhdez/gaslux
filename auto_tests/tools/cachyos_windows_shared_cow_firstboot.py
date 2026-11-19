@@ -80,14 +80,27 @@ def verify_installed_poweroff_serial(data: bytes, root_uuid: str) -> None:
     require(data.count(("GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:" +
                         root_uuid).encode("ascii")) == 1,
             "GRUB did not select the signed installed ext4 root by UUID")
-    require(("root=UUID=" + root_uuid).encode("ascii") in data,
-            "signed installed-root UUID missing from native kernel command line")
-    require(re.search(rb"Linux version [^\r\n]{1,250}cachyos", data, re.I) is not None,
-            "native CachyOS kernel did not emit its boot identity")
-    require(re.search(rb"systemd\[1\]|systemd [0-9]{3} running", data) is not None,
+    # GRUB's exact UUID selection is independently constrained by the
+    # generated, grub-script-check'd config, which passes root=UUID=... ro.
+    # Real installed CachyOS COM1 (PR #34 artifact #14289991307) does not
+    # print either "Linux version" or the complete kernel command line.
+    # Require a genuine kernel printk and systemd PID 1 boot witness instead.
+    require(re.search(rb"\[\s*[0-9]+\.[0-9]+\]\s", data) is not None,
+            "installed native kernel did not emit a timestamped printk")
+    require((re.search(rb"systemd\[1\]|systemd [0-9]{3} running", data)
+             is not None
+             or re.search(rb"pid=1;[^\r\n]{0,160}comm=systemd;type=boot",
+                          data) is not None),
             "installed systemd PID 1 was not observed")
-    require(b"Powering off." in data,
-            "installed operating system did not complete its own poweroff")
+    require(re.search(rb"Welcome to[^\r\n]{0,160}CachyOS", data) is not None,
+            "installed root did not present its CachyOS OS identity")
+    # Native Arch/CachyOS systemd output on a serial console uses ANSI
+    # control codes. Do not demand a literal "Powering off." string when
+    # the kernel emits the real terminal witness "reboot: Power down".
+    require(b"System Power Off" in data
+            and (b"Powering off." in data
+                 or b"reboot: Power down" in data),
+            "installed systemd and kernel did not complete poweroff")
     for marker in (
         b"GASLUX_VM_INSTALLED_ROOT_KERNEL_MISSING",
         b"GASLUX_VM_INSTALLED_ROOT_INITRD_MISSING",
