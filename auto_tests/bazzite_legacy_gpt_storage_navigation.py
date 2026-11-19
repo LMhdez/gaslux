@@ -22,15 +22,28 @@ class StorageNavigationRefusal(ValueError):
 
 
 def locate_storage_tile(ocr: str, tsv: str, width: int, height: int) -> dict:
-    if type(width) is not int or type(height) is not int or (width, height) != (WIDTH, HEIGHT):
+    if (
+        type(width) is not int
+        or type(height) is not int
+        or (width, height) != (WIDTH, HEIGHT)
+    ):
         raise StorageNavigationRefusal("Unexpected installer framebuffer size")
     if len(ocr.encode("utf-8")) > 32768 or len(tsv.encode("utf-8")) > 1024 * 1024:
         raise StorageNavigationRefusal("Unbounded OCR input")
-    normalized = re.sub(r"\s+", " ", ocr).lower()
-    for required in ("installation summary", "bazzite 42 installation", "installation destination",
-                     "automatic partitioning selected", "no network devices available"):
+    normalized = re.sub(r"\\s+", " ", ocr).lower()
+    required_markers = (
+        "installation summary",
+        "bazzite 42 installation",
+        "installation destination",
+        "automatic partitioning selected",
+        "no network devices available",
+    )
+    for required in required_markers:
         if required not in normalized:
-            raise StorageNavigationRefusal(f"Missing GPT guest summary evidence: {required}")
+            raise StorageNavigationRefusal(
+                f"Missing GPT guest summary evidence: {required}"
+            )
+
     words = _get_words(tsv)
     matches = []
     for first in words:
@@ -39,13 +52,22 @@ def locate_storage_tile(ocr: str, tsv: str, width: int, height: int) -> dict:
         cy = first["top"] + first["height"] // 2
         if not (660 <= first["left"] <= 700 and 310 <= cy <= 350):
             continue
-        second = [w for w in words if w["text"].lower() == "destination"
-                  and w["confidence"] >= 85
-                  and 0 <= w["left"] - (first["left"] + first["width"]) <= 15
-                  and abs(w["top"] + w["height"] // 2 - cy) <= 6]
+        second = [
+            word
+            for word in words
+            if word["text"].lower() == "destination"
+            and word["confidence"] >= 85
+            and 0 <= word["left"] - (first["left"] + first["width"]) <= 15
+            and abs(word["top"] + word["height"] // 2 - cy) <= 6
+        ]
         if len(second) == 1:
             last = second[0]
-            matches.append({"x": (first["left"] + last["left"] + last["width"]) // 2, "y": cy})
+            matches.append(
+                {
+                    "x": (first["left"] + last["left"] + last["width"]) // 2,
+                    "y": cy,
+                }
+            )
     if len(matches) != 1:
         raise StorageNavigationRefusal("No unique Installation Destination tile")
     point = matches[0]
@@ -77,21 +99,28 @@ def main() -> None:
     args = parser.parse_args()
     try:
         from PIL import Image
+
         paths = (args.png, args.ocr, args.tsv, args.coords)
-        if any(p.is_symlink() for p in paths):
+        if any(path.is_symlink() for path in paths):
             raise StorageNavigationRefusal("Symlink evidence path refused")
         if not (0 < args.png.stat().st_size <= 5 * 1024 * 1024):
             raise StorageNavigationRefusal("Invalid screenshot size")
-        with Image.open(args.png) as im:
-            im.verify()
-        with Image.open(args.png) as im:
-            width, height = im.size
-        result = locate_storage_tile(args.ocr.read_text(encoding="utf-8"),
-                                     args.tsv.read_text(encoding="utf-8"), width, height)
-        args.coords.write_text(f"{result['coordinate']['x']} {result['coordinate']['y']}\n",
-                               encoding="ascii")
+        with Image.open(args.png) as image:
+            image.verify()
+        with Image.open(args.png) as image:
+            width, height = image.size
+        result = locate_storage_tile(
+            args.ocr.read_text(encoding="utf-8"),
+            args.tsv.read_text(encoding="utf-8"),
+            width,
+            height,
+        )
+        args.coords.write_text(
+            f"{result['coordinate']['x']} {result['coordinate']['y']}\\n",
+            encoding="ascii",
+        )
     except (OSError, ValueError, UnicodeError) as exc:
-        parser.exit(2, f"REFUSED: {exc}\n")
+        parser.exit(2, f"REFUSED: {exc}\\n")
     print(json.dumps(result, sort_keys=True, indent=2))
 
 
