@@ -38,7 +38,7 @@ class WindowsGptCowRebasedContracts(unittest.TestCase):
                 txn.trial(self.base)
 
     def test_reused_overlay_stops_before_qemu(self):
-        self.overlay.write_bytes(b"synthetic—not a QCOW2 file")
+        self.overlay.write_bytes(b"synthetic-not-a-qcow2-file")
         with patch.object(txn, "command",
                           side_effect=AssertionError("unexpected qemu-img")):
             with self.assertRaisesRegex(txn.GeometryError, "reused"):
@@ -46,7 +46,7 @@ class WindowsGptCowRebasedContracts(unittest.TestCase):
 
     def test_symlink_overlay_stops_before_qemu(self):
         target = self.root / "foreign.qcow2"
-        target.write_bytes(b"synthetic—not a Windows disk")
+        target.write_bytes(b"synthetic-not-a-windows-disk")
         self.overlay.symlink_to(target)
         with patch.object(txn, "command",
                           side_effect=AssertionError("unexpected qemu-img")):
