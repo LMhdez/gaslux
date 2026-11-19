@@ -118,8 +118,11 @@ def _inspect(root: Path, manifest: dict) -> None:
     _run("sgdisk", "--verify", str(image))
     for number, code, label in PARTITIONS:
         details = _run("sgdisk", f"--info={number}", str(image))
-        if f" {code} " not in details or label not in details:
-            raise Refusal(f"GPT partition {number} identity mismatch")
+        normalized = details.upper()
+        if code.upper() not in normalized or label.upper() not in normalized:
+            raise Refusal(
+                f"GPT partition {number} identity mismatch: {details!r}"
+            )
     overlay_info_json = json.loads(
         _run("qemu-img", "info", "--output=json", str(overlay))
     )
