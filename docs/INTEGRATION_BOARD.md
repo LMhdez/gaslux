@@ -1,4 +1,57 @@
-# Gaslux integration board — 2026-11-18
+# Gaslux integration board — 2026-11-19
+
+## Reconciliação ativa — 2026-11-19 (snapshot REST)
+
+> Consulta de GitHub REST durante 19/11/2026: **31 PRs abertas** (todas draft no snapshot), **3 issues abertas** ([#254](https://github.com/LMhdez/gaslux/issues/254), [#71](https://github.com/LMhdez/gaslux/issues/71), [#3](https://github.com/LMhdez/gaslux/issues/3)). A secção e contagens mais abaixo são históricas. Esta triagem não é aprovação de merge nem prova de equivalência de patches.
+
+- HEAD `main`: [`90b044ba435b`](https://github.com/LMhdez/gaslux/commit/90b044ba435b2b4b4db6c5813ca4698b37e4a555); HEAD `dev`: [`34d506467834`](https://github.com/LMhdez/gaslux/commit/34d50646783498000eb13dbaf8a63220e63ff719). Confirmar base real e CI do HEAD da #168 antes de propor promoção.
+- **Triagem:** Corrigir 23; Consolidar 5; Bloquear 3. Nenhuma PR foi encerrada nesta reconciliação; os fechamentos exigem confronto de código, testes e evidências da sucessora.
+- **Dependências:** só se chama dependência *aberta* quando a base da PR corresponde ao HEAD de outra PR aberta. A ausência de uma base na lista não demonstra que esteja integrada em `dev` ou `main`.
+- **CI verificada nos HEADs exatos:** [#42 #44563479551](https://github.com/LMhdez/gaslux/actions/runs/44563479551) SUCCESS em `9726bc74416e` (pacstrap/boot/updates/recuperação **apenas num disco CachyOS isolado**); [#246 #44575255951](https://github.com/LMhdez/gaslux/actions/runs/44575255951) SUCCESS em `faa1c08e3086` (SIGKILL + COW Q4OS sintético); [#252 #44573748322](https://github.com/LMhdez/gaslux/actions/runs/44573748322) SUCCESS em `13430aeb88e8` (preview Calamares **NO INSTALL**); [#248 contrato série #44576054994](https://github.com/LMhdez/gaslux/actions/runs/44576054994) SUCCESS em `c7bd06139556`, mas [VM Windows+CachyOS #44576054995](https://github.com/LMhdez/gaslux/actions/runs/44576054995) **in progress na consulta**, sem reivindicar resultado.
+- **Regras de release:** catálogo `main` somente Mint/Zorin; Bazzite UEFI/GPT exclusivo e Secure Boot sem inscrição manual automatizada. As issues #3, #71 e #254 (se ainda abertas) mantêm as gates reais de instalação, arranque Windows/Linux, atualizações, desinstalação, recuperação in-place e prova de propriedade. As CI sintéticas/read-only não certificam dual boot. Nenhuma escrita em disco físico.
+
+| PR | Área | Base ou dependência direta | Estado | HEAD |
+| --- | --- | --- | --- | --- |
+| [#42](https://github.com/LMhdez/gaslux/pull/42) | CachyOS | `feature/cachyos-qemu-pacstrap-firstboot` (fora das abertas) | Bloquear | `9726bc7441` |
+| [#56](https://github.com/LMhdez/gaslux/pull/56) | CachyOS | `feature/cachyos-windows-transaction-readonly-bridge` (fora das abertas) | Corrigir | `5827a7a266` |
+| [#146](https://github.com/LMhdez/gaslux/pull/146) | CachyOS | `feature/cachyos-readonly-transaction-plan-issue3` (fora das abertas) | Corrigir | `f85f4e3bac` |
+| [#158](https://github.com/LMhdez/gaslux/pull/158) | Windows/VM | `test/windows10-fat32-usb-partitioned-mbr-setup` (fora das abertas) | Corrigir | `0ab6c16d2a` |
+| [#160](https://github.com/LMhdez/gaslux/pull/160) | CachyOS | `test/windows11-gpt-primary-backup-readonly-gate` (fora das abertas) | Bloquear | `d2fa68de8d` |
+| [#168](https://github.com/LMhdez/gaslux/pull/168) | Transversal | `main` (fora das abertas) | Corrigir | `d0594e40f0` |
+| [#175](https://github.com/LMhdez/gaslux/pull/175) | Transversal | `dev` (fora das abertas) | Corrigir | `c252aff326` |
+| [#180](https://github.com/LMhdez/gaslux/pull/180) | CachyOS | `test/cachyos-win10-real-archiso-readonly-issue3` (fora das abertas) | Consolidar | `6b217864e8` |
+| [#192](https://github.com/LMhdez/gaslux/pull/192) | Windows/VM | `test/windows10-thirdboot-after-overlay` (fora das abertas) | Corrigir | `9aafaca1e3` |
+| [#195](https://github.com/LMhdez/gaslux/pull/195) | CachyOS | `feature/cachyos-shared-cow-pacstrap-archiso-issue3` (fora das abertas) | Consolidar | `7debd69eb2` |
+| [#196](https://github.com/LMhdez/gaslux/pull/196) | CachyOS | [#195](https://github.com/LMhdez/gaslux/pull/195) (aberta) | Consolidar | `f021619207` |
+| [#201](https://github.com/LMhdez/gaslux/pull/201) | Mint | `fix/mint-cow-guestfs-tar-stage-20261118` (fora das abertas) | Corrigir | `0642fe7529` |
+| [#204](https://github.com/LMhdez/gaslux/pull/204) | Mint | `fix/mint-cow-guestfs-tar-stage-20261118` (fora das abertas) | Corrigir | `11b44063dd` |
+| [#205](https://github.com/LMhdez/gaslux/pull/205) | CachyOS | [#195](https://github.com/LMhdez/gaslux/pull/195) (aberta) | Consolidar | `5371b36e45` |
+| [#214](https://github.com/LMhdez/gaslux/pull/214) | Bazzite | `feature/bazzite-owned-qcow2-storage-discovery` (fora das abertas) | Bloquear | `a601557a41` |
+| [#216](https://github.com/LMhdez/gaslux/pull/216) | Windows/VM | `fix/windows-hmp-readonly-framebuffer-complete-prompt` (fora das abertas) | Corrigir | `6553db1dcd` |
+| [#217](https://github.com/LMhdez/gaslux/pull/217) | Windows/VM | `security/windows11-final-com1-drain-after-qemu-exit` (fora das abertas) | Corrigir | `8c88c4d91f` |
+| [#219](https://github.com/LMhdez/gaslux/pull/219) | Zorin OS | `test/mint223-installed-root-ovmf-lab` (fora das abertas) | Corrigir | `694ce044fa` |
+| [#224](https://github.com/LMhdez/gaslux/pull/224) | Zorin OS | `fix/mint-cow-guestfs-tar-stage-20261118` (fora das abertas) | Corrigir | `7c44759a7c` |
+| [#226](https://github.com/LMhdez/gaslux/pull/226) | Q4OS | `fix/q4os-win10-qmp-socket-identity-gate-20261119` (fora das abertas) | Corrigir | `5f3721da14` |
+| [#227](https://github.com/LMhdez/gaslux/pull/227) | CachyOS | `feature/cachyos-shared-cow-pacstrap-archiso-issue3` (fora das abertas) | Corrigir | `b95f583e5a` |
+| [#228](https://github.com/LMhdez/gaslux/pull/228) | Pop!_OS | `test/popos-native-six-partition-readonly-handoff-20261119` (fora das abertas) | Consolidar | `fb670eb411` |
+| [#231](https://github.com/LMhdez/gaslux/pull/231) | Q4OS | `feature/q4os-windows10-qcow2-lab` (fora das abertas) | Corrigir | `304af7519b` |
+| [#232](https://github.com/LMhdez/gaslux/pull/232) | Pop!_OS | `test/popos-native-six-partition-readonly-handoff-20261119` (fora das abertas) | Corrigir | `85c9ea30b7` |
+| [#233](https://github.com/LMhdez/gaslux/pull/233) | Mint | `test/mint-cow-proof-validation` (fora das abertas) | Corrigir | `0f3613a67e` |
+| [#243](https://github.com/LMhdez/gaslux/pull/243) | Bazzite | `feature/bazzite-official-gpt-discovery-20261119` (fora das abertas) | Corrigir | `10f231842a` |
+| [#246](https://github.com/LMhdez/gaslux/pull/246) | Q4OS | `feature/q4os-users-transition-lab-20261119` (fora das abertas) | Corrigir | `faa1c08e30` |
+| [#248](https://github.com/LMhdez/gaslux/pull/248) | CachyOS | `feature/cachyos-shared-cow-installed-readonly-boot-issue3` (fora das abertas) | Corrigir | `c7bd061395` |
+| [#250](https://github.com/LMhdez/gaslux/pull/250) | Bazzite | `test/bazzite-custom-radio-selection-cow-20261119` (fora das abertas) | Corrigir | `ad26cb10ee` |
+| [#252](https://github.com/LMhdez/gaslux/pull/252) | Q4OS | `feature/q4os-users-evidence-manifest-20261119` (fora das abertas) | Corrigir | `13430aeb88` |
+| [#255](https://github.com/LMhdez/gaslux/pull/255) | Bazzite | [#250](https://github.com/LMhdez/gaslux/pull/250) (aberta) | Corrigir | `36edb093f5` |
+
+### Consolidação prioritária e exclusões
+
+- **CachyOS #195/#196/#205/#248:** boot de Archiso, propriedade do ISO, assinatura Ed25519 e manifesto de programas cobrem contratos distintos. Integrar o que está ausente numa sucessora testada; não fechar PRs empilhadas só porque o HEAD descendente existe.
+- **Pop!_OS #228 e #232:** ambas partilham base mas acrescentam harness distintos; antes de encerrar #228 preservar/verificar os testes que não existem em #232.
+- **Q4OS #246 e #252:** guardas `O_NOFOLLOW` aplicam-se a caminhos de evidência diferentes. Não declarar uma redundante sem portar os testes.
+- **Bazzite #250 → #255:** relação direta de base e progresso apenas na observação gráfica de Blivet-GUI em disco sintético. A [issue #254](https://github.com/LMhdez/gaslux/issues/254) impede promoção enquanto a ISO não tiver autenticidade independente e o write-set não estiver comprovado.
+- **Windows VM #216/#217:** segurança do socket VNC Unix e dos fluxos HMP/COM1 são complementares, exigem comparação de patches/testes.
+- **Integração #175 → dev e #168 → main:** manter ambas draft e executar regressões C#/.NET, PowerShell/Pester, pytest/ruff, ShellCheck, schemas, assinaturas e Mint/Zorin no HEAD efetivo antes de revisão humana. Sem merge automático.
 
 ## Fechos documentados — 2026-11-19 (décimo lote: firstboot e ESP)
 
