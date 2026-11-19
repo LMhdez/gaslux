@@ -13,6 +13,7 @@ on:
       - 'assets/live/configure-target-main.sh'
       - 'assets/live/libertix-install-main.sh'
       - 'assets/live/libertix-distribution-common.sh'
+      - 'auto_tests/tests/test_debian_squashfs_backend.py'
       - 'auto_tests/tests/test_ubuntu_target_backend_preflight.py'
       - 'Scripts/modules/Libertix.InstallationPlan.psm1'
       - 'PowerShell.Tests/InstallationContracts.Tests.ps1'
@@ -43,21 +44,21 @@ jobs:
       - name: Python syntax and lint
         run: |
           bash -n assets/live/configure-target-main.sh assets/live/libertix-install-main.sh assets/live/libertix-distribution-common.sh
-          python -m compileall -q assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py
-          python -m ruff check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py
-          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py
+          python -m compileall -q assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_debian_squashfs_backend.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_debian_squashfs_backend.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_debian_squashfs_backend.py
       - name: Validate live plan and signed catalog schemas
         env:
           PYTHONPATH: auto_tests
-        run: python -m pytest -q auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_release_metadata.py
+        run: python -m pytest -q auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_debian_squashfs_backend.py auto_tests/tests/test_release_metadata.py
 
       - name: Exercise legacy Mint/Zorin backend order with mocked actions
         run: |
           bash -n assets/live/configure-target-main.sh assets/live/libertix-install-main.sh assets/live/libertix-distribution-common.sh
-          python -m compileall -q auto_tests/tests/test_ubuntu_target_backend_preflight.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/tests/test_ubuntu_target_backend_preflight.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_ubuntu_target_backend_preflight.py
-          python -m pytest -q auto_tests/tests/test_ubuntu_target_backend_preflight.py
+          python -m compileall -q auto_tests/tests/test_ubuntu_target_backend_preflight.py auto_tests/tests/test_debian_squashfs_backend.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/tests/test_ubuntu_target_backend_preflight.py auto_tests/tests/test_debian_squashfs_backend.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_ubuntu_target_backend_preflight.py auto_tests/tests/test_debian_squashfs_backend.py
+          python -m pytest -q auto_tests/tests/test_ubuntu_target_backend_preflight.py auto_tests/tests/test_debian_squashfs_backend.py
 
   windows-contracts:
     runs-on: windows-2022
