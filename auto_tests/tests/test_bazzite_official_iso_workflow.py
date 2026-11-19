@@ -116,7 +116,9 @@ def test_diskless_guest_meets_documented_memory_floor():
 
 def test_evidence_directory_exists_before_any_early_failure():
     source = WORKFLOW.read_text(encoding="utf-8")
-    capacity = source.index("name: Verify pinned key, network endpoints and ephemeral runner capacity")
+    capacity = source.index(
+        "name: Verify pinned key, network endpoints and ephemeral runner capacity"
+    )
     mkdir = source.index("mkdir -p bazzite-evidence", capacity)
     key_check = source.index("sha256sum --check --strict", capacity)
     assert mkdir < key_check
