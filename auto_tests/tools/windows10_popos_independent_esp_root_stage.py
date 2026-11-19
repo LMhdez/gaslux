@@ -165,7 +165,9 @@ def _write_exact_owned_partition(g, p: dict) -> None:
 
 def stage_owned_esp_root(
     base: Path, evidence: Path,
-    *, post_boot_callback: Callable[[Path, dict], dict] | None = None,
+    *,
+    post_boot_callback: Callable[[Path, dict], dict] | None = None,
+    pop_live_callback: Callable[[Path, dict, dict, dict], dict] | None = None,
 ) -> dict:
     """Stage ONLY two unformatted owned GPT entries after genuine Windows boot."""
     overlay = base.parent / "gaslux-pop-stage.qcow2"
@@ -330,6 +332,38 @@ def stage_owned_esp_root(
             result["windowsGuestPostPairBootAndGptReconciled"] = True
             print("GASLUX_WIN10_POP_PAIR_WINDOWS_THIRD_BOOT_RECONCILED=1",
                   flush=True)
+        if pop_live_callback is not None:
+            require(
+                post_boot_callback is not None
+                and result["independentWindowsPostStageBootVerified"] is True
+                and result["windowsGuestPostPairBootAndGptReconciled"] is True
+                and os.environ.get("GASLUX_POP_WIN10_LIVE_CONSENT")
+                == "I_ACCEPT_SIGNED_POP_ISO_READ_ONLY_GENUINE_WINDOWS_COW_VM",
+                "official Pop live guest requires third real Windows boot proof",
+            )
+            # The live ISO receives only this same, already-verified COW,
+            # attached QEMU readonly=on. The signed ISO is checked independently.
+            live_witness = pop_live_callback(
+                overlay, plan, crc_before, post_crc,
+            )
+            require(
+                type(live_witness) is dict
+                and live_witness.get(
+                    "popOfficialLiveIsoBootedSameWindowsCowReadOnly"
+                ) is True
+                and live_witness.get("windowsCOWQcow2UnchangedByPopLive") is True
+                and live_witness.get("distinstExecutionAuthorized") is False
+                and live_witness.get("productionInstallationAuthorized") is False
+                and live_witness.get("sameDiskDualBootVerified") is False,
+                "unverified or potentially writable Pop ISO/Windows COW lab",
+            )
+            after_pop_live = capture_owned_qcow2(overlay, expected_count=6)
+            require(after_pop_live == post_crc,
+                    "official Pop live reboot modified Windows/Pop GPT")
+            require(_sha256(base) == original_hash,
+                    "Pop ISO lab modified real Windows QCOW2 backing")
+            result.update(live_witness)
+            print("GASLUX_POP_LIVE_GPT_MATCHED_REAL_WINDOWS_COW=1", flush=True)
         dest = evidence / "win10-pop-independent-esp-root-stage.json"
         with dest.open("x", encoding="utf-8") as out:
             out.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
