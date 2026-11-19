@@ -15,6 +15,7 @@ from pathlib import Path
 
 PROMPT = re.compile(rb"GASLUX_POP_LIVE_WIN10_SHELL_READY=1\r?\n")
 MOUNT = re.compile(rb"GASLUX_POP_LIVE_WIN10_CONTROL_RO=1\r?\n")
+CONTROL_HASH = re.compile(rb"GASLUX_POP_LIVE_WIN10_PROBE_HASH_VERIFIED=1\r?\n")
 RESULT = re.compile(rb"GASLUX_POP_LIVE_WIN10_SIX_GPT_READONLY_VERIFIED=1\r?\n")
 FAILURE = re.compile(rb"GASLUX_POP_LIVE_WIN10_PREFLIGHT_FAILURE: [^\r\n]+")
 
@@ -92,6 +93,11 @@ def run(socket_file: Path, trace: bytearray) -> None:
             conn, trace,
             b"mkdir -p /run/gaslux-pop-lab && mount -L GASLUXLAB -o ro /run/gaslux-pop-lab && printf 'GASLUX_POP_LIVE_WIN10_CONTROL_RO=1\\n'",
             MOUNT, 65,
+        )
+        command(
+            conn, trace,
+            b"cd /run/gaslux-pop-lab && sha256sum -c probe.sha256 && printf 'GASLUX_POP_LIVE_WIN10_PROBE_HASH_VERIFIED=1\\n'",
+            CONTROL_HASH, 30,
         )
         command(
             conn, trace,
