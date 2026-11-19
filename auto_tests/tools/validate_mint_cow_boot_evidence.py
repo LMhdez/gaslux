@@ -31,6 +31,16 @@ def require(condition: bool, message: str) -> None:
         raise MintBootEvidenceError(message)
 
 
+def has_orderly_shutdown_witness(serial_bytes: bytes) -> bool:
+    """Accept the systemd and kernel witnesses emitted by an orderly poweroff."""
+    return any(marker in serial_bytes for marker in (
+        b"systemd-shutdown",
+        b"systemd-poweroff.service",
+        b"Powering off",
+        b"reboot: Power down",
+    ))
+
+
 def read_regular(directory: Path, name: str, maximum: int) -> tuple[Path, bytes]:
     require(directory.is_dir() and not directory.is_symlink(),
             "Mint evidence directory is missing or unsafe")
@@ -135,7 +145,7 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
             "Mint serial evidence does not show the authenticated root UUID")
     require(b"GASLUXMINT login:" in serial_bytes,
             "Mint live-SquashFS root did not reach the serial login prompt")
-    require(b"systemd-shutdown" in serial_bytes or b"Powering off" in serial_bytes,
+    require(has_orderly_shutdown_witness(serial_bytes),
             "Mint guest has no orderly shutdown witness")
 
     proof_hash = hashlib.sha256(proof_bytes).hexdigest()
