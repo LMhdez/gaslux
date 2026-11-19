@@ -20,7 +20,7 @@ No network devices available
 BAZZITE 42 INSTALLATION
 Quit Begin Installation
 """
-HEADER = "level\tpage_num\tblock_num\tpar_num\line_num\word_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+HEADER = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
 TSV = HEADER + (
     "5\t1\t11\t1\t1\t1\t674\t322\t81\t12\t96.8\tInstallation\n"
     "5\t1\t11\t1\t1\t2\t759\t322\t83\t12\t92.8\tDestination\n"
