@@ -83,6 +83,22 @@ class InstalledReadOnlyFirstbootContracts(unittest.TestCase):
                     firstboot.InstalledReadOnlyBootError):
                 firstboot.verify_installed_poweroff_serial(failure, ROOT_UUID)
 
+    def test_ci_gate_accepts_actual_native_powerdown_not_only_shutdown_text(self):
+        """Do not reject genuine COM1 when kernel says 'reboot: Power down'."""
+        workflow = (
+            TOOLS.parent.parent / ".github/workflows/"
+            "cachyos-windows10-shared-root-pacstrap.yml"
+        ).read_text()
+        self.assertIn("verify_installed_poweroff_serial(installed_raw, expected_root_uuid)", workflow)
+        self.assertIn('expected_root_uuid = ext4["rootFilesystem"]["filesystemUuid"]', workflow)
+        self.assertIn('b"System Power Off" in installed_raw', workflow)
+        self.assertIn('or b"reboot: Power down" in installed_raw', workflow)
+        self.assertNotIn('installed_raw.count(b"Powering off.") >= 1', workflow)
+        self.assertIn('installed_digest == pacstrap["installedReadOnlyBootSerialSha256"]', workflow)
+        self.assertIn('assert b"Kernel panic" not in installed_raw', workflow)
+        # The native CachyOS witness is accepted, not a GRUB/early-initrd fake.
+        firstboot.verify_installed_poweroff_serial(witness(), ROOT_UUID)
+
     def test_missing_runner_consent_refuses_before_any_qemu_command(self):
         with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}, clear=True), \
              mock.patch.object(firstboot, "_run") as run, \
