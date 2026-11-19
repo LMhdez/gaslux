@@ -98,7 +98,10 @@ def _inspect(root: Path, manifest: dict) -> None:
     if (
         overlay_info_json.get("format") != "qcow2"
         or overlay_info_json.get("virtual-size") != SIZE_GIB * 1024**3
-        or Path(overlay_info_json.get("full-backing-filename", "/invalid")).resolve() != image
+        or Path(
+            overlay_info_json.get("full-backing-filename", "/invalid")
+        ).resolve()
+        != image
     ):
         raise Refusal("Overlay backing identity or geometry mismatch")
 
@@ -127,7 +130,9 @@ def prepare(root: Path, runner_temp: Path) -> dict:
     _run("sgdisk", "--verify", str(image))
     image_info = _file(image)
     os.chmod(image, 0o444)
-    _run("qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(image), str(overlay))
+    _run(
+        "qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(image), str(overlay)
+    )
     overlay_info = _file(overlay)
     manifest = {
         "labOnly": True,
