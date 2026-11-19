@@ -27,7 +27,11 @@ def test_real_gpt_fixture_has_only_synthetic_partition_types_and_discardable_cow
     assert plan["containsWindowsInstallation"] is False
     assert plan["containsFilesystems"] is False
     assert plan["installationAuthorized"] is False
-    assert [p["typeCode"] for p in plan["partitions"]] == ["EF00", "0C01", "0700"]
+    assert [p["typeGuid"] for p in plan["partitions"]] == [
+        "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
+        "E3C9E316-0B5C-4DB8-817D-F92DF00215AE",
+        "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7",
+    ]
     result = audit(root, tmp_path, discard=True)
     assert result["gptVerified"] is True
     assert result["baseUnchanged"] is True
