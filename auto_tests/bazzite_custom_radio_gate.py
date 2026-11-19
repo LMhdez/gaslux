@@ -17,13 +17,12 @@ from PIL import Image
 
 WIDTH = 1280
 HEIGHT = 800
+
 def _is_blue(r: int, g: int, b: int) -> bool:
     return 40 <= r <= 120 and 120 <= g <= 180 and 200 <= b <= 255
 
-
 class CustomSelectionRefusal(ValueError):
     """Refuse ambiguous or unexpected installer UI state."""
-
 
 def _load(png: Path, ocr_path: Path, tsv_path: Path):
     paths = (png, ocr_path, tsv_path)
@@ -68,7 +67,6 @@ def _load(png: Path, ocr_path: Path, tsv_path: Path):
             continue
     return image, words
 
-
 def _blue_pixels(image: Image.Image, cx: int, cy: int) -> int:
     return sum(
         1
@@ -76,7 +74,6 @@ def _blue_pixels(image: Image.Image, cx: int, cy: int) -> int:
         for x in range(cx - 5, cx + 6)
         if _is_blue(*image.getpixel((x, y)))
     )
-
 
 def inspect_custom_before(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     image, words = _load(png, ocr_path, tsv_path)
@@ -114,7 +111,6 @@ def inspect_custom_before(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         "windowsEspWriteAuthorized": False,
     }
 
-
 def verify_custom_after(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     image, words = _load(png, ocr_path, tsv_path)
     labels = [
@@ -141,7 +137,6 @@ def verify_custom_after(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         "windowsEspWriteAuthorized": False,
     }
 
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", choices=("before", "after"), required=True)
@@ -160,11 +155,10 @@ def main() -> None:
             if args.coords is None or args.coords.is_symlink():
                 raise CustomSelectionRefusal("A safe coordinate output path is required")
             point = result["coordinate"]
-            args.coords.write_text(f'{point["x"]} {point["y"]}\\n', encoding="ascii")
+            args.coords.write_text(f'{point["x"]} {point["y"]}\n', encoding="ascii")
     except (OSError, ValueError, UnicodeError) as exc:
-        parser.exit(2, f"REFUSED: {exc}\\n")
+        parser.exit(2, f"REFUSED: {exc}\n")
     print(json.dumps(result, indent=2, sort_keys=True))
-
 
 if __name__ == "__main__":
     main()
