@@ -99,7 +99,7 @@ grep -Fxq 'LANG=en_US.UTF-8' /etc/locale.conf
 grep -Fxq 'KEYMAP=us' /etc/vconsole.conf
 [[ "$(readlink /etc/localtime)" == /usr/share/zoneinfo/UTC ]]
 getent passwd gaslux-lab | grep -Fq ':/home/gaslux-lab:/bin/bash'
-id -nG gaslux-lab | tr ' ' '\\n' | grep -Fxq wheel
+id -nG gaslux-lab | tr ' ' '\n' | grep -Fxq wheel
 grep -Eq '^gaslux-lab:\\$6\\
 first=/var/lib/gaslux-lab/child-rw-firstboot
 second=/var/lib/gaslux-lab/child-rw-secondboot
