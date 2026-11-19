@@ -69,35 +69,6 @@ def write_target_configuration(target: Path, root_uuid: str) -> None:
     )
 
 
-def configure_lab_power_button(target: Path) -> None:
-    """Make the disposable Mint guest's ACPI power-button policy explicit."""
-    etc = target / "etc"
-    systemd = etc / "systemd"
-    require(etc.is_dir() and not etc.is_symlink()
-            and systemd.is_dir() and not systemd.is_symlink(),
-            "Mint systemd configuration directory is missing or unsafe")
-    dropins = systemd / "logind.conf.d"
-    if dropins.exists() or dropins.is_symlink():
-        require(dropins.is_dir() and not dropins.is_symlink(),
-                "Mint logind drop-in directory is unsafe")
-    else:
-        subprocess.run(
-            ["sudo", "install", "-d", "-m", "0755", str(dropins)],
-            check=True, text=True, stdout=subprocess.DEVNULL,
-        )
-    config = dropins / "90-gaslux-lab-power-button.conf"
-    require(not config.is_symlink() and (not config.exists() or config.is_file()),
-            "Mint logind power-button drop-in is not a regular file")
-    content = "[Login]\\nHandlePowerKey=poweroff\\nHandlePowerKeyLongPress=poweroff\\n"
-    subprocess.run(
-        ["sudo", "tee", str(config)], input=content, check=True, text=True,
-        stdout=subprocess.DEVNULL,
-    )
-    require(config.is_file() and not config.is_symlink()
-            and config.read_text(encoding="utf-8") == content,
-            "Mint logind power-button policy was not written exactly")
-
-
 def configure_ephemeral_shutdown_service(target: Path) -> None:
     """Install a one-boot shutdown witness in the disposable CI-only COW root."""
     require(target.is_dir() and not target.is_symlink(),
@@ -108,6 +79,9 @@ def configure_ephemeral_shutdown_service(target: Path) -> None:
     link = wants_dir / "gaslux-ci-shutdown.service"
     require(system_dir.is_dir() and not system_dir.is_symlink(),
             "Mint systemd unit directory is missing or unsafe")
+    if wants_dir.exists() or wants_dir.is_symlink():
+        require(wants_dir.is_dir() and not wants_dir.is_symlink(),
+                "Mint systemd wants directory is unsafe")
     require(not unit.exists() and not unit.is_symlink()
             and not link.exists() and not link.is_symlink(),
             "refusing to replace an existing Mint shutdown unit")
@@ -431,7 +405,6 @@ def install_mint_root_and_boot(
         prepare_initramfs_modules(target, version)
         write_target_configuration(target, root_uuid)
         configure_ephemeral_shutdown_service(target)
-        configure_lab_power_button(target)
         run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
         run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
         run(["sudo", "mount", "-t", "sysfs", "sysfs", str(target / "sys")])
