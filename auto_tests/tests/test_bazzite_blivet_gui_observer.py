@@ -16,8 +16,11 @@ from bazzite_blivet_gui_observer import (  # noqa: E402, I001
 
 
 HEADER = "level\tconf\tleft\ttop\twidth\theight\ttext\n"
+
+
 def tsv(words):
     return HEADER + "".join(f"5\t96\t{x}\t{y}\t{w}\t{h}\t{word}\n" for word, x, y, w, h in words)
+
 
 def evidence(tmp_path, text, words, name="screen"):
     png = tmp_path / f"{name}.png"
@@ -28,7 +31,10 @@ def evidence(tmp_path, text, words, name="screen"):
     data.write_text(tsv(words), encoding="utf-8")
     return png, ocr, data
 
+
 BASE = "BAZZITE 42 INSTALLATION INSTALLATION DESTINATION ADVANCED CUSTOM BLIVET-GUI"
+
+
 def test_unique_advanced_custom_control_is_only_a_launch_coordinate(tmp_path):
     paths = evidence(
         tmp_path,
@@ -44,6 +50,7 @@ def test_unique_advanced_custom_control_is_only_a_launch_coordinate(tmp_path):
     assert result["onlyBlivetGuiLaunchClickPermitted"] is True
     assert result["partitionControlClicked"] is False
     assert result["partitionWriteAuthorized"] is False
+
 
 def test_ambiguous_control_refused(tmp_path):
     paths = evidence(
@@ -61,6 +68,7 @@ def test_ambiguous_control_refused(tmp_path):
     with pytest.raises(BlivetObserverRefusal):
         locate_launch_control(*paths)
 
+
 def test_missing_blivet_marker_refused(tmp_path):
     paths = evidence(
         tmp_path,
@@ -73,6 +81,7 @@ def test_missing_blivet_marker_refused(tmp_path):
     )
     with pytest.raises(BlivetObserverRefusal):
         locate_launch_control(*paths)
+
 
 def test_editor_identity_and_device_context_observed(tmp_path):
     text = "BLAZING BLIVET PARTITION EDITOR DEVICE VDA"
@@ -87,9 +96,8 @@ def test_editor_identity_and_device_context_observed(tmp_path):
     assert result["partitionMutationAttempted"] is False
     assert result["installationAuthorized"] is False
 
-@pytest.mark.parametrize(
-    "text", ["BLIVET PARTITION", "DEVICE VDA", "BLIVET DEVICE VDA"]
-)
+
+@pytest.mark.parametrize("text", ["BLIVET PARTITION", "DEVICE VDA", "BLIVET DEVICE VDA"])
 def test_unverified_editor_refused(tmp_path, text):
     paths = evidence(tmp_path, text, [("Device", 20, 20, 50, 15)])
     with pytest.raises(BlivetObserverRefusal):
