@@ -682,10 +682,45 @@ def run_shared_root_pacstrap(
             == plan["gptWindowsSha256"]
             and read_windows_file_hashes(overlay) == plan["windowsHashes"],
             "Windows GPT or protected hashes changed during read-only installed boot")
+    # Next guarded lab stage: RW writes ONLY to a NEW COW child of the installed
+    # parent, never to the already attested parent or to Windows backing.
+    # Gate it behind a *proven* installed read-only root boot.
+    writable_child_status = {
+        "installedWritableChildKernelAndSystemdBootVerified": False,
+        "installedWritableChildOverlayDiscarded": False,
+        "firstBootWithWritableSystemVerified": False,
+        "sameDiskDualBootVerified": False,
+        "productionStorageWritesAuthorized": False,
+    }
+    if firstboot_status.get("minimalInstalledReadOnlyBootVerified") is True:
+        from cachyos_windows_shared_cow_rw_child import probe_owned_rw_child
+        try:
+            writable_child_status = probe_owned_rw_child(
+                overlay=overlay, base=base, nvram=nvram,
+                ovmf_code=ovmf_code, workspace=workspace, plan=plan,
+                run_id=run_id)
+        except (ValueError, OSError, subprocess.TimeoutExpired) as error:
+            writable_child_status["installedWritableChildFailureType"] = (
+                type(error).__name__)
+    # A failed or successful nested RW experiment NEVER bypasses the original
+    # Windows verification and the outer COW discard/reboot transaction.
+    require(_sha(base) == before_base_sha
+            and qcow2_file_identity(base) == before_base_identity
+            and _sha(nvram) == before_nvram_sha
+            and _sha(overlay) == before_root_only_firstboot_overlay_sha,
+            "nested RW child modified original Windows base/parent/NVRAM")
+    with tempfile.TemporaryDirectory(prefix="gaslux-final-windows-gpt-",
+                                     dir=base.parent) as tmp:
+        last_front, last_back = gpt_windows(overlay, Path(tmp))
+    require(hashlib.sha256(last_front + last_back).hexdigest()
+            == plan["gptWindowsSha256"]
+            and read_windows_file_hashes(overlay) == plan["windowsHashes"],
+            "nested RW stage altered Windows GPT/ESP/BCD/WinRE in parent")
     return {
         **grant_status,
         **root_status,
         **firstboot_status,
+        **writable_child_status,
         "cachyosRootPacstrapped": True,
         "pacstrapExecuted": True,
         "rootUnmountedInGuest": ordinary_umount == 1,
