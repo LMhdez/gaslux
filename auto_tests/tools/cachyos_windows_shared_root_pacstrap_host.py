@@ -411,6 +411,8 @@ def run_shared_root_pacstrap(
     programs = {
         "cachyos_windows_shared_root_pacstrap.py":
             Path("auto_tests/tools/cachyos_windows_shared_root_pacstrap.py"),
+        "cachyos_configure_installed.py":
+            Path("auto_tests/tools/cachyos_configure_installed.py"),
         "cachyos_windows_shared_archiso_handoff.py":
             Path("auto_tests/tools/cachyos_windows_shared_archiso_handoff.py"),
         "cachyos_windows_shared_archiso_guest_probe.py":
@@ -459,6 +461,7 @@ def run_shared_root_pacstrap(
         (handoff / "host-checkpoint.json", "host-checkpoint.json"),
         (handoff / "host-overlay-backing-proof.json", "host-overlay-backing-proof.json"),
         (programs["cachyos_windows_shared_root_pacstrap.py"], "cachyos_windows_shared_root_pacstrap.py"),
+        (programs["cachyos_configure_installed.py"], "cachyos_configure_installed.py"),
         (programs["cachyos_windows_shared_archiso_handoff.py"], "cachyos_windows_shared_archiso_handoff.py"),
         (programs["cachyos_windows_shared_archiso_guest_probe.py"], "cachyos_windows_shared_archiso_guest_probe.py"),
         (programs["windows_cachyos_qcow2_gpt_readonly.py"], "windows_cachyos_qcow2_gpt_readonly.py"),
