@@ -19,7 +19,6 @@ ROOT_NAME = "bazzite-gpt-fixture"
 IMAGE_NAME = "windows-layout-no-os.raw"
 OVERLAY_NAME = "gpt-layout-scratch.qcow2"
 SIZE_GIB = 70
-SECTOR = 512
 PARTITIONS = (
     (1, "EF00", "GLX-ESP-NO-FILESYSTEM"),
     (2, "0C01", "GLX-MSR-NO-OS"),
@@ -157,7 +156,7 @@ def prepare(root: Path, runner_temp: Path) -> dict:
     partial = root / "manifest.json.partial"
     with partial.open("x", encoding="utf-8") as stream:
         json.dump(manifest, stream, indent=2, sort_keys=True)
-        stream.write("\\n")
+        stream.write("\n")
         stream.flush()
         os.fsync(stream.fileno())
     partial.replace(root / "manifest.json")
@@ -213,7 +212,7 @@ def main() -> None:
             else audit(args.root, args.runner_temp, discard=args.operation == "discard")
         )
     except (Refusal, OSError, subprocess.SubprocessError, ValueError, KeyError) as exc:
-        parser.exit(2, f"REFUSED: {exc}\\n")
+        parser.exit(2, f"REFUSED: {exc}\n")
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
