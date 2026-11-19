@@ -92,8 +92,14 @@ def verify_installed_poweroff_serial(data: bytes, root_uuid: str) -> None:
              or re.search(rb"pid=1;[^\r\n]{0,160}comm=systemd;type=boot",
                           data) is not None),
             "installed systemd PID 1 was not observed")
-    require(re.search(rb"Welcome to[^\r\n]{0,160}CachyOS", data) is not None,
-            "installed root did not present its CachyOS OS identity")
+    # Reject an initramfs-only shutdown. The independent VM log in PR #34
+    # shows a real systemd "Switch Root" phase before the installed
+    # CachyOS welcome banner. This must happen *before* final poweroff.
+    switched = data.find(b"Switch Root")
+    welcome = re.search(rb"Welcome to[^\r\n]{0,160}CachyOS", data)
+    require(switched >= 0 and welcome is not None
+            and switched < welcome.start(),
+            "installed Linux did not transition from initramfs into native root")
     # Native Arch/CachyOS systemd output on a serial console uses ANSI
     # control codes. Do not demand a literal "Powering off." string when
     # the kernel emits the real terminal witness "reboot: Power down".
