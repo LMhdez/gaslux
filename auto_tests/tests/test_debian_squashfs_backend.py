@@ -86,9 +86,7 @@ def _run_identity_check(
 def test_official_legacy_distributions_pass_exact_identity_and_family_gate(
     tmp_path: Path, expected_id: str, os_release: str
 ) -> None:
-    result = _run_identity_check(
-        tmp_path, expected_id=expected_id, os_release=os_release
-    )
+    result = _run_identity_check(tmp_path, expected_id=expected_id, os_release=os_release)
     assert result.returncode == 0, result.stderr
     assert f"ID={expected_id}" in result.stdout
 
