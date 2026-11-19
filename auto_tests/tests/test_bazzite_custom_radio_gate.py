@@ -43,7 +43,7 @@ def fixture(tmp_path, *, custom_selected=False, automatic_selected=True):
     image.save(png)
     ocr.write_text(OCR, encoding="utf-8")
     with tsv.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.writer(stream, delimiter="\\t")
+        writer = csv.writer(stream, delimiter="\t")
         writer.writerow(HEADER)
         writer.writerows(ROWS)
     return png, ocr, tsv
@@ -81,7 +81,7 @@ def test_refuses_if_custom_selection_not_confirmed_after_click(tmp_path):
 def test_refuses_ambiguous_custom_label(tmp_path):
     png, ocr, tsv = fixture(tmp_path)
     with tsv.open("a", encoding="utf-8") as stream:
-        stream.write("\\t".join(ROWS[1]) + "\\n")
+        stream.write("\t".join(ROWS[1]) + "\n")
     with pytest.raises(CustomSelectionRefusal, match="not unique"):
         inspect_custom_before(png, ocr, tsv)
 
