@@ -46,7 +46,9 @@ def _regular_files(root: Path) -> dict[str, Path]:
 def _require_nofollow() -> int:
     flag = getattr(os, "O_NOFOLLOW", None)
     if flag is None:
-        raise EvidenceManifestError("platform does not expose O_NOFOLLOW; refusing unsafe evidence access")
+        raise EvidenceManifestError(
+            "platform does not expose O_NOFOLLOW; refusing unsafe evidence access"
+        )
     return flag
 
 
