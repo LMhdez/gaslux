@@ -24,6 +24,7 @@ def witness(uuid=UUID, run_id=RUN, *, second_boot=False) -> bytes:
         + " rw console=ttyS0,115200n8 systemd.unit=multi-user.target\n"
         "[ OK ] Reached target Switch Root.\n"
         "Welcome to CachyOS!\n"
+        "GASLUX_VM_INSTALLED_CONFIGURED_DESKTOP_ACCOUNT_PASS:" + run_id + ":" + uuid + "\n"
         + ("GASLUX_VM_INSTALLED_RW_CHILD_SECONDBOOT_PASS:" if second_boot
            else "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:")
         + run_id + ":" + uuid + "\n"
@@ -58,6 +59,12 @@ class WritableChildContracts(unittest.TestCase):
             b"root_uuid='" + UUID.encode() + b"'",
             b"root=UUID=$root_uuid",
             b"systemd.unit=multi-user.target",
+            b"cat /etc/hostname",
+            b"LANG=en_US.UTF-8",
+            b"KEYMAP=us",
+            b"gaslux-lab",
+            b"plasma-desktop",
+            b"NetworkManager.service",
             b"child-rw-firstboot",
             b'[[ ",$options," == *,rw,* ]]',
             b'set -Eeuo pipefail',
