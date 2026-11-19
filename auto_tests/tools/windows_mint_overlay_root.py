@@ -114,15 +114,15 @@ def configure_ephemeral_shutdown_service(target: Path) -> None:
     subprocess.run(["sudo", "install", "-d", "-m", "0755", str(wants_dir)],
                    check=True, text=True, capture_output=True, timeout=30)
     contents = (
-        "[Unit]\\n"
-        "Description=Gaslux disposable COW shutdown witness\\n"
-        "After=multi-user.target\\n"
-        "[Service]\\n"
-        "Type=oneshot\\n"
-        "ExecStartPre=/bin/sleep 15\\n"
-        "ExecStart=/bin/systemctl poweroff\\n"
-        "[Install]\\n"
-        "WantedBy=multi-user.target\\n"
+        "[Unit]\n"
+        "Description=Gaslux disposable COW shutdown witness\n"
+        "After=multi-user.target\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "ExecStartPre=/bin/sleep 15\n"
+        "ExecStart=/bin/systemctl poweroff\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
     )
     subprocess.run(["sudo", "tee", str(unit)], input=contents, check=True,
                    text=True, stdout=subprocess.DEVNULL, timeout=30)
