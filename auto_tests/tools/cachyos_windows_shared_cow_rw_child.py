@@ -31,7 +31,6 @@ from cachyos_windows_shared_root_pacstrap_host import (
 from windows_cachyos_cow_checkpoint import CHECKPOINT_DIR, OVERLAY_NAME
 from windows_cachyos_overlay_reboot import gpt_windows
 from windows_cachyos_qcow2_gpt_readonly import qcow2_file_identity
-from windows_cachyos_overlay_ext4_only import VIRTUAL_DISK_BYTES as STAGED_BYTES
 from cachyos_windows_archiso_signed_plan_lab import read_windows_file_hashes
 from windows_x64_qemu_host_gate import OVMF_VARS
 
