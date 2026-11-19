@@ -83,22 +83,31 @@ def test_missing_blivet_marker_refused(tmp_path):
         locate_launch_control(*paths)
 
 
-def test_editor_identity_and_device_context_observed(tmp_path):
-    text = "BLAZING BLIVET PARTITION EDITOR DEVICE VDA"
+def test_editor_requires_exact_blivet_gui_and_guest_serial(tmp_path):
+    text = "BLIVET-GUI PARTITION EDITOR GLXBAZRO001"
     paths = evidence(
         tmp_path,
         text,
-        [("Blivet", 20, 20, 50, 15), ("Partition", 80, 20, 65, 15)],
+        [("Blivet-GUI", 20, 20, 90, 15), ("Partition", 120, 20, 65, 15)],
     )
     result = verify_editor(*paths)
     assert result["blivetGuiIdentityTextObserved"] is True
     assert result["partitionEditorContextObserved"] is True
+    assert result["guestDiskSerialObserved"] == "GLXBAZRO001"
     assert result["partitionMutationAttempted"] is False
     assert result["installationAuthorized"] is False
 
 
-@pytest.mark.parametrize("text", ["BLIVET PARTITION", "DEVICE VDA", "BLIVET DEVICE VDA"])
-def test_unverified_editor_refused(tmp_path, text):
+@pytest.mark.parametrize(
+    "text",
+    [
+        "BLIVET PARTITION EDITOR DEVICE VDA",
+        "BLIVET-GUI PARTITION EDITOR DEVICE VDA",
+        "BLIVET-GUI DEVICE GLXBAZRO001",
+        "DEVICE GLXBAZRO001 PARTITION",
+    ],
+)
+def test_generic_or_incomplete_editor_context_refused(tmp_path, text):
     paths = evidence(tmp_path, text, [("Device", 20, 20, 50, 15)])
     with pytest.raises(BlivetObserverRefusal):
         verify_editor(*paths)
