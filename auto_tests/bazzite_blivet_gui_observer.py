@@ -40,7 +40,8 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
             raise BlivetObserverRefusal("Unexpected framebuffer geometry")
     normalized = re.sub(r"\s+", " ", ocr).lower()
     if require_storage_page:
-        for marker in ("bazzite 42 installation", "installation destination", "advanced custom", "blivet-gui"):
+        markers = ("bazzite 42 installation", "installation destination", "advanced custom", "blivet-gui")
+        for marker in markers:
             if marker not in normalized:
                 raise BlivetObserverRefusal(f"Missing storage-page marker: {marker}")
     rows = list(csv.DictReader(io.StringIO(tsv), delimiter="\t"))
@@ -77,7 +78,8 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
             if item is not first:
                 continue
             phrase = line[index:index + 3]
-            if len(phrase) != 3 or [x["text"] for x in phrase] != ["advanced", "custom", "blivet-gui"]:
+            labels = [x["text"] for x in phrase]
+            if len(phrase) != 3 or labels != ["advanced", "custom", "blivet-gui"]:
                 continue
             if any(x["confidence"] < 60 for x in phrase):
                 continue
