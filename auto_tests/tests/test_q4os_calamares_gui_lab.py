@@ -297,6 +297,7 @@ def test_refuse_software_next_without_q4os_desktop_selection(tmp_path):
     assert result.returncode != 0
     assert "Software Next requires SHA-verified Q4OS Desktop selection" in result.stderr
 
+
 def test_partitions_next_is_pixel_gated_and_never_installs():
     source = SCRIPT.read_text(encoding="utf-8")
     assert 'advance_partitions="${GASLUX_Q4OS_ADVANCE_PARTITIONS:-no}"' in source
@@ -306,8 +307,7 @@ def test_partitions_next_is_pixel_gated_and_never_installs():
     assert "GASLUX_Q4OS_CALAMARES_USERS_VIEW_CAPTURED=PASS" in source
     assert "vnc-users-view-unverified.png" in source
     assert (
-        "NOT PERFORMED: user creation, password entry, "
-        "Summary, Install or any exec job."
+        "NOT PERFORMED: user creation, password entry, Summary, Install or any exec job."
     ) in source
     assert "GASLUX_Q4OS_CALAMARES_INSTALL_CLICKED=NO" in source
     assert "calamares -d" not in source
