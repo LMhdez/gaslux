@@ -88,7 +88,7 @@ def _send_key_events(stream, *, sleep=time.sleep) -> None:
         },
         "id": "gaslux-ovmf-send-space",
     }
-    stream.write((json.dumps(request, separators=(",", ":")) + "\\r\\n").encode())
+    stream.write(json.dumps(request, separators=(",", ":")).encode() + bytes((13, 10)))
     _read_qmp_reply(stream, "gaslux-ovmf-send-space")
     sleep(1.0)
 
