@@ -173,6 +173,40 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertNotIn("mkfs.ext4", source)
         self.assertNotIn("sgdisk", source)
 
+    def test_ephemeral_shutdown_service_is_explicit_and_one_boot_scoped(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            system = target / "etc/systemd/system"
+            system.mkdir(parents=True)
+            def fake_run(args, **kwargs):
+                if args[1] == "tee":
+                    Path(args[2]).write_text(kwargs["input"], encoding="utf-8")
+                elif args[1] == "ln":
+                    Path(args[-1]).symlink_to(args[-2])
+                elif args[1] == "install":
+                    Path(args[-1]).mkdir(parents=True, exist_ok=True)
+                return SimpleNamespace(returncode=0)
+            with patch.object(mint.subprocess, "run", side_effect=fake_run):
+                mint.configure_ephemeral_shutdown_service(target)
+            unit = system / "gaslux-ci-shutdown.service"
+            link = system / "multi-user.target.wants/gaslux-ci-shutdown.service"
+            self.assertIn("ExecStartPre=/bin/sleep 15", unit.read_text())
+            self.assertIn("ExecStart=/bin/systemctl poweroff", unit.read_text())
+            self.assertEqual(link.readlink(), Path("../gaslux-ci-shutdown.service"))
+
+    def test_ephemeral_shutdown_service_refuses_existing_unit_or_symlink(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            system = target / "etc/systemd/system"
+            system.mkdir(parents=True)
+            (system / "gaslux-ci-shutdown.service").symlink_to(target / "outside")
+            with patch.object(mint.subprocess, "run") as run:
+                with self.assertRaisesRegex(mint.MintOverlayError, "refusing to replace"):
+                    mint.configure_ephemeral_shutdown_service(target)
+            run.assert_not_called()
+
     def test_installed_root_configuration_uses_real_newlines(self):
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
