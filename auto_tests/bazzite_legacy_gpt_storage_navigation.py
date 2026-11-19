@@ -26,7 +26,7 @@ def locate_storage_tile(ocr: str, tsv: str, width: int, height: int) -> dict:
         raise StorageNavigationRefusal("Unexpected installer framebuffer size")
     if len(ocr.encode("utf-8")) > 32768 or len(tsv.encode("utf-8")) > 1024 * 1024:
         raise StorageNavigationRefusal("Unbounded OCR input")
-    normalized = re.sub(r"\\s+", " ", ocr).lower()
+    normalized = re.sub(r"\s+", " ", ocr).lower()
     for required in ("installation summary", "bazzite 42 installation", "installation destination",
                      "automatic partitioning selected", "no network devices available"):
         if required not in normalized:
@@ -88,10 +88,10 @@ def main() -> None:
             width, height = im.size
         result = locate_storage_tile(args.ocr.read_text(encoding="utf-8"),
                                      args.tsv.read_text(encoding="utf-8"), width, height)
-        args.coords.write_text(f"{result['coordinate']['x']} {result['coordinate']['y']}\\n",
+        args.coords.write_text(f"{result['coordinate']['x']} {result['coordinate']['y']}\n",
                                encoding="ascii")
     except (OSError, ValueError, UnicodeError) as exc:
-        parser.exit(2, f"REFUSED: {exc}\\n")
+        parser.exit(2, f"REFUSED: {exc}\n")
     print(json.dumps(result, sort_keys=True, indent=2))
 
 
