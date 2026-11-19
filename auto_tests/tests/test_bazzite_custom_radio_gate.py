@@ -36,7 +36,9 @@ HEADER = [
     "text",
 ]
 ROWS = [
-    ["5", "1", "1", "1", "1", "1", "42", "475", "61", "10", "96.0", "Automatic"],
+    # Real installer OCR reports confidence 0 for Automatic because the
+    # radio glyph touches the label; the pixel-state gate remains authoritative.
+    ["5", "1", "1", "1", "1", "1", "42", "475", "61", "10", "0.0", "Automatic"],
     ["5", "1", "2", "1", "1", "1", "252", "475", "45", "10", "96.0", "Custom"],
     ["5", "1", "3", "1", "1", "1", "522", "475", "45", "10", "96.0", "Custom"],
 ]
@@ -70,6 +72,14 @@ def test_before_gate_returns_only_custom_radio_coordinate(tmp_path):
     assert result["onlyCustomRadioClickPermitted"] is True
     assert result["installationAuthorized"] is False
     assert result["partitionWriteAuthorized"] is False
+
+
+def test_before_gate_accepts_zero_confidence_automatic_only_with_pixel_proof(tmp_path):
+    png, ocr, tsv = fixture(tmp_path)
+    result = inspect_custom_before(png, ocr, tsv)
+    assert result["automaticSelectedObserved"] is True
+    assert result["customUnselectedObserved"] is True
+    assert result["coordinate"] == {"x": 239, "y": 480}
 
 
 def test_after_gate_requires_custom_selected_and_automatic_unselected(tmp_path):
