@@ -182,6 +182,8 @@ class SharedRootOnlySafety(unittest.TestCase):
             program_sources = {
                 "cachyos_windows_shared_root_pacstrap.py":
                     HERE / "tools/cachyos_windows_shared_root_pacstrap.py",
+                "cachyos_configure_installed.py":
+                    HERE / "tools/cachyos_configure_installed.py",
                 "cachyos_windows_shared_archiso_handoff.py":
                     HERE / "tools/cachyos_windows_shared_archiso_handoff.py",
                 "cachyos_windows_shared_archiso_guest_probe.py":
@@ -251,6 +253,7 @@ class SharedRootOnlySafety(unittest.TestCase):
                 "strictPacmanBuilderSha256": hashlib.sha256(programs["strict-pacman.py"].read_bytes()).hexdigest(),
                 "pacmanTrustGuardSha256": hashlib.sha256(programs["pacman-trust.py"].read_bytes()).hexdigest(),
                 "sharedRootPacstrapSha256": hashlib.sha256(programs["cachyos_windows_shared_root_pacstrap.py"].read_bytes()).hexdigest(),
+                "installedConfigurationSha256": hashlib.sha256(programs["cachyos_configure_installed.py"].read_bytes()).hexdigest(),
                 "archisoHandoffVerifierSha256": hashlib.sha256(programs["cachyos_windows_shared_archiso_handoff.py"].read_bytes()).hexdigest(),
                 "archisoGuestProbeSha256": hashlib.sha256(programs["cachyos_windows_shared_archiso_guest_probe.py"].read_bytes()).hexdigest(),
                 "gptReaderSha256": hashlib.sha256(programs["windows_cachyos_qcow2_gpt_readonly.py"].read_bytes()).hexdigest(),
