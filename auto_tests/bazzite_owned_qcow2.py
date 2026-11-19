@@ -110,7 +110,7 @@ def prepare(root: Path, runner_temp: Path) -> dict:
     manifest = {
         "labOnly": True,
         "firmware": "uefi",
-        "partitionTableRequested": "gpt",
+        "partitionTable": "unpartitioned-blank",
         "windowsGuestAttached": False,
         "installationAuthorized": False,
         "storageInspectionOnly": True,
@@ -142,7 +142,7 @@ def audit(root: Path, runner_temp: Path, *, discard: bool) -> dict:
         manifest.get("root") != str(root)
         or manifest.get("labOnly") is not True
         or manifest.get("firmware") != "uefi"
-        or manifest.get("partitionTableRequested") != "gpt"
+        or manifest.get("partitionTable") != "unpartitioned-blank"
         or manifest.get("windowsGuestAttached") is not False
         or manifest.get("installationAuthorized") is not False
         or manifest.get("storageInspectionOnly") is not True
