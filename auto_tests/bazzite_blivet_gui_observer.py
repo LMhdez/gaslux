@@ -40,7 +40,12 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
             raise BlivetObserverRefusal("Unexpected framebuffer geometry")
     normalized = re.sub(r"\s+", " ", ocr).lower()
     if require_storage_page:
-        markers = ("bazzite 42 installation", "installation destination", "advanced custom", "blivet-gui")
+        markers = (
+            "bazzite 42 installation",
+            "installation destination",
+            "advanced custom",
+            "blivet-gui",
+        )
         for marker in markers:
             if marker not in normalized:
                 raise BlivetObserverRefusal(f"Missing storage-page marker: {marker}")
