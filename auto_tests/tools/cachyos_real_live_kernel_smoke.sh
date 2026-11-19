@@ -69,11 +69,16 @@ timeout --kill-after=5s 380s qemu-system-x86_64 \
   -device virtio-blk-pci,drive=isoimg \
   -serial file:"$w/serial.log" &
 vm_pid=$!
-# Stop early once both kernel and userspace evidence are captured.
+# The pinned 260809 ISO boots with a quiet kernel console under OVMF.
+# An earlier assertion looked only for "Linux version ..." and falsely
+# rejected a guest that had actually reached the CachyOS serial login.
+# Require an exact CachyOS login banner AND systemd's kernel/userspace
+# startup timings; neither a GRUB echo nor finding the kernel file suffices.
 for _ in $(seq 1 76); do
   sleep 5
-  if grep -Eq 'Linux version [0-9]' "$w/serial.log" 2>/dev/null &&
-     grep -Eq 'systemd\[1\]|systemd[ -]udevd|Welcome to CachyOS' "$w/serial.log" 2>/dev/null; then
+  if grep -Eq 'CachyOS [0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cachyos-lts \(ttyS0\)' "$w/serial.log" 2>/dev/null &&
+     grep -Fq 'CachyOS login:' "$w/serial.log" 2>/dev/null &&
+     grep -Eq 'Startup finished in .* \(kernel\) \+ .* \(userspace\)' "$w/serial.log" 2>/dev/null; then
     kill "$vm_pid" 2>/dev/null || true
     break
   fi
@@ -83,16 +88,22 @@ set +e
 wait "$vm_pid"
 rc=$?
 set -e
-if ! grep -Eq 'Linux version [0-9]' "$w/serial.log"; then
-  echo "FAIL: real CachyOS kernel execution unverified (QEMU status=$rc)" >&2
+# Preserve the disposable VM's serial witness even when boot assertions fail.
+if [[ -n "${GASLUX_BOOT_EVIDENCE_DIR:-}" && -f "$w/serial.log" ]]; then
+  mkdir -p -- "$GASLUX_BOOT_EVIDENCE_DIR"
+  install -m 0600 -- "$w/serial.log" "$GASLUX_BOOT_EVIDENCE_DIR/cachyos-live-serial.log"
+  ( cd "$GASLUX_BOOT_EVIDENCE_DIR" && sha256sum cachyos-live-serial.log > cachyos-live-serial.sha256 )
+fi
+if ! grep -Eq 'CachyOS [0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cachyos-lts \(ttyS0\)' "$w/serial.log"; then
+  echo "FAIL: pinned CachyOS LTS login banner not observed (QEMU status=$rc)" >&2
   tail -c 5000 "$w/serial.log" >&2 || true
   exit 1
 fi
-echo 'PASS: real CachyOS live Linux kernel executed in QEMU/OVMF.'
-if ! grep -Eq 'systemd\[1\]|systemd[ -]udevd|Welcome to CachyOS' "$w/serial.log"; then
-  echo 'INCOMPLETE: no Archiso userspace/init evidence' >&2
+if ! grep -Fq 'CachyOS login:' "$w/serial.log" ||
+   ! grep -Eq 'Startup finished in .* \(kernel\) \+ .* \(userspace\)' "$w/serial.log"; then
+  echo "INCOMPLETE: live kernel did not reach systemd boot and serial login (QEMU status=$rc)" >&2
   tail -c 5000 "$w/serial.log" >&2 || true
   exit 1
 fi
-echo 'PASS: CachyOS live init/userspace emitted serial evidence.'
-echo 'NOT TESTED: Windows dual boot, target installation or WinRE recovery.'
+echo 'PASS: official CachyOS LTS kernel and systemd reached real serial login in QEMU/OVMF.'
+echo 'NOT TESTED: installed CachyOS, Windows dual boot, target disk mutation or WinRE recovery.'
