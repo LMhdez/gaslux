@@ -43,7 +43,9 @@ def test_only_synthetic_private_cow_backed_disk_is_attached():
     assert "guestDiskWritableCOWOverlay" in source
     assert "hostBackingImmutable" in source
     assert "trap audit_owned_base EXIT" in source
-    assert "BASE_INTEGRITY=PASS" in source\n    assert "GUEST_PROBE=FAIL" in source\n    assert "GUEST_PROBE=PASS" in source
+    assert "BASE_INTEGRITY=PASS" in source
+    assert "GUEST_PROBE=FAIL" in source
+    assert "GUEST_PROBE=PASS" in source
 
 
 def test_no_windows_storage_or_installer_mutation_code():
@@ -81,7 +83,12 @@ def test_original_guest_screen_gates_are_reused():
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "gh run download 44378715492" in source
     assert "bazzite_legacy_blue_button.py" in source
-    assert "bazzite_legacy_gpt_storage_navigation.py" in source\n    assert "python3 auto_tests/bazzite_legacy_gpt_storage_navigation.py" in source\n    assert "python3 auto_tests/bazzite_legacy_destination_gate.py" in source\n    assert source.index("python3 auto_tests/bazzite_legacy_destination_gate.py") < source.index("readonly-gpt-stage3:")\n    assert source.index("python3 auto_tests/bazzite_legacy_gpt_storage_navigation.py") > source.index("readonly-gpt-stage3:")\n    assert "\\\"noDisksAvailableAfterClickCandidateObserved\\\":" not in source
+    assert "bazzite_legacy_gpt_storage_navigation.py" in source
+    assert "python3 auto_tests/bazzite_legacy_gpt_storage_navigation.py" in source
+    assert "python3 auto_tests/bazzite_legacy_destination_gate.py" in source
+    assert source.index("python3 auto_tests/bazzite_legacy_destination_gate.py") < source.index("readonly-gpt-stage3:")
+    assert source.index("python3 auto_tests/bazzite_legacy_gpt_storage_navigation.py") > source.index("readonly-gpt-stage3:")
+    assert '"noDisksAvailableAfterClickCandidateObserved":' not in source
     assert source.index("--phase locale") < source.index('move "$lx" "$ly" click 1')
     assert source.index("blue-gate.json") < source.index('move "$cx" "$cy" click 1')
     assert source.index("destination-gate.json") < source.index('move "$dx" "$dy" click 1')
