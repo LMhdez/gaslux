@@ -1,4 +1,5 @@
 """Q4OS UI-map contracts. No virtual machines, disk writers, network or screenshot fabrication."""
+
 from __future__ import annotations
 
 import copy
@@ -143,9 +144,7 @@ def test_schema_rejects_invalid_sha_and_install_claim(documents: tuple[dict, dic
 
 
 def test_exact_source_workflow_is_lab_only() -> None:
-    workflow = (ROOT / ".github/workflows/q4os-ui-repro-2vm.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github/workflows/q4os-ui-repro-2vm.yml").read_text(encoding="utf-8")
     for required in (
         LAB_SOURCE,
         ISO_SHA,
