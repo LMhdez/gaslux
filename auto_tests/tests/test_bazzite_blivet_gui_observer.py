@@ -167,6 +167,7 @@ def test_mismatched_tsv_sidecar_refused(tmp_path, monkeypatch):
     with pytest.raises(BlivetObserverRefusal, match="do not match screenshot"):
         verify_editor(*paths)
 
+
 def test_advanced_custom_radio_selected_but_editor_not_claimed(tmp_path):
     text = "INSTALLATION DESTINATION BAZZITE 42 INSTALLATION ADVANCED CUSTOM (BLIVET-GUI)"
     png, ocr, data = evidence(tmp_path, text, [("Advanced", 460, 475, 57, 12)])
