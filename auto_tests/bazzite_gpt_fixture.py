@@ -13,6 +13,7 @@ import errno
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 from pathlib import Path
@@ -26,16 +27,22 @@ PARTITIONS = (
         1,
         "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
         "GLX-ESP-NO-FILESYSTEM",
+        2048,
+        616447,
     ),
     (
         2,
         "E3C9E316-0B5C-4DB8-817D-F92DF00215AE",
         "GLX-MSR-NO-OS",
+        616448,
+        649215,
     ),
     (
         3,
         "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7",
         "GLX-WINDOWS-NO-OS",
+        649216,
+        50980863,
     ),
 )
 
@@ -126,11 +133,20 @@ def _inspect(root: Path, manifest: dict) -> None:
     if _hash_sparse(image) != manifest["baseSparseIdentitySha256"]:
         raise Refusal("GPT base hash changed")
     _run("sgdisk", "--verify", str(image))
-    for number, type_guid, label in PARTITIONS:
+    for number, type_guid, label, first_sector, last_sector in PARTITIONS:
         details = _run("sgdisk", f"--info={number}", str(image))
         normalized = details.upper()
-        if type_guid not in normalized or label.upper() not in normalized:
-            raise Refusal(f"GPT partition {number} identity mismatch: {details!r}")
+        first_match = re.search(r"^First sector: (\\d+)$", details, re.MULTILINE)
+        last_match = re.search(r"^Last sector: (\\d+)$", details, re.MULTILINE)
+        if (
+            type_guid not in normalized
+            or label.upper() not in normalized
+            or first_match is None
+            or last_match is None
+            or int(first_match.group(1)) != first_sector
+            or int(last_match.group(1)) != last_sector
+        ):
+            raise Refusal(f"GPT partition {number} identity/geometry mismatch: {details!r}")
     overlay_info_json = json.loads(_run("qemu-img", "info", "--output=json", str(overlay)))
     if (
         overlay_info_json.get("format") != "qcow2"
@@ -181,7 +197,14 @@ def prepare(root: Path, runner_temp: Path) -> dict:
         "overlayIdentity": [overlay_info.st_dev, overlay_info.st_ino],
         "root": str(root),
         "partitions": [
-            {"number": n, "typeGuid": type_guid, "name": name} for n, type_guid, name in PARTITIONS
+            {
+                "number": n,
+                "typeGuid": type_guid,
+                "name": name,
+                "firstSector": first,
+                "lastSector": last,
+            }
+            for n, type_guid, name, first, last in PARTITIONS
         ],
     }
     _inspect(root, manifest)
