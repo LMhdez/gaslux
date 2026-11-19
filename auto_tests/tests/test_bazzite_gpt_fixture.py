@@ -82,3 +82,12 @@ def test_mutated_allocated_extent_refuses_overlay_discard(tmp_path):
 def test_fixture_requires_exact_private_temp_child(tmp_path):
     with pytest.raises(Refusal, match="direct child"):
         prepare(tmp_path / "foreign", tmp_path)
+
+
+def test_gpt_fixture_workflow_requires_all_evidence_files():
+    workflow = (
+        ROOT / ".github" / "workflows" / "gaslux-bazzite-gpt-fixture.yml"
+    ).read_text(encoding="utf-8")
+    assert "uses: actions/upload-artifact@v4" in workflow
+    assert "if-no-files-found: error" in workflow
+    assert "retention-days: 7" in workflow
