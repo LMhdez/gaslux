@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/bazzite-official-iso-ovmf
+      - fix/bazzite-official-iso-ovmf-gates-20261119
   pull_request:
     paths:
       - '.github/workflows/gaslux-bazzite-official-iso-ovmf.yml'
@@ -49,6 +50,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          mkdir -p bazzite-evidence
           echo 'af78ecfda6eb21c35195af3739341715e9cfc3f2f5911dd9c10b0670547bf6e8  assets/keys/bazzite-upstream-cosign.pub' | sha256sum --check --strict
           base='https://download.bazzite.gg/bazzite-stable-live-amd64.iso'
           for suffix in '' '.sig'; do
@@ -152,9 +154,13 @@ jobs:
           if (( host_kib < 6*1024*1024 )); then
             echo 'Runner cannot safely host constrained Bazzite live-boot probe'; exit 1
           fi
-          # The 4096 MiB hosted-runner diagnostic is BELOW Bazzite 8 GiB minimum.
-          guest_mem=4096
-          if (( host_kib >= 11*1024*1024 )); then guest_mem=8192; fi
+          # Bazzite's documented minimum is 8 GiB. Never run a misleading
+          # under-provisioned guest and call it a boot/installer observation.
+          if (( host_kib < 11*1024*1024 )); then
+            echo 'Runner cannot reserve 8 GiB for Bazzite plus host overhead; refusing probe' >&2
+            exit 1
+          fi
+          guest_mem=8192
           accel=tcg
           if [[ -c /dev/kvm ]]; then
             # Only the short-lived hosted runner's KVM node is modified.
@@ -222,5 +228,5 @@ jobs:
         with:
           name: bazzite-official-iso-ovmf-evidence
           path: bazzite-evidence/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 3
