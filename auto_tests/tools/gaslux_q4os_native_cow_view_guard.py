@@ -59,7 +59,8 @@ def _read_private_regular(path: Path, max_bytes: int) -> bytes:
     """Read one owned regular file without following links or accepting swaps."""
     require(isinstance(path, Path) and path.is_absolute(), "Evidence file path must be absolute")
     require(type(max_bytes) is int and max_bytes > 0, "Invalid evidence size limit")
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    require(hasattr(os, "O_NOFOLLOW"), "Platform cannot safely reject symlinks: O_NOFOLLOW is unavailable")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | os.O_NOFOLLOW
     fd = -1
     try:
         before = path.lstat()
