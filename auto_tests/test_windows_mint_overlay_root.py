@@ -49,6 +49,11 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertFalse(mint.has_orderly_shutdown_witness(
             b"Linux version 6.14\\nGASLUXMINT login:\\n"))
 
+    def test_orderly_shutdown_witness_rejects_unrelated_embedded_words(self):
+        self.assertFalse(mint.has_orderly_shutdown_witness(
+            b"kernel: previous command mentioned systemd-shutdown Powering off.\\n"
+        ))
+
     def test_consent_is_required_before_touching_paths_or_guestfs(self):
         with patch.dict(os.environ, {}, clear=True):
             with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
