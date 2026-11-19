@@ -55,8 +55,10 @@ def _read(png: Path, ocr_path: Path, tsv_path: Path, require_storage_page: bool 
         try:
             item = {
                 "text": row["text"].strip().lower().strip("()"),
-                "left": int(row["left"]), "top": int(row["top"]),
-                "width": int(row["width"]), "height": int(row["height"]),
+                "left": int(row["left"]),
+                "top": int(row["top"]),
+                "width": int(row["width"]),
+                "height": int(row["height"]),
                 "confidence": float(row["conf"]),
             }
         except (KeyError, TypeError, ValueError):
@@ -73,16 +75,17 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
         if first["text"] != "advanced" or first["confidence"] < 60:
             continue
         line = [
-            item for item in words
+            item
+            for item in words
             if abs(item["top"] - first["top"]) <= 8
-            and abs((item["top"] + item["height"] // 2) -
-                    (first["top"] + first["height"] // 2)) <= 8
+            and abs((item["top"] + item["height"] // 2) - (first["top"] + first["height"] // 2))
+            <= 8
         ]
         line.sort(key=lambda item: item["left"])
         for index, item in enumerate(line):
             if item is not first:
                 continue
-            phrase = line[index:index + 3]
+            phrase = line[index : index + 3]
             labels = [x["text"] for x in phrase]
             if len(phrase) != 3 or labels != ["advanced", "custom", "blivet-gui"]:
                 continue
@@ -154,7 +157,7 @@ def main() -> None:
             if args.coords is None or args.coords.is_symlink():
                 raise BlivetObserverRefusal("Safe coordinate output path required")
             point = result["coordinate"]
-            args.coords.write_text(f'{point["x"]} {point["y"]}\n', encoding="ascii")
+            args.coords.write_text(f"{point['x']} {point['y']}\n", encoding="ascii")
     except (OSError, ValueError, UnicodeError) as exc:
         parser.exit(2, f"REFUSED: {exc}\n")
     print(json.dumps(result, indent=2, sort_keys=True))
