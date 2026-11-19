@@ -148,16 +148,16 @@ def _capture_timeout_diagnostics(sock: Path, pid: int, root: Path) -> None:
             _require(bool(greeting) and len(greeting) <= 8192, "Missing QMP diagnostic greeting")
             data = json.loads(greeting)
             _require(isinstance(data, dict) and isinstance(data.get("QMP"), dict), "Invalid QMP greeting")
-            stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-diag-capabilities"}\\r\\n')
+            stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-diag-capabilities"}\r\n')
             _read_qmp_reply(stream, "gaslux-diag-capabilities")
-            stream.write(b'{"execute":"query-status","id":"gaslux-diag-status"}\\r\\n')
+            stream.write(b'{"execute":"query-status","id":"gaslux-diag-status"}\r\n')
             status = _read_qmp_reply(stream, "gaslux-diag-status")
             request = {
                 "execute": "screendump",
                 "arguments": {"filename": str(screenshot), "format": "ppm"},
                 "id": "gaslux-diag-screendump",
             }
-            stream.write((json.dumps(request, separators=(",", ":")) + "\\r\\n").encode())
+            stream.write((json.dumps(request, separators=(",", ":")) + "\r\n").encode())
             _read_qmp_reply(stream, "gaslux-diag-screendump")
             print("GASLUX_WIN10_QMP_TIMEOUT_STATUS=" + json.dumps(status.get("return", {}), sort_keys=True), flush=True)
             print("GASLUX_WIN10_OVMF_TIMEOUT_SCREENSHOT=" + str(screenshot), flush=True)
