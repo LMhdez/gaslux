@@ -24,10 +24,7 @@ SUMMARY = (
     "Automatic partitioning selected\nNo network devices available"
 )
 HEADER = "level\tconf\tleft\ttop\twidth\theight\ttext\n"
-WORDS = (
-    "5\t96\t674\t322\t81\t12\tInstallation\n"
-    "5\t92\t759\t322\t83\t12\tDestination\n"
-)
+WORDS = "5\t96\t674\t322\t81\t12\tInstallation\n5\t92\t759\t322\t83\t12\tDestination\n"
 TSV = HEADER + WORDS
 
 
