@@ -38,7 +38,7 @@ def test_only_synthetic_private_cow_backed_disk_is_attached():
     assert '[[ ! -e "$disk" && ! -L "$disk" ]]' in source
     assert "chmod 0400" in source
     assert "sha256sum --check --strict" in source
-    assert "qemu-img info --output=json" in source
+    assert '"qemu-img", "info", "--output=json"' in source
     assert '[[ ! -e "$overlay" && ! -L "$overlay" ]] || status=1' in source
     assert "guestDiskWritableCOWOverlay" in source
     assert "hostBackingImmutable" in source
