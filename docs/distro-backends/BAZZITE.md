@@ -89,6 +89,30 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+## Anexo técnico — Fedora Atomic, ISO Legacy e estado da UI (19-11-2026)
+
+### Imagem, assinatura e matrizes
+[DOCUMENTADO upstream] [Manual partitioning](https://docs.bazzite.gg/General/Installation_Guide/manual_partitioning/) e [Legacy installation](https://docs.bazzite.gg/General/Installation_Guide/legacy-install/) diferem entre gerações da ISO. Os guias Legacy descrevem **Anaconda** e a selecção `Installation Destination → Advanced Custom (Blivet-GUI)`, com `/boot/efi`, `/boot`, Btrfs root e subvolumes para `/`, `/var`, `/var/home`; NÃO validar como fluxo da nova ISO sem rever o payload. [IMPLEMENTADO — dev] [`gaslux_bazzite_preflight.py`](https://github.com/LMhdez/gaslux/blob/dev/assets/live/gaslux_bazzite_preflight.py) recusa firmware não UEFI/GPT, Secure Boot activo sem enrollment unattended, menos de 8192 MiB RAM de laboratório ou 50 GiB disco, root sem Btrfs ou instalador diferente de `fedora-atomic-native`. [`schemas/distribution-capabilities.schema.json`](https://github.com/LMhdez/gaslux/blob/dev/schemas/distribution-capabilities.schema.json) fixa `bios:none`, `uefi:grub`. Estas regras são gates Gaslux, não prova de que uma ISO real está pronta.
+
+[IMPLEMENTADO — prova de origem diferente] O workflow [`gaslux-bazzite-atomic-origin.yml`](https://github.com/LMhdez/gaslux/blob/dev/.github/workflows/gaslux-bazzite-atomic-origin.yml) autentica assinatura **OCI** de `ghcr.io/ublue-os/bazzite:stable` por `cosign verify` com a chave vendorizada `assets/keys/bazzite-upstream-cosign.pub` e valida attestation GitHub para o digest OCI. **OCI assinado não significa ISO Legacy 42 autenticada**; não utilizar o digest de imagem de container como SHA de ISO. As PRs #214/#250 fazem laboratório com ISO Legacy 42 não independente criptograficamente atestada; não existe tamanho/digest dessa ISO no catálogo estável.
+
+### Ecrãs, clicks observados e segurança do assistente
+[COMPROVADO — screenshots de laboratório, não instalador] [PR #214](https://github.com/LMhdez/gaslux/pull/214) e [Actions #44443420174](https://github.com/LMhdez/gaslux/actions/runs/44443420174), artefacto [#14492713616](https://github.com/LMhdez/gaslux/actions/runs/44443420174/artifacts/14492713616), observaram num OVMF QEMU **sem disco** o ecrã Bazzite 42 com opções `Automatic`, `Custom`, `Advanced Custom (Blivet-GUI)` desactivadas por ausência de discos. Isso prova o **texto de selecção**, não o editor Blivet nem instalação. As acções VNC na branch #250 são ligadas a screenshot, OCR/TSV e contexto do guest: `Continue` em (1225,770) de [Run #44375068915](https://github.com/LMhdez/gaslux/actions/runs/44375068915) e `Installation Destination` em (758,328) de [Run #44378715492](https://github.com/LMhdez/gaslux/actions/runs/44378715492). As coordenadas são **exclusivas daquela resolução/screenshot**; nunca codificá-las no assistente Gaslux.
+
+[COMPROVADO — falha do teste mais recente] [PR #250](https://github.com/LMhdez/gaslux/pull/250), HEAD `1f909b2a78e8eb4c2042251f4a0a9468fb3b6ff2`, [Actions #44576081171](https://github.com/LMhdez/gaslux/actions/runs/44576081171): jobs `contracts` e `prior-blue-button` **SUCCESS**, mas `readonly-gpt-stage3` **FAILURE**: `GUEST_PROBE=FAIL`, `Missing mandatory Custom selection evidence`. [Artefacto #14557722347](https://github.com/LMhdez/gaslux/actions/runs/44576081171/artifacts/14557722347). O editor Blivet-GUI **não ficou demonstrado**, nem foi autorizado `Begin Installation`, escrita em partição, ESP ou chaves. As flags continuam `installationAuthorized=false`, `partitionWriteAuthorized=false`, `windowsEspWriteAuthorized=false`. A [issue #254](https://github.com/LMhdez/gaslux/issues/254) acompanha os bloqueios.
+
+### Atomic diferente de Linux convencional
+[DOCUMENTADO upstream] Uma instalação Bazzite deve comprovar deployment `bootc`/OSTree e integridade Btrfs, e uma actualização deve demonstrar o novo deployment, boot e recuperação, não apenas instalar RPM com `dnf`; consultar [gestão de actualizações e rollback](https://docs.bazzite.gg/Installing_and_Managing_Software/Updates_Rollbacks_and_Rebasing/). O auditor [`gaslux_candidate_target_audit.py`](https://github.com/LMhdez/gaslux/blob/dev/assets/live/gaslux_candidate_target_audit.py) inspeciona `ostree/deploy` e entradas `ostree`, mas explicitamente devolve `linuxBootVerified=false`, `windowsBootVerified=false` e `installationAuthorized=false`. A orientação upstream de enrollment MOK manual para Secure Boot não cumpre o fluxo sem intervenção, logo **Secure Boot ligado BLOQUEADO**.
+
+### Playbook de passos UI/autorização
+1. Autenticar criptograficamente a ISO inteira e versão, comparar com assinatura da origem upstream; distinguir Legacy/actual, OVMF e pacote Anaconda/Blivet binários e versões **do próprio payload**. Se só houver digest OCI ou SHA sem autoridade oficial, STOP.
+2. Repetir `Installation Destination` em OVMF com COW GPT **read-only**, identificar disco por serial e cada label de UI por screenshot/OCR autenticado e geometria do controlo. Registar antes/depois de cada clique **sem tocar Done/Begin Installation**.
+3. Investigar se existe API de Anaconda/Kickstart/Blivet que aceite write-set estrito e partições preexistentes Windows. Se um único botão puder formatar/recriar Windows ESP, STOP; não confiar no ecrã como autorização.
+4. Apenas após trust de ISO + manifesto de writes + recuperação e snapshots, testar instalação Atomic real em VM descartável; provar deployment/GRUB/Windows, update, rollback de deployment e rollback Windows depois de falhas.
+5. BIOS/MBR sempre falha imediata **antes de leitura de artefactos para instalação ou qualquer escrita**. Nunca enrollment de MOK automático.
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
