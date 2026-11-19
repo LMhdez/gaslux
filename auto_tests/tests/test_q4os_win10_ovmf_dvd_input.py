@@ -140,7 +140,7 @@ def test_workflow_reuses_pinned_proven_microsoft_efi_noprompt_code():
     assert "ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668" in workflow
     assert "GASLUX_WIN10_ORIGINAL_OFFICIAL_ISO_UNMODIFIED=PASS" in workflow
     assert "GASLUX_WIN10_NOPROMPT_SHA256" in workflow
-    assert "GASLUX_WIN10_ACCEL\" == kvm" in workflow
+    assert 'GASLUX_WIN10_ACCEL" == kvm' in workflow
     assert "GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY" in workflow
     assert "-no-reboot" in workflow
     assert "qemu-nbd --read-only" in workflow
@@ -158,10 +158,7 @@ def test_workflow_reuses_pinned_proven_microsoft_efi_noprompt_code():
         for line in step["with"]["path"].splitlines():
             assert not line.strip().endswith(".iso")
             assert "Autounattend.xml" not in line
-    assert any(
-        "if-no-files-found" in step.get("with", {})
-        for step in uploads
-    )
+    assert any("if-no-files-found" in step.get("with", {}) for step in uploads)
 
 
 def test_proven_no_prompt_workflow_never_disables_windows_recovery_assertions():
