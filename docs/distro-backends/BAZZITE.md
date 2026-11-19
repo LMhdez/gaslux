@@ -119,6 +119,15 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+### Localizadores e validações gráficas que o laboratório já implementa
+[IMPLEMENTADO — PR #250, `auto_tests/bazzite_custom_radio_gate.py` e `auto_tests/bazzite_blivet_gui_observer.py`] A selecção `Custom` exige OCR Tesseract e imagem/TSV iguais aos do screenshot autenticado: texto `custom` único, confiança OCR >=75, caixa `left=245..305, top=470..490`, radio a 13 px à esquerda, e pixels azuis que comprovem **Automatic seleccionado antes** e **Custom seleccionado depois**. O ponto de clique é **calculado pelo OCR**, com limites x=220..245 e y=475..490, e nunca assumido como constante. O laboratório exige `onlyCustomRadioClickPermitted=true`, mas não autoriza `Done`, `Begin Installation` ou escrita.
+
+A procura de **Advanced Custom (Blivet-GUI)** requer uma linha OCR única de três tokens `advanced custom blivet-gui`, confiança >=60 por token, alinhamento vertical <=8 px, separações horizontais <=35/45 px e centro geométrico dentro da captura. `verify_advanced_custom_selected` verifica a região RGB do radio `(438,470)-(459,491)` e que `Custom` e `Automatic` **não** estão seleccionados; isso **não** afirma que Blivet esteja aberto. `verify_editor` só aceita texto `blivet-gui` + `partition` + serial de guest `GLXBAZRO001`; exige screenshot e OCR/TSV ligados à mesma origem. Nenhum desses gates escreve partições nem comprova uma ISO autenticada upstream.
+
+[COMPROVADO — negativo] O job `readonly-gpt-stage3` da [Actions #44576081171](https://github.com/LMhdez/gaslux/actions/runs/44576081171) **não** passou o gate Custom. Não avançar para acções de editor ou para a API do instalador com base em coordenadas de testes anteriores. [PENDENTE] descobrir IDs/estrutura do instalador Anaconda/Blivet **dentro da ISO Legacy autenticada** e construir API declarativa/CLI unattended, sem reutilizar coordenadas como protocolo de produção.
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
