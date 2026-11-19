@@ -384,6 +384,35 @@ def probe_owned_rw_child(*, overlay: Path, base: Path, nvram: Path,
               "missing RW child native serial witness")
         verify_rw_serial(serial.read_bytes(), run_id, root_uuid)
         _read_child_marker(child, root_uuid, run_id)
+        # Persisted second boot on the SAME child QCOW2. No new volume,
+        # ISO, ESP write, or change to the signed Windows/Linux parent.
+        # The service must recognise the *first* marker and create a second
+        # transaction-bound marker; repeated first-boot output is rejected.
+        second_serial = workspace / "cachyos-installed-rw-child-second-serial.log"
+        second_stderr = workspace / "cachyos-installed-rw-child-second-stderr.log"
+        check(not second_serial.exists() and not second_serial.is_symlink()
+              and not second_stderr.exists() and not second_stderr.is_symlink(),
+              "second boot evidence already exists")
+        second_cmd = list(cmd)
+        second_cmd[second_cmd.index("file:" + str(serial))] = (
+            "file:" + str(second_serial))
+        with second_stderr.open("xb") as err:
+            proc2 = subprocess.Popen(
+                second_cmd, stdout=subprocess.DEVNULL, stderr=err)
+            try:
+                proc2.wait(timeout=600)
+            except subprocess.TimeoutExpired as error:
+                proc2.kill()
+                proc2.wait(timeout=30)
+                raise ChildCOWBootError(
+                    "second RW child boot did not power off") from error
+        check(proc2.returncode == 0,
+              "second installed RW child QEMU did not exit cleanly")
+        check(second_serial.is_file() and not second_serial.is_symlink(),
+              "second RW child native serial missing")
+        verify_rw_serial(second_serial.read_bytes(), run_id, root_uuid,
+                         second_boot=True)
+        _read_child_marker(child, root_uuid, run_id, second_boot=True)
         qcow = _run_checked(["qemu-img", "check", "-f", "qcow2", str(child)],
                             timeout=300)
         check("No errors were found" in qcow, "RW child QCOW2 is not consistent")
@@ -405,6 +434,9 @@ def probe_owned_rw_child(*, overlay: Path, base: Path, nvram: Path,
             "installedWritableChildRunId": run_id,
             "installedWritableChildKernelAndSystemdBootVerified": True,
             "installedWritableChildNativeRootMarkerVerified": True,
+            "installedWritableChildSecondBootVerified": True,
+            "installedWritableChildSecondBootPersistentMarkerVerified": True,
+            "installedWritableChildSecondSerialSha256": _sha(second_serial),
             "installedWritableChildWindowsGptUnchanged": True,
             "installedWritableChildWindowsProtectedHashesUnchanged": True,
             "installedWritableChildParentCOWUnchanged": True,
