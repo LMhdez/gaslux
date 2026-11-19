@@ -62,7 +62,8 @@ class InstalledReadOnlyFirstbootContracts(unittest.TestCase):
         firstboot.verify_installed_poweroff_serial(witness(), ROOT_UUID)
         for failure in (
             witness().replace(b"[    0.699368] virt/tdx",
-                              b"GRUB version plus virt/tdx"),
+                              b"GRUB version plus virt/tdx").replace(
+                b"[   45.058170] reboot: Power down", b"reboot: Power down"),
             witness().replace(b"comm=systemd;type=boot",
                               b"comm=not-systemd;type=boot"),
             witness().replace(b"CachyOS", b"foreign-os"),
