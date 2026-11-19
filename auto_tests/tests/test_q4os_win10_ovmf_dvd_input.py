@@ -146,6 +146,12 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     assert "-File C:\\GasluxFirstLogon.ps1" in workflow
     assert ' -r "$unattend" "$first_logon"' in workflow
     assert " -Command \"" not in workflow
+    assert "Upload OVMF timeout diagnostics" in workflow
+    assert "windows10-ovmf-timeout.ppm" in workflow
+    helper = (root / "auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py").read_text()
+    assert '"screendump"' in helper
+    assert '"query-status"' in helper
+
     assert "windows10-qemu-hmp.sock" not in workflow
     assert "cycle_limit" in workflow
     assert "-no-reboot" in workflow
