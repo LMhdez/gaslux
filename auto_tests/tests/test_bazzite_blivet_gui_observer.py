@@ -14,6 +14,7 @@ import bazzite_blivet_gui_observer as observer  # noqa: E402
 BlivetObserverRefusal = observer.BlivetObserverRefusal
 locate_launch_control = observer.locate_launch_control
 verify_editor = observer.verify_editor
+verify_advanced_custom_selected = observer.verify_advanced_custom_selected
 
 HEADER = "level\tconf\tleft\ttop\twidth\theight\ttext\n"
 
@@ -165,3 +166,34 @@ def test_mismatched_tsv_sidecar_refused(tmp_path, monkeypatch):
     monkeypatch.setattr(observer.subprocess, "run", divergent)
     with pytest.raises(BlivetObserverRefusal, match="do not match screenshot"):
         verify_editor(*paths)
+
+def test_advanced_custom_radio_selected_but_editor_not_claimed(tmp_path):
+    text = "INSTALLATION DESTINATION BAZZITE 42 INSTALLATION ADVANCED CUSTOM (BLIVET-GUI)"
+    png, ocr, data = evidence(tmp_path, text, [("Advanced", 460, 475, 57, 12)])
+    image = Image.open(png).convert("RGB")
+    for x in range(438, 459):
+        for y in range(470, 491):
+            image.putpixel((x, y), (63, 137, 228))
+    image.save(png)
+    result = verify_advanced_custom_selected(png, ocr, data)
+    assert result["phase"] == "advanced-custom-selected"
+    assert result["advancedCustomRadioSelected"] is True
+    assert result["blivetGuiLaunched"] is False
+    assert result["partitionEditorContextObserved"] is False
+    assert result["partitionMutationAttempted"] is False
+    assert result["installationAuthorized"] is False
+
+
+@pytest.mark.parametrize("selected_region", ["custom", "automatic", "none"])
+def test_wrong_or_missing_radio_selection_refused(tmp_path, selected_region):
+    text = "INSTALLATION DESTINATION BAZZITE 42 INSTALLATION ADVANCED CUSTOM (BLIVET-GUI)"
+    png, ocr, data = evidence(tmp_path, text, [("Advanced", 460, 475, 57, 12)])
+    image = Image.open(png).convert("RGB")
+    if selected_region != "none":
+        x0 = 229 if selected_region == "custom" else 20
+        for x in range(x0, x0 + 21):
+            for y in range(470, 491):
+                image.putpixel((x, y), (63, 137, 228))
+    image.save(png)
+    with pytest.raises(BlivetObserverRefusal):
+        verify_advanced_custom_selected(png, ocr, data)
