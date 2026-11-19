@@ -36,7 +36,11 @@ def read_regular(directory: Path, name: str, *, limit: int = 8 * 1024 * 1024) ->
 
 
 def verify_manifest(directory: Path) -> dict[str, str]:
-    rows = read_regular(directory, "evidence.sha256", limit=1024 * 1024).decode("ascii").splitlines()
+    rows = (
+        read_regular(directory, "evidence.sha256", limit=1024 * 1024)
+        .decode("ascii")
+        .splitlines()
+    )
     entries = {}
     for line in rows:
         hit = _HASH_LINE.fullmatch(line)
