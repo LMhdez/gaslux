@@ -20,10 +20,12 @@ from gaslux_popos_guest_serial import (
 MOUNT = re.compile(rb"(?m)^GASLUX_POP_LAB_CONTROL_MOUNTED=1\r?$")
 HASHES = re.compile(rb"(?m)^GASLUX_POP_LAB_CONTROL_SHA_VERIFIED=1\r?$")
 SUCCESS = re.compile(rb"(?m)^GASLUX_POP_LIVE_GENUINE_WIN10_COW_GPT_VERIFIED=1\r?$")
-REFUSED = re.compile(rb"(?m)^GASLUX_POP_LIVE_WINDOWS_GPT_REFUSED=[^\r\n]+\r?$")
+# Serial chunks may end in the middle of an error line. Requiring a real
+# newline avoids treating the first byte of a diagnostic as a complete refusal.
+REFUSED = re.compile(rb"(?m)^GASLUX_POP_LIVE_WINDOWS_GPT_REFUSED=([^\r\n]+)\r?\n")
 RESULT = re.compile(
     rb"(?m)^GASLUX_POP_LIVE_(?:GENUINE_WIN10_COW_GPT_VERIFIED=1|"
-    rb"WINDOWS_GPT_REFUSED=[^\r\n]+)\r?$"
+    rb"WINDOWS_GPT_REFUSED=[^\r\n]+)\r?\n"
 )
 JSON_MARKER = re.compile(rb"(?m)^GASLUX_POP_LIVE_WINDOWS_GPT_EVIDENCE_JSON=(\{[^\r\n]+\})\r?$")
 SYNCDONE = re.compile(rb"(?m)^GASLUX_POP_LIVE_SYNC_DONE=1\r?$")
@@ -84,8 +86,12 @@ def run(port: Path, transcript: bytearray) -> bytes:
             conn.sendall(command)
             wait_for(conn, transcript, expected, timeout_seconds=secs, start=start)
             text = normalized(bytes(transcript[start:]))
-            if REFUSED.search(text):
-                raise GuestProbeError("Pop guest refused Windows GPT identity")
+            refused = REFUSED.search(text)
+            if refused:
+                raise GuestProbeError(
+                    "Pop guest refused Windows GPT identity: "
+                    + refused.group(1).decode("utf-8", errors="replace")[:300]
+                )
         all_output = normalized(bytes(transcript))
         match = JSON_MARKER.search(all_output)
         if match is None:
