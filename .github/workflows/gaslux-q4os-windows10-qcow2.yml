@@ -36,10 +36,16 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl
+          # Bound package-manager waits so a runner/network fault fails with
+          # an actionable error instead of occupying the 90-minute VM budget.
+          timeout --signal=TERM --kill-after=30s 12m \
+            sudo apt-get -o Acquire::Retries=3 -o DPkg::Lock::Timeout=120 update -qq
+          timeout --signal=TERM --kill-after=30s 15m \
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get \
+              -o Acquire::Retries=3 -o DPkg::Lock::Timeout=120 install -y --no-install-recommends \
+              qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl libxml2-utils
           sudo modprobe nbd max_part=8
+          [[ -b /dev/nbd0 ]] || { echo 'QEMU NBD kernel device unavailable' >&2; exit 1; }
           if [[ -c /dev/kvm ]]; then
             sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
           fi
