@@ -40,14 +40,28 @@ jobs:
           python -m pytest -q auto_tests/tests/test_bazzite_gpt_fixture.py
           python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_gpt_fixture.py auto_tests/tests/test_bazzite_gpt_fixture.py
           python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_gpt_fixture.py auto_tests/tests/test_bazzite_gpt_fixture.py
-      - name: Verify fixture cleanup and publish evidence
+      - name: Build and audit real GPT fixture on private runner storage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/bazzite_gpt_fixture.py prepare --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-plan.json
+          python auto_tests/bazzite_gpt_fixture.py audit --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-audit-before-discard.json
+      - name: Verify immutable GPT backing and discard overlay
         if: always()
         shell: bash
         run: |
           set -Eeuo pipefail
-          if [[ -d "$RUNNER_TEMP/bazzite-gpt-fixture" ]]; then
-            python auto_tests/bazzite_gpt_fixture.py discard --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-evidence.json
-          fi
           if [[ -f "$RUNNER_TEMP/bazzite-gpt-fixture/manifest.json" ]]; then
-            echo "Fixture retained for diagnostics only in ephemeral runner"
+            python auto_tests/bazzite_gpt_fixture.py discard --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-discard-evidence.json
           fi
+      - name: Publish limited synthetic GPT evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-synthetic-gpt-fixture
+          path: |
+            gpt-fixture-plan.json
+            gpt-fixture-audit-before-discard.json
+            gpt-fixture-discard-evidence.json
+          if-no-files-found: error
+          retention-days: 7
