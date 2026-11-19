@@ -56,6 +56,15 @@ jobs:
           if [[ -f "$RUNNER_TEMP/bazzite-gpt-fixture/manifest.json" ]]; then
             python auto_tests/bazzite_gpt_fixture.py discard --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-discard-evidence.json
           fi
+      - name: Require complete machine-readable evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for evidence in gpt-fixture-plan.json gpt-fixture-audit-before-discard.json gpt-fixture-discard-evidence.json; do
+            test -s "$evidence" || { echo "Missing or empty required evidence: $evidence" >&2; exit 1; }
+            python -m json.tool "$evidence" >/dev/null
+          done
       - name: Publish limited synthetic GPT evidence
         if: always()
         uses: actions/upload-artifact@v4
