@@ -116,6 +116,25 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+### Sequência verificável de cliques e validadores da GUI Q4OS (apenas VM de ensaio)
+[IMPLEMENTADO em `auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh`, PR #256, linhas 338–510] Cada transição parte de um PNG capturado por VNC, comparação `changed-centre`, `visual_gate` de identidade da página e, se aplicável, SHA de origem. **As coordenadas abaixo são exclusivas da resolução/gráfico da VM do ensaio; não constituem uma API estável nem comandos para o utilizador.**
+
+| Pré-estado identificado | Ponto VNC ensaiado (x,y) | Acção apenas permitida | Pós-condição exigida |
+|---|---:|---|---|
+| Modal do primeiro arranque Q4OS | (585,391) | `OK`, condicionado ao SHA exacto do modal | Modal desapareceu; recapturar e validar desktop |
+| Desktop com welcome fechado | (948,93) fechar e (57,39) duplo clique | Fechar janela e abrir launcher da instalação | `after-close` confirma ícone; novo frame central |
+| Calamares Welcome | (1002,644) | `Next` | `calamares-location` no screenshot seguinte |
+| Calamares Location | (1002,644) | `Next` | `calamares-keyboard` |
+| Calamares Keyboard | (1002,644) | `Next` | `calamares-software-unselected` |
+| Calamares Software | (392,166) | Seleccionar **Q4OS Desktop** | `calamares-desktop-selected` |
+| Calamares Software seleccionado | (1002,644) | `Next` | `calamares-synthetic-cow-partitions`, só VM |
+| Calamares Partitions **em GPT COW totalmente sintética** | (334,280) | Activar **radio Erase disk para mera observação** — absolutamente proibido em Windows/host | `changed-centre` e `calamares-synthetic-cow-partitions-selected` |
+| Partitions com COW sintético autorizado | (1002,644) | `Next` abre Users **sem instalar** | `calamares-users`, sem introduzir credenciais |
+
+O laboratório **nunca** clica `Install`, `Done`, confirmação de formatação nem cria utilizador; o último passo captura o ecrã Users e deixa `GASLUX_Q4OS_CALAMARES_USERS_VIEW_VERIFIED=PASS`. O radio `Erase disk` só existe nesta fixture descartável **com prova da identidade do disco sintético e garantia de que o instalador não executou jobs**: nunca copiar para uma cadeia Windows. A aplicação Gaslux tem de controlar a UI por identidade do elemento/estado e cancelar perante ecrãs desconhecidos, mesmo com screenshot e coordenadas válidas. **PENDENTE:** hashes de screenshots por fase e IDs de widget Qt/Calamares, que não estão publicados como contrato de produção; futura automação deve usar API unattended ou introspecção robusta, não estes pixels.
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
