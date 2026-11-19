@@ -242,22 +242,46 @@ jobs:
                 echo 'QEMU human monitor socket did not become ready' >&2
                 exit 1
               fi
-              # Capture the actual boot screen and retry Enter in a bounded way.
-              # VNC binds to loopback only; the guest has no network adapter.
+              # QEMU HMP's readline expects carriage-return, not a bare LF.
+              # Send each command on its own connection and verify execution;
+              # writing bytes to the socket alone is not evidence of acceptance.
+              hmp_command() {
+                local command="$1"
+                printf '%s\r' "$command" |
+                  socat -T 10 - "UNIX-CONNECT:$monitor" 2>&1
+              }
               sleep 8
               for key_attempt in 1 2 3; do
-                printf 'screendump %s\nsendkey ret\n' "$work/windows10-cycle-${attempt}-boot.ppm" |
-                  socat -T 10 - "UNIX-CONNECT:$monitor" >> "$work/windows10-monitor.log" 2>&1 || true
+                boot_screen="$work/windows10-cycle-${attempt}-boot-${key_attempt}.ppm"
+                screen_reply="$(hmp_command "screendump $boot_screen")"
+                printf '%s\n' "$screen_reply" >> "$work/windows10-monitor.log"
+                [[ -s "$boot_screen" ]] || {
+                  echo "QEMU HMP screendump did not create $boot_screen" >&2
+                  exit 1
+                }
+                key_reply="$(hmp_command 'sendkey ret')"
+                printf '%s\n' "$key_reply" >> "$work/windows10-monitor.log"
+                if grep -Eqi 'unknown command|error|failed' <<<"$key_reply"; then
+                  echo "QEMU HMP rejected the Enter key command: $key_reply" >&2
+                  exit 1
+                fi
                 sleep 8
               done
-              echo 'GASLUX_WINDOWS_ISO_BOOT_KEYS_SENT=PASS'
+              post_key_screen="$work/windows10-cycle-${attempt}-after-key.ppm"
+              post_key_reply="$(hmp_command "screendump $post_key_screen")"
+              printf '%s\n' "$post_key_reply" >> "$work/windows10-monitor.log"
+              [[ -s "$post_key_screen" ]] || {
+                echo 'QEMU HMP did not produce the post-key screen capture' >&2
+                exit 1
+              }
+              echo 'GASLUX_WINDOWS_ISO_BOOT_KEYS_SENT=COMMAND_ACCEPTED'
             fi
 
             # Keep one screen snapshot per cycle and record HMP status while
             # the guest runs, without exposing the monitor beyond this runner.
             (
               while kill -0 "$qemu_pid" 2>/dev/null; do
-                printf 'info status\nscreendump %s\n' "$work/windows10-cycle-${attempt}-latest.ppm" |
+                printf 'info status\rscreendump %s\r' "$work/windows10-cycle-${attempt}-latest.ppm" |
                   socat -T 10 - "UNIX-CONNECT:$monitor" >> "$work/windows10-monitor.log" 2>&1 || true
                 sleep 120
               done
