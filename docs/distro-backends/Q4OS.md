@@ -89,6 +89,33 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+## Anexo técnico — Q4OS 6.10 r2, Calamares nativo e risco EFI fallback (19-11-2026)
+
+### Versão de ISO real e proveniência
+[IMPLEMENTADO em `dev`, fora do catálogo estável] [`.github/workflows/gaslux-q4os-official-iso.yml`](https://github.com/LMhdez/gaslux/blob/dev/.github/workflows/gaslux-q4os-official-iso.yml) fixa a ISO **Q4OS 6.10 r2 x64**, URL `https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso`, SHA-256 `1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d`. A página [SourceForge do artefacto](https://sourceforge.net/projects/q4os/files/stable/q4os-6.10-x64.r2.iso/download) divulga o digest; o workflow verifica tamanho **por intervalo** (entre 1,5 e 3 GB), não grava tamanho exacto fixado. [PENDENTE] Registar tamanho exacto e assinatura upstream independente (se existir) antes de atribuir nível de trust para release. Não está em `release-config.json`.
+
+[DOCUMENTADO/IMPLEMENTADO a partir da ISO de laboratório] O workflow lê a ISO `ro`, localiza `live/*.squashfs`, extrai `etc/os-release` com **ID=debian**, VERSION_ID=13, além de marcador Q4OS separado; o facto de `ID != q4os` é esperado nesta edição. O [`gaslux_q4os_preflight.py`](https://github.com/LMhdez/gaslux/blob/dev/assets/live/gaslux_q4os_preflight.py) valida ID Debian 13 e `q4os_version`, mas explicita `q4osIdentityBoundToIso=false` sem a ligação criptográfica ao payload. Diferenciar média [Live vs instalação nativa](https://q4os.org/downloads1.html) e WinSetup/instalação em pasta Windows: o WinSetup não prova particionamento nativo.
+
+### Boot exacto de laboratório e instalador identificado
+[IMPLEMENTADO em PR #256] [`gaslux_q4os_calamares_gui_laboratory.sh`](https://github.com/LMhdez/gaslux/blob/6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb/auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh) monta a ISO em leitura e exige exactamente um `live/vmlinuz-<versão>` e `live/initrd.img-<versão>`. Gera GRUB EFI de laboratório que procura kernel com `search --no-floppy --file` e usa `boot=live components` com consola série. Isso foi concebido para QEMU/OVMF, **não** constitui caminho de boot Windows sem USB já aceite. [PENDENTE] Registar conteúdo ISO El Torito, GRUB, EFI/BIOS e drivers NTFS/staging no initramfs real da versão.
+
+[IMPLEMENTADO — auditor de configuração extraída] [`assets/live/gaslux_q4os_calamares_policy.py`](https://github.com/LMhdez/gaslux/blob/6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb/assets/live/gaslux_q4os_calamares_policy.py) valida configuração da ISO 6.10 com `etc/q4os_version=6.10-deb13u1`, ficheiros `/etc/calamares/settings.conf` e `/etc/calamares/modules/{partition,unpackfs,mount,fstab,bootloader,grubcfg,users,packages,displaymanager}.conf`. A execução real de Calamares passa por `partition → mount → unpackfs → q4oshook2 → grubcfg → bootloader → q4oshook3 → packages → initramfs → q4oshook5 → umount`, entre outras etapas; a origem da cópia é **`/run/live/medium/live/filesystem.squashfs`**, root `ext4`, ESP `/boot/efi`, gestor de pacotes `apt`, e `grubInstall=grub-install`. Esta descrição está ligada ao auditor específico da ISO e **não implica que Calamares já tenha sido autorizado ou executado**. [PENDENTE] Enumerar versão executável Calamares, GUI object IDs e argumentos de automação real sem partir do pressuposto de que clicks fixos servem.
+
+### Risco confirmado por configuração: substituição de EFI/BOOT
+[BLOQUEADO até mitigação demonstrada] O auditor identifica `installEFIFallback=true` na configuração do bootloader nativo da ISO. Executar Calamares directamente numa ESP Windows partilhada **poderia sobrescrever `EFI/BOOT/BOOTX64.EFI`**, mesmo sem tocar em `EFI/Microsoft`. Um instalador seguro tem de desligar/encapsular o fallback de forma verificável, manter checksums EFI antes/depois e usar apenas artefactos com ownership. `windowsEspFallbackWriteAuthorized=false` é a política do auditor. Não basta preservar `bootmgfw.efi`.
+
+### Caminho gráfico já investigado
+[IMPLEMENTADO — GUI lab, sem escritor] [PR #256](https://github.com/LMhdez/gaslux/pull/256), HEAD `6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb`: os gates `GASLUX_Q4OS_LAUNCH_INSTALLER`, `ADVANCE_WELCOME`, `ADVANCE_LOCATION`, `ADVANCE_KEYBOARD`, `SELECT_SOFTWARE`, `ADVANCE_SOFTWARE`, `ADVANCE_PARTITIONS`, `NATIVE_COW_VIEW_ONLY` exigem pré-condições encadeadas e ecrãs verificados com VNC/OCR. Os passos são observação condicionada, **não instalação**. A PR #256 consolida hardening dos manifestos de evidência contra symlinks via `O_NOFOLLOW`/`O_DIRECTORY`, não executa Calamares sobre Windows. Investigar object IDs reais via Calamares e introspecção; na ausência de API unattended confiável, BLOQUEADO.
+
+### Próxima execução e critérios de paragem
+1. Repetir ISO 6.10 com SHA fixo, extrair os ficheiros Calamares para auditoria read-only e ligar hashes de cada módulo ao ISO certificado.
+2. Determinar a alteração controlada `installEFIFallback=false`/método de boot que não escreva caminhos Windows ou EFI fallback sem autorização; testar fail-closed em fixtures e QEMU ESP sintética, **sem alterar ESP Windows**.
+3. Mapear as páginas Welcome→Location→Keyboard→Software→Partitions→Users→Summary e identificadores/validadores da UI, com prova screenshot/manifesto por transição. Não usar coordenadas absolutas como API estável.
+4. Apenas com write-set autenticado e recuperação preparada, autorizar Calamares numa VM descartável com Windows real; validar boot de ambos e WinRE/BCD/EFI, updates/reinstalação/desinstalação/rollback in-place.
+5. Em caso de instalador tentar criar novo layout, escrever fallback EFI, tocar OEM/Recovery ou falhar identidade de disco, **STOP**. O hash ISO por si só não autoriza um disco.
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
