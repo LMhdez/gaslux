@@ -379,6 +379,7 @@ def probe_owned_rw_child(*, overlay: Path, base: Path, nvram: Path,
               and qcow2_file_identity(base) == before_base,
               "RW child modified backing Windows/Linux COW, EFI or Windows NVRAM")
         result = {
+            "installedWritableChildRunId": run_id,
             "installedWritableChildKernelAndSystemdBootVerified": True,
             "installedWritableChildNativeRootMarkerVerified": True,
             "installedWritableChildWindowsGptUnchanged": True,
