@@ -23,6 +23,9 @@ case "$distro" in
     ;;
   *) die 'Unsupported installed-root lab distro; only mint or zorin' ;;
 esac
+if [[ "${GASLUX_ZORIN_INITRAMFS_REBOOT:-0}" == 1 && "$distro" != zorin ]]; then
+  die 'Initramfs regeneration and second boot are supported only in the Zorin lab'
+fi
 [[ -n "${RUNNER_TEMP:-}" && -d "$RUNNER_TEMP" && ! -L "$RUNNER_TEMP" ]] ||
   die 'A real GitHub Actions RUNNER_TEMP is required'
 iso="$(realpath -e "$2")"
@@ -109,7 +112,8 @@ cleanup() {
       return 1
     }
     mkdir -p "$evidence_dir"
-    for name in serial.log grub.cfg installed-check.txt disk-layout.txt; do
+    for name in serial.log serial-after-initramfs-update.log grub.cfg \
+      installed-check.txt initramfs-reboot-check.txt disk-layout.txt; do
       [[ ! -f "$work/$name" ]] ||
         cp -- "$work/$name" "$evidence_dir/$name" || true
     done
@@ -299,6 +303,123 @@ if [[ "$verified" -ne 1 ]]; then
   tail -c 8000 "$work/serial.log" >&2 || true
   die 'No genuine installed ext4-root login proof; do not claim firstboot'
 fi
+# A second boot after an installed-root initramfs regeneration is a separate
+# evidence gate. It is never a package/kernel upgrade or production GRUB test.
+# The optional path is restricted to this Zorin-only disposable GPT file.
+if [[ "${GASLUX_ZORIN_INITRAMFS_REBOOT:-0}" == 1 ]]; then
+  [[ "$distro" == zorin &&
+     "${GITHUB_REPOSITORY:-}" == "LMhdez/gaslux" &&
+     "$disk" == "$work/zorin-only.raw" &&
+     -f "$disk" && ! -L "$disk" ]] ||
+    die 'Second-boot disk ownership or GitHub runner identity failed'
+
+  loop="$(sudo losetup --find --show --partscan "$disk")"
+  [[ "$loop" == /dev/loop* && -b "$loop" &&
+     "$(sudo losetup --noheadings --output BACK-FILE "$loop" | xargs)" == "$disk" ]] ||
+    die 'Second-boot loop attachment did not match the owned Zorin image'
+  sudo udevadm settle --timeout=20
+  esp_part="${loop}p1"
+  root_part="${loop}p2"
+  [[ -b "$esp_part" && -b "$root_part" &&
+     "$(sudo blkid -s UUID -o value "$root_part")" == "$root_uuid" &&
+     "$(sudo blkid -s TYPE -o value "$root_part")" == ext4 &&
+     "$(sudo blkid -s TYPE -o value "$esp_part")" == vfat ]] ||
+    die 'Second-boot GPT/root/ESP identity mismatch'
+
+  # The EFI loader remains bit-identical across initramfs regeneration.
+  sudo mount -t vfat -o ro "$esp_part" "$work/esp"
+  esp_mounted=1
+  [[ -s "$work/esp/EFI/BOOT/BOOTX64.EFI" ]] ||
+    die 'Owned EFI loader is missing before Zorin update'
+  efi_before="$(sudo sha256sum "$work/esp/EFI/BOOT/BOOTX64.EFI" | awk '{print $1}')"
+  sudo umount "$work/esp"
+  esp_mounted=0
+
+  sudo mount -t ext4 "$root_part" "$work/target"
+  root_mounted=1
+  [[ -s "$work/target/boot/$kernel" &&
+     -s "$work/target/boot/initrd.img-$version" &&
+     ! -L "$work/target/boot/initrd.img-$version" ]] ||
+    die 'Installed Zorin kernel/initramfs missing before regeneration'
+  before_sha="$(sudo sha256sum "$work/target/boot/initrd.img-$version" | awk '{print $1}')"
+  sudo grep -qx 'ID=zorin' "$work/target/etc/os-release" ||
+    die 'Installed Zorin /etc/os-release identity changed'
+
+  chroot_mounted=1
+  sudo mount -t proc proc "$work/target/proc"
+  sudo mount --bind /dev "$work/target/dev"
+  sudo mount --bind /dev/pts "$work/target/dev/pts"
+  sudo chroot "$work/target" /usr/bin/env -u CASPER_GENERATE_UUID \
+    update-initramfs -u -k "$version" ||
+    die 'Installed Zorin initramfs regeneration failed'
+  sudo chroot "$work/target" lsinitramfs "/boot/initrd.img-$version" \
+    > "$work/initrd-after-update-files.txt" ||
+    die 'Cannot inspect regenerated Zorin initramfs'
+  if grep -Eq '(^|/)(conf/conf.d/default-boot-to-casper.conf|conf/conf.d/live-initrd.conf|conf/uuid.conf)
+echo "PASS: genuine $pretty_name extracted root reached installed-disk serial login without attached ISO"
+echo 'NOT TESTED: Windows dual boot, Windows recovery, real Gaslux bootloader, kernel update, uninstall'
+ \
+      "$work/initrd-after-update-files.txt"; then
+    die 'Regenerated installed initramfs incorrectly depends on Casper'
+  fi
+  after_sha="$(sudo sha256sum "$work/target/boot/initrd.img-$version" | awk '{print $1}')"
+  [[ "$after_sha" =~ ^[0-9a-f]{64}$ ]] ||
+    die 'Cannot independently hash regenerated Zorin initramfs'
+  release_chroot_mounts_or_die ||
+    die 'Chroot mounts remain active after Zorin initramfs regeneration'
+  chroot_mounted=0
+  sync
+  sudo umount "$work/target"
+  root_mounted=0
+
+  sudo mount -t vfat -o ro "$esp_part" "$work/esp"
+  esp_mounted=1
+  efi_after="$(sudo sha256sum "$work/esp/EFI/BOOT/BOOTX64.EFI" | awk '{print $1}')"
+  [[ "$efi_after" == "$efi_before" ]] ||
+    die 'Zorin initramfs regeneration modified the EFI loader'
+  sudo umount "$work/esp"
+  esp_mounted=0
+  sudo losetup -d "$loop"
+  loop=''
+
+  cp -- "$vars" "$work/nvram-after-update.fd"
+  echo 'Booting the same disposable Zorin GPT disk after regenerating its installed initramfs'
+  timeout --kill-after=5s 420s qemu-system-x86_64 \
+    -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
+    -display none -monitor none -no-reboot -net none \
+    -drive if=pflash,format=raw,readonly=on,file="$code" \
+    -drive if=pflash,format=raw,file="$work/nvram-after-update.fd" \
+    -drive if=none,id=installed,format=raw,file="$disk" \
+    -device virtio-blk-pci,drive=installed,bootindex=1 \
+    -boot order=c,menu=off \
+    -serial "file:$work/serial-after-initramfs-update.log" &
+  qemu="$!"
+  second_verified=0
+  for _ in $(seq 1 82); do
+    sleep 5
+    if [[ -s "$work/serial-after-initramfs-update.log" ]] &&
+       grep -Eiq 'Linux version|Freeing unused kernel|systemd\[1\]' \
+         "$work/serial-after-initramfs-update.log" &&
+       grep -Eq '(^|[^[:alpha:]])GASLUXZORIN login:' \
+         "$work/serial-after-initramfs-update.log"; then
+      second_verified=1
+      break
+    fi
+    kill -0 "$qemu" 2>/dev/null || break
+  done
+  kill "$qemu" 2>/dev/null || true
+  wait "$qemu" 2>/dev/null || true
+  qemu=''
+  if [[ "$second_verified" -ne 1 ]]; then
+    tail -c 8000 "$work/serial-after-initramfs-update.log" >&2 || true
+    die 'No real second Zorin installed-root login after initramfs regeneration'
+  fi
+  printf 'installedZorinInitramfsRegenerationRebootVerified=true\ninitialInitramfsSha256=%s\nregeneratedInitramfsSha256=%s\nefiLoaderSha256=%s\nrootUuid=%s\n' \
+    "$before_sha" "$after_sha" "$efi_after" "$root_uuid" \
+    > "$work/initramfs-reboot-check.txt"
+  echo 'PASS: genuine installed Zorin re-booted from the same owned GPT after initramfs regeneration'
+fi
+
 printf '%s=true\nisoSha256=%s\nrootUuid=%s\nkernel=%s\n' \
   "$evidence_field" "$digest" "$root_uuid" "$kernel" > "$work/installed-check.txt"
 echo "PASS: genuine $pretty_name extracted root reached installed-disk serial login without attached ISO"
