@@ -3,7 +3,7 @@ name: Bazzite legacy owned read-only GPT storage observation (no install)
 on:
   push:
     branches:
-      - test/bazzite-custom-radio-selection-cow-20261119
+      - test/bazzite-custom-radio-selection-cow-20261119\n      - test/bazzite-blivet-gui-observer-cow-20261119
     paths:
       - '.github/workflows/gaslux-bazzite-legacy-readonly-gpt.yml'
       - 'auto_tests/bazzite_legacy_diskless_navigation.py'
@@ -454,6 +454,30 @@ jobs:
               --ocr bazzite-legacy-readonly-gpt-evidence/after-custom.ocr \
               --tsv bazzite-legacy-readonly-gpt-evidence/after-custom.tsv \
               > bazzite-legacy-readonly-gpt-evidence/custom-after-gate.json
+            # Launch only the Advanced Custom (Blivet-GUI) control. The guest
+            # disk remains a disposable COW overlay; no partition control is used.
+            python3 auto_tests/bazzite_blivet_gui_observer.py \
+              --phase before \
+              --png bazzite-legacy-readonly-gpt-evidence/after-custom.png \
+              --ocr bazzite-legacy-readonly-gpt-evidence/after-custom.ocr \
+              --tsv bazzite-legacy-readonly-gpt-evidence/after-custom.tsv \
+              --coords "$work/blivet-launch-coordinate" \
+              > bazzite-legacy-readonly-gpt-evidence/blivet-before-gate.json
+            read -r bx by < "$work/blivet-launch-coordinate"
+            [[ "$bx" =~ ^[0-9]{1,4}$ && "$by" =~ ^[0-9]{1,4}$ ]] || exit 1
+            timeout --signal=TERM --kill-after=5s 30s \
+              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 \
+              move "$bx" "$by" click 1
+            echo 'Clicked only the uniquely OCR-gated Advanced Custom (Blivet-GUI) launch control; no partition action' \
+              > bazzite-legacy-readonly-gpt-evidence/blivet-launch-observed.txt
+            sleep 25
+            capture blivet-editor
+            python3 auto_tests/bazzite_blivet_gui_observer.py \
+              --phase after \
+              --png bazzite-legacy-readonly-gpt-evidence/blivet-editor.png \
+              --ocr bazzite-legacy-readonly-gpt-evidence/blivet-editor.ocr \
+              --tsv bazzite-legacy-readonly-gpt-evidence/blivet-editor.tsv \
+              > bazzite-legacy-readonly-gpt-evidence/blivet-after-gate.json
           else
             echo 'BLOCKED: No unique Continue control after selecting locale' \
               > bazzite-legacy-readonly-gpt-evidence/no-continue.txt
@@ -518,17 +542,19 @@ jobs:
           set -Eeuo pipefail
           summary=bazzite-legacy-readonly-gpt-evidence/summary.json
           gate=bazzite-legacy-readonly-gpt-evidence/custom-after-gate.json
-          [[ -s "$summary" && -s "$gate" ]] || {
+          blivet_gate=bazzite-legacy-readonly-gpt-evidence/blivet-after-gate.json
+          [[ -s "$summary" && -s "$gate" && -s "$blivet_gate" ]] || {
             echo 'Missing mandatory Custom selection evidence' >&2
             exit 1
           }
-          python3 - "$summary" "$gate" <<'PY'
+          python3 - "$summary" "$gate" "$blivet_gate" <<'PY'
           import json
           import sys
           from pathlib import Path
 
           summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           gate = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          blivet = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
           required_true = (
               summary.get("labOnly") is True,
               summary.get("syntheticGuestGptOnly") is True,
@@ -542,6 +568,14 @@ jobs:
               gate.get("installationAuthorized") is False,
               gate.get("partitionWriteAuthorized") is False,
               gate.get("windowsEspWriteAuthorized") is False,
+              blivet.get("phase") == "editor-observed",
+              blivet.get("blivetGuiIdentityTextObserved") is True,
+              blivet.get("partitionEditorContextObserved") is True,
+              blivet.get("partitionControlClicked") is False,
+              blivet.get("partitionMutationAttempted") is False,
+              blivet.get("installationAuthorized") is False,
+              blivet.get("partitionWriteAuthorized") is False,
+              blivet.get("windowsEspWriteAuthorized") is False,
               summary.get("beginInstallationButtonClicked") is False,
               summary.get("partitionWriteAuthorized") is False,
               summary.get("windowsEspWriteAuthorized") is False,
