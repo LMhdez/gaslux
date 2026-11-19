@@ -237,7 +237,7 @@ def audit(root: Path, runner_temp: Path, *, discard: bool) -> dict:
     }
     if discard:
         (root / OVERLAY_NAME).unlink()
-        if _hash(root / IMAGE_NAME) != manifest["baseSparseIdentitySha256"]:
+        if _hash_sparse(root / IMAGE_NAME) != manifest["baseSparseIdentitySha256"]:
             raise Refusal("GPT base changed after overlay removal")
         result["overlayDiscarded"] = True
     return result
