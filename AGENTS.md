@@ -69,3 +69,16 @@ Keep contracts in sync across Installation/*.cs, Scripts/modules and Scripts/uef
 ## Definition of done for every PR
 
 Describe supported and rejected firmware/distro combinations, exact code paths and version-pinned artifacts, threat/rollback model, tests actually executed, links to CI/VM evidence, reproducible remaining blockers, and effect on Mint/Zorin. Mark unverified claims as unverified. Keep incomplete work in draft PRs. Human review remains mandatory under AI_POLICY.md; contributions must respect GPL-3.0, provenance and DCO guidance.
+
+## Mandatory distribution backend dossiers (2026-11-19)
+
+Before implementing, reviewing or integrating a distribution backend, **read its current dossier** under [docs/distro-backends/](docs/distro-backends/README.md) and [SHARED_CONTRACTS.md](docs/distro-backends/SHARED_CONTRACTS.md):
+
+- [Linux Mint](docs/distro-backends/MINT.md)
+- [Zorin OS](docs/distro-backends/ZORIN.md)
+- [CachyOS](docs/distro-backends/CACHYOS.md)
+- [Pop!_OS](docs/distro-backends/POPOS.md)
+- [Bazzite](docs/distro-backends/BAZZITE.md)
+- [Q4OS](docs/distro-backends/Q4OS.md)
+
+Every agent must (1) check current GitHub main/dev/feature HEADs, issues, PRs, workflow runs and evidence; (2) check whether the dossier is still correct against official upstream sources, the pinned ISO and actual Gaslux code; (3) reuse and test existing implementations rather than duplicate them; (4) follow the distro's **ONE-SHOT EXECUTION PLAYBOOK** in safe stages; (5) update the dossier with new facts, exact commit/run/artifact provenance and clear evidence levels; and (6) **never claim stability** from CI fixtures, a Live boot or unverified rollback. If the dossier conflicts with a verified contract in `docs/ARCHITECTURE.md`, stop and resolve it in human review before altering code. Documentation does not override `AI_POLICY.md`, GPL-3.0 or release gates. Unverified instructions, SHA/ISO paths and boot parameters are **PENDENTE**, not permission to guess.
