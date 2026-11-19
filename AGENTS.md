@@ -69,3 +69,17 @@ Keep contracts in sync across Installation/*.cs, Scripts/modules and Scripts/uef
 ## Definition of done for every PR
 
 Describe supported and rejected firmware/distro combinations, exact code paths and version-pinned artifacts, threat/rollback model, tests actually executed, links to CI/VM evidence, reproducible remaining blockers, and effect on Mint/Zorin. Mark unverified claims as unverified. Keep incomplete work in draft PRs. Human review remains mandatory under AI_POLICY.md; contributions must respect GPL-3.0, provenance and DCO guidance.
+
+## Mandatory distro-backend research and one-shot playbooks (2026-11-19)
+
+Before implementing, integrating or reviewing **any** of the six distribution backends:
+
+1. Read [docs/distro-backends/README.md](docs/distro-backends/README.md), [SHARED_CONTRACTS.md](docs/distro-backends/SHARED_CONTRACTS.md) and the exact distro dossier: [Mint](docs/distro-backends/MINT.md), [Zorin](docs/distro-backends/ZORIN.md), [CachyOS](docs/distro-backends/CACHYOS.md), [Pop!_OS](docs/distro-backends/POPOS.md), [Bazzite](docs/distro-backends/BAZZITE.md) or [Q4OS](docs/distro-backends/Q4OS.md).
+2. Requery main/dev HEADs, open/merged/closed PRs, issues, Actions and evidence artifacts. Do not mistake the snapshot in a document for live authority.
+3. Revalidate official ISO, installer, kernel/initramfs and bootloader identity before use. Mark conflicting or missing claims **PENDENTE** rather than completing them by guesswork.
+4. Reuse code from precisely identified commits after comparing its base, behavior, safety gates and dependencies. A closed unmerged PR is not the active codebase.
+5. Follow the distro's **ONE-SHOT EXECUTION PLAYBOOK** as a sequence of verified gates; never run a step whose disk identity, authorization or recovery is unproved. No silent fallback to a different installer or partition strategy.
+6. Update the relevant dossier with any verified new fact, source URL, exact commit/Actions run, test scope and remaining failure. Separate DOCUMENTADO, IMPLEMENTADO, COMPROVADO, PENDENTE and BLOQUEADO.
+7. Do not declare stability based on ISO boot, root extraction, synthetic COW, a passing test suite or a Linux-only first boot. Require genuine Windows and Linux boots on the same authorized target, updates, recovery and evidence for every supported layout.
+
+These rules supplement, and never relax, AI_POLICY.md, docs/ARCHITECTURE.md, the signed release policy or GPL-3.0. No agent may merge without human review.
