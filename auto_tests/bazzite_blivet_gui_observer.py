@@ -119,17 +119,18 @@ def locate_launch_control(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
 
 def verify_editor(png: Path, ocr_path: Path, tsv_path: Path) -> dict:
     text, words = _read(png, ocr_path, tsv_path, require_storage_page=False)
-    # Require a distinct editor identity and visible device/partition context.
-    editor_markers = ("blivet", "partition")
-    if not all(marker in text for marker in editor_markers):
-        raise BlivetObserverRefusal("Blivet partition editor identity not observed")
-    device_markers = ("device", "disk", "nvme", "virtio", "vda", "glxbazro001")
-    if not any(marker in text for marker in device_markers):
-        raise BlivetObserverRefusal("No device context observed in editor")
+    # Require the named editor and the exact serial assigned to the disposable
+    # guest disk. Generic words such as "device" or "disk" are not identity.
+    tokens = set(re.findall(r"[a-z0-9][a-z0-9._-]*", text))
+    if "blivet-gui" not in tokens or "partition" not in tokens:
+        raise BlivetObserverRefusal("Blivet-GUI partition editor identity not observed")
+    if "glxbazro001" not in tokens:
+        raise BlivetObserverRefusal("Expected disposable guest disk serial not observed")
     return {
         "phase": "editor-observed",
         "blivetGuiIdentityTextObserved": True,
         "partitionEditorContextObserved": True,
+        "guestDiskSerialObserved": "GLXBAZRO001",
         "ocrWordCount": len(words),
         "partitionControlClicked": False,
         "partitionMutationAttempted": False,
