@@ -135,6 +135,7 @@ def verify_advanced_custom_selected(png: Path, ocr_path: Path, tsv_path: Path) -
             for red, green, blue in samples
             if blue >= 170 and blue > red * 1.25 and blue > green * 1.05
         )
+
     selected_blue = blue_count(selected)
     other_blue = max(blue_count(custom), blue_count(automatic))
     if selected_blue < 8 or other_blue > 2:
