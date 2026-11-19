@@ -1,5 +1,13 @@
 # Gaslux integration board — 2026-11-18
 
+## Fechos documentados — 2026-11-19 (quarto lote)
+
+- [#40](https://github.com/LMhdez/gaslux/pull/40) **encerrada sem merge**: laboratório gráfico inicial Q4OS já não selecionado; [Actions #43964633501](https://github.com/LMhdez/gaslux/actions/runs/43964633501) confirmou apenas arranque gráfico e não instalação, [comentário de fecho](https://github.com/LMhdez/gaslux/pull/40#issuecomment-7012437079). #237/#244 são percursos posteriores, não patches equivalentes.
+- [#213](https://github.com/LMhdez/gaslux/pull/213) **encerrada sem merge**: HMP `screendump` e VNC TCP loopback antigos não selecionados; [#231](https://github.com/LMhdez/gaslux/pull/231) contém instrumentação QMP e imagens PPM, mas não se afirma que todos os patches #213 foram portados. [Comentário de fecho](https://github.com/LMhdez/gaslux/pull/213#issuecomment-7012452747).
+- [#151](https://github.com/LMhdez/gaslux/pull/151) **encerrada sem merge**: testes e script de terceiro arranque Windows existem ampliados na [#162](https://github.com/LMhdez/gaslux/pull/162); workflow específico antigo não selecionado. [Actions #44130175309](https://github.com/LMhdez/gaslux/actions/runs/44130175309) = 3 jobs SUCCESS para recuperação por descarte do COW, **não** rollback real após instalação Linux. [Comentário de fecho](https://github.com/LMhdez/gaslux/pull/151#issuecomment-7012478404).
+- Consulta posterior: **58 PRs abertas**, **2 issues abertas**; `main` em [`90b044ba`](https://github.com/LMhdez/gaslux/commit/90b044ba435b2b4b4db6c5813ca4698b37e4a555), `dev` 96 à frente, 1 atrás.
+- Testes desta ronda: inspeção de patches/refs/blobs e **jobs Actions históricos**; nenhuma execução nova de build, Pester, pytest ou VM. Nenhuma escrita destrutiva em discos reais, merge ou promoção de catálogo.
+
 ### HEAD main alterado durante a triagem de 19/11/2026
 
 - **Reconsulta obrigatória antes de merges:** `main` está em [`90b044ba`](https://github.com/LMhdez/gaslux/commit/90b044ba435b2b4b4db6c5813ca4698b37e4a555) (commit `test(q4os): wrap long Calamares preview assertion`), enquanto a PR experimental [#239](https://github.com/LMhdez/gaslux/pull/239) permanece OPEN/DRAFT com o mesmo HEAD. A comparação `main...feature/q4os-calamares-users-view-lab` é `identical` (0/0).
