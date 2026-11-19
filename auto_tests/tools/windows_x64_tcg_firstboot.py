@@ -42,6 +42,7 @@ EXPECTED_FINAL_HOSTS = {
 }
 CONSENT = "I_ACCEPT_FILE_BACKED_WINDOWS_EVAL_TCG_ONLY"
 MARKER = "GASLUX_WINDOWS_X64_REAL_CLIENT_FIRSTBOOT"
+POP_PAIR_MARKER = "GASLUX_WINDOWS_POP_POST_PAIR_BOOT_VERIFIED"
 FAILURE = "GASLUX_WINDOWS_X64_FIRSTBOOT_FAIL"
 
 
@@ -267,6 +268,78 @@ Start-Sleep -Seconds 2
         "__MARKER__", MARKER).strip()
 
 
+
+def witness_pop_pair_powershell(
+    profile_key: str, build: str, *, arm: bool = False, post: bool = False,
+) -> str:
+    """Lab-only two-boot COM1 audit, derived from verified Windows witness."""
+    require(arm != post, "exactly one post-pair audit phase required")
+    require(profile_key == "win10_22h2_en_us_x64" and build == "19045",
+            "post-pair audit supports only the genuine Win10 lab")
+    script = witness_powershell(profile_key, build)
+    key = "  $serialProof = @("
+    require(script.count(key) == 1, "guest audit insertion point changed")
+    if arm:
+        # The real guest installs this scheduled task only during first logon;
+        # no extra media will be attached during the third QEMU guest.
+        phase = r"""
+  if (-not (Test-Path -LiteralPath 'A:\GASLUX2.PS1')) {
+    throw 'missing lab post-pair guest audit on verified floppy'
+  }
+  Copy-Item -LiteralPath 'A:\GASLUX2.PS1' -Destination 'C:\ProgramData\GasluxPopPostPairAudit.ps1' -Force -ErrorAction Stop
+  $taskCmd = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\GasluxPopPostPairAudit.ps1'
+  & schtasks.exe /Create /F /SC ONSTART /TN 'GasluxPopPostPairAudit' /RU SYSTEM /RL HIGHEST /TR $taskCmd | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'post-pair Windows task registration failed' }
+"""
+    else:
+        phase = r"""
+  & schtasks.exe /Delete /F /TN 'GasluxPopPostPairAudit' | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'post-pair Windows task removal failed' }
+"""
+        roles = r"""
+  if (@($parts).Count -ne 6) { throw 'expected six Windows/Pop GPT entries' }
+  $popEsp = @($parts | Where-Object {
+    $_.PartitionNumber -eq 5 -and
+    $_.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' -and
+    $_.Size -eq 1073741824
+  })
+  $popRoot = @($parts | Where-Object {
+    $_.PartitionNumber -eq 6 -and
+    $_.GptType -eq '{0fc63daf-8483-4772-8e79-3d69d8477de4}' -and
+    $_.Size -eq 25769803776
+  })
+  if ($popEsp.Count -ne 1 -or $popRoot.Count -ne 1) {
+    throw 'unexpected Pop-owned ESP/root GPT identities or sizes'
+  }
+  if ($popRoot[0].Offset -le ($popEsp[0].Offset + $popEsp[0].Size)) {
+    throw 'overlapping Pop-owned GPT partitions'
+  }
+"""
+        script = script.replace(
+            "  $esp = @($parts | Where-Object",
+            roles + "  $esp = @($parts | Where-Object", 1,
+        )
+        script = script.replace(
+            "  if ($esp.Count -ne 1) { throw 'missing or multiple Windows ESP' }",
+            """  $esp = @($esp | Sort-Object PartitionNumber)
+  if ($esp.Count -ne 2 -or $esp[0].PartitionNumber -ne 1) {
+    throw 'Windows ESP not separate from transaction-owned Pop ESP'
+  }""",
+        )
+        script = script.replace(
+            "GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+            "GASLUX_WINDOWS_X64_GPT_ESP_COUNT=2",
+        )
+        script = script.replace(MARKER, POP_PAIR_MARKER)
+        require(
+            "GASLUX_WINDOWS_X64_GPT_ESP_COUNT=2" in script
+            and POP_PAIR_MARKER in script
+            and "PartitionNumber -eq 6" in script,
+            "post-pair guest proof is incomplete",
+        )
+    return script.replace(key, phase + key, 1)
+
+
 def generate_unattend(profile_key: str, build: str) -> bytes:
     # Windows Setup owns disk partitioning, but can only see the ONE new
     # file-backed QCOW2 and its read-only installer ISO/floppy. Never a host disk.
@@ -467,7 +540,9 @@ def send_first_iso_boot_key(monitor_path: Path, hold_ms: int = 300) -> None:
 
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
-            reject_repeated_dvd_boot: bool = False) -> tuple[bool, str]:
+            reject_repeated_dvd_boot: bool = False,
+            required_marker: str = MARKER,
+            expected_esp_count: int = 1) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -480,10 +555,17 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     }
     if profile_key not in build_by_profile:
         raise LabError("unknown client profile")
+    require(
+        (required_marker == MARKER and expected_esp_count == 1)
+        or (required_marker == POP_PAIR_MARKER
+            and expected_esp_count == 2
+            and profile_key == "win10_22h2_en_us_x64"),
+        "invalid post-pair Windows guest marker or ESP count",
+    )
     required = {
-        f"{MARKER}={profile_key}".encode(),
+        f"{required_marker}={profile_key}".encode(),
         b"GASLUX_WINDOWS_X64_BOOT_PRODUCTTYPE=1",
-        b"GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1",
+        f"GASLUX_WINDOWS_X64_GPT_ESP_COUNT={expected_esp_count}".encode(),
         b"GASLUX_WINDOWS_X64_RECOVERY_GPT_COUNT=1",
         b"GASLUX_WINDOWS_X64_WINRE_ENABLED=1",
         b"GASLUX_WINDOWS_X64_BCD_ENUMERATED=1",
@@ -603,6 +685,55 @@ def build_two_stage_qemu_args(
         "second-stage Windows VM still exposes the installer DVD",
     )
     return first, second
+
+
+
+def build_pop_pair_third_guest_args(
+    original: list[str], disk: Path, overlay: Path,
+    trial_nvram: Path, serial: Path,
+) -> list[str]:
+    """Boot the owned *staged* Windows COW with no ISO, floppy or host disks."""
+    require(
+        disk.name == "only-disposable-windows-target.qcow2"
+        and disk.parent.name.startswith("gaslux-win-x64-")
+        and overlay == disk.parent / "gaslux-pop-stage.qcow2"
+        and trial_nvram == disk.parent / "post-pop-pair" / "ovmf-variables.fd"
+        and serial == disk.parent / "post-pop-pair" / "serial.log"
+        and trial_nvram.is_file() and not trial_nvram.is_symlink()
+        and overlay.is_file() and not overlay.is_symlink()
+        and not serial.exists(),
+        "unowned Windows/Pop post-stage guest target",
+    )
+    _, third = build_two_stage_qemu_args(original, serial)
+    floppy = [
+        i for i in range(len(third)-1)
+        if third[i] == "-drive" and third[i+1].startswith("if=floppy,")
+    ]
+    require(len(floppy) == 1, "unexpected third Windows guest floppy list")
+    del third[floppy[0]:floppy[0]+2]
+    original_disk = "if=none,id=only_windows,format=qcow2,file=" + str(disk)
+    original_vars = "if=pflash,format=raw,file=" + str(disk.parent/"ovmf-variables.fd")
+    require(
+        third.count(original_disk) == 1
+        and third.count(original_vars) == 1
+        and "-net" in third and third[third.index("-net")+1] == "none",
+        "unknown Windows disk, OVMF or network arrangement",
+    )
+    third[third.index(original_disk)] = (
+        "if=none,id=only_windows,format=qcow2,file=" + str(overlay)
+    )
+    third[third.index(original_vars)] = (
+        "if=pflash,format=raw,file=" + str(trial_nvram)
+    )
+    third[third.index("-serial")+1] = "file:" + str(serial)
+    require(
+        third[third.index("-boot")+1] == "order=c"
+        and "-no-reboot" not in third
+        and all("verified_iso" not in item and "if=floppy," not in item
+                and not item.endswith((".iso", ".img")) for item in third),
+        "post-pair Windows guest exposes a setup/foreign storage device",
+    )
+    return third
 
 
 def restart_owned_swtpm_for_second_guest(
@@ -870,6 +1001,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stage-pop-independent-esp-root-overlay", action="store_true",
                     help="VM-only after verified Windows 10: stage TWO new UNFORMATTED "
                          "Pop GPT partitions in throwaway COW only")
+    ap.add_argument("--verify-pop-post-pair-windows-reboot", action="store_true",
+                    help="hosted Windows 10 only: independent guest serial proof "
+                         "after staging ESP+root in disposable child QCOW2")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -885,6 +1019,17 @@ def main(argv: list[str] | None = None) -> int:
     if (args.stage_pop_linux_root_overlay
             and args.stage_pop_independent_esp_root_overlay):
         raise SystemExit("refuse mutually exclusive Pop COW staging modes")
+    if args.verify_pop_post_pair_windows_reboot and not (
+        args.stage_pop_independent_esp_root_overlay
+        and args.audit_installed_gpt_readonly
+        and args.two_stage_install_only
+        and args.profile == "win10_22h2_en_us_x64"
+        and args.accel == "kvm"
+        and os.environ.get("GASLUX_WIN10_POP_PAIR_POSTBOOT_CONSENT")
+        == "I_ACCEPT_DISPOSABLE_POP_PAIR_WINDOWS_THIRD_BOOT"
+    ):
+        raise SystemExit("third Windows boot requires separate hosted-VM consent "
+                         "and the owned Pop ESP+root COW pair-stage gate")
     if args.stage_pop_independent_esp_root_overlay and not (
         args.audit_installed_gpt_readonly
         and args.two_stage_install_only
@@ -951,6 +1096,8 @@ def main(argv: list[str] | None = None) -> int:
         report["sameDiskLinuxPartitionCreatedInCOWOverlay"] = False
     if args.stage_pop_independent_esp_root_overlay:
         report["ownedPopEspAndRootGptEntriesStagedInCOW"] = False
+    if args.verify_pop_post_pair_windows_reboot:
+        report["windowsPostPopPairCOWBootVerified"] = False
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-", dir=os.environ["RUNNER_TEMP"]) as tmp:
             workspace = Path(tmp)
@@ -980,9 +1127,23 @@ def main(argv: list[str] | None = None) -> int:
             xmlfile.write_bytes(xml)
             guest_ps1 = workspace / "GASLUX.PS1"
             guest_ps1.write_text(
-                witness_powershell(args.profile,
-                                   profile["expectedWindowsBuildPrefix"]) + "\n",
-                encoding="utf-8")
+                (witness_pop_pair_powershell(
+                    args.profile, profile["expectedWindowsBuildPrefix"], arm=True,
+                ) if args.verify_pop_post_pair_windows_reboot
+                 else witness_powershell(
+                     args.profile, profile["expectedWindowsBuildPrefix"],
+                 )) + "\n", encoding="utf-8",
+            )
+            if args.verify_pop_post_pair_windows_reboot:
+                guest_ps2 = workspace / "GASLUX2.PS1"
+                guest_ps2.write_text(
+                    witness_pop_pair_powershell(
+                        args.profile, profile["expectedWindowsBuildPrefix"], post=True,
+                    ) + "\n", encoding="utf-8",
+                )
+                report["postPopPairGuestScriptSha256"] = hashlib.sha256(
+                    guest_ps2.read_bytes()
+                ).hexdigest()
             report["firstLogonScriptSha256"] = hashlib.sha256(
                 guest_ps1.read_bytes()).hexdigest()
             floppy = workspace / "unattend-floppy.img"
@@ -993,6 +1154,9 @@ def main(argv: list[str] | None = None) -> int:
                             "::/Autounattend.xml"], check=True)
             subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps1),
                             "::/GASLUX.PS1"], check=True)
+            if args.verify_pop_post_pair_windows_reboot:
+                subprocess.run(["mcopy", "-i", str(floppy), str(guest_ps2),
+                                "::/GASLUX2.PS1"], check=True)
             disk = workspace / "only-disposable-windows-target.qcow2"
             require(not disk.exists(), "refuse to reuse an existing Windows disk")
             subprocess.run(["qemu-img", "create", "-f", "qcow2", str(disk), VM_SIZE],
@@ -1111,7 +1275,53 @@ def main(argv: list[str] | None = None) -> int:
                             from windows10_popos_independent_esp_root_stage import (
                                 stage_owned_esp_root,
                             )
-                            pair_proof = stage_owned_esp_root(disk, evidence)
+                            post_callback = None
+                            if args.verify_pop_post_pair_windows_reboot:
+                                def post_callback(overlay, plan):
+                                    post_dir = workspace / "post-pop-pair"
+                                    require(not post_dir.exists(),
+                                            "reused post-pair guest directory")
+                                    post_dir.mkdir(mode=0o700)
+                                    new_vars = post_dir / "ovmf-variables.fd"
+                                    before_vars_sha = hashlib.sha256(
+                                        nvram.read_bytes()
+                                    ).hexdigest()
+                                    shutil.copyfile(nvram, new_vars)
+                                    third_serial = post_dir / "serial.log"
+                                    third = build_pop_pair_third_guest_args(
+                                        base, disk, overlay, new_vars, third_serial,
+                                    )
+                                    verified, details = boot_vm(
+                                        third, third_serial, 900, args.profile,
+                                        required_marker=POP_PAIR_MARKER,
+                                        expected_esp_count=2,
+                                    )
+                                    require(verified, "Windows post-Pop-GPT COW "
+                                            "boot unverified: " + details)
+                                    require(hashlib.sha256(nvram.read_bytes()).hexdigest()
+                                            == before_vars_sha,
+                                            "original Windows OVMF vars changed")
+                                    data = third_serial.read_bytes()
+                                    require(0 < len(data) <= 2_000_000,
+                                            "unbounded/missing Windows serial witness")
+                                    digest = hashlib.sha256(data).hexdigest()
+                                    target = evidence / "win10-pop-post-pair-serial.log"
+                                    with target.open("xb") as stream:
+                                        stream.write(data)
+                                    (evidence/"win10-pop-post-pair-serial.sha256").write_text(
+                                        digest + "  " + target.name + "\n",
+                                        encoding="ascii",
+                                    )
+                                    print("GASLUX_WINDOWS10_POST_POP_PAIR_GPT_GUEST_BOOT=1",
+                                          flush=True)
+                                    return {
+                                        "windowsGuestPostPairBootVerified": True,
+                                        "windowsGuestPostPairSerialSha256": digest,
+                                        "originalWindowsOvmfVarsUnchanged": True,
+                                    }
+                            pair_proof = stage_owned_esp_root(
+                                disk, evidence, post_boot_callback=post_callback,
+                            )
                             require(
                                 pair_proof["ownedPopEspAndRootGptEntriesStagedInCOW"]
                                 and pair_proof["windowsBackingQcow2Sha256Unchanged"]
@@ -1121,6 +1331,14 @@ def main(argv: list[str] | None = None) -> int:
                                 "unsafe Pop/Windows independent ESP/root COW proof",
                             )
                             report["ownedPopEspAndRootGptEntriesStagedInCOW"] = True
+                            if args.verify_pop_post_pair_windows_reboot:
+                                require(
+                                    pair_proof["independentWindowsPostStageBootVerified"]
+                                    and pair_proof["windowsEspBcdWinreNtfsWitnessUnchanged"]
+                                    and pair_proof["windowsBackingQcow2Sha256Unchanged"],
+                                    "Windows post-pair boot was not reconciled",
+                                )
+                                report["windowsPostPopPairCOWBootVerified"] = True
                 else:
                     ok, diagnostic = boot_vm(
                         base, serial, args.boot_timeout, args.profile,
