@@ -1,0 +1,53 @@
+name: Bazzite synthetic GPT fixture contracts (experimental)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-gpt-layout-fixture-20261119
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-bazzite-gpt-fixture.yml'
+      - 'auto_tests/bazzite_gpt_fixture.py'
+      - 'auto_tests/tests/test_bazzite_gpt_fixture.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gpt-fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated image and GPT tools
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 240s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 360s apt-get install -y -qq qemu-utils gdisk
+      - name: Run real GPT and immutable backing tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff
+          python -m pytest -q auto_tests/tests/test_bazzite_gpt_fixture.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_gpt_fixture.py auto_tests/tests/test_bazzite_gpt_fixture.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_gpt_fixture.py auto_tests/tests/test_bazzite_gpt_fixture.py
+      - name: Verify fixture cleanup and publish evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -d "$RUNNER_TEMP/bazzite-gpt-fixture" ]]; then
+            python auto_tests/bazzite_gpt_fixture.py discard --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-evidence.json
+          fi
+          if [[ -f "$RUNNER_TEMP/bazzite-gpt-fixture/manifest.json" ]]; then
+            echo "Fixture retained for diagnostics only in ephemeral runner"
+          fi
