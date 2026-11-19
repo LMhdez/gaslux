@@ -53,7 +53,8 @@ class WritableChildContracts(unittest.TestCase):
             b"blkid -s UUID -o value",
             b"findmnt -nr -o FSTYPE --target /",
             b"findmnt -nr -o OPTIONS --target /",
-            b"root=UUID=" + UUID.encode(),
+            b"root_uuid='" + UUID.encode() + b"'",
+            b"root=UUID=$root_uuid",
             b"systemd.unit=multi-user.target",
             b"child-rw-firstboot",
             b'[[ ",$options," == *,rw,* ]]',
@@ -131,7 +132,7 @@ class WritableChildContracts(unittest.TestCase):
         self.assertIn('"firstBootWithWritableSystemVerified": False', s)
         self.assertIn('if firstboot_status.get("minimalInstalledReadOnlyBootVerified") is True:', parent)
         self.assertIn('read_windows_file_hashes(overlay) == plan["windowsHashes"]', parent)
-        self.assertIn('run_cachyos_shared_root_pacstrap', workflow)
+        self.assertIn("--run-cachyos-shared-root-pacstrap", workflow)
 
 
 if __name__ == "__main__":
