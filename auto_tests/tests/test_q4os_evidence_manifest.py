@@ -79,3 +79,13 @@ def test_manifest_refuses_platform_without_o_nofollow(tmp_path, monkeypatch):
     monkeypatch.delattr("os.O_NOFOLLOW", raising=False)
     with pytest.raises(EvidenceManifestError, match="does not expose O_NOFOLLOW"):
         create_manifest(directory)
+
+
+def test_manifest_refuses_symlinked_manifest(tmp_path):
+    directory = _evidence(tmp_path)
+    create_manifest(directory)
+    manifest = directory / "evidence.sha256"
+    manifest.unlink()
+    manifest.symlink_to(directory / "serial.log")
+    with pytest.raises(EvidenceManifestError, match="manifest is missing or unsafe"):
+        verify_manifest(directory)
