@@ -1,0 +1,78 @@
+name: Bazzite synthetic GPT fixture contracts (experimental)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-bazzite-gpt-fixture.yml'
+      - 'auto_tests/bazzite_gpt_fixture.py'
+      - 'auto_tests/tests/test_bazzite_gpt_fixture.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bazzite-gpt-fixture-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gpt-fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated image and GPT tools
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 240s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=15s 360s apt-get install -y -qq qemu-utils gdisk
+      - name: Run real GPT and immutable backing tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff
+          python -m pytest -q auto_tests/tests/test_bazzite_gpt_fixture.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_gpt_fixture.py auto_tests/tests/test_bazzite_gpt_fixture.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_gpt_fixture.py auto_tests/tests/test_bazzite_gpt_fixture.py
+      - name: Build and audit real GPT fixture on private runner storage
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/bazzite_gpt_fixture.py prepare --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-plan.json
+          python auto_tests/bazzite_gpt_fixture.py audit --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-audit-before-discard.json
+      - name: Verify immutable GPT backing and discard overlay
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$RUNNER_TEMP/bazzite-gpt-fixture/manifest.json" ]]; then
+            python auto_tests/bazzite_gpt_fixture.py discard --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > gpt-fixture-discard-evidence.json
+          fi
+      - name: Require complete machine-readable evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for evidence in gpt-fixture-plan.json gpt-fixture-audit-before-discard.json gpt-fixture-discard-evidence.json; do
+            test -s "$evidence" || { echo "Missing or empty required evidence: $evidence" >&2; exit 1; }
+            python -m json.tool "$evidence" >/dev/null
+          done
+      - name: Publish limited synthetic GPT evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-synthetic-gpt-fixture
+          path: |
+            gpt-fixture-plan.json
+            gpt-fixture-audit-before-discard.json
+            gpt-fixture-discard-evidence.json
+          if-no-files-found: error
+          retention-days: 7
