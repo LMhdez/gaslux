@@ -154,7 +154,7 @@ def test_qmp_keyboard_press_uses_acknowledged_send_key():
     class FakeStream:
         def __init__(self):
             self.writes = []
-            self.replies = [b'{"return":{},"id":"gaslux-ovmf-send-space"}\\n']
+            self.replies = [b'{"return":{},"id":"gaslux-ovmf-send-space"}']
 
         def write(self, payload):
             self.writes.append(json.loads(payload))
