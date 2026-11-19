@@ -170,7 +170,8 @@ def test_qmp_keyboard_press_is_separate_acknowledged_down_and_up():
     delays = []
     _send_key_events(stream, sleep=delays.append)
     assert [item["id"] for item in stream.writes] == [
-        "gaslux-ovmf-space-down", "gaslux-ovmf-space-up"
+        "gaslux-ovmf-space-down",
+        "gaslux-ovmf-space-up",
     ]
     assert stream.writes[0]["arguments"]["events"][0]["data"]["down"] is True
     assert stream.writes[1]["arguments"]["events"][0]["data"]["down"] is False
