@@ -8,6 +8,8 @@ on:
       - .github/workflows/popos-native-child-contract.yml
       - auto_tests/tools/windows10_popos_native_child_vm_checkpoint.py
       - auto_tests/test_windows10_popos_native_child_vm_checkpoint.py
+      - auto_tests/tools/gaslux_popos_distinst_preview.py
+      - auto_tests/tests/test_popos_distinst_preview.py
       - auto_tests/tools/windows10_popos_native_prewrite_guest.py
       - auto_tests/test_windows10_popos_native_prewrite_guest.py
       - auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
@@ -17,6 +19,11 @@ on:
       - auto_tests/tools/windows10_popos_genuine_live_guest_probe.py
       - auto_tests/tools/windows10_popos_genuine_live_console.py
       - auto_tests/tools/windows10_popos_genuine_live_same_cow_vm.py
+  pull_request:
+    paths:
+      - .github/workflows/popos-native-child-contract.yml
+      - auto_tests/tools/gaslux_popos_distinst_preview.py
+      - auto_tests/tests/test_popos_distinst_preview.py
   workflow_dispatch:
 
 permissions:
@@ -44,6 +51,15 @@ jobs:
               windows10_popos_live_readonly_gpt_probe.py; do
             python3 -m py_compile "auto_tests/tools/$source"
           done
+      - name: Validate historical inert distinst ESP noformat preview and negative cases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/gaslux_popos_distinst_preview.py auto_tests/tests/test_popos_distinst_preview.py
+          python3 -m venv "$RUNNER_TEMP/gaslux-pop-preview-venv"
+          "$RUNNER_TEMP/gaslux-pop-preview-venv/bin/python" -m pip install --disable-pip-version-check pytest
+          "$RUNNER_TEMP/gaslux-pop-preview-venv/bin/python" -m pytest -q auto_tests/tests/test_popos_distinst_preview.py
+          echo 'Inert argument preview only; Windows ESP noformat negative contracts pass. Native distinst NOT executed.' >> "$GITHUB_STEP_SUMMARY"
       - name: Check native guest shell scripts without invoking them
         run: |
           set -Eeuo pipefail
