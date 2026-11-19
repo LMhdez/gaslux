@@ -143,19 +143,24 @@ def run_synthetic_zorin(iso: Path, evidence: Path) -> dict:
         cmd("sudo", "mount", "-t", "iso9660", "-o", "ro,loop,nosuid,nodev,noexec",
             str(iso), str(iso_mount))
         mounted_iso = True
-        verification = (
+        resolver = (
             'set -Eeuo pipefail; '
             'source assets/live/libertix-distribution-common.sh; '
             'source assets/live/libertix-install-runtime-common.sh; '
-            'rootfs="$(resolve_distribution_rootfs_or_die "$1")"; '
-            'assert_distribution_rootfs_compatible_or_die "$rootfs" zorin; '
-            'printf "%s" "$rootfs"'
+            'resolve_distribution_rootfs_or_die "$1"'
         )
-        rootfs = Path(cmd("bash", "-c", verification,
+        rootfs = Path(cmd("bash", "-c", resolver,
                           "gaslux-zorin-synthetic", str(iso_mount)).stdout.strip())
         require(rootfs.is_file() and not rootfs.is_symlink()
                 and rootfs.is_relative_to(iso_mount),
                 "Zorin ISO has no unique trusted SquashFS root")
+        validator = (
+            'set -Eeuo pipefail; '
+            'source assets/live/libertix-distribution-common.sh; '
+            'source assets/live/libertix-install-runtime-common.sh; '
+            'assert_distribution_rootfs_compatible_or_die "$1" zorin'
+        )
+        cmd("bash", "-c", validator, "gaslux-zorin-identity", str(rootfs))
         cmd("sudo", "unsquashfs", "-f", "-processors", "2", "-d",
             str(unpacked), str(rootfs), timeout=1100, capture=False)
         cmd("sudo", "umount", str(iso_mount))
@@ -346,4 +351,8 @@ def sha256_window(backing: Path) -> str:
 
 
 if __name__ == "__main__":
-    raise SystemExit("Lab library only; call from a dedicated hosted runner workflow")
+    import sys
+
+    if len(sys.argv) != 3:
+        raise SystemExit("Usage: windows_zorin_synthetic_cow_root.py ISO EVIDENCE_DIR")
+    run_synthetic_zorin(Path(sys.argv[1]), Path(sys.argv[2]))
