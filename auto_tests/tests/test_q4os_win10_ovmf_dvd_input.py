@@ -143,3 +143,19 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     assert "cycle_limit" in workflow
     assert "-no-reboot" in workflow
     assert "qemu-nbd --read-only" in workflow
+
+
+def test_qmp_socket_passed_to_helper_matches_exact_qemu_attached_socket():
+    """Prevent a silent wrong HMP/QMP socket abort before the ISO starts."""
+    root = Path(__file__).resolve().parents[2]
+    workflow = (root / ".github/workflows/gaslux-q4os-windows10-qcow2.yml").read_text()
+    assert '"$work" "$serial" "$work/windows10-qemu-qmp.sock" "$qemu_log"' in workflow
+    assert '-qmp "unix:$work/windows10-qemu-qmp.sock,server=on,wait=off"' in workflow
+    assert "windows10-qemu-hmp.sock" not in workflow
+
+
+def test_helper_rejects_mismatched_qemu_monitor_path_even_when_owned(paths):
+    root, serial, monitor, log = paths
+    wrong = root / "windows10-qemu-hmp.sock"
+    with pytest.raises(WindowsDvdRefusal, match="Unexpected Windows QEMU evidence path"):
+        _validate_lab(root, serial, wrong, log, make_args(root))
