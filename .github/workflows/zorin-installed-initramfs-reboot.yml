@@ -60,7 +60,6 @@ jobs:
       ZORIN_BYTES: '3909091328'
       ZORIN_URL: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
       GASLUX_ZORIN_INITRAMFS_REBOOT: '1'
-      GASLUX_LEGACY_INSTALLED_EVIDENCE: ${{ runner.temp }}/zorin-initramfs-secondboot-evidence
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -110,6 +109,8 @@ jobs:
           printf '%s  %s\n' "$ZORIN_SHA" "$iso" | sha256sum -c --status
       - name: Boot genuine installed Zorin, regenerate native initramfs and demand second boot
         shell: bash
+        env:
+          GASLUX_LEGACY_INSTALLED_EVIDENCE: ${{ runner.temp }}/zorin-initramfs-secondboot-evidence
         run: |
           set -Eeuo pipefail
           bash -n auto_tests/tools/gaslux_legacy_installed_target_lab.sh
