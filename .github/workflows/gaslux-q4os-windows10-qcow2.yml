@@ -122,6 +122,16 @@ jobs:
           $info | Set-Content -Encoding UTF8 (Join-Path $evidence 'winre-info.txt')
           if (($info -join "`n") -notmatch 'Enabled') { throw 'Windows RE is not enabled' }
           'GASLUX_WINDOWS_WINRE=PASS' | Set-Content -Encoding ASCII (Join-Path $evidence 'winre-status.txt')
+          $diskpart = Join-Path $env:TEMP 'GasluxRecoveryAttributes.txt'
+          @'
+          select disk 0
+          select partition 4
+          gpt attributes=0x8000000000000001
+          remove letter=R
+          exit
+          '@ | Set-Content -Encoding ASCII $diskpart
+          & diskpart.exe /s $diskpart | Set-Content -Encoding UTF8 (Join-Path $evidence 'recovery-partition-diskpart.txt')
+          if ($LASTEXITCODE -ne 0) { throw "DiskPart recovery attributes failed: $LASTEXITCODE" }
           'GASLUX_WINDOWS_FIRST_LOGON=PASS' | Set-Content -Encoding ASCII (Join-Path $evidence 'first-logon.txt')
           shutdown.exe /s /t 20
           PS1
@@ -145,7 +155,7 @@ jobs:
                     <ModifyPartitions>
                       <ModifyPartition wcm:action="add"><Order>1</Order><PartitionID>1</PartitionID><Format>FAT32</Format><Label>System</Label></ModifyPartition>
                       <ModifyPartition wcm:action="add"><Order>2</Order><PartitionID>3</PartitionID><Format>NTFS</Format><Label>Windows</Label><Letter>C</Letter></ModifyPartition>
-                      <ModifyPartition wcm:action="add"><Order>3</Order><PartitionID>4</PartitionID><Format>NTFS</Format><Label>Windows RE</Label><Letter>R</Letter><TypeID>DE94BBA4-06D1-4D40-A16A-BFD50179D6AC</TypeID><GPTAttributes>0x8000000000000001</GPTAttributes></ModifyPartition>
+                      <ModifyPartition wcm:action="add"><Order>3</Order><PartitionID>4</PartitionID><Format>NTFS</Format><Label>Windows RE</Label><Letter>R</Letter><TypeID>DE94BBA4-06D1-4D40-A16A-BFD50179D6AC</TypeID></ModifyPartition>
                     </ModifyPartitions>
                   </Disk>
                 </DiskConfiguration>
