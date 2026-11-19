@@ -1,5 +1,12 @@
 # Gaslux integration board — 2026-11-18
 
+## Fechos documentados — 2026-11-19 (oitavo lote: Pop preflight)
+
+- [#20](https://github.com/LMhdez/gaslux/pull/20) **encerrada sem merge** após comparar 13 paths com `dev`: nove módulos/contratos/docs em SHA idêntico, mais dois contratos novos no `test_ubuntu_target_backend_preflight.py` do `dev`; o workflow ISO antigo foi conscientemente arquivado e não estável. [Comentário de fecho](https://github.com/LMhdez/gaslux/pull/20#issuecomment-7013856876).
+- Na [#175](https://github.com/LMhdez/gaslux/pull/175), o [commit `cf16fe8a`](https://github.com/LMhdez/gaslux/commit/cf16fe8abdc5f75f78968397b79356901c380653) restaurou `bash -n configure-target-main.sh` e os triggers de contratos/handoff. [Actions #44556379520](https://github.com/LMhdez/gaslux/actions/runs/44556379520) **SUCCESS**, job `read-only-contracts` com lint Ruff/format/Python e pytest a 100%, sintaxe Bash aprovada; sem VM ou ISO real. [Commit `d8d7123c`](https://github.com/LMhdez/gaslux/commit/d8d7123c613c312cafaef4e0d34e12bbf16ddf46) consolidou a documentação, removendo referência desatualizada à PR #20 e reforçando a exclusão do backend `system76` da função Mint/Zorin.
+- Consulta de 19/11/2026 após fechos: **51 PRs abertas**, **2 issues abertas** (#3/#71); `main` [`90b044ba`](https://github.com/LMhdez/gaslux/commit/90b044ba435b2b4b4db6c5813ca4698b37e4a555), `dev` 96 à frente/1 atrás; #192 aberta em `9aafaca1`, #175 aberta em `d8d7123c`.
+- **Não declarar estabilidade:** estas provas são contratos de preflight e isolamento em CI, sem instalação real de Pop, CachyOS, dual boot, updates ou recuperação Windows in-place. Nenhum merge ou escrita física nesta ronda.
+
 ## Fechos documentados — 2026-11-19 (sétimo lote: GPT e Proxmox)
 
 - [#159](https://github.com/LMhdez/gaslux/pull/159) **encerrada sem merge** depois de preservar o verificador Windows GPT/ESP/BCD/WinRE `windows_x64_installed_gpt_ro_audit.py` com SHA Git idêntico `e96dd45361a92d2ce261879bdd58507dd43b3db8` no HEAD da [#192](https://github.com/LMhdez/gaslux/pull/192). A #192 mantém uma única transação de GPT em COW e terceiro arranque, com [Actions #44183745518](https://github.com/LMhdez/gaslux/actions/runs/44183745518) SUCCESS para ambos os jobs Windows 10 VM no HEAD anterior.
