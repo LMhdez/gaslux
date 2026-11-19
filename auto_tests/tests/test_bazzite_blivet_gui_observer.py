@@ -140,15 +140,20 @@ def test_mismatched_ocr_text_sidecar_refused(tmp_path, monkeypatch):
         if len(command) == 3:
             return SimpleNamespace(stdout="TRUSTED TEXT FROM ANOTHER IMAGE")
         return result
+
     monkeypatch.setattr(observer.subprocess, "run", divergent)
     with pytest.raises(BlivetObserverRefusal, match="do not match screenshot"):
         verify_editor(*paths)
 
 
 def test_mismatched_tsv_sidecar_refused(tmp_path, monkeypatch):
-    paths = evidence(tmp_path, "BLIVET-GUI PARTITION GLXBAZRO001", [
-        ("Blivet-GUI", 20, 20, 90, 15),
-    ])
+    paths = evidence(
+        tmp_path,
+        "BLIVET-GUI PARTITION GLXBAZRO001",
+        [
+            ("Blivet-GUI", 20, 20, 90, 15),
+        ],
+    )
     original = observer.subprocess.run
 
     def divergent(command, **kwargs):
@@ -156,6 +161,7 @@ def test_mismatched_tsv_sidecar_refused(tmp_path, monkeypatch):
         if len(command) == 4:
             return SimpleNamespace(stdout=result.stdout + "tampered")
         return result
+
     monkeypatch.setattr(observer.subprocess, "run", divergent)
     with pytest.raises(BlivetObserverRefusal, match="do not match screenshot"):
         verify_editor(*paths)
