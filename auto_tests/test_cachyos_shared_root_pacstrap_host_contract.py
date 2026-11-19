@@ -333,5 +333,17 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
 
 
 
+    def test_fifth_windows_serial_manifest_name_matches_evidence_producer(self):
+        workflow = (TOOLS.parent.parent / ".github/workflows/"
+                    "cachyos-windows10-shared-root-pacstrap.yml").read_text()
+        producer = (TOOLS / "windows_x64_tcg_firstboot.py").read_text()
+        self.assertIn('manifest = fifth.with_suffix(".sha256")', workflow)
+        self.assertIn('assert manifest.is_file() and not manifest.is_symlink()', workflow)
+        self.assertIn('recorded == hashlib.sha256(fifth.read_bytes()).hexdigest()', workflow)
+        self.assertIn('f"{args.profile}-{suffix}.sha256"', producer)
+        self.assertIn('f"{digest}  {dest.name}', producer)
+        self.assertNotIn('fifth.name + ".sha256"', workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
