@@ -89,6 +89,27 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+## Anexo técnico — Zorin 18.1, ISO e dupla inicialização isolada (19-11-2026)
+
+### Base e autenticidade
+[DOCUMENTADO] [Zorin OS 18.1](https://zorin.com/os/details/) usa base Ubuntu 24.04 LTS. O [guia oficial de integridade Zorin](https://help.zorin.com/docs/getting-started/check-the-integrity-of-your-copy-of-zorin-os/) publica exactamente o SHA-256 `44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5` para **18.1 Core x64**; corresponde a `main/release-config.json` (3 909 091 328 bytes). O guia público descreve hash, **não demonstra neste ponto uma assinatura GPG detached específica da ISO**. [PENDENTE] Se for exigida proveniência criptográfica upstream mais forte, obter e verificar um manifesto assinado genuíno, não inventar chave.
+
+### Instalador e desenho real do Gaslux
+[DOCUMENTADO] O upstream descreve interface de instalação em [Zorin Help](https://help.zorin.com/docs/getting-started/install-zorin-os/). Existem referências contraditórias entre variantes/versões à família Ubiquity/Subiquity; [PENDENTE] obter `dpkg-query`, caminhos do executável, `--version`, manifestos e ficheiros de configuração **da ISO 18.1 Core SHA acima** antes de afirmar um nome/API unattended. A base Ubuntu não determina automaticamente o instalador. O backend Gaslux partilha o `debian-squashfs` de Mint e testa dpkg, `update-grub` e `update-initramfs`; isso prova capacidades da raiz, não a UI/CLI nativa. Se o instalador oficial reescrever a ESP por defeito, é **BLOQUEADO** até existir controlo estrito sobre o write-set.
+
+### Resultado reproduzível de laboratório
+[COMPROVADO — OVMF isolado] [PR #224](https://github.com/LMhdez/gaslux/pull/224), HEAD `3a10dac2d85dd19849a0736d8f57558827277794`, consolidou #219. [Run #44582546627](https://github.com/LMhdez/gaslux/actions/runs/44582546627), job `genuine-second-boot`, **SUCCESS**, [artefacto #14560995967](https://github.com/LMhdez/gaslux/actions/runs/44582546627/artifacts/14560995967): ISO oficial validada por tamanho/hash, raiz Zorin em GPT isolada, arranque sem ISO, regeneração de `initramfs` instalado e segundo login série no mesmo disco. Log mostra `vmlinuz-6.17.0-20-generic` e `update-initramfs: Generating /boot/initrd.img-6.17.0-20-generic`, com mensagens `cryptsetup` sobre sysfs ausente; registar como diagnóstico, não ocultar. Workflow real [`.github/workflows/zorin-installed-initramfs-reboot.yml`](https://github.com/LMhdez/gaslux/blob/3a10dac2d85dd19849a0736d8f57558827277794/.github/workflows/zorin-installed-initramfs-reboot.yml) usa `auto_tests/tools/gaslux_zorin_installed_target_lab.sh` e exige `installedZorinInitramfsRegenerationRebootVerified=true`.
+
+**Não comprovado:** instalação executada pelo instalador nativo, Windows nesse disco, actualização do pacote kernel (apenas rebuild initramfs), GRUB de produção, Windows Boot Manager, BIOS/MBR, reentrada/rollback. [PENDENTE] localizar nome/versionamento do instalador 18.1 na imagem autenticada e definir interface de automatização suportada.
+
+### Sequência de acções do agente
+1. Inspeccionar apenas leitura: lista de `casper`, manifestos dpkg do SquashFS, `os-release`, nomes da UI/CLI do instalador e assinatura/versão; guardar resultados ligados ao hash.
+2. Reutilizar `gaslux_zorin_installed_target_lab.sh` da PR #224 para **provas de boot isolado**, nunca como substituto da transacção Gaslux.
+3. Preparar Windows real descartável com propriedade GPT e restore point, executar instalação Gaslux no intervalo possuído e comparar hashes WinRE/BCD/ESP; sem autorização de reformatar ESP Windows.
+4. Arrancar Zorin, Windows, fazer upgrade real de kernel, repetir dois boots, remover apenas recursos próprios e validar Windows. Qualquer divergência implica STOP e rollback verificável.
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
