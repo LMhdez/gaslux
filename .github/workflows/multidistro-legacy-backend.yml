@@ -43,6 +43,7 @@ jobs:
       - name: Python syntax and lint
         run: |
           bash -n assets/live/configure-target-main.sh
+          bash -n assets/live/libertix-distribution-common.sh
           python -m compileall -q assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_debian_squashfs_backend.py
           python -m ruff check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_debian_squashfs_backend.py
           python -m ruff format --check --config auto_tests/pyproject.toml assets/live/libertix-installation-plan.py assets/live/gaslux_distribution_capabilities.py iso-tools/generate-release-metadata.py auto_tests/app/distributions.py auto_tests/tests/test_installation_contracts.py auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_debian_squashfs_backend.py
