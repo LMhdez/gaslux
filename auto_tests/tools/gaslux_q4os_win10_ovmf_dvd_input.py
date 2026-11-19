@@ -78,6 +78,25 @@ def _read_qmp_reply(stream, expected_id: str) -> dict:
         return message
 
 
+def _send_key_events(stream, *, sleep=time.sleep) -> None:
+    """Hold Space long enough for OVMF USB HID polling, with QMP acknowledgements."""
+    key_down = {
+        "execute": "input-send-event",
+        "arguments": {"events": [{"type": "key", "data": {"key": {"type": "qcode", "data": "spc"}, "down": True}}]},
+        "id": "gaslux-ovmf-space-down",
+    }
+    stream.write((json.dumps(key_down, separators=(",", ":")) + "\r\n").encode())
+    _read_qmp_reply(stream, "gaslux-ovmf-space-down")
+    sleep(0.25)
+    key_up = {
+        "execute": "input-send-event",
+        "arguments": {"events": [{"type": "key", "data": {"key": {"type": "qcode", "data": "spc"}, "down": False}}]},
+        "id": "gaslux-ovmf-space-up",
+    }
+    stream.write((json.dumps(key_up, separators=(",", ":")) + "\r\n").encode())
+    _read_qmp_reply(stream, "gaslux-ovmf-space-up")
+
+
 def _send_key(sock: Path, pid: int) -> None:
     st = sock.lstat()
     _require(stat.S_ISSOCK(st.st_mode), "QEMU QMP endpoint is not a socket")
@@ -106,27 +125,8 @@ def _send_key(sock: Path, pid: int) -> None:
             )
             stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-capabilities"}\r\n')
             _read_qmp_reply(stream, "gaslux-capabilities")
-            # Explicit key-down/key-up events go through QEMU's input event
-            # API, rather than HMP's legacy sendkey command. This is the
-            # firmware-level USB HID path used by the attached usb-kbd.
-            request = {
-                "execute": "input-send-event",
-                "arguments": {
-                    "events": [
-                        {
-                            "type": "key",
-                            "data": {"key": {"type": "qcode", "data": "spc"}, "down": True},
-                        },
-                        {
-                            "type": "key",
-                            "data": {"key": {"type": "qcode", "data": "spc"}, "down": False},
-                        },
-                    ]
-                },
-                "id": "gaslux-ovmf-space",
-            }
-            stream.write((json.dumps(request, separators=(",", ":")) + "\r\n").encode())
-            _read_qmp_reply(stream, "gaslux-ovmf-space")
+            # Separate acknowledged key-down and key-up let OVMF poll USB HID.
+            _send_key_events(stream)
 
 
 def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list[str]) -> None:
