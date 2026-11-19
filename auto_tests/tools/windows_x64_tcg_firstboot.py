@@ -311,7 +311,7 @@ def witness_pop_pair_powershell(
   if ($popEsp.Count -ne 1 -or $popRoot.Count -ne 1) {
     throw 'unexpected Pop-owned ESP/root GPT identities or sizes'
   }
-  if ($popRoot[0].Offset -le ($popEsp[0].Offset + $popEsp[0].Size)) {
+  if ($popRoot[0].Offset -lt ($popEsp[0].Offset + $popEsp[0].Size)) {
     throw 'overlapping Pop-owned GPT partitions'
   }
 """
