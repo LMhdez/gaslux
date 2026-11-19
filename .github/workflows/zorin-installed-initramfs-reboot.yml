@@ -37,8 +37,10 @@ jobs:
             exit 1
           fi
           grep -q 'supported only in the Zorin lab' /tmp/negative.out
+          printf '%s\n' 'unsigned-test-media' > "$RUNNER_TEMP/unsigned-zorin.iso"
           if GASLUX_ZORIN_INITRAMFS_REBOOT=1 bash \
-            auto_tests/tools/gaslux_zorin_installed_target_lab.sh /fake/image bad-hash \
+            auto_tests/tools/gaslux_zorin_installed_target_lab.sh \
+            "$RUNNER_TEMP/unsigned-zorin.iso" bad-hash \
             > /tmp/negative.out 2>&1; then
             echo "::error::Zorin lab accepted unsigned media"
             exit 1
