@@ -141,6 +141,11 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     assert "timeout-minutes: 90" in workflow
     assert "windows10-qemu-qmp.sock" in workflow
     assert '"$work/windows10-qemu-qmp.sock" "$qemu_log"' in workflow
+    assert "GasluxFirstLogon.ps1" in workflow
+    assert "cat > \"$first_logon\" <<'PS1'" in workflow
+    assert "-File C:\\GasluxFirstLogon.ps1" in workflow
+    assert ' -r "$unattend" "$first_logon"' in workflow
+    assert " -Command \"" not in workflow
     assert "windows10-qemu-hmp.sock" not in workflow
     assert "cycle_limit" in workflow
     assert "-no-reboot" in workflow
