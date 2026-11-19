@@ -22,13 +22,18 @@ BAZZITE 42 INSTALLATION
 Quit Begin Installation
 """
 HEADER = "\t".join(
-    ["level", "page_num", "block_num", "par_num", "line_num", "word_num",
-     "left", "top", "width", "height", "conf", "text"]
+    [
+        "level", "page_num", "block_num", "par_num", "line_num", "word_num",
+        "left", "top", "width", "height", "conf", "text",
+    ]
 ) + "\n"
-TSV = HEADER + (
-    "\t".join(["5", "1", "11", "1", "1", "1", "674", "322", "81", "12", "96.8", "Installation"]) + "\n"
-    + "\t".join(["5", "1", "11", "1", "1", "2", "759", "322", "83", "12", "92.8", "Destination"]) + "\n"
-)
+ROW_ONE = [
+    "5", "1", "11", "1", "1", "1", "674", "322", "81", "12", "96.8", "Installation"
+]
+ROW_TWO = [
+    "5", "1", "11", "1", "1", "2", "759", "322", "83", "12", "92.8", "Destination"
+]
+TSV = HEADER + "\t".join(ROW_ONE) + "\n" + "\t".join(ROW_TWO) + "\n"
 
 
 def test_locates_only_the_unique_destination_navigation_tile():
@@ -65,8 +70,8 @@ def test_missing_or_changed_summary_markers_refuse(ocr):
     [
         HEADER,
         TSV + TSV.split(HEADER, 1)[1],
-        TSV.replace("674\t322", "974\t322"),
-        TSV.replace("759\t322", "900\t322"),
+        TSV.replace("\t".join(ROW_ONE[6:8]), "974\\t322"),
+        TSV.replace("\t".join(ROW_TWO[6:8]), "900\\t322"),
     ],
 )
 def test_ambiguous_or_out_of_bounds_tile_refuses(tsv):
