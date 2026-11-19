@@ -122,6 +122,7 @@ class CachyOSInstalledConfigurationContractTests(unittest.TestCase):
             self.assertFalse(any("grub-install" in argv or "efibootmgr" in argv
                                  for argv, _ in calls))
             self.assertEqual(result["user"], "gaslux-lab")
+            self.assertEqual(result["desktop"], "KDE Plasma")
             self.assertEqual((root / "etc/hostname").read_text(), "gaslux-cachyos-lab\n")
             self.assertIn("en_US.UTF-8 UTF-8", (root / "etc/locale.gen").read_text())
             self.assertEqual((root / "etc/localtime").readlink().as_posix(),
