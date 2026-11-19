@@ -86,6 +86,12 @@ if (not tokens or len(set(tokens)) != len(tokens)
 PY
 done
 printf 'GASLUX_VM_UPDATE_TRUST_POLICY_VERIFIED=1\n' > /dev/ttyS0
+# Record exact package versions before and after the transaction. A successful
+# reinstall/hook exercise is NOT called a version upgrade unless versions move.
+versions_before="$(pacman -Q linux-cachyos-lts grub | LC_ALL=C sort)" ||
+  fail 'cannot read installed kernel/GRUB package versions before update'
+printf 'GASLUX_VM_PACKAGE_VERSIONS_BEFORE=%s\n' \
+  "$(printf '%s' "$versions_before" | tr '\n' ';')" > /dev/ttyS0
 [[ -L /etc/resolv.conf || -s /etc/resolv.conf ]] || fail 'no DNS resolver'
 # Official package repositories and normal pacman signature checks.
 # -Syu refreshes+upgrades all; explicit kernel+GRUB arguments force the
@@ -104,6 +110,15 @@ grub-script-check /boot/grub/grub.cfg || fail 'GRUB syntax invalid after update'
   fail 'updated kernel/initramfs/EFI files missing'
 pacman -Q linux-cachyos-lts grub base cachyos-hooks >/dev/null ||
   fail 'updated package database invalid'
+versions_after="$(pacman -Q linux-cachyos-lts grub | LC_ALL=C sort)" ||
+  fail 'cannot read installed kernel/GRUB package versions after update'
+printf 'GASLUX_VM_PACKAGE_VERSIONS_AFTER=%s\n' \
+  "$(printf '%s' "$versions_after" | tr '\n' ';')" > /dev/ttyS0
+if [[ "$versions_before" == "$versions_after" ]]; then
+  printf 'GASLUX_VM_PACKAGE_VERSION_CHANGE=0\n' > /dev/ttyS0
+else
+  printf 'GASLUX_VM_PACKAGE_VERSION_CHANGE=1\n' > /dev/ttyS0
+fi
 printf '%s\n' lab-real-iso-signed-20261116 > /var/lib/gaslux-ci/update-complete
 sync
 printf 'GASLUX_VM_UPDATE_APPLIED=1\n' > /dev/ttyS0
