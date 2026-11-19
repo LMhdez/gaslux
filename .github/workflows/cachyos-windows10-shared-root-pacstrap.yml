@@ -144,7 +144,13 @@ jobs:
           echo 'PASS: signed grant and synthetic contracts only; the real guest job below is the only pacstrap writer.' >> "$GITHUB_STEP_SUMMARY"
 
   real-windows10-archiso-pacstrap-and-discard:
-    if: github.event_name != 'pull_request'
+    # Run the expensive guest proof on push as before, and on this exact same-repository
+    # experimental PR only. No secrets are exposed; all writable storage is disposable QCOW2.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'feature/cachyos-writable-child-cow-firstboot-issue3' &&
+       github.event.pull_request.base.ref == 'feature/cachyos-shared-cow-installed-readonly-boot-issue3')
     needs: static-and-synthetic-contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 220
