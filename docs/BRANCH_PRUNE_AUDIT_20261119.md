@@ -23,3 +23,11 @@ O histórico dos commits permanece em `main`, `dev` ou nas branches ainda aberta
 ## Encerramento da operação
 
 A configuração do workflow foi revertida para **auditoria exclusivamente de leitura**: `contents: read`, checkout sem credenciais persistentes, comando `audit`. Não há mais exclusões automáticas por futuras atualizações desta branch. Provas de execução e inventário de SHAs estão nos artefactos GitHub Actions e no histórico desta branch. A existência de referências ainda não consolidadas **não** autoriza a sua eliminação nem a promoção de backends experimentais.
+
+## Arquivo histórico seguro — 19-11-2026
+
+- [Actions #44598172401](https://github.com/LMhdez/gaslux/actions/runs/44598172401): auditoria de leitura aprovada, 101 branches com histórico exclusivo e inativas há pelo menos 12h, sem PR aberta nem workflow ativo.
+- [Actions #44598523926](https://github.com/LMhdez/gaslux/actions/runs/44598523926): testes Python do filtro de proteção, antiguidade, marcador de arquivo e autorização aprovados.
+- [Actions #44598682337](https://github.com/LMhdez/gaslux/actions/runs/44598682337): primeiro lote `SUCCESS`, 15 históricos preservados por commits Git de dois pais, com árvore original de arquivo imutável; 15 referências eliminadas por SHA lease; 171 → 156 branches. Os commits originais permanecem alcançáveis pelo arquivo `archive/gaslux-experiments-preserved-20261119`.
+
+**Atenção:** preservar histórico não significa integrar o código experimental em `main`, `dev` nem no instalador. Todos os trabalhos ainda carecem de validação funcional para promoção.
