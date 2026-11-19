@@ -37,6 +37,18 @@ class FakeGuest:
 
 
 class MintOverlayContracts(unittest.TestCase):
+    def test_orderly_shutdown_witness_accepts_systemd_poweroff_unit(self):
+        self.assertTrue(mint.has_orderly_shutdown_witness(
+            b"[  OK  ] Finished systemd-poweroff.service - System Power Off.\\n"))
+
+    def test_orderly_shutdown_witness_accepts_kernel_power_down_line(self):
+        self.assertTrue(mint.has_orderly_shutdown_witness(
+            b"[   23.521817] reboot: Power down\\n"))
+
+    def test_orderly_shutdown_witness_rejects_boot_or_login_only(self):
+        self.assertFalse(mint.has_orderly_shutdown_witness(
+            b"Linux version 6.14\\nGASLUXMINT login:\\n"))
+
     def test_consent_is_required_before_touching_paths_or_guestfs(self):
         with patch.dict(os.environ, {}, clear=True):
             with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
