@@ -628,10 +628,13 @@ def pacstrap_only(args: argparse.Namespace) -> None:
         # pacstrap -K initializes the target keyring using the native,
         # already-active Archiso keyring. Never race pacman-init or seed
         # unverified target trust anchors by hand.
+        from cachyos_configure_installed import DESKTOP_PACKAGES, configure as configure_installed
+
         packages = [
             "base", "linux-cachyos-lts", "mkinitcpio", "grub", "efibootmgr",
             "cachyos-keyring", "cachyos-mirrorlist", "cachyos-settings",
             "cachyos-hooks", "sudo", "e2fsprogs", "dosfstools", "python",
+            *DESKTOP_PACKAGES,
         ]
         execute(["pacstrap", "-K", "-C", str(strict_config), str(ROOT), *packages], timeout=2200)
         # This is a stage witness, NOT proof of completed installation:
@@ -658,6 +661,13 @@ def pacstrap_only(args: argparse.Namespace) -> None:
                 "installed signed CachyOS package identity is absent")
         (ROOT / ".gaslux-lab-root-owner").write_text(
             plan["runId"] + "\n", encoding="ascii")
+        os.sync()
+        configured = configure_installed(ROOT, plan["runId"])
+        require(configured["configured"] is True
+                and configured["labOnly"] is True
+                and configured["productionReady"] is False,
+                "configured CachyOS lab profile did not pass its explicit safety gate")
+        print("GASLUX_CACHYOS_LAB_DESKTOP_ACCOUNT_CONFIGURED=1", flush=True)
         os.sync()
         verified_native_root = True
     except (SharedDiskHandoffRejected, OSError, ValueError, RuntimeError,
