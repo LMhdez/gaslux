@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 MANIFEST_NAME = "evidence.sha256"
-_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\\Z")
-_LINE = re.compile(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)\\Z")
+_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+_LINE = re.compile(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)\Z")
 
 
 class EvidenceManifestError(ValueError):
@@ -73,8 +73,8 @@ def create_manifest(directory: Path) -> Path:
         0o600,
     )
     try:
-        with os.fdopen(descriptor, "w", encoding="ascii", newline="\\n") as stream:
-            stream.write("\\n".join(lines) + "\\n")
+        with os.fdopen(descriptor, "w", encoding="ascii", newline="\n") as stream:
+            stream.write("\n".join(lines) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, target)
