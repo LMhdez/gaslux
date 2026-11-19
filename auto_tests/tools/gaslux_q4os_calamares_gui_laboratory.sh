@@ -279,7 +279,8 @@ capture_every=18
 if [[ "$qemu_accel" == kvm ]]; then
   max_ticks=42
   capture_every=7
-  if [[ "$launch_installer" == yes ]]; then max_ticks=56; fi
+  # The Desktop profile is selected near the end of the previous budget; retain a full post-Next observation window so the real Partitions page can render.
+  if [[ "$launch_installer" == yes ]]; then max_ticks=84; fi
 fi
 # Reproduce the *exact* native Q4OS first-run language prompt captured in
 # QEMU Actions #43964633501, artifact #14275594316. The six captures had
