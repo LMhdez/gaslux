@@ -32,6 +32,11 @@ def test_real_gpt_fixture_has_only_synthetic_partition_types_and_discardable_cow
         "E3C9E316-0B5C-4DB8-817D-F92DF00215AE",
         "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7",
     ]
+    assert [(p["firstSector"], p["lastSector"]) for p in plan["partitions"]] == [
+        (2048, 616447),
+        (616448, 649215),
+        (649216, 50980863),
+    ]
     result = audit(root, tmp_path, discard=True)
     assert result["gptVerified"] is True
     assert result["baseUnchanged"] is True
