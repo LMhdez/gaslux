@@ -17,7 +17,8 @@ from PIL import Image
 
 WIDTH = 1280
 HEIGHT = 800
-BLUE = lambda r, g, b: 40 <= r <= 120 and 120 <= g <= 180 and 200 <= b <= 255
+def _is_blue(r: int, g: int, b: int) -> bool:
+    return 40 <= r <= 120 and 120 <= g <= 180 and 200 <= b <= 255
 
 
 class CustomSelectionRefusal(ValueError):
@@ -37,7 +38,7 @@ def _load(png: Path, ocr_path: Path, tsv_path: Path):
     image = Image.open(png).convert("RGB")
     if image.size != (WIDTH, HEIGHT):
         raise CustomSelectionRefusal("Unexpected installer framebuffer size")
-    normalized = re.sub(r"\\s+", " ", ocr).lower()
+    normalized = re.sub(r"\s+", " ", ocr).lower()
     for marker in (
         "bazzite 42 installation",
         "installation destination",
@@ -51,7 +52,7 @@ def _load(png: Path, ocr_path: Path, tsv_path: Path):
     ):
         if marker not in normalized:
             raise CustomSelectionRefusal(f"Missing storage UI marker: {marker}")
-    rows = list(csv.DictReader(io.StringIO(tsv), delimiter="\\t"))
+    rows = list(csv.DictReader(io.StringIO(tsv), delimiter="\t"))
     words = []
     for row in rows:
         try:
@@ -73,7 +74,7 @@ def _blue_pixels(image: Image.Image, cx: int, cy: int) -> int:
         1
         for y in range(cy - 5, cy + 6)
         for x in range(cx - 5, cx + 6)
-        if BLUE(*image.getpixel((x, y)))
+        if _is_blue(*image.getpixel((x, y)))
     )
 
 
