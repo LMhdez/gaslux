@@ -43,10 +43,15 @@ def _regular_files(root: Path) -> dict[str, Path]:
     return files
 
 
+def _require_nofollow() -> int:
+    flag = getattr(os, "O_NOFOLLOW", None)
+    if flag is None:
+        raise EvidenceManifestError("platform does not expose O_NOFOLLOW; refusing unsafe evidence access")
+    return flag
+
+
 def _sha256(path: Path) -> str:
-    if not hasattr(os, "O_NOFOLLOW"):
-        raise EvidenceManifestError("platform does not expose O_NOFOLLOW; refusing unsafe evidence read")
-    flags = os.O_RDONLY | os.O_NOFOLLOW
+    flags = os.O_RDONLY | _require_nofollow()
     descriptor = os.open(path, flags)
     try:
         metadata = os.fstat(descriptor)
@@ -71,7 +76,7 @@ def create_manifest(directory: Path) -> Path:
     temporary = root / f".{MANIFEST_NAME}.{os.getpid()}.tmp"
     descriptor = os.open(
         temporary,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | _require_nofollow(),
         0o600,
     )
     try:
@@ -94,10 +99,22 @@ def create_manifest(directory: Path) -> Path:
 def verify_manifest(directory: Path, required: set[str] | None = None) -> None:
     root = _root(directory)
     manifest = root / MANIFEST_NAME
-    if manifest.is_symlink() or not manifest.is_file():
-        raise EvidenceManifestError("evidence SHA-256 manifest is missing or unsafe")
+    try:
+        manifest_fd = os.open(manifest, os.O_RDONLY | _require_nofollow())
+    except FileNotFoundError as exc:
+        raise EvidenceManifestError("evidence SHA-256 manifest is missing or unsafe") from exc
+    except OSError as exc:
+        raise EvidenceManifestError("evidence SHA-256 manifest is missing or unsafe") from exc
+    try:
+        metadata = os.fstat(manifest_fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise EvidenceManifestError("evidence SHA-256 manifest is not a regular file")
+        with os.fdopen(manifest_fd, "r", encoding="ascii", closefd=False) as stream:
+            manifest_lines = stream.read().splitlines()
+    finally:
+        os.close(manifest_fd)
     entries: dict[str, str] = {}
-    for line in manifest.read_text(encoding="ascii").splitlines():
+    for line in manifest_lines:
         match = _LINE.fullmatch(line)
         if match is None:
             raise EvidenceManifestError("malformed evidence SHA-256 manifest line")
