@@ -77,7 +77,58 @@ def make_pair(*, linux: bool) -> tuple[bytes, bytes, dict]:
     return bytes(front), bytes(back), plan
 
 
+def with_foreign_utf16_label(
+    front: bytes, back: bytes, *, index: int,
+) -> tuple[bytes, bytes]:
+    """Change one GPT label to a lone surrogate, fixing both table/header CRCs."""
+    assert 1 <= index <= 5
+    primary, backup = bytearray(front), bytearray(back)
+    entries = bytearray(primary[2*SECTOR:34*SECTOR])
+    # UTF-16LE lone high surrogate in a validly mirrored, CRC-protected row.
+    off = (index-1)*128 + 56 + 48
+    entries[off:off+2] = b"\\x00\\xd8"
+    crc = binascii.crc32(entries) & 0xFFFFFFFF
+    primary[2*SECTOR:34*SECTOR] = entries
+    backup[WINDOW_BYTES-33*SECTOR:WINDOW_BYTES-SECTOR] = entries
+    for page, offset in ((primary, SECTOR), (backup, WINDOW_BYTES-SECTOR)):
+        struct.pack_into("<I", page, offset+88, crc)
+        struct.pack_into("<I", page, offset+16, 0)
+        struct.pack_into("<I", page, offset+16,
+                         binascii.crc32(page[offset:offset+92]) & 0xFFFFFFFF)
+    return bytes(primary), bytes(backup)
+
+
 class TestGptCrcReconciliation(unittest.TestCase):
+    def test_foreign_windows_name_is_opaque_but_crc_and_raw_entry_are_bound(self):
+        front, back, _ = make_pair(linux=False)
+        modified_front, modified_back = with_foreign_utf16_label(
+            front, back, index=3,
+        )
+        original = parse_windows_pop_gpt(front, back, expected_count=4)
+        altered = parse_windows_pop_gpt(
+            modified_front, modified_back, expected_count=4,
+        )
+        self.assertTrue(altered["primaryAndBackupCrcVerified"])
+        self.assertNotEqual(
+            altered["windowsEntryHex"][2], original["windowsEntryHex"][2],
+        )
+        self.assertIs(altered["productionInstallationAuthorized"], False)
+        with self.assertRaisesRegex(DiskAuditError, "foreign GPT identity"):
+            reconcile_windows_and_root(original, altered, {
+                "startSector": 0, "endSector": 0, "sizeBytes": 0,
+            })
+
+    def test_invalid_owned_pop_root_label_is_rejected_even_with_valid_crc(self):
+        front, back, _ = make_pair(linux=True)
+        modified_front, modified_back = with_foreign_utf16_label(
+            front, back, index=5,
+        )
+        with self.assertRaisesRegex(DiskAuditError, "invalid owned Pop GPT label"):
+            parse_windows_pop_gpt(
+                modified_front, modified_back, expected_count=5,
+            )
+
+
     def test_before_and_after_two_headers_and_crc_are_valid(self):
         front, back, _ = make_pair(linux=False)
         prior = parse_windows_pop_gpt(front, back, expected_count=4)
