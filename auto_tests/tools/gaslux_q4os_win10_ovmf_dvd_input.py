@@ -82,7 +82,17 @@ def _send_key_events(stream, *, sleep=time.sleep) -> None:
     """Hold Space long enough for OVMF USB HID polling, with QMP acknowledgements."""
     key_down = {
         "execute": "input-send-event",
-        "arguments": {"events": [{"type": "key", "data": {"key": {"type": "qcode", "data": "spc"}, "down": True}}]},
+        "arguments": {
+            "events": [
+                {
+                    "type": "key",
+                    "data": {
+                        "key": {"type": "qcode", "data": "spc"},
+                        "down": True,
+                    },
+                }
+            ]
+        },
         "id": "gaslux-ovmf-space-down",
     }
     stream.write((json.dumps(key_down, separators=(",", ":")) + "\r\n").encode())
@@ -90,7 +100,17 @@ def _send_key_events(stream, *, sleep=time.sleep) -> None:
     sleep(0.25)
     key_up = {
         "execute": "input-send-event",
-        "arguments": {"events": [{"type": "key", "data": {"key": {"type": "qcode", "data": "spc"}, "down": False}}]},
+        "arguments": {
+            "events": [
+                {
+                    "type": "key",
+                    "data": {
+                        "key": {"type": "qcode", "data": "spc"},
+                        "down": False,
+                    },
+                }
+            ]
+        },
         "id": "gaslux-ovmf-space-up",
     }
     stream.write((json.dumps(key_up, separators=(",", ":")) + "\r\n").encode())
