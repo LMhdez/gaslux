@@ -1,0 +1,431 @@
+name: Bazzite legacy owned read-only GPT storage observation (no install)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-legacy-readonly-gpt-20261119
+    paths:
+      - '.github/workflows/gaslux-bazzite-legacy-readonly-gpt.yml'
+      - 'auto_tests/bazzite_legacy_diskless_navigation.py'
+      - 'auto_tests/tests/test_bazzite_legacy_diskless_navigation.py'
+      - 'auto_tests/bazzite_legacy_blue_button.py'
+      - 'auto_tests/tests/test_bazzite_legacy_blue_button.py'
+      - 'auto_tests/bazzite_legacy_destination_gate.py'
+      - 'auto_tests/tests/test_bazzite_legacy_destination_gate.py'
+      - 'auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test diskless navigation constraints and Ruff
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff PyYAML pillow
+          python -m pytest -q \
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
+            auto_tests/tests/test_bazzite_legacy_blue_button.py \
+            auto_tests/tests/test_bazzite_legacy_destination_gate.py \
+            auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_diskless_navigation.py \
+            auto_tests/bazzite_legacy_blue_button.py \
+            auto_tests/bazzite_legacy_destination_gate.py \
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
+            auto_tests/tests/test_bazzite_legacy_blue_button.py \
+            auto_tests/tests/test_bazzite_legacy_destination_gate.py \
+            auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_diskless_navigation.py \
+            auto_tests/bazzite_legacy_blue_button.py \
+            auto_tests/bazzite_legacy_destination_gate.py \
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation.py \
+            auto_tests/tests/test_bazzite_legacy_diskless_navigation_workflow.py \
+            auto_tests/tests/test_bazzite_legacy_blue_button.py \
+            auto_tests/tests/test_bazzite_legacy_destination_gate.py \
+            auto_tests/tests/test_bazzite_legacy_readonly_gpt_workflow.py
+
+  prior-blue-button:
+    needs: contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Authenticate prior diskless optical-only guest screenshot source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh api repos/LMhdez/gaslux/actions/runs/44375068915 \
+            | jq -e '
+                .conclusion == "success"
+                and .head_sha == "2a41ed0a3246a72a2cf492e488f60e9ae97b23bf"
+                and .head_repository.full_name == "LMhdez/gaslux"
+                and .event == "push"
+              ' > /dev/null
+      - name: Verify high-contrast Continue OCR from exact previous GUI evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-stage2-blue-review"
+          mkdir -m 700 "$work"
+          gh run download 44375068915 -R LMhdez/gaslux \
+            --name bazzite-legacy-readonly-gpt-storage-evidence \
+            --dir "$work"
+          python -m pip install pillow
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 400s apt-get install -y -qq \
+              tesseract-ocr qemu-utils gdisk
+          python3 auto_tests/bazzite_legacy_blue_button.py \
+            --png "$work/language-after.png" \
+            --ocr "$work/language-after.ocr" \
+            --coords "$work/continue-coordinate" > "$work/blue-gate.json"
+          python3 - "$work/blue-gate.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          gate = json.loads(Path(sys.argv[1]).read_text())
+          assert gate["blueContinueTextVerified"] is True
+          assert gate["blueContinueGeometryVerified"] is True
+          assert gate["coordinate"] == {"x": 1225, "y": 770}
+          assert gate["installationAuthorized"] is False
+          assert gate["partitionWriteAuthorized"] is False
+          assert gate["windowsEspWriteAuthorized"] is False
+          print("PREVIOUS VM GUI: blue Continue positively located, no disk")
+          PY
+
+
+      - name: Authenticate and verify prior diskless Installation Destination target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh api repos/LMhdez/gaslux/actions/runs/44378715492 \
+            | jq -e '
+                .conclusion == "success"
+                and .head_sha == "5ebe64d41beeeeec82fc74bfb9e30bcfa934adfa"
+                and .head_repository.full_name == "LMhdez/gaslux"
+                and .event == "push"
+              ' > /dev/null
+          work="$RUNNER_TEMP/bazzite-prior-summary"
+          mkdir -m 700 "$work"
+          gh run download 44378715492 -R LMhdez/gaslux \
+            --name bazzite-legacy-readonly-gpt-storage-evidence \
+            --dir "$work"
+          python -m pip install pillow
+          python3 auto_tests/bazzite_legacy_destination_gate.py \
+            --png "$work/after-continue.png" \
+            --ocr "$work/after-continue.ocr" \
+            --tsv "$work/after-continue.tsv" \
+            --coords "$work/destination-coordinate" > "$work/destination-gate.json"
+          python3 - "$work/destination-gate.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          gate = json.loads(Path(sys.argv[1]).read_text())
+          assert gate["coordinate"] == {"x": 758, "y": 328}
+          assert gate["noDisksSelectedTextVerified"] is True
+          assert gate["noNetworkDevicesTextVerified"] is True
+          assert gate["installationAuthorized"] is False
+          assert gate["partitionWriteAuthorized"] is False
+          assert gate["windowsEspWriteAuthorized"] is False
+          print("DODO lab screenshot: exact diskless Installation Destination target verified")
+          PY
+
+  readonly-gpt-stage3:
+    needs: [contracts, prior-blue-button]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reserve ephemeral isolated lab and require exactly pinned ISO headers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-legacy-readonly-gpt"
+          mkdir -m 700 "$work"
+          mkdir bazzite-legacy-readonly-gpt-evidence
+          base='https://download.bazzite.gg/bazzite-stable-amd64.iso'
+          curl --fail --silent --show-error --head --location \
+            --retry 2 --connect-timeout 20 --max-time 90 \
+            --proto '=https' --proto-redir '=https' \
+            "$base" -o "$work/headers.txt"
+          bytes=$(tr -d '\r' < "$work/headers.txt" \
+            | awk 'tolower($1)=="content-length:" {n=$2} END {print n}')
+          [[ "$bytes" == 7907770368 ]] || exit 1
+          free=$(df -PB1 "$work" | awk 'NR==2 {print $4}')
+          (( free > 7907770368 + 2*1024*1024*1024 )) || exit 1
+          echo 'Unsigned Bazzite 42 legacy ISO: optical-only, no target disk or network'
+      - name: Install only KVM/OVMF guest and OCR tools
+        shell: bash
+        timeout-minutes: 18
+        run: |
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 300s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            timeout --signal=TERM --kill-after=30s 900s apt-get install -y -qq \
+              qemu-system-x86 ovmf tesseract-ocr
+          python -m pip install --user Pillow vncdotool
+      - name: Download exact laboratory bytes and SHA gate before guest execution
+        shell: bash
+        timeout-minutes: 65
+        run: |
+          set -Eeuo pipefail
+          iso="$RUNNER_TEMP/bazzite-legacy-readonly-gpt/bazzite-stable-amd64.iso"
+          curl --fail --silent --show-error --location \
+            --retry 7 --retry-all-errors --retry-delay 5 --continue-at - \
+            --connect-timeout 30 --max-time 3400 \
+            --proto '=https' --proto-redir '=https' \
+            https://download.bazzite.gg/bazzite-stable-amd64.iso -o "$iso"
+          [[ $(stat -c '%s' "$iso") == 7907770368 ]] || exit 1
+          echo '9c8d06cd8e57f2274678edeb14b4b13a79b8117c70571a65199919a66305b5c7  '"$iso" \
+            | sha256sum --check --strict
+          echo 'LAB ONLY: hash matches mutable CDN discovery; upstream signature not verified' \
+            > bazzite-legacy-readonly-gpt-evidence/media-identity.txt
+      - name: Boot UEFI with authenticated readonly synthetic GPT disk; observe destination UI
+        shell: bash
+        timeout-minutes: 16
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/bazzite-legacy-readonly-gpt"
+          iso="$work/bazzite-stable-amd64.iso"
+          if [[ -f /usr/share/OVMF/OVMF_CODE_4M.fd && -f /usr/share/OVMF/OVMF_VARS_4M.fd ]]; then
+            code=/usr/share/OVMF/OVMF_CODE_4M.fd
+            vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          elif [[ -f /usr/share/OVMF/OVMF_CODE.fd && -f /usr/share/OVMF/OVMF_VARS.fd ]]; then
+            code=/usr/share/OVMF/OVMF_CODE.fd
+            vars=/usr/share/OVMF/OVMF_VARS.fd
+          else
+            echo 'No OVMF pair'; exit 1
+          fi
+          host_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+          (( host_kib >= 11*1024*1024 )) || { echo 'Runner RAM below 8GiB guest requirement'; exit 1; }
+          [[ -c /dev/kvm ]] || { echo 'KVM unavailable'; exit 1; }
+          sudo chmod 0666 /dev/kvm
+          [[ -r /dev/kvm && -w /dev/kvm ]] || exit 1
+          # Only a freshly created private RAW/GPT fixture may be attached.
+          disk="$work/glx-synthetic-gpt.raw"
+          [[ "$work" == "$RUNNER_TEMP/bazzite-legacy-readonly-gpt" ]] || exit 1
+          [[ ! -e "$disk" && ! -L "$disk" ]] || { echo 'Existing disk path'; exit 1; }
+          umask 077
+          qemu-img create -f raw "$disk" 70G > /dev/null
+          [[ -f "$disk" && ! -L "$disk" ]] || exit 1
+          [[ $(stat -c '%u' "$disk") == "$(id -u)" ]] || exit 1
+          [[ $(stat -c '%s' "$disk") == 75161927680 ]] || exit 1
+          # sgdisk writes ONLY to this new host-owned regular file.
+          sgdisk --clear \
+            --new=1:2048:+512M --typecode=1:EF00 --change-name=1:GLX-SYNTH-ESP \
+            --new=2:0:+8G --typecode=2:0700 --change-name=2:GLX-SYNTH-DATA \
+            "$disk" > "$work/gpt-fixture-create.txt"
+          sgdisk --verify "$disk" > "$work/gpt-fixture-verify.txt" 2>&1
+          sgdisk --print "$disk" > "$work/gpt-fixture-layout.txt"
+          grep -q GLX-SYNTH-ESP "$work/gpt-fixture-layout.txt" || exit 1
+          grep -q GLX-SYNTH-DATA "$work/gpt-fixture-layout.txt" || exit 1
+          python3 - "$disk" <<'PY'
+          import json
+          import subprocess
+          import sys
+          info = json.loads(subprocess.check_output(
+              ["qemu-img", "info", "--output=json", sys.argv[1]], text=True
+          ))
+          assert info["format"] == "raw"
+          assert info["virtual-size"] == 75161927680
+          assert "backing-filename" not in info
+          PY
+          chmod 0400 "$disk"
+          sha256sum "$disk" > "$work/owned-raw-before.sha256"
+          pid=''
+          audit_owned_base() {
+            local status=$?
+            trap - EXIT
+            if [[ -n "$pid" ]]; then
+              kill "$pid" 2>/dev/null || :
+              wait "$pid" 2>/dev/null || :
+            fi
+            sha256sum --check --strict "$work/owned-raw-before.sha256" \
+              > bazzite-legacy-readonly-gpt-evidence/immutable-base-check.txt 2>&1 \
+              || status=1
+            if (( status != 0 )); then
+              echo 'Guest/fixture operation failed or backing changed'
+            else
+              echo 'Synthetic GPT backing unchanged byte-for-byte'
+            fi
+            exit "$status"
+          }
+          trap audit_owned_base EXIT
+          cp "$work/gpt-fixture-layout.txt" \
+            bazzite-legacy-readonly-gpt-evidence/synthetic-gpt-layout.txt
+          printf '%s\n' \
+            'guestDiskCountConfigured=1' \
+            'syntheticGptOnly=true' \
+            'diskReadonlyInQemu=true' \
+            'diskSerialConfigured=GLXBAZRO001' \
+            'windowsDiskAttached=false' \
+            'catalogPinAuthorized=false' \
+            'installationAuthorized=false' \
+            'windowsEspWriteAuthorized=false' \
+            > bazzite-legacy-readonly-gpt-evidence/owned-media-manifest.txt
+          cp "$vars" "$work/disposable-ovmf-vars.fd"
+          qemu-system-x86_64 \
+            -nodefaults -machine q35,accel=kvm -cpu host -smp 2 -m 8192 \
+            -sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny \
+            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,unit=1,file=$work/disposable-ovmf-vars.fd" \
+            -vga std -device ich9-ahci,id=sata \
+            -drive "if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso" \
+            -device ide-cd,drive=optical,bus=sata.0 \
+            -drive "if=none,id=glx-owned,format=raw,readonly=on,file=$disk" \
+            -device virtio-blk-pci,drive=glx-owned,serial=GLXBAZRO001 \
+            -boot order=d -nic none -monitor none \
+            -serial "file:bazzite-legacy-readonly-gpt-evidence/serial.txt" \
+            -vnc 127.0.0.1:1 -no-reboot \
+            > bazzite-legacy-readonly-gpt-evidence/qemu-out.txt \
+            2> bazzite-legacy-readonly-gpt-evidence/qemu-err.txt &
+          pid=$!
+          # The ownership/hash verifier above also stops QEMU on EXIT.
+          capture() {
+            local label="$1"
+            local picture="bazzite-legacy-readonly-gpt-evidence/$label.png"
+            kill -0 "$pid" || { echo 'Diskless guest exited'; return 1; }
+            timeout --signal=TERM --kill-after=5s 40s \
+              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 capture "$picture"
+            tesseract "$picture" stdout 2>/dev/null \
+              > "bazzite-legacy-readonly-gpt-evidence/$label.ocr" || :
+            tesseract "$picture" stdout tsv 2>/dev/null \
+              > "bazzite-legacy-readonly-gpt-evidence/$label.tsv" || :
+          }
+          sleep 200
+          capture language-before
+          python3 auto_tests/bazzite_legacy_diskless_navigation.py \
+            --phase locale \
+            --png bazzite-legacy-readonly-gpt-evidence/language-before.png \
+            --ocr bazzite-legacy-readonly-gpt-evidence/language-before.ocr \
+            --tsv bazzite-legacy-readonly-gpt-evidence/language-before.tsv \
+            --coords "$work/locale-coordinate" \
+            > bazzite-legacy-readonly-gpt-evidence/locale-gate.json
+          read -r lx ly < "$work/locale-coordinate"
+          [[ "$lx" =~ ^[0-9]{1,4}$ && "$ly" =~ ^[0-9]{1,4}$ ]] || exit 1
+          timeout --signal=TERM --kill-after=5s 30s \
+            "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 \
+            move "$lx" "$ly" click 1
+          echo 'Only runtime-verified English UK locale was clicked in readonly synthetic GPT guest'
+          sleep 15
+          capture language-after
+          python3 auto_tests/bazzite_legacy_blue_button.py \
+            --png bazzite-legacy-readonly-gpt-evidence/language-after.png \
+            --ocr bazzite-legacy-readonly-gpt-evidence/language-after.ocr \
+            --coords "$work/continue-coordinate" \
+            > bazzite-legacy-readonly-gpt-evidence/continue-gate.json
+          if [[ -s "$work/continue-coordinate" ]]; then
+            read -r cx cy < "$work/continue-coordinate"
+            [[ "$cx" =~ ^[0-9]{1,4}$ && "$cy" =~ ^[0-9]{1,4}$ ]] || exit 1
+            timeout --signal=TERM --kill-after=5s 30s \
+              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 \
+              move "$cx" "$cy" click 1
+            sleep 45
+            capture after-continue
+            echo 'Attempted only safe Continue on owned readonly GPT guest' \
+              > bazzite-legacy-readonly-gpt-evidence/continue-observed.txt
+            python3 auto_tests/bazzite_legacy_destination_gate.py \
+              --png bazzite-legacy-readonly-gpt-evidence/after-continue.png \
+              --ocr bazzite-legacy-readonly-gpt-evidence/after-continue.ocr \
+              --tsv bazzite-legacy-readonly-gpt-evidence/after-continue.tsv \
+              --coords "$work/destination-coordinate" \
+              > bazzite-legacy-readonly-gpt-evidence/destination-gate.json
+            read -r dx dy < "$work/destination-coordinate"
+            [[ "$dx" =~ ^[0-9]{1,4}$ && "$dy" =~ ^[0-9]{1,4}$ ]] || exit 1
+            timeout --signal=TERM --kill-after=5s 30s \
+              "$HOME/.local/bin/vncdotool" -s 127.0.0.1::5901 \
+              move "$dx" "$dy" click 1
+            sleep 20
+            capture after-destination
+            echo 'Only the readonly-GPT Installation Destination tile was opened' \
+              > bazzite-legacy-readonly-gpt-evidence/destination-observed.txt
+          else
+            echo 'BLOCKED: No unique Continue control after selecting locale' \
+              > bazzite-legacy-readonly-gpt-evidence/no-continue.txt
+          fi
+          python3 - <<'PY' > bazzite-legacy-readonly-gpt-evidence/summary.json
+          import json
+          from pathlib import Path
+          root = Path("bazzite-legacy-readonly-gpt-evidence")
+          moved = (root / "after-continue.ocr").is_file()
+          text = (root / "after-continue.ocr").read_text(errors="replace").lower() if moved else ""
+          storage = (root / "after-destination.ocr")
+          storage_text = storage.read_text(errors="replace").lower() if storage.is_file() else ""
+          print(json.dumps({
+              "distributionId": "bazzite",
+              "labOnly": True,
+              "firmware": "uefi",
+              "partitionStyleObserved": None,
+              "diskCount": 1,
+              "syntheticGuestGptOnly": True,
+              "diskReadonlyInQemu": True,
+              "guestDiskSerialConfigured": "GLXBAZRO001",
+              "guestDiskIdentityIndependentlyVerified": False,
+              "networkEnabled": False,
+              "guestHardDiskAttached": True,
+              "localeInputOnlyAfterRuntimeOCRGate": True,
+              "continueInputOnlyAfterRuntimeOCRGate": moved,
+              "installationSummaryTextObserved": "installation summary" in text,
+              "installationDestinationTextObserved": "installation destination" in text,
+              "disklessDestinationPageCaptureCollected": storage.is_file(),
+              "destinationPageTitleCandidateObserved": "installation destination" in storage_text,
+              "blivetOptionTextCandidateObserved": "blivet" in storage_text,
+              "guestDiskVisibleInGuiCandidate": (
+                  "virtio" in storage_text or "glxbazro001" in storage_text
+              ),
+              "noDisksAvailableAfterClickCandidateObserved": (
+                  "no disks" in storage_text or "no available disks" in storage_text
+              ),
+              "beginInstallationButtonClicked": False,
+              "anacondaBinaryIdentityVerified": False,
+              "blivetGuiVerified": False,
+              "isoProvenanceSignatureVerified": False,
+              "installedPayloadVersionVerified": False,
+              "installationAuthorized": False,
+              "partitionWriteAuthorized": False,
+              "windowsEspWriteAuthorized": False,
+              "secureBootEnrollmentAuthorized": False,
+              "windowsDualBootVerified": False,
+          }, indent=2, sort_keys=True))
+          PY
+          cat bazzite-legacy-readonly-gpt-evidence/summary.json
+      - name: Publish bounded screenshot/OCR and read-only GPT backing proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-legacy-readonly-gpt-storage-evidence
+          path: bazzite-legacy-readonly-gpt-evidence/
+          if-no-files-found: warn
+          retention-days: 7
