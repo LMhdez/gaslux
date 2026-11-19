@@ -158,8 +158,24 @@ class CachyosQemuUpdateRecoveryContract(unittest.TestCase):
             "mkinitcpio -P", "grub-script-check",
             "GASLUX_VM_UPDATE_APPLIED=1",
             "GASLUX_VM_UPDATED_REBOOT_VERIFIED=1",
+            "GASLUX_VM_PACKAGE_VERSIONS_BEFORE=",
+            "GASLUX_VM_PACKAGE_VERSIONS_AFTER=",
+            "GASLUX_VM_PACKAGE_VERSION_CHANGE=0",
+            "GASLUX_VM_PACKAGE_VERSION_CHANGE=1",
         ):
             self.assertIn(requirement, self.guest)
+        self.assertIn('versions_before="$(pacman -Q linux-cachyos-lts grub | LC_ALL=C sort)"',
+                      self.guest)
+        self.assertIn('versions_after="$(pacman -Q linux-cachyos-lts grub | LC_ALL=C sort)"',
+                      self.guest)
+        self.assertLess(
+            self.guest.index("GASLUX_VM_PACKAGE_VERSIONS_BEFORE="),
+            self.guest.index("pacman -Syu --noconfirm linux-cachyos-lts grub"),
+        )
+        self.assertLess(
+            self.guest.index("GASLUX_VM_PACKAGE_VERSIONS_AFTER="),
+            self.guest.index("GASLUX_VM_UPDATE_APPLIED=1"),
+        )
 
     def test_installed_repo_set_ignores_order_but_rejects_foreign_and_duplicates(self):
         # Run the exact fail-closed Python embedded in the VM-only installer.
