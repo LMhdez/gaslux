@@ -21,3 +21,22 @@ Consolidar regressões e first boot de Mint/Zorin; depois concluir handoff/insta
 
 ## Regras da investigação
 Esta PR documenta **contratos e hipóteses condicionais**. Não altera implementações, catálogo, schemas, boot ou firmware. Segurança e recuperação prevalecem sobre suportar mais distribuições. Falta de prova implica **PENDENTE/BLOQUEADO**, nunca parâmetro inventado.
+
+
+## Evidência comparável — estado observável no dia 19-11-2026
+| Backend | ISO específica e trust | Teste real mais representativo | Resultado honesto | Bloqueio dominante |
+|---|---|---|---|---|
+| [Mint](MINT.md) | 22.3 Cinnamon, SHA/tamanho assinados pelo catálogo de main | [#44572398014](https://github.com/LMhdez/gaslux/actions/runs/44572398014), [PR #233](https://github.com/LMhdez/gaslux/pull/233) | **FAILURE** testemunho encerramento após staging da raiz no COW; Live boot já observado em [#44147851503](https://github.com/LMhdez/gaslux/actions/runs/44147851503) | Instalação Gaslux end-to-end e Windows pós-instalação |
+| [Zorin](ZORIN.md) | 18.1 Core, SHA/tamanho no catálogo main | [#44582546627](https://github.com/LMhdez/gaslux/actions/runs/44582546627), [artefacto #14560995967](https://github.com/LMhdez/gaslux/actions/runs/44582546627/artifacts/14560995967) | **SUCCESS** dois boots Zorin isolados; `update-initramfs`, não update kernel | Dual boot no disco Windows e rollback |
+| [CachyOS](CACHYOS.md) | ISO 260809 SHA verificado no laboratório, **sem catálogo estável** | [#44571015093](https://github.com/LMhdez/gaslux/actions/runs/44571015093), [artefacto #14556716731](https://github.com/LMhdez/gaslux/actions/runs/44571015093/artifacts/14556716731) | **SUCCESS** `pacstrap` na quinta GPT de Windows COW e arranque mínimo; [#44563479551](https://github.com/LMhdez/gaslux/actions/runs/44563479551) prova update apenas no disco isolado | GRUB partilhado, dual boot, update e rollback in-place |
+| [Pop!_OS](POPOS.md) | 24.04 Intel build 20 experimental, SHA da PR #228; método GPG no laboratório | [#44561473570](https://github.com/LMhdez/gaslux/actions/runs/44561473570) | **FAILURE** no `blkid` quinta partição, apesar de Live iniciar | `distinst` com ESP `reuse` sem qualquer formatação, prova total de writes |
+| [Q4OS](Q4OS.md) | 6.10 r2 SHA no workflow ISO `dev`, fora do catálogo | [PR #256](https://github.com/LMhdez/gaslux/pull/256), auditoria Calamares da imagem | Contratos da configuração extraída; **sem install** | `installEFIFallback=true` ameaça EFI/BOOT Windows |
+| [Bazzite](BAZZITE.md) | OCI Cosign !== ISO Legacy 42 assinada; nenhuma ISO catálogo | [#44576081171](https://github.com/LMhdez/gaslux/actions/runs/44576081171) | **FAILURE** no gate `Custom` e sem Blivet aberto comprovado | Assinatura da ISO, write-set Atomic, Secure Boot manual, dual boot |
+
+**Níveis não intercambiáveis:** metadados da ISO → Live boot → instalação nativa → boot Linux sem ISO → Windows real no mesmo disco → update e dois reboots → recuperação de cada falha; resultados nas células anteriores não se promovem automaticamente ao nível seguinte.
+
+## Autoridade operacional do código actual
+Na branch `dev`, [`DistributionBackendPolicy.cs`](https://github.com/LMhdez/gaslux/blob/dev/Installation/DistributionBackendPolicy.cs) permite apenas `mint/linuxmint` e `zorin/zorin` no backend legado. Os [capability validators C#/PowerShell/Python](SHARED_CONTRACTS.md) e [JSON Schema](https://github.com/LMhdez/gaslux/blob/dev/schemas/distribution-capabilities.schema.json) reconhecem os seis perfis, sem os autorizar. O backend actual verifica capacidade `dpkg/update-initramfs/update-grub` em `filesystem.squashfs`, não funciona como Calamares, Archiso/pacstrap, distinst ou Fedora Atomic. Os pontos de reutilização e gatilhos de STOP estão detalhados nos dossiers; os HEADs experimentais são ramos empilhados sujeitos a revisão e não referências imutáveis.
+
+## Limitações desta investigação documental
+As ISOs multi-GB **não foram descarregadas/reextraídas nesta sessão**. Uma parte da estrutura da mídia e dos boot flags foi confirmada por ferramentas da própria PR/laboratório no GitHub e documentação upstream, não por segunda execução binária independente. A versão exacta do binário do instalador nas ISOs Mint/Zorin/Pop/Bazzite/Q4OS/Calamares CachyOS e uma API unattended *end-to-end* foram assinaladas **PENDENTE** onde não havia prova. A URL de um workflow não prova que o job completou; verificar sempre jobs e artefactos. Esta PR permanece draft, sem promoção do catálogo e sem testes destrutivos.
