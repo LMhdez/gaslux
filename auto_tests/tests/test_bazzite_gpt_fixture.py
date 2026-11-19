@@ -51,6 +51,22 @@ def test_modified_manifest_refuses_to_discard_overlay(tmp_path):
     assert (root / "gpt-layout-scratch.qcow2").exists()
 
 
+@pytest.mark.skipif(
+    shutil.which("sgdisk") is None or shutil.which("qemu-img") is None,
+    reason="gdisk and qemu-utils are required",
+)
+def test_mutated_allocated_extent_refuses_overlay_discard(tmp_path):
+    root = tmp_path / "bazzite-gpt-fixture"
+    prepare(root, tmp_path)
+    image = root / "windows-layout-no-os.raw"
+    with image.open("r+b") as stream:
+        stream.seek(2 * 1024**3)
+        stream.write(b"changed")
+    with pytest.raises(Refusal, match="base hash changed"):
+        audit(root, tmp_path, discard=True)
+    assert (root / "gpt-layout-scratch.qcow2").exists()
+
+
 def test_fixture_requires_exact_private_temp_child(tmp_path):
     with pytest.raises(Refusal, match="direct child"):
         prepare(tmp_path / "foreign", tmp_path)
