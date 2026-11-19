@@ -466,6 +466,8 @@ jobs:
           text = (root / "after-continue.ocr").read_text(errors="replace").lower() if moved else ""
           storage = (root / "after-destination.ocr")
           storage_text = storage.read_text(errors="replace").lower() if storage.is_file() else ""
+          custom_gate_path = root / "custom-after-gate.json"
+          custom_gate = json.loads(custom_gate_path.read_text(encoding="utf-8")) if custom_gate_path.is_file() else {}
           print(json.dumps({
               "distributionId": "bazzite",
               "labOnly": True,
@@ -501,7 +503,11 @@ jobs:
               "partitionWriteAuthorized": False,
               "windowsEspWriteAuthorized": False,
               "secureBootEnrollmentAuthorized": False,
-              "windowsDualBootVerified": False,\n              "customRadioClickGatePassed": (root / "custom-after-gate.json").is_file(),\n              "customSelectedObserved": (root / "custom-after-gate.json").is_file(),\n              "partitionEditorEntered": False,
+              "windowsDualBootVerified": False,
+              "customRadioClickGatePassed": custom_gate.get("phase") == "after-custom-click",
+              "customSelectedObserved": custom_gate.get("customSelectedObserved") is True,
+              "automaticUnselectedObserved": custom_gate.get("automaticUnselectedObserved") is True,
+              "partitionEditorEntered": custom_gate.get("partitionEditorEntered") is True,
           }, indent=2, sort_keys=True))
           PY
           cat bazzite-legacy-readonly-gpt-evidence/summary.json
@@ -511,5 +517,5 @@ jobs:
         with:
           name: bazzite-legacy-readonly-gpt-storage-evidence
           path: bazzite-legacy-readonly-gpt-evidence/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
