@@ -22,7 +22,6 @@ on:
       - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
       - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
       - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
       - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
       - 'auto_tests/tests/test_q4os_evidence_manifest.py'
   workflow_dispatch:
@@ -67,233 +66,23 @@ jobs:
           python -m compileall -q \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
-            auto_tests/tests/test_q4os_native_cow_view_lab.py \
-name: Q4OS signed native Calamares disposable COW preview (NO INSTALL)
-
-on:
-  push:
-    branches:
-      - feature/q4os-calamares-native-owned-cow-view
-    paths:
-      - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
-      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tests/test_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
-      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
-      - 'auto_tests/tests/test_q4os_evidence_manifest.py'
-  pull_request:
-    paths:
-      - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
-      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
-      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
-      - 'auto_tests/tests/test_q4os_evidence_manifest.py'
-  workflow_dispatch:
-
-concurrency:
-  group: q4os-native-cow-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
-jobs:
-  graphical-installer-lab:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install disposable QEMU, OVMF, GRUB and screenshot tools
-        run: |
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 qemu-utils grub-common grub-efi-amd64-bin mtools dosfstools gdisk acl
-          python -m pip install vncdotool Pillow 'cryptography>=46,<51' \
-            'jsonschema>=4,<5' 'pytest>=9,<10' 'ruff>=0.8,<1'
-          if [[ -c /dev/kvm ]]; then
-            sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
-          fi
-          if [[ -w /dev/kvm ]]; then
-            echo "KVM available to this disposable hosted job"
-          else
-            echo "KVM unavailable; QEMU will use software TCG"
-          fi
-      - name: Compile, Ruff and refuse unsafe native Calamares preview
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          bash -n auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
-          python -m compileall -q \
-            auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
-            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
-            auto_tests/tests/test_q4os_native_cow_view_lab.py \
-name: Q4OS signed native Calamares disposable COW preview (NO INSTALL)
-
-on:
-  push:
-    branches:
-      - feature/q4os-calamares-native-owned-cow-view
-    paths:
-      - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
-      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tests/test_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
-      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
-      - 'auto_tests/tests/test_q4os_evidence_manifest.py'
-  pull_request:
-    paths:
-      - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
-      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
-      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
-      - 'auto_tests/tests/test_q4os_evidence_manifest.py'
-  workflow_dispatch:
-
-concurrency:
-  group: q4os-native-cow-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
-jobs:
-  graphical-installer-lab:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install disposable QEMU, OVMF, GRUB and screenshot tools
-        run: |
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 qemu-utils grub-common grub-efi-amd64-bin mtools dosfstools gdisk acl
-          python -m pip install vncdotool Pillow 'cryptography>=46,<51' \
-            'jsonschema>=4,<5' 'pytest>=9,<10' 'ruff>=0.8,<1'
-          if [[ -c /dev/kvm ]]; then
-            sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
-          fi
-          if [[ -w /dev/kvm ]]; then
-            echo "KVM available to this disposable hosted job"
-          else
-            echo "KVM unavailable; QEMU will use software TCG"
-          fi
-      - name: Compile, Ruff and refuse unsafe native Calamares preview
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          bash -n auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
-          python -m compileall -q \
-            auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
-            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
-            auto_tests/tests/test_q4os_native_cow_view_lab.py \
-name: Q4OS signed native Calamares disposable COW preview (NO INSTALL)
-
-on:
-  push:
-    branches:
-      - feature/q4os-calamares-native-owned-cow-view
-    paths:
-      - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
-      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tests/test_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
-      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
-      - 'auto_tests/tests/test_q4os_evidence_manifest.py'
-  pull_request:
-    paths:
-      - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
-      - 'auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
-      - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
-      - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
-      - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
-      - 'auto_tests/tests/test_q4os_evidence_manifest.py'
-  workflow_dispatch:
-
-concurrency:
-  group: q4os-native-cow-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
-jobs:
-  graphical-installer-lab:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install disposable QEMU, OVMF, GRUB and screenshot tools
-        run: |
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 qemu-utils grub-common grub-efi-amd64-bin mtools dosfstools gdisk acl
-          python -m pip install vncdotool Pillow 'cryptography>=46,<51' \
-            'jsonschema>=4,<5' 'pytest>=9,<10' 'ruff>=0.8,<1'
-          if [[ -c /dev/kvm ]]; then
-            sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
-          fi
-          if [[ -w /dev/kvm ]]; then
-            echo "KVM available to this disposable hosted job"
-          else
-            echo "KVM unavailable; QEMU will use software TCG"
-          fi
-      - name: Compile, Ruff and refuse unsafe native Calamares preview
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          bash -n auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
-          python -m compileall -q \
-            auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
-            auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
-            auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
             auto_tests/tools/gaslux_q4os_evidence_manifest.py \
-            auto_tests/tests/test_q4os_evidence_manifest.py
-            auto_tests/tools/gaslux_q4os_evidence_manifest.py \
+            auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
             auto_tests/tests/test_q4os_evidence_manifest.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
+            auto_tests/tests/test_q4os_evidence_manifest.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
             auto_tests/tests/test_q4os_calamares_gui_lab.py \
-            auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_evidence_manifest.py
           python -m pytest -q \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
@@ -343,7 +132,6 @@ jobs:
             --require qemu.rc \
             --require vnc-users-page.png \
             --require gpt-audit.txt
-
       - name: Preserve exact first-run screenshot transition, kernel logs and SHA evidence
         if: always()
         uses: actions/upload-artifact@v4
