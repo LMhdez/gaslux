@@ -1,5 +1,12 @@
 # Gaslux integration board — 2026-11-18
 
+## Fechos documentados — 2026-11-19 (segundo lote Windows)
+
+- [#97](https://github.com/LMhdez/gaslux/pull/97): **closed sem merge**, reprodução de logs COM1 históricos falhados [Actions #44060165860](https://github.com/LMhdez/gaslux/actions/runs/44060165860), [decisão](https://github.com/LMhdez/gaslux/pull/97#issuecomment-7011927629). Não usar artefactos temporários como release gate; código único conscientemente arquivado, não incorporado em #217.
+- [#64](https://github.com/LMhdez/gaslux/pull/64): **closed sem merge**, laboratório VGA/HMP inicial arquivado, [decisão](https://github.com/LMhdez/gaslux/pull/64#issuecomment-7011938014). As #216/#217 e #213/#231 não são declaradas equivalentes; código específico conscientemente rejeitado para integração.
+- Reconsulta: **62 PRs abertas**, **2 issues abertas** (#3/#71). `main` permanece `3eb74c6e`; sem builds ou novas execuções Actions nesta ronda.
+- **Limite:** os dois fechos são limpeza de experiências, não prova de dual boot, recuperação nem estabilidade.
+
 ## Fechos documentados — 2026-11-19 (lote Windows UEFI)
 
 - PR [#106](https://github.com/LMhdez/gaslux/pull/106): encerrada sem merge; prova GRUB EFI FAT32 [Actions #44077563316](https://github.com/LMhdez/gaslux/actions/runs/44077563316), [motivo detalhado](https://github.com/LMhdez/gaslux/pull/106#issuecomment-7011879585). O harness específico foi conscientemente arquivado, **não incorporado** na #158.
