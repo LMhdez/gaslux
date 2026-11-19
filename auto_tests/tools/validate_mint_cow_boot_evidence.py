@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Independently validate bounded evidence for the Mint direct-kernel COW boot.
+"""Independently validate bounded evidence for the copied Mint live-SquashFS direct-kernel COW boot.
 
-This proves only that the copied Mint SquashFS root reached a serial login and
-shut down from the fifth partition of the disposable Windows COW. It does not
-prove a native GRUB/ESP dual-boot installation, updates, or rollback.
+This proves only that the copied Mint live-SquashFS root reached a serial login
+from the fifth partition of the disposable Windows COW. It does not prove an
+installed Mint system, native GRUB/ESP dual-boot installation, updates, or rollback.
 """
 from __future__ import annotations
 
@@ -134,7 +134,7 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
     require(command_line.search(serial_bytes) is not None,
             "Mint serial evidence does not show the authenticated root UUID")
     require(b"GASLUXMINT login:" in serial_bytes,
-            "Mint did not reach the installed-root serial login prompt")
+            "Mint live-SquashFS root did not reach the serial login prompt")
     require(b"systemd-shutdown" in serial_bytes or b"Powering off" in serial_bytes,
             "Mint guest has no orderly shutdown witness")
 
