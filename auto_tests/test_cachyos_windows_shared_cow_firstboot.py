@@ -32,6 +32,7 @@ def witness(uuid=ROOT_UUID):
         "GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:" + uuid + "\n"
         "[    0.699368] virt/tdx: TDX not supported by the host platform\n"
         "\x1b]3008;user=root;pid=1;comm=systemd;type=boot\x1b\\\n"
+        "[ OK ] Reached target Switch Root.\n"
         "Welcome to \x1b[0m\x1b[38;2;23;147;209mCachyOS\x1b[0m!\n"
         "[ OK ] Reached target System Power Off.\n"
         "[   45.058170] reboot: Power down\n"
@@ -67,6 +68,7 @@ class InstalledReadOnlyFirstbootContracts(unittest.TestCase):
             witness().replace(b"comm=systemd;type=boot",
                               b"comm=not-systemd;type=boot"),
             witness().replace(b"CachyOS", b"foreign-os"),
+            witness().replace(b"Switch Root", b"Initrd Only"),
             witness().replace(b"System Power Off", b"Shutdown incomplete"),
             witness().replace(b"reboot: Power down", b"Guest restarted"),
             witness().replace(b"GASLUX_VM_INSTALLED_ROOT_UUID_SELECTED:",
