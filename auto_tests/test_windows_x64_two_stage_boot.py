@@ -39,6 +39,75 @@ def synthetic_args(tmp):
 
 class WindowsTwoStageSafetyTests(unittest.TestCase):
 
+
+    def test_pop_pair_guest_scripts_are_phase_specific(self):
+        first = VM.witness_powershell("win10_22h2_en_us_x64", "19045")
+        armed = VM.witness_pop_pair_powershell(
+            "win10_22h2_en_us_x64", "19045", arm=True,
+        )
+        post = VM.witness_pop_pair_powershell(
+            "win10_22h2_en_us_x64", "19045", post=True,
+        )
+        self.assertNotIn("schtasks.exe", first)
+        self.assertIn("schtasks.exe /Create", armed)
+        self.assertIn("GASLUX_WINDOWS_X64_GPT_ESP_COUNT=1", armed)
+        self.assertIn("schtasks.exe /Delete", post)
+        self.assertIn("GASLUX_WINDOWS_X64_GPT_ESP_COUNT=2", post)
+        self.assertIn("PartitionNumber -eq 5", post)
+        self.assertIn("PartitionNumber -eq 6", post)
+        self.assertIn(VM.POP_PAIR_MARKER, post)
+        with self.assertRaises(VM.LabError):
+            VM.witness_pop_pair_powershell(
+                "win10_22h2_en_us_x64", "19045", arm=True, post=True,
+            )
+        with self.assertRaises(VM.LabError):
+            VM.witness_pop_pair_powershell("win11_26h2_en_us_x64", "26300",
+                                            post=True)
+
+    def test_pop_pair_third_guest_binds_child_qcow2_and_no_media(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = pathlib.Path(temp) / "gaslux-win-x64-synthetic"
+            base.mkdir()
+            post = base / "post-pop-pair"
+            post.mkdir()
+            original = base / "only-disposable-windows-target.qcow2"
+            overlay = base / "gaslux-pop-stage.qcow2"
+            original_vars = base / "ovmf-variables.fd"
+            trial_vars = post / "ovmf-variables.fd"
+            for target in (original, overlay, original_vars, trial_vars):
+                target.write_bytes(b"synthetic-only")
+            serial = post / "serial.log"
+            args = synthetic_args(str(base))
+            args[args.index("if=none,id=only_windows,format=qcow2,file=/tmp/mock.qcow2")] = (
+                "if=none,id=only_windows,format=qcow2,file=" + str(original)
+            )
+            args.extend(["-drive", "if=pflash,format=raw,file=" + str(original_vars),
+                         "-net", "none"])
+            third = VM.build_pop_pair_third_guest_args(
+                args, original, overlay, trial_vars, serial,
+            )
+            self.assertIn("if=none,id=only_windows,format=qcow2,file="
+                          + str(overlay), third)
+            self.assertIn("if=pflash,format=raw,file=" + str(trial_vars), third)
+            self.assertEqual(third[third.index("-boot")+1], "order=c")
+            self.assertFalse(any("verified_iso" in s or "if=floppy" in s
+                                 for s in third))
+            for bad_overlay, bad_vars in (
+                (original, trial_vars), (overlay, original_vars),
+            ):
+                with self.assertRaises(VM.LabError):
+                    VM.build_pop_pair_third_guest_args(
+                        args, original, bad_overlay, bad_vars, serial,
+                    )
+            with self.assertRaises(VM.LabError):
+                VM.boot_vm([], serial, 1, "win10_22h2_en_us_x64",
+                           required_marker=VM.POP_PAIR_MARKER,
+                           expected_esp_count=1)
+            with self.assertRaises(VM.LabError):
+                VM.boot_vm([], serial, 1, "win11_26h2_en_us_x64",
+                           required_marker=VM.POP_PAIR_MARKER,
+                           expected_esp_count=2)
+
     def test_incremental_dvd_scan_preserves_old_boot_when_log_exceeds_400k(self):
         with tempfile.TemporaryDirectory() as d:
             serial = pathlib.Path(d) / "vm-serial.log"
