@@ -305,7 +305,10 @@ def test_partitions_next_is_pixel_gated_and_never_installs():
     assert "GASLUX_Q4OS_CALAMARES_PARTITIONS_NEXT_CLICKED=PASS" in source
     assert "GASLUX_Q4OS_CALAMARES_USERS_VIEW_CAPTURED=PASS" in source
     assert "vnc-users-view-unverified.png" in source
-    assert "NOT PERFORMED: user creation, password entry, Summary, Install or any exec job." in source
+    assert (
+        "NOT PERFORMED: user creation, password entry, "
+        "Summary, Install or any exec job."
+    ) in source
     assert "GASLUX_Q4OS_CALAMARES_INSTALL_CLICKED=NO" in source
     assert "calamares -d" not in source
     assert "mkfs.ext4" not in source
