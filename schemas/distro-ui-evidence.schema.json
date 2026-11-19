@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/dev/schemas/distro-ui-evidence.schema.json",
+  "title": "Gaslux Q4OS independent screenshot evidence manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "distribution",
+    "iso",
+    "labSourceCommit",
+    "workflow",
+    "status",
+    "runs",
+    "stateCountVerifiedInTwoGuests",
+    "transitionCountVerifiedInTwoGuests",
+    "blockedAt",
+    "limitations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "distribution": {
+      "const": "q4os"
+    },
+    "iso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "officialUrl",
+        "sha256",
+        "sizeBytes",
+        "upstreamGpgSignatureVerified"
+      ],
+      "properties": {
+        "version": {
+          "const": "6.10 r2"
+        },
+        "officialUrl": {
+          "type": "string",
+          "pattern": "^https://downloads[.]sourceforge[.]net/project/q4os/"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sizeBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "upstreamGpgSignatureVerified": {
+          "const": false
+        }
+      }
+    },
+    "labSourceCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "workflow": {
+      "const": ".github/workflows/q4os-ui-repro-2vm.yml"
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "partial",
+        "two-vm-verified",
+        "blocked"
+      ]
+    },
+    "runs": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "replica",
+          "runId",
+          "attempt",
+          "result",
+          "artifactId",
+          "artifactUrl",
+          "isoHashVerified",
+          "calamaresPolicyAudited",
+          "screenshots",
+          "transitions"
+        ],
+        "properties": {
+          "replica": {
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "runId": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "result": {
+            "enum": [
+              "pending",
+              "success",
+              "failure",
+              "cancelled"
+            ]
+          },
+          "artifactId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "artifactUrl": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "pattern": "^https://github[.]com/LMhdez/gaslux/actions/runs/[0-9]+/artifacts/[0-9]+$"
+              }
+            ]
+          },
+          "isoHashVerified": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "calamaresPolicyAudited": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "screenshots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "state",
+                "path",
+                "sha256",
+                "visualGatePassed"
+              ],
+              "properties": {
+                "state": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "visualGatePassed": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "from",
+                "to",
+                "centralRegionChanged"
+              ],
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "centralRegionChanged": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stateCountVerifiedInTwoGuests": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9
+    },
+    "transitionCountVerifiedInTwoGuests": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8
+    },
+    "blockedAt": {
+      "type": "string",
+      "minLength": 5
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 5
+      }
+    }
+  }
+}
