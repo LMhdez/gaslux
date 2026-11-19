@@ -5,12 +5,12 @@ from the four divergent follow-up commits in PR #214.
 
 ## Exact historical origins
 
-- PR #214, HEAD \`a601557a415bbd1f597df48ce00ab52513712138\`:
-  \`auto_tests/bazzite_legacy_readonly_storage_gate.py\` (blob
-  \`d7d0c09281e94d794f293f5e2e397437c6a56caf\`) and its original
-  \`auto_tests/tests/test_bazzite_legacy_readonly_storage_gate.py\` (blob
-  \`5d7272f11367ff7346f90719c5e077696c46ba2f\`).
-- PR #222, starting HEAD \`006b37298d940aa56162ef13d510bf95913ef4ef\`:
+- PR #214, HEAD `a601557a415bbd1f597df48ce00ab52513712138`:
+  `auto_tests/bazzite_legacy_readonly_storage_gate.py` (blob
+  `d7d0c09281e94d794f293f5e2e397437c6a56caf`) and its original
+  `auto_tests/tests/test_bazzite_legacy_readonly_storage_gate.py` (blob
+  `5d7272f11367ff7346f90719c5e077696c46ba2f`).
+- PR #222, starting HEAD `006b37298d940aa56162ef13d510bf95913ef4ef`:
   more restrictive GPT-context OCR navigator and a distinct disposable COW
   laboratory workflow.
 - This integration adds only the historical **observer** and unit tests, plus
