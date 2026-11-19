@@ -13,6 +13,8 @@ on:
       - .github/workflows/cachyos-windows10-shared-root-pacstrap.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap.py
+      - auto_tests/tools/cachyos_configure_installed.py
+      - auto_tests/test_cachyos_configure_installed.py
       - auto_tests/tools/cachyos_windows_shared_cow_grant.py
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
       - auto_tests/tools/cachyos_windows_shared_cow_firstboot.py
@@ -42,6 +44,8 @@ on:
       - .github/workflows/cachyos-windows10-shared-root-pacstrap.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap.py
+      - auto_tests/tools/cachyos_configure_installed.py
+      - auto_tests/test_cachyos_configure_installed.py
       - auto_tests/tools/cachyos_windows_shared_cow_grant.py
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
       - auto_tests/tools/cachyos_windows_shared_cow_firstboot.py
@@ -89,6 +93,8 @@ jobs:
           python3 -m py_compile \
             auto_tests/tools/windows_x64_tcg_firstboot.py \
             auto_tests/tools/cachyos_windows_shared_root_pacstrap.py \
+            auto_tests/tools/cachyos_configure_installed.py \
+            auto_tests/test_cachyos_configure_installed.py \
             auto_tests/tools/cachyos_windows_shared_cow_grant.py \
             auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py \
             auto_tests/tools/cachyos_windows_shared_cow_firstboot.py \
@@ -114,6 +120,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_root_pacstrap.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_cachyos_configure_installed.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_grant.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_shared_root_pacstrap_host_contract.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_firstboot.py' -v
