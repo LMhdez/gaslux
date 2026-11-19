@@ -39,3 +39,9 @@ A configuração do workflow foi revertida para **auditoria exclusivamente de le
 - [Quarto lote de arquivo — Actions #44599793061](https://github.com/LMhdez/gaslux/actions/runs/44599793061): `SUCCESS`, 25 branches adicionais arquivadas (dois pais, mesma árvore) e 25 referências eliminadas com SHA lease, zero recusas. Inventário confirmado: 91; total acumulado neste arquivo: 80.
 - [Tentativa seguinte — Actions #44600351938](https://github.com/LMhdez/gaslux/actions/runs/44600351938): recusou qualquer operação por verificação antiga `len(refs) < 100`; **nenhuma branch eliminada** nesta execução. Corrigida por comparação integral nome+SHA entre `git fetch` e a API paginada de branches.
 - [Auditoria e seis testes após correção — Actions #44601401759](https://github.com/LMhdez/gaslux/actions/runs/44601401759): `SUCCESS`, inventário abaixo de 100 validado por igualdade exata das duas fontes, sem mutações.
+
+- [Quinto lote de arquivo — Actions #44601637500](https://github.com/LMhdez/gaslux/actions/runs/44601637500): `SUCCESS`, 21 fontes finais preservadas com segundo pai Git e eliminadas só após verificação remota de ancestralidade. **Total desta consolidação: 101 referências eliminadas e o histórico integral preservado num único arquivo.** De 170 branches iniciais para 70 finais, incluindo uma nova branch de arquivo (redução líquida de 100).
+ 
+## Verificação final e bloqueios
+ 
+O workflow foi revertido para `permissions: contents: read`, `persist-credentials: false`, sem token de autorização de archive/prune. A auditoria final de leitura verifica os 101 commits de dois pais, o SHA do segundo pai, a primeira cadeia de pais, a inexistência das referências originais e a identidade exata da árvore de trabalho do arquivo. Nenhum backend foi promovido ao produto estável; mantém-se a revisão humana e os ensaios de dual boot/rollback exigidos pela issue #3 e pela documentação técnica.
