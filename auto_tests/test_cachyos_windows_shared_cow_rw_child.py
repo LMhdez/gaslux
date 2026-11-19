@@ -61,6 +61,8 @@ class WritableChildContracts(unittest.TestCase):
             b"systemd.unit=multi-user.target",
             b"cat /etc/hostname",
             b"LANG=en_US.UTF-8",
+            b"locale -a",
+            b"substr($2,1,3) == \"$6$\"",
             b"KEYMAP=us",
             b"gaslux-lab",
             b"plasma-desktop",
