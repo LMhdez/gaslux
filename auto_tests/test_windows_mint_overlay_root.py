@@ -191,8 +191,12 @@ class MintOverlayContracts(unittest.TestCase):
                 mint.configure_ephemeral_shutdown_service(target)
             unit = system / "gaslux-ci-shutdown.service"
             link = system / "multi-user.target.wants/gaslux-ci-shutdown.service"
-            self.assertIn("ExecStartPre=/bin/sleep 15", unit.read_text())
-            self.assertIn("ExecStart=/bin/systemctl poweroff", unit.read_text())
+            contents = unit.read_text()
+            self.assertIn("ExecStartPre=/bin/sleep 15", contents)
+            self.assertIn("ExecStart=/bin/systemctl poweroff", contents)
+            self.assertIn("After=serial-getty@ttyS0.service", contents)
+            self.assertNotIn("After=multi-user.target", contents)
+            self.assertTrue(contents.endswith("\\n"))
             self.assertEqual(link.readlink(), Path("../gaslux-ci-shutdown.service"))
 
     def test_ephemeral_shutdown_service_refuses_existing_unit_or_symlink(self):
