@@ -54,3 +54,7 @@ O workflow foi revertido para `permissions: contents: read`, `persist-credential
 ## Estado permanente seguro
 
 O workflow de manutenção regressa definitivamente ao modo de **auditoria apenas de leitura**, sem credenciais Git persistentes nem permissão de escrita: não elimina branches em futuras atualizações. A branch `archive/gaslux-experiments-preserved-20261119` serve apenas de cofre de histórico, com proveniência `Source-ref` e `Source-sha` por commit; nenhum código experimental é fundido no instalador. A promoção de funcionalidades exige CI, instalação nativa, dual boot e recuperação comprovados e revisão humana.
+
+## Reauditoria de 20:25 UTC
+
+Pedido: reduzir branches Git, não encerrar PRs. Inventário REST inicial reconfirmado: 69 branches, 22 PRs abertas e três issues. A verificação CI permaneceu em modo de leitura. A auditoria reavalia candidatas conforme estado atual antes de qualquer eliminação. A preservação da árvore experimental e as proteções das PRs continuam obrigatórias.
