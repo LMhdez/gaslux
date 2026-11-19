@@ -21,9 +21,21 @@ IMAGE_NAME = "windows-layout-no-os.raw"
 OVERLAY_NAME = "gpt-layout-scratch.qcow2"
 SIZE_GIB = 70
 PARTITIONS = (
-    (1, "EF00", "GLX-ESP-NO-FILESYSTEM"),
-    (2, "0C01", "GLX-MSR-NO-OS"),
-    (3, "0700", "GLX-WINDOWS-NO-OS"),
+    (
+        1,
+        "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
+        "GLX-ESP-NO-FILESYSTEM",
+    ),
+    (
+        2,
+        "E3C9E316-0B5C-4DB8-817D-F92DF00215AE",
+        "GLX-MSR-NO-OS",
+    ),
+    (
+        3,
+        "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7",
+        "GLX-WINDOWS-NO-OS",
+    ),
 )
 
 
@@ -116,10 +128,10 @@ def _inspect(root: Path, manifest: dict) -> None:
     if _hash_sparse(image) != manifest["baseSparseIdentitySha256"]:
         raise Refusal("GPT base hash changed")
     _run("sgdisk", "--verify", str(image))
-    for number, code, label in PARTITIONS:
+    for number, type_guid, label in PARTITIONS:
         details = _run("sgdisk", f"--info={number}", str(image))
         normalized = details.upper()
-        if code.upper() not in normalized or label.upper() not in normalized:
+        if type_guid not in normalized or label.upper() not in normalized:
             raise Refusal(
                 f"GPT partition {number} identity mismatch: {details!r}"
             )
@@ -180,8 +192,8 @@ def prepare(root: Path, runner_temp: Path) -> dict:
         "overlayIdentity": [overlay_info.st_dev, overlay_info.st_ino],
         "root": str(root),
         "partitions": [
-            {"number": n, "typeCode": code, "name": name}
-            for n, code, name in PARTITIONS
+            {"number": n, "typeGuid": type_guid, "name": name}
+            for n, type_guid, name in PARTITIONS
         ],
     }
     _inspect(root, manifest)
