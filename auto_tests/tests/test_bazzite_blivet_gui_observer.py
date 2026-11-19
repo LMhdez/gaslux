@@ -8,7 +8,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests"))
-from bazzite_blivet_gui_observer import (  # noqa: E402
+from bazzite_blivet_gui_observer import (  # noqa: E402, I001
     BlivetObserverRefusal,
     locate_launch_control,
     verify_editor,
