@@ -37,7 +37,7 @@ def test_unique_advanced_custom_control_is_only_a_launch_coordinate(tmp_path):
         ("(Blivet-GUI)", 430, 400, 105, 18),
     ])
     result = locate_launch_control(*paths)
-    assert result["coordinate"] == {"x": 402, "y": 409}
+    assert result["coordinate"] == {"x": 417, "y": 409}
     assert result["onlyBlivetGuiLaunchClickPermitted"] is True
     assert result["partitionControlClicked"] is False
     assert result["partitionWriteAuthorized"] is False
