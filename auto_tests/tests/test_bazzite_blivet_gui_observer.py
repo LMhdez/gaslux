@@ -150,6 +150,7 @@ def test_mismatched_tsv_sidecar_refused(tmp_path, monkeypatch):
         ("Blivet-GUI", 20, 20, 90, 15),
     ])
     original = observer.subprocess.run
+
     def divergent(command, **kwargs):
         result = original(command, **kwargs)
         if len(command) == 4:
