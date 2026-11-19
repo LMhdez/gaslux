@@ -73,7 +73,7 @@ def test_clicks_follow_ocr_checks_not_hardcoded_targets():
     assert content.count('move "$cx" "$cy" click 1') == 1
     assert content.count('move "$dx" "$dy" click 1') == 1
     assert "gh run download 44378715492" in content
-    assert ".head_sha == \"5ebe64d41beeeeec82fc74bfb9e30bcfa934adfa\"" in content
+    assert '.head_sha == "5ebe64d41beeeeec82fc74bfb9e30bcfa934adfa"' in content
     assert content.index("capture after-continue") < content.index(
         "--png bazzite-legacy-stage2-evidence/after-continue.png"
     )

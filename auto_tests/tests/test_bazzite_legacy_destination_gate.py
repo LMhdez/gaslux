@@ -20,10 +20,7 @@ OCR = (
     "Begin Installation\n"
 )
 HEADER = "level\tconf\tleft\ttop\twidth\theight\ttext\n"
-TILE = (
-    "5\t96\t674\t322\t81\t12\tInstallation\n"
-    "5\t92\t759\t322\t83\t12\tDestination\n"
-)
+TILE = "5\t96\t674\t322\t81\t12\tInstallation\n5\t92\t759\t322\t83\t12\tDestination\n"
 
 
 def probe(ocr=OCR, tsv=HEADER + TILE, width=1280, height=800):
