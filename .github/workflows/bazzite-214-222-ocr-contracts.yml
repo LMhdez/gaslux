@@ -1,0 +1,53 @@
+name: Bazzite historical and GPT OCR fail-closed contracts (no disk)
+
+on:
+  push:
+    branches:
+      - integration/bazzite-214-readonly-gate-into-222-20261119
+    paths:
+      - '.github/workflows/bazzite-214-222-ocr-contracts.yml'
+      - 'auto_tests/bazzite_legacy_readonly_storage_gate.py'
+      - 'auto_tests/tests/test_bazzite_legacy_readonly_storage_gate.py'
+      - 'auto_tests/tests/test_bazzite_legacy_gate_compat.py'
+  pull_request:
+    branches:
+      - feature/bazzite-legacy-readonly-gpt-20261119
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inert-ocr-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify syntax, negative tests and Ruff without QEMU or media
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff PyYAML Pillow
+          python -m py_compile \
+            auto_tests/bazzite_legacy_readonly_storage_gate.py \
+            auto_tests/bazzite_legacy_gpt_storage_navigation.py \
+            auto_tests/tests/test_bazzite_legacy_readonly_storage_gate.py \
+            auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py \
+            auto_tests/tests/test_bazzite_legacy_gate_compat.py
+          python -m pytest -q \
+            auto_tests/tests/test_bazzite_legacy_readonly_storage_gate.py \
+            auto_tests/tests/test_bazzite_legacy_gpt_storage_navigation.py \
+            auto_tests/tests/test_bazzite_legacy_gate_compat.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_readonly_storage_gate.py \
+            auto_tests/tests/test_bazzite_legacy_readonly_storage_gate.py \
+            auto_tests/tests/test_bazzite_legacy_gate_compat.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_legacy_readonly_storage_gate.py \
+            auto_tests/tests/test_bazzite_legacy_readonly_storage_gate.py \
+            auto_tests/tests/test_bazzite_legacy_gate_compat.py
