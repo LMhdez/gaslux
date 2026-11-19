@@ -12,6 +12,7 @@ on:
       - auto_tests/tools/windows10_popos_genuine_live_guest_probe.py
       - auto_tests/tools/windows10_popos_live_readonly_gpt_probe.py
       - auto_tests/test_windows10_popos_real_live_contract.py
+      - auto_tests/test_windows10_popos_genuine_live_console.py
       - auto_tests/tools/windows_x64_tcg_firstboot.py
       - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
       - auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
@@ -72,6 +73,7 @@ jobs:
               test_windows10_popos_native_readonly_handoff_candidate.py \
               test_windows10_popos_live_readonly_gpt_probe.py \
               test_windows10_popos_real_live_contract.py \
+              test_windows10_popos_genuine_live_console.py \
               test_windows_x64_noprompt_one_shot.py \
               test_windows_x64_derived_noprompt.py \
               test_windows_x64_kvm_opt_in.py \
