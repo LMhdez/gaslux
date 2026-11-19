@@ -96,7 +96,7 @@ jobs:
           sudo mount -o loop,ro,nosuid,nodev,noexec "$GASLUX_Q4OS_ISO" "$RUNNER_TEMP/q4os-native-target/iso-ro"
           sq="$RUNNER_TEMP/q4os-native-target/iso-ro/live/filesystem.squashfs"
           test -f "$sq"
-          unsquashfs -cat "$sq" var/lib/dpkg/status | awk '/^Package: calamares$/{p=1} p && /^(Package|Version|Status):/ {print} p && /^$/{exit}' > "$RUNNER_TEMP/q4os-native-target/calamares-inspect/calamares-package-version.txt"
+          unsquashfs -cat "$sq" var/lib/dpkg/status > "$RUNNER_TEMP/q4os-native-target/full-dpkg-status.txt"\n          awk '/^Package: calamares$/{p=1} p && /^(Package|Version|Status):/ {print} p && /^$/{exit}' "$RUNNER_TEMP/q4os-native-target/full-dpkg-status.txt" > "$RUNNER_TEMP/q4os-native-target/calamares-inspect/calamares-package-version.txt"\n          rm -f "$RUNNER_TEMP/q4os-native-target/full-dpkg-status.txt"
           cat "$RUNNER_TEMP/q4os-native-target/calamares-inspect/calamares-package-version.txt"
           sudo umount "$RUNNER_TEMP/q4os-native-target/iso-ro"
       - name: Two separate disposable OVMF guests; reach Calamares Users without entering data or invoking Install
