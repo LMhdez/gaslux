@@ -84,8 +84,15 @@ jobs:
             aria2 squashfs-tools gdisk dosfstools e2fsprogs util-linux \
             python3-guestfs libguestfs-tools qemu-system-x86 \
             qemu-utils linux-image-virtual
+          # Only in the private GitHub-hosted runner: grant this job's
+          # group /dev/kvm access. Otherwise guestfs silently uses TCG,
+          # taking >10 minutes for the real multi-GiB tar import.
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
           source auto_tests/tools/windows_x64_libguestfs_kernel.sh
-          python3 -c 'import guestfs; print("PASS: real guestfs is available")'
+          python3 -c 'import guestfs; print("PASS: real guestfs + KVM available")'
       - name: Obtain real Zorin ISO and independently verify every source byte
         shell: bash
         run: |
