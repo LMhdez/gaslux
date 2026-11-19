@@ -47,6 +47,15 @@ advance_software="${GASLUX_Q4OS_ADVANCE_SOFTWARE:-no}"
 if [[ "$advance_software" == yes && "$select_software" != yes ]]; then
   die 'Software Next requires SHA-verified Q4OS Desktop selection'
 fi
+advance_partitions="${GASLUX_Q4OS_ADVANCE_PARTITIONS:-no}"
+[[ "$advance_partitions" == yes || "$advance_partitions" == no ]] ||
+  die 'Unrecognized Q4OS Partitions Next laboratory mode'
+if [[ "$advance_partitions" == yes && "$native_cow_view" != yes ]]; then
+  die 'Partitions Next requires the signed disposable COW view'
+fi
+if [[ "$advance_partitions" == yes && "$advance_software" != yes ]]; then
+  die 'Partitions Next requires SHA-verified Software and synthetic COW selection'
+fi
 native_cow_view="${GASLUX_Q4OS_NATIVE_COW_VIEW_ONLY:-no}"
 [[ "$native_cow_view" == yes || "$native_cow_view" == no ]] ||
   die 'Unrecognized Q4OS native COW view mode'
@@ -54,7 +63,8 @@ if [[ "$native_cow_view" == yes ]]; then
   [[ "${GITHUB_ACTIONS:-}" == true &&
      "$launch_installer" == yes && "$advance_welcome" == yes &&
      "$advance_location" == yes && "$advance_keyboard" == yes &&
-     "$select_software" == yes && "$advance_software" == yes ]] ||
+     "$select_software" == yes && "$advance_software" == yes &&
+     "$advance_partitions" == yes ]] ||
     die 'Native COW selection requires complete pinned read-only GUI path'
   [[ -n "${GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR:-}" &&
      -n "${RUNNER_TEMP:-}" ]] ||
@@ -275,12 +285,17 @@ guest_verified=0
 frame_count=0
 max_ticks=90
 capture_every=18
+if [[ "$advance_partitions" == yes ]]; then max_ticks=126; fi
 # KVM guests boot faster than TCG; collect comparable GUI evidence sooner.
 if [[ "$qemu_accel" == kvm ]]; then
   max_ticks=42
   capture_every=7
   # The Desktop profile is selected near the end of the previous budget; retain a full post-Next observation window so the real Partitions page can render.
-  if [[ "$launch_installer" == yes ]]; then max_ticks=84; fi
+  if [[ "$advance_partitions" == yes ]]; then
+    max_ticks=126
+  elif [[ "$launch_installer" == yes ]]; then
+    max_ticks=84
+  fi
 fi
 # Reproduce the *exact* native Q4OS first-run language prompt captured in
 # QEMU Actions #43964633501, artifact #14275594316. The six captures had
@@ -309,6 +324,8 @@ q4os_desktop_selected_frame=0
 q4os_desktop_next_clicked=0
 calamares_partitions_frame=0
 calamares_cow_radio_clicked=0
+calamares_partitions_next_clicked=0
+calamares_users_view_captured=0
 
 for tick in $(seq 1 "$max_ticks"); do
   sleep 5
@@ -436,7 +453,28 @@ for tick in $(seq 1 "$max_ticks"); do
               calamares_cow_radio_clicked=1
               echo 'GASLUX_Q4OS_CALAMARES_SYNTHETIC_RADIO_SELECTED=PASS'
               echo 'GASLUX_Q4OS_CALAMARES_INSTALL_CLICKED=NO'
+              if [[ "$advance_partitions" == yes ]]; then
+                python3 "$visual_gate" calamares-synthetic-cow-partitions-selected \
+                  "$work/vnc-partitions-radio-selected.png" ||
+                  die 'Unrecognized selected synthetic Partitions screen; Next refused'
+                # Exactly one Next opens Users. No credentials, Summary, Install
+                # confirmation, Calamares exec job or partition write is allowed.
+                timeout 20s vncdo -s 127.0.0.1:1 move 1002 644 click 1 ||
+                  die 'Synthetic-only Partitions to Users navigation failed'
+                calamares_partitions_next_clicked=1
+                echo 'GASLUX_Q4OS_CALAMARES_PARTITIONS_NEXT_CLICKED=PASS'
+              fi
             fi
+          elif [[ "$advance_partitions" == yes &&
+                  "$calamares_partitions_next_clicked" -eq 1 &&
+                  "$calamares_users_view_captured" -eq 0 ]] &&
+               python3 "$visual_gate" changed-centre \
+                 "$work/vnc-partitions-radio-selected.png" "$work/vnc-$tick.png"; then
+            cp "$work/vnc-$tick.png" "$work/vnc-users-view-unverified.png"
+            calamares_users_view_captured=1
+            echo 'GASLUX_Q4OS_CALAMARES_USERS_VIEW_CAPTURED=PASS'
+            echo 'NOT PROVEN: exact Users page identity pending independent screenshot inspection.'
+            echo 'NOT PERFORMED: user creation, password entry, Summary, Install or any exec job.'
           fi
         fi
       fi
@@ -463,7 +501,10 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
    { [[ "$select_software" == no ]] ||
      [[ "$q4os_desktop_profile_clicked" -eq 1 && "$q4os_desktop_selected_frame" -eq 1 ]]; } &&
    { [[ "$advance_software" == no ]] ||
-     [[ "$q4os_desktop_next_clicked" -eq 1 && "$calamares_partitions_frame" -eq 1 ]]; }; then
+     [[ "$q4os_desktop_next_clicked" -eq 1 && "$calamares_partitions_frame" -eq 1 ]]; } &&
+   { [[ "$advance_partitions" == no ]] ||
+     [[ "$calamares_partitions_next_clicked" -eq 1 &&
+        "$calamares_users_view_captured" -eq 1 ]]; }; then
   if [[ "$native_cow_view" == yes ]]; then
     [[ "$calamares_cow_radio_clicked" -eq 1 ]] ||
       die 'No source-verified synthetic COW partition proposal was selected'
@@ -490,6 +531,11 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
             if [[ "$advance_software" == yes ]]; then
               echo 'PASS: SHA-gated selected Desktop Next, following view captured.'
               echo 'NOT PERFORMED: any partition selection or native Calamares job.'
+              if [[ "$advance_partitions" == yes ]]; then
+                echo 'PASS: one pixel-gated synthetic Partitions Next click; following view captured.'
+                echo 'NOT PROVEN: exact Users page identity pending independent screenshot inspection.'
+                echo 'NOT PERFORMED: user creation, password entry, Summary, Install or any exec job.'
+              fi
             fi
           fi
         fi
@@ -500,5 +546,5 @@ if [[ "$guest_verified" -eq 1 && "$frame_count" -gt 0 &&
   echo 'NOT PROVEN: native Calamares job execution, full installation, Linux/Windows dual boot or rollback.'
 else
   tail -c 5000 "$work/serial.log" >&2 || true
-  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame welcome=$calamares_welcome_next_clicked location=$calamares_location_frame keyboard=$calamares_keyboard_frame software=$calamares_software_frame selected=$q4os_desktop_selected_frame partitions=$calamares_partitions_frame)"
+  die "NO VERIFIED Q4OS GUI TRANSITION (QEMU status=$rc frames=$frame_count selected=$selected_modal dismissed=$dismissed_modal launched=$launcher_clicked after=$post_launcher_frame welcome=$calamares_welcome_next_clicked location=$calamares_location_frame keyboard=$calamares_keyboard_frame software=$calamares_software_frame selected=$q4os_desktop_selected_frame partitions=$calamares_partitions_frame partitions_next=$calamares_partitions_next_clicked users=$calamares_users_view_captured)"
 fi
