@@ -106,27 +106,34 @@ def _send_key(sock: Path, pid: int) -> None:
             )
             stream.write(b'{"execute":"qmp_capabilities","id":"gaslux-capabilities"}\r\n')
             _read_qmp_reply(stream, "gaslux-capabilities")
-            # Explicit key-down/key-up events go through QEMU's input event
-            # API, rather than HMP's legacy sendkey command. This is the
-            # firmware-level USB HID path used by the attached usb-kbd.
-            request = {
-                "execute": "input-send-event",
-                "arguments": {
-                    "events": [
-                        {
-                            "type": "key",
-                            "data": {"key": {"type": "qcode", "data": "spc"}, "down": True},
-                        },
-                        {
-                            "type": "key",
-                            "data": {"key": {"type": "qcode", "data": "spc"}, "down": False},
-                        },
-                    ]
-                },
-                "id": "gaslux-ovmf-space",
-            }
-            stream.write((json.dumps(request, separators=(",", ":")) + "\r\n").encode())
-            _read_qmp_reply(stream, "gaslux-ovmf-space")
+            # QMP input events are queued. Sending key-down and key-up in
+            # the same event batch may release Space before OVMF polls USB
+            # HID, even though QMP acknowledges the command. Require two
+            # distinct acknowledged requests and a bounded 250-ms hold.
+            # This is exclusively the already-confirmed Windows DVD prompt.
+            for down, request_id in (
+                (True, "gaslux-ovmf-space-down"),
+                (False, "gaslux-ovmf-space-up"),
+            ):
+                request = {
+                    "execute": "input-send-event",
+                    "arguments": {
+                        "events": [
+                            {
+                                "type": "key",
+                                "data": {
+                                    "key": {"type": "qcode", "data": "spc"},
+                                    "down": down,
+                                },
+                            }
+                        ]
+                    },
+                    "id": request_id,
+                }
+                stream.write((json.dumps(request, separators=(",", ":")) + "\r\n").encode())
+                _read_qmp_reply(stream, request_id)
+                if down:
+                    time.sleep(0.25)
 
 
 def _validate_lab(root: Path, serial: Path, monitor: Path, log: Path, args: list[str]) -> None:
