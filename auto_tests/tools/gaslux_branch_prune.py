@@ -57,20 +57,46 @@ def protected_refs():
                 protect.add(run["head_branch"])
     return protect, keep
 
+def inventory_matches_api(refs, branch_rows):
+    """Reject truncated fetches or stale/mismatched GitHub REST branch tips."""
+    if (not isinstance(refs, dict) or len(refs) < 20
+            or "main" not in refs or "dev" not in refs
+            or not isinstance(branch_rows, list)):
+        return False
+    expected = {}
+    for record in branch_rows:
+        if not isinstance(record, dict):
+            return False
+        name = record.get("name")
+        commit = record.get("commit")
+        sha = commit.get("sha") if isinstance(commit, dict) else None
+        if (not isinstance(name, str) or not name
+                or not isinstance(sha, str)
+                or not re.fullmatch("[0-9a-f]{40}", sha)
+                or name in expected):
+            return False
+        expected[name] = sha
+    return refs == expected
+
 def inventory():
-    git("fetch", "--prune", "--no-tags", "origin",
-        "+refs/heads/*:refs/remotes/origin/*")
-    stdout = git(
-        "for-each-ref", "--format=%(refname:strip=3) %(objectname)",
-        "refs/remotes/origin").stdout
-    refs = {}
-    for line in stdout.splitlines():
-        name, _, sha = line.partition(" ")
-        if re.fullmatch(r"[0-9a-f]{40}", sha):
-            refs[name] = sha
-    if len(refs) < 100 or "main" not in refs or "dev" not in refs:
-        raise RuntimeError("incomplete branch inventory")
-    return refs
+    # Cross-check both the complete ref names and all exact commit SHAs
+    # against a separate paginated GitHub API inventory. A hard-coded
+    # minimum of 100 was wrong after successfully pruning below 100.
+    for _attempt in range(3):
+        git("fetch", "--prune", "--no-tags", "origin",
+            "+refs/heads/*:refs/remotes/origin/*")
+        stdout = git(
+            "for-each-ref", "--format=%(refname:strip=3) %(objectname)",
+            "refs/remotes/origin").stdout
+        refs = {}
+        for line in stdout.splitlines():
+            name, _, sha = line.partition(" ")
+            if re.fullmatch(r"[0-9a-f]{40}", sha):
+                refs[name] = sha
+        if inventory_matches_api(refs, get_collection("branches")):
+            return refs
+        time.sleep(1)
+    raise RuntimeError("incomplete or conflicting Git/API branch inventories")
 
 def is_ancestor(older, newer):
     proc = git("merge-base", "--is-ancestor", older, newer, check=False)

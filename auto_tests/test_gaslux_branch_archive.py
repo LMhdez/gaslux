@@ -65,6 +65,19 @@ class ArchiveSafetyTests(TestCase):
             with self.assertRaisesRegex(RuntimeError, "authorization"):
                 mod.archive_history_and_delete({}, [], self.refs)
 
+    def test_inventory_matches_complete_api_even_below_hundred(self):
+        refs = {"main": "a" * 40, "dev": "b" * 40}
+        for index in range(20):
+            refs[f"feature/safe-{index}"] = format(index + 3, "040x")
+        rows = [{"name": name, "commit": {"sha": sha}}
+                for name, sha in refs.items()]
+        self.assertTrue(mod.inventory_matches_api(refs, rows))
+        self.assertFalse(mod.inventory_matches_api(refs, rows[:-1]))
+        rows[-1]["commit"]["sha"] = "f" * 40
+        self.assertFalse(mod.inventory_matches_api(refs, rows))
+        self.assertFalse(mod.inventory_matches_api({"main": "a" * 40,
+                                                     "dev": "b" * 40}, []))
+
     def test_main_dev_and_control_cannot_be_archive_candidates(self):
         refs = dict(self.refs)
         refs["feature/new-non-pr"] = "2" * 40
