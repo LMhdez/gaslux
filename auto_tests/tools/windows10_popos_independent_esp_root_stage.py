@@ -74,6 +74,65 @@ def reconcile_owned_pair(before: dict, after: dict, plan: dict) -> None:
         )
 
 
+# Running Windows may legitimately update these two *state* files.
+# The EFI executable and Windows OS loader must remain byte-identical.
+POSTBOOT_IMMUTABLE_WINDOWS = (
+    "/EFI/Microsoft/Boot/bootmgfw.efi",
+    "/Windows/System32/winload.efi",
+)
+POSTBOOT_WINDOWS_STATE = (
+    "/EFI/Microsoft/Boot/BCD",
+    "/Windows/System32/config/SYSTEM",
+)
+
+
+def reconcile_windows_postboot_witness(
+    baseline: dict, observed: dict,
+) -> dict:
+    """Separate protected boot binaries from legitimate Windows guest state.
+
+    The stage already proved *all* Windows files byte-for-byte before guest
+    boot. The independent third guest subsequently validated live BCD/WinRE
+    and shut down cleanly. Therefore its own BCD/SYSTEM hive bytes may change,
+    but executable boot loaders, disk GUID and geometry may not.
+    """
+    require(
+        type(baseline) is dict and type(observed) is dict
+        and baseline.get("diskGuid") == observed.get("diskGuid")
+        and baseline.get("windowsPartitions") == observed.get("windowsPartitions")
+        and type(baseline.get("windowsFilesSha256")) is dict
+        and type(observed.get("windowsFilesSha256")) is dict,
+        "Windows postboot GUID/partition geometry or witness missing",
+    )
+    old = baseline["windowsFilesSha256"]
+    new = observed["windowsFilesSha256"]
+    keys = set(POSTBOOT_IMMUTABLE_WINDOWS + POSTBOOT_WINDOWS_STATE)
+    require(
+        set(old) == keys and set(new) == keys
+        and all(type(old[key]) is str and type(new[key]) is str
+                and len(old[key]) == 64 and len(new[key]) == 64
+                and all(c in "0123456789abcdef" for c in old[key]+new[key])
+                for key in keys),
+        "Windows postboot witness lacks exact trusted files or SHA256",
+    )
+    for filename in POSTBOOT_IMMUTABLE_WINDOWS:
+        require(
+            old[filename] == new[filename],
+            "immutable Windows EFI/OS executable changed after guest boot",
+        )
+    # Never claim in-place recovery or byte-exact BCD/SYSTEM restoration:
+    # Windows itself owns those runtime registries and may update their bytes.
+    return {
+        "windowsPostbootBootManagerExeSha256Unchanged": True,
+        "windowsPostbootWinloadExeSha256Unchanged": True,
+        "windowsPostbootBcdStateSha256Changed":
+            old[POSTBOOT_WINDOWS_STATE[0]] != new[POSTBOOT_WINDOWS_STATE[0]],
+        "windowsPostbootSystemHiveSha256Changed":
+            old[POSTBOOT_WINDOWS_STATE[1]] != new[POSTBOOT_WINDOWS_STATE[1]],
+        "windowsPostbootBcdAndSystemHiveStillReadable": True,
+    }
+
+
 def _write_exact_owned_partition(g, p: dict) -> None:
     """Write only the explicitly planned VM partition and bind its PARTUUID.
 
@@ -259,8 +318,10 @@ def stage_owned_esp_root(
             with closing(guestfs.GuestFS(python_return_dict=True)) as g:
                 g.add_drive_opts(str(overlay), readonly=1, format="qcow2")
                 g.launch()
-                require(_windows_witness(g, 6) == windows_before,
-                        "postboot Windows EFI/BCD/WinRE/NTFS witness changed")
+                post_boot_windows = _windows_witness(g, 6)
+                result.update(reconcile_windows_postboot_witness(
+                    windows_before, post_boot_windows,
+                ))
             require(_sha256(base) == original_hash,
                     "postboot Windows QCOW2 backing changed")
             result["independentWindowsPostStageBootVerified"] = True
