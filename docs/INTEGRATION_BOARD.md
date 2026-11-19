@@ -1,5 +1,13 @@
 # Gaslux integration board — 2026-11-18
 
+## Fechos documentados — 2026-11-19 (quinto lote)
+
+- [#163](https://github.com/LMhdez/gaslux/pull/163): **closed sem merge**, [justificação técnica](https://github.com/LMhdez/gaslux/pull/163#issuecomment-7012711448). O patch e o blob `a453f630` de `windows_cachyos_real_windows_gpt_cow_transaction.py` são idênticos na [#192](https://github.com/LMhdez/gaslux/pull/192). [Actions #44183745518](https://github.com/LMhdez/gaslux/actions/runs/44183745518): 2/2 jobs SUCCESS; o log do Windows 10 contém adição/remoção GPT #5, recuperação de interrupted-add COW, hashes GPT/ESP/BCD/WinRE e terceiro arranque. A #192 fica OPEN/DRAFT.
+- [#53](https://github.com/LMhdez/gaslux/pull/53): **closed sem merge**, [justificação técnica](https://github.com/LMhdez/gaslux/pull/53#issuecomment-7012783965). Ensaio NAT A/B Pop!_OS sem resultado final de instalação demonstrado; sete patches de laboratório conscientemente rejeitados do percurso atual, sem alegar transporte equivalente à [#232](https://github.com/LMhdez/gaslux/pull/232), que também ainda não prova `distinst`.
+- [#159](https://github.com/LMhdez/gaslux/pull/159) **não foi encerrada**: ao comparar com a #162, estão ausentes três ficheiros próprios de auditoria/rehearsal (incluindo `windows_x64_installed_gpt_ro_audit.py`); portagem ou rejeição formal ainda necessária.
+- [#148](https://github.com/LMhdez/gaslux/pull/148) **não foi encerrada**: seis testes negativos de proteção QCOW2 não existem nas branches #159/#162/#192; são contratos de segurança, não arquivar até preservar/rejeitar conscientemente a proteção e testar.
+- Consulta após fechos: **56 PRs abertas** e **2 issues abertas**. `main` [`90b044ba`](https://github.com/LMhdez/gaslux/commit/90b044ba435b2b4b4db6c5813ca4698b37e4a555); `dev` 96 à frente/1 atrás. Sem novas execuções de CI, builds, VMs, merges ou testes em discos físicos nesta ronda. As provas de COW não constituem rollback de Windows modificado in-place nem dual boot.
+
 ## Fechos documentados — 2026-11-19 (quarto lote)
 
 - [#40](https://github.com/LMhdez/gaslux/pull/40) **encerrada sem merge**: laboratório gráfico inicial Q4OS já não selecionado; [Actions #43964633501](https://github.com/LMhdez/gaslux/actions/runs/43964633501) confirmou apenas arranque gráfico e não instalação, [comentário de fecho](https://github.com/LMhdez/gaslux/pull/40#issuecomment-7012437079). #237/#244 são percursos posteriores, não patches equivalentes.
