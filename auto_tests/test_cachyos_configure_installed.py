@@ -37,7 +37,7 @@ class CachyOSInstalledConfigurationContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             self.make_root(root)
-            with self.assertRaisesRegex(InstalledConfigurationError, "different transaction"):
+            with self.assertRaisesRegex(InstalledConfigurationError, "another transaction"):
                 validate_profile(root, "gaslux-cachyos-other-20261119")
 
     def test_non_cachyos_root_is_rejected(self) -> None:
