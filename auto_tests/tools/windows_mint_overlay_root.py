@@ -35,13 +35,13 @@ def require(condition: bool, message: str) -> None:
 
 
 def has_orderly_shutdown_witness(serial_log: bytes) -> bool:
-    """Accept systemd's shutdown unit and the Linux kernel's final poweroff line."""
-    return any(marker in serial_log for marker in (
-        b"systemd-shutdown",
-        b"systemd-poweroff.service",
-        b"Powering off",
-        b"reboot: Power down",
-    ))
+    """Require a complete, line-anchored systemd or kernel poweroff witness."""
+    witnesses = (
+        rb"^systemd-shutdown\[\d+\]: Powering off\.$",
+        rb"^\[\s*OK\s*\]\s+Finished systemd-poweroff\.service - System Power Off\.$",
+        rb"^\[\s*\d+(?:\.\d+)?\s*\]\s+reboot: Power down$",
+    )
+    return any(re.search(pattern, serial_log, re.MULTILINE) for pattern in witnesses)
 
 
 def run(args: list[str], *, timeout: int = 120, capture: bool = True):
