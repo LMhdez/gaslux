@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import pytest
 
@@ -145,3 +146,32 @@ def test_workflow_uses_only_private_monitor_and_bounded_cycles():
     assert "cycle_limit" in workflow
     assert "-no-reboot" in workflow
     assert "qemu-nbd --read-only" in workflow
+
+
+def test_qmp_keyboard_press_is_separate_acknowledged_down_and_up():
+    from auto_tests.tools.gaslux_q4os_win10_ovmf_dvd_input import _send_key_events
+
+    class FakeStream:
+        def __init__(self):
+            self.writes = []
+            self.replies = [
+                b'{"return":{},"id":"gaslux-ovmf-space-down"}\\n',
+                b'{"return":{},"id":"gaslux-ovmf-space-up"}\\n',
+            ]
+
+        def write(self, payload):
+            self.writes.append(json.loads(payload))
+            return len(payload)
+
+        def readline(self):
+            return self.replies.pop(0)
+
+    stream = FakeStream()
+    delays = []
+    _send_key_events(stream, sleep=delays.append)
+    assert [item["id"] for item in stream.writes] == [
+        "gaslux-ovmf-space-down", "gaslux-ovmf-space-up"
+    ]
+    assert stream.writes[0]["arguments"]["events"][0]["data"]["down"] is True
+    assert stream.writes[1]["arguments"]["events"][0]["data"]["down"] is False
+    assert delays == [0.25]
