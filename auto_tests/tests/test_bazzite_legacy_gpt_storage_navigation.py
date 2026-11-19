@@ -20,10 +20,10 @@ No network devices available
 BAZZITE 42 INSTALLATION
 Quit Begin Installation
 """
-HEADER = "level\\tpage_num\\tblock_num\\par_num\\line_num\\word_num\\tleft\\ttop\\twidth\\theight\\tconf\\ttext\\n"
+HEADER = "level\tpage_num\tblock_num\par_num\line_num\word_num\tleft\ttop\twidth\theight\tconf\ttext\n"
 TSV = HEADER + (
-    "5\\t1\\t11\\t1\\t1\\t1\\t674\\t322\\t81\\t12\\t96.8\\tInstallation\\n"
-    "5\\t1\\t11\\t1\\t1\\t2\\t759\\t322\\t83\\t12\\t92.8\\tDestination\\n"
+    "5\t1\t11\t1\t1\t1\t674\t322\t81\t12\t96.8\tInstallation\n"
+    "5\t1\t11\t1\t1\t2\t759\t322\t83\t12\t92.8\tDestination\n"
 )
 
 
@@ -51,8 +51,8 @@ def test_missing_or_changed_summary_markers_refuse(ocr):
 @pytest.mark.parametrize("tsv", [
     HEADER,
     TSV + TSV.split(HEADER, 1)[1],
-    TSV.replace("674\\t322", "974\\t322"),
-    TSV.replace("759\\t322", "900\\t322"),
+    TSV.replace("674\t322", "974\t322"),
+    TSV.replace("759\t322", "900\t322"),
 ])
 def test_ambiguous_or_out_of_bounds_tile_refuses(tsv):
     with pytest.raises(StorageNavigationRefusal):
