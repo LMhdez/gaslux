@@ -129,29 +129,60 @@ def test_efi_prompt_gate_never_runs_actual_installer_in_unit_tests(monkeypatch, 
     assert not monitor.exists()
 
 
-def test_workflow_uses_only_private_monitor_and_bounded_cycles():
+def test_workflow_reuses_pinned_proven_microsoft_efi_noprompt_code():
+    """The verified Microsoft ISO, not a fabricated EFI binary, is the origin."""
+    import yaml
+
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github/workflows/gaslux-q4os-windows10-qcow2.yml").read_text()
-    assert "gaslux_q4os_win10_ovmf_dvd_input.py" in workflow
-    assert (
-        "input-send-event"
-        in (root / "auto_tests/tools/gaslux_q4os_win10_ovmf_dvd_input.py").read_text()
-    )
-    assert "GASLUX_WIN10_UEFI_OPTICAL_INPUT_LAB_ONLY: 'yes'" in workflow
-    assert "timeout-minutes: 90" in workflow
-    assert "windows10-qemu-qmp.sock" in workflow
-    assert "cycle_limit" in workflow
+    assert "ref: 1b01b7a697326bba00ab114d7843464fbfbf4fee" in workflow
+    assert "from windows_x64_tcg_firstboot import derive_no_prompt_uefi_lab_iso" in workflow
+    assert "ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668" in workflow
+    assert "GASLUX_WIN10_ORIGINAL_OFFICIAL_ISO_UNMODIFIED=PASS" in workflow
+    assert "GASLUX_WIN10_NOPROMPT_SHA256" in workflow
+    assert "GASLUX_WIN10_ACCEL\" == kvm" in workflow
+    assert "GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY" in workflow
     assert "-no-reboot" in workflow
     assert "qemu-nbd --read-only" in workflow
+    assert "timeout-minutes: 90" in workflow
+    assert "Press any key to boot from CD or DVD" in workflow
+    assert "windows10-qemu-qmp.sock" not in workflow
+    assert "windows10-qemu-hmp.sock" not in workflow
+    assert "gaslux_q4os_win10_ovmf_dvd_input.py \\" not in workflow
+    doc = yaml.safe_load(workflow)
+    assert "windows10-uefi-gpt" in doc["jobs"]
+    steps = doc["jobs"]["windows10-uefi-gpt"]["steps"]
+    uploads = [step for step in steps if step.get("uses", "").startswith("actions/upload-artifact")]
+    assert len(uploads) == 2
+    for step in uploads:
+        for line in step["with"]["path"].splitlines():
+            assert not line.strip().endswith(".iso")
+            assert "Autounattend.xml" not in line
+    assert any(
+        "if-no-files-found" in step.get("with", {})
+        for step in uploads
+    )
 
 
-def test_qmp_socket_passed_to_helper_matches_exact_qemu_attached_socket():
-    """Prevent a silent wrong HMP/QMP socket abort before the ISO starts."""
+def test_proven_no_prompt_workflow_never_disables_windows_recovery_assertions():
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github/workflows/gaslux-q4os-windows10-qcow2.yml").read_text()
-    assert '"$work" "$serial" "$work/windows10-qemu-qmp.sock" "$qemu_log"' in workflow
-    assert '-qmp "unix:$work/windows10-qemu-qmp.sock,server=on,wait=off"' in workflow
-    assert "windows10-qemu-hmp.sock" not in workflow
+    for witness in (
+        "GASLUX_WINDOWS_FIRST_LOGON=PASS",
+        "GASLUX_WINDOWS_WINRE=PASS",
+        "sgdisk --verify /dev/nbd0",
+        "bootmgfw.efi",
+        "winload.efi",
+        "Winre.wim",
+        "Windows/System32",
+        "qemu-img check",
+        "no backing",
+    ):
+        # The QCOW2 no-backing check is expressed as an exact JSON property.
+        if witness == "no backing":
+            assert 'not x.get("backing-filename")' in workflow
+        else:
+            assert witness in workflow
 
 
 def test_helper_rejects_mismatched_qemu_monitor_path_even_when_owned(paths):
