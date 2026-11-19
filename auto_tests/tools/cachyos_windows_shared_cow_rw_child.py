@@ -95,10 +95,22 @@ cmdline="$(cat /proc/cmdline)"
 [[ " $cmdline " != *" ro "* ]]
 [[ " $cmdline " == *" systemd.unit=multi-user.target "* ]]
 install -d -m 0700 /var/lib/gaslux-lab
-printf '%s\n' "$run_id" > /var/lib/gaslux-lab/child-rw-firstboot
-chmod 0600 /var/lib/gaslux-lab/child-rw-firstboot
-sync
-echo "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:$run_id:$root_uuid"
+first=/var/lib/gaslux-lab/child-rw-firstboot
+second=/var/lib/gaslux-lab/child-rw-secondboot
+if [[ -e "$first" || -L "$first" ]]; then
+  [[ -f "$first" && ! -L "$first" && ! -e "$second" && ! -L "$second" ]]
+  [[ "$(cat "$first")" == "$run_id" ]]
+  printf '%s\n' "$run_id" > "$second"
+  chmod 0600 "$second"
+  sync
+  echo "GASLUX_VM_INSTALLED_RW_CHILD_SECONDBOOT_PASS:$run_id:$root_uuid"
+else
+  [[ ! -e "$second" && ! -L "$second" ]]
+  printf '%s\n' "$run_id" > "$first"
+  chmod 0600 "$first"
+  sync
+  echo "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:$run_id:$root_uuid"
+fi
 """
     script = script.replace("__RUN_ID__", run_id).replace("__ROOT_UUID__", root_uuid)
     unit = """[Unit]
@@ -121,7 +133,7 @@ WantedBy=multi-user.target
     return script.encode("ascii"), unit.encode("ascii")
 
 
-def verify_rw_serial(data: bytes, run_id: str, root_uuid: str) -> None:
+def verify_rw_serial(data: bytes, run_id: str, root_uuid: str, *, second_boot: bool = False) -> None:
     root_uuid = canonical_root_uuid(root_uuid)
     check(re.fullmatch(r"[a-z0-9-]{12,80}", run_id) is not None,
           "invalid run ID")
@@ -146,12 +158,16 @@ def verify_rw_serial(data: bytes, run_id: str, root_uuid: str) -> None:
           "unexpected signed RW kernel command line")
     switch = data.find(b"Switch Root")
     welcome = re.search(rb"Welcome to[^\r\n]{0,160}CachyOS", data)
-    proof = ("GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:"
-             + run_id + ":" + root_uuid).encode("ascii")
+    marker = ("GASLUX_VM_INSTALLED_RW_CHILD_SECONDBOOT_PASS:"
+              if second_boot else "GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:")
+    proof = (marker + run_id + ":" + root_uuid).encode("ascii")
+    other = ("GASLUX_VM_INSTALLED_RW_CHILD_FIRSTBOOT_PASS:"
+             if second_boot else "GASLUX_VM_INSTALLED_RW_CHILD_SECONDBOOT_PASS:")
     check(switch >= 0 and welcome is not None and
           switch < welcome.start() and
-          data.count(proof) == 1 and welcome.start() < data.find(proof),
-          "RW proof is absent or not from the installed root")
+          data.count(proof) == 1 and welcome.start() < data.find(proof)
+          and other.encode("ascii") not in data,
+          "RW proof is absent, duplicated or not from the installed root")
     check(b"System Power Off" in data and
           (b"Powering off." in data or b"reboot: Power down" in data),
           "installed RW system did not shut down cleanly")
@@ -218,7 +234,7 @@ def _stage_service(child: Path, root_uuid: str, run_id: str) -> None:
             g.close()
 
 
-def _read_child_marker(child: Path, root_uuid: str, run_id: str) -> None:
+def _read_child_marker(child: Path, root_uuid: str, run_id: str, *, second_boot: bool = False) -> None:
     import guestfs
     g = guestfs.GuestFS(python_return_dict=True)
     try:
@@ -237,7 +253,14 @@ def _read_child_marker(child: Path, root_uuid: str, run_id: str) -> None:
         try:
             check(g.read_file("/var/lib/gaslux-lab/child-rw-firstboot")
                   == (run_id + "\n").encode("ascii"),
-                  "guest did not write the exact owner-bound root marker")
+                  "guest did not write the exact owner-bound first-boot marker")
+            if second_boot:
+                check(g.read_file("/var/lib/gaslux-lab/child-rw-secondboot")
+                      == (run_id + "\n").encode("ascii"),
+                      "second boot did not persist its owner-bound marker")
+            else:
+                check(not g.exists("/var/lib/gaslux-lab/child-rw-secondboot"),
+                      "second-boot marker unexpectedly exists before second boot")
         finally:
             g.umount_all()
     finally:
