@@ -47,7 +47,7 @@ class CachyOSInstalledConfigurationContractTests(unittest.TestCase):
                 validate_profile(root, "gaslux-cachyos-test-20261119")
 
     def test_invalid_transaction_id_is_rejected(self) -> None:
-        self.assertIsNone(RUN_ID.fullmatch("gaslux-cachyos-test-20261119"))
+        self.assertIsNone(RUN_ID.fullmatch("../foreign"))
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             self.make_root(root)
