@@ -196,7 +196,7 @@ class MintOverlayContracts(unittest.TestCase):
             self.assertIn("ExecStart=/bin/systemctl poweroff", contents)
             self.assertIn("After=serial-getty@ttyS0.service", contents)
             self.assertNotIn("After=multi-user.target", contents)
-            self.assertTrue(contents.endswith("\\n"))
+            self.assertTrue(contents.endswith("\n"))
             self.assertEqual(link.readlink(), Path("../gaslux-ci-shutdown.service"))
 
     def test_ephemeral_shutdown_service_refuses_existing_unit_or_symlink(self):
