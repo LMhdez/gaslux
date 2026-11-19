@@ -21,8 +21,7 @@ disk=/dev/disk/by-id/virtio-GASLUX_POP_WIN10_COW
   fail 'installed real-Windows/Pop disk missing or replaced'
 [[ "$(blockdev --getsize64 "$disk")" == 137438953472 ]] ||
   fail 'installed disk not exact 128GiB VM child'
-[[ "$(lsblk -dn -o SERIAL "$disk" | tr -d '[:space:]')" ==
-    GASLUX_POP_WIN10_COW ]] ||
+[[ "$(lsblk -dn -o SERIAL "$disk" | tr -d '[:space:]')" == GASLUX_POP_WIN10_COW ]] ||
   fail 'installed target virtio identity mismatch'
 root="$(readlink -e "$disk-part6")"
 mounted="$(readlink -e "$(findmnt -n -o SOURCE /)")"
