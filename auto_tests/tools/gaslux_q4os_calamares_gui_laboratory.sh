@@ -50,9 +50,6 @@ fi
 advance_partitions="${GASLUX_Q4OS_ADVANCE_PARTITIONS:-no}"
 [[ "$advance_partitions" == yes || "$advance_partitions" == no ]] ||
   die 'Unrecognized Q4OS Partitions Next laboratory mode'
-if [[ "$advance_partitions" == yes && "$native_cow_view" != yes ]]; then
-  die 'Partitions Next requires the signed disposable COW view'
-fi
 if [[ "$advance_partitions" == yes && "$advance_software" != yes ]]; then
   die 'Partitions Next requires SHA-verified Software and synthetic COW selection'
 fi
@@ -69,6 +66,9 @@ if [[ "$native_cow_view" == yes ]]; then
   [[ -n "${GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR:-}" &&
      -n "${RUNNER_TEMP:-}" ]] ||
     die 'Native COW lab needs owned Actions evidence and temporary folders'
+fi
+if [[ "$advance_partitions" == yes && "$native_cow_view" != yes ]]; then
+  die 'Partitions Next requires the signed disposable COW view'
 fi
 [[ "$digest" == '1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d' ]] ||
   die 'Official Q4OS 6.10 r2 SHA-256 is not the independently pinned digest'
