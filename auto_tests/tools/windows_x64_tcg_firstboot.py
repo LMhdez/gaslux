@@ -1412,6 +1412,8 @@ def main(argv: list[str] | None = None) -> int:
                         ("cachyos-shared-root-pacstrap-qemu-stderr.log", "cachyos-root-pacstrap-qemu-stderr", 256_000),
                         ("cachyos-installed-readonly-serial.log", "cachyos-installed-readonly-serial", 512_000),
                         ("cachyos-installed-readonly-qemu-stderr.log", "cachyos-installed-readonly-qemu-stderr", 256_000),
+                        ("cachyos-installed-rw-child-serial.log", "cachyos-installed-rw-child-serial", 512_000),
+                        ("cachyos-installed-rw-child-stderr.log", "cachyos-installed-rw-child-stderr", 256_000),
                         ("fifth-after-ext4-discard-windows-serial.log", "fifth-post-pacstrap-discard-serial", 512_000),
                         ("fifth-after-ext4-discard-qemu-stderr.log", "fifth-post-pacstrap-discard-qemu-stderr", 256_000),
                     ):
