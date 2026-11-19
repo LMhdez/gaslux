@@ -94,13 +94,6 @@ done
    -z "$(blkid -s TYPE -o value "$by_id-part6" 2>/dev/null || true)" ]] ||
   fail 'Gaslux owned ESP/root unexpectedly formatted'
 printf 'GASLUX_POP_NATIVE_WIN10_SIX_GPT_PREWRITE_VERIFIED=1\n' > /dev/ttyS0
-# ONLY an owned fifth GPT partition in the extra QCOW2 child is formatted;
-# the real Windows parent and its ESP remain outside writable guest disks.
-mkfs.vfat -F 32 -n GASLUXPOP "$by_id-part5" >/dev/null ||
-  fail 'format exact owned ESP #5 failed'
-[[ "$(blkid -s TYPE -o value "$by_id-part5")" == vfat ]] ||
-  fail 'owned ESP FAT32 signature not verified after writing'
-
 # Both installer artifacts must live inside the same GPG/SHA-verified ISO.
 mapfile -t roots < <(find /cdrom -mindepth 2 -maxdepth 3 -type f \
   -name filesystem.squashfs -print | sort)
@@ -110,6 +103,15 @@ remove="${squashfs%/*}/filesystem.manifest-remove"
 [[ -s "$squashfs" && -s "$remove" ]] ||
   fail 'Pop signed installation source/manifest absent'
 printf 'GASLUX_POP_NATIVE_INSTALL_PREFLIGHT_OK=1\n' > /dev/ttyS0
+printf 'GASLUX_POP_NATIVE_WIN10_SIX_GPT_PREWRITE_VERIFIED=1\n' > /dev/ttyS0
+
+
+# ONLY an owned fifth GPT partition in the extra QCOW2 child is formatted;
+# the real Windows parent and its ESP remain outside writable guest disks.
+mkfs.vfat -F 32 -n GASLUXPOP "$by_id-part5" >/dev/null ||
+  fail 'format exact owned ESP #5 failed'
+[[ "$(blkid -s TYPE -o value "$by_id-part5")" == vfat ]] ||
+  fail 'owned ESP FAT32 signature not verified after writing'
 
 log="$(mktemp -p /run -t gaslux-native-distinst.XXXXXX)"
 # The actual native System76 installer performs extraction, target configuration
