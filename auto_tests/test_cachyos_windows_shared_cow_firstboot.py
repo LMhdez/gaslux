@@ -20,7 +20,7 @@ sys.path.insert(0, str(TOOLS))
 import cachyos_windows_shared_cow_firstboot as firstboot
 import cachyos_windows_shared_root_pacstrap_host as host
 
-ROOT_UUID = "11111111-2222-4333-8444-555555555555"
+ROOT_UUID = "a1111111-2222-4333-8444-55555555555a"
 RUN_ID = "gaslux-test-run-01"
 
 
@@ -148,6 +148,7 @@ class InstalledReadOnlyFirstbootContracts(unittest.TestCase):
             }
             with mock.patch.dict(os.environ, env), \
                  mock.patch.object(firstboot, "_run", side_effect=fake_run), \
+                 mock.patch.object(host, "_run", side_effect=fake_run), \
                  mock.patch.object(firstboot.subprocess, "Popen",
                                    side_effect=fake_popen), \
                  mock.patch.object(firstboot, "qcow2_file_identity",
