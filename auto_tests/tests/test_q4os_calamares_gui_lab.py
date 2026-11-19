@@ -302,7 +302,7 @@ def test_partitions_next_is_pixel_gated_and_never_installs():
     source = SCRIPT.read_text(encoding="utf-8")
     assert 'advance_partitions="${GASLUX_Q4OS_ADVANCE_PARTITIONS:-no}"' in source
     assert "Partitions Next requires the signed disposable COW view" in source
-    assert 'calamares-synthetic-cow-partitions-selected' in source
+    assert "calamares-synthetic-cow-partitions-selected" in source
     assert "GASLUX_Q4OS_CALAMARES_PARTITIONS_NEXT_CLICKED=PASS" in source
     assert "GASLUX_Q4OS_CALAMARES_USERS_VIEW_CAPTURED=PASS" in source
     assert "vnc-users-view-unverified.png" in source
