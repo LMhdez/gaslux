@@ -1,5 +1,13 @@
 # Gaslux integration board — 2026-11-18
 
+## Fechos documentados — 2026-11-19 (lote Windows UEFI)
+
+- PR [#106](https://github.com/LMhdez/gaslux/pull/106): encerrada sem merge; prova GRUB EFI FAT32 [Actions #44077563316](https://github.com/LMhdez/gaslux/actions/runs/44077563316), [motivo detalhado](https://github.com/LMhdez/gaslux/pull/106#issuecomment-7011879585). O harness específico foi conscientemente arquivado, **não incorporado** na #158.
+- PR [#156](https://github.com/LMhdez/gaslux/pull/156): encerrada sem merge; sonda WinPE FAT12/FAT32 inconclusiva [Actions #44123995469](https://github.com/LMhdez/gaslux/actions/runs/44123995469), [motivo detalhado](https://github.com/LMhdez/gaslux/pull/156#issuecomment-7011868091). O código único da sonda foi conscientemente rejeitado para o caminho escolhido.
+- [#158](https://github.com/LMhdez/gaslux/pull/158) mantém-se aberta com [Actions #44124415890](https://github.com/LMhdez/gaslux/actions/runs/44124415890), evidência de Windows 10 instalado e primeiro arranque autónomo **sem Linux**.
+- Consulta após fechos: **63 PRs e 2 issues abertas**. Trata-se de inventário documental; nenhuma CI/VM executada nesta intervenção. `main` inalterada.
+- A tabela de snapshot acima é histórica (64 PRs na altura da captura); este delta retifica o total sem apagar a rastreabilidade das PRs encerradas.
+
 ## Snapshot de triagem — 2026-11-19
 
 - Consulta GitHub na conta **LMHDEZ**: **64 PRs abertas** e **2 issues abertas** ([#71](https://github.com/LMhdez/gaslux/issues/71), [#3](https://github.com/LMhdez/gaslux/issues/3)).
