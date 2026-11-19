@@ -355,10 +355,7 @@ if [[ "${GASLUX_ZORIN_INITRAMFS_REBOOT:-0}" == 1 ]]; then
   sudo chroot "$work/target" lsinitramfs "/boot/initrd.img-$version" \
     > "$work/initrd-after-update-files.txt" ||
     die 'Cannot inspect regenerated Zorin initramfs'
-  if grep -Eq '(^|/)(conf/conf.d/default-boot-to-casper.conf|conf/conf.d/live-initrd.conf|conf/uuid.conf)
-echo "PASS: genuine $pretty_name extracted root reached installed-disk serial login without attached ISO"
-echo 'NOT TESTED: Windows dual boot, Windows recovery, real Gaslux bootloader, kernel update, uninstall'
- \
+  if grep -Eq '(^|/)(conf/conf.d/default-boot-to-casper.conf|conf/conf.d/live-initrd.conf|conf/uuid.conf)$' \
       "$work/initrd-after-update-files.txt"; then
     die 'Regenerated installed initramfs incorrectly depends on Casper'
   fi
