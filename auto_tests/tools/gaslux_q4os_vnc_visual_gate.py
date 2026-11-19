@@ -106,6 +106,25 @@ _CALAMARES_SYNTHETIC_PARTITIONS_NEXT = (
     (957, 622, 1051, 663),
     "0416af48c325376e056f6ef8707b2ebdaedca7f935f2ddf8fc37bc93684d9512",
 )
+# Exact RGB regions from the successful, owned-COW radio-selected screenshot
+# artifact #14528830855 / run #44520990890. This authorizes only one
+# Partitions -> Users navigation click; it does not authorize storage writes.
+_CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_DEVICE = (
+    (320, 146, 851, 189),
+    "6975d6f85bebbb4dcd444c9bcdaa6f776880d8a9b5ff361e34b0829684cfb762",
+)
+_CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_MAP = (
+    (324, 534, 1143, 604),
+    "fd5f08fbf49f7aa64c97690b7110cff4ed6b8aca17f76c95bfd8f0a1db61b743",
+)
+_CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_NEXT = (
+    (957, 622, 1051, 663),
+    "7790dafec77bcc08aaeb33c5a36d74662d9cb6d4094b59ae3c543ae4da1ccc41",
+)
+_CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_RADIO = (
+    (320, 250, 350, 310),
+    "be18b916129a47587ca7fc6576d18f275828679c494302d406abff24a5e6b145",
+)
 
 
 def _open_verified_screen(path: Path) -> Image.Image | None:
@@ -218,6 +237,22 @@ def verified_synthetic_calamares_partitions_view(path: Path) -> bool:
     )
 
 
+def verified_synthetic_calamares_partitions_selected(path: Path) -> bool:
+    """Permit one Next click only on the exact radio-selected synthetic COW view."""
+    screen = _open_verified_screen(path)
+    if screen is None:
+        return False
+    return all(
+        _roi_sha(screen, box) == digest
+        for box, digest in (
+            _CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_DEVICE,
+            _CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_MAP,
+            _CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_NEXT,
+            _CALAMARES_SYNTHETIC_PARTITIONS_SELECTED_RADIO,
+        )
+    )
+
+
 def verified_centre_changed(before: Path, after: Path) -> bool:
     """Taskbar-clock updates alone must never satisfy a GUI transition."""
     previous = _open_verified_screen(before)
@@ -248,6 +283,8 @@ def main() -> int:
         passed = verified_native_calamares_desktop_selected(Path(sys.argv[2]))
     elif mode == "calamares-synthetic-cow-partitions" and len(sys.argv) == 3:
         passed = verified_synthetic_calamares_partitions_view(Path(sys.argv[2]))
+    elif mode == "calamares-synthetic-cow-partitions-selected" and len(sys.argv) == 3:
+        passed = verified_synthetic_calamares_partitions_selected(Path(sys.argv[2]))
     elif mode == "changed-centre" and len(sys.argv) == 4:
         passed = verified_centre_changed(Path(sys.argv[2]), Path(sys.argv[3]))
     else:
