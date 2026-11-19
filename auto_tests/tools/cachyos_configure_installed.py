@@ -133,8 +133,19 @@ def configure(root: Path, run_id: str, *,
     )
     for argv in commands:
         result = runner(argv, capture_output=True, text=True, check=False, timeout=180)
-        require(result.returncode == 0,
-                "installed CachyOS configuration command failed: " + argv[3])
+        if result.returncode != 0:
+            # Commands have different arities; locale-gen has no fourth argv
+            # element. Diagnostics must never mask the original command error.
+            command = " ".join(str(part) for part in argv[2:])
+            detail = (result.stderr or "").strip()
+            if len(detail) > 500:
+                detail = detail[-500:]
+            message = "installed CachyOS configuration command failed: " + command
+            if detail:
+                message += " (exit " + str(result.returncode) + "): " + detail
+            else:
+                message += " (exit " + str(result.returncode) + ")"
+            raise InstalledConfigurationError(message)
 
     require((root / "etc/localtime").is_symlink()
             and os.readlink(root / "etc/localtime") == "/usr/share/zoneinfo/UTC",
