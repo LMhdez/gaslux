@@ -84,7 +84,7 @@ def configure(root: Path, run_id: str, *,
     validate_profile(root, run_id)
     for relative in ("etc/hostname", "etc/vconsole.conf", "etc/locale.conf",
                      "etc/sudoers.d/10-gaslux-wheel",
-                     "etc/systemd/system/multi-user.target.wants/sddm.service",
+                     "etc/systemd/system/graphical.target.wants/sddm.service",
                      "etc/systemd/system/multi-user.target.wants/NetworkManager.service",
                      "etc/systemd/system/multi-user.target.wants/systemd-timesyncd.service",
                      "home/" + LAB_USER):
@@ -147,7 +147,7 @@ def configure(root: Path, run_id: str, *,
     require(any(line.startswith(LAB_USER + ":$6$") for line in shadow.splitlines()),
             "configured lab account does not have a salted password hash")
     for service in ("sddm", "NetworkManager", "systemd-timesyncd"):
-        link = root / "etc/systemd/system/multi-user.target.wants" / (service + ".service")
+        link = root / "etc/systemd/system" / ("graphical.target.wants" if service == "sddm" else "multi-user.target.wants") / (service + ".service")
         require(link.is_symlink(), "service was not enabled: " + service)
     return {
         "configured": True, "labOnly": True, "user": LAB_USER,
