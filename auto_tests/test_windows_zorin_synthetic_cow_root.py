@@ -54,8 +54,12 @@ class FakeGuest:
     def mount_ro(self, _path, _mount):
         self.mounted = True
 
-    def is_file(self, path):
-        return path in ("/etc/os-release", "/etc/fstab")
+    def is_file(self, path, **kwargs):
+        # Genuine Ubuntu/Zorin /etc/os-release may be a symlink.
+        # libguestfs.is_file() returns False without followsymlinks=True.
+        if path == "/etc/os-release":
+            return kwargs.get("followsymlinks") is True
+        return path == "/etc/fstab"
 
     def is_dir(self, path):
         return path == "/boot"
@@ -101,6 +105,46 @@ class ZorinCowContracts(unittest.TestCase):
             lab.inspect_fifth(Path("synthetic.qcow2"), probe.fs_uuid, probe.windows_sha)
         self.assertEqual(FakeGuest.active.readonly, 1)
         self.assertTrue(FakeGuest.active.mounted)
+        self.assertTrue(FakeGuest.active.closed)
+
+    def test_symlinked_os_release_must_be_resolved_as_regular_file(self):
+        mod = types.ModuleType("guestfs")
+        mod.GuestFS = FakeGuest
+        expected = FakeGuest()
+        with mock.patch.dict(sys.modules, {"guestfs": mod}):
+            lab.inspect_fifth(Path("synthetic.qcow2"),
+                              expected.fs_uuid, expected.windows_sha)
+        self.assertTrue(FakeGuest.active.mounted)
+        self.assertTrue(FakeGuest.active.closed)
+
+    def test_resolved_os_release_with_different_id_is_rejected(self):
+        class WrongDistroGuest(FakeGuest):
+            def cat(self, _path):
+                return "NAME=Other Zorin test\nNOTID=zorin\nID=ubuntu\n"
+
+        mod = types.ModuleType("guestfs")
+        mod.GuestFS = WrongDistroGuest
+        expected = WrongDistroGuest()
+        with mock.patch.dict(sys.modules, {"guestfs": mod}):
+            with self.assertRaisesRegex(lab.ZorinSyntheticError, "not genuine Zorin"):
+                lab.inspect_fifth(Path("synthetic.qcow2"),
+                                  expected.fs_uuid, expected.windows_sha)
+        self.assertTrue(FakeGuest.active.closed)
+
+    def test_broken_os_release_symlink_is_rejected(self):
+        class BrokenLinkGuest(FakeGuest):
+            def is_file(self, path, **kwargs):
+                if path == "/etc/os-release":
+                    return False
+                return super().is_file(path, **kwargs)
+
+        mod = types.ModuleType("guestfs")
+        mod.GuestFS = BrokenLinkGuest
+        expected = BrokenLinkGuest()
+        with mock.patch.dict(sys.modules, {"guestfs": mod}):
+            with self.assertRaisesRegex(lab.ZorinSyntheticError, "not genuine Zorin"):
+                lab.inspect_fifth(Path("synthetic.qcow2"),
+                                  expected.fs_uuid, expected.windows_sha)
         self.assertTrue(FakeGuest.active.closed)
 
     def test_hash_mismatch_refuses_lookalike_partitions(self):
