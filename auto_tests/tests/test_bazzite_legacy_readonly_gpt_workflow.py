@@ -81,7 +81,7 @@ def test_original_guest_screen_gates_are_reused():
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "gh run download 44378715492" in source
     assert "bazzite_legacy_blue_button.py" in source
-    assert "bazzite_legacy_destination_gate.py" in source
+    assert "bazzite_legacy_gpt_storage_navigation.py" in source
     assert source.index("--phase locale") < source.index('move "$lx" "$ly" click 1')
     assert source.index("blue-gate.json") < source.index('move "$cx" "$cy" click 1')
     assert source.index("destination-gate.json") < source.index('move "$dx" "$dy" click 1')
