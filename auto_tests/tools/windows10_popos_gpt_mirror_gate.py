@@ -146,7 +146,6 @@ def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> 
             "foreign GPT entry after selected Windows/Pop roles")
     if expected_count == 4:
         require(not any(rows[4]), "unexpected fifth partition before Linux stage")
-    names: list[str] = []
     found: list[dict] = []
     unique: set[bytes] = set()
     previous_end = 33
@@ -169,14 +168,23 @@ def parse_windows_pop_gpt(front: bytes, back: bytes, *, expected_count: int) -> 
         )
         unique.add(unique_id)
         previous_end = end_lba
-        name = row[56:128].decode("utf-16-le").split("\0", 1)[0]
-        names.append(name)
-        if index == 5 and expected_count == 6:
-            require(name == POP_ESP_NAME and attrs == 0,
-                    "foreign owned Pop ESP name or GPT attributes")
-        elif index >= 5:
-            require(name == ROOT_LABEL and attrs == 0,
-                    "foreign Linux root name or GPT attributes")
+        # Non-owned Windows GPT names are opaque bytes. Their complete
+        # partition entries are already compared byte-exact in the
+        # Windows hash/GPT identity gate; do not decode those foreign labels.
+        # Only Gaslux-owned Pop partition names need UTF-16 semantics.
+        if index >= 5:
+            try:
+                name = row[56:128].decode("utf-16-le").split("\0", 1)[0]
+            except UnicodeDecodeError:
+                raise DiskAuditError(
+                    f"invalid owned Pop GPT label on partition {index}"
+                ) from None
+            if index == 5 and expected_count == 6:
+                require(name == POP_ESP_NAME and attrs == 0,
+                        "foreign owned Pop ESP name or GPT attributes")
+            else:
+                require(name == ROOT_LABEL and attrs == 0,
+                        "foreign Linux root name or GPT attributes")
         found.append({
             "number": index,
             "type": kind,
