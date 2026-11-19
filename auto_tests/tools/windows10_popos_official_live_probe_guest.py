@@ -55,7 +55,11 @@ def read_manifest() -> dict:
     )
     require(mount.returncode == 0 and mount.stdout.startswith("vfat "),
             "lab control not separate FAT filesystem")
-    require("ro" in mount.stdout.strip().split(",") and "rw" not in mount.stdout,
+    mount_fields = mount.stdout.strip().split(maxsplit=1)
+    require(len(mount_fields) == 2
+            and mount_fields[0] == "vfat"
+            and "ro" in mount_fields[1].split(",")
+            and "rw" not in mount_fields[1].split(","),
             "lab command medium not mounted read-only")
     manifest_file = CONTROL / "six-gpt.json"
     require(manifest_file.is_file() and not manifest_file.is_symlink()
