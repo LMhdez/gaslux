@@ -117,6 +117,10 @@ class CachyOSInstalledConfigurationContractTests(unittest.TestCase):
 
             result = configure(root, "gaslux-cachyos-test-20261119", runner=runner)
             self.assertTrue(result["configured"])
+            self.assertFalse(result["passwordPlaintextRetained"])
+            self.assertFalse(result["productionReady"])
+            self.assertFalse(any("grub-install" in argv or "efibootmgr" in argv
+                                 for argv, _ in calls))
             self.assertEqual(result["user"], "gaslux-lab")
             self.assertEqual((root / "etc/hostname").read_text(), "gaslux-cachyos-lab\n")
             self.assertIn("en_US.UTF-8 UTF-8", (root / "etc/locale.gen").read_text())
