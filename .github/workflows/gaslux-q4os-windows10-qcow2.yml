@@ -34,6 +34,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Run OVMF helper contract tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check --user pytest
+          python3 -m pytest -q auto_tests/tests/test_q4os_win10_ovmf_dvd_input.py
+
       - name: Install QEMU, OVMF and offline NTFS inspection tools
         shell: bash
         run: |
