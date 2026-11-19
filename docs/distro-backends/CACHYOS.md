@@ -89,6 +89,28 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+## Anexo técnico — Archiso 260809, Calamares e pacstrap partilhado (19-11-2026)
+
+### Instalador concreto e alternativa
+[DOCUMENTADO upstream] [`CachyOS/cachyos-calamares/settings.conf`](https://github.com/CachyOS/cachyos-calamares/blob/cachyos/settings.conf) define os ecrãs `welcome → locale → keyboard → partition → packagechooser → netinstall → users → summary` e a execução `partition → mount → initialize_pacman → pacstrap → ... → fstab → initcpio → users → bootloader → services-systemd → umount`. A variante `settings_online.conf` inclui escolha explícita de bootloader e desktop. Isto confirma que a distribuição usa **Calamares com módulo pacstrap**, não uma cópia genérica da raiz Live. [PENDENTE] fixar commit e versão exactos do Calamares/Archiso **dentro da ISO 260809**; os ficheiros upstream podem mudar.
+
+[IMPLEMENTADO apenas em branches] A [PR #248](https://github.com/LMhdez/gaslux/pull/248), HEAD `c5b3246dc8df9873015291dbb64a3c0ddecc8613`, acrescenta o hash `installedConfiguratorSha256` ao grant Ed25519 para `cachyos_configure_installed.py`, que já era copiado para o guest. O erro anterior `guest program manifest is incomplete or has unexpected entries` foi uma recusa correcta antes de pacstrap, causada pela allow-list do programa incompleta. Reutilizar `auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py`, `cachyos_windows_shared_cow_grant.py`, `gaslux-cachyos-shared-root-install.sh`, `cachyos_configure_installed.py`, verificados na branch da PR. A chave de laboratório **não** estabelece uma autoridade de assinatura Windows de produção.
+
+### Mídia e ensaios realmente concluídos
+[COMPROVADO em CI, não catálogo] CachyOS Archiso ISO **260809**, SHA-256 `959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c`, verificado nos [logs #44563479551](https://github.com/LMhdez/gaslux/actions/runs/44563479551), PR #42 HEAD `9726bc74416ea235a5957a1f7d95f35807f679c3`. Em QCOW2 **só-Linux**, a execução arrancou Archiso oficial, completou pacstrap, GRUB EFI e boot autónomo do kernel LTS; aplicou update pacman em child COW, reiniciou Linux e provou recuperação da baseline por descarte de overlay. [Artefacto #14554036041](https://github.com/LMhdez/gaslux/actions/runs/44563479551/artifacts/14554036041). Não há Windows neste teste.
+
+[COMPROVADO com âmbito separado] [Run #44571015093](https://github.com/LMhdez/gaslux/actions/runs/44571015093), job `real-windows10-archiso-pacstrap-and-discard`, **SUCCESS**, [artefacto #14556716731](https://github.com/LMhdez/gaslux/actions/runs/44571015093/artifacts/14556716731): Windows 10 genuíno em QCOW2, quinta ext4 possuída, `pacstrap` real e arranque mínimo read-only do kernel/systemd instalado, verificação de backing/ESP/BCD/WinRE e descarte do COW com Windows baseline novamente arrancado. Os logs declaram explicitamente: **não comprovados** bootloader nativo no disco Windows, primeiro boot completo, menu de dual boot, actualizações partilhadas e rollback in-place. Recuperar por descarte de COW não equivale a desfazer alterações in-place num sistema real.
+
+### One-shot: sequência segura específica
+1. Obter ISO imutável exacta e validar assinatura/proveniência upstream além do SHA local; descobrir Archiso `archisobasedir`, kernel/initramfs e mecanismo de montagem **directamente na ISO**. Não inventar `archisolabel` ou flags.
+2. Reutilizar `gaslux_candidate_handoff.py` para diagnóstico e o grant Ed25519 experimental da PR #248 após auditar autoridade/nonce/expiração e binding ao plano. Bloquear Secure Boot se não existir bootchain validado.
+3. Revalidar convidado: número 5/GUID/offsets ext4, Windows partições #1–#4, serial exacto do disco, COW exclusivo, estado Windows/EFI/BCD/WinRE, checkpoint de rollback. Se qualquer campo divergir, abortar.
+4. Executar pacstrap com pacman/mirrors **só na quinta ext4**; aplicar configurador autenticado e testar identidade de kernel/root/conta/mounts. Sem `/dev/sda` presumido.
+5. Acrescentar bootloader GRUB Arch-owned sem escrita sobre Windows EFI/BCD; boot autónomo Linux e Windows a partir do mesmo COW; update pacman + reboot de ambos; rollback in-place e compensação contra falhas. **Só após etapa 5** rever gates da [issue #3](https://github.com/LMhdez/gaslux/issues/3).
+
+
+---
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
