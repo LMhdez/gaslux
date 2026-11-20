@@ -131,7 +131,7 @@ class QemuSyntheticTraceTest(unittest.TestCase):
         with self.assertRaises(DiskAuditError):
             self.observe(nvram_sha_after="c" * 64)
         trace = (TRACE +
-                 "12345@42.01:pflash_data_write pflash1 "
+                 "12345@42.01:pflash_data_write system.flash1 "
                  "data offset:0x1000 size:8 value:0x00000001\n")
         result = self.observe(trace=trace, nvram_sha_after="c" * 64)
         self.assertTrue(result["ovmfVarsChanged"])
