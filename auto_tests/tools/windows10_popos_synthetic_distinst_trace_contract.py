@@ -14,6 +14,13 @@ try:
 except ImportError:
     from tools.windows_x64_installed_gpt_ro_audit import DiskAuditError, require
 
+try:
+    from windows10_popos_native_write_set import expected_pop_operations
+except ModuleNotFoundError as exc:
+    if exc.name != "windows10_popos_native_write_set":
+        raise
+    from tools.windows10_popos_native_write_set import expected_pop_operations
+
 SECTOR = 512
 DISK_SIZE = 8 * 1024**3
 DISK_SECTORS = DISK_SIZE // SECTOR
@@ -164,6 +171,150 @@ def _merge(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
 def _same_coverage(left: list[tuple[int, int]],
                    right: list[tuple[int, int]]) -> bool:
     return _merge(left) == _merge(right)
+
+
+
+def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
+                            guest: dict | None = None) -> dict:
+    """Return a non-authorizing comparison of QEMU writes with PR #232.
+
+    QEMU's virtio_blk_handle_write events are emitted outside distinst. Any
+    request not wholly inside one of the two pre-created synthetic partitions
+    is an explicit refusal, including both GPT copies and unallocated sectors.
+    """
+    require(type(plan) is dict and plan.get("scenario")
+            == "pop-synthetic-distinst-partition-test"
+            and plan.get("disk", {}).get("guid") == DISK_GUID
+            and plan.get("disk", {}).get("serial") == DISK_SERIAL
+            and type(qemu_trace) is str and qemu_trace.endswith("\n")
+            and len(qemu_trace.encode()) <= 16_000_000,
+            "synthetic QEMU trace/plan identity or completeness invalid")
+    partitions = plan.get("partitions")
+    require(type(partitions) is list and len(partitions) == 2,
+            "synthetic plan must contain exactly ESP and root")
+    qemu_events, outside, unsupported = [], [], []
+    by_partition = {
+        int(p["number"]): {"eventCount": 0, "bytes": 0}
+        for p in partitions
+    }
+    for line in qemu_trace.splitlines():
+        if UNSUPPORTED_WRITE.search(line):
+            unsupported.append(line[:500])
+        if "virtio_blk_handle_write" not in line:
+            continue
+        match = QEMU_WRITE.search(line)
+        require(match is not None,
+                "unparseable QEMU virtio_blk_handle_write event")
+        sector, count = int(match["sector"]), int(match["count"])
+        require(0 < count <= DISK_SECTORS and 0 <= sector < DISK_SECTORS
+                and sector + count <= DISK_SECTORS,
+                "QEMU write interval outside synthetic disk geometry")
+        end = sector + count
+        part = next((x for x in partitions
+                     if x["startLba"] <= sector
+                     and end <= x["startLba"] + x["sectorCount"]), None)
+        if part is not None:
+            number = int(part["number"])
+            by_partition[number]["eventCount"] += 1
+            by_partition[number]["bytes"] += count * SECTOR
+            region = "synthetic-esp" if number == 1 else "synthetic-root"
+            allowed = True
+        else:
+            allowed = False
+            if sector < 34 or end <= 34:
+                region = "primary-mbr-gpt"
+            elif end > DISK_SECTORS - 33:
+                region = "backup-gpt"
+            else:
+                region = "unallocated-or-outside-partitions"
+        event = {
+            "sector": sector, "sectorCount": count,
+            "offsetBytes": sector * SECTOR,
+            "lengthBytes": count * SECTOR,
+            "region": region, "withinAllowedPartition": allowed,
+        }
+        qemu_events.append(event)
+        if not allowed:
+            outside.append(event)
+    require(qemu_events, "QEMU trace contains no independently observed virtio writes")
+    native_after = {}
+    for p in partitions:
+        number = int(p["number"])
+        native_number = 5 if number == 1 else 6
+        native_after["popEsp" if number == 1 else "linuxRoot"] = {
+            "number": native_number,
+            "guid": p["partuuid"],
+            "startLba": p["startLba"],
+            "endLba": p["startLba"] + p["sectorCount"] - 1,
+        }
+    expected = expected_pop_operations(native_after)
+    process = guest.get("distinstProcess", {}) if type(guest) is dict else {}
+    tracefs = guest.get("tracefs", {}) if type(guest) is dict else {}
+    execs = tracefs.get("execs", []) if type(tracefs) is dict else []
+    names = {str(x.get("filename", "")).rsplit("/", 1)[-1]
+             for x in execs if type(x) is dict}
+    filesystems = guest.get("filesystemsAfter", {}) if type(guest) is dict else {}
+    argv = process.get("argv", []) if type(process) is dict else []
+    source_hint = process.get("sourceRevisionHint") if type(process) is dict else None
+    gpt_diff = guest.get("gptDiff") if type(guest) is dict else None
+    return {
+        "schemaVersion": 1,
+        "source": "QEMU virtio_blk_handle_write trace + synthetic plan",
+        "pr232WriteSetSource": "windows10_popos_native_write_set.expected_pop_operations",
+        "qemuTraceSha256": hashlib.sha256(qemu_trace.encode()).hexdigest(),
+        "qemuTraceBytes": len(qemu_trace.encode()),
+        "qemuWriteEventCount": len(qemu_events),
+        "qemuWriteBytes": sum(x["lengthBytes"] for x in qemu_events),
+        "writesBySyntheticPartition": by_partition,
+        "outOfSetEventCount": len(outside),
+        "outOfSetWriteBytes": sum(x["lengthBytes"] for x in outside),
+        "outOfSetRegions": sorted({x["region"] for x in outside}),
+        "outOfSetEvents": outside[:256],
+        "unsupportedWriteEventCount": len(unsupported),
+        "unsupportedWriteEvents": unsupported[:32],
+        "pr232Projection": {
+            "nativePopEspPartitionIndex": 5,
+            "syntheticEspPartitionIndex": 1,
+            "nativeLinuxRootPartitionIndex": 6,
+            "syntheticRootPartitionIndex": 2,
+            "expectedOperations": expected,
+            "partitionPhaseOperations": [
+                x for x in expected if x["operation"] in ("format", "mount")
+            ],
+            "notReachedByDistinstTest": [
+                x for x in expected
+                if x["operation"] in ("install-root", "install-systemd-boot")
+            ],
+            "espFormatObserved": (
+                filesystems.get("1") == "vfat"
+                and bool(names & {"mkfs.fat", "mkfs.vfat"})
+            ),
+            "rootFormatObserved": (
+                filesystems.get("2") == "ext4"
+                and bool(names & {"mke2fs", "mkfs.ext4"})
+            ),
+            "mountSyscallsIndependentlyObserved": bool(
+                guest.get("mountObservations")
+            ) if type(guest) is dict else False,
+            "upstreamMountAllTargetsReached": (
+                process.get("exitCode") == 0
+                and process.get("argv") and "--test" in argv
+                and source_hint == "e395b7c"
+            ),
+            "installRootObserved": False,
+            "systemdBootObserved": False,
+        },
+        "guestGptDiff": gpt_diff,
+        "distinstExitCode": process.get("exitCode") if type(process) is dict else None,
+        "upstreamRevisionHint": source_hint,
+        "writeSetMatch": not outside and not unsupported,
+        "decision": "MATCH_SYNTHETIC_PARTITION_WRITESET"
+                    if not outside and not unsupported else "REFUSE_OUT_OF_WRITESET",
+        "distinstExecutionAuthorized": False,
+        "diskWritesAuthorizedForWindows": False,
+        "windowsEspWritesAuthorized": False,
+        "productionInstallationAuthorized": False,
+    }
 
 
 def classify_distinst_writes(
