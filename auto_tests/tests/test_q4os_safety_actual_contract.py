@@ -20,9 +20,18 @@ def _safety():
     sys.path.insert(0, source)
     from libertix_disk_identity_gate import assert_snapshot_matches
     from libertix_prewrite_no_writer import (
-        PrewriteDenied, authenticated_record, canonical, decide_no_writer,
+        PrewriteDenied,
+        authenticated_record,
+        canonical,
+        decide_no_writer,
     )
-    return assert_snapshot_matches, PrewriteDenied, authenticated_record, canonical, decide_no_writer
+    return (
+        assert_snapshot_matches,
+        PrewriteDenied,
+        authenticated_record,
+        canonical,
+        decide_no_writer,
+    )
 
 
 def _fixture():
