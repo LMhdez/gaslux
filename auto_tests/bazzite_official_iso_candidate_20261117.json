@@ -98,8 +98,8 @@
     "githubIsoAttestationVerified": true,
     "embeddedOciManifestReadBackVerified": false,
     "isoToPayloadBindingVerified": false,
-    "runFailedStage": "iso-github-attestation",
-    "runFailureReason": "GitHub CLI rejected simultaneous --signer-repo and --signer-workflow flags; no cryptographic attestation failure was reported",
+    "runFailedStage": "embedded-manifest-config-extraction",
+    "runFailureReason": "Actual containers/storage metadata identifies the Bazzite image and manifest path; previous collector incorrectly required a separate sibling config file. Corrected manifest/config digest binding is published and awaiting complete readback.",
     "sidecars": {
       "signature": {
         "file": "bazzite-stable-live-amd64.iso.sig",
@@ -135,7 +135,7 @@
     "payloadReleaseTagVerified": true,
     "payloadCosignVerifierVersionUsed": "v2.6.5",
     "payloadCosignUpstreamVersion": "v3.1.3",
-    "payloadCosignSignatureVerified": false,
+    "payloadCosignSignatureVerified": true,
     "payloadCosignFailureReason": "Cosign v2.6.5 returned: no matching attestations: expected key signature, not certificate. The pinned upstream build.yml uses Cosign v3.1.3 and build.py sign explicitly sets --new-bundle-format=false and --use-signing-config=false; retry is configured with the matching version and bundle mode.",
     "payloadAttestationVerified": true,
     "isoSizeBytes": 8377878528,
