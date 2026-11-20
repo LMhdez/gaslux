@@ -30,7 +30,7 @@ jobs:
           from pathlib import Path
           source=Path('auto_tests/tools/windows_x64_tcg_firstboot.py').read_text()
           start=source.index('def send_first_iso_boot_key(')
-          end=source.index('\nMAX_GUEST_TOKEN_BYTES',start)
+          end=source.index('\ndef send_first_iso_boot_key_vnc(',start)
           function=source[start:end]
           assert function.count('monitor.sendall(')==1
           assert 'until_prompt().lower()' in function
