@@ -121,3 +121,6 @@ A partir deste commit o workflow de manutenção regressa a **apenas leitura** (
 - [Actions #44688349060](https://github.com/LMhdez/gaslux/actions/runs/44688349060): eliminou as duas referências de origem já ancestrais das branches de PR, com SHA fixado, proteção de PRs e lease. Inventário **42 → 40 branches**. Nenhuma alteração a `main`/`dev` nem a discos/boot.
 - Reposição imediata do workflow de manutenção em modo de auditoria apenas leitura; arquivo histórico de 112 fontes permanece imutável.
 
+
+- PR #256, [commit `b68fc2d7`](https://github.com/LMhdez/gaslux/commit/b68fc2d7d9caf2fa492ddda1e00a89e57a7dd7a5): absorveu a branch `feature/q4os-summary-view-lab-20261119` como segundo progenitor; teste Ed25519 de separação de domínio já era byte-idêntico na árvore de destino. [Actions #44688570507](https://github.com/LMhdez/gaslux/actions/runs/44688570507) eliminou a referência de origem com ancestry e lease. Contagem **40 → 39**. Esta integração de histórico não constitui ensaio de recuperação real.
+
