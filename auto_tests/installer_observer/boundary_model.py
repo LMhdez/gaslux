@@ -20,9 +20,7 @@ from typing import Any
 from .evidence import Refusal, canonical, digest
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_OPERATIONS = frozenset(
-    {"session.identify", "state.read", "frame.read", "session.close"}
-)
+_OPERATIONS = frozenset({"session.identify", "state.read", "frame.read", "session.close"})
 _FIELDS = frozenset(
     {
         "protocol",
