@@ -301,7 +301,9 @@ def test_sequence_must_advance_monotonically():
     response = make_response(private, request)
     verify_one(v, request, response)
     repeated_sequence = make_request(
-        "state.read", sequence=1, nonce="C" * 43,
+        "state.read",
+        sequence=1,
+        nonce="C" * 43,
         request_id="99999999-3333-4333-8333-333333333333",
     )
     repeated_response = make_response(private, repeated_sequence)
