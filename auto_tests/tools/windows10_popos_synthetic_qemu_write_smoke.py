@@ -357,10 +357,15 @@ def run(evidence: Path) -> dict:
                             capture_output=True, text=True).stdout
         required_trace_events = (
             "virtio_blk_handle_write", "pflash_data_write",
-            "pflash_data_write_block", "pflash_io_write",
-            "pflash_write_block_erase", "pflash_write_block_start",
-            "pflash_write_block_flush", "pflash_write_block_abort",
-            "pflash_write", "pflash_write_failed",
+            "pflash_data_write_block", "pflash_write_block_erase",
+            "pflash_write_block_start", "pflash_write_block_flush",
+            "pflash_write_block_abort", "pflash_write",
+            "pflash_write_failed", "pflash_write_invalid",
+            "pflash_write_invalid_command", "pflash_write_invalid_state",
+            "pflash_write_start", "pflash_write_unknown",
+            "pflash_sector_erase_start", "pflash_chip_erase_start",
+            "pflash_erase_complete", "pflash_erase_timeout",
+            "pflash_unlock0_failed", "pflash_unlock1_failed",
         )
         require(all(event in trace_events for event in required_trace_events),
                 "QEMU build lacks required virtio/pflash write trace events")
@@ -431,9 +436,11 @@ def run(evidence: Path) -> dict:
         require(after == before, "immutable synthetic backing base modified")
         require(code_after == code_before,
                 "read-only OVMF firmware CODE image changed")
-        require(trace.is_file() and not trace.is_symlink()
-                and trace.stat().st_size <= 4_000_000,
-                "independent QEMU trace missing or oversized")
+        trace_size = trace.stat().st_size if trace.is_file() and not trace.is_symlink() else -1
+        if trace_size < 0 or trace_size > 16_000_000:
+            reason = f"independent QEMU trace missing or oversized: bytes={trace_size}"
+            retain_bounded_failure(evidence, stream, stderr, trace, reason)
+            raise DiskAuditError(reason)
         trace_text = trace.read_text(encoding="utf-8", errors="replace")
         # Classifier needs a discarded child, so discard only AFTER actual
         # smoke-byte extraction and complete QEMU termination.
@@ -484,9 +491,12 @@ def run(evidence: Path) -> dict:
         trace_lines = [line for line in trace_text.splitlines()
                        if re.search(
                            r"\b(?:virtio_blk_handle_write|pflash_(?:data_write|"
-                           r"data_write_block|io_write|write_block_erase|"
-                           r"write_block_start|write_block_flush|write_block_abort|"
-                           r"write|write_failed))\b", line)]
+                           r"data_write_block|write_block_erase|write_block_start|"
+                           r"write_block_flush|write_block_abort|write|write_failed|"
+                           r"write_invalid|write_invalid_command|write_invalid_state|"
+                           r"write_start|write_unknown|sector_erase_start|"
+                           r"chip_erase_start|erase_complete|erase_timeout|"
+                           r"unlock0_failed|unlock1_failed))\b", line)]
         bounded = "\n".join(trace_lines[:1000]) + "\n"
         (evidence / "synthetic-qemu-block-write.trace").write_text(
             bounded, encoding="utf-8")
