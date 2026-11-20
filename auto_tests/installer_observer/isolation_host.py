@@ -101,7 +101,13 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 if line.startswith("QEMU stage:") or line.startswith("QEMU laboratory refused:"):
                     print(line.strip(), flush=True)
                 elif line.startswith(
-                    ("ModuleNotFoundError:", "PermissionError:", "ImportError:", "sudo:", "OSError:")
+                    (
+                        "ModuleNotFoundError:",
+                        "PermissionError:",
+                        "ImportError:",
+                        "sudo:",
+                        "OSError:",
+                    )
                 ):
                     worker_errors.append(line.strip()[:200])
                 elif len(worker_errors) < 12:
