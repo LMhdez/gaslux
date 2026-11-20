@@ -5,6 +5,7 @@ formats). A correct quote only demonstrates cryptographic consistency: AK/EK
 provenance, event-log provenance, VM binding, and independent execution remain
 UNVERIFIED until separate independent verifiers exist.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -81,13 +82,13 @@ def make_challenge(context: QuoteContext) -> bytes:
         context.trust_anchor_id,
     )
     require(all(ident(value) for value in fields), "CONTEXT_INVALID")
-    encoded = b"".join(
-        len(value).to_bytes(2, "big") + value.encode("ascii")
-        for value in fields
-    )
+    encoded = b"".join(len(value).to_bytes(2, "big") + value.encode("ascii") for value in fields)
     return hashlib.sha256(
-        DOMAIN + context.nonce + encoded
-        + bytes.fromhex(context.iso_sha256) + bytes.fromhex(context.policy_sha256)
+        DOMAIN
+        + context.nonce
+        + encoded
+        + bytes.fromhex(context.iso_sha256)
+        + bytes.fromhex(context.policy_sha256)
     ).digest()
 
 
@@ -118,28 +119,43 @@ class OfflineTrustPolicy:
     def __post_init__(self):
         object.__setattr__(self, "pcrs", MappingProxyType(dict(self.pcrs)))
         require(
-            all(digest(getattr(self, name)) for name in (
-                "policy_sha256", "iso_sha256", "ak_spki_sha256"
-            )), "POLICY_INVALID"
+            all(
+                digest(getattr(self, name))
+                for name in ("policy_sha256", "iso_sha256", "ak_spki_sha256")
+            ),
+            "POLICY_INVALID",
         )
         require(
-            all(ident(getattr(self, name)) for name in (
-                "policy_id", "policy_version", "trust_anchor_id",
-                "vm_uuid", "distribution_id", "ak_id"
-            )), "POLICY_INVALID"
+            all(
+                ident(getattr(self, name))
+                for name in (
+                    "policy_id",
+                    "policy_version",
+                    "trust_anchor_id",
+                    "vm_uuid",
+                    "distribution_id",
+                    "ak_id",
+                )
+            ),
+            "POLICY_INVALID",
         )
-        require(self.signature_algorithm in ("ecdsa-sha256", "rsassa-sha256"),
-                "ALGORITHM_NOT_ALLOWED")
-        require(bool(self.pcrs) and all(
-            type(index) is int and 0 <= index < 24 and digest(value)
-            for index, value in self.pcrs.items()
-        ), "POLICY_INVALID")
+        require(
+            self.signature_algorithm in ("ecdsa-sha256", "rsassa-sha256"), "ALGORITHM_NOT_ALLOWED"
+        )
+        require(
+            bool(self.pcrs)
+            and all(
+                type(index) is int and 0 <= index < 24 and digest(value)
+                for index, value in self.pcrs.items()
+            ),
+            "POLICY_INVALID",
+        )
         require(
             isinstance(self.qualified_signer_hex, str)
             and len(self.qualified_signer_hex) % 2 == 0
             and len(self.qualified_signer_hex) <= 136
             and re.fullmatch("[0-9a-f]*", self.qualified_signer_hex) is not None,
-            "POLICY_INVALID"
+            "POLICY_INVALID",
         )
         require(
             isinstance(self.valid_from, datetime)
@@ -147,7 +163,7 @@ class OfflineTrustPolicy:
             and self.valid_from.tzinfo is not None
             and self.valid_until.tzinfo is not None
             and self.valid_from < self.valid_until,
-            "POLICY_INVALID"
+            "POLICY_INVALID",
         )
 
 
@@ -186,7 +202,7 @@ class Reader:
 
     def take(self, size: int) -> bytes:
         require(size >= 0 and self.cursor + size <= len(self.data), "QUOTE_TRUNCATED")
-        value = self.data[self.cursor:self.cursor + size]
+        value = self.data[self.cursor : self.cursor + size]
         self.cursor += size
         return value
 
@@ -238,20 +254,23 @@ def verify_signature(key: object, attest: bytes, signature: bytes, algorithm: st
             require(
                 signature_alg == 0x0018
                 and isinstance(key, ec.EllipticCurvePublicKey)
-                and isinstance(key.curve, ec.SECP256R1), "ALGORITHM_NOT_ALLOWED"
+                and isinstance(key.curve, ec.SECP256R1),
+                "ALGORITHM_NOT_ALLOWED",
             )
             a, b = r.tpm2b(32), r.tpm2b(32)
             require(bool(a and b), "SIGNATURE_INVALID")
             r.done()
             key.verify(
                 utils.encode_dss_signature(int.from_bytes(a, "big"), int.from_bytes(b, "big")),
-                attest, ec.ECDSA(hashes.SHA256())
+                attest,
+                ec.ECDSA(hashes.SHA256()),
             )
         elif algorithm == "rsassa-sha256":
             require(
                 signature_alg == 0x0014
-                and isinstance(key, rsa.RSAPublicKey) and key.key_size >= 2048,
-                "ALGORITHM_NOT_ALLOWED"
+                and isinstance(key, rsa.RSAPublicKey)
+                and key.key_size >= 2048,
+                "ALGORITHM_NOT_ALLOWED",
             )
             raw = r.tpm2b(512)
             r.done()
@@ -269,8 +288,9 @@ class OfflineQuoteVerifier:
         self.policy = policy
         self.replay_guard = replay_guard
 
-    def verify(self, evidence: QuoteEvidence, *, expected_context: QuoteContext,
-               now: datetime) -> QuoteAssessment:
+    def verify(
+        self, evidence: QuoteEvidence, *, expected_context: QuoteContext, now: datetime
+    ) -> QuoteAssessment:
         policy = self.policy
         require(policy is not None, "TRUST_STORE_MISSING")
         require(self.replay_guard is not None, "REPLAY_GUARD_MISSING")
@@ -278,7 +298,7 @@ class OfflineQuoteVerifier:
         time = now.astimezone(UTC)
         require(
             policy.valid_from.astimezone(UTC) <= time < policy.valid_until.astimezone(UTC),
-            "POLICY_EXPIRED"
+            "POLICY_EXPIRED",
         )
         require(policy.ak_id not in policy.revoked_ak_ids, "AK_REVOKED")
         require(isinstance(evidence, QuoteEvidence), "EVIDENCE_INVALID")
@@ -290,26 +310,31 @@ class OfflineQuoteVerifier:
         require(isinstance(expected_context, QuoteContext), "CONTEXT_INVALID")
         require(evidence.context == expected_context, "CONTEXT_MISMATCH")
         for field in (
-            "vm_uuid", "distribution_id", "iso_sha256", "policy_id", "policy_version",
-            "policy_sha256", "trust_anchor_id"
+            "vm_uuid",
+            "distribution_id",
+            "iso_sha256",
+            "policy_id",
+            "policy_version",
+            "policy_sha256",
+            "trust_anchor_id",
         ):
-            require(getattr(expected_context, field) == getattr(policy, field),
-                    "CONTEXT_MISMATCH")
+            require(getattr(expected_context, field) == getattr(policy, field), "CONTEXT_MISMATCH")
         challenge = make_challenge(expected_context)
         require(
             isinstance(evidence.pcrs, Mapping)
             and 0 < len(evidence.pcrs) <= 24
-            and all(type(k) is int and 0 <= k < 24
-                    and isinstance(v, bytes) and len(v) == 32
-                    for k, v in evidence.pcrs.items()),
-            "PCR_VALUES_INVALID"
+            and all(
+                type(k) is int and 0 <= k < 24 and isinstance(v, bytes) and len(v) == 32
+                for k, v in evidence.pcrs.items()
+            ),
+            "PCR_VALUES_INVALID",
         )
         attest = bounded(evidence.attest, 8192, "QUOTE_OVERSIZED")
         signature = bounded(evidence.signature, 1024, "SIGNATURE_OVERSIZED")
         key_bytes = bounded(evidence.ak_spki_der, 4096, "AK_PUBLIC_KEY_OVERSIZED")
         require(
             hmac.compare_digest(hashlib.sha256(key_bytes).hexdigest(), policy.ak_spki_sha256),
-            "AK_PUBLIC_KEY_UNTRUSTED"
+            "AK_PUBLIC_KEY_UNTRUSTED",
         )
         try:
             key = serialization.load_der_public_key(key_bytes)
@@ -324,8 +349,8 @@ class OfflineQuoteVerifier:
         calculated = hashlib.sha256(b"".join(evidence.pcrs[i] for i in selected)).digest()
         require(hmac.compare_digest(calculated, committed), "PCR_DIGEST_MISMATCH")
         require(
-            all(hmac.compare_digest(evidence.pcrs[i].hex(), policy.pcrs[i])
-                for i in selected), "PCR_POLICY_MISMATCH"
+            all(hmac.compare_digest(evidence.pcrs[i].hex(), policy.pcrs[i]) for i in selected),
+            "PCR_POLICY_MISMATCH",
         )
         # An independent caller must supply a durable atomic replay ledger.
         guard = self.replay_guard
