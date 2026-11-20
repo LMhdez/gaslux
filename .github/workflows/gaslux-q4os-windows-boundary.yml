@@ -11,6 +11,7 @@ on:
       - 'auto_tests/tests/test_q4os_windows_boundary.py'
       - 'auto_tests/tests/test_q4os_safety_adapter.py'
       - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
+      - 'auto_tests/tests/test_q4os_ci_no_mutating_formatter.py'
       - 'schemas/gaslux-q4os-windows-boundary.schema.json'
       - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
   pull_request:
@@ -21,6 +22,7 @@ on:
       - 'auto_tests/tests/test_q4os_windows_boundary.py'
       - 'auto_tests/tests/test_q4os_safety_adapter.py'
       - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
+      - 'auto_tests/tests/test_q4os_ci_no_mutating_formatter.py'
       - 'schemas/gaslux-q4os-windows-boundary.schema.json'
       - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
 
