@@ -28,7 +28,7 @@ def valid_request(operation="session.identify"):
         "transaction_id": "22222222-2222-4222-8222-222222222222",
         "request_id": "33333333-3333-4333-8333-333333333333",
         "nonce": "A" * 43,
-        "sequence": 0,
+        "sequence": 0 if operation == "session.identify" else 1,
         "timeout_ms": 5000,
         "max_response_bytes": 1048576,
     }
