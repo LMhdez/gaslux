@@ -295,7 +295,7 @@ jobs:
           mounted='false'
 
           stage='complete'
-          printf '{"sizeBytes":%s,"sha256":"%s","checksumVerified":true,"cosignIsoVerified":true,"isoAttestationVerified":true,"payloadCosignVerified":true,"payloadAttestationVerified":true,"embeddedPayloadVerified":true,"isoMountedReadOnly":true}\n' "$ISO_SIZE" "$ISO_ACTUAL_SHA" > "$EVIDENCE/readback-facts.json"
+          printf '{"sizeBytes":%s,"sha256":"%s","checksumVerified":true,"cosignIsoVerified":true,"isoAttestationVerified":true,"payloadCosignVerified":true,"payloadAttestationVerified":true,"payloadConfigBlobVerified":true,"embeddedPayloadVerified":true,"isoMountedReadOnly":true}\n' "$ISO_SIZE" "$ISO_ACTUAL_SHA" > "$EVIDENCE/readback-facts.json"
 
       - name: Build fail-closed evidence manifest
         id: report
@@ -338,6 +338,7 @@ jobs:
               "githubAttestationVerified": (evidence / "iso-attestation-policy.json").is_file(),
               "payloadCosignVerified": (evidence / "payload-cosign-verified.ok").is_file(),
               "payloadAttestationVerified": (evidence / "payload-attestation-policy.json").is_file(),
+              "payloadConfigBlobVerified": (evidence / "payload-config-readback.json").is_file(),
           }
           if (evidence / "readback-facts.json").exists():
               public_readback.update(json.loads((evidence / "readback-facts.json").read_text()))
@@ -348,6 +349,16 @@ jobs:
               and (evidence / "readback-facts.json").is_file()
               and (evidence / "payload-config-readback.json").is_file()
               and (evidence / "embedded-oci-payload.json").is_file()
+              and json.loads((evidence / "payload-config-readback.json").read_text()).get("configDigest")
+              == "sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb"
+              and json.loads((evidence / "embedded-oci-payload.json").read_text()).get(
+                  "configDigestFromManifest"
+              )
+              == "sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb"
+              and json.loads((evidence / "embedded-oci-payload.json").read_text()).get(
+                  "verifiedConfigBlob", {}
+              ).get("configBytesSha256Verified")
+              is True
           )
           report = {
               "schemaVersion": 1,
