@@ -456,6 +456,7 @@ def run_windows_only_bcd_control(
         "controlArm": "Windows-only",
         "treatmentArm": "CachyOS Archiso/pacstrap then Windows",
         "controlWindowsBootVerified": True,
+        "controlWindowsSerialSha256": boot.get("fourthGuestSerialSha256"),
         "controlWindowsBootOrdinal": 5,
         "treatmentWindowsBootOrdinal": 5,
         "sameWindowsBootCountVerified": True,
@@ -498,7 +499,10 @@ def run_windows_only_bcd_control(
         "treatmentTpmInitialStateTreeSha256": tpm_initial,
         "sameQemuArgumentsExceptOwnedPathsVerified": True,
         "qemuArgumentsProfileSha256": profile_a,
-        "qemuWriteTraceStatus": trace_status,
+        "qemuWriteTraceStatus": (
+            boot.get("qemuWriteTraceStatus", trace_status)
+            if trace_status == "available" else trace_status
+        ),
         "qemuWriteTraceEvents": trace_events,
         "controlQemuWriteTraceSha256": boot.get("qemuWriteTraceSha256"),
         "controlQemuWriteTraceBytes": boot.get("qemuWriteTraceBytes"),
@@ -546,9 +550,9 @@ def compare_bcd_ab(control: dict[str, Any], treatment: dict[str, Any]) -> dict[s
             " NO_ADDITIONAL_CACHYOS_BCD_DELTA"
         )
     elif not control_changed and treatment_changed:
-        classification = "TREATMENT_ASSOCIATED_BCD_MUTATION"
+        classification = "TREATMENT_ONLY_BCD_MUTATION; TREATMENT_ASSOCIATION_OR_WINDOWS_NONDETERMINISM"
     elif control_changed and not treatment_changed:
-        classification = "CONTROL_ONLY_BCD_MUTATION"
+        classification = "CONTROL_ONLY_BCD_MUTATION; WINDOWS_NONDETERMINISM_OR_TREATMENT_SUPPRESSION"
     else:
         classification = (
             "POSTBOOT_BCD_STATES_DIFFER;"
