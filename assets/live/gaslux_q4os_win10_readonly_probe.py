@@ -34,6 +34,7 @@ from libertix_prewrite_no_writer import (
 SIZE = 48 * 1024**3
 EDGE = 2 * 1024**2
 NAME = "windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
+OFFICIAL_WIN10_ISO_SHA256 = "ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668"
 
 
 def require(condition: bool, message: str) -> None:
@@ -55,6 +56,20 @@ def run(*args: str) -> str:
     )
     require(process.returncode == 0, "read-only QEMU command failed: " + args[0])
     return process.stdout
+
+
+def validate_qcow2_chain(info: dict) -> None:
+    """Refuse foreign backing, external data files and unsupported geometry."""
+    require(
+        type(info) is dict and info.get("format") == "qcow2"
+        and info.get("virtual-size") == SIZE
+        and not info.get("backing-filename")
+        and not info.get("full-backing-filename")
+        and not info.get("data-file")
+        and not info.get("encrypted")
+        and not info.get("snapshots"),
+        "unexpected QCOW2 backing, data-file, snapshot or virtual geometry",
+    )
 
 
 def _private_regular(path: Path) -> None:
@@ -150,16 +165,15 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
     )
     require(evidence.is_absolute() and evidence.is_dir() and not evidence.is_symlink(),
             "unsafe evidence directory")
+    require(
+        os.environ.get("GASLUX_WIN10_ISO_SHA256") == OFFICIAL_WIN10_ISO_SHA256,
+        "official Microsoft ISO SHA-256 missing or changed",
+    )
     image = workspace / NAME
     _private_regular(image)
     before = sha256_file(image)
     info = json.loads(run("qemu-img", "info", "--output=json", "-f", "qcow2", str(image)))
-    require(
-        info.get("format") == "qcow2" and info.get("virtual-size") == SIZE
-        and not info.get("backing-filename") and not info.get("full-backing-filename")
-        and not info.get("data-file"),
-        "unexpected QCOW2 backing, data-file or virtual geometry",
-    )
+    validate_qcow2_chain(info)
     run("qemu-img", "check", "-f", "qcow2", str(image))
     scratch = workspace / "q4os-readonly-boundary"
     scratch.mkdir(mode=0o700)
@@ -230,6 +244,7 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
     report = {
         "schemaVersion": 1,
         "source": "genuine-Windows-10-QEMU-firstboot-separate-verified-step",
+        "officialMicrosoftIsoSha256": OFFICIAL_WIN10_ISO_SHA256,
         "qcow2OriginalSha256Before": before,
         "qcow2OriginalSha256After": after,
         "backingChainPresent": False,
