@@ -73,7 +73,7 @@ def _reject_constant(value: str) -> None:
 def _canonical(value: Any) -> bytes:
     try:
         return rfc8785.dumps(value)
-    except (TypeError, ValueError, OverflowError) as exc:
+    except (TypeError, ValueError, OverflowError, RecursionError) as exc:
         raise VerificationRefused(
             "canonicalization-failed", "RFC 8785 canonicalization failed"
         ) from exc
@@ -88,7 +88,7 @@ def _object(
             parsed = json.loads(canonical.decode("utf-8"), object_pairs_hook=_pairs_no_duplicates)
         except VerificationRefused:
             raise
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
             raise VerificationRefused("json-invalid", f"{label} is not a JSON object") from exc
     elif isinstance(value, str):
         return _object(value.encode("utf-8"), limit=limit, label=label)
@@ -318,6 +318,8 @@ class SQLiteReplayGuard:
     """
 
     def __init__(self, path: str | Path) -> None:
+        if os.name != "posix" or not hasattr(os, "getuid"):
+            raise ValueError("Durable replay guard currently requires a POSIX client")
         self.path = Path(path).absolute()
         parent = self.path.parent
         if parent.is_symlink() or not parent.is_dir() or parent.resolve(strict=True) != parent:
@@ -496,7 +498,7 @@ class RemoteResponseVerifier:
             _refuse("replay-state-unavailable", "No replay guard is configured")
         current = _aware(now or datetime.now(UTC), "now")
         absolute_deadline = _aware(deadline, "deadline")
-        if current > absolute_deadline:
+        if current >= absolute_deadline:
             _refuse("deadline-exceeded", "Request deadline has already expired")
 
         request_value, request_canonical = _object(
@@ -508,7 +510,7 @@ class RemoteResponseVerifier:
         try:
             _REQUEST_VALIDATOR.validate(request_value)
             _RESPONSE_VALIDATOR.validate(response_value)
-        except ValidationError as exc:
+        except (ValidationError, RecursionError) as exc:
             raise VerificationRefused(
                 "schema-invalid", "Request or response schema validation failed"
             ) from exc
