@@ -155,9 +155,11 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
             (root / "sixth-post-pacstrap-windows-serial.log").write_bytes(
                 b"synthetic serial (NOT a Windows boot proof)")
             front, back = b"synthetic-gpt-primary", b"synthetic-gpt-backup"
+            bcd_before = b"regf" + b"\x00" * 4092
+            bcd_after = b"regf" + b"\x01" + b"\x00" * 4091
             original_hashes = {
                 "espBootManagerSha256": "a" * 64,
-                "espBcdSha256": "b" * 64,
+                "espBcdSha256": hashlib.sha256(bcd_before).hexdigest(),
                 "windowsLoaderSha256": "c" * 64,
                 "winreImageSha256": "d" * 64,
             }
@@ -169,6 +171,7 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
             for tamper, error in (
                 ("gpt", "primary or backup GPT bytes changed"),
                 ("windows_files", "espBcdSha256"),
+                ("root", "CachyOS root identity or protected Windows backing"),
                 ("none", None),
             ):
                 gpt_reads = [
@@ -177,7 +180,8 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
                 ]
                 file_reads = [
                     original_hashes,
-                    {**original_hashes, "espBcdSha256": "e" * 64}
+                    {**original_hashes,
+                     "espBcdSha256": hashlib.sha256(bcd_after).hexdigest()}
                     if tamper == "windows_files" else original_hashes,
                 ]
                 with self.subTest(tamper=tamper), mock.patch.dict(
@@ -189,7 +193,15 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
                 ), mock.patch.object(
                     lab, "qcow2_file_identity", return_value={"synthetic": True}
                 ), mock.patch.object(
-                    lab, "_verify_installed_root", return_value={"nativeRoot": True}
+                    lab, "_verify_installed_root", side_effect=[
+                        {"nativeRoot": True},
+                        {"nativeRoot": tamper != "root"},
+                    ]
+                ), mock.patch.object(
+                    lab, "_read_bcd_readonly", side_effect=(
+                        [bcd_before, bcd_after] if tamper == "windows_files"
+                        else [bcd_before]
+                    )
                 ), mock.patch.object(
                     lab, "verify_windows_post_ext4",
                     return_value={
@@ -208,8 +220,25 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
                     if error:
                         with self.assertRaisesRegex(
                             lab.PostPacstrapWindowsError, error
-                        ):
+                        ) as raised:
                             lab.verify_windows_with_installed_root(*args)
+                        if tamper == "windows_files":
+                            forensic = raised.exception.diagnostics
+                            self.assertEqual(
+                                forensic["protectedFileHashMismatchKeys"],
+                                ["espBcdSha256"],
+                            )
+                            self.assertTrue(
+                                forensic["postbootInstalledRootAndBackingPreserved"]
+                            )
+                            self.assertEqual(
+                                forensic["bcdReadOnlyForensic"]["changedByteCount"], 1
+                            )
+                            self.assertFalse(
+                                forensic["bcdReadOnlyForensic"]["approvedMutation"]
+                            )
+                        else:
+                            self.assertIsNone(raised.exception.diagnostics)
                     else:
                         status = lab.verify_windows_with_installed_root(*args)
                         self.assertTrue(
@@ -218,6 +247,27 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
                         self.assertFalse(status["cachyosBootloaderInstalledToWindowsEsp"])
                         self.assertFalse(status["rollbackProven"])
                         self.assertFalse(status["releaseEligible"])
+
+
+    def test_bcd_forensic_never_exposes_hive_bytes_or_accepts_changes(self):
+        before = b"regf" + b"\x00" * 4092
+        after = b"regf" + b"\x01" + b"\x00" * 4091
+        result = lab.summarize_bcd_difference(before, after)
+        self.assertEqual(result["changedByteCount"], 1)
+        self.assertEqual(result["firstChangedByteSpans"],
+                         [{"offset": 4, "length": 1}])
+        self.assertEqual(result["prebootBcdSha256"],
+                         hashlib.sha256(before).hexdigest())
+        self.assertEqual(result["postbootBcdSha256"],
+                         hashlib.sha256(after).hexdigest())
+        self.assertFalse(result["approvedMutation"])
+        self.assertFalse(result["productionStorageWritesAuthorized"])
+        self.assertNotIn(before.hex(), str(result))
+        self.assertNotIn(after.hex(), str(result))
+        with self.assertRaisesRegex(lab.PostPacstrapWindowsError,
+                                    "invalid BCD forensic inputs"):
+            lab.summarize_bcd_difference(b"forged", after)
+
 
 
 if __name__ == "__main__":
