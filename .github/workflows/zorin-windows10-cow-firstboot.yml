@@ -31,6 +31,8 @@ jobs:
             auto_tests/test_windows_zorin_cow_boot_evidence.py \
             auto_tests/tools/zorin_official_iso_installer_inventory.py \
             auto_tests/tools/zorin_qmp_powerdown.py \
+            auto_tests/tools/zorin_shutdown_witness.py \
+            auto_tests/test_zorin_shutdown_witness.py \
             auto_tests/test_zorin_qmp_powerdown.py \
             auto_tests/test_zorin_official_iso_installer_inventory.py
           for suite in \
@@ -39,6 +41,7 @@ jobs:
               test_windows_zorin_cow_boot_evidence.py \
               test_zorin_official_iso_installer_inventory.py \
               test_zorin_qmp_powerdown.py \
+              test_zorin_shutdown_witness.py \
               test_windows_x64_two_stage_boot.py \
               test_windows_cachyos_overlay_ext4_only.py \
               test_windows_cachyos_postext4_windows.py; do

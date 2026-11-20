@@ -508,6 +508,13 @@ def install_mint_root_and_boot(
             else:
                 raise MintOverlayError("Mint same-COW firstboot timed out")
             if distribution == "zorin":
+                from zorin_shutdown_witness import (
+                    ZorinShutdownWitnessError, verify_zorin_shutdown_serial,
+                    save_zorin_shutdown_diagnostic,
+                )
+                # Capture the ephemeral socket inode while this QEMU is alive.
+                # PID/fd binding is NOT independently authenticated here.
+                qmp_socket_inode = qmp_monitor.lstat().st_ino
                 # Historical HMP fire-and-forget had no command ACK or
                 # POWERDOWN event witness. Do not diagnose guest ACPI until
                 # the hypervisor confirms it actually delivered the request.
@@ -546,13 +553,45 @@ def install_mint_root_and_boot(
             try:
                 qemu.wait(timeout=90)
             except subprocess.TimeoutExpired as exc:
+                if distribution == "zorin":
+                    save_zorin_shutdown_diagnostic(
+                        evidence / "zorin-shutdown-diagnostics.json",
+                        raw=serial.read_bytes(), qmp_proof=qmp_proof,
+                        qemu_pid=qemu.pid, qmp_socket_inode=qmp_socket_inode,
+                        cow_path=overlay, root_uuid=root_uuid,
+                        return_code=None, failure="QEMU_ACPI_TIMEOUT_90S",
+                        witness=None)
                 raise MintOverlayError(
                     f"{distribution} guest did not complete ACPI poweroff"
                 ) from exc
-            require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after guest poweroff")
             shutdown_log = serial.read_bytes()
-            require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
-                    "Mint guest did not emit a shutdown witness")
+            if distribution == "zorin":
+                witness = None
+                failure = None
+                try:
+                    witness = verify_zorin_shutdown_serial(shutdown_log)
+                except ZorinShutdownWitnessError as exc:
+                    failure = "SERIAL_SHUTDOWN_WITNESS_REJECTED: " + str(exc)
+                if qemu.returncode != 0:
+                    failure = "QEMU_NONZERO_EXIT" + (
+                        " AND " + failure if failure else "")
+                save_zorin_shutdown_diagnostic(
+                    evidence / "zorin-shutdown-diagnostics.json",
+                    raw=shutdown_log, qmp_proof=qmp_proof,
+                    qemu_pid=qemu.pid, qmp_socket_inode=qmp_socket_inode,
+                    cow_path=overlay, root_uuid=root_uuid,
+                    return_code=qemu.returncode, failure=failure,
+                    witness=witness)
+                require(qemu.returncode == 0,
+                        "Zorin QEMU did not exit cleanly after guest poweroff")
+                require(witness is not None,
+                        failure or "Zorin guest has no verified shutdown witness")
+            else:
+                # Keep the proven Mint backend and its legacy witnesses unchanged.
+                require(qemu.returncode == 0,
+                        "Mint QEMU did not exit cleanly after guest poweroff")
+                require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
+                        "Mint guest did not emit a shutdown witness")
         finally:
             if qemu.poll() is None:
                 qemu.terminate()

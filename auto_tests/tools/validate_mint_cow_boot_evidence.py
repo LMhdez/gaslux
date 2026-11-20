@@ -142,8 +142,59 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str,
             "Mint serial evidence does not show the authenticated root UUID")
     require((hostname + " login:").encode("ascii") in serial_bytes,
             "Mint did not reach the installed-root serial login prompt")
-    require(b"systemd-shutdown" in serial_bytes or b"Powering off" in serial_bytes,
-            "Mint guest has no orderly shutdown witness")
+    if distribution == "zorin":
+        from zorin_shutdown_witness import (
+            ZorinShutdownWitnessError, verify_zorin_shutdown_serial,
+        )
+        try:
+            witness = verify_zorin_shutdown_serial(serial_bytes)
+        except ZorinShutdownWitnessError as exc:
+            raise MintBootEvidenceError(
+                "Zorin has no independently verified orderly shutdown: " + str(exc)
+            ) from exc
+        _, qmp_bytes = read_regular(
+            evidence_dir, "zorin-qmp-powerdown-request.json", MAX_PROOF_BYTES)
+        _, diagnostic_bytes = read_regular(
+            evidence_dir, "zorin-shutdown-diagnostics.json", MAX_PROOF_BYTES)
+        try:
+            qmp = json.loads(qmp_bytes)
+            diagnostic = json.loads(diagnostic_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise MintBootEvidenceError("Zorin QMP or shutdown diagnostic is invalid") from exc
+        require(type(qmp) is dict and type(diagnostic) is dict,
+                "Zorin QMP and shutdown diagnostic must be objects")
+        require(qmp.get("qmpCommandAcknowledged") is True
+                and qmp.get("qmpPowerdownEventObserved") is True
+                and qmp.get("requestType") == "ACPI-system_powerdown"
+                and qmp.get("orderlyGuestShutdownProven") is False
+                and qmp.get("nativeBootloaderProven") is False,
+                "Zorin QMP ACK/event evidence missing, invalid or overstated")
+        require(diagnostic.get("qmpCommandAcknowledged") is True
+                and diagnostic.get("qmpPowerdownEventObserved") is True
+                and type(diagnostic.get("qemuExitCode")) is int
+                and diagnostic["qemuExitCode"] == 0
+                and diagnostic.get("linuxOrderlyShutdownWitness") is True
+                and diagnostic.get("failure") is None
+                and diagnostic.get("serialSha256") == serial_hash
+                and diagnostic.get("vmSessionRootUuid") == root_uuid
+                and diagnostic.get("shutdownWitnessLines")
+                    == witness["witnessLineIndices"],
+                "Zorin QEMU/serial shutdown diagnostic does not bind this boot")
+        require(type(diagnostic.get("vmSessionQemuPid")) is int
+                and diagnostic["vmSessionQemuPid"] > 0
+                and type(diagnostic.get("vmSessionQmpSocketInode")) is int
+                and diagnostic["vmSessionQmpSocketInode"] > 0
+                and type(diagnostic.get("vmSessionCowPathSha256")) is str
+                and re.fullmatch(
+                    r"[0-9a-f]{64}", diagnostic["vmSessionCowPathSha256"]
+                ) is not None
+                and diagnostic.get("qmpPidFdBindingIndependentlyAuthenticated") is False
+                and diagnostic.get("nativeBootloaderVerified") is False
+                and diagnostic.get("sameDiskDualBootVerified") is False,
+                "Zorin diagnostic session metadata missing or overclaims identity")
+    else:
+        require(b"systemd-shutdown" in serial_bytes or b"Powering off" in serial_bytes,
+                "Mint guest has no orderly shutdown witness")
 
     proof_hash = hashlib.sha256(proof_bytes).hexdigest()
     require(report.get(f"{distribution}SquashfsRootCopiedIntoWindowsCow") is True,

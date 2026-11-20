@@ -15,11 +15,15 @@ import validate_mint_cow_boot_evidence as validator
 ROOT_UUID = "12345678-1234-4234-8234-123456789abc"
 PROFILE = "win10_22h2_en_us_x64"
 SERIAL = (
-    b"Linux version 6.14.0-generic (builder)\n"
-    + f"Kernel command line: root=UUID={ROOT_UUID} rw rootwait console=ttyS0,115200n8\n".encode()
+    b"[    0.000000] Linux version 6.14.0-generic (builder)\n"
+    + f"[    0.000000] Kernel command line: root=UUID={ROOT_UUID} rw rootwait console=ttyS0,115200n8\n".encode()
     + b"systemd[1]: Reached target Multi-User System.\n"
     + b"GASLUXZORIN login:\n"
-    + b"systemd-shutdown[1]: Powering off.\n"
+    + b"[  OK  ] Stopped serial-getty@ttyS0.service - Serial Getty on ttyS0.\n"
+    + b"[  OK  ] Reached target shutdown.target - System Shutdown.\n"
+    + b"[  OK  ] Finished systemd-poweroff.service - System Power Off.\n"
+    + b"[  OK  ] Reached target poweroff.target - System Power Off.\n"
+    + b"[   42.342717] reboot: Power down\n"
 )
 
 
@@ -73,6 +77,36 @@ class ZorinCowBootEvidenceTests(unittest.TestCase):
         }
         (self.directory / f"{PROFILE}-result.json").write_text(
             json.dumps(report), encoding="utf-8")
+        from zorin_shutdown_witness import verify_zorin_shutdown_serial
+        shutdown = verify_zorin_shutdown_serial(SERIAL)
+        qmp = {
+            "qmpCommandAcknowledged": True,
+            "qmpPowerdownEventObserved": True,
+            "orderlyGuestShutdownProven": False,
+            "nativeBootloaderProven": False,
+            "requestType": "ACPI-system_powerdown",
+        }
+        (self.directory / "zorin-qmp-powerdown-request.json").write_text(
+            json.dumps(qmp), encoding="utf-8")
+        diagnostic = {
+            "vmSessionQemuPid": 123,
+            "vmSessionQmpSocketInode": 456,
+            "vmSessionCowPathSha256": "2" * 64,
+            "vmSessionRootUuid": ROOT_UUID,
+            "qmpCommandAcknowledged": True,
+            "qmpPowerdownEventObserved": True,
+            "qmpPidFdBindingIndependentlyAuthenticated": False,
+            "qemuExitCode": 0,
+            "serialSha256": serial_hash,
+            "lastSerialLines": [],
+            "linuxOrderlyShutdownWitness": True,
+            "shutdownWitnessLines": shutdown["witnessLineIndices"],
+            "failure": None,
+            "nativeBootloaderVerified": False,
+            "sameDiskDualBootVerified": False,
+        }
+        (self.directory / "zorin-shutdown-diagnostics.json").write_text(
+            json.dumps(diagnostic), encoding="utf-8")
 
     def test_accepts_bound_direct_kernel_boot_and_shutdown_evidence(self):
         result = validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
@@ -143,10 +177,46 @@ class ZorinCowBootEvidenceTests(unittest.TestCase):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_missing_orderly_shutdown(self):
-        serial = SERIAL.replace(b"systemd-shutdown[1]: Powering off.\n", b"")
+        serial = SERIAL.replace(b"[   42.342717] reboot: Power down\n", b"")
         self._replace_serial(serial)
         with self.assertRaisesRegex(validator.MintBootEvidenceError, "orderly shutdown"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
+
+    def test_rejects_qmp_ack_without_powerdown_event(self):
+        qmp_path = self.directory / "zorin-qmp-powerdown-request.json"
+        qmp = json.loads(qmp_path.read_text())
+        qmp["qmpPowerdownEventObserved"] = False
+        qmp_path.write_text(json.dumps(qmp), encoding="utf-8")
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "QMP ACK/event"):
+            validator.validate_mint_cow_boot_evidence(
+                self.directory, PROFILE, distribution="zorin")
+
+    def test_rejects_qemu_exit_nonzero_even_with_kernel_powerdown(self):
+        path = self.directory / "zorin-shutdown-diagnostics.json"
+        diagnostic = json.loads(path.read_text())
+        diagnostic["qemuExitCode"] = 143
+        path.write_text(json.dumps(diagnostic), encoding="utf-8")
+        with self.assertRaisesRegex(validator.MintBootEvidenceError,
+                                    "QEMU/serial shutdown diagnostic"):
+            validator.validate_mint_cow_boot_evidence(
+                self.directory, PROFILE, distribution="zorin")
+
+    def test_rejects_qmp_diagnostic_from_another_session(self):
+        path = self.directory / "zorin-shutdown-diagnostics.json"
+        diagnostic = json.loads(path.read_text())
+        diagnostic["vmSessionRootUuid"] = "11111111-1111-4111-8111-111111111111"
+        path.write_text(json.dumps(diagnostic), encoding="utf-8")
+        with self.assertRaisesRegex(validator.MintBootEvidenceError,
+                                    "does not bind this boot"):
+            validator.validate_mint_cow_boot_evidence(
+                self.directory, PROFILE, distribution="zorin")
+
+    def test_rejects_missing_durable_qmp_diagnostic(self):
+        (self.directory / "zorin-shutdown-diagnostics.json").unlink()
+        with self.assertRaisesRegex(validator.MintBootEvidenceError,
+                                    "missing evidence file"):
+            validator.validate_mint_cow_boot_evidence(
+                self.directory, PROFILE, distribution="zorin")
 
     def _replace_serial(self, serial):
         serial_path = self.directory / "zorin-same-windows-cow-serial.log"
