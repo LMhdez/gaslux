@@ -41,4 +41,14 @@ jobs:
       - name: Compile the integration probe
         run: python3 -m py_compile auto_tests/tools/ntfs3g_loopback_integration.py
       - name: Exercise real NTFS-3G ro,norecover on an owned loopback image
-        run: sudo --preserve-env=RUNNER_TEMP python3 auto_tests/tools/ntfs3g_loopback_integration.py
+        run: |
+          set -o pipefail
+          sudo --preserve-env=RUNNER_TEMP python3 auto_tests/tools/ntfs3g_loopback_integration.py | tee "$RUNNER_TEMP/ntfs3g-loopback-result.json"
+      - name: Publish disposable loopback evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-ntfs3g-loopback-evidence
+          path: ${{ runner.temp }}/ntfs3g-loopback-result.json
+          if-no-files-found: ignore
+          retention-days: 14
