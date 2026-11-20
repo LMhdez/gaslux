@@ -168,11 +168,17 @@ def reproduce_restore(reference: Path, arm: Path, directory: Path) -> bool:
 
 
 def prepare_checkpoint(*, base: Path, nvram: Path, overlay: Path,
-                       mint_root_uuid: str, tpm_state: Path | None = None) -> dict:
+                       mint_root_uuid: str, ovmf_code: Path,
+                       tpm_state: Path | None = None) -> dict:
     """VM-only, fail-closed source identity and COMPLETE restoration gate."""
     require(os.environ.get("GASLUX_MINT_AB_CHECKPOINT_CONSENT") == CONSENT,
             "missing separate Mint A/B checkpoint consent")
     validate_workspace(base, nvram)
+    require(ovmf_code.is_file() and ovmf_code.stat().st_size > 1024*1024,
+            "missing checked OVMF_CODE firmware")
+    code_id = (ovmf_code.stat().st_dev, ovmf_code.stat().st_ino,
+               ovmf_code.stat().st_size, ovmf_code.stat().st_mtime_ns)
+    code_hash = sha256_file(ovmf_code)
     from uuid import UUID
     require(type(mint_root_uuid) is str
             and str(UUID(mint_root_uuid)) == mint_root_uuid,
@@ -226,6 +232,9 @@ def prepare_checkpoint(*, base: Path, nvram: Path, overlay: Path,
     equivalent(reference, arm_a)
     equivalent(reference, arm_b)
     require(sha256_file(reference) == reference_hash
+            and (ovmf_code.stat().st_dev, ovmf_code.stat().st_ino,
+                 ovmf_code.stat().st_size, ovmf_code.stat().st_mtime_ns) == code_id
+            and sha256_file(ovmf_code) == code_hash
             and sha256_file(vars_source) == source_vars_hash
             and sha256_file(directory / VARS[0]) == source_vars_hash
             and sha256_file(directory / VARS[1]) == source_vars_hash
@@ -245,7 +254,7 @@ def prepare_checkpoint(*, base: Path, nvram: Path, overlay: Path,
         "treatmentSha256": sha256_file(arm_b),
         "windowsBackingSha256": base_hash,
         "initialOvmfVarsSha256": source_vars_hash,
-        "ovmfCodeIdentity": "must-be-bound-by-VM-runner-before-A/B",
+        "ovmfCodeSha256": code_hash,
         "tpm": tpm, "controlRecoveredAfterFaultInjection": True,
         "treatmentIndependent": True, "sharedBackingChains": False,
         "qemuCompareReferenceBothArmsPassed": True,
