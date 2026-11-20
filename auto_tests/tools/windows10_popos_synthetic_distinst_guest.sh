@@ -78,7 +78,7 @@ def block_identity() -> dict:
             "logicalSectorBytes": sector,
             "major": os.major(st.st_rdev), "minor": os.minor(st.st_rdev)}
 
-def parse_gpt(device: str) -> dict:
+def parse_gpt(device: str, *, validate_expected_layout: bool = True) -> dict:
     size = int(run(["blockdev", "--getsize64", device]).stdout.strip())
     sectors = size // SECTOR
     with open(device, "rb", buffering=0) as f:
@@ -134,20 +134,53 @@ def parse_gpt(device: str) -> dict:
                 "partuuid": str(uuid.UUID(bytes_le=raw[16:32])),
                 "startLba": struct.unpack_from("<Q", raw, 32)[0],
                 "endLba": struct.unpack_from("<Q", raw, 40)[0],
+                "attributes": struct.unpack_from("<Q", raw, 48)[0],
+                "name": raw[56:128].decode("utf-16le", errors="replace").rstrip("\0"),
             }
-    need(disk_guid == EXPECTED_DISK_GUID, "synthetic GPT disk GUID mismatch")
-    esp, root = partitions.get(1), partitions.get(2)
-    need(esp is not None and root is not None
-         and esp["partuuid"] == EXPECTED_ESP_GUID
-         and root["partuuid"] == EXPECTED_ROOT_GUID
-         and esp["typeGuid"].lower() == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
-         and root["typeGuid"].lower() == "0fc63daf-8483-4772-8e79-3d69d8477de4"
-         and esp["startLba"] == 2048 and esp["endLba"] == 1050623
-         and root["startLba"] == 1052672 and root["endLba"] == 9441279,
-         "synthetic ESP/root GPT entry geometry or PARTUUID mismatch")
+    if validate_expected_layout:
+        need(disk_guid == EXPECTED_DISK_GUID, "synthetic GPT disk GUID mismatch")
+        esp, root = partitions.get(1), partitions.get(2)
+        need(esp is not None and root is not None
+             and esp["partuuid"] == EXPECTED_ESP_GUID
+             and root["partuuid"] == EXPECTED_ROOT_GUID
+             and esp["typeGuid"].lower() == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+             and root["typeGuid"].lower() == "0fc63daf-8483-4772-8e79-3d69d8477de4"
+             and esp["startLba"] == 2048 and esp["endLba"] == 1050623
+             and root["startLba"] == 1052672 and root["endLba"] == 9441279,
+             "synthetic ESP/root GPT entry geometry or PARTUUID mismatch")
     return {"diskGuid": disk_guid, "partitions": partitions,
             "primaryCrcVerified": True, "backupCrcVerified": True,
             "primaryBackupEntriesEqual": True}
+
+def compare_gpt(before: dict, after: dict) -> dict:
+    changes = []
+    if before.get("diskGuid") != after.get("diskGuid"):
+        changes.append({"field": "diskGuid", "before": before.get("diskGuid"),
+                        "after": after.get("diskGuid")})
+    for number in sorted(set(before.get("partitions", {}))
+                         | set(after.get("partitions", {}))):
+        old = before.get("partitions", {}).get(number)
+        new = after.get("partitions", {}).get(number)
+        if old is None or new is None:
+            changes.append({"partition": number, "before": old, "after": new})
+            continue
+        for field in ("typeGuid", "partuuid", "startLba", "endLba",
+                      "attributes", "name"):
+            if old.get(field) != new.get(field):
+                changes.append({"partition": number, "field": field,
+                                "before": old.get(field), "after": new.get(field)})
+    return {
+        "unchanged": not changes,
+        "diskGuidBefore": before.get("diskGuid"),
+        "diskGuidAfter": after.get("diskGuid"),
+        "primaryCrcVerifiedBefore": before.get("primaryCrcVerified") is True,
+        "backupCrcVerifiedBefore": before.get("backupCrcVerified") is True,
+        "primaryCrcVerifiedAfter": after.get("primaryCrcVerified") is True,
+        "backupCrcVerifiedAfter": after.get("backupCrcVerified") is True,
+        "primaryBackupEntriesEqualAfter": after.get("primaryBackupEntriesEqual") is True,
+        "changes": changes,
+    }
+
 
 def filesystem_type(partition: str) -> str | None:
     obj = run(["blkid", "-p", "-s", "TYPE", "-o", "value", partition], check=False)
@@ -364,8 +397,8 @@ def run_distinst() -> None:
     fsck_ext = run(["e2fsck", "-fn", device + "2"], check=False, timeout=90)
     need(fsck_fat.returncode == 0 and fsck_ext.returncode == 0,
          "read-only filesystem consistency check failed")
-    gpt_after = parse_gpt(device)
-    need(gpt_after == gpt, "distinst --test changed primary/backup GPT metadata")
+    gpt_after = parse_gpt(device, validate_expected_layout=False)
+    gpt_delta = compare_gpt(gpt, gpt_after)
     meta = pre["distinstElf"]
     report = {
         "guestVmType": pre["guestVmType"], "diskSerial": disk["serial"],
@@ -373,9 +406,16 @@ def run_distinst() -> None:
         "logicalSectorBytes": disk["logicalSectorBytes"],
         "targetDevice": device,
         "targetMajorMinor": f"{target_major}:{target_minor}",
-        "espPartuuid": gpt_after["partitions"][1]["partuuid"],
-        "rootPartuuid": gpt_after["partitions"][2]["partuuid"],
-        "gptPrimaryBackupVerified": True, "filesystemsAfter": types,
+        "espPartuuid": gpt_after["partitions"].get(1, {}).get("partuuid"),
+        "rootPartuuid": gpt_after["partitions"].get(2, {}).get("partuuid"),
+        "gptPrimaryBackupVerified": (
+            gpt_after["primaryCrcVerified"] is True
+            and gpt_after["backupCrcVerified"] is True
+            and gpt_after["primaryBackupEntriesEqual"] is True
+        ),
+        "gptPrimaryBackupUnchanged": gpt_delta["unchanged"],
+        "gptBefore": gpt, "gptAfter": gpt_after, "gptDiff": gpt_delta,
+        "filesystemsAfter": types,
         "distinstPhase": "partition-format-mount-test",
         "distinstProcess": {
             "pid": pid, "exePath": exe_path, "exeSha256": exe_hash,
@@ -384,6 +424,11 @@ def run_distinst() -> None:
             "packageVersion": meta.get("packageVersion"),
             "elfBuildId": meta.get("elfBuildId"),
             "upstreamCommitMatchProven": False,
+            "sourceRevisionHint": (
+                meta.get("packageVersion", "").rsplit("~", 1)[-1]
+                if type(meta.get("packageVersion")) is str else None
+            ),
+            "reproducibleBuildProvenanceVerified": False,
         },
         "filesystemChecks": {"fsckFatExit": fsck_fat.returncode,
                              "e2fsckExit": fsck_ext.returncode},
@@ -398,6 +443,12 @@ def run_distinst() -> None:
         },
         "distinstOutputTail": output_path.read_text(errors="replace")[-12000:],
     }
+    if not gpt_delta["unchanged"]:
+        print("GASLUX_POP_SYNTH_DISTINST_FAILURE_JSON="
+              + json.dumps(report, sort_keys=True, separators=(",", ":")),
+              flush=True)
+        raise Refused("distinst --test changed GPT identity/entries; "
+                      + json.dumps(gpt_delta, sort_keys=True, separators=(",", ":"))[:700])
     print("GASLUX_POP_SYNTH_DISTINST_RESULT_JSON="
           + json.dumps(report, sort_keys=True, separators=(",", ":")), flush=True)
     print("GASLUX_POP_SYNTH_DISTINST_COMPLETE=1", flush=True)
