@@ -12,6 +12,8 @@ on:
       - 'auto_tests/tests/test_q4os_safety_adapter.py'
       - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
       - 'auto_tests/tests/test_q4os_ci_no_mutating_formatter.py'
+      - 'auto_tests/tests/test_q4os_win10_readonly_probe.py'
+      - 'assets/live/gaslux_q4os_win10_readonly_probe.py'
       - 'schemas/gaslux-q4os-windows-boundary.schema.json'
       - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
       - 'docs/Q4OS_CALAMARES_EFI_REFUSAL.md'
@@ -25,6 +27,8 @@ on:
       - 'auto_tests/tests/test_q4os_safety_adapter.py'
       - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
       - 'auto_tests/tests/test_q4os_ci_no_mutating_formatter.py'
+      - 'auto_tests/tests/test_q4os_win10_readonly_probe.py'
+      - 'assets/live/gaslux_q4os_win10_readonly_probe.py'
       - 'schemas/gaslux-q4os-windows-boundary.schema.json'
       - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
       - 'docs/Q4OS_CALAMARES_EFI_REFUSAL.md'
@@ -62,9 +66,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py
-          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py
-          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py
+          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py
       - name: Fetch pinned upstream Safety #267 (never into working tree)
         shell: bash
         run: |
@@ -74,6 +78,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/q4os-safety-src"
           git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
           git show FETCH_HEAD:assets/live/libertix_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+          mkdir -p "$RUNNER_TEMP/q4os-safety-regression/assets/live" "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests"
+          cp "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py" "$RUNNER_TEMP/q4os-safety-regression/assets/live/"
+          cp "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py" "$RUNNER_TEMP/q4os-safety-regression/assets/live/"
+          git show FETCH_HEAD:auto_tests/tests/test_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests/test_disk_identity_gate.py"
+          git show FETCH_HEAD:auto_tests/tests/test_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests/test_prewrite_no_writer.py"
           git diff --exit-code -- assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
       - name: Synthetic GPT, ESP/WinRE/OEM and QCOW2 snapshot/restore refusals
         env:
@@ -83,7 +92,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE"
-          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py \
+          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py auto_tests/tests/test_q4os_win10_readonly_probe.py \
             --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/pytest.xml"
           test -s "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/checkpoint-verified.json"
           python - <<'PY'
@@ -102,6 +111,10 @@ jobs:
           GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE: ${{ runner.temp }}/q4os-native-windows-boundary
         run: |
           set -Eeuo pipefail
+          PYTHONPATH="$RUNNER_TEMP/q4os-safety-regression/assets/live" python -m pytest -q \
+            "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests/test_disk_identity_gate.py" \
+            "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests/test_prewrite_no_writer.py" \
+            --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/safety-pinned-pytest.xml"
           python -m pytest -q \
             auto_tests/tests/test_lab_media_probe.py \
             auto_tests/tests/test_filepool_checksums.py \
@@ -124,6 +137,9 @@ jobs:
             auto_tests/tests/test_q4os_safety_adapter.py \
             auto_tests/tests/test_q4os_safety_actual_contract.py \
             auto_tests/tests/test_q4os_ci_no_mutating_formatter.py \
+            assets/live/gaslux_q4os_win10_readonly_probe.py \
+            auto_tests/tests/test_q4os_win10_readonly_probe.py \
+            .github/workflows/gaslux-q4os-windows10-qcow2.yml \
             .github/workflows/gaslux-q4os-windows-boundary.yml
       - name: Preserve synthetic-only evidence (no disk or ISO artifacts)
         if: always()
