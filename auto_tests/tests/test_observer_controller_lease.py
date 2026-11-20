@@ -21,8 +21,9 @@ def test_second_cooperating_controller_refused(tmp_path, monkeypatch):
     first, identity = fixture_lease(tmp_path, monkeypatch)
     with first:
         first.verify()
-        with pytest.raises(Refusal, match="second controller"), module.ControllerLease(
-            tmp_path, identity
+        with (
+            pytest.raises(Refusal, match="second controller"),
+            module.ControllerLease(tmp_path, identity),
         ):
             pass
         first.verify()
@@ -33,9 +34,7 @@ def test_second_cooperating_controller_refused(tmp_path, monkeypatch):
 def test_qemu_restart_revokes_lease(tmp_path, monkeypatch):
     lease, identity = fixture_lease(tmp_path, monkeypatch)
     with lease:
-        monkeypatch.setattr(
-            module, "process_seal", lambda _pid: replace(identity, start_ticks=124)
-        )
+        monkeypatch.setattr(module, "process_seal", lambda _pid: replace(identity, start_ticks=124))
         with pytest.raises(Refusal, match="diverged"):
             lease.verify()
 
