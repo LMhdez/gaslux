@@ -80,7 +80,12 @@ jobs:
               test_windows10_popos_native_write_set.py \
               test_windows10_popos_real_live_contract.py \
               test_windows10_popos_live_readonly_gpt_probe.py \
-              test_windows10_popos_native_readonly_handoff_candidate.py; do
+              test_windows10_popos_native_readonly_handoff_candidate.py \
+              test_windows10_popos_gpt_mirror_gate.py \
+              test_windows10_popos_independent_esp_plan.py \
+              test_windows10_popos_independent_esp_root_stage.py \
+              test_windows10_popos_same_disk_overlay_stage.py \
+              test_windows_x64_installed_gpt_ro_audit.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
           echo 'Verified inert Pop #5/#6 write-set and protected Windows #1–#4 negative contracts; upstream distinst disk.commit remains unconfined. NO native writes allowed.' >> "$GITHUB_STEP_SUMMARY"
