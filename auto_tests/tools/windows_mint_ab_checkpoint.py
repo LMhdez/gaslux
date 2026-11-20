@@ -15,7 +15,9 @@ from pathlib import Path
 import re
 import shutil
 import stat
+import struct
 import subprocess
+import tempfile
 import uuid
 
 from windows_cachyos_cow_checkpoint import (
@@ -30,8 +32,7 @@ AB_DIR = "mint-ab-independent-checkpoint"
 REFERENCE = "reference.qcow2"
 ARMS = ("arm-a.qcow2", "arm-b.qcow2")
 VARS = ("arm-a-vars.fd", "arm-b-vars.fd")
-WRITE_OFFSET = 127 * 1024**3  # Proven unallocated tail on 128-GiB lab disk
-WRITE_SIZE = 4096
+WRITE_SIZE = 4096  # Fault injection must use GPT-measured unallocated tail
 
 
 class AbCheckpointError(RuntimeError):
@@ -148,28 +149,70 @@ def clone_tpm_state(source: Path | None, directory: Path) -> dict:
             "armA": "arm-a-tpm", "armB": "arm-b-tpm"}
 
 
+def choose_injection_offset(reference: Path) -> int:
+    """Use the existing validated GPT reader: never write into partition #5."""
+    from windows_cachyos_overlay_reboot import gpt_windows
+    from windows_cachyos_qcow2_gpt_readonly import (
+        SECTOR, WINDOW_BYTES, header_at, part_array,
+    )
+    with tempfile.TemporaryDirectory(prefix="mint-ab-gpt-read-", dir=reference.parent) as t:
+        front, back = gpt_windows(reference, Path(t))
+    total = VIRTUAL_BYTES // SECTOR
+    h = header_at(front, SECTOR, 1, total-1, total)
+    entries = part_array(h, front, back, total)
+    require(not any(entries[5*128:]) and all(
+        any(entries[i*128:i*128+16]) for i in range(5)),
+        "invalid GPT partition count before scratch injection")
+    spans = [struct.unpack_from("<QQ", entries, i*128+32) for i in range(5)]
+    require(all(a <= b for a, b in spans)
+            and all(spans[i][1] < spans[i+1][0] for i in range(4)),
+            "invalid GPT partition extents before scratch injection")
+    # At least 1 MiB after the real GPT fifth-partition end, preserving backup GPT.
+    scratch_lba = ((spans[-1][1] + 2048 + 2047) // 2048) * 2048
+    require(scratch_lba * SECTOR + WRITE_SIZE <= (total-34) * SECTOR
+            and scratch_lba > spans[-1][1],
+            "no verified unallocated GPT extent for scratch corruption")
+    return scratch_lba * SECTOR
+
+
 def reproduce_restore(reference: Path, arm: Path, directory: Path) -> bool:
-    """Fault-inject only an owned A arm, then completely restore and compare."""
+    """Corrupt only verified free GPT extent, restore via atomic independent clone."""
+    file_guard(reference, directory, 0o400)
     file_guard(arm, directory, 0o600)
-    require(WRITE_OFFSET + WRITE_SIZE <= VIRTUAL_BYTES,
-            "unsafe fault injection extent")
+    offset = choose_injection_offset(reference)
+    from windows_mint_ab_capacity import qemu_fully_allocated_bytes
+    bound = qemu_fully_allocated_bytes()
+    fs = os.statvfs(directory)
+    require(fs.f_bavail * fs.f_frsize > bound + 2 * 1024**3,
+            "insufficient additional space for atomic A/B restoration")
+    temp = directory / (arm.name + ".restore.tmp.qcow2")
+    require(not temp.exists() and not temp.is_symlink(),
+            "refusing reused A/B restore temporary file")
     command(["qemu-io", "-f", "qcow2", "-c",
-             f"write -P 0xa5 {WRITE_OFFSET} {WRITE_SIZE}", str(arm)], timeout=120)
+             f"write -P 0xa5 {offset} {WRITE_SIZE}", str(arm)], timeout=120)
     corrupted = command(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2",
                          str(reference), str(arm)], timeout=1800, check=False)
     require(corrupted.returncode == 1,
             "controlled scratch corruption was not independently detected")
-    # Only the exact owned arm may be discarded, NEVER the reference/backing.
+    # Do not unlink the arm until a full NEW standalone restore is checked.
+    # On ENOSPC, leave the corrupted arm and immutable reference as evidence.
+    standalone(reference, temp, directory)
+    equivalent(reference, temp)
     file_guard(arm, directory, 0o600)
-    arm.unlink()
-    standalone(reference, arm, directory)
+    os.replace(temp, arm)
+    fd = os.open(directory, os.O_DIRECTORY | os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
     equivalent(reference, arm)
     return True
 
 
 def prepare_checkpoint(*, base: Path, nvram: Path, overlay: Path,
                        mint_root_uuid: str, ovmf_code: Path,
-                       tpm_state: Path | None = None) -> dict:
+                       tpm_state: Path | None = None,
+                       diagnostic_dir: Path | None = None) -> dict:
     """VM-only, fail-closed source identity and COMPLETE restoration gate."""
     require(os.environ.get("GASLUX_MINT_AB_CHECKPOINT_CONSENT") == CONSENT,
             "missing separate Mint A/B checkpoint consent")
@@ -207,13 +250,25 @@ def prepare_checkpoint(*, base: Path, nvram: Path, overlay: Path,
     directory = base.parent / AB_DIR
     require(not directory.exists() and not directory.is_symlink(),
             "refusing reused A/B checkpoint")
+    # Second (late) gate: the early runner preflight is not a guarantee that
+    # Windows Setup/ISO/root preparation left its originally measured budget.
+    # Fail BEFORE mkdir, any large clone/convert or guest boot.
+    from windows_mint_ab_capacity import (
+        evidence as capacity_evidence, measure_capacity,
+        qemu_fully_allocated_bytes,
+    )
+    capacity = measure_capacity(
+        directory=base.parent, phase="late",
+        full_allocated_bytes=qemu_fully_allocated_bytes(),
+        base=base, overlay=overlay,
+    )
+    if diagnostic_dir is not None:
+        capacity_evidence(diagnostic_dir/"mint-ab-capacity-late.json", capacity)
+    require(capacity["result"] == "PASS",
+            "insufficient runner space for independent A/B images and atomic restore")
     directory.mkdir(mode=0o700)
     require(stat.S_IMODE(directory.stat().st_mode) == 0o700,
             "A/B checkpoint directory permissions")
-    # Conservative host free-space gate BEFORE any large standalone images.
-    need = max(6 * 1024**3, 3 * (base.stat().st_size + overlay.stat().st_size))
-    require(shutil.disk_usage(directory).free > need,
-            "insufficient runner free space for independent A/B images")
     reference = directory / REFERENCE
     standalone(overlay, reference, directory)
     reference.chmod(0o400)
@@ -228,6 +283,8 @@ def prepare_checkpoint(*, base: Path, nvram: Path, overlay: Path,
     tpm = clone_tpm_state(tpm_state, directory)
     require(reproduce_restore(reference, arm_a, directory),
             "A control recovery test failed")
+    require(reproduce_restore(reference, arm_b, directory),
+            "B treatment recovery test failed")
     reference_hash = sha256_file(reference)
     equivalent(reference, arm_a)
     equivalent(reference, arm_b)
@@ -256,6 +313,10 @@ def prepare_checkpoint(*, base: Path, nvram: Path, overlay: Path,
         "initialOvmfVarsSha256": source_vars_hash,
         "ovmfCodeSha256": code_hash,
         "tpm": tpm, "controlRecoveredAfterFaultInjection": True,
+        "treatmentRecoveredAfterFaultInjection": True,
+        "capacityPreflightSha256": (
+            sha256_file(diagnostic_dir/"mint-ab-capacity-late.json")
+            if diagnostic_dir is not None else None),
         "treatmentIndependent": True, "sharedBackingChains": False,
         "qemuCompareReferenceBothArmsPassed": True,
         "checkpointReadyForReview": True,
