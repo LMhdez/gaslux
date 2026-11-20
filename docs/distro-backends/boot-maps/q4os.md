@@ -106,3 +106,12 @@ As alterações de produção continuam proibidas. A evidência de arranque Live
 | `users.conf → setRootPassword`, `doReusePassword` | `true`, `true` | Política de senha root precisa de avaliação antes de unattended; ensaio GUI usa credenciais fictícias sem criar conta |
 
 **Origem exacta:** [artefacto VM 1 #14587306682](https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682) e [VM 2 #14586773677](https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677), pasta `calamares-inspect/`, auditoria `native-calamares-audit.json` e hashes de todos os módulos. Uma configuração instalada por Calamares sem política explícita de write-set não cumpre a segurança Windows; **o sucesso da UI não autoriza o módulo `partition`**.
+
+## 9. Segundo ensaio de navegação: Users → Summary (20-11-2026)
+
+**COMPROVADO em duas VMs descartáveis independentes**, [Actions #44648406729](https://github.com/LMhdez/gaslux/actions/runs/44648406729), ambos os jobs **SUCCESS**. Os logs de cada job confirmam os três gates `GASLUX_Q4OS_SUMMARY_GATE_PRE=PASS`, `GASLUX_Q4OS_SUMMARY_GATE_FILLED=PASS`, `GASLUX_Q4OS_SUMMARY_GATE_SUMMARY=PASS`, com `summaryVisited=true`. O teste afirma explicitamente **sem criação de conta, sem clique Install e sem escrita de instalação**. A passagem por Users com campos de ensaio é apenas estado da UI, não uma conta instalada.
+
+- [Artefacto VM 1 #14590616864](https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14590616864): PNGs, auditoria Calamares e evidência, 9 229 866 bytes no ZIP publicado; SHA-256 do ZIP reportado pelo uploader `504efa01c0ee019b7766ee1008bddda8c381389006e4a89a60457bd6b503f06d`.
+- [Artefacto VM 2 #14589299655](https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14589299655): PNGs, auditoria Calamares e evidência, 9 227 377 bytes; SHA-256 do ZIP reportado `b564a769fb8dd2177d0ea0b117bd114a29675ae670d51c85599662527ec6c096`.
+
+**PENDENTE:** descarregar os dois ZIPs, recalcular independentemente o SHA de cada PNG e associar os novos estados Summary aos hashes individuais no [manifesto versionado](../evidence/q4os-manifest.json) e no [mapa JSON](../ui-maps/q4os.json). Não promover ainda o Summary ao conjunto de estados versionados/reproduzidos. Os tempos exactos de cada transição, IDs Qt/AT-SPI e escala continuam por medir. A interface **parou no Summary antes do botão Install**; com `prompt-install=false` no Calamares 3.3.14 da ISO, premir Install pode executar imediatamente o job `partition`, sendo uma fronteira destrutiva obrigatória.
