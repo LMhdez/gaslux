@@ -1,4 +1,4 @@
-name: Gaslux preserve three closed-PR experimental histories before ref deletion
+name: Gaslux preserve two distinct closed-PR histories before ref deletion
 on:
   push:
     branches:
@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  archive-exact-three:
+  archive-exact-two:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -31,7 +31,7 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_branch_archive.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_archive_verify.py' -v
           python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-110-before.json"
-      - name: Archive exactly three unchanged original Git trees then lease-delete old refs
+      - name: Archive exactly two distinct original Git trees then lease-delete old refs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -40,15 +40,15 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GASLUX_ARCHIVE_APPROVED: PRESERVE_HISTORY_LEASE_25
-          GASLUX_ARCHIVE_EXACT: '{"feature/bazzite-legacy-iso-scout-20261118":"a601557a415bbd1f597df48ce00ab52513712138","test/popos-genuine-win10-cow-live-iso-20261119":"fb670eb411de1ef51f2501890d5c1d17d014356f","test/windows10-partitioned-fat32-usb-explicit-removable":"0ab6c16d2ab271f0ef8847175f12a343b99f7333"}'
+          GASLUX_ARCHIVE_EXACT: '{"feature/bazzite-legacy-iso-scout-20261118":"a601557a415bbd1f597df48ce00ab52513712138","test/windows10-partitioned-fat32-usb-explicit-removable":"0ab6c16d2ab271f0ef8847175f12a343b99f7333"}'
         run: |
           set -Eeuo pipefail
-          python3 auto_tests/tools/gaslux_branch_prune.py archive --output "$RUNNER_TEMP/gaslux-three-old-drafts.json"
+          python3 auto_tests/tools/gaslux_branch_prune.py archive --output "$RUNNER_TEMP/gaslux-two-source-drafts.json"
       - name: Publish source SHA and archival provenance
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: gaslux-archived-three-closed-draft-branches
+          name: gaslux-archived-two-closed-draft-heads
           path: |
             ${{ runner.temp }}/gaslux-archive-110-before.json
             ${{ runner.temp }}/gaslux-three-old-drafts.json
