@@ -219,7 +219,8 @@ def boot_readonly(work: Path, kernel: Path, initrd: Path, raw: Path,
 
 
 def evaluate_gate(host: dict, guest: dict, immediate: dict, nonce: str,
-                  transaction: str, vm_id: str) -> dict:
+                  transaction: str, vm_id: str,
+                  *, submitted_transaction: str | None = None) -> dict:
     plan = {"planId": transaction, "firmware": "uefi", "disk": {
         key: host[key] for key in ("partitionStyle", "partitionTableId",
                                   "sizeBytes", "logicalSectorSizeBytes")}}
@@ -232,7 +233,9 @@ def evaluate_gate(host: dict, guest: dict, immediate: dict, nonce: str,
             "planSha256": plan_hash, "vmId": vm_id,
             "nonce": nonce, "snapshot": snapshot}, key)
     return decide_no_writer(
-        plan=plan, plan_bytes=data, transaction_id=transaction, vm_id=vm_id,
+        plan=plan, plan_bytes=data,
+        transaction_id=submitted_transaction if submitted_transaction is not None else transaction,
+        vm_id=vm_id,
         fresh_nonce=nonce, host_key=host_key, guest_key=guest_key,
         host_evidence=record("host", host, host_key),
         guest_evidence=record("guest", guest, guest_key),
@@ -291,7 +294,8 @@ def main() -> None:
         except DiskIdentityError:
             negatives["changedPartuuid"] = "DENY"
         try:
-            evaluate_gate(host, guest["snapshot"], immediate, nonce, secrets.token_hex(16), vm)
+            evaluate_gate(host, guest["snapshot"], immediate, nonce, tx, vm,
+                          submitted_transaction=secrets.token_hex(16))
         except DiskIdentityError:
             negatives["changedTransaction"] = "DENY"
         if len(negatives) != 3:
