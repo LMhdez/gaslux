@@ -1,0 +1,76 @@
+name: Q4OS native Windows/GPT preservation and checkpoint (READ ONLY)
+
+on:
+  push:
+    branches:
+      - feature/q4os-windows-native-boundary-20261120
+    paths:
+      - '.github/workflows/gaslux-q4os-windows-boundary.yml'
+      - 'assets/live/gaslux_q4os_windows_boundary.py'
+      - 'auto_tests/tests/test_q4os_windows_boundary.py'
+      - 'schemas/gaslux-q4os-windows-boundary.schema.json'
+      - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-windows-boundary.yml'
+      - 'assets/live/gaslux_q4os_windows_boundary.py'
+      - 'auto_tests/tests/test_q4os_windows_boundary.py'
+      - 'schemas/gaslux-q4os-windows-boundary.schema.json'
+      - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-native-synthetic-gpt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install read-only test dependencies (synthetic images, no Windows host)
+        run: |
+          set -Eeuo pipefail
+          python -m pip install 'pytest>=9,<10' 'jsonschema>=4,<5' 'ruff>=0.8,<1'
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+      - name: Compile and lint isolated non-authorizing backend
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py auto_tests/tests/test_q4os_windows_boundary.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py auto_tests/tests/test_q4os_windows_boundary.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py auto_tests/tests/test_q4os_windows_boundary.py
+      - name: Synthetic GPT, ESP/WinRE/OEM and QCOW2 snapshot/restore refusals
+        env:
+          GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE: ${{ runner.temp }}/q4os-native-windows-boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE"
+          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py \
+            --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/pytest.xml"
+          test -s "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/checkpoint-verified.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          proof = json.loads((Path(os.environ['GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE']) / 'checkpoint-verified.json').read_text())
+          assert proof['fixtureOnly'] and proof['restoredWholeRawByteMatch']
+          assert proof['readOnlyVerification']['checkpointComparedToFullDisk'] is True
+          assert proof['readOnlyVerification']['rollbackVerified'] is False
+          assert proof['windowsBootVerified'] is False
+          assert proof['calamaresExecuted'] is False
+          PY
+      - name: Preserve synthetic-only evidence (no disk or ISO artifacts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-windows-gpt-readonly-checkpoint-proof
+          path: ${{ runner.temp }}/q4os-native-windows-boundary/
+          if-no-files-found: warn
+          retention-days: 7
