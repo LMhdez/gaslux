@@ -233,19 +233,22 @@ def prepare_qemu_write_trace(workspace: Path) -> tuple[Path | None, list[str], s
         "-display", "none", "-S", "-monitor", "none", "-serial", "none",
         "-trace", f"events={events_file},file={probe_trace}",
     ]
-    process = subprocess.Popen(args, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        time.sleep(0.75)
-        supported = process.poll() is None
-    finally:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
+        process = subprocess.Popen(args, stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            time.sleep(0.75)
+            supported = process.poll() is None
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+    except OSError:
+        supported = False
     if probe_trace.exists() or probe_trace.is_symlink():
         st = probe_trace.lstat()
         require(stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid(),
@@ -321,8 +324,12 @@ def run_windows_only_bcd_control(
     _copy_owned(overlay_b, overlay_a, 0o600)
     _copy_owned(vars_b, vars_a, 0o600)
     require(sha256_file(overlay_a) == overlay_b_before
-            and sha256_file(vars_a) == vars_b_before,
-            "A/B COW or OVMF VARS clone differs byte-for-byte")
+            and sha256_file(vars_a) == vars_b_before
+            and overlay_a.lstat().st_ino != overlay_b.lstat().st_ino
+            and overlay_a.lstat().st_nlink == overlay_b.lstat().st_nlink == 1
+            and vars_a.lstat().st_ino != vars_b.lstat().st_ino
+            and vars_a.lstat().st_nlink == vars_b.lstat().st_nlink == 1,
+            "A/B COW or OVMF VARS clone is not byte-identical and independently owned")
     compare = subprocess.run(
         ["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2",
          str(overlay_b), str(overlay_a)],
@@ -358,7 +365,7 @@ def run_windows_only_bcd_control(
     with tempfile.TemporaryDirectory(prefix="gaslux-bcd-ab-gpt-",
                                                     dir=workspace) as scratch:
         gpt_before_a = gpt_windows(overlay_a, Path(scratch))
-    with __import__("tempfile").TemporaryDirectory(prefix="gaslux-bcd-ab-gpt-b-",
+    with tempfile.TemporaryDirectory(prefix="gaslux-bcd-ab-gpt-b-",
                                                     dir=workspace) as scratch:
         gpt_before_b = gpt_windows(overlay_b, Path(scratch))
     require(gpt_before_a == gpt_before_b,
