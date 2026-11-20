@@ -65,7 +65,8 @@ def make_request(operation="session.identify", *, sequence=0, nonce="A" * 43, re
         "operation": operation,
         "session_id": None if operation == "session.identify" else SESSION_ID,
         "transaction_id": TRANSACTION_ID,
-        "request_id": request_id or (REQUEST_ID if sequence == 0 else f"{sequence:08d}-3333-4333-8333-333333333333"),
+        "request_id": request_id
+        or (REQUEST_ID if sequence == 0 else f"{sequence:08d}-3333-4333-8333-333333333333"),
         "nonce": nonce,
         "sequence": sequence,
         "timeout_ms": 5000,
@@ -83,7 +84,7 @@ def make_result(operation="session.identify", *, frame=None):
     if operation == "state.read":
         return {
             "kind": "state",
-            "observed_at": (NOW + timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
+            "observed_at": (NOW - timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
             "snapshot": {"distribution": "q4os", "screen": "summary", "read_only": True},
         }
     if operation == "frame.read":
