@@ -5,7 +5,10 @@ No genuine Windows disk, firmware, installation or network is used here.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,6 +27,7 @@ from gaslux_q4os_win10_readonly_probe import (  # noqa: E402
     _private_regular,
     _read_only_appliance,
     _real_safety_denial,
+    extract_host_gpt_edges,
     require,
     validate_qcow2_chain,
 )
@@ -187,3 +191,58 @@ def test_qcow2_foreign_chain_or_geometry_refused(field, value):
     source[field] = value
     with pytest.raises(ValueError, match="unexpected QCOW2"):
         validate_qcow2_chain(source)
+
+
+@pytest.mark.skipif(shutil.which("qemu-img") is None, reason="qemu-img executable required")
+def test_real_qemu_img_dd_extracts_both_gpt_edges_without_mutating_qcow2(tmp_path):
+    """Real qemu-img, disposable synthetic GPT; prove old count+skip bug."""
+    source = tmp_path / "synthetic-windows-shape.raw"
+    make_image(source)
+    qcow = tmp_path / "synthetic-windows-shape.qcow2"
+    subprocess.run(
+        ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", str(source), str(qcow)],
+        capture_output=True,
+        check=True,
+    )
+    digest_before = hashlib.sha256(qcow.read_bytes()).hexdigest()
+    scratch = tmp_path / "edges"
+    scratch.mkdir(mode=0o700)
+    first, last = extract_host_gpt_edges(qcow, scratch, SECTORS * 512)
+    block = 1024**2
+    with source.open("rb") as original:
+        assert first.read_bytes() == original.read(2 * block)
+        original.seek(SECTORS * 512 - 2 * block)
+        assert last.read_bytes() == original.read(2 * block)
+    witness = scratch / "gpt-witness.raw"
+    with witness.open("xb") as out:
+        out.truncate(SECTORS * 512)
+        out.seek(0)
+        out.write(first.read_bytes())
+        out.seek(SECTORS * 512 - 2 * block)
+        out.write(last.read_bytes())
+    expected = inspect_gpt_image(source, logical_sector_size=512)
+    actual = inspect_gpt_image(witness, logical_sector_size=512)
+    assert_snapshot_matches(expected, actual)
+    assert hashlib.sha256(qcow.read_bytes()).hexdigest() == digest_before
+
+    # This is the PREVIOUS failing command. qemu-img's count bounds its
+    # input before skip: the last GPT window is then zero length.
+    broken = scratch / "legacy-count-before-skip.raw"
+    subprocess.run(
+        [
+            "qemu-img", "dd", "-f", "qcow2", "-O", "raw",
+            "bs=1M", "count=2",
+            "skip=" + str(SECTORS * 512 // block - 2),
+            "if=" + str(qcow), "of=" + str(broken),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    assert broken.stat().st_size != 2 * block
+
+
+def test_host_gpt_edges_refuse_invalid_size_before_disk_access(tmp_path):
+    synthetic = tmp_path / "dummy.qcow2"
+    synthetic.write_bytes(b"synthetic")
+    with pytest.raises(ValueError, match="geometry"):
+        extract_host_gpt_edges(synthetic, tmp_path, 1024**2 + 512)
