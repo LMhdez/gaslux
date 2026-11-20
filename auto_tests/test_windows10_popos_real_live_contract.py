@@ -52,7 +52,7 @@ class RealPopGenuineWindowsLabGateTests(unittest.TestCase):
         new["sha_sum"] = "b" * 64
         new["size"] = 2_955_067_393
         validly_shaped_manifest = (new["sha_sum"] +
-                                   "  *pop-os_24.04_amd64_intel_21.iso\\n").encode("ascii")
+                                   "  *pop-os_24.04_amd64_intel_21.iso\n").encode("ascii")
         with self.assertRaises(DiskAuditError):
             validate_signed_release_identity(new, validly_shaped_manifest)
 
