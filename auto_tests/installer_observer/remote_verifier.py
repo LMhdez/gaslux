@@ -8,6 +8,7 @@ expectations must be provisioned by the caller through an independent channel.
 from __future__ import annotations
 
 import base64
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -18,6 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Protocol
 
 import rfc8785
@@ -209,6 +211,7 @@ class TrustStore:
     controllers: Mapping[str, TrustedController]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "controllers", MappingProxyType(dict(self.controllers)))
         for key_id, controller in self.controllers.items():
             if key_id != controller.key_id:
                 raise ValueError("Trust-store map key must equal the pinned controller key ID")
@@ -327,7 +330,7 @@ class SQLiteReplayGuard:
 
     def _initialize(self) -> None:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS sessions ("
                     "session_id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, "
@@ -449,6 +452,8 @@ class RemoteResponseVerifier:
         self.replay_guard = replay_guard
         self.require_guest_attestation = require_guest_attestation
         self.clock_skew = clock_skew
+        if max_response_bytes < 1 or clock_skew < timedelta(0):
+            raise ValueError("Verifier byte limit and clock skew must be non-negative")
         self.max_response_bytes = min(max_response_bytes, _MAX_RESPONSE_BYTES)
 
     def verify(
