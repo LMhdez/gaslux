@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
 
-from q4os_win10_qmp_boot import BootRefusal, Qmp, supervise
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "auto_tests/tools"))
+
+from q4os_win10_qmp_boot import BootRefusal, supervise  # noqa: E402
 
 
 class FakeQemu:
