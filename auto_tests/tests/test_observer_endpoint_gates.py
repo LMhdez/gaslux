@@ -1,8 +1,8 @@
 """Adversarial private-endpoint checks, never an input authorization."""
 
-from dataclasses import replace
 import os
 import socket
+from dataclasses import replace
 
 import pytest
 
@@ -70,7 +70,9 @@ def test_owned_endpoint_cleanup(endpoint):
 
 def test_process_replacement_refused_by_tcp_gate(monkeypatch):
     expected = ProcessSeal(1234, os.geteuid(), 7, "x", 1, 2)
-    monkeypatch.setattr(endpoint_gates, "process_seal", lambda _pid: replace(expected, start_ticks=8))
+    monkeypatch.setattr(
+        endpoint_gates, "process_seal", lambda _pid: replace(expected, start_ticks=8)
+    )
     with pytest.raises(Refusal, match="identity changed"):
         endpoint_gates.assert_no_qemu_tcp_listeners(expected)
 
