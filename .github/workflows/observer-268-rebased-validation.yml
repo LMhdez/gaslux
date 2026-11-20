@@ -27,13 +27,13 @@ jobs:
       - name: Install requirements
         run: python -m pip install 'pytest>=8,<10' 'pillow>=11,<13' 'ruff>=0.8,<1' 'jsonschema>=4,<5'
       - name: Compile every incorporated Observer module
-        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py
+        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py
       - name: Ruff lint ALL incorporated Observer modules and tests
-        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py
       - name: Ruff formatting ALL incorporated Observer modules and tests
-        run: python -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py
+        run: python -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py
       - name: Adversarial controller and QEMU identity contracts
-        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py
+        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py
       - name: Q4OS native preflight and related read-only contract regression
         run: python -m pytest -q auto_tests/tests/test_q4os_native_preflight.py
       - name: JSON Schema validity
@@ -49,7 +49,7 @@ jobs:
         run: |
           python - <<'PY'
           import importlib
-          for name in ("evidence", "screenshot", "locators", "models", "state_machine", "lab_identity", "controller_lease"):
+          for name in ("evidence", "screenshot", "locators", "models", "state_machine", "lab_identity", "controller_lease", "replay"):
               importlib.import_module("auto_tests.installer_observer." + name)
           PY
       - name: Fail closed if any production writer or release surface changed
@@ -64,12 +64,12 @@ jobs:
           head = os.environ["INTEGRATION_HEAD"]
           changed = subprocess.check_output(["git", "diff", "--name-only", base, head], text=True).splitlines()
           print("Integration-only paths:", changed)
-          forbidden = ("release-config.json", "Installation/", "Scripts/", "assets/live/", "Pages/", "release-config/")
+          permitted = {\n              ".github/workflows/observer-268-rebased-validation.yml",\n              "auto_tests/installer_observer/__init__.py",\n              "auto_tests/installer_observer/controller_lease.py",\n              "auto_tests/installer_observer/evidence.py",\n              "auto_tests/installer_observer/lab_identity.py",\n              "auto_tests/installer_observer/locators.py",\n              "auto_tests/installer_observer/models.py",\n              "auto_tests/installer_observer/replay.py",\n              "auto_tests/installer_observer/screenshot.py",\n              "auto_tests/installer_observer/state_machine.py",\n              "auto_tests/tests/test_observer_controller_lease.py",\n              "auto_tests/tests/test_observer_lab_identity.py",\n              "auto_tests/tests/test_observer_rebased_primitives.py",\n              "auto_tests/tests/test_observer_replay_synthetic.py",\n              "docs/distro-backends/SHARED_CONTRACTS.md",\n          }\n          if set(changed) != permitted:\n              raise SystemExit("Scope diff does not match reviewed offline-replay allowlist")\n          forbidden = ("release-config.json", "Installation/", "Scripts/", "assets/live/", "Pages/", "release-config/")
           if any(p == forbidden[0] or any(p.startswith(prefix) for prefix in forbidden[1:]) for p in changed):
               raise SystemExit("Unreviewed production writer or release changes")
-          lease = Path("auto_tests/installer_observer/controller_lease.py").read_text()
+          assert not any(p in changed for p in ("auto_tests/installer_observer/transport_vnc.py", "auto_tests/installer_observer/remote_verifier.py", "schemas/observer-readonly-request.schema.json", "schemas/observer-readonly-response.schema.json"))\n          lease = Path("auto_tests/installer_observer/controller_lease.py").read_text()
           for marker in ("LOCK_EX | fcntl.LOCK_NB", "os.O_NOFOLLOW", "process_seal(self.expected.pid)", "raise Refusal"):
               if marker not in lease:
                   raise SystemExit("ControllerLease gate missing: " + marker)
-          print("Experimental observer only: no release or disk writer modifications")
+          print("Offline synthetic replay only: exact scope, no transport, no release or disk writer modifications")
           PY
