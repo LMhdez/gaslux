@@ -1,4 +1,5 @@
 """Laboratory-only TPM2 quote wire fixtures and adversarial verification."""
+
 from __future__ import annotations
 
 import hashlib
@@ -34,11 +35,16 @@ def sign_quote(key, spki, context, pcrs, signer, *, selection=(0, 7)):
     bits = sum(1 << i for i in selection).to_bytes(3, "little")
     committed = hashlib.sha256(b"".join(pcrs[i] for i in selection)).digest()
     attest = (
-        (0xFF544347).to_bytes(4, "big") + b16(0x8018)
+        (0xFF544347).to_bytes(4, "big")
+        + b16(0x8018)
         + tpm2b(bytes.fromhex(signer))
         + tpm2b(make_challenge(context))
-        + bytes(17) + bytes(8)
-        + (1).to_bytes(4, "big") + b16(0x000B) + b"\x03" + bits
+        + bytes(17)
+        + bytes(8)
+        + (1).to_bytes(4, "big")
+        + b16(0x000B)
+        + b"\x03"
+        + bits
         + tpm2b(committed)
     )
     der = key.sign(attest, ec.ECDSA(hashes.SHA256()))
@@ -55,17 +61,27 @@ def fixture():
     )
     context = QuoteContext(
         nonce=bytes(range(32)),
-        transaction_id="txn-1", session_id="session-1", request_id="request-1",
-        vm_uuid="vm-lab", distribution_id="q4os", iso_sha256="e" * 64,
-        policy_id="lab-policy", policy_version="1",
-        policy_sha256="a" * 64, trust_anchor_id="lab-anchor",
+        transaction_id="txn-1",
+        session_id="session-1",
+        request_id="request-1",
+        vm_uuid="vm-lab",
+        distribution_id="q4os",
+        iso_sha256="e" * 64,
+        policy_id="lab-policy",
+        policy_version="1",
+        policy_sha256="a" * 64,
+        trust_anchor_id="lab-anchor",
     )
     pcrs = {0: b"\x10" * 32, 7: b"\x17" * 32}
     policy = OfflineTrustPolicy(
-        policy_id=context.policy_id, policy_version=context.policy_version,
-        policy_sha256=context.policy_sha256, trust_anchor_id=context.trust_anchor_id,
-        vm_uuid=context.vm_uuid, distribution_id=context.distribution_id,
-        iso_sha256=context.iso_sha256, ak_id="lab-ak",
+        policy_id=context.policy_id,
+        policy_version=context.policy_version,
+        policy_sha256=context.policy_sha256,
+        trust_anchor_id=context.trust_anchor_id,
+        vm_uuid=context.vm_uuid,
+        distribution_id=context.distribution_id,
+        iso_sha256=context.iso_sha256,
+        ak_id="lab-ak",
         ak_spki_sha256=hashlib.sha256(spki).hexdigest(),
         qualified_signer_hex="000b" + "ab" * 32,
         signature_algorithm="ecdsa-sha256",
@@ -142,7 +158,9 @@ def test_quote_cannot_cross_request_context(field):
     _, policy, evidence = fixture()
     modified = replace(evidence.context, **{field: "other"})
     refused(
-        "CONTEXT_MISMATCH", policy, replace(evidence, context=modified),
+        "CONTEXT_MISMATCH",
+        policy,
+        replace(evidence, context=modified),
         expected_context=evidence.context,
     )
 
@@ -151,7 +169,9 @@ def test_nonce_mismatch_and_bad_nonce_size():
     _, policy, evidence = fixture()
     changed = replace(evidence.context, nonce=b"\xff" * 32)
     refused(
-        "CONTEXT_MISMATCH", policy, replace(evidence, context=changed),
+        "CONTEXT_MISMATCH",
+        policy,
+        replace(evidence, context=changed),
         expected_context=evidence.context,
     )
     invalid = replace(evidence.context, nonce=b"short")
@@ -162,7 +182,10 @@ def test_attacker_signed_quote_cannot_replace_expected_context():
     key, policy, evidence = fixture()
     changed = replace(evidence.context, request_id="attacker-request")
     other = sign_quote(
-        key, evidence.ak_spki_der, changed, evidence.pcrs,
+        key,
+        evidence.ak_spki_der,
+        changed,
+        evidence.pcrs,
         policy.qualified_signer_hex,
     )
     refused("CONTEXT_MISMATCH", policy, other, expected_context=evidence.context)
@@ -183,8 +206,12 @@ def test_untrusted_pcr_value_and_reference():
 def test_pcr_selection_exact():
     key, policy, evidence = fixture()
     other = sign_quote(
-        key, evidence.ak_spki_der, evidence.context, evidence.pcrs,
-        policy.qualified_signer_hex, selection=(0,),
+        key,
+        evidence.ak_spki_der,
+        evidence.context,
+        evidence.pcrs,
+        policy.qualified_signer_hex,
+        selection=(0,),
     )
     refused("PCR_SELECTION_MISMATCH", policy, other)
 
@@ -198,7 +225,8 @@ def test_truncated_and_oversized_quote():
 def test_disallowed_algorithm():
     _, policy, evidence = fixture()
     refused(
-        "ALGORITHM_NOT_ALLOWED", policy,
+        "ALGORITHM_NOT_ALLOWED",
+        policy,
         replace(evidence, signature=b16(0x0018) + b16(0x0004)),
     )
 
@@ -207,7 +235,8 @@ def test_event_log_not_falsely_authenticated():
     _, policy, evidence = fixture()
     refused("EVENT_LOG_UNVERIFIED", policy, replace(evidence, event_log=b"forged"))
     refused(
-        "AK_TRUST_UNVERIFIED", policy,
+        "AK_TRUST_UNVERIFIED",
+        policy,
         replace(evidence, ek_ak_credential_proof=b"fabricated"),
     )
 
@@ -216,10 +245,12 @@ def test_expiration_and_ak_revocation():
     _, policy, evidence = fixture()
     refused(
         "POLICY_EXPIRED",
-        replace(policy, valid_until=NOW - timedelta(seconds=1)), evidence,
+        replace(policy, valid_until=NOW - timedelta(seconds=1)),
+        evidence,
     )
     refused(
-        "AK_REVOKED", replace(policy, revoked_ak_ids=frozenset({"lab-ak"})),
+        "AK_REVOKED",
+        replace(policy, revoked_ak_ids=frozenset({"lab-ak"})),
         evidence,
     )
 
@@ -228,7 +259,8 @@ def test_vm_and_policy_origin_mismatch():
     _, policy, evidence = fixture()
     refused("CONTEXT_MISMATCH", replace(policy, vm_uuid="different-vm"), evidence)
     refused(
-        "CONTEXT_MISMATCH", replace(policy, policy_sha256="f" * 64),
+        "CONTEXT_MISMATCH",
+        replace(policy, policy_sha256="f" * 64),
         evidence,
     )
 
@@ -237,7 +269,8 @@ def test_qualified_signer_mismatch():
     _, policy, evidence = fixture()
     refused(
         "AK_QUALIFIED_SIGNER_MISMATCH",
-        replace(policy, qualified_signer_hex=""), evidence,
+        replace(policy, qualified_signer_hex=""),
+        evidence,
     )
 
 
