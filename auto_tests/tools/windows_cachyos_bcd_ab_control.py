@@ -444,8 +444,8 @@ def run_windows_only_bcd_control(
             vars_a != vars_b
             and vars_a.lstat().st_ino != vars_b.lstat().st_ino
             and vars_a.lstat().st_nlink == vars_b.lstat().st_nlink == 1
-            and vars_a_after == sha256_file(vars_a)
-            and vars_b_before == sha256_file(vars_b)
+            and sha256_file(vars_a) == vars_b_before
+            and sha256_file(vars_b) == vars_b_before
         ),
         "controlOvmfInitialSha256": vars_b_before,
         "treatmentOvmfInitialSha256": vars_b_before,
