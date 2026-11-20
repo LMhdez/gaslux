@@ -1,6 +1,7 @@
 """No guest/disk writes: CachyOS + Windows same-COW re-entry contracts."""
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import sys
@@ -136,6 +137,81 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
         self.assertNotIn("sgdisk --clear", helper)
         self.assertNotIn("mkfs", helper)
         self.assertNotIn("grub-install", helper)
+
+
+    def test_postboot_gpt_or_protected_windows_hash_change_still_fails_closed(self):
+        # No block devices, guestfs, KVM or Windows installation: all mocked.
+        with tempfile.TemporaryDirectory(prefix="gaslux-win10-reentry-contract-") as td:
+            root = Path(td)
+            base = root / "only-disposable-windows-target.qcow2"
+            nvram = root / "ovmf-variables.fd"
+            checkpoint = root / lab.CHECKPOINT_DIR
+            checkpoint.mkdir()
+            overlay = checkpoint / lab.OVERLAY_NAME
+            for path in (base, nvram, overlay):
+                path.write_bytes(b"private-synthetic-lab-file")
+            base.chmod(0o400)
+            overlay.chmod(0o600)
+            (root / "sixth-post-pacstrap-windows-serial.log").write_bytes(
+                b"synthetic serial (NOT a Windows boot proof)")
+            front, back = b"synthetic-gpt-primary", b"synthetic-gpt-backup"
+            original_hashes = {"efi": "test-hash"}
+            plan = {
+                "runId": "gaslux-test-txn",
+                "gptWindowsSha256": hashlib.sha256(front + back).hexdigest(),
+                "windowsHashes": original_hashes,
+            }
+            for tamper, error in (
+                ("gpt", "primary or backup GPT bytes changed"),
+                ("windows_files", "ESP/BCD/winload/WinRE hashes changed"),
+                ("none", None),
+            ):
+                gpt_reads = [
+                    (front, back),
+                    (front + b"-tampered", back) if tamper == "gpt" else (front, back),
+                ]
+                file_reads = [
+                    original_hashes,
+                    {"efi": "tampered"} if tamper == "windows_files" else original_hashes,
+                ]
+                with self.subTest(tamper=tamper), mock.patch.dict(
+                    os.environ, lab_env(), clear=True
+                ), mock.patch.object(lab, "validate_workspace"), mock.patch.object(
+                    lab, "owned_regular"
+                ), mock.patch.object(
+                    lab, "signed_lab_plan", return_value=plan
+                ), mock.patch.object(
+                    lab, "qcow2_file_identity", return_value={"synthetic": True}
+                ), mock.patch.object(
+                    lab, "_verify_installed_root", return_value={"nativeRoot": True}
+                ), mock.patch.object(
+                    lab, "verify_windows_post_ext4",
+                    return_value={
+                        "windowsBootAfterExt4Verified": True,
+                        "fifthExt4UuidSurvivedWindowsBoot": True,
+                    },
+                ), mock.patch.object(
+                    lab, "gpt_windows", side_effect=gpt_reads
+                ), mock.patch.object(
+                    lab, "read_windows_file_hashes", side_effect=file_reads
+                ):
+                    args = (
+                        [], base, nvram, {}, {}, {}, {}, EXT4, FOURTH,
+                        valid_pacstrap(),
+                    )
+                    if error:
+                        with self.assertRaisesRegex(
+                            lab.PostPacstrapWindowsError, error
+                        ):
+                            lab.verify_windows_with_installed_root(*args)
+                    else:
+                        status = lab.verify_windows_with_installed_root(*args)
+                        self.assertTrue(
+                            status["windowsBootWithPacstrappedCachyosOnSameDiskVerified"])
+                        self.assertFalse(status["sameDiskDualBootVerified"])
+                        self.assertFalse(status["cachyosBootloaderInstalledToWindowsEsp"])
+                        self.assertFalse(status["rollbackProven"])
+                        self.assertFalse(status["releaseEligible"])
 
 
 if __name__ == "__main__":
