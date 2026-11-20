@@ -19,7 +19,7 @@ class MintAbCheckpointContracts(unittest.TestCase):
             with self.assertRaisesRegex(ab.AbCheckpointError, "separate Mint A/B"):
                 ab.prepare_checkpoint(
                     base=Path("/dev/sda"), nvram=Path("/dev/nvram"),
-                    overlay=Path("/dev/sdb"),
+                    overlay=Path("/dev/sdb"), ovmf_code=Path("/dev/ovmf"),
                     mint_root_uuid="00000000-0000-4000-8000-000000000001")
 
     def test_symlink_and_hardlink_refused(self):
