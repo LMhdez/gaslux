@@ -9,9 +9,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests" / "tools"))
 sys.path.insert(0, str(ROOT / "assets" / "live"))
-from tests.test_disk_identity_gate import make_image
-import safety_qemu_gpt_host_guest as lab
-from libertix_disk_identity_gate import DiskIdentityError
+from tests.test_disk_identity_gate import make_image  # noqa: E402
+import safety_qemu_gpt_host_guest as lab  # noqa: E402
+from libertix_disk_identity_gate import DiskIdentityError  # noqa: E402
 
 
 @pytest.fixture
