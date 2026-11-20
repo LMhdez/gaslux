@@ -46,10 +46,10 @@ def inspect_input_surface(
         raw = (Path("/proc") / str(process.pid) / "cmdline").read_bytes()
     except OSError as exc:
         raise Refusal("QEMU process argv unavailable") from exc
-    if not raw.endswith(b"\\0"):
+    if not raw.endswith(bytes([0])):
         raise Refusal("Malformed QEMU argv")
     try:
-        actual = tuple(item.decode("utf-8") for item in raw[:-1].split(b"\\0"))
+        actual = tuple(item.decode("utf-8") for item in raw[:-1].split(bytes([0])))
     except UnicodeDecodeError as exc:
         raise Refusal("QEMU argv has invalid encoding") from exc
     if not launched or actual != launched:
@@ -62,13 +62,21 @@ def inspect_input_surface(
         or launched[7:11] != ("-m", "128", "-vga", "std")
         or launched[11:19]
         != (
-            "-display", "none", "-monitor", "none",
-            "-serial", "none", "-net", "none",
+            "-display",
+            "none",
+            "-monitor",
+            "none",
+            "-serial",
+            "none",
+            "-net",
+            "none",
         )
         or launched[19:23]
         != (
-            "-vnc", "127.0.0.1:0",
-            "-qmp", f"unix:{qmp_socket},server=on,wait=off",
+            "-vnc",
+            "127.0.0.1:0",
+            "-qmp",
+            f"unix:{qmp_socket},server=on,wait=off",
         )
         or launched[23] != "-drive"
         or launched[25] != "-drive"
