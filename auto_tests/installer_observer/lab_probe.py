@@ -20,6 +20,7 @@ from .controller_lease import ControllerLease
 from .evidence import Refusal, canonical, digest
 from .lab_identity import LocalQemuAttestor, QemuRunSeal, process_seal, seal_file
 from .models import DistributionIdentity
+from .qemu_surface import inspect_input_surface
 from .state_machine import LabAuthority
 from .transport_vnc import ReadOnlyVncTransport, RfbReader
 
@@ -105,6 +106,14 @@ def _one(evidence_root: Path) -> dict:
                         raise
                 controller.verify()
                 attestor.verify(time.monotonic() + 5)
+                surface = inspect_input_surface(seal.process, tuple(cmd), qmp)
+                try:
+                    surface.require_exclusive_input()
+                except Refusal as exc:
+                    if "Loopback RFB admits external host clients" not in str(exc):
+                        raise
+                else:
+                    raise Refusal("Unisolated QEMU input was accidentally authorized")
             png = None
             resolution = None
             # RFB observation is harmless. An unexpected screen size refuses a
@@ -247,6 +256,8 @@ def _one(evidence_root: Path) -> dict:
                 "qmp_identity_checked": True,
                 "physical_block_fd_rejected": True,
                 "guest_clicks": 0,
+                "input_surface": asdict(surface),
+                "input_authority_refused": True,
                 "cooperative_controller_contention_refused": True,
                 "live_negative_gates_refused": negative,
                 "q4os_booted": False,
