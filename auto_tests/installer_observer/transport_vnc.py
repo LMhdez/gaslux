@@ -47,13 +47,17 @@ class RfbReader:
             or not 1 <= self.port <= 65535
         ):
             raise Refusal("Only an explicitly selected loopback VNC endpoint is permitted")
-        if (len(size) != 2 or any(type(n) is not int for n in size)
-                or not 0 < size[0] * size[1] <= 8_000_000):
+        if (
+            len(size) != 2
+            or any(type(n) is not int for n in size)
+            or not 0 < size[0] * size[1] <= 8_000_000
+        ):
             raise Refusal("Invalid framebuffer contract")
         if self.clock() >= deadline:
             raise Refusal("VNC deadline expired")
         try:
             with self.dial((self.host, self.port), timeout=deadline - self.clock()) as sock:
+
                 def take(n: int) -> bytes:
                     if self.clock() >= deadline:
                         raise Refusal("VNC deadline expired")
@@ -157,6 +161,4 @@ class ReadOnlyVncTransport:
         self, run_id: str, png_sha256: str, point: tuple[int, int], deadline: float
     ) -> None:
         self.audit("vnc-input-refused")
-        raise Refusal(
-            "RFB cannot atomically revalidate framebuffer, authority and emit one click"
-        )
+        raise Refusal("RFB cannot atomically revalidate framebuffer, authority and emit one click")
