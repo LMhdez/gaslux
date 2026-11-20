@@ -41,6 +41,10 @@ PFLASH_WRITE = re.compile(
     r"sector_erase_start|chip_erase_start|erase_complete|erase_timeout|"
     r"unlock0_failed|unlock1_failed)\b"
 )
+PFLASH_MUTATION = re.compile(
+    r"\bpflash_(?:data_write|data_write_block|write_block_erase|"
+    r"sector_erase_start|chip_erase_start|erase_complete|erase_timeout)\b"
+)
 GUID = re.compile(r"[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\Z")
 
 
@@ -128,9 +132,17 @@ def classify_trace(trace: str, plan: dict, *, reported_serial: str,
             "unexpected or incomplete synthetic write-set")
     pflash_events = [line for line in trace.splitlines()
                      if PFLASH_WRITE.search(line)]
+    pflash_mutations = [line for line in pflash_events
+                        if PFLASH_MUTATION.search(line)]
+    vars_mutations = [line for line in pflash_mutations
+                      if "system.flash1" in line]
+    code_mutations = [line for line in pflash_mutations
+                      if "system.flash0" in line]
     vars_changed = nvram_sha_before != nvram_sha_after
-    require(not vars_changed or len(pflash_events) > 0,
-            "OVMF VARS changed without independent QEMU pflash write events")
+    require(not vars_changed or len(vars_mutations) > 0,
+            "OVMF VARS changed without pflash1 data/erase mutation events")
+    require(len(code_mutations) == 0,
+            "read-only OVMF CODE pflash0 emitted a mutation event")
     events = []
     for line in trace.splitlines():
         if not UNKNOWN_WRITE.search(line):
@@ -169,6 +181,9 @@ def classify_trace(trace: str, plan: dict, *, reported_serial: str,
         "ovmfVarsChanged": vars_changed,
         "ovmfPflashWriteRequestsObserved": bool(pflash_events),
         "ovmfPflashWriteEventCount": len(pflash_events),
+        "ovmfPflashMutationEventCount": len(pflash_mutations),
+        "ovmfVarsMutationEventCount": len(vars_mutations),
+        "ovmfCodeMutationEventCount": len(code_mutations),
         "ovmfPflashWriteEvents": pflash_events[:100],
         "nvramWriteSetAttested": False,
         "installerProcessObserved": False,
