@@ -305,6 +305,14 @@ def exact_absorbed_candidates(refs, protect, approval):
                 or set(spec) != {"sha", "keeper", "keeper_sha"}):
             raise RuntimeError("malformed successor authorization")
         sha, keeper, keeper_sha = spec["sha"], spec["keeper"], spec["keeper_sha"]
+        # The maintenance keeper advances when this one-shot workflow is
+        # committed. Permit only a verified fast-forward from the pinned
+        # provenance commit, never a replacement or unrelated history.
+        if (branch == "automation/gaslux-15m-integration-audit"
+                and keeper == CONTROL and refs.get(keeper) != keeper_sha
+                and refs.get(keeper) is not None
+                and is_ancestor(keeper_sha, refs[keeper])):
+            keeper_sha = refs[keeper]
         if (not isinstance(sha, str) or not re.fullmatch("[0-9a-f]{40}", sha)
                 or not isinstance(keeper_sha, str)
                 or not re.fullmatch("[0-9a-f]{40}", keeper_sha)

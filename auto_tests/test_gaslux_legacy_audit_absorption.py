@@ -46,10 +46,15 @@ class LegacyAuditAbsorptionTests(TestCase):
         with self.assertRaisesRegex(RuntimeError, "unproven"):
             self.verify(ancestry=False)
 
-    def test_modified_keeper_sha_is_rejected(self):
+    def test_unrelated_keeper_tip_is_rejected(self):
         self.refs[mod.CONTROL] = "c" * 40
         with self.assertRaisesRegex(RuntimeError, "changed"):
-            self.verify()
+            self.verify(ancestry=False)
+
+    def test_fast_forward_keeper_tip_is_accepted(self):
+        self.refs[mod.CONTROL] = "c" * 40
+        self.assertEqual(self.verify(), [(
+            self.branch, self.src_sha, mod.CONTROL, "c" * 40)])
 
     def test_any_other_automation_source_is_rejected(self):
         self.approval = {"automation/another-audit": {
