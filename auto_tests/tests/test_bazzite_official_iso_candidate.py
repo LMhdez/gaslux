@@ -37,7 +37,11 @@ def test_candidate_remains_blocked_until_public_iso_and_payload_are_read_back():
     assert evidence["publicReadback"]["sha256MatchesPinnedBuildSubject"] is True
     assert evidence["publicReadback"]["officialChecksumVerified"] is True
     assert evidence["publicReadback"]["detachedCosignSignatureVerified"] is True
-    assert evidence["artifact"]["provenance"]["verifiedAgainstLocalIsoBytes"] is False
+    assert evidence["publicReadback"]["githubIsoAttestationVerified"] is True
+    assert evidence["publicReadback"]["payloadCosignSignatureVerified"] is False
+    assert evidence["publicReadback"]["payloadAttestationVerified"] is False
+    assert evidence["publicReadback"]["embeddedOciManifestReadBackVerified"] is False
+    assert evidence["artifact"]["provenance"]["verifiedAgainstLocalIsoBytes"] is True
     assert evidence["relationship"]["embeddedOciManifestReadBackVerified"] is False
     assert (
         evidence["relationship"]["isoAttestationResolvedPayloadDigestIndependentlyVerified"]
