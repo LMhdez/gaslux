@@ -134,3 +134,18 @@ def test_expired_session_is_refused():
             framebuffer_png=b"fixture",
             clock=lambda: 100.0,
         )
+
+
+def test_nonfinite_expiry_is_refused():
+    peer = PeerIdentity(2201, 4102, 99001)
+    with pytest.raises(Refusal, match="Incomplete or invalid"):
+        ObservationBoundaryModel(
+            peer=peer,
+            session_id=str(uuid.uuid4()),
+            transaction_id=str(uuid.uuid4()),
+            expires_at=float("nan"),
+            evidence=BoundaryEvidence("a" * 64, "b" * 64, "c" * 64, "fixture"),
+            state={"read_only": True},
+            framebuffer_png=b"fixture",
+            clock=lambda: 1.0,
+        )
