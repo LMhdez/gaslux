@@ -113,10 +113,14 @@ def _one(evidence_root: Path) -> dict:
             # No negative check sends guest input or attaches any device.
             negative = []
 
-            def must_refuse(name, check):
+            def must_refuse(name, check, reason: str):
                 try:
                     check()
-                except Refusal:
+                except Refusal as exc:
+                    if reason not in str(exc):
+                        raise Refusal(
+                            f"Unexpected refusal reason for {name}: {exc}"
+                        ) from exc
                     negative.append(name)
                 else:
                     raise Refusal(f"Live negative QEMU gate admitted drift: {name}")
@@ -129,24 +133,35 @@ def _one(evidence_root: Path) -> dict:
                         process=replace(seal.process, start_ticks=seal.process.start_ticks + 1),
                     )
                 ).verify(time.monotonic() + 5),
+                "QEMU process replaced or reconfigured",
             )
             must_refuse(
                 "snapshot-mismatch",
                 lambda: LocalQemuAttestor(
                     replace(seal, authority=replace(authority, snapshot_id="unauthorized-snapshot"))
                 ).verify(time.monotonic() + 5),
+                "Snapshot identity cannot be corroborated by QMP",
             )
             must_refuse(
                 "qcow2-inode-mismatch",
                 lambda: LocalQemuAttestor(
                     replace(seal, cow=replace(seal.cow, ino=seal.cow.ino + 1))
                 ).verify(time.monotonic() + 5),
+                "COW inode replaced",
             )
-            must_refuse("expired-deadline", lambda: attestor.verify(time.monotonic() - 1))
+            must_refuse(
+                "expired-deadline",
+                lambda: attestor.verify(time.monotonic() - 1),
+                "QEMU attestation deadline expired",
+            )
             moved = qmp.with_name("qmp-temporarily-unavailable.sock")
             qmp.rename(moved)
             try:
-                must_refuse("qmp-disconnected", lambda: attestor.verify(time.monotonic() + 5))
+                must_refuse(
+                    "qmp-disconnected",
+                    lambda: attestor.verify(time.monotonic() + 5),
+                    "QMP or process inspection failed closed",
+                )
             finally:
                 moved.rename(qmp)
             # A second VNC reader is still an external input-capable client.
@@ -182,6 +197,7 @@ def _one(evidence_root: Path) -> dict:
                 must_refuse(
                     "concurrent-vnc-client",
                     lambda: transport.capture(time.monotonic() + 5),
+                    "Unbound graphical endpoint or another VNC client",
                 )
             # The other client has closed; the normal session must recover
             # without authorizing or emitting any guest input.
@@ -190,7 +206,11 @@ def _one(evidence_root: Path) -> dict:
             # the original read-only frame. Never do this with upstream media.
             original_iso = iso.read_bytes()
             iso.write_bytes(b"X" + original_iso[1:])
-            must_refuse("iso-mutated", lambda: attestor.verify(time.monotonic() + 5))
+            must_refuse(
+                "iso-mutated",
+                lambda: attestor.verify(time.monotonic() + 5),
+                "ISO identity changed",
+            )
             # The only proof published here is a *read-only* VM frame and
             # independently corroborated host/QMP identities. Zero guest clicks.
             location = evidence_root / run_id
