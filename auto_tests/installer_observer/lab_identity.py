@@ -178,6 +178,11 @@ class LocalQemuAttestor:
     """
 
     def __init__(self, seal: QemuRunSeal):
+        if seal.iso.size != seal.authority.media.size_bytes:
+            raise Refusal("ISO size differs from pinned laboratory identity")
+        # Full ISO SHA-256 checked once; every subsequent check pins its inode,
+        # size and modification time (not an upstream signature).
+        seal.authority.media.verify_iso(seal.iso.path)
         self.seal = seal
 
     def verify(self, deadline: float) -> LabAuthority:
@@ -194,7 +199,7 @@ class LocalQemuAttestor:
             raise Refusal("COW inode replaced")
         with seal.cow.path.open("rb") as handle:
             header = handle.read(20)
-        if (len(header) != 20 or header[:4] != b"QFI\\xfb"
+        if (len(header) != 20 or header[:4] != bytes.fromhex("514649fb")
             or int.from_bytes(header[8:16], "big") != 0
             or int.from_bytes(header[16:20], "big") != 0):
             raise Refusal("Unexpected QCOW2 header or backing file")
@@ -215,7 +220,8 @@ class LocalQemuAttestor:
             directory = socket_path.parent.stat()
             endpoint = socket_path.lstat()
             if (
-                not stat.S_ISDIR(directory.st_mode)
+                socket_path.parent.resolve(strict=True) != socket_path.parent.absolute()
+                or not stat.S_ISDIR(directory.st_mode)
                 or directory.st_uid != seal.process.uid
                 or directory.st_mode & 0o077
                 or not stat.S_ISSOCK(endpoint.st_mode)
