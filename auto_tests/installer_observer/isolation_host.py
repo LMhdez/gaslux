@@ -7,7 +7,6 @@ NOT a security boundary against an attacker controlling sudo or CI source.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import select
@@ -248,7 +247,15 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
             timeout=15,
         )
         staged_source = private_root / "auto_tests/installer_observer/lab_probe.py"
-        staged_source_hash = hashlib.sha256(staged_source.read_bytes()).hexdigest()
+        hash_result = subprocess.run(
+            ["sudo", "-n", "sha256sum", "--", str(staged_source)],
+            check=True,
+            capture_output=True,
+            timeout=8,
+        )
+        staged_source_hash = hash_result.stdout.decode("ascii").split()[0]
+        if len(staged_source_hash) != 64:
+            raise Refusal("Could not establish staged controller source digest")
         public_evidence.joinpath("trust_boundary_status.json").write_bytes(
             canonical(
                 {
