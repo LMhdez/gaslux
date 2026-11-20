@@ -5,6 +5,9 @@ on:
       - docs/distro-one-shot-playbooks-20261119
     paths:
       - '.github/workflows/q4os-summary-repro-2vm.yml'
+      - 'auto_tests/tools/gaslux_q4os_patch_summary_lab.py'
+      - 'auto_tests/tools/gaslux_q4os_summary_readonly_hook.sh'
+      - 'auto_tests/tools/gaslux_q4os_summary_visual_gate.py'
   workflow_dispatch:
 permissions:
   contents: read
