@@ -51,6 +51,7 @@ jobs:
 
   genuine-windows10-zorin-fifth-root:
     needs: fail-closed-contracts
+    if: ${{ !contains(github.event.head_commit.message, '[zorin-discovery-only]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
