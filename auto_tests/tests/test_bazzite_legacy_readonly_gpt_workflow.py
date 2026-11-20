@@ -50,7 +50,7 @@ def test_only_synthetic_private_cow_backed_disk_is_attached():
 
 def test_no_windows_storage_or_installer_mutation_code():
     source = WORKFLOW.read_text(encoding="utf-8")
-    assert source.count("click 1") == 4
+    assert source.count("click 1") == 5
     assert '"beginInstallationButtonClicked": False' in source
     assert '"installationAuthorized": False' in source
     assert '"partitionWriteAuthorized": False' in source

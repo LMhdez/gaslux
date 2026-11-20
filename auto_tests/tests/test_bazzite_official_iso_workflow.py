@@ -89,7 +89,7 @@ def test_no_target_writes_or_private_iso_in_artifacts():
         assert forbidden not in source, forbidden
     assert '-drive "if=none,id=optical,media=cdrom,format=raw,readonly=on,file=$iso"' in source
     assert "persist-credentials: false" in source
-    assert "if-no-files-found: warn" in source
+    assert "if-no-files-found: error" in source
 
 
 def test_official_iso_immutable_pin_not_promoted_to_catalog():
@@ -104,3 +104,29 @@ def test_official_iso_immutable_pin_not_promoted_to_catalog():
     assert 'obj["installerIdentityVerified"] = False' in source
     assert 'assert obj["installationAuthorized"] is False' in source
     assert "Native Bazzite installer UI confirmed at phase" in source
+
+
+def test_diskless_guest_meets_documented_memory_floor():
+    """Never claim a Bazzite native installer probe with a 4 GiB guest."""
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "host_kib < 11*1024*1024" in source
+    assert "guest_mem=8192" in source
+    assert "guest_mem=4096" not in source
+    # Validate host capacity before downloading the 8 GiB official ISO.
+    probe = source.index("name: Verify pinned key, network endpoints and ephemeral runner capacity")
+    guard = source.index("host_kib < 11*1024*1024", probe)
+    download = source.index(
+        "name: Download real official ISO and verify its detached upstream signature"
+    )
+    assert guard < download
+
+
+def test_evidence_directory_exists_before_any_early_failure():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    capacity = source.index(
+        "name: Verify pinned key, network endpoints and ephemeral runner capacity"
+    )
+    mkdir = source.index("mkdir -p bazzite-evidence", capacity)
+    key_check = source.index("sha256sum --check --strict", capacity)
+    assert mkdir < key_check
+    assert "if-no-files-found: warn" not in source
