@@ -7,7 +7,12 @@ process attribution; neither source grants Windows or production writer access.
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 import re
+import sys
+
+# Resolve sibling contracts whether imported as a namespace package or script.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
     from windows_x64_installed_gpt_ro_audit import DiskAuditError, require
