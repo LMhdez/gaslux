@@ -21,7 +21,11 @@ def valid_request(operation="session.identify"):
     return {
         "protocol": 1,
         "operation": operation,
-        "session_id": None if operation == "session.identify" else "11111111-1111-4111-8111-111111111111",
+        "session_id": (
+            None
+            if operation == "session.identify"
+            else "11111111-1111-4111-8111-111111111111"
+        ),
         "transaction_id": "22222222-2222-4222-8222-222222222222",
         "request_id": "33333333-3333-4333-8333-333333333333",
         "nonce": "A" * 43,
@@ -81,7 +85,9 @@ def test_request_schema_accepts_only_the_four_read_only_operations():
         REQUEST_VALIDATOR.validate(valid_request(operation))
 
 
-@pytest.mark.parametrize("operation", ["qmp.execute", "rfb.input", "shell.exec", "install", "partition"])
+@pytest.mark.parametrize(
+    "operation", ["qmp.execute", "rfb.input", "shell.exec", "install", "partition"]
+)
 def test_request_schema_rejects_mutating_or_generic_operations(operation):
     payload = valid_request()
     payload["operation"] = operation
