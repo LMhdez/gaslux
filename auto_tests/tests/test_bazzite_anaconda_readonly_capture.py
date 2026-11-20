@@ -99,20 +99,25 @@ def test_reads_only_existing_service_from_unique_owner_and_never_authorizes():
     assert result["hostIsoAndQemuBindingVerified"] is False
     assert result["nativeInstallerWriteSetVerified"] is False
     for key in (
-        "installationAuthorized", "partitionWriteAuthorized",
-        "gptMetadataWriteAuthorized", "windowsEspWriteAuthorized",
+        "installationAuthorized",
+        "partitionWriteAuthorized",
+        "gptMetadataWriteAuthorized",
+        "windowsEspWriteAuthorized",
         "nvramWriteAuthorized",
     ):
         assert result[key] is False
     assert all(
-        not {"ApplyPartitioning", "InstallWithTasks", "CreatePartitioning",
-             "Format", "mkfs", "ResetPartitioning"}.intersection(set(cmd))
+        not {
+            "ApplyPartitioning",
+            "InstallWithTasks",
+            "CreatePartitioning",
+            "Format",
+            "mkfs",
+            "ResetPartitioning",
+        }.intersection(set(cmd))
         for cmd in calls
     )
-    assert all(
-        cmd[3] in (":1.37", "org.freedesktop.DBus")
-        for cmd in calls if cmd[2] == "call"
-    )
+    assert all(cmd[3] in (":1.37", "org.freedesktop.DBus") for cmd in calls if cmd[2] == "call")
 
 
 @pytest.mark.parametrize("problem", ("service", "truncated-devices"))
@@ -159,9 +164,7 @@ def test_getactions_read_signature_must_have_no_inputs():
 
 
 def test_missing_optional_interfaces_are_not_conjured():
-    xml = XML.replace(
-        '<method name="GetBootDevice"><arg type="s" direction="out"/></method>', ""
-    )
+    xml = XML.replace('<method name="GetBootDevice"><arg type="s" direction="out"/></method>', "")
     reader, calls = guest_reader(xml=xml)
     report = capture(reader, verifier)
     assert report["unobservedMethods"] == ["GetBootDevice"]
@@ -208,8 +211,10 @@ def test_capture_does_not_verify_payload_geometry_esp_or_atomic_deployment():
     reader, _ = guest_reader()
     report = capture(reader, verifier)
     for name in (
-        "gptPrimaryAndBackupWritesObserved", "efiWritesObserved",
-        "nvramOperationsObserved", "atomicPayloadBoundToIso",
+        "gptPrimaryAndBackupWritesObserved",
+        "efiWritesObserved",
+        "nvramOperationsObserved",
+        "atomicPayloadBoundToIso",
     ):
         assert report[name] is False
     assert "diskGuid" not in report
