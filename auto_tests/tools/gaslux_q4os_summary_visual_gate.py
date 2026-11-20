@@ -135,7 +135,9 @@ def summary_only(before: Path, after: Path) -> None:
     if crop_sha(summary, region) == crop_sha(users, region):
         raise ScreenRefusal("No central content transition after Users Next")
     text = ocr(after)
-    required_text = ("summary", "this is an overview", "partitions", "erase disk")
+    # Real Tesseract on both source PNGs misses the highlighted Summary word.
+    # Enforce exact independently matching Summary sidebar ROI above instead.
+    required_text = ("this is an overview", "partitions", "erase disk")
     if any(token not in text for token in required_text) or "what is your name?" in text:
         raise ScreenRefusal("Native Calamares Summary/partition preview text absent")
     if any(t in text for t in ("installing...", "installation in progress", "copying files")):
