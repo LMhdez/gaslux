@@ -274,8 +274,12 @@ def verify_mint_persistence_after_windows(
     require(sha256(base) == mint_proof["windowsBackingQcow2Sha256"],
             "Windows backing changed before Mint persistence audit")
     actual_uuid, actual_windows_hashes = _guest_disk_audit(overlay, expected_uuid)
-    require(actual_uuid == expected_uuid and actual_windows_hashes == hashes,
-            "Windows partition hashes or Mint root UUID changed after Windows boot")
+    # Windows legitimately writes to its own OS NTFS volume on fourth boot.
+    # Require byte-identical ESP, MSR and Recovery; preserve both OS hashes
+    # as evidence without misclassifying legitimate NTFS activity as corruption.
+    require(actual_uuid == expected_uuid
+            and all(actual_windows_hashes[i] == hashes[i] for i in (0, 1, 3)),
+            "protected Windows ESP/MSR/Recovery digest or Mint UUID changed")
 
     import guestfs
     guest = guestfs.GuestFS(python_return_dict=True)
@@ -326,7 +330,8 @@ def verify_mint_persistence_after_windows(
         "mintKernelSha256": kernel_digest,
         "mintInitramfsSha256": initramfs_digest,
         "mintOsReleaseSha256": hashlib.sha256(os_release).hexdigest(),
-        "windowsPartitionSha256": actual_windows_hashes,
+        "windowsPartitionSha256BeforeMint": hashes,
+        "windowsPartitionSha256AfterWindows": actual_windows_hashes,
         "fourthGuestSerialSha256": fourth["fourthGuestSerialSha256"],
         "nativeGrubDualBootVerified": False,
         "sameDiskDualBootVerified": False,
