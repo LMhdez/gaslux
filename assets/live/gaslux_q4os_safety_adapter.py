@@ -32,11 +32,14 @@ def to_safety_snapshot(q4os: dict) -> dict:
 def refuse_calamares(*, q4os: dict | None, expected: dict | None,
                     safety_observed: dict | None, safety_compare,
                     plan: dict | None, transaction: dict | None,
-                    write_set: list | None, calamares: dict | None) -> dict:
+                    write_set: list | None, calamares: dict | None,
+                    safety_attestation: dict | None = None) -> dict:
     """Diagnose mismatches using Safety comparator; ALWAYS refuse disk/EFI writes.
 
     Safety's assert_snapshot_matches must be injected by the caller from #265.
     Expected must be independently authenticated; this adapter cannot attest it.
+    A Safety #267 result must come from independently verified evidence; a raw
+    dict is never an authorization and this function ALWAYS refuses writes.
     """
     reasons = []
     try:
@@ -49,6 +52,18 @@ def refuse_calamares(*, q4os: dict | None, expected: dict | None,
             raise ValueError("missing explicit write-set")
         safety_compare(expected, safety_observed)
         safety_compare(to_safety_snapshot(q4os), safety_observed)
+        if type(safety_attestation) is not dict or set(safety_attestation) != {
+            "decision", "transactionId", "planSha256", "vmId", "writeCount"
+        }:
+            raise ValueError("missing verified Safety #267 no-writer decision")
+        if safety_attestation["decision"] != "ACCEPT_NO_WRITER":
+            raise ValueError("Safety decision is not ACCEPT_NO_WRITER")
+        if (safety_attestation["transactionId"] != transaction.get("id")
+                or safety_attestation["planSha256"] != transaction.get("safetyPlanSha256")
+                or safety_attestation["vmId"] != transaction.get("vmId")
+                or type(safety_attestation["writeCount"]) is not int
+                or safety_attestation["writeCount"] < 1):
+            raise ValueError("Safety no-writer transaction, plan, VM or extent mismatch")
         if plan.get("backend") != "q4os-native" or plan.get("firmwareLayout") != "uefi/gpt":
             raise ValueError("wrong backend or firmware")
         if plan.get("diskGuid") != q4os["diskGuid"] or (
@@ -97,6 +112,7 @@ def refuse_calamares(*, q4os: dict | None, expected: dict | None,
             owned.add(operation["operation"])
         if calamares.get("fallbackWritePreventedAndVerified") is not True:
             reasons.append("installEFIFallback=true: fallback ESP write not prevented")
+        reasons.append("Safety ACCEPT_NO_WRITER never authorizes an installer or disk writer")
         reasons.append("GPT writes, mount, GRUB, EFI and NVRAM not authenticated")
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         reasons.append("fail-closed: " + str(exc))
