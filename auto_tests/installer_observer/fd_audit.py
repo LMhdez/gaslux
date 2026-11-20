@@ -12,8 +12,8 @@ import stat
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 from contextlib import ExitStack
+from pathlib import Path
 
 from .evidence import Refusal
 
