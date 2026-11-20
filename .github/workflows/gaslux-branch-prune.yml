@@ -1,4 +1,4 @@
-name: Gaslux exact Q4OS CI source ref prune
+name: Gaslux exact three absorbed Bazzite Cachy refs
 on:
   push:
     branches:
@@ -12,40 +12,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  exact-source-prune:
+  prune-exact:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           persist-credentials: true
-      - name: Check contracts and 110-source archive first
-        shell: bash
+      - name: Test exact source contract and independent historical archive proof
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -Eeuo pipefail
           python3 -m py_compile auto_tests/tools/gaslux_branch_prune.py
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_prune.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_absorbed_prune.py' -v
-          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/verify-archive110.json"
-      - name: Prune only fully incorporated exact Q4OS CI branch
-        shell: bash
+          python3 -m unittest discover -s auto_tests -p 'test_gaslux_branch_archive.py' -v
+          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/verified-archive110.json"
+      - name: Remove exactly three redundant SHA-pinned branch refs
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_PRUNE_APPROVED: LEASE_GUARDED_30
-          GASLUX_PRUNE_EXACT: '{"ci/q4os-evidence-manifest-coverage-20261119":{"sha":"429c59a2b8bb2a4b35a7c6ecc9665326a806a1b2","preserved_in":"fix/q4os-evidence-dirfd-20261119"}}'
+          GASLUX_PRUNE_EXACT: '{"fix/cachyos-grant-config-program-binding-issue3":{"sha":"3f719860f1b6708b7afba2731afa940f36a0d09b","preserved_in":"fix/cachyos-configured-root-grant-binding-issue3"},"feature/bazzite-advanced-custom-selection-evidence-20261119":{"sha":"36edb093f5544d93ad800d791230eb253ac1af97","preserved_in":"test/bazzite-blivet-gui-observer-cow-20261119"},"fix/bazzite-blivet-observer-ruff-20261119":{"sha":"d90ab73ddeee422f08a03dcefa07ad5f97d77d06","preserved_in":"test/bazzite-blivet-gui-observer-cow-20261119"}}'
+        shell: bash
         run: |
           set -Eeuo pipefail
-          python3 auto_tests/tools/gaslux_branch_prune.py prune --output "$RUNNER_TEMP/prune-exact-q4os-ci.json"
-      - name: Publish evidence
+          python3 auto_tests/tools/gaslux_branch_prune.py prune --output "$RUNNER_TEMP/verified-prune-three.json"
+      - name: Publish immutable origin and destination provenance
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: gaslux-exact-q4os-ci-ancestry
+          name: gaslux-exact-three-cachy-bazzite-absorbed
           path: |
-            ${{ runner.temp }}/verify-archive110.json
-            ${{ runner.temp }}/prune-exact-q4os-ci.json
+            ${{ runner.temp }}/verified-archive110.json
+            ${{ runner.temp }}/verified-prune-three.json
           retention-days: 30
           if-no-files-found: warn
