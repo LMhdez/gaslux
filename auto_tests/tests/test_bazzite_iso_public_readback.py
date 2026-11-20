@@ -228,7 +228,6 @@ def test_embedded_payload_rejects_wrong_manifest_config_and_version():
         )
 
 
-
 def test_embedded_storage_layout_failure_emits_read_only_diagnostics(tmp_path, monkeypatch):
     listing = (
         "drwxr-xr-x root/root squashfs-root/var/lib/containers/storage\n"
