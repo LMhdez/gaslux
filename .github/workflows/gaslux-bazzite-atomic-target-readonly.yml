@@ -19,7 +19,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  fail-closed-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate native Atomic target and adversarial provenance contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py
+          echo 'No signed Bazzite 42 ISO or authenticated real Anaconda GetActions export: installation remains denied'
+
   synthetic-gpt-native-target:
+    if: github.event_name == 'workflow_dispatch'
+    needs: fail-closed-contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
