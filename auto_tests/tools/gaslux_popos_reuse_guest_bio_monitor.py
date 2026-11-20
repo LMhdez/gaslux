@@ -29,6 +29,27 @@ def fail(msg):
     sys.exit(1)
 
 
+def classify_bio_operation(flags, sector, count):
+    """Classify before checking the device: ISO/control reads are legitimate.
+
+    Any mutation type (including discard/write-zeroes) is never downgraded to
+    a harmless read, even if issued against a foreign block device.
+    """
+    if not flags or any(flag in flags for flag in ("D", "Z")):
+        raise ValueError("discard/write-zeroes or unknown BIO flags")
+    if count == 0:
+        if sector == 0 and flags.startswith("F") and "W" in flags and "R" not in flags:
+            return "flush"
+        raise ValueError("malformed zero-length BIO")
+    if count < 0 or sector < 0 or "W" in flags and "R" in flags:
+        raise ValueError("invalid or ambiguous BIO request")
+    if "W" in flags:
+        return "write"
+    if "R" in flags:
+        return "read"
+    raise ValueError("unclassified BIO request")
+
+
 def coverage(intervals):
     merged=[]
     for start,end in sorted(intervals):
@@ -63,7 +84,8 @@ def main():
     (TRACE/"tracing_on").write_text("1\n")
     READY.write_text(mm+"\n")
     stats={"blockBioQueueEventCount":0,"writeEvents":0,"writeBytes":0,
-           "flushEvents":0,"foreignWritableEvents":0,"unsupportedEvents":0}
+           "flushEvents":0,"foreignReadEventsIgnored":0,
+           "foreignWritableEvents":0,"unsupportedEvents":0}
     intervals=[]
     procs={}
     start=time.monotonic()
@@ -85,19 +107,27 @@ def main():
                 m,n,flags,sector,count=(
                     int(match[1]),int(match[2]),match[3],int(match[4]),int(match[5]))
                 if (m,n) in zram: continue
+                try:
+                    operation=classify_bio_operation(flags,sector,count)
+                except ValueError as exc:
+                    stats["unsupportedEvents"]+=1
+                    fail(str(exc))
+                # During native installation the signed ISO and read-only lab
+                # control have genuine BIO reads. They are NOT guest writes.
+                if operation=="read":
+                    if (m,n)!=(major,minor):
+                        stats["foreignReadEventsIgnored"]+=1
+                        if stats["foreignReadEventsIgnored"]>MAX_EVENTS:
+                            fail("BIO read evidence overflow")
+                    continue
                 if (m,n)!=(major,minor):
                     stats["foreignWritableEvents"]+=1
-                    fail("write-like BIO on unowned guest block device")
+                    fail("write/flush BIO on unowned guest block device")
                 stats["blockBioQueueEventCount"]+=1
-                if any(flag in flags for flag in ("D","Z")):
-                    stats["unsupportedEvents"]+=1
-                    fail("discard/write-zeroes observed")
-                if count==0:
-                    if sector!=0 or not flags.startswith("F") or "W" not in flags:
-                        fail("malformed zero-length BIO")
+                if operation=="flush":
                     stats["flushEvents"]+=1
                     continue
-                if count<0 or "W" not in flags or not 0 <= sector < sector+count <= SECTOR_COUNT:
+                if not 0 <= sector < sector+count <= SECTOR_COUNT:
                     fail("invalid BIO write bounds")
                 if not any(lo<=sector and sector+count<=hi for lo,hi in PARTITIONS):
                     fail("BIO write touched GPT or non-owned disk space")

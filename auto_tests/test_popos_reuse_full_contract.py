@@ -17,6 +17,8 @@ from gaslux_popos_reuse_snapshot_gate import (  # noqa: E402
     SERIAL,
 )
 
+from gaslux_popos_reuse_guest_bio_monitor import classify_bio_operation  # noqa: E402
+
 INSTALL = TOOLS / "gaslux_popos_reuse_full_install_guest.sh"
 BOOT = TOOLS / "gaslux_popos_reuse_firstboot_guest.sh"
 RUNNER = TOOLS / "gaslux_popos_reuse_full_firstboot_vm.sh"
@@ -101,6 +103,28 @@ class FullReuseContractTests(unittest.TestCase):
         self.assertIn("dropped events", s)
         self.assertIn("writeCoverageSha256", s)
         self.assertIn("discard/write-zeroes", s)
+
+    def test_foreign_iso_reads_not_misclassified_as_guest_writes(self):
+        for flags in ("R", "RA", "RS"):
+            with self.subTest(flags=flags):
+                self.assertEqual(classify_bio_operation(flags, 2048, 8), "read")
+        self.assertEqual(classify_bio_operation("W", 2048, 8), "write")
+        self.assertEqual(classify_bio_operation("FWS", 0, 0), "flush")
+        source = MONITOR.read_text()
+        self.assertLess(source.index('if operation=="read":'),
+                        source.index('if (m,n)!=(major,minor):\n                    stats["foreignWritableEvents"]'))
+        self.assertIn('fail("write/flush BIO on unowned guest block device")', source)
+
+    def test_discard_or_malformed_bio_is_never_a_legitimate_read(self):
+        for flags, sector, count in (
+            ("D", 2048, 8), ("Z", 2048, 8), ("RZ", 2048, 8),
+            ("WD", 2048, 8), ("", 2048, 8), ("R", 0, 0),
+            ("W", 0, 0), ("FWS", 1, 0), ("RW", 2048, 8),
+            ("F", 0, 0), ("S", 2048, 8), ("R", -1, 1),
+        ):
+            with self.subTest(flags=flags,sector=sector,count=count):
+                with self.assertRaises(ValueError):
+                    classify_bio_operation(flags,sector,count)
 
     def test_writes_restricted_to_entirely_owned_esp_and_root(self):
         for lo, size in (ESP, ROOT):
