@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -57,6 +58,10 @@ def trusted_material():
         attestation_trust_anchor_id="test-vtpm-root",
     )
     return private_key, TrustStore({KEY_ID: policy})
+
+
+def nonce_for(byte_value):
+    return base64.urlsafe_b64encode(bytes([byte_value]) * 32).decode("ascii").rstrip("=")
 
 
 def make_request(operation="session.identify", *, sequence=0, nonce="A" * 43, request_id=None):
@@ -205,9 +210,11 @@ def test_missing_trust_anchor_is_always_refused():
         "trust-anchor-missing",
         lambda: verify_one(RemoteResponseVerifier(None, InMemoryReplayGuard()), request, response),
     )
+    other_controller = replace(store.controllers[KEY_ID], key_id="other-test-key")
+    other_store = TrustStore({"other-test-key": other_controller})
     assert_refused(
         "untrusted-key",
-        lambda: verify_one(verifier(TrustStore({})), request, response),
+        lambda: verify_one(verifier(other_store), request, response),
     )
 
 
@@ -291,7 +298,7 @@ def test_session_mismatch_is_refused_after_session_creation():
     v = verifier(store)
     identify = make_request()
     verify_one(v, identify, make_response(private, identify))
-    request = make_request("state.read", sequence=1, nonce="B" * 43)
+    request = make_request("state.read", sequence=1, nonce=nonce_for(1))
 
     def mismatch(payload):
         payload["session_id"] = "99999999-9999-4999-8999-999999999999"
@@ -314,7 +321,7 @@ def test_sequence_must_advance_monotonically():
     repeated_sequence = make_request(
         "state.read",
         sequence=1,
-        nonce="C" * 43,
+        nonce=nonce_for(2),
         request_id="99999999-3333-4333-8333-333333333333",
     )
     repeated_response = make_response(private, repeated_sequence)
