@@ -16,7 +16,7 @@ binário real continuam necessárias antes de qualquer escrita.
   Windows 10 genuíno e Pop 24.04 live arrancados no mesmo QCOW2, GPT de seis
   partições auditada sem executar a instalação.
 - [Actions #44706721311](https://github.com/LMhdez/gaslux/actions/runs/44706721311):
-  ensaio do segundo filho QCOW2; consultar resultado e artefactos exatos.
+  sucesso no HEAD `7c3ba65399de`, Windows 10 genuíno e Pop live, GPT verificada, filhos QCOW2 e SHA de ambos os pais verificados, filho criado/destruído, encerramento controlado, `distinstExecutionAuthorized=false`. Artefacto [#14616336862](https://github.com/LMhdez/gaslux/actions/runs/44706721311/artifacts/14616336862), ZIP SHA-256 `ba217122e0af84d3edd8a7e44336291e9424f4cab756ac24bc596808ede8a263`.
 - ISO fixada: build 20 Intel, 2955067392 bytes,
   SHA-256 `a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c`;
   assinatura do manifesto GPG com fingerprint
@@ -48,6 +48,8 @@ em #5. A lista de exclusão inclui offsets/comprimentos completos de todas
 as partições Windows #1–#4, `EFI/Microsoft`, BCD e WinRE.
 Operações GPT/MBR, NVRAM, BootOrder/BootNext e qualquer alteração fora desses
 intervalos são proibidas.
+
+O script `windows10_popos_native_realwin10_install_guest.sh` tem uma **recusa incondicional antes de `mkfs.vfat` e `distinst`**, mesmo após prewrite sintético. Regressão estática confirma que o marcador `GASLUX_POP_NATIVE_WRITESET_UNPROVEN` antecede qualquer operação de escrita.
 
 **Os booleanos no handoff e no checkpoint são apenas alegações do chamador.**
 O digest liga os documentos, mas não substitui a assinatura com confiança
