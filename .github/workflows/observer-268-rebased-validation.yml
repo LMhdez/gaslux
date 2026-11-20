@@ -33,7 +33,7 @@ jobs:
       - name: Ruff formatting ALL incorporated Observer modules and tests
         run: python -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py
       - name: Adversarial controller and QEMU identity contracts
-        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_rebased_primitives.py
+        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py
       - name: Q4OS native preflight and related read-only contract regression
         run: python -m pytest -q auto_tests/tests/test_q4os_native_preflight.py
       - name: JSON Schema validity
