@@ -17,15 +17,15 @@ import threading
 from collections.abc import Mapping
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol
 
-import rfc8785
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+import rfc8785
 
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -75,10 +75,14 @@ def _canonical(value: Any) -> bytes:
     try:
         return rfc8785.dumps(value)
     except (TypeError, ValueError, OverflowError) as exc:
-        raise VerificationRefused("canonicalization-failed", "RFC 8785 canonicalization failed") from exc
+        raise VerificationRefused(
+            "canonicalization-failed", "RFC 8785 canonicalization failed"
+        ) from exc
 
 
-def _object(value: bytes | str | Mapping[str, Any], *, limit: int, label: str) -> tuple[dict, bytes]:
+def _object(
+    value: bytes | str | Mapping[str, Any], *, limit: int, label: str
+) -> tuple[dict, bytes]:
     if isinstance(value, Mapping):
         try:
             canonical = _canonical(dict(value))
@@ -133,7 +137,7 @@ def _parse_time(value: str, field: str) -> datetime:
         raise VerificationRefused("time-invalid", f"{field} is not a valid date-time") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         _refuse("time-invalid", f"{field} must include a timezone")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def _aware(value: datetime, field: str) -> datetime:
@@ -263,7 +267,10 @@ class InMemoryReplayGuard:
             if operation == "session.identify":
                 if status == "ok":
                     if session_id is None or session_id in self._sessions or sequence != 0:
-                        _refuse("session-invalid", "New session identity or initial sequence is invalid")
+                        _refuse(
+                            "session-invalid",
+                            "New session identity or initial sequence is invalid",
+                        )
                     if session_expires_at is None or session_expires_at <= now:
                         _refuse("session-expired", "New session expiry is missing or expired")
                     self._sessions[session_id] = {
@@ -338,7 +345,8 @@ class SQLiteReplayGuard:
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS sessions ("
                     "session_id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, "
-                    "last_sequence INTEGER NOT NULL, expires_at TEXT NOT NULL, closed INTEGER NOT NULL)"
+                    "last_sequence INTEGER NOT NULL, expires_at TEXT NOT NULL, "
+                    "closed INTEGER NOT NULL)"
                 )
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS consumed ("
@@ -379,7 +387,10 @@ class SQLiteReplayGuard:
                             (session_id, transaction_id, session_expires_at.isoformat()),
                         )
                     elif session_id is not None:
-                        _refuse("session-invalid", "Refused session creation must not create a session")
+                        _refuse(
+                            "session-invalid",
+                            "Refused session creation must not create a session",
+                        )
                 else:
                     row = connection.execute(
                         "SELECT transaction_id, last_sequence, expires_at, closed "
@@ -487,7 +498,9 @@ class RemoteResponseVerifier:
             _REQUEST_VALIDATOR.validate(request_value)
             _RESPONSE_VALIDATOR.validate(response_value)
         except ValidationError as exc:
-            raise VerificationRefused("schema-invalid", "Request or response schema validation failed") from exc
+            raise VerificationRefused(
+                "schema-invalid", "Request or response schema validation failed"
+            ) from exc
 
         timeout_ms = request_value["timeout_ms"]
         if absolute_deadline - current > timedelta(milliseconds=timeout_ms) + self.clock_skew:
@@ -509,12 +522,21 @@ class RemoteResponseVerifier:
 
         if operation == "session.identify":
             if request_value["session_id"] is not None or request_value["sequence"] != 0:
-                _refuse("session-binding-failed", "Initial request must have a null session and sequence zero")
+                _refuse(
+                    "session-binding-failed",
+                    "Initial request must have a null session and sequence zero",
+                )
             if response_value["status"] == "ok":
                 if response_value["session_id"] is None:
-                    _refuse("session-binding-failed", "Successful session creation lacks a session ID")
+                    _refuse(
+                        "session-binding-failed",
+                        "Successful session creation lacks a session ID",
+                    )
             elif response_value["session_id"] is not None:
-                _refuse("session-binding-failed", "Refused session creation must not create a session")
+                _refuse(
+                    "session-binding-failed",
+                    "Refused session creation must not create a session",
+                )
         elif response_value["session_id"] != request_value["session_id"]:
             _refuse("session-binding-failed", "Response session ID does not match the request")
 
@@ -536,7 +558,9 @@ class RemoteResponseVerifier:
                 _decode_signature(signature["value"]), signed_bytes
             )
         except InvalidSignature as exc:
-            raise VerificationRefused("signature-invalid", "Ed25519 response signature is invalid") from exc
+            raise VerificationRefused(
+                "signature-invalid", "Ed25519 response signature is invalid"
+            ) from exc
         except ValueError as exc:
             raise VerificationRefused("signature-invalid", "Pinned Ed25519 key is invalid") from exc
 
@@ -544,9 +568,8 @@ class RemoteResponseVerifier:
         result_hash = _sha256(_canonical(result))
         if response_value["result_sha256"] != result_hash:
             _refuse("result-integrity-failed", "Canonical result digest does not match")
-        if result["kind"] == "state":
-            if len(_canonical(result["snapshot"])) > _MAX_STATE_BYTES:
-                _refuse("limit-exceeded", "State snapshot exceeds 64 KiB")
+        if result["kind"] == "state" and len(_canonical(result["snapshot"])) > _MAX_STATE_BYTES:
+            _refuse("limit-exceeded", "State snapshot exceeds 64 KiB")
         if result["kind"] == "frame":
             self._verify_frame(result)
 
@@ -562,8 +585,14 @@ class RemoteResponseVerifier:
             _refuse("expiry-invalid", "Response validity exceeds the 30-second protocol limit")
         if result["kind"] == "state":
             observed_at = _parse_time(result["observed_at"], "observed_at")
-            if observed_at > issued_at + self.clock_skew or observed_at < issued_at - _MAX_RESPONSE_LIFETIME:
-                _refuse("observation-time-invalid", "State observation is outside the response validity window")
+            if (
+                observed_at > issued_at + self.clock_skew
+                or observed_at < issued_at - _MAX_RESPONSE_LIFETIME
+            ):
+                _refuse(
+                    "observation-time-invalid",
+                    "State observation is outside the response validity window",
+                )
 
         session_expires_at: datetime | None = None
         if operation == "session.identify" and response_value["status"] == "ok":
@@ -572,8 +601,14 @@ class RemoteResponseVerifier:
             if result["session_expires_at"] is None:
                 _refuse("session-invalid", "Successful identify must provide a session expiry")
             session_expires_at = _parse_time(result["session_expires_at"], "session_expires_at")
-            if session_expires_at <= current or session_expires_at > issued_at + _MAX_SESSION_LIFETIME:
-                _refuse("session-expired", "Session expiry is outside the permitted ten-minute window")
+            if (
+                session_expires_at <= current
+                or session_expires_at > issued_at + _MAX_SESSION_LIFETIME
+            ):
+                _refuse(
+                    "session-expired",
+                    "Session expiry is outside the permitted ten-minute window",
+                )
             if expires_at > session_expires_at:
                 _refuse("session-expired", "Response expiry exceeds the session expiry")
         self._verify_operation_result(operation, response_value["status"], result)
@@ -596,6 +631,11 @@ class RemoteResponseVerifier:
         )
 
         attestation = guest["attestation"]
+        attestation_assertion = (
+            "trusted-controller-asserted"
+            if attestation["status"] == "verified"
+            else "not-verified"
+        )
         return VerifiedRemoteResponse(
             status=response_value["status"],
             operation=operation,
@@ -607,9 +647,7 @@ class RemoteResponseVerifier:
             collector_trusted=True,
             guest_identity_assurance=guest["identity_assurance"],
             guest_attestation_status=attestation["status"],
-            guest_attestation_assertion=(
-                "trusted-controller-asserted" if attestation["status"] == "verified" else "not-verified"
-            ),
+            guest_attestation_assertion=attestation_assertion,
             guest_attestation_verified_locally=False,
             distribution_id=distribution["id"],
             distribution_version=distribution["version"],
@@ -653,19 +691,28 @@ class RemoteResponseVerifier:
             or distribution["iso_sha256"] != trusted.iso_sha256
             or distribution["installer_id"] != trusted.installer_id
         ):
-            _refuse("distribution-identity-mismatch", "Distribution, version, ISO or installer is not pinned")
+            _refuse(
+                "distribution-identity-mismatch",
+                "Distribution, version, ISO or installer is not pinned",
+            )
         attestation = guest["attestation"]
         if not self.require_guest_attestation:
             return
         if guest["identity_assurance"] != "cryptographically-attested":
-            _refuse("guest-attestation-required", "Guest identity is not cryptographically attested")
+            _refuse(
+                "guest-attestation-required",
+                "Guest identity is not cryptographically attested",
+            )
         if (
             attestation["status"] != "verified"
             or attestation["evidence_sha256"] is None
             or attestation["verifier_id"] != trusted.attestation_verifier_id
             or attestation["trust_anchor_id"] != trusted.attestation_trust_anchor_id
         ):
-            _refuse("guest-attestation-failed", "Required guest attestation assertion is absent or untrusted")
+            _refuse(
+                "guest-attestation-failed",
+                "Required guest attestation assertion is absent or untrusted",
+            )
 
     @staticmethod
     def _verify_operation_result(operation: str, status: str, result: Mapping[str, Any]) -> None:
