@@ -196,15 +196,25 @@ def verify_embedded_manifest(
     if f"sha256:{manifest_sha}" != expected_manifest_digest:
         raise ReadbackError("Embedded OCI manifest digest mismatch")
     manifest_config = manifest.get("config")
-    if not isinstance(manifest_config, dict) or manifest_config.get("digest") != expected_config_digest:
+    if (
+        not isinstance(manifest_config, dict)
+        or manifest_config.get("digest") != expected_config_digest
+    ):
         raise ReadbackError("Embedded manifest references a different config")
+    record_digest = image.get("digest")
+    if record_digest is not None:
+        normalized_record_digest = str(record_digest)
+        if re.fullmatch(r"[0-9a-f]{64}", normalized_record_digest):
+            normalized_record_digest = "sha256:" + normalized_record_digest
+        if normalized_record_digest != expected_manifest_digest:
+            raise ReadbackError("Embedded storage image record digest does not match the OCI manifest")
     return {
         "storageImageId": image_id,
         "manifestSha256": manifest_sha,
         "manifestDigest": "sha256:" + manifest_sha,
         "configDigestFromManifest": manifest_config["digest"],
-        "configBlobStoredSeparately": False,
-        "imageRecordDigest": image.get("digest"),
+        "configBlobRetrievedFromISO": False,
+        "imageRecordDigest": record_digest,
     }
 
 
