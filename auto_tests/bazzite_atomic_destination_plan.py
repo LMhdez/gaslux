@@ -112,8 +112,10 @@ def propose(manifest: dict, snapshot: dict) -> dict:
         "storageInspectionOnly": True,
         "installationAuthorized": False,
     }
-    if any(manifest.get(key) is not value if isinstance(value, bool)
-           else manifest.get(key) != value for key, value in expected.items()):
+    if any(
+        manifest.get(key) is not value if isinstance(value, bool) else manifest.get(key) != value
+        for key, value in expected.items()
+    ):
         raise Refusal("Not an isolated synthetic UEFI/GPT read-only fixture")
     total = _integer(manifest.get("virtualSizeBytes"), "disk size")
     if total == 0 or total % SECTOR_BYTES:
@@ -132,10 +134,16 @@ def propose(manifest: dict, snapshot: dict) -> dict:
             raise Refusal("Missing partition evidence")
         if len(manifest_parts) != len(PARTITIONS):
             raise Refusal("Incorrect fixture partition count")
-        exact = {"number": n, "typeGuid": typ, "name": label,
-                 "firstSector": first, "lastSector": last}
-        if any(part.get(k) != v or manifest_parts[index].get(k) != v
-               for k, v in exact.items()):
+        if not isinstance(manifest_parts[index], dict):
+            raise Refusal("Invalid protected partition identity")
+        exact = {
+            "number": n,
+            "typeGuid": typ,
+            "name": label,
+            "firstSector": first,
+            "lastSector": last,
+        }
+        if any(part.get(k) != v or manifest_parts[index].get(k) != v for k, v in exact.items()):
             raise Refusal("Protected GPT identity or geometry mismatch")
         unique = _guid(part.get("partuuid"))
         if unique in seen:
@@ -156,12 +164,30 @@ def propose(manifest: dict, snapshot: dict) -> dict:
     if root_end - root_start + 1 < LAB_MIN_ROOT_SECTORS:
         raise Refusal("Insufficient free Btrfs root region")
     candidate = [
-        {"number": 4, "firstSector": esp_start, "lastSector": esp_end,
-         "filesystem": "vfat", "mountPoint": "/boot/efi", "role": "new-linux-esp"},
-        {"number": 5, "firstSector": boot_start, "lastSector": boot_end,
-         "filesystem": "ext4", "mountPoint": "/boot", "role": "linux-boot"},
-        {"number": 6, "firstSector": root_start, "lastSector": root_end,
-         "filesystem": "btrfs", "mountPoint": "/", "role": "atomic-root"},
+        {
+            "number": 4,
+            "firstSector": esp_start,
+            "lastSector": esp_end,
+            "filesystem": "vfat",
+            "mountPoint": "/boot/efi",
+            "role": "new-linux-esp",
+        },
+        {
+            "number": 5,
+            "firstSector": boot_start,
+            "lastSector": boot_end,
+            "filesystem": "ext4",
+            "mountPoint": "/boot",
+            "role": "linux-boot",
+        },
+        {
+            "number": 6,
+            "firstSector": root_start,
+            "lastSector": root_end,
+            "filesystem": "btrfs",
+            "mountPoint": "/",
+            "role": "atomic-root",
+        },
     ]
     previous_end = PARTITIONS[-1][4]
     for entry in candidate:
