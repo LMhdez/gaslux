@@ -237,52 +237,103 @@ def _unsquashfs(squashfs: Path, *args: str, binary: bool = False):
         raise ReadbackError(f"unsquashfs read-only inspection failed: {exc}") from exc
 
 
-def inspect_embedded_payload(squashfs: Path) -> dict[str, Any]:
+def inspect_embedded_payload(
+    squashfs: Path, *, diagnostics_path: Path | None = None
+) -> dict[str, Any]:
     listing = _unsquashfs(squashfs, "-ll")
     paths = set()
     for line in listing.splitlines():
         if "squashfs-root/" in line:
             paths.add(line.split("squashfs-root/", 1)[1].strip())
+    diagnostics: dict[str, Any] = {
+        "listingEntryCount": len(paths),
+        "storageRelatedPaths": sorted(
+            path for path in paths
+            if "containers/storage" in path
+            or "overlay-images" in path
+            or path.endswith("/images.json")
+        )[:500],
+        "imagesJsonCandidates": sorted(
+            path for path in paths if path.endswith("images.json")
+        )[:100],
+    }
+
+    def fail(message: str) -> None:
+        if diagnostics_path is not None:
+            diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+            diagnostics_path.write_text(
+                json.dumps(diagnostics, indent=2, sort_keys=True) + "\\n",
+                encoding="utf-8",
+            )
+        raise ReadbackError(message)
+
     image_files = sorted(p for p in paths if p.endswith("/overlay-images/images.json"))
     if len(image_files) != 1:
-        raise ReadbackError("No unique embedded containers/storage images.json was found")
+        fail("No unique embedded containers/storage images.json was found")
     images_path = image_files[0]
     images_bytes = _unsquashfs(squashfs, "-cat", images_path, binary=True)
     try:
         images_doc = json.loads(images_bytes)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ReadbackError("Embedded images.json is invalid") from exc
+        fail("Embedded images.json is invalid")
+        raise AssertionError from exc
     images = images_doc.get("images") if isinstance(images_doc, dict) else images_doc
     if not isinstance(images, list):
-        raise ReadbackError("Embedded images.json has an unsupported shape")
+        fail("Embedded images.json has an unsupported shape")
     names = {f"{PAYLOAD_IMAGE}:stable", PAYLOAD_TAG}
     matches = [
         item
         for item in images
         if isinstance(item, dict) and names.intersection(set(item.get("names") or []))
     ]
+    diagnostics["imagesJsonPath"] = images_path
+    diagnostics["imageRecordCount"] = len(images)
+    diagnostics["matchingImageCount"] = len(matches)
     if len(matches) != 1:
-        raise ReadbackError("ISO does not contain one unique Bazzite install payload")
+        diagnostics["matchingNames"] = sorted(
+            {
+                name
+                for item in images if isinstance(item, dict)
+                for name in item.get("names", [])
+                if "bazzite" in str(name).lower()
+            }
+        )[:100]
+        fail("ISO does not contain one unique Bazzite install payload")
     image = matches[0]
     image_id = str(image.get("id", "")).removeprefix("sha256:")
     image_dir = Path(images_path).parent / image_id
+    big_data_names = image.get("bigDataNames") or []
     candidates = {
         str(image_dir / "manifest"),
         str(image_dir / "manifest.json"),
         str(image_dir / "config"),
         str(image_dir / "config.json"),
     }
-    for name in image.get("bigDataNames") or []:
-        if name in {"manifest", "manifest.json", "config", "config.json"}:
+    for name in big_data_names:
+        if isinstance(name, str) and name and "/" not in name and name not in {".", ".."}:
             candidates.add(str(image_dir / name))
+    existing = sorted(path for path in candidates if path in paths)
+    diagnostics["imageRecord"] = {
+        "id": image_id,
+        "names": sorted(image.get("names") or []),
+        "recordKeys": sorted(image.keys()),
+        "bigDataNames": big_data_names,
+        "bigDataSizes": image.get("bigDataSizes"),
+        "bigDataDigests": image.get("bigDataDigests"),
+        "imageDirectory": str(image_dir),
+        "candidateBlobPaths": sorted(candidates),
+        "existingCandidatePaths": existing,
+    }
     manifests = sorted(
-        p for p in candidates if p in paths and Path(p).name in {"manifest", "manifest.json"}
+        path for path in candidates
+        if path in paths and Path(path).name in {"manifest", "manifest.json"}
     )
     configs = sorted(
-        p for p in candidates if p in paths and Path(p).name in {"config", "config.json"}
+        path for path in candidates
+        if path in paths and Path(path).name in {"config", "config.json"}
     )
     if len(manifests) != 1 or len(configs) != 1:
-        raise ReadbackError("ISO storage metadata does not expose one manifest and one config blob")
+        fail("ISO storage metadata does not expose one manifest and one config blob")
     manifest_bytes = _unsquashfs(squashfs, "-cat", manifests[0], binary=True)
     config_bytes = _unsquashfs(squashfs, "-cat", configs[0], binary=True)
     blob_evidence = verify_embedded_blobs(
@@ -293,7 +344,7 @@ def inspect_embedded_payload(squashfs: Path) -> dict[str, Any]:
         expected_config_digest=CONFIG_DIGEST,
         expected_version=PAYLOAD_VERSION,
     )
-    return {
+    result = {
         "image": PAYLOAD_IMAGE,
         "names": sorted(set(image.get("names") or [])),
         **blob_evidence,
@@ -303,3 +354,10 @@ def inspect_embedded_payload(squashfs: Path) -> dict[str, Any]:
         "isoBooted": False,
         "readOnlySquashfsInspection": True,
     }
+    if diagnostics_path is not None:
+        diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+        diagnostics_path.write_text(
+            json.dumps(diagnostics, indent=2, sort_keys=True) + "\\n",
+            encoding="utf-8",
+        )
+    return result
