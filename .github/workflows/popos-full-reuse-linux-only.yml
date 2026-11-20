@@ -1,0 +1,118 @@
+name: Pop native reuse full installation in disposable Linux-only QCOW2 (experimental)
+
+on:
+  push:
+    branches:
+      - test/popos-genuine-windows-native-live-20261119
+    paths:
+      - .github/workflows/popos-full-reuse-linux-only.yml
+      - auto_tests/tools/gaslux_popos_reuse_*
+      - auto_tests/test_popos_reuse_full_contract.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: popos-full-reuse-standalone
+  cancel-in-progress: false
+
+jobs:
+  fail-closed-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile and validate Linux-only full reuse safety contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/gaslux_popos_reuse_snapshot_gate.py \
+            auto_tests/tools/gaslux_popos_reuse_guest_bio_monitor.py \
+            auto_tests/tools/gaslux_popos_reuse_install_serial.py \
+            auto_tests/test_popos_reuse_full_contract.py
+          bash -n auto_tests/tools/gaslux_popos_reuse_full_install_guest.sh
+          bash -n auto_tests/tools/gaslux_popos_reuse_firstboot_guest.sh
+          bash -n auto_tests/tools/gaslux_popos_reuse_full_firstboot_vm.sh
+          python3 -m unittest auto_tests.test_popos_reuse_full_contract -v
+          echo 'Only regular-file Linux-only lab; no Windows/production writer.' >> "$GITHUB_STEP_SUMMARY"
+
+  signed-native-full-reuse-qemu:
+    name: Signed System76 / checkpoint / full reuse / native first boot (QEMU only)
+    needs: fail-closed-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_POP_NATIVE_FULL_VM: '1'
+      GASLUX_POP_FULL_REUSE_CONSENT: I_ACCEPT_DISPOSABLE_POP_FULL_REUSE_LINUX_ONLY
+      GASLUX_POP_SYNTHETIC_ISO_LAB_CONSENT: I_ACCEPT_OFFICIAL_POP_ISO_FOR_SYNTHETIC_QEMU_LAB
+      GASLUX_POP_FULL_VM_EVIDENCE_DIR: ${{ github.workspace }}/pop-full-reuse-evidence
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require isolated hosted KVM and installer provenance tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_OS" = Linux
+          test "$(uname -m)" = x86_64
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf dosfstools mtools e2fsprogs \
+            grub-common grub-efi-amd64-bin gdisk aria2 squashfs-tools \
+            curl gnupg ca-certificates acl shellcheck
+          test -c /dev/kvm
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          shellcheck -S error auto_tests/tools/gaslux_popos_reuse_full_install_guest.sh \
+            auto_tests/tools/gaslux_popos_reuse_firstboot_guest.sh \
+            auto_tests/tools/gaslux_popos_reuse_full_firstboot_vm.sh
+          mkdir -m 700 "$GASLUX_POP_FULL_VM_EVIDENCE_DIR"
+
+      - name: Fetch authentic GPG-signed and SHA256-pinned System76 ISO
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -d "$RUNNER_TEMP/gaslux-pop-synthetic-fulliso-XXXXXX" > "$RUNNER_TEMP/pop-full-iso-workdir.txt"
+          PYTHONPATH=auto_tests/tools python3 - <<'PY'
+          from pathlib import Path
+          import os, json
+          from windows10_popos_official_iso_signed_lab import get_official_pop_iso
+          marker=Path(os.environ["RUNNER_TEMP"])/"pop-full-iso-workdir.txt"
+          folder=Path(marker.read_text().strip())
+          iso,metadata=get_official_pop_iso(folder)
+          assert metadata["officialIsoSignedMetadataVerified"] is True
+          assert metadata["productionInstallationAuthorized"] is False
+          (Path(os.environ["RUNNER_TEMP"])/"pop-full-iso-path.txt").write_text(str(iso)+"\n")
+          (Path(os.environ["GASLUX_POP_FULL_VM_EVIDENCE_DIR"])/"signed-iso-provenance.json").write_text(json.dumps(metadata,indent=2)+"\n")
+          PY
+          test -s "$RUNNER_TEMP/pop-full-iso-path.txt"
+
+      - name: Prove rollback and full native reuse then test independent first boot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          iso="$(cat "$RUNNER_TEMP/pop-full-iso-path.txt")"
+          test -f "$iso" && test ! -L "$iso"
+          digest=a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c
+          agent=8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5
+          printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status
+          bash auto_tests/tools/gaslux_popos_reuse_full_firstboot_vm.sh "$iso" "$digest" "$agent"
+          echo 'Checkpoint + System76 + Linux-only boot: review evidence. No Windows/production authorization.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bounded failure/success evidence, never raw ISO/QCOW2/OVMF
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pop-full-reuse-linux-only-evidence
+          path: pop-full-reuse-evidence/
+          retention-days: 7
+          if-no-files-found: warn
