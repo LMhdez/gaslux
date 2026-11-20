@@ -31,9 +31,12 @@ def test_candidate_remains_blocked_until_public_iso_and_payload_are_read_back():
     evidence = load_candidate()
     assert evidence["evidenceRecordOnly"] is True
     assert evidence["result"] == "B"
-    assert evidence["artifact"]["sizeBytes"] is None
-    assert evidence["artifact"]["signature"]["publicReadbackVerified"] is False
-    assert evidence["artifact"]["signature"]["verifiedAgainstLocalIsoBytes"] is False
+    assert evidence["artifact"]["sizeBytes"] == 8377878528
+    assert evidence["artifact"]["signature"]["publicReadbackVerified"] is True
+    assert evidence["artifact"]["signature"]["verifiedAgainstLocalIsoBytes"] is True
+    assert evidence["publicReadback"]["sha256MatchesPinnedBuildSubject"] is True
+    assert evidence["publicReadback"]["officialChecksumVerified"] is True
+    assert evidence["publicReadback"]["detachedCosignSignatureVerified"] is True
     assert evidence["artifact"]["provenance"]["verifiedAgainstLocalIsoBytes"] is False
     assert evidence["relationship"]["embeddedOciManifestReadBackVerified"] is False
     assert (
