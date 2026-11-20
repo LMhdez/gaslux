@@ -200,7 +200,7 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
                 ), mock.patch.object(
                     lab, "_read_bcd_readonly", side_effect=(
                         [bcd_before, bcd_after] if tamper == "windows_files"
-                        else [bcd_before]
+                        else [bcd_before, bcd_before]
                     )
                 ), mock.patch.object(
                     lab, "verify_windows_post_ext4",
