@@ -1,4 +1,4 @@
-name: Gaslux exact branch consolidation - Bazzite GPT and Q4OS Users
+name: Gaslux preserve three closed-PR experimental histories before ref deletion
 on:
   push:
     branches:
@@ -12,41 +12,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  consolidate:
+  archive-exact-three:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           persist-credentials: true
-      - name: Read-only exact-prune safety tests and 110-history DAG verification
+      - name: Verify archive-110 and fail-closed exact history contracts
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 -m py_compile auto_tests/tools/gaslux_branch_prune.py
-          python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_prune.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_archive.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_branch_archive.py' -v
-          python3 -m unittest discover -s auto_tests -p 'test_gaslux_absorbed_prune.py' -v
-          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/archive110-proven.json"
-      - name: Delete only two source refs already merged into PR heads
+          python3 -m unittest discover -s auto_tests -p 'test_gaslux_archive_verify.py' -v
+          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-110-before.json"
+      - name: Archive exactly three unchanged original Git trees then lease-delete old refs
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          GASLUX_PRUNE_APPROVED: LEASE_GUARDED_30
-          GASLUX_PRUNE_EXACT: '{"feature/bazzite-gpt-layout-fixture-20261119":{"sha":"10f231842a98870344c05d09da6dff02450b796c","preserved_in":"test/bazzite-blivet-gui-observer-cow-20261119"},"fix/q4os-require-nofollow-flag-20261119":{"sha":"faa1c08e308674ae1c5e0da41ab2151c10a10abc","preserved_in":"fix/q4os-evidence-dirfd-20261119"}}'
-        shell: bash
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GASLUX_ARCHIVE_APPROVED: PRESERVE_HISTORY_LEASE_25
+          GASLUX_ARCHIVE_EXACT: '{"feature/bazzite-legacy-iso-scout-20261118":"a601557a415bbd1f597df48ce00ab52513712138","test/popos-genuine-win10-cow-live-iso-20261119":"fb670eb411de1ef51f2501890d5c1d17d014356f","test/windows10-partitioned-fat32-usb-explicit-removable":"0ab6c16d2ab271f0ef8847175f12a343b99f7333"}'
         run: |
           set -Eeuo pipefail
-          python3 auto_tests/tools/gaslux_branch_prune.py prune --output "$RUNNER_TEMP/two-integrated-branches.json"
-      - name: Upload exact Git history and ref-deletion proof
+          python3 auto_tests/tools/gaslux_branch_prune.py archive --output "$RUNNER_TEMP/gaslux-three-old-drafts.json"
+      - name: Publish source SHA and archival provenance
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: gaslux-pruned-bazzite-gpt-q4os-users
+          name: gaslux-archived-three-closed-draft-branches
           path: |
-            ${{ runner.temp }}/archive110-proven.json
-            ${{ runner.temp }}/two-integrated-branches.json
+            ${{ runner.temp }}/gaslux-archive-110-before.json
+            ${{ runner.temp }}/gaslux-three-old-drafts.json
           retention-days: 30
           if-no-files-found: warn
