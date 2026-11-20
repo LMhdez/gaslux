@@ -499,6 +499,7 @@ def run_windows_only_bcd_control(
         "treatmentTpmInitialStateTreeSha256": tpm_initial,
         "sameQemuArgumentsExceptOwnedPathsVerified": True,
         "qemuArgumentsProfileSha256": profile_a,
+        "qemuWriteTraceBackendAvailable": trace_events_file is not None,
         "qemuWriteTraceStatus": (
             boot.get("qemuWriteTraceStatus", trace_status)
             if trace_status == "available" else trace_status
@@ -525,7 +526,9 @@ def compare_bcd_ab(control: dict[str, Any], treatment: dict[str, Any]) -> dict[s
             and all(key in treatment for key in required),
             "A/B BCD evidence is incomplete")
     for evidence in (control, treatment):
-        require(re.fullmatch(r"[0-9a-f]{64}", evidence["prebootBcdSha256"]) is not None
+        require(type(evidence["prebootBcdSha256"]) is str
+                and type(evidence["postbootBcdSha256"]) is str
+                and re.fullmatch(r"[0-9a-f]{64}", evidence["prebootBcdSha256"]) is not None
                 and re.fullmatch(r"[0-9a-f]{64}", evidence["postbootBcdSha256"]) is not None
                 and type(evidence["changedByteCount"]) is int
                 and evidence["changedByteCount"] >= 0
