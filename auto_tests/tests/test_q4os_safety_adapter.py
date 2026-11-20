@@ -1,4 +1,5 @@
 """Fail-closed adapter contract tests; Safety dependency remains external to #266."""
+
 from __future__ import annotations
 
 import sys
@@ -14,47 +15,83 @@ from gaslux_q4os_safety_adapter import refuse_calamares, to_safety_snapshot  # n
 def sample():
     guid = "12345678-1234-1234-1234-123456789abc"
     q4os = {
-        "layout": "uefi/gpt", "diskGuid": guid, "diskSizeBytes": 67108864,
-        "logicalSectorBytes": 512, "observedStateSha256": "a" * 64,
+        "layout": "uefi/gpt",
+        "diskGuid": guid,
+        "diskSizeBytes": 67108864,
+        "logicalSectorBytes": 512,
+        "observedStateSha256": "a" * 64,
         "partitions": [
-            {"index": 1, "type": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
-             "guid": "87654321-4321-4321-4321-cba987654321", "first": 2048,
-             "last": 4095, "attributes": 0},
+            {
+                "index": 1,
+                "type": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+                "guid": "87654321-4321-4321-4321-cba987654321",
+                "first": 2048,
+                "last": 4095,
+                "attributes": 0,
+            },
         ],
     }
     snapshot = to_safety_snapshot(q4os)
     plan = {
-        "backend": "q4os-native", "firmwareLayout": "uefi/gpt",
-        "diskGuid": guid, "observedStateSha256": "a" * 64, "transactionId": "lab-1",
-        "proposedRootStartLba": 8192, "proposedRootEndLba": 16383,
-        "windowsEspFallbackWriteBlocked": True, "efiDebianHookWriteBlocked": True,
-        "installationAuthorized": False, "calamaresJobsAuthorized": False,
-        "diskWritesAuthorized": False, "windowsEspWritesAuthorized": False,
+        "backend": "q4os-native",
+        "firmwareLayout": "uefi/gpt",
+        "diskGuid": guid,
+        "observedStateSha256": "a" * 64,
+        "transactionId": "lab-1",
+        "proposedRootStartLba": 8192,
+        "proposedRootEndLba": 16383,
+        "windowsEspFallbackWriteBlocked": True,
+        "efiDebianHookWriteBlocked": True,
+        "installationAuthorized": False,
+        "calamaresJobsAuthorized": False,
+        "diskWritesAuthorized": False,
+        "windowsEspWritesAuthorized": False,
         "rollbackVerified": False,
     }
-    tx = {"id": "lab-1", "diskGuid": guid, "observedStateSha256": "a" * 64,
-          "safetyPlanSha256": "b" * 64, "vmId": "q4os-synthetic-vm-01"}
-    safety_attestation = {"decision": "ACCEPT_NO_WRITER", "transactionId": "lab-1",
-                          "planSha256": "b" * 64, "vmId": "q4os-synthetic-vm-01",
-                          "writeCount": 1}
-    writes = [{
-        "operation": "create-root-ext4",
-        "partGuid": "11111111-2222-3333-4444-555555555555",
-        "ownerTransactionId": "lab-1", "startBytes": 8192 * 512,
-        "sizeBytes": (16383 - 8192 + 1) * 512,
-    }]
+    tx = {
+        "id": "lab-1",
+        "diskGuid": guid,
+        "observedStateSha256": "a" * 64,
+        "safetyPlanSha256": "b" * 64,
+        "vmId": "q4os-synthetic-vm-01",
+    }
+    safety_attestation = {
+        "decision": "ACCEPT_NO_WRITER",
+        "transactionId": "lab-1",
+        "planSha256": "b" * 64,
+        "vmId": "q4os-synthetic-vm-01",
+        "writeCount": 1,
+    }
+    writes = [
+        {
+            "operation": "create-root-ext4",
+            "partGuid": "11111111-2222-3333-4444-555555555555",
+            "ownerTransactionId": "lab-1",
+            "startBytes": 8192 * 512,
+            "sizeBytes": (16383 - 8192 + 1) * 512,
+        }
+    ]
     calamares = {
         "nativeCalamaresConfigVerified": True,
         "upstreamInstallsEfiFallback": True,
         "fallbackWritePreventedAndVerified": False,
     }
+
     def comparator(expected, observed):
         if expected != observed:
             raise ValueError("identity or geometry changed")
-    return dict(q4os=q4os, expected=snapshot, safety_observed=snapshot,
-                safety_compare=comparator, plan=plan, transaction=tx,
-                write_set=writes, calamares=calamares,
-                safety_attestation=safety_attestation)
+
+    return dict(
+        q4os=q4os,
+        expected=snapshot,
+        safety_observed=snapshot,
+        safety_compare=comparator,
+        plan=plan,
+        transaction=tx,
+        write_set=writes,
+        calamares=calamares,
+        safety_attestation=safety_attestation,
+    )
 
 
 def test_projection_preserves_safety_contract_geometry():
@@ -73,22 +110,25 @@ def test_verified_mock_still_refuses_fallback():
     assert any("fallback" in r for r in result["reasons"])
 
 
-@pytest.mark.parametrize("change", [
-    lambda x: x.update(safety_compare=None),
-    lambda x: x.update(expected=None),
-    lambda x: x.update(safety_attestation=None),
-    lambda x: x["safety_attestation"].update(decision="DENY"),
-    lambda x: x["safety_attestation"].update(vmId="wrong-vm"),
-    lambda x: x["safety_attestation"].update(transactionId="wrong-transaction"),
-    lambda x: x["safety_observed"].update(partitionTableId="gpt:foreign"),
-    lambda x: x["plan"].update(diskWritesAuthorized=True),
-    lambda x: x["transaction"].update(id="foreign"),
-    lambda x: x["write_set"][0].update(partGuid=x["q4os"]["partitions"][0]["guid"]),
-    lambda x: x["write_set"][0].update(operation="write-esp-fallback"),
-    lambda x: x["write_set"][0].update(startBytes=0),
-    lambda x: x["calamares"].update(nativeCalamaresConfigVerified=False),
-    lambda x: x.update(write_set=[]),
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda x: x.update(safety_compare=None),
+        lambda x: x.update(expected=None),
+        lambda x: x.update(safety_attestation=None),
+        lambda x: x["safety_attestation"].update(decision="DENY"),
+        lambda x: x["safety_attestation"].update(vmId="wrong-vm"),
+        lambda x: x["safety_attestation"].update(transactionId="wrong-transaction"),
+        lambda x: x["safety_observed"].update(partitionTableId="gpt:foreign"),
+        lambda x: x["plan"].update(diskWritesAuthorized=True),
+        lambda x: x["transaction"].update(id="foreign"),
+        lambda x: x["write_set"][0].update(partGuid=x["q4os"]["partitions"][0]["guid"]),
+        lambda x: x["write_set"][0].update(operation="write-esp-fallback"),
+        lambda x: x["write_set"][0].update(startBytes=0),
+        lambda x: x["calamares"].update(nativeCalamaresConfigVerified=False),
+        lambda x: x.update(write_set=[]),
+    ],
+)
 def test_adversarial_mismatch_always_refuses(change):
     case = sample()
     change(case)
@@ -117,16 +157,19 @@ def test_mbr_not_accepted_as_valid_safety_snapshot():
         to_safety_snapshot(case["q4os"])
 
 
-@pytest.mark.parametrize("hazard", [
-    "efi-fallback-copy",
-    "write-EFI/debian/grub.cfg",
-    "overwrite-windows-esp",
-    "grub-install --force --bootloader-id=debian",
-    "efibootmgr --create",
-    "efibootmgr --bootorder",
-    "modify-gpt-backup",
-    "mount-shared-esp",
-])
+@pytest.mark.parametrize(
+    "hazard",
+    [
+        "efi-fallback-copy",
+        "write-EFI/debian/grub.cfg",
+        "overwrite-windows-esp",
+        "grub-install --force --bootloader-id=debian",
+        "efibootmgr --create",
+        "efibootmgr --bootorder",
+        "modify-gpt-backup",
+        "mount-shared-esp",
+    ],
+)
 def test_native_calamares_efi_grub_and_nvram_operations_are_refused(hazard):
     case = sample()
     case["write_set"].append({**case["write_set"][0], "operation": hazard})
