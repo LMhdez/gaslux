@@ -33,6 +33,7 @@ from windows10_popos_synthetic_distinst_trace_contract import (
     DISK_SERIAL as DISTINST_SERIAL, ESP_PARTUUID as DISTINST_ESP_PARTUUID,
     ROOT_PARTUUID as DISTINST_ROOT_PARTUUID,
     synthetic_distinst_plan, classify_distinst_writes,
+    diagnose_qemu_write_set,
 )
 from windows_x64_installed_gpt_ro_audit import require, DiskAuditError
 
@@ -40,6 +41,7 @@ CONSENT = "I_ACCEPT_ONLY_DISPOSABLE_SYNTHETIC_QEMU_WRITE_TRACE"
 DISTINST_CONSENT = "I_ACCEPT_ONLY_SYNTHETIC_POP_DISTINST_TEST"
 PREFLIGHT_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_PREFLIGHT_JSON=(\{[^\r\n]+\})\r?$")
 DISTINST_RESULT_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_RESULT_JSON=(\{[^\r\n]+\})\r?$")
+DISTINST_FAILURE_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_FAILURE_JSON=(\{[^\r\n]+\})\r?$")
 DISTINST_TERMINAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_(?:COMPLETE=1|REFUSED=[^\r\n]+)\r?\n")
 CHILD = "gaslux-pop-synthetic-write-child.qcow2"
 BASE = "gaslux-pop-synthetic-raw-base.img"
@@ -439,7 +441,9 @@ def distinst_console(sock: Path, stream: bytearray, nvram: Path):
         terminal_text = normalized(bytes(stream[start:]))
         refused = re.search(
             rb"(?m)^GASLUX_POP_SYNTH_DISTINST_REFUSED=([^\r\n]+)", terminal_text)
-        result_match = DISTINST_RESULT_JSON.search(normalized(bytes(stream)))
+        normalized_all = normalized(bytes(stream))
+        result_match = DISTINST_RESULT_JSON.search(normalized_all)
+        failure_match = DISTINST_FAILURE_JSON.search(normalized_all)
         # Always shut down the disposable VM cleanly, including partial failure.
         sync_start = len(stream)
         connection.sendall(
@@ -464,13 +468,17 @@ def distinst_console(sock: Path, stream: bytearray, nvram: Path):
         else:
             raise GuestProbeError("synthetic distinst VM did not power off")
         if refused:
-            raise GuestProbeError(
-                "synthetic distinst guest refused: "
-                + refused.group(1).decode("utf-8", errors="replace")[:350])
+            require(failure_match is not None,
+                    "synthetic distinst refusal lacks structured GPT/trace evidence")
+            guest = json.loads(failure_match.group(1))
+            return (
+                preflight, guest, nvram_before_distinst,
+                refused.group(1).decode("utf-8", errors="replace")[:500],
+            )
         require(result_match is not None,
                 "synthetic distinst result JSON absent")
         guest = json.loads(result_match.group(1))
-        return preflight, guest, nvram_before_distinst
+        return preflight, guest, nvram_before_distinst, None
     finally:
         connection.close()
 
@@ -535,7 +543,7 @@ def run_distinst_partition_test(
         with stderr.open("wb") as err:
             proc = subprocess.Popen(qemu_args, stdout=subprocess.DEVNULL,
                                     stderr=err, close_fds=True)
-        preflight, guest, nvram_before_distinst = distinst_console(
+        preflight, guest, nvram_before_distinst, guest_refusal = distinst_console(
             sock, stream, nvram)
         try:
             proc.wait(timeout=180)
@@ -551,6 +559,8 @@ def run_distinst_partition_test(
             retain_bounded_failure(evidence, stream, stderr, trace, reason)
             raise DiskAuditError(reason)
         trace_text = trace.read_text(encoding="utf-8", errors="replace")
+        if guest_refusal:
+            raise GuestProbeError("synthetic distinst guest refused: " + guest_refusal)
         nvram_after_distinst = sha(nvram)
         code_after = sha(code)
         control_after = sha(control)
@@ -691,8 +701,43 @@ def run_distinst_partition_test(
         if serial_log.is_file() and not serial_log.is_symlink() and serial_log.stat().st_size <= 4_000_000:
             shutil.copyfile(serial_log, evidence / "synthetic-distinst-failure-serial.log")
         if guest is not None:
-            (evidence / "synthetic-distinst-failure-guest-report.json").write_text(
-                json.dumps(guest, sort_keys=True, indent=2), encoding="utf-8")
+            guest_json = json.dumps(guest, sort_keys=True, indent=2)
+            guest_path = evidence / "synthetic-distinst-failure-guest-report.json"
+            guest_path.write_text(guest_json, encoding="utf-8")
+            guest_bytes = guest_path.read_bytes()
+            (evidence / "synthetic-distinst-failure-guest-report.json.sha256").write_text(
+                hashlib.sha256(guest_bytes).hexdigest()
+                + "  synthetic-distinst-failure-guest-report.json\\n",
+                encoding="ascii")
+        write_set_diagnostic = None
+        if trace.is_file() and not trace.is_symlink() and trace.stat().st_size <= 16_000_000:
+            try:
+                trace_for_diagnostic = trace.read_text(encoding="utf-8", errors="replace")
+                write_set_diagnostic = diagnose_qemu_write_set(
+                    plan, trace_for_diagnostic, guest)
+            except Exception as diagnostic_error:
+                write_set_diagnostic = {
+                    "decision": "INCOMPLETE",
+                    "writeSetMatch": False,
+                    "error": str(diagnostic_error)[:1000],
+                    "distinstExecutionAuthorized": False,
+                    "diskWritesAuthorizedForWindows": False,
+                    "windowsEspWritesAuthorized": False,
+                    "productionInstallationAuthorized": False,
+                }
+            diagnostic_path = evidence / "synthetic-distinst-write-set-diagnostic.json"
+            diagnostic_path.write_text(
+                json.dumps(write_set_diagnostic, sort_keys=True, indent=2),
+                encoding="utf-8")
+            diagnostic_bytes = diagnostic_path.read_bytes()
+            (evidence / "synthetic-distinst-write-set-diagnostic.json.sha256").write_text(
+                hashlib.sha256(diagnostic_bytes).hexdigest()
+                + "  synthetic-distinst-write-set-diagnostic.json\\n",
+                encoding="ascii")
+            if write_set_diagnostic.get("decision") == "REFUSE_OUT_OF_WRITESET":
+                print("GASLUX_POP_SYNTH_DISTINST_WRITESET_REFUSED=1", flush=True)
+                print(json.dumps(write_set_diagnostic, sort_keys=True,
+                                 separators=(",", ":")), flush=True)
         failure_checkpoint = {
             "baseSha256Before": base_sha,
             "baseSha256After": sha(base) if base.is_file() else None,
@@ -701,6 +746,15 @@ def run_distinst_partition_test(
             "nvramSha256AtFailure": sha(nvram) if nvram.is_file() else None,
             "childPresentBeforeCleanup": child.exists(),
             "traceSha256": sha(trace) if trace.is_file() else None,
+            "guestGptDiff": guest.get("gptDiff") if type(guest) is dict else None,
+            "writeSetDecision": (
+                write_set_diagnostic.get("decision")
+                if type(write_set_diagnostic) is dict else "INCOMPLETE"
+            ),
+            "nvramPersistentStateChangedAfterDistinstOrShutdown": (
+                nvram.is_file() and nvram_before_distinst is not None
+                and sha(nvram) != nvram_before_distinst
+            ),
             "failure": str(exc)[:1000],
         }
         (evidence / "synthetic-distinst-failure-checkpoint.json").write_text(
