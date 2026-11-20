@@ -179,20 +179,27 @@ def running_swtpm(state_dir: Path, workspace: Path, label: str) -> Iterator[Path
                 socket.unlink()
 
 
-def prepare_qemu_write_trace(workspace: Path) -> tuple[Path | None, list[str], str]:
-    """Enable bounded QEMU block-write trace only when this QEMU build supports it."""
-    probe = subprocess.run(
-        ["qemu-system-x86_64", "-trace", "help"],
-        capture_output=True, text=True, timeout=20, check=False,
-    )
+def block_write_event_names(trace_help_text: str) -> list[str]:
     names: set[str] = set()
-    for line in (probe.stdout + "\n" + probe.stderr).splitlines():
+    for line in trace_help_text.splitlines():
         token = line.strip().split(maxsplit=1)[0] if line.strip() else ""
         if (re.fullmatch(r"[A-Za-z0-9_]+", token)
                 and re.search(r"(?:blk|bdrv|qcow2|virtio_blk)", token, re.I)
                 and re.search(r"(?:write|pwrite)", token, re.I)):
             names.add(token)
-    events = sorted(names)
+    return sorted(names)
+
+
+def prepare_qemu_write_trace(workspace: Path) -> tuple[Path | None, list[str], str]:
+    """Enable bounded QEMU block-write trace only when this QEMU build supports it."""
+    try:
+        probe = subprocess.run(
+            ["qemu-system-x86_64", "-trace", "help"],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None, [], "unavailable-qemu-trace-help-failed"
+    events = block_write_event_names(probe.stdout + "\\n" + probe.stderr)
     if probe.returncode != 0 or not events:
         return None, events, "unavailable-no-block-write-events"
     events_file = workspace / "bcd-ab-qemu-write-events.txt"
