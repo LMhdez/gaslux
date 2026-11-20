@@ -20,14 +20,16 @@ def require(ok, why):
 
 def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
                             geometry: dict, cow: dict, stage: dict,
-                            third: dict, ext4: dict, timeout: int=1200) -> dict:
+                            third: dict, ext4: dict, timeout: int=1200,
+                            evidence_stem: str="fourth-post-ext4") -> dict:
     require(os.environ.get("GITHUB_ACTIONS")=="true"
             and os.environ.get("RUNNER_ENVIRONMENT")=="github-hosted"
             and os.environ.get("GITHUB_REPOSITORY")=="LMhdez/gaslux"
             and os.environ.get("GASLUX_WINDOWS_POST_EXT4_REBOOT_CONSENT")==CONSENT
             and os.environ.get("GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT")==THIRD_BOOT_CONSENT
             and os.environ.get("GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT")==EXT4_CONSENT
-            and type(timeout) is int and 120<=timeout<=1800,
+            and type(timeout) is int and 120<=timeout<=1800
+            and evidence_stem in ("fourth-post-ext4", "sixth-post-pacstrap"),
             "fourth Windows boot requires dedicated hosted KVM consent")
     require(all(type(x) is dict for x in (geometry,cow,stage,third,ext4))
             and geometry.get("candidateWindowsGptPrimaryAndBackupConsistent") is True
@@ -85,7 +87,7 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
     identity=qcow2_file_identity(base)
     with tempfile.TemporaryDirectory(prefix="gaslux-fourth-before-",dir=base.parent) as tmp:
         before=gpt_windows(overlay,Path(tmp))
-    serial=base.parent/"fourth-post-ext4-windows-serial.log"
+    serial=base.parent/(evidence_stem+"-windows-serial.log")
     require(not serial.exists() and not serial.is_symlink(),"reused fourth boot evidence")
     args=third_guest_args(original,base,nvram,overlay,trial_vars,serial)
     require(all(str(base) not in a and str(nvram) not in a and "verified_iso" not in a
@@ -93,7 +95,7 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
             and args.count("-boot")==1 and args[args.index("-boot")+1]=="order=c",
             "fourth boot could access base Windows, original EFI or ISO")
     digest=None
-    with (base.parent/"fourth-post-ext4-qemu-stderr.log").open("xb") as stderr:
+    with (base.parent/(evidence_stem+"-qemu-stderr.log")).open("xb") as stderr:
         proc=subprocess.Popen(args,stdout=subprocess.DEVNULL,stderr=stderr)
         try:
             start=time.monotonic()
