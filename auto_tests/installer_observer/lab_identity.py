@@ -44,9 +44,7 @@ def process_seal(pid: int) -> ProcessSeal:
         command = (root / "cmdline").read_bytes()
         executable = (root / "exe").stat()
         owner = root.stat().st_uid
-        if not command or b"qemu-system-" not in Path(
-            os.readlink(root / "exe")
-        ).name.encode():
+        if not command or b"qemu-system-" not in Path(os.readlink(root / "exe")).name.encode():
             raise Refusal("Unexpected VM executable")
         return ProcessSeal(
             pid, owner, int(fields[19]), digest(command), executable.st_dev, executable.st_ino
@@ -133,8 +131,10 @@ def _check_attachment(
     blocks: list[dict], sealed: AttachedFile, fmt: str, *, read_only: bool
 ) -> dict:
     matched = [
-        b["inserted"] for b in blocks
-        if isinstance(b, dict) and isinstance(b.get("inserted"), dict)
+        b["inserted"]
+        for b in blocks
+        if isinstance(b, dict)
+        and isinstance(b.get("inserted"), dict)
         and b["inserted"].get("file") == str(sealed.path)
     ]
     if len(matched) != 1:
@@ -155,7 +155,9 @@ def verify_qmp_report(seal: QemuRunSeal, blocks: Any, vnc: Any, status: Any) -> 
     if not isinstance(blocks, list) or len(blocks) != 2:
         raise Refusal("Unexpected number of QEMU block devices")
     if not isinstance(status, dict) or status.get("status") not in (
-        "running", "prelaunch", "paused"
+        "running",
+        "prelaunch",
+        "paused",
     ):
         raise Refusal("VM is not in an allowed observation state")
     if (
@@ -169,10 +171,14 @@ def verify_qmp_report(seal: QemuRunSeal, blocks: Any, vnc: Any, status: Any) -> 
     _check_attachment(blocks, seal.iso, "raw", read_only=True)
     cow = _check_attachment(blocks, seal.cow, "qcow2", read_only=False)
     snapshots = cow.get("snapshots")
-    if not isinstance(snapshots, list) or sum(
-        isinstance(item, dict) and item.get("name") == seal.authority.snapshot_id
-        for item in snapshots
-    ) != 1:
+    if (
+        not isinstance(snapshots, list)
+        or sum(
+            isinstance(item, dict) and item.get("name") == seal.authority.snapshot_id
+            for item in snapshots
+        )
+        != 1
+    ):
         raise Refusal("Snapshot identity cannot be corroborated by QMP")
 
 
@@ -205,9 +211,12 @@ class LocalQemuAttestor:
             raise Refusal("COW inode replaced")
         with seal.cow.path.open("rb") as handle:
             header = handle.read(20)
-        if (len(header) != 20 or header[:4] != bytes.fromhex("514649fb")
+        if (
+            len(header) != 20
+            or header[:4] != bytes.fromhex("514649fb")
             or int.from_bytes(header[8:16], "big") != 0
-            or int.from_bytes(header[16:20], "big") != 0):
+            or int.from_bytes(header[16:20], "big") != 0
+        ):
             raise Refusal("Unexpected QCOW2 header or backing file")
         root = Path("/proc") / str(seal.process.pid) / "fd"
         found = set()
