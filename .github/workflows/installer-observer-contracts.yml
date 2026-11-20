@@ -11,6 +11,7 @@ on:
       - 'auto_tests/tests/test_observer_qemu_surface.py'
       - 'auto_tests/tests/test_observer_endpoint_gates.py'
       - 'auto_tests/tests/test_observer_isolation_host.py'
+      - 'auto_tests/tests/test_observer_fd_audit.py'
       - 'auto_tests/tests/test_q4os_*.py'
       - 'auto_tests/fixtures/installer_observer/**'
       - 'schemas/distro-ui-*.schema.json'
@@ -26,6 +27,7 @@ on:
       - 'auto_tests/tests/test_observer_qemu_surface.py'
       - 'auto_tests/tests/test_observer_endpoint_gates.py'
       - 'auto_tests/tests/test_observer_isolation_host.py'
+      - 'auto_tests/tests/test_observer_fd_audit.py'
       - 'auto_tests/fixtures/installer_observer/**'
       - 'schemas/distro-ui-*.schema.json'
       - 'docs/distro-backends/**'
@@ -71,13 +73,13 @@ jobs:
               print("Validated", name)
           PY
       - name: Compile Python observer and adversarial tests
-        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py
+        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py
       - name: Ruff lint new transport and hostile-input tests
-        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/installer_observer/fd_audit.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py
       - name: Ruff format check new transport and hostile-input tests
-        run: python -m ruff format --diff --check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py
+        run: python -m ruff format --diff --check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/installer_observer/fd_audit.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py
       - name: Adversarial tests including Linux symlink and hardlink cases
-        run: python -m pytest -q auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py
+        run: python -m pytest -q auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py
       - name: Historical Q4OS contracts including Linux symlink cases
         run: |
           python -m pytest -q \
