@@ -131,10 +131,14 @@ def validate_attestation_report(
             "Verified attestation has no independently verified transparency timestamp"
         )
     if expected_workflow.endswith("/build_iso.yml"):
-        expected_identity = "https://github.com/ublue-os/bazzite/.github/workflows/build_iso.yml@refs/heads/main"
+        expected_identity = (
+            "https://github.com/ublue-os/bazzite/.github/workflows/build_iso.yml@refs/heads/main"
+        )
         expected_run_id = "44121421800"
     elif expected_workflow.endswith("/build.yml"):
-        expected_identity = "https://github.com/ublue-os/bazzite/.github/workflows/build.yml@refs/heads/main"
+        expected_identity = (
+            "https://github.com/ublue-os/bazzite/.github/workflows/build.yml@refs/heads/main"
+        )
         expected_run_id = "44115557508"
     else:
         raise ReadbackError("Unexpected upstream signer workflow policy")
