@@ -11,6 +11,7 @@ from __future__ import annotations
 import array
 import fcntl
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -165,6 +166,53 @@ def _block_geometry(fd: int) -> tuple[int, int]:
     return size[0], sector[0]
 
 
+def _require_unformatted_owned_partition(path: Path, index: int) -> None:
+    """Accept blkid's no-TYPE variants ONLY with a second empty wipefs audit.
+
+    On util-linux, blkid -p may return 0 with no TYPE when other partition
+    metadata is recognized. Neither exit 0 nor exit 2 alone proves emptiness.
+    wipefs --no-act never erases signatures; ANY reported signature refuses.
+    """
+    require(
+        index in (5, 6) and path.parent == Path("/dev")
+        and re.fullmatch(r"vd[a-z]{1,2}" + str(index), path.name) is not None,
+        "unowned block path passed to Pop empty-partition probe",
+    )
+    detected = subprocess.run(
+        ["blkid", "-p", "-s", "TYPE", "-o", "value", str(path)],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    require(
+        detected.returncode in (0, 2)
+        and detected.stdout == "" and detected.stderr == "",
+        "owned Pop partition %d signature probe refused: "
+        "blkid exit=%d type=%r stderr=%r" % (
+            index, detected.returncode,
+            detected.stdout.strip()[:80], detected.stderr.strip()[:120],
+        ),
+    )
+    # blkid's filtered TYPE field must not be our only evidence: reject
+    # stale filesystem/RAID/LUKS signatures before the first native write.
+    observed = subprocess.run(
+        ["wipefs", "--no-act", "--json", str(path)],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    require(
+        observed.returncode == 0 and observed.stderr == ""
+        and 0 < len(observed.stdout) <= 65536,
+        "owned Pop partition %d independent signature audit failed" % index,
+    )
+    try:
+        inventory = json.loads(observed.stdout)
+    except (ValueError, TypeError):
+        require(False, "owned Pop partition %d invalid wipefs evidence" % index)
+    require(
+        type(inventory) is dict and set(inventory) == {"signatures"}
+        and inventory["signatures"] == [],
+        "owned Pop partition %d has pre-existing disk signatures" % index,
+    )
+
+
 def _probe_unformatted_owned_partitions(
     disk_name: str, partitions: list[dict],
 ) -> None:
@@ -209,19 +257,7 @@ def _probe_unformatted_owned_partitions(
                 "Windows/Pop partition unexpectedly mounted in live guest",
         )
         if index in (5, 6):
-            detected = subprocess.run(
-                ["blkid", "-p", "-s", "TYPE", "-o", "value", str(path)],
-                capture_output=True, text=True, timeout=10, check=False,
-            )
-            require(detected.returncode == 2
-                    and detected.stdout == "",
-                    "owned Pop partition %d signature probe refused: "
-                    "blkid exit=%d type=%r stderr=%r" % (
-                        index, detected.returncode,
-                        detected.stdout.strip()[:80],
-                        detected.stderr.strip()[:120],
-                    ),
-            )
+            _require_unformatted_owned_partition(path, index)
     require(not (Path("/dev") / f"{disk_name}7").exists(),
             "unexpected extra seventh partition")
 
