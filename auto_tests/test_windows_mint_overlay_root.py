@@ -153,7 +153,9 @@ class MintOverlayContracts(unittest.TestCase):
                  patch("windows_cachyos_qcow2_gpt_readonly.qcow2_file_identity",
                        return_value="identity"), \
                  patch("windows_cachyos_qcow2_gpt_readonly.require_unchanged_qcow2"), \
-                 patch.object(mint, "sha256", return_value="e" * 64), \
+                 patch.object(mint, "sha256", side_effect=lambda path: (
+                     "e" * 64 if path == base else
+                     hashlib.sha256(path.read_bytes()).hexdigest())), \
                  patch.object(mint, "run", return_value=SimpleNamespace(
                      stdout=json.dumps(qemu_info))), \
                  patch.object(mint, "_guest_disk_audit", return_value=(uuid, hashes)):
