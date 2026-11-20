@@ -195,3 +195,56 @@ escrita transitória. Nenhum grafo real de alterações de bloco é obtido
 nesta execução. Observação da instalação efetiva exigirá VM sintética
 independente, instrumentação autónoma e snapshot recuperável, com
 permissão de laboratório específica.
+
+
+## Evidência terminal do ELF real — 20/11/2026 10:07 UTC
+
+A observação CLI foi **executada efetivamente** no Pop 24.04 live
+autenticado pelo pipeline do [QEMU Actions #44714481745](https://github.com/LMhdez/gaslux/actions/runs/44714481745),
+HEAD `efeedcd60a8868d06d1d80e16479dcd19628f708`.
+Ambos os jobs terminaram SUCCESS. Este commit **não é** o HEAD
+atual da PR #232, mas inclui integralmente o código da observação
+real e os seus verificadores do host.
+
+O ELF extraído da ISO build20 e revalidado pelo convidado é
+SHA-256 `8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5`.
+O relatório `distinstReadonlyObservation` preservado em
+`win10-pop-live-gpt.json` indica `argv=["/usr/bin/distinst","--help"]`,
+`cliElfExecutedForHelp=true`, `cliHelpExitCode=0`, **30 linhas de
+opções efetivas**, e SHA-256 do stdout
+`c370c349e13d5b7fff5331e6b601cde72dcc72fd5dda9373bfad3259ffd3a0e0`.
+O stderr estava vazio (SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`).
+
+**Opções relevantes efetivamente listadas no ELF:** `--block`,
+`--use`, `--squashfs`, `--remove`, `--new-table`, `--move`,
+`--delete`, `--new`, `--test`, `--force-bios`, `--force-efi`,
+`--no-efi-vars`, `--modify-boot`, `--lang`, `--keyboard`,
+`--hostname`, `--username`, `--tz` e opções LVM.
+O texto de ajuda de `--test` descreve teste da fase de
+particionamento, mas a inspeção de Rust mostra que essa fase pode
+efetuar escritas e montagens antes do retorno antecipado. Não foi
+invocada. A CLI não forneceu uma opção de planeamento sem efeitos
+demonstráveis para caracterizar o write-set completo.
+
+O [artefacto #14619163774](https://github.com/LMhdez/gaslux/actions/runs/44714481745/artifacts/14619163774)
+foi descarregado e o digest ZIP SHA-256
+`690e7ed7aa3deed852a7a56d392d1ce92188f59172a6379baa90913b798da105`
+foi verificado. Foram confrontados os **oito sidecars SHA-256** com
+os respetivos conteúdos: **oito válidos, zero discrepâncias**.
+`guestGpt` confirma GPT de seis entradas, CRCs primária/secundária,
+partições Windows #1–#4 imutáveis no inventário e
+`diskWritePerformed=false`. O QEMU terminou com shutdown limpo.
+`win10-pop-native-child-checkpoint.json` comprova criação e
+eliminação do segundo QCOW2 com hashes dos dois pais conferidos.
+
+**Limite da prova:** a imagem Windows foi apresentada ao guest
+como `readonly=on`, mas esta execução não instrumentou as operações
+internas de uma instalação. Não há prova de operações reais
+`disk.commit`, `mkfs`, mount do alvo, instalação de rootfs,
+systemd-boot ou NVRAM. `nativeInstallObserved=false`,
+`diskWritesIndependentlyTraced=false`,
+`writeSetConfinementEstablished=false`,
+`distinstExecutionAuthorized=false`, `rollbackVerified=false`
+e `popInstalled=false`. O resultado é **B (CLI read-only real)**;
+não é A, P3, dual boot ou estabilidade.
