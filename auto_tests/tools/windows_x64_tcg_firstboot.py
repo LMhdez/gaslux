@@ -1561,7 +1561,12 @@ def main(argv: list[str] | None = None) -> int:
                         source = workspace / source_name
                         if (source.is_file() and not source.is_symlink()
                                 and 0 < source.stat().st_size <= max_bytes):
-                            dest = evidence / f"{args.profile}-{suffix}.log"
+                            extension = (
+                                ".bin" if source_name.endswith(".bin")
+                                else ".txt" if source_name.endswith(".txt")
+                                else ".log"
+                            )
+                            dest = evidence / f"{args.profile}-{suffix}{extension}"
                             with source.open("rb") as stream, dest.open("xb") as output:
                                 shutil.copyfileobj(stream, output, length=64 * 1024)
                             with dest.open("rb") as hashed:
