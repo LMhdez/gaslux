@@ -195,9 +195,10 @@ def test_embedded_manifest_rejects_wrong_storage_id_or_config_reference():
             expected_config_digest=config_digest,
         )
     wrong_config = "sha256:" + "0" * 64
+    wrong_image = dict(image, id=wrong_config.removeprefix("sha256:"))
     with pytest.raises(ReadbackError, match="different config"):
         verify_embedded_manifest(
-            image,
+            wrong_image,
             manifest,
             expected_manifest_digest=manifest_digest,
             expected_config_digest=wrong_config,
