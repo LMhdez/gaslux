@@ -58,6 +58,17 @@ class PopNativeWriteSetTests(unittest.TestCase):
         with self.assertRaises(DiskAuditError):
             propose_native_write_set(*inputs)
 
+    def test_native_guest_writer_denies_before_any_formatter_or_distinst(self):
+        shell = (Path(__file__).parent / "tools" /
+                 "windows10_popos_native_realwin10_install_guest.sh").read_text(
+                     encoding="utf-8")
+        marker = "fail 'GASLUX_POP_NATIVE_WRITESET_UNPROVEN"
+        self.assertIn(marker, shell)
+        self.assertLess(shell.index(marker), shell.index("mkfs.vfat -F 32"))
+        self.assertLess(shell.index(marker),
+                        shell.index("timeout --kill-after=15s"))
+        self.assertLess(shell.index(marker), shell.index("source_list="))
+
     def test_positive_inert_write_set_has_exact_owned_ranges_and_exclusions(self):
         p = propose_native_write_set(*self.inputs)
         self.assertEqual(p["identitySource"], "existing-windows10-popos-six-gpt-reconcile")
