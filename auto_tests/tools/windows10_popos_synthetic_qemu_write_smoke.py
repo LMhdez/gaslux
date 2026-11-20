@@ -428,12 +428,18 @@ def run(evidence: Path) -> dict:
         child.unlink()
         require(not child.exists() and sha(base) == before,
                 "synthetic child not deleted or backing changed")
-        report = classify_trace(
-            trace_text, plan, reported_serial=SERIAL,
-            base_sha_after=sha(base), nvram_sha_before=nvram_before,
-            nvram_sha_after=nvram_after,
-            child_discarded=not child.exists(), guest_probe_ok=ok,
-            process_name="python3", installer_elf_sha256=None)
+        try:
+            report = classify_trace(
+                trace_text, plan, reported_serial=SERIAL,
+                base_sha_after=sha(base), nvram_sha_before=nvram_before,
+                nvram_sha_after=nvram_after,
+                child_discarded=not child.exists(), guest_probe_ok=ok,
+                process_name="python3", installer_elf_sha256=None)
+        except (DiskAuditError, OSError, ValueError) as exc:
+            retain_bounded_failure(
+                evidence, stream, stderr, trace,
+                "post-write independent QEMU trace refused: " + str(exc))
+            raise
         report.update({
             "realQemuKvmGuestBooted": True,
             "signedPopIsoGpgVerified": media["officialIsoSignedMetadataVerified"],
