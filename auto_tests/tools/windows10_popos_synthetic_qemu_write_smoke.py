@@ -631,8 +631,11 @@ def run_distinst_partition_test(
             "qemuTraceBytes": len(trace_text.encode()),
             "qemuTraceLineCount": len(trace_text.splitlines()),
             "qemuTraceArtifactComplete": True,
-            "guestPreflight": preflight,
-            "guestDistinstReport": guest,
+            "syntheticPlanSha256": hashlib.sha256(
+                json.dumps(plan, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "syntheticDistinstExecutionObserved": True,
+            "windowsDistinstExecutionAuthorized": False,
             "windowsDiskAttached": False,
             "distinstExecutionAuthorized": False,
             "diskWritesAuthorizedForWindows": False,
@@ -640,10 +643,14 @@ def run_distinst_partition_test(
             "productionInstallationAuthorized": False,
             "rollbackAfterNativeInstallVerified": False,
         }
+        guest_json = json.dumps(guest, sort_keys=True, indent=2)
+        preflight_json = json.dumps(preflight, sort_keys=True, indent=2)
+        report["guestDistinstReportSha256"] = hashlib.sha256(guest_json.encode()).hexdigest()
+        report["guestPreflightSha256"] = hashlib.sha256(preflight_json.encode()).hexdigest()
         (evidence / "synthetic-distinst-guest-report.json").write_text(
-            json.dumps(guest, sort_keys=True, indent=2), encoding="utf-8")
+            guest_json, encoding="utf-8")
         (evidence / "synthetic-distinst-preflight.json").write_text(
-            json.dumps(preflight, sort_keys=True, indent=2), encoding="utf-8")
+            preflight_json, encoding="utf-8")
         (evidence / "synthetic-distinst-write-report.json").write_text(
             json.dumps(report, sort_keys=True, indent=2), encoding="utf-8")
         (evidence / "synthetic-distinst-qemu-write-trace.log").write_text(
@@ -854,6 +861,23 @@ def run(evidence: Path) -> dict:
         (evidence / "synthetic-qemu-write-trace.log.sha256").write_text(
             hashlib.sha256(complete_trace.encode()).hexdigest() +
             "  synthetic-qemu-write-trace.log\n", encoding="ascii")
+        # Only after the known-write monitor passed do we invoke the authentic
+        # distinst ELF, and only on a separate synthetic QCOW2 target.
+        distinst_report = run_distinst_partition_test(
+            work, evidence, control, iso, code, vars_template, event_file)
+        report["knownWriteSmokeDistinstInvoked"] = False
+        report["actualDistinstInvoked"] = True
+        report["actualDistinstTarget"] = "synthetic-QCOW2-only"
+        report["actualDistinstInvokedOnWindows"] = False
+        report["syntheticDistinstWriteReportSha256"] = hashlib.sha256(
+            json.dumps(distinst_report, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        report["syntheticDistinstTest"] = distinst_report
+        payload = json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
+        (evidence / "synthetic-qemu-write-report.json").write_text(payload, encoding="utf-8")
+        (evidence / "synthetic-qemu-write-report.json.sha256").write_text(
+            hashlib.sha256(payload.encode()).hexdigest() +
+            "  synthetic-qemu-write-report.json\n", encoding="ascii")
         print("GASLUX_POP_SYNTH_QEMU_WRITE_MONITOR_REAL=1", flush=True)
         print(payload, flush=True)
         return report
