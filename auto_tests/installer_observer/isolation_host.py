@@ -96,6 +96,7 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        close_fds=True,
     )
     try:
         assert proc.stdout is not None
@@ -145,6 +146,31 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 if not path.startswith("/tmp/observer-qemu-"):
                     raise Refusal("Unexpected isolated endpoint root")
             endpoint_paths.extend((qmp, rfb))
+            # Privileged original runner can impersonate the dedicated UID.
+            # Connect-only: no QMP commands, RFB handshake or input messages.
+            impersonation = {}
+            for name, endpoint in (("qmp", qmp), ("rfb", rfb)):
+                command = [
+                    "sudo", "-n", "-u", service_user, "/usr/bin/python3", "-c",
+                    (
+                        "import socket,sys;"
+                        "s=socket.socket(socket.AF_UNIX);s.settimeout(2);"
+                        "s.connect(sys.argv[1]);s.close()"
+                    ),
+                    endpoint,
+                ]
+                result = subprocess.run(command, check=False, capture_output=True, timeout=8)
+                impersonation[name] = result.returncode
+                if result.returncode != 0:
+                    raise Refusal("Privileged UID impersonation experiment was inconclusive")
+            # Only test write access; do not alter the staged executable.
+            code_path = private_root / "auto_tests/installer_observer/lab_probe.py"
+            writable = subprocess.run(
+                ["sudo", "-n", "-u", service_user, "test", "-w", str(code_path)],
+                check=False, capture_output=True, timeout=8,
+            ).returncode == 0
+            if not writable:
+                raise Refusal("Privileged staged-source write-capability test inconclusive")
             tests = {
                 "original_runner_uid": os.geteuid(),
                 "isolated_uid": dedicated_uid,
@@ -154,6 +180,9 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 "nobody_connect_qmp": _connect_as_nobody(qmp),
                 "nobody_connect_rfb": _connect_as_nobody(rfb),
                 "no_input_events": True,
+                "sudo_impersonated_qmp_connect": impersonation["qmp"] == 0,
+                "sudo_impersonated_rfb_connect": impersonation["rfb"] == 0,
+                "sudo_impersonated_uid_can_write_staged_source": writable,
             }
             if any(
                 tests[key] != 13
