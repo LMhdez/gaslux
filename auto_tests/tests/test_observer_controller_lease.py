@@ -24,7 +24,7 @@ def test_second_cooperating_controller_refused(tmp_path, monkeypatch):
         with pytest.raises(Refusal, match="second controller"), module.ControllerLease(
             tmp_path, identity
         ):
-                pass
+            pass
         first.verify()
     with module.ControllerLease(tmp_path, identity) as second:
         second.verify()
@@ -54,17 +54,15 @@ def test_world_accessible_directory_is_rejected(tmp_path, monkeypatch):
     lease, _identity = fixture_lease(tmp_path, monkeypatch)
     tmp_path.chmod(0o755)
     with pytest.raises(Refusal, match="not private"), lease:
-            pass
+        pass
 
 
 def test_symlink_controller_directory_rejected(tmp_path, monkeypatch):
     lease, _identity = fixture_lease(tmp_path, monkeypatch)
     link = tmp_path.parent / (tmp_path.name + "-link")
     link.symlink_to(tmp_path, target_is_directory=True)
-    with pytest.raises(Refusal, match="Noncanonical"), module.ControllerLease(
-        link, lease.expected
-    ):
-            pass
+    with pytest.raises(Refusal, match="Noncanonical"), module.ControllerLease(link, lease.expected):
+        pass
 
 
 def test_lease_never_exposes_guest_input(tmp_path, monkeypatch):
