@@ -75,3 +75,58 @@ não prepara um comando executável e devolve sempre
 
 A aprovação dos testes positivos prova somente um contrato inerte bem
 formado. **Não há instalação, dual boot ou recuperação nativa comprovados.**
+
+
+## Intervenção 20/11/2026 09:33 UTC — Safety #265 e distinst real
+
+Na [PR Safety #265](https://github.com/LMhdez/gaslux/pull/265), HEAD
+`8ed912c6934c33354b0a814201c7217043bd0197`, o módulo
+`assets/live/libertix_disk_identity_gate.py` fornece leitura de imagem
+regular GPT e comparação exata de identidade, geometria e partições
+(`partitionStyle`, `partitionTableId`, `sizeBytes`,
+`logicalSectorSizeBytes`, `partitions`). Não entrega qualquer assinatura
+autenticada inter-ambiente Windows/QEMU/Linux nem permissão de escrever.
+
+O adaptador Pop
+`auto_tests/tools/windows10_popos_safety_attestation_adapter.py`
+transforma **apenas linhas já medidas pela auditoria GPT Pop** no formato
+Safety #265, sem reimplementar parser GPT. Compara snapshots e recusa
+modificações ao GUID do disco, PARTUUID, offset, dimensão, quantidade de
+partições ou geometria. Todos os pedidos de autorização
+`assess_pop_safety_handoff()` são recusados, **até quando um JSON simula
+assinatura, entidade emissora, validade e atestado host/guest**. A presença
+desses campos não prova assinatura de origem independente.
+
+`classify_distinst_trace()` compara operações sintéticas bem tipadas com
+os intervalos declarados #5/#6. Rejeita eventuais alterações GPT/MBR,
+formatação oculta, operação desconhecida, ESP Windows, destino EFI errado,
+NVRAM, disco trocado, intervalos divergentes, ausência de medição
+independente e alteração da cadeia QCOW2. **Mesmo com eventos
+sintaticamente admissíveis, `allWritesObserved=false` e
+`distinstExecutionAuthorized=false`**; não há prova de observação
+completa de blocos ou ficheiros por fonte independente.
+
+A execução QEMU real [#44706721311](https://github.com/LMhdez/gaslux/actions/runs/44706721311),
+no HEAD histórico `7c3ba653`, confirmou a cadeia GPG da ISO build 20,
+SHA-256 `a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c`,
+e o hash do executável `/usr/bin/distinst` observado no Pop live:
+`8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5`.
+Não corresponde necessariamente à revisão corrente do código upstream;
+identidade de ELF e GPG são provas distintas.
+
+O novo `auto_tests/tools/windows10_popos_distinst_readonly_observer.py`
+prepara uma investigação **não gráfica** em convidado Pop 24.04 QEMU:
+exige consentimento específico, sinal de manifesto GPG verificado e
+hash exato do ELF; a única invocação é `/usr/bin/distinst --help`, sem
+argumentos de disco. Não foi executado com a ISO nesta intervenção;
+não representa trace de instalação, não consulta disco, não determina
+eficácia de `disk.commit()`, nem comprova alteração de ESP/NVRAM. A
+medição de chamadas de sistema e diferenças de setores num **disco
+sintético sem Windows** é a próxima experiência dependente de
+instrumentação e isolamento efetivos.
+
+**Resultado B:** interface Safety publicada com recusas por falta de
+autenticação; investigação reprodutível iniciada, mas **grafo de operações
+real do instalador ainda não observado**. O script com Windows genuíno
+continua a recusar incondicionalmente antes de `mkfs.vfat` e `distinst`.
+Não se fez merge, instalação nativa, dual boot nem rollback pós-instalação.
