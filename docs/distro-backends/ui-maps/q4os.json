@@ -92,6 +92,20 @@
             668
           ],
           "action": "advance to Location"
+        },
+        {
+          "label": "American English",
+          "type": "language-selector",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Cancel",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
         }
       ],
       "proofs": [
@@ -143,6 +157,41 @@
             663
           ],
           "action": "advance to Keyboard"
+        },
+        {
+          "label": "Region: America",
+          "type": "region-selector",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Zone: New York",
+          "type": "time-zone-selector",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Change language",
+          "type": "locale-control",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Change date/numbers locale",
+          "type": "locale-control",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Cancel",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
         }
       ],
       "proofs": [
@@ -194,6 +243,41 @@
             663
           ],
           "action": "advance to Software"
+        },
+        {
+          "label": "Keyboard model: Generic 105-key PC",
+          "type": "keyboard-model",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "English (US)",
+          "type": "keyboard-layout",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Default",
+          "type": "keyboard-variant",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Switch Keyboard",
+          "type": "keyboard-test",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Cancel",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
         }
       ],
       "proofs": [
@@ -245,6 +329,48 @@
             249
           ],
           "action": "select native desktop profile"
+        },
+        {
+          "label": "Q4OS Basic",
+          "type": "software-profile",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Q4OS Live",
+          "type": "software-profile",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Q4OS Pure",
+          "type": "software-profile",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Load custom profile",
+          "type": "profile-import",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Back",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Cancel",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
         }
       ],
       "proofs": [
@@ -296,6 +422,41 @@
             663
           ],
           "action": "advance to Partitions"
+        },
+        {
+          "label": "Q4OS Desktop selected",
+          "type": "software-profile",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Q4OS Basic",
+          "type": "software-profile",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Q4OS Live",
+          "type": "software-profile",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Q4OS Pure",
+          "type": "software-profile",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Cancel",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
         }
       ],
       "proofs": [
@@ -347,6 +508,41 @@
             310
           ],
           "action": "select proposal only, never execute installer"
+        },
+        {
+          "label": "Storage device vda (synthetic 32 GiB only)",
+          "type": "device-selector",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Replace a partition",
+          "type": "partition-option",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Manual partitioning",
+          "type": "partition-option",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Erase disk",
+          "type": "partition-option",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Cancel",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
         }
       ],
       "proofs": [
@@ -398,6 +594,41 @@
             663
           ],
           "action": "advance to Users without installation"
+        },
+        {
+          "label": "Storage device vda (synthetic 32 GiB only)",
+          "type": "device-selector",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Swap with hibernation",
+          "type": "swap-selector",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Encrypt system",
+          "type": "encryption-toggle",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Manual partitioning",
+          "type": "partition-option",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Cancel",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
         }
       ],
       "proofs": [
@@ -449,6 +680,62 @@
             365
           ],
           "action": "DO NOT ENTER: read-only stop state"
+        },
+        {
+          "label": "What is your name?",
+          "type": "fullname-input",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "What name do you want to use to log in?",
+          "type": "username-input",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "What is the name of this computer?",
+          "type": "hostname-input",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Password",
+          "type": "password-input",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Repeat Password",
+          "type": "password-confirmation",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Log in automatically without asking for the password",
+          "type": "autologin-toggle",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Use the same password for the administrator account",
+          "type": "administrator-password-toggle",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
+        },
+        {
+          "label": "Cancel",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "observed text only; no interaction authorized or exercised by this read-only workflow"
         }
       ],
       "proofs": [
