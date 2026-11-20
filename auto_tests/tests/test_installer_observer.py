@@ -15,7 +15,7 @@ from PIL import Image
 
 from auto_tests.installer_observer import q4os
 from auto_tests.installer_observer.evidence import Refusal, basename, canonical, digest, parse, read
-from auto_tests.installer_observer.locators import Candidate, Method, Surface, Target, resolve
+from auto_tests.installer_observer.locators import Candidate, Method, Surface, Target
 from auto_tests.installer_observer.models import Action, DistributionIdentity
 from auto_tests.installer_observer.schema import load_map, validate
 from auto_tests.installer_observer.screenshot import Screenshot
