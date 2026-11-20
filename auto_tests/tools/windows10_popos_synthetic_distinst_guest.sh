@@ -287,12 +287,22 @@ def run_distinst() -> None:
         process = subprocess.Popen(argv, stdout=output, stderr=subprocess.STDOUT,
                                    close_fds=True)
         pid = process.pid
-        exe_path = os.readlink(f"/proc/{pid}/exe")
-        exe_hash = sha(f"/proc/{pid}/exe")
-        cmdline = [x.decode("utf-8", errors="replace")
-                   for x in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if x]
-        need(exe_path == "/usr/bin/distinst" and exe_hash == PINNED_DISTINST
-             and cmdline == argv, "launched distinst process identity mismatch")
+        try:
+            exe_path = os.readlink(f"/proc/{pid}/exe")
+            exe_hash = sha(f"/proc/{pid}/exe")
+            cmdline = [x.decode("utf-8", errors="replace")
+                       for x in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if x]
+            need(exe_path == "/usr/bin/distinst" and exe_hash == PINNED_DISTINST
+                 and cmdline == argv, "launched distinst process identity mismatch")
+        except Exception:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=10)
+            raise
         deadline = time.monotonic() + 600
         timed_out = False
         while process.poll() is None:
