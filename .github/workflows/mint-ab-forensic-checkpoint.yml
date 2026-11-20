@@ -54,6 +54,26 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          # Capture current runner capacity without Windows ISO, WIM or guest images.
+          # This is a diagnostic measurement, NOT an A/B authorization.
+          python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, "auto_tests/tools")
+          from windows_mint_ab_capacity import (
+              measure_capacity, qemu_fully_allocated_bytes, evidence,
+          )
+          output = Path("windows-x64-tcg-evidence")
+          output.mkdir(mode=0o700, exist_ok=True)
+          report = measure_capacity(directory=Path(os.environ["RUNNER_TEMP"]),
+              phase="early", full_allocated_bytes=qemu_fully_allocated_bytes())
+          report["measurementContext"] = "fresh hosted runner, no Windows ISO or guest"
+          report["githubRunId"] = os.environ["GITHUB_RUN_ID"]
+          report["sourceCommit"] = os.environ["GITHUB_SHA"]
+          evidence(output/"mint-ab-capacity-early.json", report)
+          print("MINT_AB_CAPACITY_SAMPLE=" + json.dumps(report, sort_keys=True))
+          print("Capacity sample is not evidence of actual Windows A/B restoration")
+          PY
           python3 - <<'PY'
           import pathlib, subprocess, tempfile
           with tempfile.TemporaryDirectory(prefix="gaslux-mint-ab-synthetic-") as tmp:
@@ -84,3 +104,12 @@ jobs:
           print("PASS: standalone QCOW2 cloning, isolated A corruption, recovery and B unaffected")
           print("NO genuine Windows VM, Mint boot, disk writes or production recovery proven")
           PY
+      - name: Upload only bounded fresh-runner byte capacity evidence (no Windows media)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mint-ab-runner-capacity-sample
+          path: windows-x64-tcg-evidence/mint-ab-capacity-early.json
+          retention-days: 7
+          if-no-files-found: warn
+          compression-level: 6
