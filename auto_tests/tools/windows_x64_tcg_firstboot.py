@@ -1376,7 +1376,7 @@ def main(argv: list[str] | None = None) -> int:
                                                           + type(error).__name__, flush=True)
                                                 side_bytes = (json.dumps(
                                                     side_by_side, sort_keys=True, indent=2
-                                                ) + "\\n").encode("utf-8")
+                                                ) + "\n").encode("utf-8")
                                                 side_path = evidence / (
                                                     f"{args.profile}-post-pacstrap-windows-with-linux.json"
                                                 )
