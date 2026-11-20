@@ -10,7 +10,10 @@ import hashlib
 import sys
 from pathlib import Path
 
-OLD = "            echo 'NOT PERFORMED: user creation, password entry, Summary, Install or any exec job.'"
+OLD = (
+    "            echo 'NOT PERFORMED: user creation, password entry, "
+    "Summary, Install or any exec job.'"
+)
 NEW = '''            if [[ "${GASLUX_Q4OS_SUMMARY_READONLY:-}" == 1 ]]; then
               [[ -f "${GASLUX_Q4OS_SUMMARY_READONLY_HOOK:-}" ]] ||
                 die "Missing fail-closed Q4OS Summary experiment hook"
