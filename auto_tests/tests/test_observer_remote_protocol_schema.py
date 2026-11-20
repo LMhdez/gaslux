@@ -57,6 +57,12 @@ def valid_response():
         "guest": {
             "vm_uuid": "44444444-4444-4444-8444-444444444444",
             "identity_assurance": "host-observed",
+            "distribution": {
+                "id": "q4os",
+                "version": "6.10-r2",
+                "iso_sha256": "1" * 64,
+                "installer_id": "calamares",
+            },
             "qemu_process": {"pid": 4102, "start_ticks": 99001, "executable_sha256": "e" * 64},
             "attestation": {
                 "status": "not-provided",
