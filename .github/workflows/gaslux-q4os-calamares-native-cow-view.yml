@@ -12,6 +12,9 @@ on:
       - 'auto_tests/tests/test_q4os_vnc_visual_gate.py'
       - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
       - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
+      - 'auto_tests/tests/test_q4os_users_visual_gate.py'
+      - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
+      - 'auto_tests/tests/test_q4os_evidence_manifest.py'
   pull_request:
     paths:
       - '.github/workflows/gaslux-q4os-calamares-native-cow-view.yml'
@@ -20,12 +23,15 @@ on:
       - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
       - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
       - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
-      - 'auto_tests/tests/test_q4os_calamares_gui_lab.py'
+      - 'auto_tests/tests/test_q4os_users_visual_gate.py'
+      - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
+      - 'auto_tests/tests/test_q4os_evidence_manifest.py'
   workflow_dispatch:
 
 concurrency:
-  group: q4os-native-cow-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  # Keep independent evidence runs isolated; reruns must not cancel a live VM/ISO audit.
+  group: q4os-native-cow-${{ github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -63,21 +69,32 @@ jobs:
           python -m compileall -q \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
+            auto_tests/tests/test_q4os_users_visual_gate.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
+            auto_tests/tests/test_q4os_evidence_manifest.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
+            auto_tests/tests/test_q4os_users_visual_gate.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
+            auto_tests/tests/test_q4os_evidence_manifest.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/tools/gaslux_q4os_native_cow_view_guard.py \
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
+            auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
+            auto_tests/tests/test_q4os_users_visual_gate.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
+            auto_tests/tests/test_q4os_evidence_manifest.py
           python -m pytest -q \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
-            auto_tests/tests/test_q4os_calamares_gui_lab.py
+            auto_tests/tests/test_q4os_users_visual_gate.py \
+            auto_tests/tests/test_q4os_calamares_gui_lab.py \
+            auto_tests/tests/test_q4os_evidence_manifest.py
 
       - name: Download and re-verify pinned Q4OS 6.10 r2 native ISO
         shell: bash
@@ -110,6 +127,18 @@ jobs:
           bash -n auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
           python3 -m py_compile auto_tests/tools/gaslux_q4os_vnc_visual_gate.py
           bash auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh q4os "$GASLUX_Q4OS_ISO" "$Q4OS_SHA256"
+      - name: Create and verify deterministic Q4OS GUI evidence manifest
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          evidence="$RUNNER_TEMP/q4os-native-target/evidence"
+          python3 auto_tests/tools/gaslux_q4os_evidence_manifest.py create "$evidence"
+          python3 auto_tests/tools/gaslux_q4os_evidence_manifest.py verify "$evidence" \
+            --require serial.log \
+            --require qemu.rc \
+            --require vnc-users-page.png \
+            --require gpt-audit.txt
       - name: Preserve exact first-run screenshot transition, kernel logs and SHA evidence
         if: always()
         uses: actions/upload-artifact@v4

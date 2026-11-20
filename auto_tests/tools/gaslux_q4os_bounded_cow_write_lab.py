@@ -51,6 +51,7 @@ RESULT = b"GQ4OS-WRITE-RESULT-V1"
 CHALLENGE = "GQ4OS-WRITE-CHALLENGE-V1"
 AUTH = b"GQ4OS-WRITE-ALLOW-V1"
 POWER_CUT_MODE = "SIMULATE-POWER-CUT"
+FINISH = b"GQ4OS-WRITE-FINISH-V1"
 POWER_CUT_READY = b"GQ4OS-WRITE-SYNCED-BLOCKED-V1"
 REPORT_DOMAIN = b"GASLUX-Q4OS-BOUND-WRITE-REPORT-V1\n"
 AUTH_DOMAIN = b"GASLUX-Q4OS-BOUND-WRITE-AUTH-V1\n"
@@ -386,6 +387,12 @@ def _authenticate_guest_write(
                 "QEMU process did not die from SIGKILL",
             )
         else:
+            finish_mac = (
+                hmac.new(secret.encode("ascii"), AUTH_DOMAIN + FINISH, hashlib.sha256)
+                .hexdigest()
+                .encode("ascii")
+            )
+            conn.sendall(FINISH + b":" + finish_mac + b"\n")
             process.wait(timeout=50)
             _require(process.returncode == 0, "QEMU guest did not shut down successfully")
         _require(not stream.read(1), "Unexpected trailing guest output")

@@ -1,14 +1,17 @@
 """Integrity tests for the Q4OS GUI evidence manifest."""
 
+import sys
 from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from gaslux_q4os_evidence_manifest import (
     EvidenceManifestError,
     create_manifest,
     verify_manifest,
-)
+)  # noqa: E402, I001
 
 
 def _evidence(tmp_path: Path) -> Path:
@@ -69,3 +72,39 @@ def test_manifest_requires_all_declared_artifacts(tmp_path):
     create_manifest(directory)
     with pytest.raises(EvidenceManifestError, match="required evidence missing"):
         verify_manifest(directory, {"serial.log", "gpt-audit.txt"})
+
+
+def test_manifest_refuses_platform_without_o_nofollow(tmp_path, monkeypatch):
+    directory = _evidence(tmp_path)
+    create_manifest(directory)
+    monkeypatch.delattr("os.O_NOFOLLOW", raising=False)
+    with pytest.raises(EvidenceManifestError, match="does not expose O_NOFOLLOW"):
+        verify_manifest(directory)
+    (directory / "evidence.sha256").unlink()
+    with pytest.raises(EvidenceManifestError, match="does not expose O_NOFOLLOW"):
+        create_manifest(directory)
+
+
+def test_manifest_refuses_symlinked_manifest(tmp_path):
+    directory = _evidence(tmp_path)
+    create_manifest(directory)
+    manifest = directory / "evidence.sha256"
+    manifest.unlink()
+    manifest.symlink_to(directory / "serial.log")
+    with pytest.raises(EvidenceManifestError, match="manifest is missing or unsafe"):
+        verify_manifest(directory)
+
+
+def test_manifest_refuses_symlinked_evidence_directory(tmp_path):
+    directory = _evidence(tmp_path)
+    alias = tmp_path / "evidence-alias"
+    alias.symlink_to(directory, target_is_directory=True)
+    with pytest.raises(EvidenceManifestError, match="directory is missing or unsafe"):
+        verify_manifest(alias)
+
+
+def test_manifest_requires_directory_open_flag(tmp_path, monkeypatch):
+    directory = _evidence(tmp_path)
+    monkeypatch.delattr("os.O_DIRECTORY", raising=False)
+    with pytest.raises(EvidenceManifestError, match="does not expose O_DIRECTORY"):
+        create_manifest(directory)

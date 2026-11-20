@@ -223,3 +223,47 @@ def test_restore_checkpoint_does_not_claim_full_windows_rollback():
     assert "qemu-io" in src
     assert "sgdisk" in src
     assert '"syntheticWriteRecoveredVerified"' in src
+
+
+def test_sigkill_fault_injection_requires_separate_explicit_opt_in():
+    import inspect
+
+    from gaslux_q4os_bounded_cow_write_lab import _authenticate_guest_write, run_lab
+
+    host = inspect.getsource(_authenticate_guest_write)
+    assert "if simulate_power_cut:" in host
+    assert "POWER_CUT_READY" in host
+    assert "process.poll() is None" in host
+    assert "process.kill()" in host
+    assert "process.returncode == -signal.SIGKILL" in host
+    assert host.index("verified = validate_write_result") < host.index("process.kill()")
+    lab = inspect.getsource(run_lab)
+    assert "GASLUX_Q4OS_POWER_CUT_LAB_ONLY" in lab
+    assert '"rollbackVerified": False' in lab or '"rollbackVerified"' in lab
+
+
+def test_normal_guest_shutdown_requires_authenticated_host_finish():
+    from pathlib import Path
+
+    host = Path("auto_tests/tools/gaslux_q4os_bounded_cow_write_lab.py").read_text(encoding="utf-8")
+    guest = Path("auto_tests/tools/q4os_guest_bound_write_agent.py").read_text(encoding="utf-8")
+    assert 'FINISH = b"GQ4OS-WRITE-FINISH-V1"' in host
+    assert 'hmac.new(secret.encode("ascii"), AUTH_DOMAIN + FINISH' in host
+    assert 'conn.sendall(FINISH + b":" + finish_mac' in host
+    assert 'finish = _read_line(fd, 256).split(b":")' in guest
+    assert "hmac.compare_digest(finish[1], finish_mac)" in guest
+    assert guest.index("if power_cut:") < guest.index("finish = _read_line(fd, 256)")
+
+
+def test_sigkill_recovery_does_not_claim_host_power_loss_or_windows_rollback():
+    import inspect
+
+    from gaslux_q4os_bounded_cow_write_lab import run_lab
+
+    source = inspect.getsource(run_lab)
+    assert '"powerCutAfterFsync": simulate_power_cut' in source
+    assert '"powerCutRecoveryInSyntheticLab": simulate_power_cut' in source
+    assert '"rollbackVerified": False' in source
+    assert '"windowsDiskAttached": False' in source
+    assert '"calamaresExecuted": False' in source
+    assert 'checkpoint_state["postPowerCutRecoveryVerified"] = simulate_power_cut' in source
