@@ -105,16 +105,25 @@ def _report(lab):
 
 
 def _candidate(current, **changes):
-    args = dict(before=current, reread=current.copy(), start_lba=57344, end_lba=65535,
-                calamares={"distribution": "q4os", "version": "6.10-deb13u1",
-                            "nativeCalamaresConfigVerified": True,
-                            "upstreamInstallsEfiFallback": True},
-                hooks={"unownedEfiDebianWriteRiskObserved": True,
-                       "forcedGrubInstallRiskObserved": True},
-                checkpoint={"checkpointComparedToFullDisk": True,
-                            "observedStateSha256": current["observedStateSha256"],
-                            "checkpointRestoredAndBooted": False,
-                            "checkpointSha256": "a" * 64})
+    args = dict(
+        before=current,
+        reread=current.copy(),
+        start_lba=57344,
+        end_lba=65535,
+        calamares={
+            "distribution": "q4os",
+            "version": "6.10-deb13u1",
+            "nativeCalamaresConfigVerified": True,
+            "upstreamInstallsEfiFallback": True,
+        },
+        hooks={"unownedEfiDebianWriteRiskObserved": True, "forcedGrubInstallRiskObserved": True},
+        checkpoint={
+            "checkpointComparedToFullDisk": True,
+            "observedStateSha256": current["observedStateSha256"],
+            "checkpointRestoredAndBooted": False,
+            "checkpointSha256": "a" * 64,
+        },
+    )
     args.update(changes)
     return propose_read_only_native_target(**args)
 
@@ -128,9 +137,16 @@ def test_gpt_esp_winre_oem_readonly_evidence_and_blocked_plan(lab):
     assert proposal["proposedRootFilesystem"] == "ext4"
     assert proposal["windowsEspFallbackWriteBlocked"] is True
     assert proposal["efiDebianHookWriteBlocked"] is True
-    assert all(proposal[key] is False for key in
-               ("installationAuthorized", "calamaresJobsAuthorized", "diskWritesAuthorized",
-                "windowsEspWritesAuthorized", "rollbackVerified"))
+    assert all(
+        proposal[key] is False
+        for key in (
+            "installationAuthorized",
+            "calamaresJobsAuthorized",
+            "diskWritesAuthorized",
+            "windowsEspWritesAuthorized",
+            "rollbackVerified",
+        )
+    )
     assert verify_windows_preservation(before, _report(lab))["protectedContentPreserved"] is True
 
 
@@ -166,23 +182,37 @@ def test_preservation_detects_byte_change_without_gpt_change(lab, where):
         verify_windows_preservation(before, after)
 
 
-@pytest.mark.parametrize("first,last", [(8192, 8800), (2048, 2200), (53248, 54000),
-                                         (57344, 57344), (57345, 65535),
-                                         (130048, 131071)])
+@pytest.mark.parametrize(
+    "first,last",
+    [(8192, 8800), (2048, 2200), (53248, 54000), (57344, 57344), (57345, 65535), (130048, 131071)],
+)
 def test_target_extent_overlap_misalignment_and_metadata_refuses(lab, first, last):
     with pytest.raises(Q4osWindowsBoundaryRefusal):
         _candidate(_report(lab), start_lba=first, end_lba=last)
 
 
-@pytest.mark.parametrize("change", [
-    {"firmware_layout": "bios/mbr"},
-    {"checkpoint": {}},
-    {"checkpoint": {"checkpointComparedToFullDisk": True, "checkpointRestoredAndBooted": True}},
-    {"calamares": {"distribution": "q4os", "version": "6.10-deb13u1",
-                   "nativeCalamaresConfigVerified": True, "upstreamInstallsEfiFallback": False}},
-    {"hooks": {"unownedEfiDebianWriteRiskObserved": False,
-               "forcedGrubInstallRiskObserved": True}},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"firmware_layout": "bios/mbr"},
+        {"checkpoint": {}},
+        {"checkpoint": {"checkpointComparedToFullDisk": True, "checkpointRestoredAndBooted": True}},
+        {
+            "calamares": {
+                "distribution": "q4os",
+                "version": "6.10-deb13u1",
+                "nativeCalamaresConfigVerified": True,
+                "upstreamInstallsEfiFallback": False,
+            }
+        },
+        {
+            "hooks": {
+                "unownedEfiDebianWriteRiskObserved": False,
+                "forcedGrubInstallRiskObserved": True,
+            }
+        },
+    ],
+)
 def test_refuse_unauthenticated_checkpoint_firmware_and_changed_calamares(lab, change):
     with pytest.raises(Q4osWindowsBoundaryRefusal):
         _candidate(_report(lab), **change)
@@ -225,43 +255,67 @@ def test_checkpoint_requires_real_qemu_hash_and_full_compare(lab):
     folder = workspace / "checkpoints"
     folder.mkdir(mode=0o700)
     snapshot = folder / "recovery.qcow2"
-    subprocess.run(["qemu-img", "convert", "-f", "raw", "-O", "qcow2", str(disk), str(snapshot)],
-                   check=True, capture_output=True)
+    subprocess.run(
+        ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", str(disk), str(snapshot)],
+        check=True,
+        capture_output=True,
+    )
     with snapshot.open("rb") as input_file:
         actual_hash = hashlib.file_digest(input_file, "sha256").hexdigest()
-    report = verify_read_only_checkpoint(workspace, disk, snapshot, sector_bytes=512,
-                                         expected_snapshot_sha256=actual_hash)
+    report = verify_read_only_checkpoint(
+        workspace, disk, snapshot, sector_bytes=512, expected_snapshot_sha256=actual_hash
+    )
     assert report["checkpointComparedToFullDisk"] is True
     assert report["rollbackVerified"] is False
     restored = workspace / "restored-disposable.raw"
-    subprocess.run(["qemu-img", "convert", "-f", "qcow2", "-O", "raw", str(snapshot),
-                    str(restored)], check=True, capture_output=True)
-    subprocess.run(["qemu-img", "compare", "-f", "raw", "-F", "raw", str(disk),
-                    str(restored)], check=True, capture_output=True)
+    subprocess.run(
+        ["qemu-img", "convert", "-f", "qcow2", "-O", "raw", str(snapshot), str(restored)],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["qemu-img", "compare", "-f", "raw", "-F", "raw", str(disk), str(restored)],
+        check=True,
+        capture_output=True,
+    )
     with disk.open("rb") as original_file, restored.open("rb") as restored_file:
-        assert hashlib.file_digest(original_file, "sha256").digest() == hashlib.file_digest(
-            restored_file, "sha256"
-        ).digest()
+        assert (
+            hashlib.file_digest(original_file, "sha256").digest()
+            == hashlib.file_digest(restored_file, "sha256").digest()
+        )
     proof_dir = os.getenv("GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE")
     if proof_dir:
         evidence_path = Path(proof_dir)
         evidence_path.mkdir(parents=True, exist_ok=True)
         (evidence_path / "checkpoint-verified.json").write_text(
-            json.dumps({"fixtureOnly": True, "qemuImgFullComparePassed": True,
-                        "snapshotSha256": actual_hash, "readOnlyVerification": report,
-                        "restoredWholeRawByteMatch": True, "guestBooted": False,
-                        "windowsBootVerified": False, "calamaresExecuted": False,
-                        "rollbackVerifiedOnRealWindows": False}, indent=2, sort_keys=True) + "\n"
+            json.dumps(
+                {
+                    "fixtureOnly": True,
+                    "qemuImgFullComparePassed": True,
+                    "snapshotSha256": actual_hash,
+                    "readOnlyVerification": report,
+                    "restoredWholeRawByteMatch": True,
+                    "guestBooted": False,
+                    "windowsBootVerified": False,
+                    "calamaresExecuted": False,
+                    "rollbackVerifiedOnRealWindows": False,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
         )
     with pytest.raises(Q4osWindowsBoundaryRefusal, match="SHA-256"):
-        verify_read_only_checkpoint(workspace, disk, snapshot, sector_bytes=512,
-                                    expected_snapshot_sha256="f" * 64)
+        verify_read_only_checkpoint(
+            workspace, disk, snapshot, sector_bytes=512, expected_snapshot_sha256="f" * 64
+        )
     with disk.open("r+b") as f:
         f.seek(70000 * 512)
         f.write(b"UNPLANNED")
     with pytest.raises(Q4osWindowsBoundaryRefusal, match="QEMU checkpoint"):
-        verify_read_only_checkpoint(workspace, disk, snapshot, sector_bytes=512,
-                                    expected_snapshot_sha256=actual_hash)
+        verify_read_only_checkpoint(
+            workspace, disk, snapshot, sector_bytes=512, expected_snapshot_sha256=actual_hash
+        )
 
 
 def test_proposal_matches_json_schema(lab):
