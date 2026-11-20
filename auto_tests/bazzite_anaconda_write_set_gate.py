@@ -188,7 +188,9 @@ def expected_actions(plan: dict) -> dict:
             ]
         )
     for subvol in plan["btrfsSubvolumesProposed"]:
-        operations.append({"kind": "create-btrfs-subvolume", "partitionNumber": 6, "mountPoint": subvol})
+        operations.append(
+            {"kind": "create-btrfs-subvolume", "partitionNumber": 6, "mountPoint": subvol}
+        )
     last = size // 512 - 1
     metadata = [
         {"kind": "protective-mbr", "firstSector": 0, "lastSector": 0},
@@ -205,7 +207,9 @@ def expected_actions(plan: dict) -> dict:
 def _compare_multiset(observed: object, expected: list, context: str) -> None:
     if not isinstance(observed, list) or any(not isinstance(x, dict) for x in observed):
         raise Refusal(f"Missing {context} actions")
-    pack = lambda x: json.dumps(x, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    def pack(value: dict) -> str:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
     if Counter(map(pack, observed)) != Counter(map(pack, expected)):
         raise Refusal(f"Unknown, missing or duplicated {context} action")
 
