@@ -8,6 +8,7 @@ on:
       - 'auto_tests/installer_observer/controller_lease.py'
       - 'auto_tests/installer_observer/qemu_surface.py'
       - 'auto_tests/installer_observer/lab_probe.py'
+      - 'auto_tests/installer_observer/isolation_host.py'
       - '.github/workflows/installer-observer-lab.yml'
   pull_request:
     paths:
@@ -42,12 +43,24 @@ jobs:
           test "$(id -u)" -ne 0
           command -v qemu-system-x86_64
           command -v qemu-img
-          python -m compileall -q auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py
+          python -m compileall -q auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/isolation_host.py
       - name: Two independent QEMU processes; scratch ISO/QCOW2; zero input
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m auto_tests.installer_observer.lab_probe
+          # Dedicated Unix UID: a runner-UID connect(2) must receive EACCES.
+          # GitHub runner has sudo; privileged runner impersonation is out of scope.
+          sudo useradd --system --no-create-home --shell /usr/sbin/nologin gaslux_observer_ci
+          lab_private="$(sudo mktemp -d /tmp/gaslux-obs-XXXXXXXX)"
+          sudo chown gaslux_observer_ci:gaslux_observer_ci "$lab_private"
+          sudo chmod 0700 "$lab_private"
+          cleanup() {
+            sudo rm -rf -- "$lab_private"
+            sudo userdel gaslux_observer_ci || true
+          }
+          trap cleanup EXIT
+          python -m auto_tests.installer_observer.isolation_host \\
+            "$lab_private" gaslux_observer_ci "$RUNNER_TEMP/observer-qemu-lab"
       - name: Publish strictly synthetic observation evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4
