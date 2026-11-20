@@ -45,15 +45,26 @@ def contract(tmp_path):
         seal_file(cow),
     )
     blocks = [
-        {"device": "lab-iso", "inserted": {
-            "file": str(seal.iso.path), "ro": True,
-            "image": {"filename": str(seal.iso.path), "format": "raw"},
-        }},
-        {"device": "lab-cow", "inserted": {
-            "file": str(seal.cow.path), "ro": False,
-            "image": {"filename": str(seal.cow.path), "format": "qcow2",
-                      "snapshots": [{"id": "1", "name": "snap-123"}]},
-        }},
+        {
+            "device": "lab-iso",
+            "inserted": {
+                "file": str(seal.iso.path),
+                "ro": True,
+                "image": {"filename": str(seal.iso.path), "format": "raw"},
+            },
+        },
+        {
+            "device": "lab-cow",
+            "inserted": {
+                "file": str(seal.cow.path),
+                "ro": False,
+                "image": {
+                    "filename": str(seal.cow.path),
+                    "format": "qcow2",
+                    "snapshots": [{"id": "1", "name": "snap-123"}],
+                },
+            },
+        },
     ]
     vnc = {"enabled": True, "host": "127.0.0.1", "service": "5905", "clients": []}
     status = {"status": "running"}
@@ -64,17 +75,34 @@ def test_pure_qmp_contract_can_validate_exactly_two_synthetic_media(contract):
     verify_qmp_report(*contract)
 
 
-@pytest.mark.parametrize("mutation", (
-    "third-disk", "removed-iso", "iso-writable", "cow-readonly", "cow-raw",
-    "backing", "snapshot", "duplicate-snapshot", "missing-snapshots", "vnc-client",
-    "vnc-host", "vnc-port", "stopped", "iso-replaced", "cow-replaced",
-))
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "third-disk",
+        "removed-iso",
+        "iso-writable",
+        "cow-readonly",
+        "cow-raw",
+        "backing",
+        "snapshot",
+        "duplicate-snapshot",
+        "missing-snapshots",
+        "vnc-client",
+        "vnc-host",
+        "vnc-port",
+        "stopped",
+        "iso-replaced",
+        "cow-replaced",
+    ),
+)
 def test_qmp_drift_refuses_before_any_input(contract, mutation):
     seal, original, original_vnc, original_status = contract
     blocks = [
-        {"device": b["device"], "inserted": {
-            **b["inserted"], "image": dict(b["inserted"]["image"])
-        }} for b in original
+        {
+            "device": b["device"],
+            "inserted": {**b["inserted"], "image": dict(b["inserted"]["image"])},
+        }
+        for b in original
     ]
     vnc = dict(original_vnc)
     status = dict(original_status)
@@ -93,9 +121,7 @@ def test_qmp_drift_refuses_before_any_input(contract, mutation):
     elif mutation == "snapshot":
         blocks[1]["inserted"]["image"]["snapshots"] = [{"name": "swapped"}]
     elif mutation == "duplicate-snapshot":
-        blocks[1]["inserted"]["image"]["snapshots"] = [
-            {"name": "snap-123"}, {"name": "snap-123"}
-        ]
+        blocks[1]["inserted"]["image"]["snapshots"] = [{"name": "snap-123"}, {"name": "snap-123"}]
     elif mutation == "missing-snapshots":
         blocks[1]["inserted"]["image"].pop("snapshots")
     elif mutation == "vnc-client":
@@ -132,9 +158,14 @@ def test_iso_metadata_and_seal_are_both_required(contract):
     seal, *_ = contract
     LocalQemuAttestor(seal)  # Hash, length and one-link regular-file proof, not live VM proof.
     with pytest.raises(Refusal):
-        LocalQemuAttestor(replace(seal, authority=replace(
-            seal.authority, media=replace(seal.authority.media, sha256="0" * 64)
-        )))
+        LocalQemuAttestor(
+            replace(
+                seal,
+                authority=replace(
+                    seal.authority, media=replace(seal.authority.media, sha256="0" * 64)
+                ),
+            )
+        )
 
 
 def test_replaced_cow_and_changed_snapshot_refused(contract):
@@ -142,7 +173,9 @@ def test_replaced_cow_and_changed_snapshot_refused(contract):
     with pytest.raises(Refusal):
         verify_qmp_report(
             replace(seal, authority=replace(seal.authority, snapshot_id="other")),
-            blocks, vnc, status,
+            blocks,
+            vnc,
+            status,
         )
     seal.cow.path.unlink()
     seal.cow.path.write_bytes(b"another file")
