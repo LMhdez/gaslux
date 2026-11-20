@@ -110,6 +110,8 @@ jobs:
             auto_tests/tools/cachyos_windows_shared_cow_firstboot.py \
             auto_tests/tools/cachyos_windows_shared_cow_rw_child.py \
             auto_tests/tools/windows_cachyos_postpacstrap_windows.py \
+            auto_tests/tools/windows_cachyos_bcd_ab_control.py \
+            auto_tests/test_windows_cachyos_bcd_ab_control.py \
             auto_tests/test_windows_cachyos_postpacstrap_windows.py \
             auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \
             auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
