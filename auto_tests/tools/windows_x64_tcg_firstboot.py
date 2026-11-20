@@ -1369,8 +1369,10 @@ def main(argv: list[str] | None = None) -> int:
                                                         third, ext4, fourth, pacstrap_proof,
                                                         timeout=1500,
                                                     )
-                                                except (ValueError, OSError, RuntimeError,
-                                                        subprocess.TimeoutExpired) as error:
+                                                except Exception as error:
+                                                    # Fail closed without bypassing the existing
+                                                    # disposable-COW discard and Windows reboot.
+                                                    # This covers libguestfs and QEMU failures too.
                                                     side_by_side["failureType"] = type(error).__name__
                                                     print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_FAILED="
                                                           + type(error).__name__, flush=True)
