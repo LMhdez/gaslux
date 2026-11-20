@@ -373,11 +373,9 @@ def _one(evidence_root: Path) -> dict:
                     "external-host-probe" if isolated else "both-refused-eacces"
                 ),
                 "same_uid_rfb_qmp_connect": (
-                    (
-                        "dedicated-uid-other-process-not-excluded"
-                        if isolated
-                        else "both-admitted-blocker"
-                    )
+                    "dedicated-uid-other-process-not-excluded"
+                    if isolated
+                    else "both-admitted-blocker"
                 ),
                 "cooperative_controller_contention_refused": True,
                 "live_negative_gates_refused": negative,
