@@ -151,7 +151,9 @@ def main() -> int:
     mountpoint = workspace / "mount"
     loop_device: str | None = None
     loop_owned = False
-    mounted_by_test = False
+    original_stat: os.stat_result | None = None
+    hash_before: str | None = None
+    mount_verified = False
     detached = False
     result: dict[str, Any] = {
         "status": "FAILED",
@@ -184,8 +186,8 @@ def main() -> int:
         mountpoint.mkdir(mode=0o700)
         command(["mount", "-t", "ntfs-3g", "-o", "ro,norecover", loop_device, str(mountpoint)])
         mounted = find_mounts(mountpoint)
-        mounted_by_test = bool(mounted)
         observed = validate_real_mount(mounted, mountpoint, loop_device)
+        mount_verified = True
         prove_owned_loop(loop_device, image, original_stat)
         result.update(
             {
@@ -202,7 +204,7 @@ def main() -> int:
         failure = error
     finally:
         cleanup_errors: list[str] = []
-        if loop_device and loop_owned:
+        if loop_device and loop_owned and original_stat is not None:
             try:
                 current_mounts = find_mounts(mountpoint) if mountpoint.exists() else []
                 if current_mounts:
@@ -220,7 +222,13 @@ def main() -> int:
                     command(["umount", str(mountpoint)])
                 if mountpoint.exists() and find_mounts(mountpoint):
                     raise RuntimeError("Test mount remains active; preserving temporary resources")
-                prove_owned_loop(loop_device, image, image.stat())
+                if hash_before is not None:
+                    hash_after = sha256_file(image)
+                    result["sha256After"] = hash_after
+                    result["imageUnchanged"] = hash_before == hash_after
+                    if hash_before != hash_after and failure is None:
+                        failure = RuntimeError("Backing image SHA-256 changed across the read-only mount")
+                prove_owned_loop(loop_device, image, original_stat)
                 command(["losetup", "--detach", loop_device])
                 backing = Path("/sys/class/block") / Path(loop_device).name / "loop/backing_file"
                 if backing.exists() and backing.read_text(encoding="utf-8").strip():
@@ -233,6 +241,8 @@ def main() -> int:
 
         if detached and not cleanup_errors:
             try:
+                if mountpoint.exists():
+                    mountpoint.rmdir()
                 if image.exists():
                     image.unlink()
                 workspace.rmdir()
@@ -247,13 +257,19 @@ def main() -> int:
 
     if failure is not None:
         result["error"] = str(failure)
-    if failure is None and not result.get("cleanupErrors"):
-        try:
-            # The file is still present only when detach/cleanup was incomplete.
-            # A successful cleanup removes it, so the hash is captured before cleanup below.
-            result["status"] = "SUCCESS"
-        except Exception as error:
-            failure = error
+    if (
+        failure is None
+        and not result.get("cleanupErrors")
+        and result.get("imageUnchanged") is True
+        and mount_verified
+        and detached
+        and result.get("temporaryResourcesRemoved") is True
+    ):
+        result["status"] = "SUCCESS"
+    elif failure is None:
+        failure = RuntimeError("Integration acceptance conditions were not all satisfied")
+    if failure is not None:
+        result["error"] = str(failure)
     print(json.dumps(result, sort_keys=True))
     if failure is not None or result.get("cleanupErrors") or result["status"] != "SUCCESS":
         return 1
