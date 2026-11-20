@@ -6,7 +6,15 @@ on:
     paths:
       - 'auto_tests/installer_observer/lab_identity.py'
       - 'auto_tests/installer_observer/controller_lease.py'
+      - 'auto_tests/installer_observer/qemu_surface.py'
       - 'auto_tests/installer_observer/lab_probe.py'
+      - '.github/workflows/installer-observer-lab.yml'
+  pull_request:
+    paths:
+      - 'auto_tests/installer_observer/lab_probe.py'
+      - 'auto_tests/installer_observer/lab_identity.py'
+      - 'auto_tests/installer_observer/controller_lease.py'
+      - 'auto_tests/installer_observer/qemu_surface.py'
       - '.github/workflows/installer-observer-lab.yml'
   workflow_dispatch:
 permissions:
