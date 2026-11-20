@@ -98,6 +98,7 @@ def _one(evidence_root: Path) -> dict:
             report = {
                 "mode": "qemu-read-only-synthetic-media",
                 "run_id": run_id,
+                "sandbox_path": str(sandbox),
                 "pid": seal.process.pid,
                 "pid_start_ticks": seal.process.start_ticks,
                 "cmdline_sha256": seal.process.command_sha256,
@@ -141,9 +142,12 @@ def main() -> int:
     try:
         for _ in range(2):
             runs.append(_one(root))
-        if (len({r["run_id"] for r in runs}) != 2
-            or len({r["pid"] for r in runs}) != 2
-            or len({r["qcow2_ino"] for r in runs}) != 2):
+        if (
+            len({r["run_id"] for r in runs}) != 2
+            or len({r["sandbox_path"] for r in runs}) != 2
+            or len({r["snapshot"] for r in runs}) != 2
+            or len({(r["pid"], r["pid_start_ticks"]) for r in runs}) != 2
+        ):
             raise Refusal("Independent VM execution identity was not demonstrated")
         result = {"runs": runs, "independent_vm_count": 2, "guest_input_count": 0}
         (root / "manifest.json").write_bytes(canonical(result))
