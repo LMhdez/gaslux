@@ -253,6 +253,29 @@ def archive_history_and_delete(report, candidates, refs):
               "DELETED" if report["deleted"] and report["deleted"][-1]["branch"] == name
               else "PRESERVED", flush=True)
 
+def exact_prune_candidates(report, approval):
+    """Fail closed unless every named SHA is already in its specified PR head."""
+    if not isinstance(approval, dict) or not 1 <= len(approval) <= 3:
+        raise RuntimeError("invalid exact prune authorization")
+    found = {item["branch"]: item for item in report["candidates"]}
+    selected = []
+    for branch, spec in sorted(approval.items()):
+        if (not isinstance(branch, str) or not branch.startswith(PREFIX)
+                or not isinstance(spec, dict)
+                or set(spec) != {"sha", "preserved_in"}
+                or not isinstance(spec["sha"], str)
+                or not re.fullmatch("[0-9a-f]{40}", spec["sha"])
+                or not isinstance(spec["preserved_in"], str)):
+            raise RuntimeError("malformed exact prune authorization")
+        item = found.get(branch)
+        if (not item or item["sha"] != spec["sha"]
+                or spec["preserved_in"] not in report["keeper_refs"]
+                or spec["preserved_in"] not in item["reachable_from"]):
+            raise RuntimeError("unproven exact ancestry for " + branch)
+        selected.append((item, spec["preserved_in"]))
+    return selected
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=("audit", "prune", "archive"))
@@ -284,15 +307,17 @@ def main():
     if args.mode == "prune":
         if os.getenv("GASLUX_PRUNE_APPROVED") != "LEASE_GUARDED_30":
             raise RuntimeError("no bounded user-authorized prune gate")
+        exact = json.loads(os.environ.get("GASLUX_PRUNE_EXACT", "null"))
+        selected = exact_prune_candidates(report, exact)
         new_protect, new_keep = protected_refs()
         fresh = inventory()
         if new_keep - fresh.keys():
             raise RuntimeError("new PR head missing after revalidation")
-        for item in report["candidates"][:30]:
+        for item, keeper in selected:
             name, sha = item["branch"], item["sha"]
-            still_reachable = any(
-                is_ancestor(sha, fresh[k]) for k in new_keep
-                if k in fresh and k != name
+            still_reachable = (
+                keeper in new_keep and keeper in fresh
+                and is_ancestor(sha, fresh[keeper])
             )
             tip_old = (int(time.time()) -
                        int(git("show", "-s", "--format=%ct", sha).stdout.strip())) >= IDLE
