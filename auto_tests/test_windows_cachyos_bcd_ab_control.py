@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -173,6 +174,141 @@ usb_packet_state
             (root / "link.bin").symlink_to(target)
             with self.assertRaisesRegex(lab.BcdAbControlError, "symlink"):
                 lab.tpm_state_tree_sha256(root)
+
+
+    def _real_checkpoint(self, root):
+        folder = root / lab.CHECKPOINT_DIR
+        folder.mkdir(mode=0o700)
+        disk = folder / lab.OVERLAY_NAME
+        vars_b = folder / "trial-ovmf-variables.fd"
+        disk.write_bytes(b"synthetic QCOW2 checkpoint" * 20)
+        vars_b.write_bytes(b"synthetic OVMF VARS checkpoint" * 20)
+        disk.chmod(0o600)
+        vars_b.chmod(0o600)
+        return folder, disk, vars_b
+
+    def test_prepare_real_clones_in_correct_order(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            a, v, disk_hash, vars_hash = lab.prepare_matched_checkpoint_clones(folder)
+            self.assertEqual(lab.sha256_file(a), disk_hash)
+            self.assertEqual(lab.sha256_file(v), vars_hash)
+            self.assertEqual(a.read_bytes(), disk.read_bytes())
+            self.assertEqual(v.read_bytes(), vars_b.read_bytes())
+            self.assertNotEqual(a.stat().st_ino, disk.stat().st_ino)
+            self.assertNotEqual(v.stat().st_ino, vars_b.stat().st_ino)
+            for p in (a, v):
+                self.assertEqual(p.stat().st_uid, os.getuid())
+                self.assertEqual(p.stat().st_nlink, 1)
+                self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o600)
+
+    def test_prepare_refuses_missing_source_and_reused_destinations(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            vars_b.unlink()
+            with self.assertRaises((FileNotFoundError, lab.BcdAbControlError)):
+                lab.prepare_matched_checkpoint_clones(folder)
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+        for target_name in (lab.WINDOWS_CONTROL_OVERLAY, lab.WINDOWS_CONTROL_VARS):
+            with self.subTest(target_name=target_name), tempfile.TemporaryDirectory() as d:
+                folder, disk, vars_b = self._real_checkpoint(Path(d))
+                target = folder / target_name
+                target.write_bytes(b"unrelated existing file")
+                with self.assertRaisesRegex(lab.BcdAbControlError, "reused"):
+                    lab.prepare_matched_checkpoint_clones(folder)
+                self.assertEqual(target.read_bytes(), b"unrelated existing file")
+
+    def test_prepare_refuses_symlinks_hardlinks_and_bad_modes(self):
+        for kind in ("symlink", "hardlink", "source_mode", "directory_mode"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as d:
+                folder, disk, vars_b = self._real_checkpoint(Path(d))
+                if kind == "symlink":
+                    vars_b.unlink()
+                    vars_b.symlink_to(disk)
+                elif kind == "hardlink":
+                    vars_b.unlink()
+                    os.link(disk, vars_b)
+                elif kind == "source_mode":
+                    vars_b.chmod(0o644)
+                else:
+                    folder.chmod(0o755)
+                with self.assertRaises(lab.BcdAbControlError):
+                    lab.prepare_matched_checkpoint_clones(folder)
+                self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+                self.assertFalse((folder / lab.WINDOWS_CONTROL_VARS).exists())
+
+    def test_prepare_refuses_divergent_clone_and_cleans_owned_outputs(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            real_copy = lab._copy_owned
+            def corrupt(source, target, mode):
+                result = real_copy(source, target, mode)
+                if target.name == lab.WINDOWS_CONTROL_VARS:
+                    target.write_bytes(b"tampered clone")
+                return result
+            with mock.patch.object(lab, "_copy_owned", side_effect=corrupt):
+                with self.assertRaisesRegex(lab.BcdAbControlError, "diverged"):
+                    lab.prepare_matched_checkpoint_clones(folder)
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_VARS).exists())
+            self.assertTrue(disk.exists() and vars_b.exists())
+
+    def test_prepare_cleans_both_clones_on_partial_second_copy(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            real_copy = lab._copy_owned
+            def fail_second(source, target, mode):
+                if target.name == lab.WINDOWS_CONTROL_VARS:
+                    with mock.patch.object(lab.shutil, "copyfileobj",
+                                           side_effect=OSError("simulated disk full")):
+                        return real_copy(source, target, mode)
+                return real_copy(source, target, mode)
+            with mock.patch.object(lab, "_copy_owned", side_effect=fail_second):
+                with self.assertRaisesRegex(OSError, "simulated disk full"):
+                    lab.prepare_matched_checkpoint_clones(folder)
+            self.assertTrue(disk.exists() and vars_b.exists())
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_VARS).exists())
+
+    def test_prepare_refuses_source_modified_during_copy(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            real_copy = lab.shutil.copyfileobj
+            def concurrent_writer(src, dst, length):
+                real_copy(src, dst, length=length)
+                with disk.open("r+b") as writer:
+                    writer.seek(0)
+                    writer.write(b"changed")
+            with mock.patch.object(lab.shutil, "copyfileobj",
+                                   side_effect=concurrent_writer):
+                with self.assertRaisesRegex(lab.BcdAbControlError, "stable"):
+                    lab.prepare_matched_checkpoint_clones(folder)
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+
+    def test_prepare_refuses_source_modified_between_two_clones(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            real_copy = lab._copy_owned
+            def source_changed(source, target, mode):
+                result = real_copy(source, target, mode)
+                if source == disk:
+                    vars_b.write_bytes(b"modified before OVMF clone")
+                return result
+            with mock.patch.object(lab, "_copy_owned", side_effect=source_changed):
+                with self.assertRaisesRegex(lab.BcdAbControlError, "diverged"):
+                    lab.prepare_matched_checkpoint_clones(folder)
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_VARS).exists())
+
+    def test_prepare_refuses_reused_symlink_target_without_cleanup(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            target = folder / lab.WINDOWS_CONTROL_VARS
+            target.symlink_to(vars_b)
+            with self.assertRaisesRegex(lab.BcdAbControlError, "reused"):
+                lab.prepare_matched_checkpoint_clones(folder)
+            self.assertTrue(target.is_symlink())
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
 
     def test_clone_copy_refuses_reused_target_and_symlink_source(self):
         with tempfile.TemporaryDirectory() as td:

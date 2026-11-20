@@ -52,21 +52,113 @@ def require(ok: bool, reason: str) -> None:
         raise BcdAbControlError(reason)
 
 
-def _copy_owned(source: Path, target: Path, mode: int) -> None:
-    require(source.is_file() and not source.is_symlink()
-            and source.stat().st_uid == os.getuid(),
-            "A/B clone source is not an owned regular file")
+def _unchanged(before: os.stat_result, after: os.stat_result) -> bool:
+    return (before.st_dev, before.st_ino, before.st_size,
+            before.st_mtime_ns, before.st_ctime_ns) == (
+            after.st_dev, after.st_ino, after.st_size,
+            after.st_mtime_ns, after.st_ctime_ns)
+
+
+def _cleanup_clone(path: Path, created: os.stat_result) -> None:
+    """Delete only our own exclusive, unreplaced inode."""
+    try:
+        now = path.lstat()
+    except FileNotFoundError:
+        return
+    require(stat.S_ISREG(now.st_mode) and now.st_uid == os.getuid()
+            and now.st_nlink == 1 and
+            (now.st_dev, now.st_ino) == (created.st_dev, created.st_ino),
+            "refusing unsafe A/B partial clone cleanup")
+    path.unlink()
+
+
+def _copy_owned(source: Path, target: Path, mode: int) -> os.stat_result:
+    require(source.parent == target.parent and source != target and mode == 0o600,
+            "A/B clone must stay in private source directory")
+    before = source.lstat()
+    require(stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid()
+            and before.st_nlink == 1 and before.st_size > 0,
+            "A/B clone source is not an exclusive owned regular file")
     require(not target.exists() and not target.is_symlink(),
             "refusing reused A/B clone target")
-    with source.open("rb") as src, target.open("xb") as dst:
-        shutil.copyfileobj(src, dst, length=1024 * 1024)
-        dst.flush()
-        os.fsync(dst.fileno())
-    target.chmod(mode)
-    st = target.lstat()
-    require(stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid()
-            and st.st_nlink == 1 and stat.S_IMODE(st.st_mode) == mode,
-            "A/B clone is not an exclusive owned regular file")
+    source_hash = sha256_file(source)
+    require(_unchanged(before, source.lstat()),
+            "A/B clone source modified during initial hash")
+    created: os.stat_result | None = None
+    try:
+        with source.open("rb") as inp:
+            require(_unchanged(before, os.fstat(inp.fileno())),
+                    "A/B clone source replaced before copying")
+            with target.open("xb") as out:
+                created = os.fstat(out.fileno())
+                os.fchmod(out.fileno(), mode)
+                shutil.copyfileobj(inp, out, length=1024 * 1024)
+                out.flush()
+                os.fsync(out.fileno())
+        final = target.lstat()
+        require(stat.S_ISREG(final.st_mode) and final.st_uid == os.getuid()
+                and final.st_nlink == 1 and stat.S_IMODE(final.st_mode) == mode
+                and (final.st_dev, final.st_ino) ==
+                    (created.st_dev, created.st_ino)
+                and final.st_size == before.st_size
+                and _unchanged(before, source.lstat())
+                and sha256_file(source) == source_hash
+                and sha256_file(target) == source_hash,
+                "A/B clone differs from its stable source")
+        return final
+    except BaseException:
+        if created is not None:
+            _cleanup_clone(target, created)
+        raise
+
+
+def prepare_matched_checkpoint_clones(
+    folder: Path,
+) -> tuple[Path, Path, str, str]:
+    """Clone both frozen sources and verify A/B byte identity before any boot."""
+    require(folder.is_dir() and not folder.is_symlink()
+            and folder.stat().st_uid == os.getuid()
+            and stat.S_IMODE(folder.stat().st_mode) == 0o700,
+            "A/B checkpoint directory must be private and owned")
+    disk_b = folder / OVERLAY_NAME
+    vars_b = folder / "trial-ovmf-variables.fd"
+    disk_a = folder / WINDOWS_CONTROL_OVERLAY
+    vars_a = folder / WINDOWS_CONTROL_VARS
+    original = [
+        owned_regular(disk_b, folder, OVERLAY_NAME),
+        owned_regular(vars_b, folder, vars_b.name),
+    ]
+    require(all(stat.S_IMODE(st.st_mode) == 0o600 for st in original),
+            "A/B checkpoint source permissions must be 0600")
+    for target in (disk_a, vars_a):
+        require(not target.exists() and not target.is_symlink(),
+                "refusing reused A/B clone target")
+    initial_disk_hash, initial_vars_hash = sha256_file(disk_b), sha256_file(vars_b)
+    require(all(_unchanged(st, path.lstat())
+                for st, path in zip(original, (disk_b, vars_b))),
+            "A/B checkpoint source modified before cloning")
+    completed: list[tuple[Path, os.stat_result]] = []
+    try:
+        completed.append((disk_a, _copy_owned(disk_b, disk_a, 0o600)))
+        completed.append((vars_a, _copy_owned(vars_b, vars_a, 0o600)))
+        # Never hash the A files until both exclusive copies exist.
+        require(sha256_file(disk_a) == sha256_file(disk_b) == initial_disk_hash
+                and sha256_file(vars_a) == sha256_file(vars_b) == initial_vars_hash
+                and all(_unchanged(st, path.lstat())
+                        for st, path in zip(original, (disk_b, vars_b))),
+                "A/B cloned checkpoint hashes diverged")
+        for (path, own), source in zip(completed, (disk_b, vars_b)):
+            now, src = path.lstat(), source.lstat()
+            require(stat.S_ISREG(now.st_mode) and now.st_uid == os.getuid()
+                    and now.st_nlink == 1 and stat.S_IMODE(now.st_mode) == 0o600
+                    and (now.st_dev, now.st_ino) == (own.st_dev, own.st_ino)
+                    and (now.st_dev, now.st_ino) != (src.st_dev, src.st_ino),
+                    "A/B clones alias source or have invalid metadata")
+        return disk_a, vars_a, initial_disk_hash, initial_vars_hash
+    except BaseException:
+        for path, own in reversed(completed):
+            _cleanup_clone(path, own)
+        raise
 
 
 def tpm_state_trees_independent(left: Path, right: Path) -> bool:
@@ -312,25 +404,15 @@ def run_windows_only_bcd_control(
             and stat.S_IMODE(base.stat().st_mode) == 0o400,
             "A/B checkpoint permissions are unsafe")
 
-    overlay_a = folder / WINDOWS_CONTROL_OVERLAY
-    vars_a = folder / WINDOWS_CONTROL_VARS
-    overlay_b_before = sha256_file(overlay_b)
-    vars_b_before = sha256_file(vars_b)
-    vars_a_initial = sha256_file(vars_a)
-    require(vars_a_initial == vars_b_before,
-            "control and treatment OVMF VARS clones do not start byte-identically")
     base_before = sha256_file(base)
     base_identity = qcow2_file_identity(base)
     nvram_before = sha256_file(nvram)
-    _copy_owned(overlay_b, overlay_a, 0o600)
-    _copy_owned(vars_b, vars_a, 0o600)
-    require(sha256_file(overlay_a) == overlay_b_before
-            and sha256_file(vars_a) == vars_b_before
-            and overlay_a.lstat().st_ino != overlay_b.lstat().st_ino
-            and overlay_a.lstat().st_nlink == overlay_b.lstat().st_nlink == 1
-            and vars_a.lstat().st_ino != vars_b.lstat().st_ino
-            and vars_a.lstat().st_nlink == vars_b.lstat().st_nlink == 1,
-            "A/B COW or OVMF VARS clone is not byte-identical and independently owned")
+    overlay_a, vars_a, overlay_b_before, vars_b_before = (
+        prepare_matched_checkpoint_clones(folder)
+    )
+    vars_a_initial = sha256_file(vars_a)
+    require(vars_a_initial == vars_b_before,
+            "control and treatment OVMF VARS clones do not start byte-identically")
     compare = subprocess.run(
         ["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2",
          str(overlay_b), str(overlay_a)],
