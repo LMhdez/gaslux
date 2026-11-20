@@ -10,9 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import subprocess
 import stat
 import struct
+import subprocess
 import uuid
 import zlib
 from pathlib import Path
@@ -36,7 +36,9 @@ def _require(condition: bool, reason: str) -> None:
 
 
 def _canonical(data: dict) -> bytes:
-    return (json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n").encode()
+    return (
+        json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n"
+    ).encode()
 
 
 def _read(fd: int, offset: int, length: int) -> bytes:
@@ -65,7 +67,12 @@ def _header(fd: int, sector: int, lba: int, peer_lba: int, last: int, table_lba:
     _require(usable_last == last - 1 - (16384 // sector), "GPT usable end mismatch")
     disk_guid = str(uuid.UUID(bytes_le=data[56:72]))
     _require(uuid.UUID(disk_guid).int != 0, "Missing GPT disk GUID")
-    return {"diskGuid": disk_guid, "entriesCrc": entries_crc, "first": usable_first, "last": usable_last}
+    return {
+        "diskGuid": disk_guid,
+        "entriesCrc": entries_crc,
+        "first": usable_first,
+        "last": usable_last,
+    }
 
 
 def _partition_sha256(fd: int, first: int, last: int, sector: int) -> str:
@@ -121,8 +128,8 @@ def _inspect(fd: int, size: int, sector: int) -> dict:
             raise Q4osWindowsBoundaryRefusal("Invalid GPT partition name") from exc
         partitions.append({"index": index + 1, "type": type_guid, "guid": guid,
                            "first": first, "last": end, "attributes": attributes, "name": name})
-    for a, b in zip(sorted(partitions, key=lambda p: p["first"]),
-                    sorted(partitions, key=lambda p: p["first"])[1:]):
+    ordered = sorted(partitions, key=lambda p: p["first"])
+    for a, b in zip(ordered, ordered[1:], strict=False):
         _require(a["last"] < b["first"], "Overlapping GPT partitions")
     types = [part["type"] for part in partitions]
     _require(types.count(ESP) == 1 and WINDOWS_DATA in types and WINRE in types,
@@ -144,7 +151,9 @@ def _inspect(fd: int, size: int, sector: int) -> dict:
     return {"layout": "uefi/gpt", "diskSizeBytes": size, "logicalSectorBytes": sector,
             "diskGuid": primary["diskGuid"], "partitions": partitions,
             "protectedPartitionSha256": protected,
-            "gptPrimarySha256": hashlib.sha256(_read(fd, 0, (2 + table_sectors) * sector)).hexdigest(),
+            "gptPrimarySha256": hashlib.sha256(
+                _read(fd, 0, (2 + table_sectors) * sector)
+            ).hexdigest(),
             "gptBackupSha256": hashlib.sha256(_read(fd, (last - table_sectors) * sector,
                                                       (table_sectors + 1) * sector)).hexdigest(),
             "windowsFullVolumeVerified": False, "windowsBootVerified": False,
@@ -178,8 +187,14 @@ def inspect_private_raw_vm_disk(workspace: Path, image: Path, *, sector_bytes: i
                  and pre.st_nlink == 1, "Nonexclusive/foreign disk image")
         result = _inspect(fd, pre.st_size, sector_bytes)
         post = os.fstat(fd)
-        identity = lambda item: (item.st_dev, item.st_ino, item.st_size,
-                                 item.st_mtime_ns, item.st_ctime_ns)
+        def identity(item):
+            return (
+                item.st_dev,
+                item.st_ino,
+                item.st_size,
+                item.st_mtime_ns,
+                item.st_ctime_ns,
+            )
         _require(identity(pre) == identity(post), "Disk mutated during inspection")
         _require(identity(directory) == identity(os.fstat(dir_fd)),
                  "Workspace changed during inspection")
