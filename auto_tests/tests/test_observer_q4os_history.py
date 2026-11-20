@@ -18,7 +18,7 @@ from PIL import Image
 from auto_tests.installer_observer import q4os
 from auto_tests.installer_observer.evidence import Refusal, digest, read
 from auto_tests.installer_observer.replay import replay
-from auto_tests.installer_observer.schema import load_map
+from auto_tests.installer_observer.schema import load_map, validate
 from auto_tests.tools.gaslux_q4os_summary_visual_gate import ScreenRefusal
 
 
@@ -149,10 +149,12 @@ def test_path_escape_refused(mapping, local_recording):
 
 
 def test_undeclared_and_unverified_edges_refused(mapping, local_recording):
+    first = local_recording.states[0].id
+    missing_edge = replace(
+        mapping, transitions=tuple(t for t in mapping.transitions if t.source != first)
+    )
     with pytest.raises(Refusal):
-        run_record(mapping, local_recording, edge_check=lambda *args: (_ for _ in ()).throw(
-            Refusal("unreviewed visual edge")
-        ))
+        run_record(missing_edge, local_recording)
     broken = replace(mapping, transitions=tuple(
         replace(t, verified=False) if t.source == local_recording.states[0].id else t
         for t in mapping.transitions
@@ -197,14 +199,12 @@ def test_original_map_tamper_refused(tmp_path):
         load_map(fake, q4os.PROFILE)
 
 
-def test_schema_tamper_refused(tmp_path, monkeypatch, mapping):
+def test_schema_tamper_refused(tmp_path):
     fake = tmp_path / "schema.json"
     fake.write_text('{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"array"}')
-    monkeypatch.setattr(q4os, "validate", lambda d, _schema: (_ for _ in ()).throw(
-        Refusal("schema validation mismatch")
-    ))
+    document = json.loads(read(q4os.MANIFEST))
     with pytest.raises(Refusal):
-        tuple(q4os.recordings(mapping, q4os.MANIFEST, q4os.ORIGINALS))
+        validate(document, fake)
 
 
 def test_fail_closed_on_unchanged_review_roi(mapping, local_recording):
