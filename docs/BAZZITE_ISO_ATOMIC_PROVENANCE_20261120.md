@@ -174,6 +174,30 @@ the config digest as if it were the OCI manifest digest.
 | Result | **B — refuse promotion and installation** |
 | `installationAuthorized` | **false** |
 
+## Public readback update — Actions #44751586997
+
+A first execution of the dedicated readback workflow downloaded the official
+public ISO and all three sidecars. The runner measured the ISO at exactly
+**8,377,878,528 bytes** and recalculated SHA-256
+`6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5`,
+matching the pinned upstream build subject. The downloaded
+`-CHECKSUM` sidecar matched. Cosign `v2.6.5` verified the detached
+signature with the key pinned above. The downloaded metadata JSON identified
+attestation #68711578.
+
+Evidence artifact:
+[Actions #44751586997 / artifact #14635702681](https://github.com/LMhdez/gaslux/actions/runs/44751586997/artifacts/14635702681).
+
+The run stopped at GitHub attestation verification because the workflow
+initially supplied the mutually exclusive GitHub CLI flags `--signer-repo`
+and `--signer-workflow` together. This is a command-line policy configuration
+error, not a reported invalid signature or missing attestation. The workflow
+was corrected to enforce the exact signer workflow without the conflicting
+flag. Consequently, this run proves public byte readback, checksum and
+detached Cosign signature only; it does **not** yet prove the GitHub
+attestation or the embedded OCI manifest/config relationship. Result remains
+B and installation remains denied.
+
 ## Required closure evidence
 
 Before changing Result B to A:
