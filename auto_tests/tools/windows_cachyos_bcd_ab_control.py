@@ -463,6 +463,8 @@ def run_windows_only_bcd_control(
         "sameWindowsBootCountVerified": True,
         "sameCheckpointDiskCloneVerified": True,
         "sameCheckpointOverlayBytesSha256": overlay_b_before,
+        "sameImmutableWindowsBackingImageVerified": True,
+        "sharedWindowsBackingSha256": base_before,
         "sameCheckpointGuestVisibleDiskVerified": True,
         "sameCheckpointPrimaryAndSecondaryGptVerified": True,
         "controlAndTreatmentInitialGptEqual": True,
@@ -471,11 +473,13 @@ def run_windows_only_bcd_control(
         "controlBcdBeforeWindowsSha256": bcd_forensic["prebootBcdSha256"],
         "controlBcdAfterWindowsSha256": bcd_forensic["postbootBcdSha256"],
         "controlBcdForensic": bcd_forensic,
+        "controlBcdReadOnlyBytesMatchProtectedHash": True,
         "controlProtectedHashMismatchKeys": protected_mismatches,
         "controlOtherProtectedHashesUnchanged": True,
         "controlWindowsGptUnchanged": True,
         "controlFifthExt4IdentityPreserved": True,
         "controlWindowsBackingAndOriginalNVRAMUnchanged": True,
+        "treatmentArmUntouchedByControlVerified": True,
         "independentOvmfCopiesVerified": (
             vars_a != vars_b
             and vars_a.lstat().st_ino != vars_b.lstat().st_ino
@@ -496,6 +500,7 @@ def run_windows_only_bcd_control(
         "previousWindows10ProfileHadNoTpm": True,
         "matchedArmsUseSameFreshTpm2Baseline": True,
         "tpmInitialStateTreeSha256": tpm_initial,
+        "controlAndTreatmentInitialTpmStateEqual": True,
         "controlTpmPostBootStateTreeSha256": control_tpm_after,
         "treatmentTpmInitialStateTreeSha256": tpm_initial,
         "sameQemuArgumentsExceptOwnedPathsVerified": True,
