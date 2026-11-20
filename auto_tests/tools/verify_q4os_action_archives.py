@@ -72,7 +72,7 @@ def validate_archives(zip_dir: Path, metadata_dir: Path, originals: Path) -> dic
                     or len(set(actual)) != len(actual)
                     or set(actual) != expected_names
                 ):
-                    raise Refusal(f"Original artifact ZIP member mismatch: {aid}")
+                    raise Refusal(\n                        f"Original artifact ZIP member mismatch: {aid}: "\n                        f"missing={sorted(expected_names - set(actual))}; "\n                        f"extra={sorted(set(actual) - expected_names)}"\n                    )
                 for entry in members:
                     mode = (entry.external_attr >> 16) & 0o170000
                     if (
