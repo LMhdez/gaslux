@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
 import subprocess
 import tempfile
 import time
@@ -17,6 +18,12 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from .controller_lease import ControllerLease
+from .endpoint_gates import (
+    assert_no_qemu_tcp_listeners,
+    clean_owned_endpoint,
+    seal_endpoint,
+    verified_unix_peer,
+)
 from .evidence import Refusal, canonical, digest
 from .lab_identity import LocalQemuAttestor, QemuRunSeal, process_seal, seal_file
 from .models import DistributionIdentity
@@ -30,6 +37,27 @@ RESOLUTIONS = ((720, 400), (640, 480), (800, 600), (1024, 768))
 
 def _command(args: list[str]) -> None:
     subprocess.run(args, check=True, timeout=30, capture_output=True)
+
+
+def _outside_client(path: Path, *, different_uid: bool) -> int:
+    """A separate process attempts only connect(2); no RFB/QMP messages."""
+    code = (
+        "import socket,sys;"
+        "s=socket.socket(socket.AF_UNIX);"
+        "p=sys.argv[1];"
+        "try_code=0;"
+        "exec('try:\\n s.connect(p)\\nexcept PermissionError:\\n try_code=13"
+        "\\nexcept OSError:\\n try_code=14');"
+        "s.close();sys.exit(try_code)"
+    )
+    command = ["/usr/bin/python3", "-c", code, str(path)]
+    if different_uid:
+        command = ["sudo", "-n", "-u", "nobody", *command]
+    try:
+        result = subprocess.run(command, timeout=8, capture_output=True, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise Refusal("External Unix socket probe unavailable") from exc
+    return result.returncode
 
 
 def _one(evidence_root: Path) -> dict:
@@ -86,6 +114,9 @@ def _one(evidence_root: Path) -> dict:
         proc = subprocess.Popen(
             cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
         )
+        report = None
+        location = None
+        endpoints = ()
         try:
             deadline = time.monotonic() + 25
             while (
@@ -100,6 +131,18 @@ def _one(evidence_root: Path) -> dict:
             # Restrict endpoint mode as an additional defence, not an isolation proof.
             qmp.chmod(0o600)
             vnc.chmod(0o600)
+            endpoints = (seal_endpoint(qmp, os.geteuid()), seal_endpoint(vnc, os.geteuid()))
+            assert_no_qemu_tcp_listeners(process_seal(proc.pid))
+            # PID/UID attestation is independent of filesystem permissions.
+            verified_unix_peer(endpoints[0], process_seal(proc.pid), time.monotonic() + 5)
+            verified_unix_peer(endpoints[1], process_seal(proc.pid), time.monotonic() + 5)
+            # A different OS user must be unable to access either private path.
+            if any(_outside_client(path, different_uid=True) != 13 for path in (qmp, vnc)):
+                raise Refusal("Cross-UID client reached a private QEMU endpoint")
+            # The same UID outside the cooperative ControllerLease can connect.
+            # This intentionally records a security BLOCKER, not permission.
+            if any(_outside_client(path, different_uid=False) != 0 for path in (qmp, vnc)):
+                raise Refusal("Same-UID interference experiment was not reproducible")
             seal = QemuRunSeal(
                 authority, process_seal(proc.pid), qmp, port, seal_file(iso), seal_file(cow),
                 vnc_socket=vnc,
@@ -290,6 +333,9 @@ def _one(evidence_root: Path) -> dict:
                 "input_authority_refused": True,
                 "same_uid_external_rfb_connection": "admitted",
                 "tcp_rfb_listener_configured": False,
+                "qemu_tcp_listener_inventory": "no-listen-fds",
+                "different_uid_rfb_qmp_connect": "both-refused-eacces",
+                "same_uid_rfb_qmp_connect": "both-admitted-blocker",
                 "cooperative_controller_contention_refused": True,
                 "live_negative_gates_refused": negative,
                 "q4os_booted": False,
@@ -305,6 +351,13 @@ def _one(evidence_root: Path) -> dict:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.communicate(timeout=4)
+            if proc.poll() is None:
+                raise Refusal("QEMU shutdown not confirmed")
+            for endpoint in endpoints:
+                clean_owned_endpoint(endpoint)
+            if report is not None and location is not None:
+                report["endpoint_cleanup_verified"] = True
+                (location / "manifest.json").write_bytes(canonical(report))
 
 
 def main() -> int:
