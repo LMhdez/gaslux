@@ -164,9 +164,10 @@ jobs:
     # experimental PR only. No secrets are exposed; all writable storage is disposable QCOW2.
     if: >-
       github.event_name != 'pull_request' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-       github.event.pull_request.head.ref == 'fix/cachyos-configured-root-grant-binding-issue3' &&
-       github.event.pull_request.base.ref == 'feature/cachyos-shared-cow-installed-readonly-boot-issue3')
+      (github.event.pull_request.number == 263 &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'test/cachyos-postpacstrap-win10-same-cow-issue3' &&
+       github.event.pull_request.base.ref == 'fix/cachyos-configured-root-grant-binding-issue3')
     needs: static-and-synthetic-contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 220
