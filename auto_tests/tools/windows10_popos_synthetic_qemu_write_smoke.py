@@ -820,7 +820,7 @@ def run_distinst_partition_test(
         failure_checkpoint_bytes = failure_checkpoint_path.read_bytes()
         (evidence / "synthetic-distinst-failure-checkpoint.json.sha256").write_text(
             hashlib.sha256(failure_checkpoint_bytes).hexdigest()
-            + "  synthetic-distinst-failure-checkpoint.json\\n",
+            + "  synthetic-distinst-failure-checkpoint.json\n",
             encoding="ascii")
         raise
     finally:
@@ -837,7 +837,7 @@ def run_distinst_partition_test(
         cleanup_checkpoint_bytes = cleanup_checkpoint_path.read_bytes()
         (evidence / "synthetic-distinst-cleanup-checkpoint.json.sha256").write_text(
             hashlib.sha256(cleanup_checkpoint_bytes).hexdigest()
-            + "  synthetic-distinst-cleanup-checkpoint.json\\n",
+            + "  synthetic-distinst-cleanup-checkpoint.json\n",
             encoding="ascii")
 
 
