@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
 import subprocess
 import tempfile
 import time
@@ -135,13 +136,24 @@ def _one(evidence_root: Path) -> dict:
             # PID/UID attestation is independent of filesystem permissions.
             verified_unix_peer(endpoints[0], process_seal(proc.pid), time.monotonic() + 5)
             verified_unix_peer(endpoints[1], process_seal(proc.pid), time.monotonic() + 5)
-            # A different OS user must be unable to access either private path.
-            if any(_outside_client(path, different_uid=True) != 13 for path in (qmp, vnc)):
-                raise Refusal("Cross-UID client reached a private QEMU endpoint")
-            # The same UID outside the cooperative ControllerLease can connect.
-            # This intentionally records a security BLOCKER, not permission.
-            if any(_outside_client(path, different_uid=False) != 0 for path in (qmp, vnc)):
-                raise Refusal("Same-UID interference experiment was not reproducible")
+            isolated = os.environ.get("GASLUX_ISOLATED_WORKER") == "1"
+            if isolated:
+                # Unprivileged original-runner process probes both endpoints.
+                # This protocol carries paths only, NEVER QMP/RFB commands.
+                print(
+                    "EXTERNAL_PROBE " + json.dumps(
+                        {"run_id": run_id, "qmp": str(qmp), "rfb": str(vnc)},
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+                if sys.stdin.readline().strip() != "PROBE_DONE " + run_id:
+                    raise Refusal("External isolation handshake missing or mismatched")
+            else:
+                if any(_outside_client(path, different_uid=True) != 13 for path in (qmp, vnc)):
+                    raise Refusal("Cross-UID client reached a private QEMU endpoint")
+                if any(_outside_client(path, different_uid=False) != 0 for path in (qmp, vnc)):
+                    raise Refusal("Same-UID interference experiment was not reproducible")
             seal = QemuRunSeal(
                 authority,
                 process_seal(proc.pid),
@@ -357,8 +369,12 @@ def _one(evidence_root: Path) -> dict:
                 "same_uid_external_rfb_connection": "admitted",
                 "tcp_rfb_listener_configured": False,
                 "qemu_tcp_listener_inventory": "no-listen-fds",
-                "different_uid_rfb_qmp_connect": "both-refused-eacces",
-                "same_uid_rfb_qmp_connect": "both-admitted-blocker",
+                "different_uid_rfb_qmp_connect": (
+                    "external-host-probe" if isolated else "both-refused-eacces"
+                ),
+                "same_uid_rfb_qmp_connect": (
+                    "dedicated-uid-other-process-not-excluded" if isolated else "both-admitted-blocker"
+                ),
                 "cooperative_controller_contention_refused": True,
                 "live_negative_gates_refused": negative,
                 "q4os_booted": False,
