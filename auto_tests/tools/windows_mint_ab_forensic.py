@@ -94,6 +94,8 @@ def guest_ro_inventory(disk: Path, root_uuid: str) -> dict:
                 for path in names:
                     if path.startswith("/") and guest.is_file(path):
                         contents[path] = guest.checksum("sha256", path)
+                require(bool(contents),
+                        "read-only ESP/Recovery file enumeration was empty")
                 inventories[name] = {"available": True,
                                      "fileSha256": contents}
                 guest.umount_all()
@@ -259,9 +261,16 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
             and os.environ.get("GASLUX_MINT_AB_BOOT_CONSENT")
                 == "I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE",
             "missing separate single A/B KVM experiment consent")
+    code_args = [arg.removeprefix("if=pflash,format=raw,readonly=on,file=")
+                 for arg in original
+                 if arg.startswith("if=pflash,format=raw,readonly=on,file=")]
+    require(len(code_args) == 1, "A/B original QEMU OVMF_CODE is ambiguous")
+    _guest_disk_audit(overlay, root_uuid)  # all five roots and four Windows SHA
     checkpoint = prepare_checkpoint(base=base, nvram=nvram, overlay=overlay,
-                                    mint_root_uuid=root_uuid)
+                                    mint_root_uuid=root_uuid,
+                                    ovmf_code=Path(code_args[0]))
     verify_ab_source(workspace, checkpoint, base)
+    write_manifest(evidence, "mint-ab-checkpoint.json", checkpoint)
     directory = workspace / AB_DIR
     arms = (directory / ARMS[0], directory / ARMS[1])
     before = [guest_ro_inventory(arm, root_uuid) for arm in arms]
@@ -291,6 +300,16 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
     ab["control"]["mintRootContentsPreserved"] = (after_a["mintRootFiles"]
                                                    == before[0]["mintRootFiles"])
     ab["control"]["gptUnchanged"] = (gpt_a == gpts[0])
+    write_manifest(evidence, "mint-ab-control.json", {
+        "transactionId": ab["transactionId"],
+        "sourceCommit": ab["sourceCommit"],
+        "checkpointManifestSha256": ab["checkpointManifestSha256"],
+        "control": ab["control"],
+        "referenceAndBStillUntouched": (
+            sha256_file(directory/REFERENCE) == checkpoint["referenceSha256"]
+            and sha256_file(arms[1]) == checkpoint["treatmentSha256"]),
+        "releaseEligible": False,
+    })
     # Treatment: Mint direct-kernel first, then the SAME Windows ordinal.
     ab["treatment"] = run_mint_arm(
         arms[1], kernel, initramfs, root_uuid,
