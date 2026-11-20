@@ -1374,6 +1374,17 @@ def main(argv: list[str] | None = None) -> int:
                                                     # disposable-COW discard and Windows reboot.
                                                     # This covers libguestfs and QEMU failures too.
                                                     side_by_side["failureType"] = type(error).__name__
+                                                    # This project's post-pacstrap verifier raises only
+                                                    # fixed diagnostic strings, never an arbitrary guest
+                                                    # path, command line, token or host error message.
+                                                    from windows_cachyos_postpacstrap_windows import (
+                                                        PostPacstrapWindowsError,
+                                                    )
+                                                    if isinstance(error, PostPacstrapWindowsError):
+                                                        safe_reason = str(error)
+                                                        side_by_side["failureReason"] = safe_reason
+                                                        print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_REASON="
+                                                              + safe_reason, flush=True)
                                                     print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_FAILED="
                                                           + type(error).__name__, flush=True)
                                                 side_bytes = (json.dumps(
