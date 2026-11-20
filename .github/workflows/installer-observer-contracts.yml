@@ -35,6 +35,7 @@ on:
       - 'auto_tests/tests/test_observer_fd_audit.py'
       - 'auto_tests/tests/test_observer_boundary_model.py'
       - 'auto_tests/tests/test_observer_remote_protocol_schema.py'
+      - 'auto_tests/tests/test_observer_remote_verifier.py'
       - 'schemas/observer-readonly-*.schema.json'
       - 'docs/INSTALLER_OBSERVER.md'
       - 'auto_tests/fixtures/installer_observer/**'
