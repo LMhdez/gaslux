@@ -28,6 +28,8 @@ on:
       - test/bazzite-atomic-write-set-readonly-20261120
     paths:
       - '.github/workflows/gaslux-bazzite-atomic-target-readonly.yml'
+      - 'auto_tests/bazzite_anaconda_write_set_gate.py'
+      - 'auto_tests/tests/test_bazzite_anaconda_write_set_gate.py'
       - 'auto_tests/bazzite_anaconda_readonly_capture.py'
       - 'auto_tests/tests/test_bazzite_anaconda_readonly_capture.py'
       - 'auto_tests/bazzite_live_channel_boundary.py'
