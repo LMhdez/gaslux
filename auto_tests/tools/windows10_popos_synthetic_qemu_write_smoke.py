@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""QEMU/KVM-only signed Pop live synthetic DISK write smoke, NO Windows.
+"""QEMU/KVM signed Pop live lab: known write monitor then distinst --test on synthetic disk only.
 
-Only user-owned scratch 8-GiB raw base + QCOW2 child are exposed to guest.
-The authentic System76 ELF is identified but NEVER invoked as an installer.
-QEMU virtio-blk trace is an *external* write-request observation.
+No Windows disk is attached. The authentic System76 ELF may format only the
+pre-created disposable GPT partitions on a separately identified QCOW2 child.
+QEMU virtio-blk and OVMF pflash traces are external write observations.
 """
 from __future__ import annotations
 import hashlib
@@ -28,9 +28,19 @@ from windows10_popos_synthetic_qemu_trace_contract import (
     classify_trace, synthetic_plan, SERIAL, SYNTH_GUID,
     DISK_SIZE, SMOKE_OFFSET, SMOKE_LENGTH,
 )
+from windows10_popos_synthetic_distinst_trace_contract import (
+    DISK_SIZE as DISTINST_DISK_SIZE, DISK_GUID as DISTINST_GUID,
+    DISK_SERIAL as DISTINST_SERIAL, ESP_PARTUUID as DISTINST_ESP_PARTUUID,
+    ROOT_PARTUUID as DISTINST_ROOT_PARTUUID,
+    synthetic_distinst_plan, classify_distinst_writes,
+)
 from windows_x64_installed_gpt_ro_audit import require, DiskAuditError
 
 CONSENT = "I_ACCEPT_ONLY_DISPOSABLE_SYNTHETIC_QEMU_WRITE_TRACE"
+DISTINST_CONSENT = "I_ACCEPT_ONLY_SYNTHETIC_POP_DISTINST_TEST"
+PREFLIGHT_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_PREFLIGHT_JSON=(\\{[^\\r\\n]+\\})\\r?$")
+DISTINST_RESULT_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_RESULT_JSON=(\\{[^\\r\\n]+\\})\\r?$")
+DISTINST_TERMINAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_(?:COMPLETE=1|REFUSED=[^\\r\\n]+)\\r?\\n")
 CHILD = "gaslux-pop-synthetic-write-child.qcow2"
 BASE = "gaslux-pop-synthetic-raw-base.img"
 P1GUID = "ae228a25-0ecd-4f62-83b4-88dd48b88edd"
@@ -58,6 +68,7 @@ def hosted() -> None:
             and os.environ.get("RUNNER_OS") == "Linux"
             and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
             and os.environ.get("GASLUX_POP_SYNTHETIC_WRITE_CONSENT") == CONSENT
+            and os.environ.get("GASLUX_POP_DISTINST_SYNTHETIC_CONSENT") == DISTINST_CONSENT
             and os.path.exists("/dev/kvm") and stat.S_ISCHR(os.stat("/dev/kvm").st_mode),
             "synthetic write experiment restricted to opted-in hosted KVM only")
     require(Path("/home/runner/work/_temp").is_dir()
@@ -395,7 +406,7 @@ def run(evidence: Path) -> dict:
             "-drive", f"if=none,id=verifiediso,format=raw,readonly=on,file={iso}",
             "-device", "virtio-blk-pci,drive=verifiediso,bootindex=2",
             "-drive", f"if=none,id=syntarget,format=qcow2,file={child}",
-            "-device", f"virtio-blk-pci,drive=syntarget,serial={SERIAL},bootindex=3",
+            "-device", f"virtio-blk-pci,drive=syntarget,serial={SERIAL},bootindex=3,discard=off,write-zeroes=off",
             "-boot", "order=c,menu=off",
             "-chardev", f"socket,id=popserial,path={sock},server=on,wait=off,logfile={serial_log}",
             "-serial", "chardev:popserial",
