@@ -256,6 +256,10 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
         self.assertEqual(result["changedByteCount"], 1)
         self.assertEqual(result["firstChangedByteSpans"],
                          [{"offset": 4, "length": 1}])
+        self.assertEqual(result["changedRunCount"], 1)
+        self.assertFalse(result["truncatedToFirst64Spans"])
+        self.assertEqual(len(result["changedOffsetSetSha256"]), 64)
+        self.assertEqual(len(result["changedSpansSha256"]), 64)
         self.assertEqual(result["prebootBcdSha256"],
                          hashlib.sha256(before).hexdigest())
         self.assertEqual(result["postbootBcdSha256"],
