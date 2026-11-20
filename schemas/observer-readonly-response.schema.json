@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/observer-readonly-response.schema.json",
+  "title": "Gaslux Observer authenticated read-only response",
+  "description": "Signed response envelope. Signature verification requires a controller public key pinned outside the runner.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "operation",
+    "status",
+    "session_id",
+    "transaction_id",
+    "request_id",
+    "request_sha256",
+    "nonce",
+    "sequence",
+    "issued_at",
+    "expires_at",
+    "controller",
+    "collector",
+    "guest",
+    "result",
+    "result_sha256",
+    "signature"
+  ],
+  "properties": {
+    "protocol": { "const": 1 },
+    "operation": {
+      "type": "string",
+      "enum": ["session.identify", "state.read", "frame.read", "session.close"]
+    },
+    "status": { "type": "string", "enum": ["ok", "refused"] },
+    "session_id": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "uuid" }
+      ]
+    },
+    "transaction_id": { "type": "string", "format": "uuid" },
+    "request_id": { "type": "string", "format": "uuid" },
+    "request_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "nonce": {
+      "type": "string",
+      "description": "Exact echo of the fresh request nonce.",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "sequence": { "type": "integer", "minimum": 0, "maximum": 4096 },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "controller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["controller_id", "key_id", "artifact_sha256", "policy_sha256"],
+      "properties": {
+        "controller_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "key_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "artifact_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "policy_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collector_id", "artifact_sha256"],
+      "properties": {
+        "collector_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "artifact_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "guest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vm_uuid", "identity_assurance", "qemu_process", "attestation"],
+      "properties": {
+        "vm_uuid": { "type": "string", "format": "uuid" },
+        "identity_assurance": {
+          "type": "string",
+          "enum": ["host-observed", "guest-claimed", "cryptographically-attested"]
+        },
+        "qemu_process": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pid", "start_ticks", "executable_sha256"],
+          "properties": {
+            "pid": { "type": "integer", "minimum": 2 },
+            "start_ticks": { "type": "integer", "minimum": 1 },
+            "executable_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "attestation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "evidence_sha256", "verifier_id", "trust_anchor_id"],
+          "properties": {
+            "status": { "type": "string", "enum": ["not-provided", "verified", "invalid"] },
+            "evidence_sha256": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+              ]
+            },
+            "verifier_id": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "minLength": 1, "maxLength": 128 }
+              ]
+            },
+            "trust_anchor_id": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "minLength": 1, "maxLength": 128 }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": { "status": { "const": "verified" } },
+                "required": ["status"]
+              },
+              "then": {
+                "properties": {
+                  "evidence_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                  "verifier_id": { "type": "string", "minLength": 1 },
+                  "trust_anchor_id": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "identity_assurance": { "const": "cryptographically-attested" } },
+            "required": ["identity_assurance"]
+          },
+          "then": {
+            "properties": {
+              "attestation": {
+                "properties": { "status": { "const": "verified" } },
+                "required": ["status"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "identity_assurance": { "const": "guest-claimed" } },
+            "required": ["identity_assurance"]
+          },
+          "then": {
+            "properties": {
+              "attestation": {
+                "properties": { "status": { "const": "not-provided" } },
+                "required": ["status"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "closed", "session_expires_at"],
+          "properties": {
+            "kind": { "const": "session" },
+            "closed": { "type": "boolean" },
+            "session_expires_at": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "format": "date-time" }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "observed_at", "snapshot"],
+          "properties": {
+            "kind": { "const": "state" },
+            "observed_at": { "type": "string", "format": "date-time" },
+            "snapshot": { "type": "object" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "media_type", "encoding", "data", "sha256"],
+          "properties": {
+            "kind": { "const": "frame" },
+            "media_type": { "const": "image/png" },
+            "encoding": { "const": "base64" },
+            "data": {
+              "type": "string",
+              "contentEncoding": "base64",
+              "maxLength": 11184812
+            },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "code", "message"],
+          "properties": {
+            "kind": { "const": "refusal" },
+            "code": {
+              "type": "string",
+              "enum": [
+                "unauthenticated",
+                "unauthorized",
+                "stale-session",
+                "replay",
+                "expired",
+                "identity-unverified",
+                "guest-attestation-failed",
+                "operation-not-allowed",
+                "limit-exceeded",
+                "controller-integrity-failed",
+                "internal-error"
+              ]
+            },
+            "message": { "type": "string", "maxLength": 256 }
+          }
+        }
+      ]
+    },
+    "result_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "value"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "key_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "value": {
+          "type": "string",
+          "description": "64-byte Ed25519 signature encoded as unpadded base64url.",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "refused" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": { "result": { "properties": { "kind": { "const": "refusal" } } } }
+      },
+      "else": {
+        "properties": {
+          "result": {
+            "properties": { "kind": { "enum": ["session", "state", "frame"] }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
