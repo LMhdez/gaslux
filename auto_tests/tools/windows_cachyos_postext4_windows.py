@@ -18,10 +18,46 @@ class FourthBootError(ValueError): pass
 def require(ok, why):
     if not ok: raise FourthBootError(why)
 
+
+def add_tpm_device(args: list[str], tpm_socket: Path) -> list[str]:
+    require(tpm_socket.is_absolute() and tpm_socket.is_socket()
+            and not tpm_socket.is_symlink()
+            and tpm_socket.lstat().st_uid == os.getuid(),
+            "independent TPM socket is missing or unowned")
+    require(not any("chrtpm" in item for item in args)
+            and "-tpmdev" not in args,
+            "refusing duplicate TPM device in Windows QEMU arguments")
+    return [*args,
+            "-chardev", f"socket,id=chrtpm,path={tpm_socket}",
+            "-tpmdev", "emulator,id=tpm0,chardev=chrtpm",
+            "-device", "tpm-tis,tpmdev=tpm0"]
+
+
+def add_qemu_trace(args: list[str], events_file: Path | None,
+                   trace_file: Path | None) -> list[str]:
+    require((events_file is None) == (trace_file is None),
+            "QEMU trace events and output must be supplied together")
+    if events_file is None or trace_file is None:
+        return list(args)
+    require(events_file.is_absolute() and events_file.is_file()
+            and not events_file.is_symlink()
+            and events_file.stat().st_size <= 16_384
+            and trace_file.is_absolute()
+            and trace_file.parent == events_file.parent
+            and not trace_file.exists() and not trace_file.is_symlink(),
+            "unsafe QEMU write-trace paths")
+    return [*args, "-trace", f"events={events_file},file={trace_file}"]
+
+
 def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
                             geometry: dict, cow: dict, stage: dict,
                             third: dict, ext4: dict, timeout: int=1200,
-                            evidence_stem: str="fourth-post-ext4") -> dict:
+                            evidence_stem: str="fourth-post-ext4",
+                            overlay_override: Path | None=None,
+                            trial_vars_override: Path | None=None,
+                            tpm_socket: Path | None=None,
+                            trace_events_file: Path | None=None,
+                            trace_file: Path | None=None) -> dict:
     require(os.environ.get("GITHUB_ACTIONS")=="true"
             and os.environ.get("RUNNER_ENVIRONMENT")=="github-hosted"
             and os.environ.get("GITHUB_REPOSITORY")=="LMhdez/gaslux"
@@ -29,7 +65,8 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
             and os.environ.get("GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT")==THIRD_BOOT_CONSENT
             and os.environ.get("GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT")==EXT4_CONSENT
             and type(timeout) is int and 120<=timeout<=1800
-            and evidence_stem in ("fourth-post-ext4", "sixth-post-pacstrap"),
+            and evidence_stem in ("fourth-post-ext4", "sixth-post-pacstrap",
+                                  "bcd-control-windows-only"),
             "fourth Windows boot requires dedicated hosted KVM consent")
     require(all(type(x) is dict for x in (geometry,cow,stage,third,ext4))
             and geometry.get("candidateWindowsGptPrimaryAndBackupConsistent") is True
@@ -63,13 +100,21 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
             and folder.stat().st_uid==os.getuid()
             and stat.S_IMODE(folder.stat().st_mode)==0o700,
             "unowned post-ext4 workspace")
-    overlay=folder/OVERLAY_NAME
+    overlay=overlay_override or (folder/OVERLAY_NAME)
+    trial_vars=trial_vars_override or (folder/"trial-ovmf-variables.fd")
+    require(overlay.parent==folder and trial_vars.parent==folder
+            and (overlay_override is None
+                 or overlay.name=="bcd-ab-control-windows-only.qcow2")
+            and (trial_vars_override is None
+                 or trial_vars.name=="bcd-ab-control-ovmf-variables.fd"),
+            "foreign A/B control disk or OVMF variables path")
     nv_baseline=folder/"windows-ovmf-baseline.fd"
-    trial_vars=folder/"trial-ovmf-variables.fd"
-    for item in (overlay,nv_baseline,trial_vars): owned_regular(item,folder,item.name)
+    for item in (overlay,nv_baseline,trial_vars):
+        owned_regular(item,folder,item.name)
     require(stat.S_IMODE(base.stat().st_mode)==0o400
             and stat.S_IMODE(overlay.stat().st_mode)==0o600
-            and stat.S_IMODE(nv_baseline.stat().st_mode)==0o400,
+            and stat.S_IMODE(nv_baseline.stat().st_mode)==0o400
+            and stat.S_IMODE(trial_vars.stat().st_mode)==0o600,
             "unsafe protected Windows base or trial file permissions")
     nvhash=sha256_file(nvram)
     require(nvhash==cow.get("uefiVarsCopySha256")
@@ -90,6 +135,9 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
     serial=base.parent/(evidence_stem+"-windows-serial.log")
     require(not serial.exists() and not serial.is_symlink(),"reused fourth boot evidence")
     args=third_guest_args(original,base,nvram,overlay,trial_vars,serial)
+    if tpm_socket is not None:
+        args=add_tpm_device(args,tpm_socket)
+    args=add_qemu_trace(args,trace_events_file,trace_file)
     require(all(str(base) not in a and str(nvram) not in a and "verified_iso" not in a
                 for a in args)
             and args.count("-boot")==1 and args[args.index("-boot")+1]=="order=c",
@@ -146,7 +194,7 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
     require_unchanged_qcow2(base,identity)
     require(sha256_file(nvram)==nvhash and sha256_file(nv_baseline)==nvhash,
             "Windows EFI baseline modified during postboot audit")
-    return {
+    result = {
         "windowsBootAfterExt4Verified":True,
         "windowsBcdWinreEspAfterExt4Verified":True,
         "fourthGuestCleanShutdownVerified":True,
@@ -160,6 +208,12 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
         "sameDiskDualBootVerified":False,"storageWritesAuthorized":False,
         "releaseEligible":False,
     }
+    if trace_file is not None and trace_file.is_file() and not trace_file.is_symlink():
+        require(trace_file.stat().st_size <= 10 * 1024 * 1024,
+                "QEMU write trace exceeded bounded evidence size")
+        result["qemuWriteTraceSha256"] = sha256_file(trace_file)
+        result["qemuWriteTraceBytes"] = trace_file.stat().st_size
+    return result
 
 if __name__=="__main__":
     raise SystemExit("library only: no host devices or installer operations")
