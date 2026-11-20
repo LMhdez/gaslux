@@ -71,7 +71,22 @@ def _attestation(digest="b" * 64, predicate_type=PREDICATE_TYPE):
                     "predicate": {},
                 },
                 "signature": {
-                    "certificate": {"issuer": "https://token.actions.githubusercontent.com"}
+                    "certificate": {
+                        "subjectAlternativeName": (
+                            "https://github.com/ublue-os/bazzite/.github/workflows/"
+                            "build_iso.yml@refs/heads/main"
+                        ),
+                        "issuer": "https://token.actions.githubusercontent.com",
+                        "githubWorkflowRepository": "ublue-os/bazzite",
+                        "githubWorkflowRef": "refs/heads/main",
+                        "sourceRepositoryURI": "https://github.com/ublue-os/bazzite",
+                        "sourceRepositoryDigest": "5d71c4376169910c25bc06a3537f4780521e7435",
+                        "runnerEnvironment": "github-hosted",
+                        "runInvocationURI": (
+                            "https://github.com/ublue-os/bazzite/actions/runs/"
+                            "44121421800/attempts/1"
+                        ),
+                    }
                 },
                 "verifiedTimestamps": [{"kind": "rekor"}],
             }
@@ -96,6 +111,24 @@ def test_attestation_requires_matching_subject_predicate_and_certificate():
     with pytest.raises(ReadbackError):
         validate_attestation_report(
             _attestation(predicate_type="https://example.invalid/predicate"),
+            expected_digest="sha256:" + "b" * 64,
+            expected_workflow="github.com/ublue-os/bazzite/.github/workflows/build_iso.yml",
+        )
+    no_timestamp = _attestation()
+    no_timestamp[0]["verificationResult"]["verifiedTimestamps"] = []
+    with pytest.raises(ReadbackError):
+        validate_attestation_report(
+            no_timestamp,
+            expected_digest="sha256:" + "b" * 64,
+            expected_workflow="github.com/ublue-os/bazzite/.github/workflows/build_iso.yml",
+        )
+    forged_certificate = _attestation()
+    forged_certificate[0]["verificationResult"]["signature"]["certificate"][
+        "sourceRepositoryDigest"
+    ] = "0" * 40
+    with pytest.raises(ReadbackError):
+        validate_attestation_report(
+            forged_certificate,
             expected_digest="sha256:" + "b" * 64,
             expected_workflow="github.com/ublue-os/bazzite/.github/workflows/build_iso.yml",
         )
