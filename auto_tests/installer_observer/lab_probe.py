@@ -49,18 +49,38 @@ def _one(evidence_root: Path) -> dict:
         port = 5900  # single process per run; second run has new pid and fresh media
         cmd = [
             "qemu-system-x86_64",
-            "-no-user-config", "-nodefaults", "-machine", "pc",
-            "-accel", "tcg", "-m", "128", "-vga", "std",
-            "-display", "none", "-monitor", "none", "-serial", "none",
-            "-net", "none",
-            "-vnc", "127.0.0.1:0",
-            "-qmp", f"unix:{qmp},server=on,wait=off",
-            "-drive", f"file={cow},if=virtio,format=qcow2,cache=none",
-            "-drive", f"file={iso},media=cdrom,format=raw,readonly=on",
-            "-boot", "order=d",
+            "-no-user-config",
+            "-nodefaults",
+            "-machine",
+            "pc",
+            "-accel",
+            "tcg",
+            "-m",
+            "128",
+            "-vga",
+            "std",
+            "-display",
+            "none",
+            "-monitor",
+            "none",
+            "-serial",
+            "none",
+            "-net",
+            "none",
+            "-vnc",
+            "127.0.0.1:0",
+            "-qmp",
+            f"unix:{qmp},server=on,wait=off",
+            "-drive",
+            f"file={cow},if=virtio,format=qcow2,cache=none",
+            "-drive",
+            f"file={iso},media=cdrom,format=raw,readonly=on",
+            "-boot",
+            "order=d",
         ]
-        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+        )
         try:
             deadline = time.monotonic() + 25
             while not qmp.exists() and time.monotonic() < deadline and proc.poll() is None:
@@ -84,9 +104,7 @@ def _one(evidence_root: Path) -> dict:
                     continue
             if png is None or resolution is None:
                 raise Refusal("No complete RFB RAW framebuffer at reviewed probe resolutions")
-            transport = ReadOnlyVncTransport(
-                RfbReader(port=port), attestor, authority, resolution
-            )
+            transport = ReadOnlyVncTransport(RfbReader(port=port), attestor, authority, resolution)
             frame = transport.capture(time.monotonic() + 8)
             if frame.scale is not None or frame.passed_checks:
                 raise Refusal("Read-only observation must not claim guest preconditions")
@@ -104,21 +122,24 @@ def _one(evidence_root: Path) -> dict:
 
             must_refuse(
                 "process-start-mismatch",
-                lambda: LocalQemuAttestor(replace(
-                    seal, process=replace(seal.process, start_ticks=seal.process.start_ticks + 1)
-                )).verify(time.monotonic() + 5),
+                lambda: LocalQemuAttestor(
+                    replace(
+                        seal,
+                        process=replace(seal.process, start_ticks=seal.process.start_ticks + 1),
+                    )
+                ).verify(time.monotonic() + 5),
             )
             must_refuse(
                 "snapshot-mismatch",
-                lambda: LocalQemuAttestor(replace(
-                    seal, authority=replace(authority, snapshot_id="unauthorized-snapshot")
-                )).verify(time.monotonic() + 5),
+                lambda: LocalQemuAttestor(
+                    replace(seal, authority=replace(authority, snapshot_id="unauthorized-snapshot"))
+                ).verify(time.monotonic() + 5),
             )
             must_refuse(
                 "qcow2-inode-mismatch",
-                lambda: LocalQemuAttestor(replace(
-                    seal, cow=replace(seal.cow, ino=seal.cow.ino + 1)
-                )).verify(time.monotonic() + 5),
+                lambda: LocalQemuAttestor(
+                    replace(seal, cow=replace(seal.cow, ino=seal.cow.ino + 1))
+                ).verify(time.monotonic() + 5),
             )
             must_refuse("expired-deadline", lambda: attestor.verify(time.monotonic() - 1))
             moved = qmp.with_name("qmp-temporarily-unavailable.sock")
@@ -197,9 +218,9 @@ def main() -> int:
         print(json.dumps(result, sort_keys=True))
         return 0
     except (Refusal, OSError, subprocess.SubprocessError) as exc:
-        (root / "refusal.json").write_bytes(canonical(
-            {"status": "refused", "reason": str(exc), "completed_runs": len(runs)}
-        ))
+        (root / "refusal.json").write_bytes(
+            canonical({"status": "refused", "reason": str(exc), "completed_runs": len(runs)})
+        )
         print(f"QEMU laboratory refused: {exc}", flush=True)
         return 1
 
