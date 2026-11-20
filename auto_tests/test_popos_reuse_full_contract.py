@@ -12,7 +12,7 @@ import unittest
 TOOLS = Path(__file__).resolve().parent / "tools"
 sys.path.insert(0, str(TOOLS))
 from gaslux_popos_reuse_snapshot_gate import (  # noqa: E402
-    Refusal, regular, new_file, classify_owned_write, hosted,
+    Refusal, regular, new_file, classify_owned_write, hosted, system_ovmf_template,
     get_plan, SIZE, ESP, ROOT, DISK_GUID, ESP_GUID, ROOT_GUID,
     SERIAL,
 )
@@ -131,6 +131,23 @@ class FullReuseContractTests(unittest.TestCase):
                 regular(d)
             with self.assertRaises(FileExistsError):
                 new_file(p, 512)
+
+    def test_root_owned_ovmf_template_is_separate_from_user_file_protection(self):
+        with tempfile.TemporaryDirectory() as folder:
+            d = Path(folder)
+            fake = new_file(d/"OVMF_VARS_4M.fd", 4*1024*1024)
+            with self.assertRaises(Refusal):
+                system_ovmf_template(fake)
+            with self.assertRaises(Refusal):
+                system_ovmf_template(d/"OVMF_VARS_4M.fd.link")
+            os.symlink(fake, d/"OVMF_VARS_4M.fd.link")
+            with self.assertRaises(Refusal):
+                system_ovmf_template(d/"OVMF_VARS_4M.fd.link")
+        source = GATE.read_text()
+        self.assertIn('st.st_uid == 0', source)
+        self.assertIn('st.st_mode & 0o022 == 0', source)
+        self.assertIn('st.st_nlink == 1', source)
+        self.assertIn('template = system_ovmf_template(template)', source)
 
     def test_run_is_disallowed_without_hosted_explicit_consent(self):
         with tempfile.TemporaryDirectory() as folder:

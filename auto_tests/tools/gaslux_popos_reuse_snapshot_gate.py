@@ -73,6 +73,24 @@ def regular(path, *, write=False, length=None):
     return p
 
 
+def system_ovmf_template(path):
+    """Only allow reading Ubuntu's root-owned installed keyless OVMF VARS.
+
+    Crucially distinct from private mutable backing/child resources. A root-
+    owned system package is not supposed to be owned by the Actions runner.
+    """
+    p = Path(path)
+    need(str(p) == "/usr/share/OVMF/OVMF_VARS_4M.fd"
+         and p.is_absolute() and not p.is_symlink(),
+         "REFUSE_IDENTITY_MISMATCH: foreign OVMF template path")
+    st = p.lstat()
+    need(stat.S_ISREG(st.st_mode) and st.st_uid == 0
+         and st.st_nlink == 1 and st.st_size == 528*1024
+         and st.st_mode & 0o022 == 0,
+         "REFUSE_IDENTITY_MISMATCH: OVMF is not a safe root-owned template")
+    return p
+
+
 def new_file(path, length):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     try:
@@ -268,7 +286,7 @@ def prepare(work, template):
     fs_proof_before = verify_owned_filesystems(work, base, "precheckpoint")
     os.chmod(base, 0o400)
     digest = sha(base)
-    template = regular(template)
+    template = system_ovmf_template(template)
     master_hash = sha(template)
     vars_install = work / "ovmf-install.fd"
     vars_firstboot = work / "ovmf-firstboot.fd"
