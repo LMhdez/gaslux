@@ -264,7 +264,7 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
     gpt_diff = guest.get("gptDiff") if type(guest) is dict else None
     bio = tracefs.get("blockBioQueue", []) if type(tracefs) is dict else []
     rq_issue = tracefs.get("blockRqIssue", []) if type(tracefs) is dict else []
-    target_mm = guest.get("targetMajorMinor") if type(guest) is dict else None
+    target_mm = (guest.get("targetMajorMinor") or tracefs.get("targetMajorMinor")) if type(guest) is dict and type(tracefs) is dict else None
     bio_write = [x for x in bio if type(x) is dict
                  and type(x.get("count")) is int and x["count"] > 0
                  and "W" in str(x.get("rwbs", ""))]
