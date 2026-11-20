@@ -113,9 +113,7 @@ def test_original_report_sha_mutation_refused(tmp_path, originals):
 
     original = originals[0]
     manifest = parse(read(q4os.MANIFEST))
-    archive = next(
-        a for a in manifest["archives"] if a["artifactId"] == original.artifact_id
-    )
+    archive = next(a for a in manifest["archives"] if a["artifactId"] == original.artifact_id)
     report = read(original.directory / "ui-screenshots-report.json")
     altered_dir = tmp_path / "report-tamper"
     altered_dir.mkdir()
