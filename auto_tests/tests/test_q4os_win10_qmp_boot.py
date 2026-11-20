@@ -18,13 +18,14 @@ from q4os_win10_qmp_boot import BootRefusal, supervise  # noqa: E402
 
 
 class FakeQemu:
-    def __init__(self, socket_path: Path, disk: Path, *, error=False, corrupt=False, grow=True, serial=None):
+    def __init__(
+        self, socket_path: Path, disk: Path, *, error=False, corrupt=False, grow=True
+    ):
         self.socket_path = socket_path
         self.disk = disk
         self.error = error
         self.corrupt = corrupt
         self.grow = grow
-        self.serial = serial
         self.commands: list[str] = []
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.server.bind(str(socket_path))
@@ -35,7 +36,12 @@ class FakeQemu:
     def serve(self):
         client, _ = self.server.accept()
         with client:
-            greeting = {"QMP": {"version": {"qemu": {"major": 9, "minor": 0, "micro": 0}}, "capabilities": []}}
+            greeting = {
+                "QMP": {
+                    "version": {"qemu": {"major": 9, "minor": 0, "micro": 0}},
+                    "capabilities": [],
+                }
+            }
             if self.corrupt:
                 greeting = {"unexpected": True}
             client.sendall(json.dumps(greeting).encode() + b"\r\n")
