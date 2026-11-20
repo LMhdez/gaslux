@@ -143,7 +143,7 @@ def parse_gpt(device: str) -> dict:
          and esp["typeGuid"].lower() == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
          and root["typeGuid"].lower() == "0fc63daf-8483-4772-8e79-3d69d8477de4"
          and esp["startLba"] == 2048 and esp["endLba"] == 1050623
-         and root["startLba"] == 1052672 and root["endLba"] == 9431279,
+         and root["startLba"] == 1052672 and root["endLba"] == 9441279,
          "synthetic ESP/root GPT entry geometry or PARTUUID mismatch")
     return {"diskGuid": disk_guid, "partitions": partitions,
             "primaryCrcVerified": True, "backupCrcVerified": True,
