@@ -124,3 +124,13 @@ A partir deste commit o workflow de manutenção regressa a **apenas leitura** (
 
 - PR #256, [commit `b68fc2d7`](https://github.com/LMhdez/gaslux/commit/b68fc2d7d9caf2fa492ddda1e00a89e57a7dd7a5): absorveu a branch `feature/q4os-summary-view-lab-20261119` como segundo progenitor; teste Ed25519 de separação de domínio já era byte-idêntico na árvore de destino. [Actions #44688570507](https://github.com/LMhdez/gaslux/actions/runs/44688570507) eliminou a referência de origem com ancestry e lease. Contagem **40 → 39**. Esta integração de histórico não constitui ensaio de recuperação real.
 
+
+## Consolidação de manutenção — 20-11-2026, 06:50 UTC
+
+- Inventário GitHub: 40 branches e 19 PRs abertas. Só duas branches fora do conjunto de cabeças/bases de PRs e de manutenção: `automation/gaslux-15m-integration-audit` e `feature/installer-observer-engine`; a segunda foi criada recentemente e contém experiências ativas sobre capturas e mapeamento gráfico do instalador.
+- [Commit `2c91ba0d`](https://github.com/LMhdez/gaslux/commit/2c91ba0d908fef43b35f68f07c91abe8faaafff3): histórico integral da auditoria de 15 minutos preservado como segundo progenitor Git da branch de manutenção. O workflow antigo ficou acessível na versão original, sem ser ativado.
+- [Actions #44691172516](https://github.com/LMhdez/gaslux/actions/runs/44691172516): primeira tentativa de eliminar a referência antiga **bloqueada antes de qualquer eliminação** porque o commit da própria branch de manutenção avançou.
+- [Commit `eea8404b`](https://github.com/LMhdez/gaslux/commit/eea8404b2a06800dbf0277c175528f9aebb074e2): corrigiu a validação para aceitar apenas avanço comprovado do keeper por ancestralidade; continuam obrigatórios o SHA original, a proteção de PRs e Actions, o tempo mínimo e `--force-with-lease`.
+- [Actions #44691377333](https://github.com/LMhdez/gaslux/actions/runs/44691377333): testes de segurança e histórico de 112 fontes arquivadas aprovados; **uma referência eliminada** com o histórico integrado. API confirmou **40 → 39 branches**. Sem fusões em `main` ou `dev`, sem alteração de disco ou catálogo estável.
+- Workflow de manutenção restituído a `contents: read` e `persist-credentials: false`. O trabalho de `feature/installer-observer-engine` mantém-se separado, não aprovado para produção.
+
