@@ -11,6 +11,7 @@ import socket
 import stat
 import subprocess
 import sys
+from contextlib import ExitStack
 
 from .evidence import Refusal
 
@@ -18,8 +19,10 @@ from .evidence import Refusal
 def audit_child_fds() -> dict[str, bool]:
     if os.name != "posix":
         raise Refusal("Linux FD audit required")
-    with socket.socketpair(socket.AF_UNIX) as pair:
-        source = pair[0]
+    with ExitStack() as stack:
+        first, second = socket.socketpair(socket.AF_UNIX)
+        source = stack.enter_context(first)
+        stack.enter_context(second)
         descriptor = source.fileno()
         inode = os.fstat(descriptor).st_ino
         # No RFB or QMP socket is used; the descriptor is synthetic.
@@ -37,6 +40,7 @@ def audit_child_fds() -> dict[str, bool]:
                 "sys.exit(0 if found else 11)"
             )
             command = [sys.executable, "-c", code, str(descriptor), str(inode)]
+
             def inspect(close: bool) -> int:
                 return subprocess.run(
                     command,
