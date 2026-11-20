@@ -61,8 +61,9 @@ jobs:
           mkdir -m 0700 "$work"
           printf 'GASLUX_WIN10_WORK=%s\n' "$work" >> "$GITHUB_ENV"
           iso="$work/Windows10_Enterprise_22H2_Eval_EN-US_x64.iso"
-          url='https://software-static.download.prss.microsoft.com/dbazure/988969d5-f34g-4e03-ac9d-1f9786c66750/19045.2006.220908-0225.22h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso'
-          curl --fail --location --retry 4 --retry-delay 5 --connect-timeout 30 \
+          url='https://go.microsoft.com/fwlink/p/?LinkID=2208844&clcid=0x409&country=US&culture=en-us'
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-redirs 5 \
+            --retry 4 --retry-delay 5 --connect-timeout 30 \
             --output "$iso" "$url"
           expected='ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668'
           actual="$(sha256sum "$iso" | awk '{print $1}')"
