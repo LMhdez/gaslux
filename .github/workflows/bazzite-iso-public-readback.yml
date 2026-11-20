@@ -277,6 +277,18 @@ jobs:
               "ghcrAuthentication": os.environ["GHCR_OUTCOME"],
               "readback": os.environ["VERIFY_OUTCOME"],
           }
+          identity_path = evidence / "iso-byte-identity.json"
+          sidecar_path = evidence / "sidecar-validation.json"
+          public_readback = {
+              "isoByteIdentity": json.loads(identity_path.read_text()) if identity_path.exists() else None,
+              "sidecarValidation": json.loads(sidecar_path.read_text()) if sidecar_path.exists() else None,
+              "detachedCosignSignatureVerified": (evidence / "iso-cosign-verification.txt").is_file(),
+              "githubAttestationVerified": (evidence / "iso-attestation-policy.json").is_file(),
+              "payloadCosignVerified": (evidence / "payload-cosign-verification.json").is_file(),
+              "payloadAttestationVerified": (evidence / "payload-attestation-policy.json").is_file(),
+          }
+          if (evidence / "readback-facts.json").exists():
+              public_readback.update(json.loads((evidence / "readback-facts.json").read_text()))
           passed = (
               all(value == "success" for value in outcomes.values())
               and status.get("exitCode") == "0"
@@ -297,7 +309,7 @@ jobs:
               },
               "workflowOutcomes": outcomes,
               "runStatus": status,
-              "publicReadback": json.loads((evidence / "readback-facts.json").read_text()) if (evidence / "readback-facts.json").exists() else None,
+              "publicReadback": public_readback,
               "embeddedPayload": json.loads((evidence / "embedded-oci-payload.json").read_text()) if (evidence / "embedded-oci-payload.json").exists() else None,
               "result": "A" if passed else "B",
               "installationAuthorized": False,
