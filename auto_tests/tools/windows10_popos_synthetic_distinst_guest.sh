@@ -234,7 +234,8 @@ def find_iso_inputs() -> tuple[str, str]:
 def prepare_tracefs() -> list[str]:
     if not (TRACE_ROOT / "trace").exists():
         run(["mount", "-t", "tracefs", "tracefs", str(TRACE_ROOT)])
-    required = ("block/block_bio_queue", "block/block_rq_issue",
+    required = ("block/block_bio_queue", "block/block_bio_complete",
+                "block/block_rq_issue",
                 "sched/sched_process_exec")
     optional_mount = (
         "syscalls/sys_enter_mount", "syscalls/sys_exit_mount",
@@ -408,6 +409,8 @@ def run_distinst() -> None:
                 break
             time.sleep(0.1)
         exit_code = process.wait()
+    # Drain completed writes before freezing the BIO completion trace.
+    os.sync()
     (TRACE_ROOT / "tracing_on").write_text("0\n")
     raw_trace = trace_file.read_text(errors="replace")
     need(len(raw_trace) <= 8_000_000, "guest tracefs buffer exceeded 8MiB")
@@ -421,14 +424,23 @@ def run_distinst() -> None:
         fields = line.split()
         if len(fields) == 4 and fields[0].startswith("zram"):
             zram_ids.add(tuple(int(x) for x in fields[1].split(":")))
-    bio, rq, other_writes, execs, mount_events = [], [], [], [], []
+    bio, completed, rq, other_writes, execs, mount_events = [], [], [], [], [], []
     for line in raw_trace.splitlines():
-        for name, dest in (("block_bio_queue", bio), ("block_rq_issue", rq)):
+        for name, dest in (("block_bio_queue", bio),
+                           ("block_bio_complete", completed),
+                           ("block_rq_issue", rq)):
             event = trace_event(line, name)
             if event is None:
                 continue
             if "W" not in event["rwbs"] and not any(x in event["rwbs"] for x in ("D", "Z")):
                 continue
+            if name == "block_bio_complete":
+                # Linux emits "[error]" after the length for bio completion.
+                # A failed completion must not be treated as an acknowledged write.
+                suffix = line.split("block_bio_complete:", 1)[1]
+                status = re.search(r"\[(-?\d+)\]\s*$", suffix)
+                need(status is not None, "unparseable block_bio_complete I/O status")
+                event["ioError"] = int(status.group(1))
             if (event["major"], event["minor"]) == (target_major, target_minor):
                 dest.append(event)
             elif (event["major"], event["minor"]) in zram_ids:
@@ -461,7 +473,8 @@ def run_distinst() -> None:
                     "raw": payload.strip()[:512],
                 })
     need(not other_writes, "guest tracefs observed write to non-target block device")
-    need(len(bio) <= 20000 and len(rq) <= 20000 and len(execs) <= 2000,
+    need(len(bio) <= 20000 and len(completed) <= 20000
+         and len(rq) <= 20000 and len(execs) <= 2000,
          "guest tracefs evidence exceeds bounded event count")
     need(exit_code == 0 and not timed_out,
          "authentic distinst --test failed or exceeded 600-second limit")
@@ -537,7 +550,8 @@ def run_distinst() -> None:
         "tracefs": {
             "available": True,
             "targetMajorMinor": f"{target_major}:{target_minor}",
-            "blockBioQueue": bio, "blockRqIssue": rq, "execs": execs,
+            "blockBioQueue": bio, "blockBioComplete": completed,
+            "blockRqIssue": rq, "execs": execs,
             "otherWritableBlockDeviceEvents": other_writes,
             "mountObservations": mount_observations,
             "mountTraceEventsAvailable": mount_trace_events,

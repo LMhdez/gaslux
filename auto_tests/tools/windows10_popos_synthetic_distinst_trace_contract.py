@@ -161,19 +161,30 @@ def _validate_identity(plan: dict, guest: dict) -> None:
 def _intervals(items: list[dict], *, source: str) -> list[tuple[int, int]]:
     out = []
     for item in items:
-        require(type(item) is dict and item.get("major") is not None
-                and item.get("minor") is not None
+        require(type(item) is dict
+                and type(item.get("major")) is int
+                and type(item.get("minor")) is int
                 and type(item.get("sector")) is int
                 and type(item.get("count")) is int
-                and item["count"] > 0
                 and type(item.get("pid")) is int and item["pid"] > 1
                 and type(item.get("comm")) is str and item["comm"]
-                and type(item.get("rwbs")) is str
-                and "W" in item["rwbs"]
+                and type(item.get("rwbs")) is str and item["rwbs"]
                 and not any(flag in item["rwbs"] for flag in ("D", "Z")),
-                source + " contains incomplete/non-write/discard event")
-        start = item["sector"]
-        end = start + item["count"]
+                source + " contains incomplete/discard/write-zeroes event")
+        if source == "block_bio_complete":
+            require(type(item.get("ioError")) is int and item["ioError"] == 0,
+                    "block_bio_complete missing success or reported I/O error")
+        if item["count"] == 0:
+            # FWS with sector=0 is a flush/sync request, not a zero-byte
+            # block write. Never silently discard zero-sector W/D/Z events.
+            require(item["sector"] == 0
+                    and item["rwbs"].startswith("F")
+                    and "W" in item["rwbs"],
+                    source + " has a malformed zero-length flush")
+            continue
+        require(item["count"] > 0 and "W" in item["rwbs"],
+                source + " contains non-write or negative sector count")
+        start, end = item["sector"], item["sector"] + item["count"]
         require(0 <= start < end <= DISK_SECTORS,
                 source + " sector interval outside synthetic disk")
         out.append((start, end))
@@ -282,11 +293,18 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
     source_hint = process.get("sourceRevisionHint") if type(process) is dict else None
     gpt_diff = guest.get("gptDiff") if type(guest) is dict else None
     bio = tracefs.get("blockBioQueue", []) if type(tracefs) is dict else []
+    completed = tracefs.get("blockBioComplete", []) if type(tracefs) is dict else []
     rq_issue = tracefs.get("blockRqIssue", []) if type(tracefs) is dict else []
     target_mm = (guest.get("targetMajorMinor") or tracefs.get("targetMajorMinor")) if type(guest) is dict and type(tracefs) is dict else None
     bio_write = [x for x in bio if type(x) is dict
                  and type(x.get("count")) is int and x["count"] > 0
                  and "W" in str(x.get("rwbs", ""))]
+    completed_write = [x for x in completed if type(x) is dict
+                       and type(x.get("count")) is int and x["count"] > 0
+                       and "W" in str(x.get("rwbs", ""))]
+    completed_errors = [x for x in completed if type(x) is not dict
+                        or type(x.get("ioError")) is not int
+                        or x["ioError"] != 0]
     rq_write = [x for x in rq_issue if type(x) is dict
                 and type(x.get("count")) is int and x["count"] > 0
                 and "W" in str(x.get("rwbs", ""))]
@@ -294,14 +312,23 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
                  and type(x.get("count")) is int and x["count"] == 0
                  and "F" in str(x.get("rwbs", ""))]
     bio_bytes = sum(x["count"] * SECTOR for x in bio_write)
+    complete_bytes = sum(x["count"] * SECTOR for x in completed_write)
     rq_bytes = sum(x["count"] * SECTOR for x in rq_write)
     bio_by_region = {}
     bio_devices = set()
     rq_devices = set()
+    complete_devices = set()
     bio_processes = set()
     rq_processes = set()
     bio_outside = []
     rq_outside = []
+    complete_outside = []
+    for event in completed_write:
+        complete_devices.add(f"{event.get('major')}:{event.get('minor')}")
+        start, end = int(event["sector"]), int(event["sector"]) + int(event["count"])
+        if not any(p["startLba"] <= start
+                   and end <= p["startLba"] + p["sectorCount"] for p in partitions):
+            complete_outside.append({"sector": start, "sectorCount": end-start})
     for event in bio_write:
         bio_devices.add(f"{event.get('major')}:{event.get('minor')}")
         bio_processes.add((str(event.get("comm", "")), int(event.get("pid", -1))))
@@ -345,12 +372,20 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
         type(tracefs) is dict and tracefs.get("available") is True
         and len(bio) > 0 and bool(bio_write)
     )
+    tracefs_complete_available = (
+        type(tracefs) is dict and type(completed) is list
+        and bool(completed_write) and not completed_errors
+    )
     tracefs_rq_available = (
         type(tracefs) is dict and type(rq_issue) is list and bool(rq_write)
     )
     tracefs_target_matched = (
         type(target_mm) is str and bool(bio_devices)
         and bio_devices == {target_mm}
+        and not tracefs.get("otherWritableBlockDeviceEvents", [])
+    ) if type(tracefs) is dict else False
+    tracefs_complete_target_matched = (
+        type(target_mm) is str and complete_devices == {target_mm}
         and not tracefs.get("otherWritableBlockDeviceEvents", [])
     ) if type(tracefs) is dict else False
     tracefs_rq_target_matched = (
@@ -360,12 +395,20 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
     ) if type(tracefs) is dict else False
     qemu_write_bytes = sum(x["lengthBytes"] for x in qemu_events)
     tracefs_byte_match = bool(qemu_events) and bio_bytes == qemu_write_bytes
+    tracefs_complete_byte_match = bool(qemu_events) and complete_bytes == qemu_write_bytes
     tracefs_rq_byte_match = bool(qemu_events) and rq_bytes == qemu_write_bytes
     tracefs_bio_coverage_match = (
         bool(qemu_events) and bool(bio_write)
         and _same_coverage(qemu_intervals, [
             (int(x["sector"]), int(x["sector"]) + int(x["count"]))
             for x in bio_write
+        ])
+    )
+    tracefs_complete_coverage_match = (
+        bool(qemu_events) and bool(completed_write)
+        and _same_coverage(qemu_intervals, [
+            (int(x["sector"]), int(x["sector"]) + int(x["count"]))
+            for x in completed_write
         ])
     )
     tracefs_rq_coverage_match = (
@@ -379,13 +422,21 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
         tracefs_available and tracefs_target_matched
         and tracefs_byte_match and tracefs_bio_coverage_match
     )
+    tracefs_complete_crosscheck = (
+        tracefs_complete_available and tracefs_complete_target_matched
+        and tracefs_complete_byte_match and tracefs_complete_coverage_match
+    )
     tracefs_rq_crosscheck = (
         tracefs_rq_available and tracefs_rq_target_matched
         and tracefs_rq_byte_match and tracefs_rq_coverage_match
     )
-    tracefs_crosscheck = tracefs_bio_crosscheck and tracefs_rq_crosscheck
+    tracefs_crosscheck = (
+        tracefs_bio_crosscheck and tracefs_complete_crosscheck
+        and (not rq_issue or tracefs_rq_crosscheck)
+    )
     gpt_changed = type(gpt_diff) is dict and gpt_diff.get("unchanged") is False
-    out_of_set = bool(outside or unsupported or gpt_changed or bio_outside or rq_outside)
+    out_of_set = bool(outside or unsupported or gpt_changed
+                      or bio_outside or complete_outside or rq_outside)
     observation_complete = bool(qemu_events) and tracefs_crosscheck
     write_set_match = not out_of_set and observation_complete
     if out_of_set:
@@ -413,6 +464,12 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
         "guestTracefsBlockBioQueueEventCount": len(bio),
         "guestTracefsBlockBioWriteEventCount": len(bio_write),
         "guestTracefsFlushEventCount": len(bio_flush),
+        "guestTracefsBioCompleteEventCount": len(completed),
+        "guestTracefsBioCompleteWriteEventCount": len(completed_write),
+        "guestTracefsBioCompleteIoErrorCount": len(completed_errors),
+        "guestTracefsBioCompleteWriteBytes": complete_bytes,
+        "guestTracefsBioCompleteCorroboratesQemu": tracefs_complete_crosscheck,
+        "guestTracefsBioCompleteOutOfSetEventCount": len(complete_outside),
         "guestTracefsBlockBioWriteBytes": bio_bytes,
         "guestTracefsWritesByRegion": bio_by_region,
         "guestTracefsOutOfSetEventCount": len(bio_outside),
@@ -420,12 +477,13 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
         "guestTracefsRqIssueOutOfSetEventCount": len(rq_outside),
         "guestTracefsRqIssueOutOfSetEvents": rq_outside[:128],
         "guestTracefsTargetMajorMinor": target_mm,
-        "guestTracefsObservedMajorMinor": sorted(bio_devices | rq_devices),
+        "guestTracefsObservedMajorMinor": sorted(bio_devices | complete_devices | rq_devices),
         "guestTracefsTargetIdentityMatched": tracefs_target_matched,
         "guestTracefsQemuByteCountMatch": tracefs_byte_match,
         "guestTracefsBioQueueCoverageMatch": tracefs_bio_coverage_match,
         "guestTracefsBioQueueCorroboratesQemu": tracefs_bio_crosscheck,
         "guestTracefsBlockRqIssueEventCount": len(rq_issue),
+        "guestRqIssueWitnessAvailable": bool(rq_issue),
         "guestTracefsBlockRqIssueWriteEventCount": len(rq_write),
         "guestTracefsBlockRqIssueWriteBytes": rq_bytes,
         "guestTracefsBlockRqIssueTargetMatched": tracefs_rq_target_matched,
@@ -583,21 +641,35 @@ def classify_distinst_writes(
             and type(tracefs.get("targetMajorMinor")) is str
             and re.fullmatch(r"\d+:\d+", tracefs["targetMajorMinor"]) is not None
             and type(tracefs.get("blockBioQueue")) is list
+            and type(tracefs.get("blockBioComplete")) is list
             and type(tracefs.get("blockRqIssue")) is list
             and type(tracefs.get("execs")) is list,
             "guest block tracefs/process witness unavailable")
     major, minor = (int(x) for x in tracefs["targetMajorMinor"].split(":"))
     bio = tracefs["blockBioQueue"]
+    completed = tracefs["blockBioComplete"]
     rq = tracefs["blockRqIssue"]
-    for event in bio + rq:
+    for event in bio + completed + rq:
         require(event.get("major") == major and event.get("minor") == minor,
                 "guest tracefs event belongs to a different block device")
     bio_intervals = _intervals(bio, source="block_bio_queue")
-    rq_intervals = _intervals(rq, source="block_rq_issue")
+    complete_intervals = _intervals(completed, source="block_bio_complete")
+    # Virtio may not generate block_rq_issue in this live kernel. Do not
+    # waive another independent witness: require completed BIOs (with error=0)
+    # and exact QEMU byte count + sector coverage in both guest BIO streams.
+    rq_intervals = _intervals(rq, source="block_rq_issue") if rq else []
     require(_same_coverage(qemu_intervals, bio_intervals)
-            and _same_coverage(qemu_intervals, rq_intervals),
-            "independent QEMU and guest tracefs write intervals diverge")
-    for start, end in bio_intervals + rq_intervals:
+            and _same_coverage(qemu_intervals, complete_intervals)
+            and (not rq or _same_coverage(qemu_intervals, rq_intervals)),
+            "QEMU/queued/completed BIO sector coverage diverges")
+    qemu_bytes = sum((end - start) * SECTOR for start, end in qemu_intervals)
+    require(all(sum((end - start) * SECTOR for start, end in intervals)
+                == qemu_bytes for intervals in
+                (bio_intervals, complete_intervals))
+            and (not rq or sum((end - start) * SECTOR
+                               for start, end in rq_intervals) == qemu_bytes),
+            "QEMU/queued/completed BIO byte counts diverge")
+    for start, end in bio_intervals + complete_intervals + rq_intervals:
         require(any(p["startLba"] <= start
                     and end <= p["startLba"] + p["sectorCount"]
                     for p in plan["partitions"]),
@@ -628,7 +700,10 @@ def classify_distinst_writes(
         "qemuWriteEventCount": len(qemu_events),
         "qemuWriteBytes": sum(x["lengthBytes"] for x in qemu_events),
         "guestBlockBioQueueEventCount": len(bio),
+        "guestBlockBioCompleteEventCount": len(completed),
+        "guestCompletedBioSuccessVerified": True,
         "guestBlockRqIssueEventCount": len(rq),
+        "guestRqIssueWitnessAvailable": bool(rq),
         "qemuGuestWriteCoverageCorrelated": True,
         "partitionWriteEventCounts": {
             str(p["number"]): sum(1 for x in qemu_events

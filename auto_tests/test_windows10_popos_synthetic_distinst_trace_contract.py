@@ -83,6 +83,12 @@ def fixtures():
             {"major": 253, "minor": 16, "rwbs": "W", "sector": ROOT_START,
              "count": 8, "comm": "mke2fs", "pid": 1236},
         ],
+        "blockBioComplete": [
+            {"major": 253, "minor": 16, "rwbs": "W", "sector": 2048,
+             "count": 8, "comm": "kworker/0:0", "pid": 1240, "ioError": 0},
+            {"major": 253, "minor": 16, "rwbs": "W", "sector": ROOT_START,
+             "count": 8, "comm": "kworker/0:0", "pid": 1240, "ioError": 0},
+        ],
         "blockRqIssue": [
             {"major": 253, "minor": 16, "rwbs": "W", "sector": 2048,
              "count": 8, "comm": "mkfs.fat", "pid": 1235},
@@ -123,6 +129,7 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         self.assertTrue(result["syntheticPreformatFormatterExecsObserved"])
         self.assertTrue(result["distinstReuseModeObserved"])
         self.assertTrue(result["qemuGuestWriteCoverageCorrelated"])
+        self.assertTrue(result["guestCompletedBioSuccessVerified"])
         self.assertTrue(result["allObservedWritesWithinSyntheticPopPartitions"])
         self.assertEqual(result["partitionWriteEventCounts"], {"1": 1, "2": 1})
         self.assertFalse(result["allWritesObserved"])
@@ -223,6 +230,42 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         tracefs["blockRqIssue"][0]["count"] = 7
         with self.assertRaises(DiskAuditError):
             observe(tracefs=tracefs)
+        _, _, _, tracefs = fixtures()
+        tracefs["blockBioComplete"][0]["count"] = 7
+        with self.assertRaises(DiskAuditError):
+            observe(tracefs=tracefs)
+
+    def test_flush_does_not_count_as_sector_write_but_bad_events_are_refused(self):
+        _, _, _, tracefs = fixtures()
+        flush = {"major": 253, "minor": 16, "rwbs": "FWS",
+                 "sector": 0, "count": 0, "comm": "distinst", "pid": 1234}
+        tracefs["blockBioQueue"].append(dict(flush))
+        tracefs["blockBioComplete"].append(dict(flush, ioError=0))
+        result = observe(tracefs=tracefs)
+        self.assertTrue(result["qemuGuestWriteCoverageCorrelated"])
+        for mutation in (
+            {"rwbs": "WS", "count": 0},
+            {"rwbs": "FWS", "sector": 1},
+            {"rwbs": "D", "sector": 2048, "count": 8},
+            {"rwbs": "Z", "sector": 2048, "count": 8},
+        ):
+            _, _, _, bad = fixtures()
+            bad["blockBioQueue"].append(dict(flush, **mutation))
+            with self.subTest(mutation=mutation), self.assertRaises(DiskAuditError):
+                observe(tracefs=bad)
+
+    def test_failed_or_missing_completed_bio_is_refused(self):
+        for mutation in (
+            lambda t: t.pop("blockBioComplete"),
+            lambda t: t.update(blockBioComplete=[]),
+            lambda t: t["blockBioComplete"][0].update(ioError=-5),
+            lambda t: t["blockBioComplete"][0].pop("ioError"),
+            lambda t: t["blockBioComplete"][0].update(sector=1),
+        ):
+            _, _, _, t = fixtures()
+            mutation(t)
+            with self.subTest(mutation=str(mutation)), self.assertRaises(DiskAuditError):
+                observe(tracefs=t)
 
     def test_missing_tracefs_or_nvram_or_backing_recovery_proof_is_refused(self):
         _, _, _, tracefs = fixtures()
@@ -299,16 +342,29 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         self.assertEqual(result["writesBySyntheticPartition"][1]["eventCount"], 1)
         self.assertEqual(result["writesBySyntheticPartition"][2]["eventCount"], 1)
 
-    def test_missing_block_rq_issue_stream_is_incomplete_not_corroborated(self):
+    def test_missing_rq_issue_requires_independent_completed_bio_witness(self):
         plan, guest, trace, tracefs = fixtures()
         tracefs["blockRqIssue"] = []
         guest["tracefs"] = tracefs
         result = diagnose_qemu_write_set(plan, trace, guest)
-        self.assertFalse(result["writeSetMatch"])
-        self.assertFalse(result["observationComplete"])
+        self.assertTrue(result["writeSetMatch"])
+        self.assertTrue(result["observationComplete"])
         self.assertTrue(result["guestTracefsBioQueueCorroboratesQemu"])
+        self.assertTrue(result["guestTracefsBioCompleteCorroboratesQemu"])
         self.assertFalse(result["guestTracefsRqIssueCorroboratesQemu"])
-        self.assertFalse(result["guestTracefsCorroboratesQemu"])
+        self.assertFalse(result["guestRqIssueWitnessAvailable"])
+        self.assertTrue(result["guestTracefsCorroboratesQemu"])
+        self.assertEqual(result["decision"], "MATCH_SYNTHETIC_PARTITION_WRITESET")
+        self.assertFalse(result["distinstExecutionAuthorized"])
+
+    def test_missing_completed_bio_is_incomplete_not_approved(self):
+        plan, guest, trace, tracefs = fixtures()
+        tracefs["blockRqIssue"] = []
+        tracefs["blockBioComplete"] = []
+        guest["tracefs"] = tracefs
+        result = diagnose_qemu_write_set(plan, trace, guest)
+        self.assertFalse(result["observationComplete"])
+        self.assertFalse(result["guestTracefsBioCompleteCorroboratesQemu"])
         self.assertEqual(result["decision"], "REFUSE_INCOMPLETE_OBSERVATION")
         self.assertFalse(result["distinstExecutionAuthorized"])
 

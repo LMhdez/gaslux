@@ -54,6 +54,8 @@ class SyntheticDistinstGuestScriptTests(unittest.TestCase):
         self.assertIn('EXPECTED_DISK_GUID = "7d6e5c4b-3a29-4876-9abc-def012345678"',
                       self.python_source)
         self.assertIn('"block/block_bio_queue"', self.python_source)
+        self.assertIn('"block/block_bio_complete"', self.python_source)
+        self.assertIn('event["ioError"] = int(status.group(1))', self.python_source)
         self.assertIn('"block/block_rq_issue"', self.python_source)
         self.assertIn('"sched/sched_process_exec"', self.python_source)
         self.assertIn('need(not other_writes,', self.python_source)
