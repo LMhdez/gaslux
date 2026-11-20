@@ -208,11 +208,22 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
         "sameDiskDualBootVerified":False,"storageWritesAuthorized":False,
         "releaseEligible":False,
     }
-    if trace_file is not None and trace_file.is_file() and not trace_file.is_symlink():
-        require(trace_file.stat().st_size <= 10 * 1024 * 1024,
-                "QEMU write trace exceeded bounded evidence size")
-        result["qemuWriteTraceSha256"] = sha256_file(trace_file)
-        result["qemuWriteTraceBytes"] = trace_file.stat().st_size
+    if trace_file is not None:
+        if trace_file.is_file() and not trace_file.is_symlink():
+            trace_size = trace_file.stat().st_size
+            if trace_size <= 10 * 1024 * 1024:
+                result["qemuWriteTraceSha256"] = sha256_file(trace_file)
+                result["qemuWriteTraceBytes"] = trace_size
+                result["qemuWriteTraceStatus"] = "captured"
+            else:
+                st = trace_file.lstat()
+                require(stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid()
+                        and st.st_nlink == 1,
+                        "refusing to remove oversized foreign QEMU trace")
+                trace_file.unlink()
+                result["qemuWriteTraceStatus"] = "omitted-oversized"
+        else:
+            result["qemuWriteTraceStatus"] = "no-trace-file-produced"
     return result
 
 if __name__=="__main__":
