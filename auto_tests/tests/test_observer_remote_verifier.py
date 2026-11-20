@@ -315,7 +315,7 @@ def test_sequence_must_advance_monotonically():
     v = verifier(store)
     identify = make_request()
     verify_one(v, identify, make_response(private, identify))
-    request = make_request("state.read", sequence=1, nonce="B" * 43)
+    request = make_request("state.read", sequence=1, nonce=nonce_for(1))
     response = make_response(private, request)
     verify_one(v, request, response)
     repeated_sequence = make_request(
@@ -417,7 +417,7 @@ def test_result_digest_is_checked_independently_of_signature():
     def tamper(response):
         response["result"]["snapshot"]["screen"] = "installer"
 
-    request = make_request("state.read", sequence=1, nonce="B" * 43)
+    request = make_request("state.read", sequence=1, nonce=nonce_for(1))
     response = make_response(private, request, mutate=tamper)
     # The signature is valid for the mutated response, but the old result hash is not.
     assert_refused(
@@ -433,7 +433,7 @@ def test_rfc8785_is_required_not_python_json_sorting():
         response["result"]["snapshot"]["measurement"] = 1.0
         response["result_sha256"] = sha(rfc8785.dumps(response["result"]))
 
-    request = make_request("state.read", sequence=1, nonce="B" * 43)
+    request = make_request("state.read", sequence=1, nonce=nonce_for(1))
     response = make_response(private, request, mutate=include_float, alternate_signing=True)
     assert_refused(
         "signature-invalid",
@@ -448,7 +448,7 @@ def test_framebuffer_content_hash_is_checked():
         response["result"]["data"] = base64.b64encode(b"\x89PNG\r\n\x1a\nchanged").decode()
         response["result_sha256"] = sha(rfc8785.dumps(response["result"]))
 
-    request = make_request("frame.read", sequence=1, nonce="B" * 43)
+    request = make_request("frame.read", sequence=1, nonce=nonce_for(1))
     response = make_response(private, request, operation="frame.read", mutate=tamper_frame)
     assert_refused(
         "frame-integrity-failed",
