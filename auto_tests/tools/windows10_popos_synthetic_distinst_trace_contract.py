@@ -262,6 +262,66 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
     argv = process.get("argv", []) if type(process) is dict else []
     source_hint = process.get("sourceRevisionHint") if type(process) is dict else None
     gpt_diff = guest.get("gptDiff") if type(guest) is dict else None
+    bio = tracefs.get("blockBioQueue", []) if type(tracefs) is dict else []
+    rq_issue = tracefs.get("blockRqIssue", []) if type(tracefs) is dict else []
+    target_mm = guest.get("targetMajorMinor") if type(guest) is dict else None
+    bio_write = [x for x in bio if type(x) is dict
+                 and type(x.get("count")) is int and x["count"] > 0
+                 and "W" in str(x.get("rwbs", ""))]
+    bio_flush = [x for x in bio if type(x) is dict
+                 and type(x.get("count")) is int and x["count"] == 0
+                 and "F" in str(x.get("rwbs", ""))]
+    bio_bytes = sum(x["count"] * SECTOR for x in bio_write)
+    bio_by_region = {}
+    bio_devices = set()
+    bio_processes = set()
+    bio_outside = []
+    for event in bio_write:
+        bio_devices.add(f"{event.get('major')}:{event.get('minor')}")
+        bio_processes.add((str(event.get("comm", "")), int(event.get("pid", -1))))
+        start, end = int(event["sector"]), int(event["sector"]) + int(event["count"])
+        part = next((x for x in partitions
+                     if x["startLba"] <= start
+                     and end <= x["startLba"] + x["sectorCount"]), None)
+        if part is not None:
+            region = "synthetic-esp" if int(part["number"]) == 1 else "synthetic-root"
+        elif start < 34:
+            region = "primary-mbr-gpt"
+        elif end > DISK_SECTORS - 33:
+            region = "backup-gpt"
+        else:
+            region = "unallocated-or-outside-partitions"
+        entry = bio_by_region.setdefault(region, {"eventCount": 0, "bytes": 0})
+        entry["eventCount"] += 1
+        entry["bytes"] += (end - start) * SECTOR
+        if region not in ("synthetic-esp", "synthetic-root"):
+            bio_outside.append({"sector": start, "sectorCount": end-start,
+                                "region": region, "comm": event.get("comm"),
+                                "pid": event.get("pid")})
+    tracefs_available = (
+        type(tracefs) is dict and tracefs.get("available") is True
+        and len(bio) > 0 and bool(bio_write)
+    )
+    tracefs_target_matched = (
+        type(target_mm) is str and bool(bio_devices)
+        and bio_devices == {target_mm}
+        and not tracefs.get("otherWritableBlockDeviceEvents", [])
+    ) if type(tracefs) is dict else False
+    tracefs_byte_match = bool(qemu_events) and bio_bytes == sum(
+        x["lengthBytes"] for x in qemu_events)
+    tracefs_crosscheck = (
+        tracefs_available and tracefs_target_matched and tracefs_byte_match
+    )
+    gpt_changed = type(gpt_diff) is dict and gpt_diff.get("unchanged") is False
+    out_of_set = bool(outside or unsupported or gpt_changed or bio_outside)
+    observation_complete = bool(qemu_events) and tracefs_crosscheck
+    write_set_match = not out_of_set and observation_complete
+    if out_of_set:
+        decision = "REFUSE_OUT_OF_WRITESET"
+    elif not observation_complete:
+        decision = "REFUSE_INCOMPLETE_OBSERVATION"
+    else:
+        decision = "MATCH_SYNTHETIC_PARTITION_WRITESET"
     return {
         "schemaVersion": 1,
         "source": "QEMU virtio_blk_handle_write trace + synthetic plan",
@@ -277,6 +337,30 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
         "outOfSetEvents": outside[:256],
         "unsupportedWriteEventCount": len(unsupported),
         "unsupportedWriteEvents": unsupported[:32],
+        "guestTracefsAvailable": tracefs_available,
+        "guestTracefsBlockBioQueueEventCount": len(bio),
+        "guestTracefsBlockBioWriteEventCount": len(bio_write),
+        "guestTracefsFlushEventCount": len(bio_flush),
+        "guestTracefsBlockBioWriteBytes": bio_bytes,
+        "guestTracefsWritesByRegion": bio_by_region,
+        "guestTracefsOutOfSetEventCount": len(bio_outside),
+        "guestTracefsOutOfSetEvents": bio_outside[:128],
+        "guestTracefsTargetMajorMinor": target_mm,
+        "guestTracefsObservedMajorMinor": sorted(bio_devices),
+        "guestTracefsTargetIdentityMatched": tracefs_target_matched,
+        "guestTracefsQemuByteCountMatch": tracefs_byte_match,
+        "guestTracefsCorroboratesQemu": tracefs_crosscheck,
+        "guestTracefsBlockRqIssueEventCount": len(rq_issue),
+        "guestTracefsRawTraceBytes": tracefs.get("rawTraceBytes") if type(tracefs) is dict else None,
+        "guestTracefsRawTraceSha256": tracefs.get("rawTraceSha256") if type(tracefs) is dict else None,
+        "guestTracefsWriteProcesses": [
+            {"comm": comm, "pid": pid}
+            for comm, pid in sorted(bio_processes)
+        ],
+        "guestTracefsExecs": [
+            {"filename": x.get("filename"), "pid": x.get("pid")}
+            for x in execs if type(x) is dict
+        ],
         "pr232Projection": {
             "nativePopEspPartitionIndex": 5,
             "syntheticEspPartitionIndex": 1,
@@ -310,11 +394,12 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
             "systemdBootObserved": False,
         },
         "guestGptDiff": gpt_diff,
+        "gptMetadataChanged": gpt_changed,
         "distinstExitCode": process.get("exitCode") if type(process) is dict else None,
         "upstreamRevisionHint": source_hint,
-        "writeSetMatch": not outside and not unsupported,
-        "decision": "MATCH_SYNTHETIC_PARTITION_WRITESET"
-                    if not outside and not unsupported else "REFUSE_OUT_OF_WRITESET",
+        "observationComplete": observation_complete,
+        "writeSetMatch": write_set_match,
+        "decision": decision,
         "distinstExecutionAuthorized": False,
         "diskWritesAuthorizedForWindows": False,
         "windowsEspWritesAuthorized": False,
