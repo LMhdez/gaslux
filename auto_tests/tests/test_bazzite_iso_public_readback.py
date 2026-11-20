@@ -14,9 +14,9 @@ from auto_tests.bazzite_iso_public_readback import (
     validate_attestation_report,
     validate_metadata,
     validate_run_metadata,
+    verify_config_blob,
     verify_embedded_blobs,
     verify_embedded_manifest,
-    verify_config_blob,
 )
 
 
