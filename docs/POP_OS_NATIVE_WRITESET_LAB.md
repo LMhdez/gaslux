@@ -332,3 +332,38 @@ Como já demonstrado em fonte upstream, `--test` não é dry-run:
 pode alterar a tabela de partições e formatar antes do retorno.
 Nenhuma alteração aos módulos Safety #267 nem às proteções
 da instalação nativa com Windows genuíno foi feita.
+
+
+### Falha QEMU sintética e correção causal (20/11/2026, 12:04 UTC)
+
+A execução [Actions #44732506603](https://github.com/LMhdez/gaslux/actions/runs/44732506603)
+arrancou **realmente** o Pop live da ISO autenticada em QEMU,
+montou o controlo FAT readonly e verificou
+`synthetic-smoke.sh: OK`, mas recusou antes da escrita.
+[Artefacto de diagnóstico #14626523648](https://github.com/LMhdez/gaslux/actions/runs/44732506603/artifacts/14626523648),
+digest ZIP `sha256:3686f250c804a8a1989bef6001ce29d61368f975345a0dc3c79ea765831ddb90`.
+
+O serial demonstrou:
+
+```text
+GASLUX_SYNTH_GUEST_VM_TYPE=kvm
+GASLUX_SYNTH_GUEST_SERIAL_SEEN=GASLUX_POP_SYNTH
+GASLUX_SYNTH_GUEST_RW_DISKS=zram0
+vdc
+```
+
+O `zram0` é o mecanismo virtual de memória comprimida do
+Pop live e aparece em `lsblk -dn -o NAME,TYPE,RO` como
+`disk` gravável. O guard original confundia-o com segundo disco
+anexado, impedindo a escrita sintética esperada. A correção
+[commit `6d20d4f`](https://github.com/LMhdez/gaslux/commit/6d20d4f1e1de912ba50885b61256b569437f21cb)
+exclui **somente** nomes `zram[0-9]+` cuja localização real
+seja `/sys/devices/virtual/block/zramN`; qualquer outro
+disco gravável, serial diferente, geometria incorreta ou ausência
+de identidade prossegue em recusa.
+
+Não houve alterações à autorização da instalação Windows nem
+ao Safety #267. Esta falha **não comprova escritas**; o monitor
+externo de QEMU permaneceu vazio e o child descartável foi
+eliminado. A execução modificadora de `distinst` continua
+bloqueada.
