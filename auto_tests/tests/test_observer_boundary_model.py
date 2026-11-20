@@ -23,8 +23,10 @@ def boundary():
         qemu_identity_sha256="c" * 64,
         source_commit="reviewed-fixture-commit",
     )
+
     def clock():
         return 100.0
+
     model = ObservationBoundaryModel(
         peer=peer,
         session_id=session_id,
