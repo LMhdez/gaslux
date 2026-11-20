@@ -66,11 +66,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          printf '{}\\n' > "$RUNNER_TEMP/missing-anaconda-actions.json"
+          printf '{}\n' > "$RUNNER_TEMP/missing-anaconda-actions.json"
           rc=0
-          python auto_tests/bazzite_anaconda_write_set_gate.py \\
-            --proposal atomic-target-proposal.json \\
-            --observation "$RUNNER_TEMP/missing-anaconda-actions.json" \\
+          python auto_tests/bazzite_anaconda_write_set_gate.py \
+            --proposal atomic-target-proposal.json \
+            --observation "$RUNNER_TEMP/missing-anaconda-actions.json" \
             > "$RUNNER_TEMP/invalid-action-result.json" 2> anaconda-comparison-refusal.txt || rc=$?
           test "$rc" -eq 2
           grep -F 'REFUSED:' anaconda-comparison-refusal.txt
