@@ -1,9 +1,9 @@
-name: Windows ISO lab headless OVMF USB keyboard console smoke (synthetic GRUB only)
+name: Windows ISO owned Unix VNC EFI keyboard smoke (synthetic GRUB only)
 
-# Known failing headless keyboard diagnostic retained for opt-in revalidation.
-# Production Windows evaluation KVM path now tests the separate no-prompt
-# Microsoft-sourced EFI DVD path; no keyboard delivery claim is made.
 on:
+  push:
+    branches:
+      - fix/windows-hmp-native-com1-regressions-20261118
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   synthetic-uefi-usb-keyboard:
-    name: Real QEMU/KVM OVMF receives one key from isolated HMP USB input
+    name: Real QEMU/KVM OVMF consumes exactly one loopback VNC Enter
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -43,7 +43,7 @@ jobs:
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
-      - name: Prove guest UEFI USB keystroke consumption, not only HMP acceptance
+      - name: Prove guest UEFI keyboard input from private loopback VNC
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -57,7 +57,8 @@ jobs:
           from pathlib import Path
 
           sys.path.insert(0, "auto_tests/tools")
-          from windows_x64_tcg_firstboot import send_first_iso_boot_key
+          from windows_x64_tcg_firstboot import send_first_iso_boot_key_vnc
+
           assert os.environ["RUNNER_TEMP"] == "/home/runner/work/_temp"
           assert os.environ["RUNNER_ENVIRONMENT"] == "github-hosted"
           assert os.environ["GITHUB_REPOSITORY"] == "LMhdez/gaslux"
@@ -73,7 +74,9 @@ jobs:
                   "terminal_output serial\n"
                   "terminal_input console\n"
                   "echo GASLUX_USB_GUEST_INPUT_READY=1\n"
-                  "sleep --interruptible 60\n"
+                  # grub sleep --interruptible ignores Enter (it accepts ESC/F4/Shift).
+                  # read is the actual keyboard witness for the private VNC Enter key.
+                  "read gaslux_guest_enter\n"
                   "echo GASLUX_USB_GUEST_INPUT_ACCEPTED=1\n"
                   "sleep 10\n",
                   encoding="utf-8",
@@ -91,10 +94,10 @@ jobs:
                   "qemu-system-x86_64", "-machine", "q35,accel=kvm,smm=on",
                   "-global", "driver=cfi.pflash01,property=secure,value=on",
                   "-cpu", "host", "-smp", "2", "-m", "1024",
-                  "-display", "none", "-vga", "std",
+                  # Private AF_UNIX VNC endpoint in the same 0700 owned directory.
+                  "-vnc", f"unix:{work / 'initial-installer-vnc.sock'}", "-vga", "std",
                   "-monitor", f"unix:{hmp},server,nowait", "-net", "none",
-                  "-device", "qemu-xhci,id=lab_usb",
-                  "-device", "usb-kbd,bus=lab_usb.0",
+                  # Use built-in Q35 PS/2 firmware keyboard; USB needs separate proof.
                   "-device", "ich9-ahci,id=lab_sata",
                   "-drive", f"if=none,id=lab_iso,media=cdrom,readonly=on,format=raw,file={iso}",
                   "-device", "ide-cd,drive=lab_iso,bus=lab_sata.1",
@@ -122,17 +125,18 @@ jobs:
                               raise RuntimeError("GRUB did not block for a real key")
                           accepted = True
                           break
-                      if ready and not injected and hmp.is_socket():
-                          print("GASLUX_SYNTHETIC_OVMF_HMP_KEY_REQUEST=1", flush=True)
-                          send_first_iso_boot_key(hmp)
-                          print("GASLUX_SYNTHETIC_OVMF_HMP_KEY_ACCEPTED=1", flush=True)
+                      if ready and not injected:
+                          print("GASLUX_SYNTHETIC_OVMF_VNC_KEY_REQUEST=1", flush=True)
+                          time.sleep(.6)
+                          send_first_iso_boot_key_vnc(hmp, hold_ms=300)
+                          print("GASLUX_SYNTHETIC_OVMF_VNC_KEY_SENT=1", flush=True)
                           injected = True
                       time.sleep(.15)
                   if not ready or not injected or not accepted:
                       raise RuntimeError(
                           "USB keyboard input was not independently received by the guest"
                       )
-                  print("GASLUX_SYNTHETIC_OVMF_USB_GUEST_ENTER_RECEIVED=1")
+                  print("GASLUX_SYNTHETIC_OVMF_VNC_GUEST_ENTER_RECEIVED=1")
               except Exception:
                   if serial.is_file():
                       print(serial.read_bytes()[-10000:].decode(errors="replace"))
@@ -144,7 +148,7 @@ jobs:
                   err.close()
           PY
           {
-            echo 'PASS: synthetic GRUB EFI guest consumed an HMP Enter via xHCI USB HID.'
+            echo 'PASS: synthetic GRUB EFI guest consumed a loopback-only VNC Enter.'
             echo 'No Microsoft Windows ISO was used, no Windows Setup or OS boot verified.'
             echo 'No physical disks or host EFI/BCD/WinRE were modified.'
           } >> "$GITHUB_STEP_SUMMARY"
