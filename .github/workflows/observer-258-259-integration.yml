@@ -44,11 +44,14 @@ jobs:
               Draft202012Validator.check_schema(json.loads(path.read_text(encoding="utf-8")))
           PY
       - name: Enforce experimental non-writer boundary
+        env:
+          INTEGRATION_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python - <<'PY'
           from pathlib import Path
           import subprocess
-          changed = subprocess.check_output(["git", "diff", "--name-only", "90b044ba435b2b4b4db6c5813ca4698b37e4a555", "HEAD"], text=True).splitlines()
+          import os
+          changed = subprocess.check_output(["git", "diff", "--name-only", "90b044ba435b2b4b4db6c5813ca4698b37e4a555", os.environ["INTEGRATION_HEAD"]], text=True).splitlines()
           print("Integrated files relative to pinned dev:", repr(changed))
           forbidden = ("release-config.json", "Installation/", "Scripts/", "assets/live/", "Pages/")
           if any(p == forbidden[0] or p.startswith(forbidden[1:]) for p in changed):
