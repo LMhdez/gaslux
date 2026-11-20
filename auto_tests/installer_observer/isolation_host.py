@@ -74,7 +74,7 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
         "sudo", "-n", "-H", "-u", service_user, "env",
         "GASLUX_ISOLATED_WORKER=1",
         f"RUNNER_TEMP={private_root}",
-        f"PYTHONPATH={Path.cwd()}",
+        f"PYTHONPATH={private_root}",
         python, "-u", "-m", "auto_tests.installer_observer.lab_probe",
     ]
     evidence = []
@@ -103,6 +103,10 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 elif line.startswith(
                     ("ModuleNotFoundError:", "PermissionError:", "ImportError:", "sudo:", "OSError:")
                 ):
+                    worker_errors.append(line.strip()[:200])
+                elif len(worker_errors) < 12:
+                    # Only the dedicated, synthetic lab worker writes here.
+                    # Retain bounded diagnostic output; no host environment dump.
                     worker_errors.append(line.strip()[:200])
                 continue
             try:
