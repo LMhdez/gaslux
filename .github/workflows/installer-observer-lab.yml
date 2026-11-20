@@ -5,6 +5,7 @@ on:
       - feature/installer-observer-engine
     paths:
       - 'auto_tests/installer_observer/lab_identity.py'
+      - 'auto_tests/installer_observer/controller_lease.py'
       - 'auto_tests/installer_observer/lab_probe.py'
       - '.github/workflows/installer-observer-lab.yml'
   workflow_dispatch:
