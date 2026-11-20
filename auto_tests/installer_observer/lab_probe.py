@@ -143,6 +143,17 @@ def _one(evidence_root: Path) -> dict:
                 RfbReader(unix_socket=vnc), attestor, authority, resolution
             )
             print("QEMU stage: observation after initial RFB reader closed", flush=True)
+            # RFB close notifications are asynchronous. Before opening another
+            # read-only session, require QMP to prove the prior client is gone.
+            idle_deadline = time.monotonic() + 3
+            while True:
+                try:
+                    attestor.verify(idle_deadline)
+                    break
+                except Refusal as exc:
+                    if "another VNC client" not in str(exc) or time.monotonic() >= idle_deadline:
+                        raise
+                    time.sleep(0.05)
             frame = transport.capture(time.monotonic() + 8)
             if frame.scale is not None or frame.passed_checks:
                 raise Refusal("Read-only observation must not claim guest preconditions")
