@@ -566,6 +566,16 @@ def compare_bcd_ab(control: dict[str, Any], treatment: dict[str, Any]) -> dict[s
                      for x in control["firstChangedByteSpans"]}
     treatment_spans = {(x["offset"], x["length"])
                        for x in treatment["firstChangedByteSpans"]}
+    offset_manifest_equal = (
+        control.get("changedOffsetSetSha256") == treatment.get("changedOffsetSetSha256")
+        if control.get("changedOffsetSetSha256") and treatment.get("changedOffsetSetSha256")
+        else None
+    )
+    span_manifest_equal = (
+        control.get("changedSpansSha256") == treatment.get("changedSpansSha256")
+        if control.get("changedSpansSha256") and treatment.get("changedSpansSha256")
+        else None
+    )
     return {
         "initialBcdEqual": initial_equal,
         "controlBcdChanged": control_changed,
@@ -573,7 +583,9 @@ def compare_bcd_ab(control: dict[str, Any], treatment: dict[str, Any]) -> dict[s
         "controlAndTreatmentPostBootBcdEqual": post_equal,
         "controlChangedByteCount": control["changedByteCount"],
         "treatmentChangedByteCount": treatment["changedByteCount"],
-        "first24ChangedSpansEqual": control_spans == treatment_spans,
+        "first64ChangedSpansEqual": control_spans == treatment_spans,
+        "changedOffsetManifestEqual": offset_manifest_equal,
+        "changedSpanManifestEqual": span_manifest_equal,
         "classification": classification,
         "processAttributionProven": False,
         "approvedMutation": False,
