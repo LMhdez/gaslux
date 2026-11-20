@@ -1,6 +1,13 @@
 name: Q4OS genuine Windows10 read-only QEMU Safety refusal
 
 on:
+  pull_request:
+    branches:
+      - fix/q4os-evidence-dirfd-20261119
+    paths:
+      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
+      - 'auto_tests/tools/q4os_win10_qmp_boot.py'
+      - 'auto_tests/tests/test_q4os_win10_qmp_boot.py'
   workflow_dispatch:
 
 permissions:
