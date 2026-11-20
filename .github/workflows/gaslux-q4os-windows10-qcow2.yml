@@ -1,12 +1,11 @@
 name: Q4OS genuine Windows10 read-only QEMU Safety refusal
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/q4os-windows-native-boundary-20261120
+      - fix/q4os-evidence-dirfd-20261119
     paths:
       - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
-      - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
       - 'assets/live/gaslux_q4os_win10_readonly_probe.py'
   workflow_dispatch:
 
@@ -25,6 +24,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove published Q4OS HEAD checked out
+        shell: bash
+        env:
+          GASLUX_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GASLUX_EXPECTED_HEAD"
 
       - name: Install QEMU, OVMF and offline NTFS inspection tools
         shell: bash
