@@ -94,6 +94,20 @@ def classify_trace(trace: str, plan: dict, *, reported_serial: str,
             and type(nvram_sha_after) is str and HASH.fullmatch(nvram_sha_after)
             and child_discarded is True and guest_probe_ok is True,
             "QEMU trace/provenance/isolation or backing checkpoint unproven")
+    require(plan.get("diskGuid") == SYNTH_GUID
+            and plan.get("esp") == {
+                "partitionIndex": 1,
+                "partuuid": "ae228a25-0ecd-4f62-83b4-88dd48b88edd",
+                "offsetBytes": 1024**2,
+                "lengthBytes": 64 * 1024**2,
+            }
+            and plan.get("root") == {
+                "partitionIndex": 2,
+                "partuuid": "f81482ad-e0e1-491a-8ea5-9c246f82ded8",
+                "offsetBytes": 128 * 1024**2,
+                "lengthBytes": 2 * 1024**3,
+            },
+            "synthetic disk or PARTUUID drift")
     require(process_name == "python3"
             and installer_elf_sha256 is None,
             "write request has unexpected origin or untrusted installer ELF")
