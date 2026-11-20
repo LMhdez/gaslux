@@ -25,6 +25,37 @@ class MintAbForensicContracts(unittest.TestCase):
                         evidence=Path("/tmp"))
                 checkpoint.assert_not_called()
 
+    def test_same_run_capacity_evidence_must_precede_checkpoint_or_qemu(self):
+        import json
+        from windows_mint_ab_checkpoint import CONSENT
+        with tempfile.TemporaryDirectory() as root:
+            d = Path(root)
+            early = d/"mint-ab-capacity-early.json"
+            args = dict(original=["if=pflash,format=raw,readonly=on,file=/tmp/firmware"],
+                base=d/"base", nvram=d/"vars", overlay=d/"overlay",
+                workspace=d, root_uuid="00000000-0000-4000-8000-000000000001",
+                kernel=d/"kernel", initramfs=d/"initramfs", evidence=d)
+            with patch.dict(os.environ, {
+                "GASLUX_MINT_AB_CHECKPOINT_CONSENT": CONSENT,
+                "GASLUX_MINT_AB_BOOT_CONSENT":
+                    "I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE",
+                "GITHUB_RUN_ID": "12345", "GITHUB_SHA": "a"*40,
+            }, clear=True), patch.object(forensic, "prepare_checkpoint") as checkpoint:
+                with self.assertRaisesRegex(forensic.ForensicError,
+                                             "untrusted A/B evidence"):
+                    forensic.run_ab(**args)
+                checkpoint.assert_not_called()
+                early.write_text(json.dumps({
+                    "schema": "gaslux-mint-ab-capacity-v1",
+                    "phase": "early", "result": "PASS",
+                    "checkpointReadyForReview": False,
+                    "compressionAssumedForCapacity": False,
+                    "githubRunId": "different-run", "sourceCommit": "a"*40,
+                }))
+                with self.assertRaisesRegex(forensic.ForensicError, "same-run"):
+                    forensic.run_ab(**args)
+                checkpoint.assert_not_called()
+
     def test_all_partitions_tracked_individually(self):
         initial = ["1"*64, "2"*64, "3"*64, "4"*64]
         changed = ["5"*64, "2"*64, "6"*64, "7"*64]
