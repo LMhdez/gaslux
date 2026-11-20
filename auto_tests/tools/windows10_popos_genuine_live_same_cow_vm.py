@@ -24,6 +24,7 @@ from windows10_popos_official_iso_signed_lab import (
 from windows10_popos_gpt_mirror_gate import capture_owned_qcow2
 from windows10_popos_independent_esp_root_stage import reconcile_owned_pair
 from windows10_popos_native_readonly_handoff_candidate import LAB_VIRTIO_SERIAL
+from windows10_popos_native_child_vm_checkpoint import disposable_native_child
 from windows_x64_installed_gpt_ro_audit import require, DiskAuditError
 
 LIVE_CONSENT = "I_ACCEPT_AUTHENTIC_POP_LIVE_WITH_READONLY_WIN10_COW"
@@ -307,6 +308,33 @@ def live_probe_on_windows(
                 again = capture_owned_qcow2(overlay, expected_count=6)
                 reconcile_owned_pair(before, again, plan)
                 require(again == after, "read-only Pop live boot changed staged Win10 GPT")
+                # Exercise the REAL nested COW backing chain only after Pop live
+                # independently proves the exact Windows/Pop GPT. No writer is
+                # attached: this checkpoint is created, checked, and discarded.
+                with disposable_native_child(
+                    base, overlay, live_guest_gpt_verified=True,
+                ) as (native_child, checkpoint):
+                    require(
+                        checkpoint["distinstExecutionAuthorized"] is False
+                        and checkpoint["authenticatedNativeInstallHandoffVerified"] is False
+                        and checkpoint["writerMayUseOnlyPrivateNativeChild"] is True,
+                        "nested native child unexpectedly authorized installation",
+                    )
+                require(
+                    not native_child.exists(),
+                    "unmodified native writer child was not discarded",
+                )
+                checkpoint["childCreatedThenDiscardedWithoutWrite"] = True
+                checkpoint_data = (
+                    json.dumps(checkpoint, sort_keys=True, separators=(",", ":"))
+                    + "\n"
+                ).encode("utf-8")
+                name = "win10-pop-native-child-checkpoint.json"
+                (evidence / name).write_bytes(checkpoint_data)
+                (evidence / (name + ".sha256")).write_text(
+                    hashlib.sha256(checkpoint_data).hexdigest()
+                    + "  " + name + "\n", encoding="ascii",
+                )
                 for filename, source in (
                     ("win10-pop-live-serial.log", serial),
                     ("win10-pop-live-controller.trace", trace),
@@ -331,6 +359,8 @@ def live_probe_on_windows(
                     "popSignedIsoGpgVerified": True,
                     "popLiveGenuineWindowsGptGuestVerified": True,
                     "popLiveQemuCleanPoweroffVerified": True,
+                    "popNativeChildCreatedAndDiscardedVerified": True,
+                    "popNativeGuestWriterAuthorized": False,
                     "popInstalled": False, "dualBootVerified": False,
                     "rollbackVerified": False, "productionInstallationAuthorized": False,
                 }
