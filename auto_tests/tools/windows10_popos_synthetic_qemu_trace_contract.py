@@ -34,6 +34,10 @@ UNKNOWN_WRITE = re.compile(
     r"virtio_blk_handle_write_zeroes|blk_co_pwritev|bdrv_co_pwritev)\b"
 )
 HASH = re.compile(r"[a-f0-9]{64}\Z")
+PFLASH_WRITE = re.compile(
+    r"\bpflash_(?:data_write|data_write_block|io_write|write_block_erase|"
+    r"write_block_start|write_block_flush|write_block_abort|write|write_failed)\b"
+)
 GUID = re.compile(r"[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\Z")
 
 
@@ -119,6 +123,11 @@ def classify_trace(trace: str, plan: dict, *, reported_serial: str,
                              "lengthBytes": SMOKE_LENGTH,
                              "intervalType": "unallocated-synthetic-only"},
             "unexpected or incomplete synthetic write-set")
+    pflash_events = [line for line in trace.splitlines()
+                     if PFLASH_WRITE.search(line)]
+    vars_changed = nvram_sha_before != nvram_sha_after
+    require(not vars_changed or len(pflash_events) > 0,
+            "OVMF VARS changed without independent QEMU pflash write events")
     events = []
     for line in trace.splitlines():
         if not UNKNOWN_WRITE.search(line):
@@ -154,7 +163,10 @@ def classify_trace(trace: str, plan: dict, *, reported_serial: str,
         "qemuTraceSource": "virtio_blk_handle_write",
         "baseImageSha256Unchanged": True,
         "privateChildDiscarded": True,
-        "ovmfVarsChanged": nvram_sha_before != nvram_sha_after,
+        "ovmfVarsChanged": vars_changed,
+        "ovmfPflashWriteRequestsObserved": bool(pflash_events),
+        "ovmfPflashWriteEventCount": len(pflash_events),
+        "ovmfPflashWriteEvents": pflash_events[:100],
         "nvramWriteSetAttested": False,
         "installerProcessObserved": False,
         "installerWritesObserved": False,
