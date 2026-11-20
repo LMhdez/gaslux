@@ -45,6 +45,24 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def read_target_os_release(root: Path) -> str:
+    """Resolve Ubuntu's /etc/os-release inside extracted root, never the host."""
+    root = root.resolve(strict=True)
+    path = root / "etc/os-release"
+    for _ in range(8):
+        if not path.is_symlink():
+            require(path.is_file() and path.is_relative_to(root),
+                    "target OS release file is missing or escapes extracted root")
+            return path.read_text(encoding="utf-8")
+        link = Path(os.readlink(path))
+        path = (root / link.relative_to("/") if link.is_absolute()
+                else path.parent / link)
+        path = Path(os.path.normpath(str(path)))
+        require(path.is_relative_to(root),
+                "target OS release symlink escapes extracted root")
+    raise MintOverlayError("target OS release symlink chain is too long")
+
+
 def write_target_configuration(target: Path, root_uuid: str,
                                hostname: str = "GASLUXMINT") -> None:
     require(hostname in ("GASLUXMINT", "GASLUXZORIN"),
@@ -363,10 +381,9 @@ def install_mint_root_and_boot(
         unpacked.mkdir(mode=0o700)
         run(["sudo", "unsquashfs", "-f", "-processors", "2", "-d", str(unpacked), str(rootfs)],
             timeout=900, capture=False)
-        os_release = unpacked / "etc/os-release"
-        require(os_release.is_file() and not os_release.is_symlink()
-                and re.search(rf"(?m)^ID={re.escape(os_id)}$",
-                              os_release.read_text()) is not None,
+        os_release_text = read_target_os_release(unpacked)
+        require(re.search(rf"(?m)^ID={re.escape(os_id)}$",
+                          os_release_text) is not None,
                 "extracted target is not Linux Mint")
         kernels = sorted((unpacked / "boot").glob("vmlinuz-*"))
         require(len(kernels) == 1, "Mint target must contain one unambiguous kernel")
