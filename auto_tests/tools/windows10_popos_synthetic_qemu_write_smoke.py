@@ -35,11 +35,11 @@ CHILD = "gaslux-pop-synthetic-write-child.qcow2"
 BASE = "gaslux-pop-synthetic-raw-base.img"
 P1GUID = "ae228a25-0ecd-4f62-83b4-88dd48b88edd"
 P2GUID = "f81482ad-e0e1-491a-8ea5-9c246f82ded8"
-MARKER = re.compile(rb"(?m)^GASLUX_POP_SYNTH_KVM_WRITE_SMOKE=1\\r?$")
-REFUSAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_WRITE_REFUSED=([^\\r\\n]+)\\r?$")
+MARKER = re.compile(rb"(?m)^GASLUX_POP_SYNTH_KVM_WRITE_SMOKE=1\r?$")
+REFUSAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_WRITE_REFUSED=([^\r\n]+)\r?$")
 RESULT = re.compile(
     rb"(?m)^GASLUX_POP_SYNTH_(?:KVM_WRITE_SMOKE=1|"
-    rb"WRITE_REFUSED=[^\\r\\n]+)\\r?$"
+    rb"WRITE_REFUSED=[^\r\n]+)\r?$"
 )
 
 
