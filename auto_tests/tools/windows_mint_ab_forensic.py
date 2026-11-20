@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import re
 import stat
 import struct
@@ -228,6 +229,21 @@ def run_mint_arm(arm: Path, kernel: Path, initramfs: Path,
         proc.wait(timeout=30)
 
 
+def archive_serial(source: Path, evidence: Path, max_bytes: int = 512_000) -> str:
+    checked_file(source, source.parent)
+    require(source.stat().st_size <= max_bytes, "oversized A/B COM1 evidence")
+    target = evidence / source.name
+    require(not target.exists() and not target.is_symlink(),
+            "reused A/B COM1 archive")
+    with source.open("rb") as inp, target.open("xb") as out:
+        shutil.copyfileobj(inp, out, 64*1024)
+        out.flush()
+        os.fsync(out.fileno())
+    require(sha256_file(source) == sha256_file(target),
+            "A/B COM1 evidence changed during archiving")
+    return sha256_file(target)
+
+
 def changed_files(before: dict, after: dict) -> dict:
     answer = {}
     for name in ("esp", "recovery"):
@@ -296,6 +312,9 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
     ab["control"] = run_windows_arm(
         original, base, nvram, arms[0], directory/VARS[0],
         workspace/"mint-ab-arm-a-windows-serial.log")
+    require(archive_serial(workspace/"mint-ab-arm-a-windows-serial.log",
+                           evidence) == ab["control"]["bootWitnessSha256"],
+            "control Windows boot transcript digest differs")
     after_a = guest_ro_inventory(arms[0], root_uuid)
     gpt_a = gpt_manifest(arms[0], workspace)
     ab["control"]["partitionSha256After"] = after_a["partitionSha256"]
@@ -318,12 +337,19 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
         arms[1], kernel, initramfs, root_uuid,
         evidence/"mint-ab-arm-b-mint-serial.log")
     after_mint = guest_ro_inventory(arms[1], root_uuid)
+    require(archive_serial(evidence/"mint-ab-arm-b-mint-serial.log",
+                           directory, max_bytes=2_000_000)
+            == ab["treatment"]["mintSerialSha256"],
+            "Mint B transcript digest differs")
     require(after_mint["partitionSha256"] == before[1]["partitionSha256"],
             "Mint B mutated a protected Windows partition: fail closed")
     ab["treatment"]["partitionSha256AfterMint"] = after_mint["partitionSha256"]
     ab["treatment"]["windows"] = run_windows_arm(
         original, base, nvram, arms[1], directory/VARS[1],
         workspace/"mint-ab-arm-b-windows-serial.log")
+    require(archive_serial(workspace/"mint-ab-arm-b-windows-serial.log",
+                           evidence) == ab["treatment"]["windows"]["bootWitnessSha256"],
+            "treatment Windows boot transcript digest differs")
     after_b = guest_ro_inventory(arms[1], root_uuid)
     gpt_b = gpt_manifest(arms[1], workspace)
     ab["treatment"]["partitionSha256AfterWindows"] = after_b["partitionSha256"]
@@ -351,6 +377,34 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
         and ab["treatment"]["gptUnchanged"]
         and ab["treatment"]["mintRootContentsPreserved"])
     write_manifest(evidence, "mint-ab-forensic.json", ab)
+    # After forensic read-only acquisition, prove BOTH writable arms can
+    # be reconstituted from the unchanged standalone checkpoint. No release
+    # authorization follows from recovery of a disposable QEMU experiment.
+    from windows_mint_ab_checkpoint import reproduce_restore, clone_vars
+    ref = directory / REFERENCE
+    for arm in arms:
+        require(reproduce_restore(ref, arm, directory),
+                "A/B postboot reference recovery failed")
+        equivalent(ref, arm)
+    vars_source = workspace/"windows-uefi-cow-checkpoint"/"trial-ovmf-variables.fd"
+    for name in VARS:
+        current = directory/name
+        file_guard(current, directory, 0o600)
+        current.unlink()  # EXACT owned copied vars, never the source
+        clone_vars(vars_source, current, directory)
+    require(sha256_file(base) == checkpoint["windowsBackingSha256"]
+            and sha256_file(ref) == checkpoint["referenceSha256"]
+            and all(sha256_file(directory/name) == checkpoint["initialOvmfVarsSha256"]
+                    for name in VARS),
+            "A/B recovery mutated the backing, checkpoint or OVMF state")
+    recovery = {
+        "transactionId": ab["transactionId"],
+        "restoreArmAProven": True, "restoreArmBProven": True,
+        "ovmfArmAAndBRestored": True, "backingAndReferencePreserved": True,
+        "releaseEligible": False, "productionRollbackProven": False,
+    }
+    write_manifest(evidence, "mint-ab-recovery.json", recovery)
+    ab["disposableArmsRestoredAfterBoot"] = True
     # Forensic classification never authorizes writes, even if A == B.
     return ab
 
