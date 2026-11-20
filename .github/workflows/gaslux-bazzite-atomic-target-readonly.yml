@@ -1,0 +1,101 @@
+name: Bazzite Atomic native target read-only write-set (synthetic)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-bazzite-atomic-target-readonly.yml'
+      - 'auto_tests/bazzite_atomic_destination_plan.py'
+      - 'auto_tests/tests/test_bazzite_atomic_destination_plan.py'
+      - 'auto_tests/bazzite_gpt_fixture.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bazzite-atomic-target-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-gpt-native-target:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real GPT and QEMU inventory tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive timeout 240s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive timeout 360s apt-get install -y -qq gdisk qemu-utils qemu-system-x86 ovmf
+          python -m pip install pytest ruff
+      - name: Reject forged identities and non-UEFI/GPT layouts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py
+      - name: Build and inspect the verified immutable GPT fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/bazzite_gpt_fixture.py prepare --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > synthetic-gpt-before.json
+          python auto_tests/bazzite_atomic_destination_plan.py --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > atomic-target-proposal.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('atomic-target-proposal.json').read_text())
+          assert [p['number'] for p in report['candidateNewPartitions']] == [4, 5, 6]
+          assert all(report[key] is False for key in (
+              'installationAuthorized', 'partitionWriteAuthorized', 'windowsEspWriteAuthorized',
+              'gptMetadataWriteAuthorized', 'nvramWriteAuthorized', 'secureBootEnrollmentAuthorized',
+              'legacyIso42IndependentSignatureVerified', 'nativeInstallerWriteSetObserved'))
+          assert report['gptHeadersAndPartitionTablesWouldChange'] is True
+          assert all(p['partuuid'] for p in report['protectedExistingPartitions'])
+          print('Verified proposal only; zero installation or disk-write authority')
+          PY
+      - name: Inventory QEMU/OVMF attachment without starting guest or writing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          code=/usr/share/OVMF/OVMF_CODE_4M.fd
+          if [[ ! -f "$code" ]]; then code=/usr/share/OVMF/OVMF_CODE.fd; fi
+          test -f "$code"
+          overlay="$RUNNER_TEMP/bazzite-gpt-fixture/gpt-layout-scratch.qcow2"
+          printf 'info block\ninfo qtree\nquit\n' | timeout 30s qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 512 -nodefaults -display none -S \
+            -bios "$code" -monitor stdio \
+            -drive "file=$overlay,format=qcow2,if=none,id=owned,readonly=on" \
+            -device virtio-blk-pci,drive=owned,serial=GLXBAZRO001 \
+            > qemu-ovmf-no-boot-inventory.txt
+          grep -F GLXBAZRO001 qemu-ovmf-no-boot-inventory.txt
+          grep -F gpt-layout-scratch.qcow2 qemu-ovmf-no-boot-inventory.txt
+          echo 'QEMU monitor-only attachment; guest was deliberately not started'
+      - name: Audit backing and discard disposable COW
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$RUNNER_TEMP/bazzite-gpt-fixture/manifest.json" ]]; then
+            python auto_tests/bazzite_gpt_fixture.py audit --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > synthetic-gpt-after.json
+            python auto_tests/bazzite_gpt_fixture.py discard --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > synthetic-gpt-discard.json
+          fi
+      - name: Publish bounded read-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-atomic-target-readonly
+          path: |
+            synthetic-gpt-before.json
+            atomic-target-proposal.json
+            qemu-ovmf-no-boot-inventory.txt
+            synthetic-gpt-after.json
+            synthetic-gpt-discard.json
+          if-no-files-found: error
+          retention-days: 7
