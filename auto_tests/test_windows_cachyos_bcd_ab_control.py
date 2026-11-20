@@ -12,6 +12,7 @@ from unittest import mock
 TOOLS = Path(__file__).resolve().parent / "tools"
 sys.path.insert(0, str(TOOLS))
 import windows_cachyos_bcd_ab_control as lab
+from windows_cachyos_cow_checkpoint import CheckpointError
 
 
 def forensic(before: str, after: str, changed: int, spans: list[dict]) -> dict:
@@ -232,7 +233,9 @@ usb_packet_state
                     vars_b.chmod(0o644)
                 else:
                     folder.chmod(0o755)
-                with self.assertRaises(lab.BcdAbControlError):
+                # The shared checkpoint guard intentionally rejects
+                # redirected or linked inputs before the A/B layer runs.
+                with self.assertRaises((lab.BcdAbControlError, CheckpointError)):
                     lab.prepare_matched_checkpoint_clones(folder)
                 self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
                 self.assertFalse((folder / lab.WINDOWS_CONTROL_VARS).exists())
