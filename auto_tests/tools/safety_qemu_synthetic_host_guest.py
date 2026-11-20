@@ -253,12 +253,16 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="gaslux-qemu-safety-", dir=os.environ["RUNNER_TEMP"]) as temp:
         work = Path(temp)
         initrd = make_initramfs(work, modroot)
+        readable_kernel = work / "vmlinuz"
+        # Ubuntu runner kernels may be root-only (0600); copy into our own
+        # RUNNER_TEMP workspace instead of chmod-ing the host kernel.
+        call("sudo", "-n", "install", "-m", "0644", str(kernel), str(readable_kernel))
         original = work / "base.raw"
         make_disk(original, disk_guid=str(uuid.uuid4()), part_guid=str(uuid.uuid4()))
         host = inspect_gpt_image(original, logical_sector_size=SECTOR)
         backing_sha = digest(original)
         tx, vm, nonce = secrets.token_hex(16), "safety-qemu-" + secrets.token_hex(12), secrets.token_hex(24)
-        guest = boot_readonly(work, kernel, initrd, original, label="valid",
+        guest = boot_readonly(work, readable_kernel, initrd, original, label="valid",
                               vm_id=vm, transaction=tx, nonce=nonce)
         assert_snapshot_matches(host, guest["snapshot"])
         immediate = inspect_gpt_image(original, logical_sector_size=SECTOR)
@@ -269,7 +273,7 @@ def main() -> None:
         negatives = {}
         other = work / "other.raw"
         make_disk(other, disk_guid=str(uuid.uuid4()), part_guid=str(uuid.uuid4()))
-        swapped = boot_readonly(work, kernel, initrd, other, label="swapped",
+        swapped = boot_readonly(work, readable_kernel, initrd, other, label="swapped",
                                 vm_id=vm, transaction=tx, nonce=nonce)
         try:
             evaluate_gate(host, swapped["snapshot"], immediate, nonce, tx, vm)
