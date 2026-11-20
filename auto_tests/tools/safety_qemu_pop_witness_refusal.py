@@ -14,7 +14,9 @@ import os
 from pathlib import Path
 import re
 import stat
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "assets/live"))
 from libertix_prewrite_no_writer import PrewriteDenied
 
 FILES = (
