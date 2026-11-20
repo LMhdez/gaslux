@@ -35,7 +35,7 @@ jobs:
       - name: Install read-only test dependencies (synthetic images, no Windows host)
         run: |
           set -Eeuo pipefail
-          python -m pip install 'pytest>=9,<10' 'jsonschema>=4,<5' 'ruff>=0.8,<1'
+          python -m pip install 'pytest>=9,<10' 'jsonschema>=4,<5' 'ruff>=0.8,<1' 'cryptography>=46,<51' 'PyYAML>=6,<7'
           sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
       - name: Compile and lint isolated non-authorizing backend
@@ -66,6 +66,21 @@ jobs:
           assert proof['windowsBootVerified'] is False
           assert proof['calamaresExecuted'] is False
           PY
+      - name: Regression contracts for Mint/Zorin metadata and existing Q4OS identity/recovery
+        env:
+          GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE: ${{ runner.temp }}/q4os-native-windows-boundary
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q \
+            auto_tests/tests/test_lab_media_probe.py \
+            auto_tests/tests/test_filepool_checksums.py \
+            auto_tests/tests/test_release_metadata.py \
+            auto_tests/tests/test_q4os_native_preflight.py \
+            auto_tests/tests/test_q4os_calamares_policy.py \
+            auto_tests/tests/test_q4os_evidence_manifest.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py \
+            auto_tests/tests/test_q4os_vm_target_plan.py \
+            --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/regression-pytest.xml"
       - name: Preserve synthetic-only evidence (no disk or ISO artifacts)
         if: always()
         uses: actions/upload-artifact@v4
