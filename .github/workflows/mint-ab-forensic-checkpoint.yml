@@ -1,0 +1,73 @@
+name: Mint forensic independent A/B checkpoint (no guest)
+
+on:
+  push:
+    branches:
+      - test/mint-cow-ab-checkpoint-20261120
+    paths:
+      - .github/workflows/mint-ab-forensic-checkpoint.yml
+      - auto_tests/tools/windows_mint_ab_checkpoint.py
+      - auto_tests/test_windows_mint_ab_checkpoint.py
+  workflow_dispatch:
+
+concurrency:
+  group: mint-ab-forensic-checkpoint-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-contracts:
+    name: Independent QCOW2, OVMF and TPM contract regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile and exercise adversarial checkpoint contracts, no Windows or Mint boot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_checkpoint.py auto_tests/test_windows_mint_ab_checkpoint.py
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_checkpoint.py -v
+      - name: Real qemu-img standalone conversion and nonaliasing on sparse synthetic QCOW2
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          python3 - <<'PY'
+          import pathlib, subprocess, tempfile
+          with tempfile.TemporaryDirectory(prefix="gaslux-mint-ab-synthetic-") as tmp:
+              root = pathlib.Path(tmp)
+              source = root / "source.qcow2"
+              ref = root / "reference.qcow2"
+              a = root / "arm-a.qcow2"
+              b = root / "arm-b.qcow2"
+              run = lambda args: subprocess.run(args, check=True, capture_output=True)
+              run(["qemu-img", "create", "-f", "qcow2", str(source), "64M"])
+              for src, dst in ((source, ref), (ref, a), (ref, b)):
+                  run(["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2", "-c",
+                       str(src), str(dst)])
+                  run(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2",
+                       str(src), str(dst)])
+              from os import stat
+              assert len({stat(p).st_ino for p in (ref, a, b)}) == 3
+              run(["qemu-io", "-f", "qcow2", "-c", "write -P 0xa5 33554432 4096", str(a)])
+              mismatch = subprocess.run(
+                  ["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2", str(ref), str(a)],
+                  capture_output=True)
+              assert mismatch.returncode == 1
+              a.unlink()
+              run(["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2", "-c",
+                   str(ref), str(a)])
+              run(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2", str(ref), str(a)])
+              run(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2", str(ref), str(b)])
+          print("PASS: standalone QCOW2 cloning, isolated A corruption, recovery and B unaffected")
+          print("NO genuine Windows VM, Mint boot, disk writes or production recovery proven")
+          PY
