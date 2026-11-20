@@ -38,9 +38,9 @@ from windows_x64_installed_gpt_ro_audit import require, DiskAuditError
 
 CONSENT = "I_ACCEPT_ONLY_DISPOSABLE_SYNTHETIC_QEMU_WRITE_TRACE"
 DISTINST_CONSENT = "I_ACCEPT_ONLY_SYNTHETIC_POP_DISTINST_TEST"
-PREFLIGHT_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_PREFLIGHT_JSON=(\\{[^\\r\\n]+\\})\\r?$")
-DISTINST_RESULT_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_RESULT_JSON=(\\{[^\\r\\n]+\\})\\r?$")
-DISTINST_TERMINAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_(?:COMPLETE=1|REFUSED=[^\\r\\n]+)\\r?\\n")
+PREFLIGHT_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_PREFLIGHT_JSON=(\{[^\r\n]+\})\r?$")
+DISTINST_RESULT_JSON = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_RESULT_JSON=(\{[^\r\n]+\})\r?$")
+DISTINST_TERMINAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_(?:COMPLETE=1|REFUSED=[^\r\n]+)\r?\n")
 CHILD = "gaslux-pop-synthetic-write-child.qcow2"
 BASE = "gaslux-pop-synthetic-raw-base.img"
 P1GUID = "ae228a25-0ecd-4f62-83b4-88dd48b88edd"
