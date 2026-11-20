@@ -22,8 +22,8 @@ class ZorinLiveObserverContracts(unittest.TestCase):
     def test_no_physical_disk_commands_or_installer_invocation(self):
         source = Path(live.__file__).read_text(encoding="utf-8")
         for required in ('"-nodefaults"', '"-no-user-config"', '"-net"', '"none"',
-                         '"readonly=on,file=" + str(code)',
-                         '"readonly=on,format=raw,file=" + str(iso)'):
+                         '"if=pflash,format=raw,readonly=on,file="',
+                         '"if=none,id=cd,media=cdrom,readonly=on,format=raw,file="'):
             self.assertIn(required, source)
         for forbidden in ("grub-install", "mkfs.ext4", "wipefs ",
                           "efibootmgr --create", "sudo ubiquity", "sudo calamares"):
