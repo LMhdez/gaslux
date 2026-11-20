@@ -118,9 +118,7 @@ def _one(evidence_root: Path) -> dict:
                     check()
                 except Refusal as exc:
                     if reason not in str(exc):
-                        raise Refusal(
-                            f"Unexpected refusal reason for {name}: {exc}"
-                        ) from exc
+                        raise Refusal(f"Unexpected refusal reason for {name}: {exc}") from exc
                     negative.append(name)
                 else:
                     raise Refusal(f"Live negative QEMU gate admitted drift: {name}")
