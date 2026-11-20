@@ -4,11 +4,15 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 import re
+import sys
 import unittest
+
+sys.path.insert(0, str(Path(__file__).parent / "tools"))
 
 from tools.windows10_popos_synthetic_distinst_trace_contract import (
     DISK_GUID, DISK_SERIAL, DISK_SIZE, ESP_PARTUUID, ROOT_PARTUUID,
-    PINNED_DISTINST_SHA256, ROOT_START, synthetic_distinst_plan, classify_distinst_writes,
+    PINNED_DISTINST_SHA256, ROOT_START, synthetic_distinst_plan,
+    classify_distinst_writes, diagnose_qemu_write_set,
 )
 from tools.windows_x64_installed_gpt_ro_audit import DiskAuditError
 
@@ -206,6 +210,54 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
                       source)
         self.assertIn('drive=syntarget,serial={DISTINST_SERIAL},bootindex=3,discard=off,write-zeroes=off',
                       source)
+
+    def test_qemu_trace_diagnostic_refuses_primary_and_backup_gpt_writes_against_pr232(self):
+        plan, guest, trace, tracefs = fixtures()
+        guest["tracefs"] = tracefs
+        guest["distinstProcess"]["packageVersion"] = (
+            "0.3.2~1758837686~24.04~e395b7c")
+        guest["distinstProcess"]["sourceRevisionHint"] = "e395b7c"
+        gpt_writes = (
+            "virtio_blk_handle_write vdev 0x10 req 0x30 sector 0 nsectors 40\\n"
+            f"virtio_blk_handle_write vdev 0x10 req 0x31 sector "
+            f"{DISK_SIZE // 512 - 40} nsectors 40\\n"
+        )
+        result = diagnose_qemu_write_set(plan, trace + gpt_writes, guest)
+        self.assertFalse(result["writeSetMatch"])
+        self.assertEqual(result["decision"], "REFUSE_OUT_OF_WRITESET")
+        self.assertEqual(result["qemuWriteEventCount"], 4)
+        self.assertEqual(result["outOfSetEventCount"], 2)
+        self.assertEqual(set(result["outOfSetRegions"]),
+                         {"primary-mbr-gpt", "backup-gpt"})
+        projection = result["pr232Projection"]
+        self.assertEqual(len(projection["expectedOperations"]), 6)
+        self.assertEqual(len(projection["partitionPhaseOperations"]), 4)
+        self.assertEqual(len(projection["notReachedByDistinstTest"]), 2)
+        self.assertTrue(projection["espFormatObserved"])
+        self.assertTrue(projection["rootFormatObserved"])
+        self.assertFalse(projection["mountSyscallsIndependentlyObserved"])
+        self.assertTrue(projection["upstreamMountAllTargetsReached"])
+        self.assertFalse(result["distinstExecutionAuthorized"])
+        self.assertFalse(result["diskWritesAuthorizedForWindows"])
+        self.assertFalse(result["windowsEspWritesAuthorized"])
+
+    def test_qemu_trace_diagnostic_accepts_only_precreated_partition_ranges(self):
+        plan, guest, trace, tracefs = fixtures()
+        guest["tracefs"] = tracefs
+        result = diagnose_qemu_write_set(plan, trace, guest)
+        self.assertTrue(result["writeSetMatch"])
+        self.assertEqual(result["decision"], "MATCH_SYNTHETIC_PARTITION_WRITESET")
+        self.assertEqual(result["outOfSetEventCount"], 0)
+        self.assertEqual(result["writesBySyntheticPartition"][1]["eventCount"], 1)
+        self.assertEqual(result["writesBySyntheticPartition"][2]["eventCount"], 1)
+
+    def test_qemu_trace_diagnostic_rejects_unparseable_or_missing_write_events(self):
+        plan, guest, _, _ = fixtures()
+        with self.assertRaises(DiskAuditError):
+            diagnose_qemu_write_set(
+                plan, "virtio_blk_handle_write malformed\\n", guest)
+        with self.assertRaises(DiskAuditError):
+            diagnose_qemu_write_set(plan, "pflash_data_write system.flash1\\n", guest)
 
     def test_plan_is_synthetic_and_inert(self):
         plan, _, _, _ = fixtures()
