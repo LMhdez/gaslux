@@ -82,7 +82,7 @@ def synthetic_distinst_plan(base_sha256: str, child_name: str) -> dict:
                 "allowedOperations": ["format", "mount"],
             },
         ],
-        "expectedDistinstPhase": "partition-format-mount-test",
+        "expectedDistinstPhase": "partition-format-test",
         "distinstExecutionAuthorized": False,
         "diskWritesAuthorizedForWindows": False,
         "windowsEspWritesAuthorized": False,
@@ -136,7 +136,7 @@ def _validate_identity(plan: dict, guest: dict) -> None:
     ], "distinst --use list is incomplete, reordered or targets another disk")
     require(guest.get("gptPrimaryBackupVerified") is True
             and guest.get("filesystemsAfter") == {"1": "vfat", "2": "ext4"}
-            and guest.get("distinstPhase") == "partition-format-mount-test",
+            and guest.get("distinstPhase") == "partition-format-test",
             "post-distinst GPT/filesystem/phase witness missing")
 
 
