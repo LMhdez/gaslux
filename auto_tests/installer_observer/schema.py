@@ -8,8 +8,16 @@ from jsonschema import Draft202012Validator
 
 from .evidence import Refusal, basename, canonical, digest, parse, read
 from .models import (
-    Action, DistributionIdentity, InstallerIdentity, InterfaceMap, Locator, Postconditions,
-    Preconditions, ScreenState, Transition, UIControl,
+    Action,
+    DistributionIdentity,
+    InstallerIdentity,
+    InterfaceMap,
+    Locator,
+    Postconditions,
+    Preconditions,
+    ScreenState,
+    Transition,
+    UIControl,
 )
 from .screenshot import valid_box
 
@@ -36,7 +44,9 @@ def load_map(path: Path, profile: Profile) -> InterfaceMap:
     d = parse(read(path))
     validate(d, profile.schema)
     iso = d["iso"]
-    identity = DistributionIdentity(d["distribution"], iso["version"], iso["sha256"], iso["sizeBytes"])
+    identity = DistributionIdentity(
+        d["distribution"], iso["version"], iso["sha256"], iso["sizeBytes"]
+    )
     if identity != profile.identity:
         raise Refusal("Unexpected distribution or ISO identity")
     size = tuple(d["lab"]["resolution"])
@@ -50,7 +60,9 @@ def load_map(path: Path, profile: Profile) -> InterfaceMap:
             if box is not None and not valid_box(box, size):
                 raise Refusal("Control outside display")
             controls.append(UIControl(c["label"], c["type"], c["qtId"], box, c["action"]))
-        states.append(ScreenState(row["id"], basename(row["screenshot"]), row["visualGate"], tuple(controls)))
+        states.append(
+            ScreenState(row["id"], basename(row["screenshot"]), row["visualGate"], tuple(controls))
+        )
     ids = {s.id for s in states}
     terminal = d["stopBoundary"]["lastObservedState"]
     if len(ids) != len(states) or terminal not in ids:
@@ -65,12 +77,18 @@ def load_map(path: Path, profile: Profile) -> InterfaceMap:
         if loc["type"] == "none":
             if bound is not None or loc["x"] is not None or loc["y"] is not None:
                 raise Refusal("Invalid observation-only locator")
-        elif (not xy or not bound or not valid_box(bound, size)
-              or not (bound[0] <= xy[0] < bound[2] and bound[1] <= xy[1] < bound[3])):
+        elif (
+            not xy
+            or not bound
+            or not valid_box(bound, size)
+            or not (bound[0] <= xy[0] < bound[2] and bound[1] <= xy[1] < bound[3])
+        ):
             raise Refusal("Locator outside bounding box")
         if bound is not None:
             state = next(s for s in states if s.id == t["from"])
-            matching = [c for c in state.controls if c.box == bound and c.description == t["action"]]
+            matching = [
+                c for c in state.controls if c.box == bound and c.description == t["action"]
+            ]
             if len(matching) != 1:
                 raise Refusal("Locator must bind one source control and action")
         if t["action"] not in profile.actions:
@@ -78,13 +96,32 @@ def load_map(path: Path, profile: Profile) -> InterfaceMap:
         timeout = t["configuredCommandTimeoutSeconds"]
         if type(timeout) is not int or not 1 <= timeout <= 120:
             raise Refusal("Invalid transition deadline")
-        edges.append(Transition(t["id"], t["from"], t["to"], profile.actions[t["action"]],
-            Locator(loc["type"], xy, bound), Preconditions(tuple(t["preconditions"])),
-            Postconditions(tuple(t["postconditions"])), timeout, t["status"] == "verified"))
+        edges.append(
+            Transition(
+                t["id"],
+                t["from"],
+                t["to"],
+                profile.actions[t["action"]],
+                Locator(loc["type"], xy, bound),
+                Preconditions(tuple(t["preconditions"])),
+                Postconditions(tuple(t["postconditions"])),
+                timeout,
+                t["status"] == "verified",
+            )
+        )
     if len({e.id for e in edges}) != len(edges):
         raise Refusal("Duplicate transition")
     raw = canonical(d)
     if digest(raw) != profile.map_digest:
         raise Refusal("Map differs from reviewed adapter contract")
-    return InterfaceMap(identity, profile.installer, tuple(states), tuple(edges), terminal, size,
-                        d["lab"]["displayScaleFactor"], d["lab"]["sourceCommit"], raw)
+    return InterfaceMap(
+        identity,
+        profile.installer,
+        tuple(states),
+        tuple(edges),
+        terminal,
+        size,
+        d["lab"]["displayScaleFactor"],
+        d["lab"]["sourceCommit"],
+        raw,
+    )
