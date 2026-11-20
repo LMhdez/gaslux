@@ -87,3 +87,22 @@ As alterações de produção continuam proibidas. A evidência de arranque Live
 **Campos efectivamente vistos no ecrã Users:** nome completo, nome de login, hostname, palavra-passe, repetição de palavra-passe, login automático e reutilização de palavra-passe de administrador. O [mapa JSON](../ui-maps/q4os.json) identifica o estado e associa as capturas reais; a detecção pelo OCR não garante identificação de `QObject::objectName` nem API unattended.
 
 **Não reivindicado:** passagem de Users para Summary na primeira experiência, qualquer operação destrutiva Calamares, instalação Linux, dual boot Windows/Q4OS, actualização de GRUB/kernel, rollback Windows ou estabilidade.
+
+## 8. Configuração de execução Calamares extraída da ISO real — bloqueios de segurança
+
+**COMPROVADO pela leitura de `etc__calamares__settings.conf`, `partition.conf`, `bootloader.conf` e `users.conf` da ISO 6.10 r2 fixada em SHA-256 nos dois artefactos acima:**
+
+| Caminho ISO / chave | Valor efectivo observado | Consequência para Gaslux |
+| --- | --- | --- |
+| `settings.conf → sequence[show]` | `welcome, locale, keyboard, packagechooser, partition, users, summary` | Sete módulos visuais antes de qualquer fase de escrita; `Install` e `Finish` são estados do assistente, não ambos páginas de configuração |
+| `settings.conf → sequence[exec]` | Começa `partition → mount → unpackfs`, segue `luksbootkeyfile`, `dpkg-unsafe-io`, `fstab`, `users`, `q4oshook2`, `bootloader-config`, `grubcfg`, `bootloader`, `q4oshook3`, `packages`, `initramfs`, `q4oshook5`, `umount` | O **primeiro job de instalação é o particionamento**; não existe oportunidade segura para compensação sem checkpoint prévio |
+| `settings.conf → prompt-install` | **`false`** | **CRÍTICO: não pressupor diálogo adicional de confirmação**. Clicar em `Install` no Summary pode desencadear a fase de escrita imediatamente. Hard STOP antes desse controlo |
+| `settings.conf → disable-cancel-during-exec` | `false` | O botão Cancel pode permanecer visível durante execução, mas não é prova de rollback ou de recuperação consistente |
+| `partition.conf → initialPartitioningChoice` | `none` | Calamares não selecciona inicialmente `Erase disk`; o ensaio escolheu esse rádio só em disco COW sintético e **nunca clicou Install** |
+| `partition.conf → defaultFileSystemType` | `ext4` | Exigir autorização de extents/identidade exactos antes de qualquer `format` |
+| `bootloader.conf → efiBootLoader` | `grub` | Exige gestão de EFI/GRUB que não modifique artefactos Windows |
+| `bootloader.conf → installEFIFallback` | **`true`** | **BLOQUEADO** na ESP partilhada Windows até controlo verificável de `EFI/BOOT/BOOTX64.EFI` |
+| `users.conf → sudoersGroup` | `sudo` | Conta de utilizador com grupos/administrador exigem verificação pós-instalação |
+| `users.conf → setRootPassword`, `doReusePassword` | `true`, `true` | Política de senha root precisa de avaliação antes de unattended; ensaio GUI usa credenciais fictícias sem criar conta |
+
+**Origem exacta:** [artefacto VM 1 #14587306682](https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682) e [VM 2 #14586773677](https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677), pasta `calamares-inspect/`, auditoria `native-calamares-audit.json` e hashes de todos os módulos. Uma configuração instalada por Calamares sem política explícita de write-set não cumpre a segurança Windows; **o sucesso da UI não autoriza o módulo `partition`**.
