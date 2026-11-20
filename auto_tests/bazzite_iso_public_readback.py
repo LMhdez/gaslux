@@ -127,7 +127,9 @@ def validate_attestation_report(
         raise ReadbackError("Verified attestation JSON has no parsed signing certificate")
     timestamps = verification.get("verifiedTimestamps")
     if not isinstance(timestamps, list) or not timestamps:
-        raise ReadbackError("Verified attestation has no independently verified transparency timestamp")
+        raise ReadbackError(
+            "Verified attestation has no independently verified transparency timestamp"
+        )
     if expected_workflow.endswith("/build_iso.yml"):
         expected_identity = (
             "https://github.com/ublue-os/bazzite/.github/workflows/"
@@ -156,7 +158,9 @@ def validate_attestation_report(
             raise ReadbackError(f"Attestation certificate {field} does not match pinned provenance")
     invocation = certificate.get("runInvocationURI", "")
     if f"/actions/runs/{expected_run_id}/" not in invocation:
-        raise ReadbackError("Attestation certificate invocation does not match the pinned upstream run")
+        raise ReadbackError(
+            "Attestation certificate invocation does not match the pinned upstream run"
+        )
     return {
         "verifiedByGhCli": True,
         "predicateType": PREDICATE_TYPE,
