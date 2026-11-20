@@ -121,9 +121,7 @@ def test_original_png_tampering_refused(mapping, local_recording):
         run_record(mapping, local_recording)
 
 
-def test_original_cross_replica_png_substitution_refused(
-    mapping, local_recording, originals
-):
+def test_original_cross_replica_png_substitution_refused(mapping, local_recording, originals):
     first = local_recording.states[0]
     donor = originals[1].directory / first.filename
     assert digest(read(donor, 2 * 1024 * 1024)) != first.sha256
