@@ -352,12 +352,21 @@ def run(evidence: Path) -> dict:
         nvram = work / "pop-synthetic-only-vars.fd"
         shutil.copyfile(vars_template, nvram)
         nvram_before = sha(nvram)
+        code_before = sha(code)
         trace_events = call("qemu-system-x86_64", "-trace", "help",
                             capture_output=True, text=True).stdout
-        require("virtio_blk_handle_write" in trace_events,
-                "QEMU build lacks independent virtio-blk write event")
+        required_trace_events = (
+            "virtio_blk_handle_write", "pflash_data_write",
+            "pflash_data_write_block", "pflash_io_write",
+            "pflash_write_block_erase", "pflash_write_block_start",
+            "pflash_write_block_flush", "pflash_write_block_abort",
+            "pflash_write", "pflash_write_failed",
+        )
+        require(all(event in trace_events for event in required_trace_events),
+                "QEMU build lacks required virtio/pflash write trace events")
         event_file = work / "qemu-events"
-        event_file.write_text("virtio_blk_handle_write\n", encoding="ascii")
+        event_file.write_text("\n".join(required_trace_events) + "\n",
+                              encoding="ascii")
         trace = work / "qemu-trace.log"
         sock = work / "serial.sock"
         serial_log = work / "serial.log"
@@ -418,7 +427,10 @@ def run(evidence: Path) -> dict:
         decoded.unlink()
         after = sha(base)
         nvram_after = sha(nvram)
+        code_after = sha(code)
         require(after == before, "immutable synthetic backing base modified")
+        require(code_after == code_before,
+                "read-only OVMF firmware CODE image changed")
         require(trace.is_file() and not trace.is_symlink()
                 and trace.stat().st_size <= 4_000_000,
                 "independent QEMU trace missing or oversized")
@@ -456,6 +468,9 @@ def run(evidence: Path) -> dict:
             "syntheticParentSha256": before,
             "ovmfVarsSha256Before": nvram_before,
             "ovmfVarsSha256After": nvram_after,
+            "ovmfCodeSha256Before": code_before,
+            "ovmfCodeSha256After": code_after,
+            "ovmfCodeUnchanged": code_before == code_after,
             "qemuTraceSha256": hashlib.sha256(trace.read_bytes()).hexdigest(),
             "qemuVersion": call("qemu-system-x86_64", "--version",
                                 capture_output=True, text=True).stdout.splitlines()[0],
@@ -467,7 +482,11 @@ def run(evidence: Path) -> dict:
             hashlib.sha256(payload.encode()).hexdigest() +
             "  synthetic-qemu-write-report.json\n", encoding="ascii")
         trace_lines = [line for line in trace_text.splitlines()
-                       if "virtio_blk_handle_write" in line]
+                       if re.search(
+                           r"\b(?:virtio_blk_handle_write|pflash_(?:data_write|"
+                           r"data_write_block|io_write|write_block_erase|"
+                           r"write_block_start|write_block_flush|write_block_abort|"
+                           r"write|write_failed))\b", line)]
         bounded = "\n".join(trace_lines[:1000]) + "\n"
         (evidence / "synthetic-qemu-block-write.trace").write_text(
             bounded, encoding="utf-8")
