@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import unittest
 
-from windows10_popos_synthetic_distinst_trace_contract import (
+from tools.windows10_popos_synthetic_distinst_trace_contract import (
     DISK_GUID, DISK_SERIAL, DISK_SIZE, ESP_PARTUUID, ROOT_PARTUUID,
     PINNED_DISTINST_SHA256, synthetic_distinst_plan, classify_distinst_writes,
 )
