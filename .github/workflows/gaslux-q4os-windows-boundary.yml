@@ -10,6 +10,7 @@ on:
       - 'assets/live/gaslux_q4os_safety_adapter.py'
       - 'auto_tests/tests/test_q4os_windows_boundary.py'
       - 'auto_tests/tests/test_q4os_safety_adapter.py'
+      - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
       - 'schemas/gaslux-q4os-windows-boundary.schema.json'
       - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'assets/live/gaslux_q4os_safety_adapter.py'
       - 'auto_tests/tests/test_q4os_windows_boundary.py'
       - 'auto_tests/tests/test_q4os_safety_adapter.py'
+      - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
       - 'schemas/gaslux-q4os-windows-boundary.schema.json'
       - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
 
@@ -46,18 +48,36 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py
-          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py
-          python -m ruff format --config auto_tests/pyproject.toml assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_adapter.py
-          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py
+          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
+          python -m ruff format --config auto_tests/pyproject.toml assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
+          printf 'GASLUX_RUFF_FORMATTED_ADAPTER_START\\n'
+          base64 -w0 assets/live/gaslux_q4os_safety_adapter.py
+          printf '\\nGASLUX_RUFF_FORMATTED_TESTS_START\\n'
+          base64 -w0 auto_tests/tests/test_q4os_safety_adapter.py
+          printf '\\nGASLUX_RUFF_FORMATTED_ACTUAL_START\\n'
+          base64 -w0 auto_tests/tests/test_q4os_safety_actual_contract.py
+          printf '\\nGASLUX_RUFF_FORMATTED_END\\n' auto_tests/tests/test_q4os_safety_actual_contract.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
+      - name: Fetch pinned upstream Safety #267 (never into working tree)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git refs/heads/safety/gpt-authenticated-no-writer-20261120
+          test "$(git rev-parse FETCH_HEAD)" = "f55633c90973f633dda678f583f7730fc2cdc0ce"
+          mkdir -p "$RUNNER_TEMP/q4os-safety-src"
+          git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
+          git show FETCH_HEAD:assets/live/libertix_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+          git diff --exit-code -- assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
       - name: Synthetic GPT, ESP/WinRE/OEM and QCOW2 snapshot/restore refusals
         env:
           GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE: ${{ runner.temp }}/q4os-native-windows-boundary
+          GASLUX_Q4OS_PINNED_SAFETY_SOURCE_DIR: ${{ runner.temp }}/q4os-safety-src
         shell: bash
         run: |
           set -Eeuo pipefail
           mkdir -p "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE"
-          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py \
+          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py \
             --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/pytest.xml"
           test -s "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/checkpoint-verified.json"
           python - <<'PY'
