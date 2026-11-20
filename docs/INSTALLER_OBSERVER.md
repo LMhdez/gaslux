@@ -219,3 +219,31 @@ fixtures are **not** a live process takeover, real hot-plug, proven
 exclusive input or a completed Q4OS Summary journey. Treat QEMU Actions
 evidence, mock contracts and historical Q4OS replay as distinct categories
 in every report.
+
+### Proven QEMU read-only experiments, 20 November 2026
+
+- [Actions #44698376417](https://github.com/LMhdez/gaslux/actions/runs/44698376417)
+  passed with **two actual QEMU processes**, separate generated scratch
+  directories and snapshots, observed 720×400 VNC RAW frames and corroborated
+  QMP/process/file identities. The two runs happened to produce the same
+  framebuffer hash; equality is not an acceptance requirement.
+  [Evidence ZIP](https://api.github.com/repos/LMhdez/gaslux/actions/artifacts/14611258724/zip)
+  (retention seven days).
+- [Actions #44698826308](https://github.com/LMhdez/gaslux/actions/runs/44698826308)
+  passed the same two-process observation **plus six deliberate identity-drift
+  refusals per process**: changed process start ticks, wrong snapshot, changed
+  QCOW2 inode, expired deadline, unavailable QMP socket and mutated synthetic
+  ISO. These are **12 real-QEMU refusal observations**, not 12 attempted
+  guest clicks and not proofs of physical device hot-plug exclusion or external
+  VNC-input atomicity.
+- The QMP contracts and original offline replay ran separately under
+  [Actions #44698833041](https://github.com/LMhdez/gaslux/actions/runs/44698833041)
+  and [#44698826371](https://github.com/LMhdez/gaslux/actions/runs/44698826371),
+  both successful at the drift-test commit. A genuine Q4OS ISO boot and
+  Calamares navigation remain **NOT EXECUTED** in this probe.
+
+A subprocess name, PID, QMP JSON reply, VNC port or snapshot label **alone**
+is never treated as sufficient authority; the attestation deliberately
+requires independent kernel observations. This does not change the non-atomic
+RFB input boundary: until secure input exclusivity and a measured Q4OS
+locator/scale can be demonstrated, **no click is authorized**.
