@@ -43,7 +43,7 @@ PFLASH_WRITE = re.compile(
 )
 PFLASH_MUTATION = re.compile(
     r"\bpflash_(?:data_write|data_write_block|write_block_erase|"
-    r"sector_erase_start|chip_erase_start|erase_complete|erase_timeout)\b"
+    r"sector_erase_start|chip_erase_start|erase_complete)\b"
 )
 GUID = re.compile(r"[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\Z")
 
