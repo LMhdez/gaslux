@@ -269,43 +269,54 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
             and report.get("rollbackVerified") is False,
             "Windows report overstates native dual boot, updates, or rollback")
 
-    # Independent, read-only guestfs check on the same fifth ext4 AFTER the
-    # fourth genuine Windows guest has fully shut down. A UUID-only fourth
-    # boot must not be reported as Mint root persistence.
-    persistence_path, persistence_bytes = read_regular(
-        evidence_dir, "mint-after-windows.json", MAX_PROOF_BYTES)
-    try:
-        persistence = json.loads(persistence_bytes)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise MintBootEvidenceError("Mint after-Windows persistence proof is invalid") from exc
-    require(type(persistence) is dict
-            and report.get("mintRootPersistenceAfterWindowsVerified") is True
-            and report.get("mintRootPersistenceEvidenceSha256")
-                == hashlib.sha256(persistence_bytes).hexdigest()
-            and bool(fourth_details),
-            "Mint persistence is missing its fourth-Windows and SHA-256 binding")
-    require(persistence.get("mintRootFilesPersistAfterWindowsVerified") is True
-            and persistence.get("mintRootUuid") == root_uuid
-            and persistence.get("mintKernel") == kernel
-            and persistence.get("windowsPartitionSha256")
-                == proof["windowsPartitionSha256"]
-            and persistence.get("fourthGuestSerialSha256")
-                == fourth_details["fourthWindowsSerialSha256"],
-            "Mint persistence does not match the exact Windows/Mint COW transaction")
-    for key in ("mintKernelSha256", "mintInitramfsSha256", "mintOsReleaseSha256"):
-        require(persistence.get(key) == proof[key],
-                f"post-Windows Mint installed-root digest changed: {key}")
-    for key in ("nativeGrubDualBootVerified", "sameDiskDualBootVerified",
-                "updatesVerified", "rollbackVerified", "releaseEligible"):
-        require(persistence.get(key) is False,
-                f"Mint persistence proof overstates capability: {key}")
+    persistence_verified = False
+    persistence_digest = None
+    if fourth_details:
+        # Independent, read-only guestfs check on the same fifth ext4 AFTER the
+        # fourth genuine Windows guest has fully shut down. A UUID-only fourth
+        # boot must not be reported as Mint root persistence.
+        persistence_path, persistence_bytes = read_regular(
+            evidence_dir, "mint-after-windows.json", MAX_PROOF_BYTES)
+        try:
+            persistence = json.loads(persistence_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise MintBootEvidenceError("Mint after-Windows persistence proof is invalid") from exc
+        require(type(persistence) is dict
+                and report.get("mintRootPersistenceAfterWindowsVerified") is True
+                and report.get("mintRootPersistenceEvidenceSha256")
+                    == hashlib.sha256(persistence_bytes).hexdigest()
+                and bool(fourth_details),
+                "Mint persistence is missing its fourth-Windows and SHA-256 binding")
+        require(persistence.get("mintRootFilesPersistAfterWindowsVerified") is True
+                and persistence.get("mintRootUuid") == root_uuid
+                and persistence.get("mintKernel") == kernel
+                and persistence.get("windowsPartitionSha256")
+                    == proof["windowsPartitionSha256"]
+                and persistence.get("fourthGuestSerialSha256")
+                    == fourth_details["fourthWindowsSerialSha256"],
+                "Mint persistence does not match the exact Windows/Mint COW transaction")
+        for key in ("mintKernelSha256", "mintInitramfsSha256", "mintOsReleaseSha256"):
+            require(persistence.get(key) == proof[key],
+                    f"post-Windows Mint installed-root digest changed: {key}")
+        for key in ("nativeGrubDualBootVerified", "sameDiskDualBootVerified",
+                    "updatesVerified", "rollbackVerified", "releaseEligible"):
+            require(persistence.get(key) is False,
+                    f"Mint persistence proof overstates capability: {key}")
+
+        persistence_verified = True
+        persistence_digest = hashlib.sha256(persistence_bytes).hexdigest()
+    else:
+        require(not (evidence_dir / "mint-after-windows.json").exists()
+                and report.get("mintRootPersistenceAfterWindowsVerified") is not True
+                and "mintRootPersistenceEvidenceSha256" not in report,
+                "unbound Mint persistence claim without Windows fourth boot")
 
     return {
         "proofSha256": proof_hash,
         "serialSha256": serial_hash,
         "windowsEspBcdWinreFourthBootVerified": bool(fourth_details),
-        "mintRootPersistenceAfterWindowsVerified": True,
-        "mintRootPersistenceEvidenceSha256": hashlib.sha256(persistence_bytes).hexdigest(),
+        "mintRootPersistenceAfterWindowsVerified": persistence_verified,
+        "mintRootPersistenceEvidenceSha256": persistence_digest,
         **fourth_details,
         "rootUuid": canonical_uuid,
         "kernel": kernel,
