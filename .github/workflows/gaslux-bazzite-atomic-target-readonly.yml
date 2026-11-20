@@ -10,6 +10,8 @@ on:
       - 'auto_tests/tests/test_bazzite_anaconda_write_set_gate.py'
       - 'auto_tests/bazzite_anaconda_readonly_capture.py'
       - 'auto_tests/tests/test_bazzite_anaconda_readonly_capture.py'
+      - 'auto_tests/bazzite_live_channel_boundary.py'
+      - 'auto_tests/tests/test_bazzite_live_channel_boundary.py'
       - 'auto_tests/bazzite_gpt_fixture.py'
   workflow_dispatch:
   push:
@@ -19,6 +21,8 @@ on:
       - '.github/workflows/gaslux-bazzite-atomic-target-readonly.yml'
       - 'auto_tests/bazzite_anaconda_readonly_capture.py'
       - 'auto_tests/tests/test_bazzite_anaconda_readonly_capture.py'
+      - 'auto_tests/bazzite_live_channel_boundary.py'
+      - 'auto_tests/tests/test_bazzite_live_channel_boundary.py'
 
 permissions:
   contents: read
@@ -44,9 +48,9 @@ jobs:
           set -Eeuo pipefail
           python -m pip install pytest ruff
           # Real sgdisk/qemu-img fixture requires manual QEMU job; do not skip tests.
-          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py -k 'not test_real_gpt_readonly_proposal_and_immutable_backing'
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_live_channel_boundary.py -k 'not test_real_gpt_readonly_proposal_and_immutable_backing'
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py
           echo 'No signed Bazzite 42 ISO or authenticated real Anaconda GetActions export: installation remains denied'
 
   synthetic-gpt-native-target:
@@ -72,9 +76,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_live_channel_boundary.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py
       - name: Build and inspect the verified immutable GPT fixture
         shell: bash
         run: |
@@ -144,6 +148,54 @@ jobs:
           grep -F GLXBAZRO001 qemu-ovmf-no-boot-inventory.txt
           grep -F gpt-layout-scratch.qcow2 qemu-ovmf-no-boot-inventory.txt
           echo 'QEMU monitor-only attachment; guest was deliberately not started'
+      - name: Host attestation of real paused QEMU process and hard refusal of guest execution
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          code=/usr/share/OVMF/OVMF_CODE_4M.fd
+          if [[ ! -f "$code" ]]; then code=/usr/share/OVMF/OVMF_CODE.fd; fi
+          vars="$RUNNER_TEMP/bazzite-ovmf-vars-disposable.fd"
+          overlay="$RUNNER_TEMP/bazzite-gpt-fixture/gpt-layout-scratch.qcow2"
+          test -f "$code" && test -f "$vars" && test -f "$overlay"
+          tx=$(python -c 'import secrets; print(secrets.token_hex(16))')
+          collector_sha=$(sha256sum auto_tests/bazzite_anaconda_readonly_capture.py | awk '{print $1}')
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 512 -nodefaults -display none -S \
+            -nic none -monitor none \
+            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,unit=1,file=$vars" \
+            -drive "file=$overlay,format=qcow2,if=none,id=owned,readonly=on" \
+            -device virtio-blk-pci,drive=owned,serial=GLXBAZRO001 \
+            -name "gaslux-bazzite-$tx" \
+            > qemu-paused-stdout.txt 2> qemu-paused-stderr.txt &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || :; wait "$pid" 2>/dev/null || :' EXIT
+          sleep 2
+          kill -0 "$pid"
+          status=0
+          python auto_tests/bazzite_live_channel_boundary.py \
+            --qemu-pid "$pid" --transaction "$tx" \
+            --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" \
+            --collector-sha256 "$collector_sha" \
+            > bazzite-live-channel-denial.json 2> bazzite-live-channel-refusal.txt || status=$?
+          test "$status" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          proof = json.loads(Path("bazzite-live-channel-denial.json").read_text())
+          assert proof["status"] == "REFUSED_NO_AUTHENTICATED_GUEST_COLLECTOR_CHANNEL"
+          assert proof["qemu"]["qemuCpuStopped"] is True
+          assert proof["qemu"]["guestNetworkConfigured"] is False
+          assert proof["qemu"]["guestCommandChannelConfigured"] is False
+          assert proof["collectorInvoked"] is False
+          assert proof["hostGuestIdentityIndependentlyAuthenticated"] is False
+          assert proof["installationAuthorized"] is False
+          assert proof["getActionsObserved"] is False
+          print("PASS: real QEMU /proc attest, collector execution explicitly refused")
+          PY
+          kill "$pid"
+          wait "$pid" || :
+          trap - EXIT
       - name: Audit backing and discard disposable COW
         if: always()
         shell: bash
@@ -164,6 +216,10 @@ jobs:
             anaconda-write-set-status.json
             anaconda-comparison-refusal.txt
             qemu-ovmf-no-boot-inventory.txt
+            bazzite-live-channel-denial.json
+            bazzite-live-channel-refusal.txt
+            qemu-paused-stdout.txt
+            qemu-paused-stderr.txt
             synthetic-gpt-after.json
             synthetic-gpt-discard.json
           if-no-files-found: error
