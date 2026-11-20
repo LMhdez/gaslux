@@ -197,7 +197,7 @@ def inspect_guest(overlay: Path, output: Path, folder: Path, label: str) -> tupl
         import guestfs
     except ImportError as error:
         raise PrewriteDenied("python3-guestfs unavailable") from error
-    require(bool(re.fullmatch(r"gaslux[a-z0-9]{12}", label)), "invalid guest disk label")
+    require(bool(re.fullmatch(r"gaslux[a-f]{12}", label)), "invalid guest disk label")
     require(os.environ.get("LIBGUESTFS_BACKEND") == "direct", "direct guestfs backend required")
     guest = guestfs.GuestFS(python_return_dict=True)
     try:
@@ -335,7 +335,7 @@ def experiment(folder: Path) -> dict:
     chain = verify_chain(overlay, base, folder)
     host = host_snapshot(overlay, folder / "host.raw", folder)
     assert_snapshot_matches(inspect_gpt_image(base, logical_sector_size=SECTOR), host)
-    label = GUEST_LABEL_PREFIX + secrets.token_hex(6)
+    label = GUEST_LABEL_PREFIX + "".join(secrets.choice("abcdef") for _ in range(12))
     guest, hypervisor = inspect_guest(overlay, folder / "guest-reconstructed.raw", folder, label)
     assert_snapshot_matches(host, guest)
     same_file(base, folder, base_stat)
