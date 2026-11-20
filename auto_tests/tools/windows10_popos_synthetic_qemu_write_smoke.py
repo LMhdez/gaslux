@@ -691,7 +691,7 @@ def run(evidence: Path) -> dict:
             and Path(os.environ["GITHUB_WORKSPACE"]) / evidence.name == evidence,
             "untrusted evidence directory")
     parent = Path("/home/runner/work/_temp")
-    with tempfile.TemporaryDirectory(prefix="gaslux-win-x64-pop-synth-",
+    with tempfile.TemporaryDirectory(prefix="gaslux-pop-synthetic-",
                                      dir=parent) as temp:
         work = Path(temp)
         os.chmod(work, 0o700)
