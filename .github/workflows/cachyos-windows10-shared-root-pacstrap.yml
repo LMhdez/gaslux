@@ -239,7 +239,7 @@ jobs:
             aria2 qemu-system-x86 qemu-utils ovmf swtpm gdisk \
             dosfstools mtools p7zip-full genisoimage \
             python3-guestfs libguestfs-tools "$generic_kernel" "$extra_modules" \
-            grub-efi-amd64-bin grub-common e2fsprogs openssl
+            grub-efi-amd64-bin grub-common e2fsprogs openssl swtpm-tools
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
@@ -292,7 +292,6 @@ jobs:
           assert report["windowsClientBootVerified"] is True
           assert report["windowsBootAfterExt4Verified"] is True
           assert report["cachyosRootPacstrapped"] is True
-          assert report["windowsBootWithPacstrappedCachyosOnSameDiskVerified"] is True
           assert report["windowsBootAfterPacstrapOverlayDiscardVerified"] is True
           for denied in (
               "cachyosInstalled", "cachyosFirstBootVerified",
@@ -333,27 +332,80 @@ jobs:
           assert pacstrap["windowsEspWritesAllowed"] is False
           assert pacstrap["efiBootloaderInstalled"] is False
           assert pacstrap["sameDiskDualBootVerified"] is False
-          # Sixth boot is still Windows Boot Manager, with pacstrapped GPT #5
-          # physically present in the same disposable writable QCOW2.
+          # Arm A is Windows-only; arm B is the matched Archiso/pacstrap
+          # treatment. Both start after the same fourth Windows boot and each
+          # performs exactly one fifth Windows boot with independent VARS/TPM.
+          ab = pacstrap["bcdAbControl"]
+          for key in (
+              "controlWindowsBootVerified", "sameWindowsBootCountVerified",
+              "sameCheckpointDiskCloneVerified", "sameCheckpointGuestVisibleDiskVerified",
+              "sameCheckpointPrimaryAndSecondaryGptVerified",
+              "controlAndTreatmentInitialGptEqual",
+              "controlAndTreatmentInitialProtectedHashesEqual",
+              "controlAndTreatmentInitialBcdEqual",
+              "controlOtherProtectedHashesUnchanged", "controlWindowsGptUnchanged",
+              "controlFifthExt4IdentityPreserved",
+              "controlWindowsBackingAndOriginalNVRAMUnchanged",
+              "independentOvmfCopiesVerified", "controlAndTreatmentInitialOvmfVarsEqual",
+              "independentTpmStateClonesVerified", "matchedArmsUseSameFreshTpm2Baseline",
+              "sameQemuArgumentsExceptOwnedPathsVerified",
+          ):
+              assert ab[key] is True, key
+          assert ab["controlWindowsBootOrdinal"] == ab["treatmentWindowsBootOrdinal"] == 5
+          assert ab["previousWindows10ProfileHadNoTpm"] is True
+          assert ab["tpmVersion"] == "2.0"
+          control_serial = root / (profile + "-bcd-control-windows-only-serial.log")
+          assert control_serial.is_file() and not control_serial.is_symlink()
+          control_recorded, control_name = control_serial.with_suffix(".sha256").read_text().split()
+          assert control_name == control_serial.name
+          assert control_recorded == hashlib.sha256(control_serial.read_bytes()).hexdigest()
+          from windows_cachyos_overlay_reboot import audit_complete_third_serial
+          assert audit_complete_third_serial(control_serial) == control_recorded
+          assert control_serial.read_bytes().splitlines().count(
+              b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1") == 1
+
           side = json.loads((root / (profile + "-post-pacstrap-windows-with-linux.json")).read_text())
-          for key in ("windowsBootWithPacstrappedCachyosOnSameDiskVerified",
-                      "installedCachyosRootSurvivedWindowsBoot",
-                      "windowsProtectedFilesAndGptAfterReentryUnchanged",
-                      "windowsBaseAndOriginalNvramAfterReentryUnchanged",
-                      "windowsEfiBootManagerUsed"):
-              assert side[key] is True, key
           assert side["cachyosBootloaderInstalledToWindowsEsp"] is False
           assert side["sameDiskDualBootVerified"] is False
           assert side["rollbackProven"] is False
+          if side.get("windowsBootWithPacstrappedCachyosOnSameDiskVerified") is True:
+              assert side["installedCachyosRootSurvivedWindowsBoot"] is True
+              assert side["windowsProtectedFilesAndGptAfterReentryUnchanged"] is True
+              assert side["windowsBaseAndOriginalNvramAfterReentryUnchanged"] is True
+              assert side["windowsEfiBootManagerUsed"] is True
+              treatment_bcd = side["bcdReadOnlyForensic"]
+          else:
+              assert side["failureType"] == "PostPacstrapWindowsError"
+              diagnosis = side["readonlyDiagnostics"]
+              assert diagnosis["postbootGptMatchesSignedPlan"] is True
+              assert diagnosis["postbootInstalledRootAndBackingPreserved"] is True
+              assert diagnosis["protectedFileHashMismatchKeys"] == ["espBcdSha256"]
+              treatment_bcd = diagnosis["bcdReadOnlyForensic"]
+          comparison = side["bcdAbComparison"]
+          assert comparison["initialBcdEqual"] is True
+          assert comparison["classification"] != "INVALID_INITIAL_BCD_MISMATCH"
+          assert comparison["controlBcdChanged"] == (
+              ab["controlBcdForensic"]["changedByteCount"] > 0
+          )
+          assert comparison["treatmentBcdChanged"] == (treatment_bcd["changedByteCount"] > 0)
+
           sixth = root / (profile + "-sixth-post-pacstrap-windows-serial.log")
           assert sixth.is_file() and not sixth.is_symlink()
           recorded, name = sixth.with_suffix(".sha256").read_text().split()
           assert name == sixth.name
           assert recorded == hashlib.sha256(sixth.read_bytes()).hexdigest()
-          assert recorded == side["windowsPostPacstrapSerialSha256"]
-          from windows_cachyos_overlay_reboot import audit_complete_third_serial
           assert audit_complete_third_serial(sixth) == recorded
-          assert sixth.read_bytes().splitlines().count(b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1") == 1
+          assert sixth.read_bytes().splitlines().count(
+              b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1") == 1
+          if side.get("windowsPostPacstrapSerialSha256"):
+              assert recorded == side["windowsPostPacstrapSerialSha256"]
+          # Integrity remains fail-closed even if Windows-only control
+          # reproduces the exact same BCD mutation.
+          if comparison["controlBcdChanged"] or comparison["treatmentBcdChanged"]:
+              print("BCD A/B classification: " + comparison["classification"])
+              raise AssertionError(
+                  "protected BCD changed; diagnostic does not authorize mutation"
+              )
           discard = json.loads((root / (profile + "-post-pacstrap-cow-discard.json")).read_text())
           assert discard["ownedExt4OverlayDiscarded"] is True
           assert discard["windowsBaselineFourGptVerifiedAfterDiscard"] is True
