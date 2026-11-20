@@ -8,6 +8,8 @@ on:
       - .github/workflows/popos-synthetic-qemu-write-trace.yml
       - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
       - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_synthetic_distinst_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_distinst_trace_contract.py
       - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
       - auto_tests/tools/windows10_popos_distinst_readonly_observer.py
       - auto_tests/tools/windows10_popos_official_iso_signed_lab.py
@@ -17,6 +19,8 @@ on:
       - .github/workflows/popos-synthetic-qemu-write-trace.yml
       - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
       - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_synthetic_distinst_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_distinst_trace_contract.py
       - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
   workflow_dispatch:
 
@@ -43,9 +47,11 @@ jobs:
           python3 -m py_compile \
             auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py \
             auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py \
-            auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+            auto_tests/tools/windows10_popos_synthetic_distinst_trace_contract.py \
+            auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py \
+            auto_tests/test_windows10_popos_synthetic_distinst_trace_contract.py
           python3 -m unittest discover -s auto_tests \
-            -p 'test_windows10_popos_synthetic_qemu_trace_contract.py' -v
+            -p 'test_windows10_popos_synthetic_*_contract.py' -v
           bash -n auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
           echo "SYNTHETIC contract only; all Windows writer guards remain DENIED." >> "$GITHUB_STEP_SUMMARY"
 
