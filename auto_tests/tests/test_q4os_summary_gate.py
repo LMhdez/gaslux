@@ -53,6 +53,7 @@ def test_patch_requires_exact_once_original_anchor(tmp_path: Path) -> None:
     path = tmp_path / "source.sh"
     path.write_text("calamares_users_view_verified=1\n" + mod.OLD + "\n")
     import sys
+
     old_argv = sys.argv
     try:
         sys.argv = ["patch", str(path.resolve())]
@@ -70,8 +71,8 @@ def test_only_one_summary_next_click_in_guarded_hook() -> None:
     hook = (TOOLS / "gaslux_q4os_summary_readonly_hook.sh").read_text()
     workflow = (ROOT / ".github/workflows/q4os-summary-repro-2vm.yml").read_text()
     assert hook.count("move 1002 644 click 1") == 1
-    assert hook.count("python3 \"$readonly_gate\" filled") == 1
-    assert hook.count("python3 \"$readonly_gate\" summary") == 1
+    assert hook.count('python3 "$readonly_gate" filled') == 1
+    assert hook.count('python3 "$readonly_gate" summary') == 1
     assert "GASLUX_Q4OS_NATIVE_COW_VIEW_ONLY" in hook
     assert "GASLUX_Q4OS_SUMMARY_READONLY: '1'" in workflow
     assert "GASLUX_Q4OS_GRAPHICS_LAB_ONLY: '1'" in workflow
