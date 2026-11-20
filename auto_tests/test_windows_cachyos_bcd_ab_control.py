@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 TOOLS = Path(__file__).resolve().parent / "tools"
 sys.path.insert(0, str(TOOLS))
@@ -107,6 +109,46 @@ usb_packet_state
             self.assertNotEqual(
                 lab.tpm_state_tree_sha256(root),
                 lab.tpm_state_tree_sha256(clone),
+            )
+
+    def test_tpm_state_trees_must_not_share_hardlinked_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            left = root / "left"
+            right = root / "right"
+            left.mkdir(mode=0o700)
+            right.mkdir(mode=0o700)
+            source = left / "state.bin"
+            source.write_bytes(b"independent TPM state")
+            clone = right / "state.bin"
+            clone.write_bytes(source.read_bytes())
+            self.assertTrue(lab.tpm_state_trees_independent(left, right))
+            clone.unlink()
+            os.link(source, clone)
+            self.assertFalse(lab.tpm_state_trees_independent(left, right))
+
+    def test_windows_only_control_requires_explicit_consent_before_disk_access(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch.object(
+                lab, "validate_workspace",
+                side_effect=AssertionError("disk validation must not run"),
+            ):
+                with self.assertRaisesRegex(
+                    lab.BcdAbControlError, "separate Windows-only BCD A/B control consent"
+                ):
+                    lab.run_windows_only_bcd_control(
+                        original=[], base=Path("/not-a-disk"),
+                        nvram=Path("/not-a-vars"), geometry={}, checkpoint={},
+                        staged={}, third={}, ext4={}, fourth={},
+                        workspace=Path("/not-a-workspace"),
+                    )
+
+    def test_bcd_ab_rejects_invalid_hash_types(self):
+        with self.assertRaisesRegex(lab.BcdAbControlError,
+                                    "invalid hash, byte count or spans"):
+            lab.compare_bcd_ab(
+                forensic(None, "b" * 64, 1, []),
+                forensic("a" * 64, "b" * 64, 1, []),
             )
 
     def test_tpm_state_digest_rejects_symlinks(self):
