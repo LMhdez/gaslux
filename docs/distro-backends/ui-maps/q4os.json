@@ -5,7 +5,7 @@
     "version": "6.10 r2",
     "url": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso",
     "sha256": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d",
-    "sizeBytes": null,
+    "sizeBytes": 1851392000,
     "integrityGate": "sha256-matches-pinned-lab-digest; upstream-signature-not-proven"
   },
   "lab": {
@@ -27,7 +27,7 @@
       "screenshot": "vnc-before-icon-click.png",
       "visualGate": "verified_after_close",
       "title": "Q4OS Desktop",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "1\nus\n\nInstall Q40S\n\n11:55 PM\nvires\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -43,7 +43,34 @@
           "action": "double-click installer icon"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-before-icon-click.png",
+          "sha256": "ee066fb79b12b036c02a115c5f2b89511f9df59d5699f1ac643554ff225376b8",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-before-icon-click.png",
+          "sha256": "30c47abcddd4e446ef1917363e40d2f8429e0735c28f4ccf1453468209ea6dc3",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     },
     {
       "id": "calamares-welcome",
@@ -51,7 +78,7 @@
       "screenshot": "vnc-after-installer-icon.png",
       "visualGate": "verified_native_calamares_welcome",
       "title": "Welcome",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "ar\ne\n\nWelcome\nLocation\nKeyboard\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ405 operating system Installer\n\nWelcome to the Q40S Andromeda installer\n\nThis computer does not satisfy some of the recommended requirements for installing Q40S 6.\nInstallation can continue, but some features might be disabled.\n\nThe system is not connected to the Internet.\n\nnA} ‘American English\n\n© Cancel\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -67,7 +94,34 @@
           "action": "advance to Location"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-after-installer-icon.png",
+          "sha256": "8645651790c54b777aa053b299ba8baa8cbf1265467ce465a50aac4b4cf1460e",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-after-installer-icon.png",
+          "sha256": "d013fe7f81c6a0f8225f9f28e45386d5958f4ade8cfa90960f54ef4c473a9e42",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     },
     {
       "id": "calamares-location",
@@ -75,7 +129,7 @@
       "screenshot": "vnc-location-page.png",
       "visualGate": "verified_native_calamares_location",
       "title": "Location",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "*\n\nWelcome\nLocation\nKeyboard\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ405 operating system Installer\n\n=\n=\n4\n\nRegion: America Zone:\n\nThe system language will be set to American English (United States).\n\nThe numbers and dates locale will be set to American English (United States).\n\nNew York\n\nChange.\n\nChange.\n\n© Cancel\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -91,7 +145,34 @@
           "action": "advance to Keyboard"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-location-page.png",
+          "sha256": "ef0bccc4f42829d83645824a4a3e183fd9eaff96d0d4ec558cb4b9dcded8f936",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-location-page.png",
+          "sha256": "0f8f508e8f26592bab8b05e5a2474ead07dc3b1dab28b5cd802d9ec4a97e7c33",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     },
     {
       "id": "calamares-keyboard",
@@ -99,7 +180,7 @@
       "screenshot": "vnc-keyboard-page.png",
       "visualGate": "verified_native_calamares_keyboard",
       "title": "Keyboard",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "ar\n\nWelcome\nLocation\nKeyboard\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ405 operating system Installer\n\nKeyboard model: Generic 105-key PC\n\nEnglish (Ghana)\nEnglish (New Zealand)\nEnglish (Nigeria)\nEnglish (South Africa)\nEnglish (UK)\n\nEnglish (US)\n\nCherokee\nDefault\n\nEnglish (Colemak)\n\nEnglish (Colemak-DH 1SO)\n\nEnglish (Colemak-DH Ortholinear)\nEnglish (Colemak-DH Wide ISO)\n\nSwitch Keyboard:\n\n© Cancel\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -115,7 +196,34 @@
           "action": "advance to Software"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-keyboard-page.png",
+          "sha256": "ae8e182ff95fa520439ff9c9fe77f3e84300e81801309c9b2f9b0b590d438407",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-keyboard-page.png",
+          "sha256": "f5e9cb5322808c3f6419e2f738517406d53856fc165d164c2fd2f5ec4d59e857",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     },
     {
       "id": "calamares-software-unselected",
@@ -123,7 +231,7 @@
       "screenshot": "vnc-software-page.png",
       "visualGate": "verified_native_calamares_software_unselected",
       "title": "Software",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "ar\ne\n\nWelcome\n\nLocation\n\nKeyboard\n\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ40S Desktop\n405 Basic\n405 Live\n408 Pure\n\nLoad custom profile ..\n\nQ405 operating system Installer\n\nPackage Selection\n\nPlease pick a product from the list. The selected product will be installed.\n\n< Back\n\n© Cancel\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -139,7 +247,34 @@
           "action": "select native desktop profile"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-software-page.png",
+          "sha256": "e444febab3151ae4a3d8e0fced9a7e0025218d708d5adc95fd383140f2a9240b",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-software-page.png",
+          "sha256": "4c60144dc65baea926801332330bfd02e7da669358ed823bff6650c096ef36f9",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     },
     {
       "id": "calamares-software-desktop-selected",
@@ -147,7 +282,7 @@
       "screenshot": "vnc-software-selected.png",
       "visualGate": "verified_native_calamares_desktop_selected",
       "title": "Software",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "ar\ne\n\nWelcome\nLocation\nKeyboard\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ40S Basic\nQ40S Live\nQ40Ss Pure\n\nLoad custom profile ..\n\nQ405 operating system Installer\n\nQ40S Desktop\n\nprofile: Q40S Desktop\n\nRecommended for regular users.\n\nFull featured Desktop with Web Browser, Office Suite and recommended\napplications set.\n\nNote:\nInstall process could take a while, as the installer needs to perform an extra configuration and cleanup.\n\n© Cancel\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -163,7 +298,34 @@
           "action": "advance to Partitions"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-software-selected.png",
+          "sha256": "a1f1ec7ac889e677015890e5ed7480e1d324391f9fdfb9bc5754d0d7ab76e52f",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-software-selected.png",
+          "sha256": "ecc4cf02c2feb3328372c813abe2d2c9a222ce0218a50dc2edbdd4d73edd84a8",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     },
     {
       "id": "calamares-partitions",
@@ -171,7 +333,7 @@
       "screenshot": "vnc-partitions-page.png",
       "visualGate": "verified_synthetic_calamares_partitions_view",
       "title": "Partitions",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "Q405 operating system Installer\n\na ®) EFI selectstorage device: | © vda-3200Gi8/devivday | © cet\n\nWelcome\n\nReplace a partition\nReplaces a partition with Q40S 6.\n\nErase disk\nLocation This will all data currently present on the selected storage device.\n\nKeyboard Manual partitioning\n\nYou can create or resize partitions yourself.\nSoftware\nPartitions\n\nUsers\n\nSummary\n\nInstall\na\n\nFinish var G Free space\n\n© Cancel\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -187,7 +349,34 @@
           "action": "select proposal only, never execute installer"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-partitions-page.png",
+          "sha256": "26a928c429146b30aa04ed87741050c5ae103e545cc9ffe2312588ea99cac03d",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-partitions-page.png",
+          "sha256": "33423d8167ef4444ae17b5071f2a3fd5b575c8c6e2cfafd61e1021465f040fac",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     },
     {
       "id": "calamares-partitions-proposal-only",
@@ -195,7 +384,7 @@
       "screenshot": "vnc-partitions-radio-selected.png",
       "visualGate": "verified_synthetic_calamares_partitions_selected",
       "title": "Partitions",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "Q405 operating system Installer\n\na ®) EFI selectstorage device: | © vda-3200Gi8/devivday | © cet\n\nx ag Replace a partition\n\nWelcome\n\n© Erase disk\nLocation i. Thiswill all data currently present on the selected storage device.\n\nKeyboard swap (with Hibernate) Vv\n\nSoftware g Manual partitioning\n\n7 You can create or resize partitions yourself.\nPartitions\n\nUsers Encrypt system\n\na\nSummary\n\n@vdat Gi Free space\nInstall\n\nAfter: fi\nGB EFisystem B a4os_andromeda O swap\n\nFinish\n\n© Cancel\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -211,7 +400,34 @@
           "action": "advance to Users without installation"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-partitions-radio-selected.png",
+          "sha256": "07b9eb4ac30dc4890db2f56599238082c6782f79441b1ea782d0150796c2f10b",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-partitions-radio-selected.png",
+          "sha256": "628c32e6526e2500d0b0924f4462db81ed7c6e0015c67cf237d62f5e99ae8df1",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     },
     {
       "id": "calamares-users-unfilled",
@@ -219,7 +435,7 @@
       "screenshot": "vnc-users-page.png",
       "visualGate": "verified_native_calamares_users",
       "title": "Users",
-      "visibleTextObserved": null,
+      "visibleTextObserved": "ar\ne\n\nWelcome\n\nLocation\n\nKeyboard\n\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ40S operating system Installer\nWhat is your name?\nWhat name do you want to use to log in?\nlogin\nWhat is the name of this computer?\nComputer Name\nChoose a password to keep your account safe.\n\nPassword Repeat Password\n\nLog in automatically without asking for the password.\n\nUse the same password for the administrator account.\n\nPassword is too short\n\n© Cancel\n\n",
       "qtAccessibilityId": null,
       "controls": [
         {
@@ -235,7 +451,34 @@
           "action": "DO NOT ENTER: read-only stop state"
         }
       ],
-      "proofs": []
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "screenshot": "vnc-users-page.png",
+          "sha256": "42d61fd37547c0dcef4a677aed080fe352a1bf63c1a71d1649c5fbcd42d76956",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "screenshot": "vnc-users-page.png",
+          "sha256": "2f280829501426be6a2079974b283f9824bdd21a7cff7f9e2cb81337ba843003",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     }
   ],
   "transitions": [
@@ -269,8 +512,33 @@
       ],
       "configuredCommandTimeoutSeconds": 20,
       "observedDurationMs": null,
-      "status": "pending",
-      "proofs": []
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "beforeScreenshot": "vnc-before-icon-click.png",
+          "beforeSha256": "ee066fb79b12b036c02a115c5f2b89511f9df59d5699f1ac643554ff225376b8",
+          "afterScreenshot": "vnc-after-installer-icon.png",
+          "afterSha256": "8645651790c54b777aa053b299ba8baa8cbf1265467ce465a50aac4b4cf1460e",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "beforeScreenshot": "vnc-before-icon-click.png",
+          "beforeSha256": "30c47abcddd4e446ef1917363e40d2f8429e0735c28f4ccf1453468209ea6dc3",
+          "afterScreenshot": "vnc-after-installer-icon.png",
+          "afterSha256": "d013fe7f81c6a0f8225f9f28e45386d5958f4ade8cfa90960f54ef4c473a9e42",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        }
+      ]
     },
     {
       "id": "t2-calamares-welcome-to-calamares-location",
@@ -302,8 +570,33 @@
       ],
       "configuredCommandTimeoutSeconds": 20,
       "observedDurationMs": null,
-      "status": "pending",
-      "proofs": []
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "beforeScreenshot": "vnc-after-installer-icon.png",
+          "beforeSha256": "8645651790c54b777aa053b299ba8baa8cbf1265467ce465a50aac4b4cf1460e",
+          "afterScreenshot": "vnc-location-page.png",
+          "afterSha256": "ef0bccc4f42829d83645824a4a3e183fd9eaff96d0d4ec558cb4b9dcded8f936",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "beforeScreenshot": "vnc-after-installer-icon.png",
+          "beforeSha256": "d013fe7f81c6a0f8225f9f28e45386d5958f4ade8cfa90960f54ef4c473a9e42",
+          "afterScreenshot": "vnc-location-page.png",
+          "afterSha256": "0f8f508e8f26592bab8b05e5a2474ead07dc3b1dab28b5cd802d9ec4a97e7c33",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        }
+      ]
     },
     {
       "id": "t3-calamares-location-to-calamares-keyboard",
@@ -335,8 +628,33 @@
       ],
       "configuredCommandTimeoutSeconds": 20,
       "observedDurationMs": null,
-      "status": "pending",
-      "proofs": []
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "beforeScreenshot": "vnc-location-page.png",
+          "beforeSha256": "ef0bccc4f42829d83645824a4a3e183fd9eaff96d0d4ec558cb4b9dcded8f936",
+          "afterScreenshot": "vnc-keyboard-page.png",
+          "afterSha256": "ae8e182ff95fa520439ff9c9fe77f3e84300e81801309c9b2f9b0b590d438407",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "beforeScreenshot": "vnc-location-page.png",
+          "beforeSha256": "0f8f508e8f26592bab8b05e5a2474ead07dc3b1dab28b5cd802d9ec4a97e7c33",
+          "afterScreenshot": "vnc-keyboard-page.png",
+          "afterSha256": "f5e9cb5322808c3f6419e2f738517406d53856fc165d164c2fd2f5ec4d59e857",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        }
+      ]
     },
     {
       "id": "t4-calamares-keyboard-to-calamares-software-unselected",
@@ -368,8 +686,33 @@
       ],
       "configuredCommandTimeoutSeconds": 20,
       "observedDurationMs": null,
-      "status": "pending",
-      "proofs": []
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "beforeScreenshot": "vnc-keyboard-page.png",
+          "beforeSha256": "ae8e182ff95fa520439ff9c9fe77f3e84300e81801309c9b2f9b0b590d438407",
+          "afterScreenshot": "vnc-software-page.png",
+          "afterSha256": "e444febab3151ae4a3d8e0fced9a7e0025218d708d5adc95fd383140f2a9240b",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "beforeScreenshot": "vnc-keyboard-page.png",
+          "beforeSha256": "f5e9cb5322808c3f6419e2f738517406d53856fc165d164c2fd2f5ec4d59e857",
+          "afterScreenshot": "vnc-software-page.png",
+          "afterSha256": "4c60144dc65baea926801332330bfd02e7da669358ed823bff6650c096ef36f9",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        }
+      ]
     },
     {
       "id": "t5-calamares-software-unselected-to-calamares-software-desktop-selected",
@@ -401,8 +744,33 @@
       ],
       "configuredCommandTimeoutSeconds": 20,
       "observedDurationMs": null,
-      "status": "pending",
-      "proofs": []
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "beforeScreenshot": "vnc-software-page.png",
+          "beforeSha256": "e444febab3151ae4a3d8e0fced9a7e0025218d708d5adc95fd383140f2a9240b",
+          "afterScreenshot": "vnc-software-selected.png",
+          "afterSha256": "a1f1ec7ac889e677015890e5ed7480e1d324391f9fdfb9bc5754d0d7ab76e52f",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "beforeScreenshot": "vnc-software-page.png",
+          "beforeSha256": "4c60144dc65baea926801332330bfd02e7da669358ed823bff6650c096ef36f9",
+          "afterScreenshot": "vnc-software-selected.png",
+          "afterSha256": "ecc4cf02c2feb3328372c813abe2d2c9a222ce0218a50dc2edbdd4d73edd84a8",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        }
+      ]
     },
     {
       "id": "t6-calamares-software-desktop-selected-to-calamares-partitions",
@@ -434,8 +802,33 @@
       ],
       "configuredCommandTimeoutSeconds": 20,
       "observedDurationMs": null,
-      "status": "pending",
-      "proofs": []
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "beforeScreenshot": "vnc-software-selected.png",
+          "beforeSha256": "a1f1ec7ac889e677015890e5ed7480e1d324391f9fdfb9bc5754d0d7ab76e52f",
+          "afterScreenshot": "vnc-partitions-page.png",
+          "afterSha256": "26a928c429146b30aa04ed87741050c5ae103e545cc9ffe2312588ea99cac03d",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "beforeScreenshot": "vnc-software-selected.png",
+          "beforeSha256": "ecc4cf02c2feb3328372c813abe2d2c9a222ce0218a50dc2edbdd4d73edd84a8",
+          "afterScreenshot": "vnc-partitions-page.png",
+          "afterSha256": "33423d8167ef4444ae17b5071f2a3fd5b575c8c6e2cfafd61e1021465f040fac",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        }
+      ]
     },
     {
       "id": "t7-calamares-partitions-to-calamares-partitions-proposal-only",
@@ -467,8 +860,33 @@
       ],
       "configuredCommandTimeoutSeconds": 20,
       "observedDurationMs": null,
-      "status": "pending",
-      "proofs": []
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "beforeScreenshot": "vnc-partitions-page.png",
+          "beforeSha256": "26a928c429146b30aa04ed87741050c5ae103e545cc9ffe2312588ea99cac03d",
+          "afterScreenshot": "vnc-partitions-radio-selected.png",
+          "afterSha256": "07b9eb4ac30dc4890db2f56599238082c6782f79441b1ea782d0150796c2f10b",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "beforeScreenshot": "vnc-partitions-page.png",
+          "beforeSha256": "33423d8167ef4444ae17b5071f2a3fd5b575c8c6e2cfafd61e1021465f040fac",
+          "afterScreenshot": "vnc-partitions-radio-selected.png",
+          "afterSha256": "628c32e6526e2500d0b0924f4462db81ed7c6e0015c67cf237d62f5e99ae8df1",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        }
+      ]
     },
     {
       "id": "t8-calamares-partitions-proposal-only-to-calamares-users-unfilled",
@@ -500,8 +918,33 @@
       ],
       "configuredCommandTimeoutSeconds": 20,
       "observedDurationMs": null,
-      "status": "pending",
-      "proofs": []
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44641233701",
+          "artifactId": 14587306682,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+          "beforeScreenshot": "vnc-partitions-radio-selected.png",
+          "beforeSha256": "07b9eb4ac30dc4890db2f56599238082c6782f79441b1ea782d0150796c2f10b",
+          "afterScreenshot": "vnc-users-page.png",
+          "afterSha256": "42d61fd37547c0dcef4a677aed080fe352a1bf63c1a71d1649c5fbcd42d76956",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        },
+        {
+          "replica": 2,
+          "runId": "44641233701",
+          "artifactId": 14586773677,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+          "beforeScreenshot": "vnc-partitions-radio-selected.png",
+          "beforeSha256": "628c32e6526e2500d0b0924f4462db81ed7c6e0015c67cf237d62f5e99ae8df1",
+          "afterScreenshot": "vnc-users-page.png",
+          "afterSha256": "2f280829501426be6a2079974b283f9824bdd21a7cff7f9e2cb81337ba843003",
+          "visualGatesPassed": true,
+          "centralRegionChanged": true
+        }
+      ]
     }
   ],
   "stopBoundary": {
