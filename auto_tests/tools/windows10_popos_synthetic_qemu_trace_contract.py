@@ -19,7 +19,7 @@ SECTOR = 512
 SERIAL = "GASLUX_POP_SYNTH"
 DISK_SIZE = 8 * 1024**3
 SMOKE_OFFSET = 96 * 1024 * 1024
-SMOKE_LENGTH = 512
+SMOKE_LENGTH = 4096
 SYNTH_GUID = "a6784e03-11a6-4544-b61c-87b66db8e117"
 # Source QEMU's hw/block/trace-events:
 # virtio_blk_handle_write(void *vdev, void *req, uint64_t sector, size_t nsectors)
