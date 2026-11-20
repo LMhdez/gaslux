@@ -1,0 +1,43 @@
+name: CachyOS synthetic QCOW2 durable checkpoint (simulation; no Windows)
+on:
+  push:
+    branches: [feature/cachyos-synthetic-recovery-checkpoint-issue3, fix/cachyos-configured-root-grant-binding-issue3]
+    paths:
+      - .github/workflows/cachyos-synthetic-recovery-checkpoint.yml
+      - auto_tests/tools/cachyos_synthetic_recovery_checkpoint.py
+      - auto_tests/test_cachyos_synthetic_recovery_checkpoint.py
+      - auto_tests/tools/cachyos_partition_transaction_simulation.py
+      - auto_tests/test_cachyos_partition_transaction_simulation.py
+      - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-private-checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install test-only QEMU tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          command -v qemu-img
+      - name: Validate synthetic checkpoint, interruption and rollback safety gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/cachyos_synthetic_recovery_checkpoint.py auto_tests/test_cachyos_synthetic_recovery_checkpoint.py
+          python3 -m unittest discover -s auto_tests -p test_cachyos_synthetic_recovery_checkpoint.py -v
+          python3 -m unittest discover -s auto_tests -p test_cachyos_partition_transaction_simulation.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_cachyos_qcow2_gpt_readonly.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_cachyos_readonly_baseline_gate.py -v
+          printf '%s\n' 'Synthetic private QCOW2 checkpoint only: durable sealed copy with independent SHA, but no real Windows, actual recovery, partition writes, Linux boot or dual boot.' >> "$GITHUB_STEP_SUMMARY"

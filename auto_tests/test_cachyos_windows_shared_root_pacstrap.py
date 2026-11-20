@@ -182,6 +182,8 @@ class SharedRootOnlySafety(unittest.TestCase):
             program_sources = {
                 "cachyos_windows_shared_root_pacstrap.py":
                     HERE / "tools/cachyos_windows_shared_root_pacstrap.py",
+                "cachyos_configure_installed.py":
+                    HERE / "tools/cachyos_configure_installed.py",
                 "cachyos_windows_shared_archiso_handoff.py":
                     HERE / "tools/cachyos_windows_shared_archiso_handoff.py",
                 "cachyos_windows_shared_archiso_guest_probe.py":
@@ -256,6 +258,7 @@ class SharedRootOnlySafety(unittest.TestCase):
                 "gptReaderSha256": hashlib.sha256(programs["windows_cachyos_qcow2_gpt_readonly.py"].read_bytes()).hexdigest(),
                 "guestInstallScriptSha256": hashlib.sha256(programs["gaslux-install.sh"].read_bytes()).hexdigest(),
                 "guestLaunchScriptSha256": hashlib.sha256(programs["gaslux-launch.sh"].read_bytes()).hexdigest(),
+                "installedConfiguratorSha256": hashlib.sha256(programs["cachyos_configure_installed.py"].read_bytes()).hexdigest(),
             }
             args = SimpleNamespace(root_write_grant=grant_path,
                                    grant_signature=signature,
