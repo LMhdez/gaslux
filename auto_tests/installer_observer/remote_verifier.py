@@ -145,13 +145,25 @@ def _aware(value: datetime, field: str) -> datetime:
     return value.astimezone(UTC)
 
 
+def _decode_nonce(value: str) -> bytes:
+    try:
+        decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+    except (ValueError, base64.binascii.Error) as exc:
+        raise VerificationRefused("nonce-invalid", "Nonce is not valid base64url") from exc
+    canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+    if len(decoded) != 32 or canonical != value:
+        _refuse("nonce-invalid", "Nonce must be canonical unpadded base64url for 256 bits")
+    return decoded
+
+
 def _decode_signature(value: str) -> bytes:
     try:
         decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
     except (ValueError, base64.binascii.Error) as exc:
         raise VerificationRefused("signature-invalid", "Signature is not valid base64url") from exc
-    if len(decoded) != 64:
-        _refuse("signature-invalid", "Ed25519 signature must contain exactly 64 bytes")
+    canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+    if len(decoded) != 64 or canonical != value:
+        _refuse("signature-invalid", "Ed25519 signature must be canonical 64-byte base64url")
     return decoded
 
 
@@ -501,6 +513,7 @@ class RemoteResponseVerifier:
                 "schema-invalid", "Request or response schema validation failed"
             ) from exc
 
+        _decode_nonce(request_value["nonce"])
         timeout_ms = request_value["timeout_ms"]
         if absolute_deadline - current > timedelta(milliseconds=timeout_ms) + self.clock_skew:
             _refuse("deadline-invalid", "Caller deadline exceeds the request timeout")
@@ -739,6 +752,8 @@ class RemoteResponseVerifier:
             data = base64.b64decode(result["data"], validate=True)
         except (ValueError, base64.binascii.Error) as exc:
             raise VerificationRefused("frame-invalid", "Framebuffer is not valid base64") from exc
+        if base64.b64encode(data).decode("ascii") != result["data"]:
+            _refuse("frame-invalid", "Framebuffer base64 encoding is not canonical")
         if not data.startswith(b"\x89PNG\r\n\x1a\n"):
             _refuse("frame-invalid", "Framebuffer is not a PNG image")
         if len(data) > _MAX_RESPONSE_BYTES or _sha256(data) != result["sha256"]:
