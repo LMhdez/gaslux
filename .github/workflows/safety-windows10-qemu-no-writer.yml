@@ -1,0 +1,118 @@
+name: Safety real Windows 10 QEMU no-writer witness
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/safety-windows10-qemu-no-writer.yml'
+      - 'auto_tests/tools/safety_qemu_pop_witness_refusal.py'
+      - 'auto_tests/tests/test_safety_qemu_pop_witness_refusal.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readonly-evidence-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Verify existing and bridge no-writer tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install 'pytest>=9,<10'
+          python3 -m compileall -q assets/live/libertix_disk_identity_gate.py assets/live/libertix_prewrite_no_writer.py auto_tests/tools/safety_qemu_pop_witness_refusal.py
+          python3 -m pytest -q auto_tests/tests/test_disk_identity_gate.py auto_tests/tests/test_prewrite_no_writer.py auto_tests/tests/test_safety_qemu_pop_witness_refusal.py
+
+  genuine-windows-qemu-readonly:
+    needs: readonly-evidence-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WIN10_POP_OVERLAY_CONSENT: I_ACCEPT_GITHUB_ONLY_QCOW2_COPY_ON_WRITE_LINUX_ROOT_STAGE
+      GASLUX_WIN10_POP_PAIR_COW_CONSENT: I_ACCEPT_ONLY_DISPOSABLE_WIN10_POP_ESP_ROOT_QCOW2
+      GASLUX_WIN10_POP_PAIR_POSTBOOT_CONSENT: I_ACCEPT_DISPOSABLE_POP_PAIR_WINDOWS_THIRD_BOOT
+      GASLUX_POP_WINDOWS_COW_LIVE_CONSENT: I_ACCEPT_AUTHENTIC_POP_LIVE_WITH_READONLY_WIN10_COW
+      GASLUX_POP_WINDOWS_COW_LIVE_ISO_CONSENT: I_ACCEPT_VERIFIED_POP_ISO_IN_DISPOSABLE_WINDOWS_KVM_VM
+      GASLUX_POP_NATIVE_CHILD_COW_CONSENT: I_ACCEPT_DISPOSABLE_CHILD_ONLY_AFTER_POP_LIVE_GPT_GUEST
+    steps:
+      - name: Checkout Safety
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Checkout pinned genuine Windows Pop lab from PR 232
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
+          path: pop-lab
+          persist-credentials: false
+      - name: Enforce disposable hosted QEMU
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          test "$(git -C pop-lab rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          chmod 700 "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Install QEMU and libguestfs lab dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
+            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic \
+            aria2 squashfs-tools binutils curl gnupg ca-certificates gdisk acl \
+            grub-common grub-efi-amd64-bin
+          source pop-lab/auto_tests/tools/windows_x64_libguestfs_kernel.sh
+      - name: Run genuine Win10 and signed Pop Linux read-only QEMU witness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 pop-lab/auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile win10_22h2_en_us_x64 --accel kvm \
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
+            --audit-installed-gpt-readonly --stage-pop-independent-esp-root-overlay \
+            --verify-pop-post-pair-windows-reboot --probe-pop-live-on-six-gpt
+          echo "Guest GPT proof from pinned lab; Safety provenance NOT authenticated" >> "$GITHUB_STEP_SUMMARY"
+      - name: Refuse Safety gate due to unauthenticated transaction provenance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/safety_qemu_pop_witness_refusal.py \
+            --evidence "$GITHUB_WORKSPACE/windows-x64-tcg-evidence" \
+            | tee "$GITHUB_WORKSPACE/windows-x64-tcg-evidence/safety-no-writer-decision.json"
+          grep -q '"decision": "DENY_NO_WRITER"' \
+            "$GITHUB_WORKSPACE/windows-x64-tcg-evidence/safety-no-writer-decision.json"
+          echo 'Safety gate DENY_NO_WRITER; no production writer attached' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload bounded evidence, never QCOW2 ISO NVRAM or keys
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-safety-win10-guest-no-writer-evidence
+          path: |
+            windows-x64-tcg-evidence/*.json
+            windows-x64-tcg-evidence/*.sha256
+            windows-x64-tcg-evidence/*.log
+            windows-x64-tcg-evidence/*.trace
+          retention-days: 7
+          if-no-files-found: warn
