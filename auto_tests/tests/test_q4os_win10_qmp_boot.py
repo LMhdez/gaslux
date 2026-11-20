@@ -224,3 +224,19 @@ def test_private_directory_required(lab):
     os.chmod(qmp.parent, 0o755)
     with pytest.raises(BootRefusal, match="nonprivate_lab_directory"):
         run(lab)
+
+
+def test_workflow_runs_qmp_once_and_never_exports_vm_password():
+    workflow = (
+        Path(__file__).resolve().parents[2]
+        / ".github/workflows/gaslux-q4os-windows10-qcow2.yml"
+    ).read_text(encoding="utf-8")
+    assert "GASLUX_WIN10_LAB_PASSWORD" not in workflow
+    assert "q4os_win10_qmp_boot.py" in workflow
+    assert '--qmp "$qmp" --serial "$serial" --disk "$image"' in workflow
+    assert 'unix:$qmp,server=on,wait=off' in workflow
+    assert "qemu_timeout=7200" in workflow
+    assert "qemu_timeout=14400" in workflow
+    assert "tail -n 120" not in workflow
+    assert "name: q4os-windows10-genuine-readonly-safety-refusal-text" in workflow
+    assert "boot-controller.json" in workflow
