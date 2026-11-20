@@ -88,5 +88,8 @@ def test_terminal_run_evidence_is_consistent_without_fictitious_embedded_config(
         "ghcr-immutable-oci-config-digest-crosschecked-with-embedded-iso-manifest"
     )
     assert evidence["relationship"]["embeddedOciManifestReadBackVerified"] is True
-    assert evidence["relationship"]["isoAttestationResolvedPayloadDigestIndependentlyVerified"] is False
+    assert (
+        evidence["relationship"]["isoAttestationResolvedPayloadDigestIndependentlyVerified"]
+        is False
+    )
     assert evidence["installationAuthorized"] is False
