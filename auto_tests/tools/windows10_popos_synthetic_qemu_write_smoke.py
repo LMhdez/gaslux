@@ -347,13 +347,12 @@ def extract_smoke(decoded: Path) -> bytes:
     return data
 
 
-def verify_synthetic_gpt_unchanged(base: Path, decoded: Path) -> dict:
-    """Check actual PRIMARY+BACKUP GPT bytes via independent QCOW2 readback.
-
-    Do not parse GPT a second time. sgdisk already independently validates
-    baseline GPT CRC/geometry, and unchanged byte regions prove intact
-    primary+backup tables within this synthetic smoke only.
-    """
+def compare_synthetic_gpt_regions(base: Path, decoded: Path) -> dict:
+    """Independent host-side before/after GPT region comparison."""
+    require(base.is_file() and decoded.is_file()
+            and base.stat().st_size == DISK_SIZE
+            and decoded.stat().st_size == DISK_SIZE,
+            "synthetic host readback geometry invalid")
     regions = (
         ("protective-mbr-primary-gpt", 0, 34),
         ("backup-gpt", DISK_SIZE // 512 - 33, 33),
@@ -363,15 +362,37 @@ def verify_synthetic_gpt_unchanged(base: Path, decoded: Path) -> dict:
         length = count * 512
         with base.open("rb") as source:
             source.seek(start * 512)
-            original = source.read(length)
-        require(len(original) == length, "baseline synthetic GPT truncated")
-        with decoded.open("rb") as converted:
-            converted.seek(start * 512)
-            actual = converted.read(length)
-        require(actual == original,
-                "unexpected synthetic GPT primary/backup modification: " + name)
-        out[name] = hashlib.sha256(original).hexdigest()
-    return out
+            before = source.read(length)
+        with decoded.open("rb") as actual_file:
+            actual_file.seek(start * 512)
+            after = actual_file.read(length)
+        require(len(before) == length and len(after) == length,
+                "synthetic host GPT region readback truncated: " + name)
+        changed = [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
+        out[name] = {
+            "startLba": start,
+            "sectorCount": count,
+            "beforeSha256": hashlib.sha256(before).hexdigest(),
+            "afterSha256": hashlib.sha256(after).hexdigest(),
+            "changedByteCount": len(changed),
+            "firstChangedOffsetsBytes": changed[:64],
+            "unchanged": not changed,
+        }
+    return {"unchanged": all(x["unchanged"] for x in out.values()),
+            "regions": out}
+
+
+def verify_synthetic_gpt_unchanged(base: Path, decoded: Path) -> dict:
+    """Check actual PRIMARY+BACKUP GPT bytes via independent QCOW2 readback.
+
+    Do not parse GPT a second time. sgdisk already independently validates
+    baseline GPT CRC/geometry, and unchanged byte regions prove intact
+    primary+backup tables within this synthetic smoke only.
+    """
+    proof = compare_synthetic_gpt_regions(base, decoded)
+    require(proof["unchanged"],
+            "unexpected synthetic GPT primary/backup modification")
+    return proof
 
 
 def distinst_console(sock: Path, stream: bytearray, nvram: Path):
@@ -709,6 +730,39 @@ def run_distinst_partition_test(
                 hashlib.sha256(guest_bytes).hexdigest()
                 + "  synthetic-distinst-failure-guest-report.json\n",
                 encoding="ascii")
+        host_gpt_region_diff = None
+        child_backing_chain_verified = False
+        child_qcow2_check = None
+        if child.is_file() and not child.is_symlink():
+            decoded_failure = work / "synthetic-distinst-failure-readback.raw"
+            try:
+                info = json.loads(call(
+                    "qemu-img", "info", "--output=json", str(child),
+                    capture_output=True, text=True).stdout)
+                backing = Path(info.get("backing-filename", ""))
+                if not backing.is_absolute():
+                    backing = child.parent / backing
+                require(info.get("format") == "qcow2"
+                        and info.get("virtual-size") == DISK_SIZE
+                        and backing.resolve() == base.resolve()
+                        and info.get("backing-filename-format") == "raw",
+                        "synthetic child backing chain changed during distinst")
+                child_backing_chain_verified = True
+                child_qcow2_check = call(
+                    "qemu-img", "check", str(child),
+                    capture_output=True, text=True).stdout[-2000:]
+                call("qemu-img", "convert", "-f", "qcow2", "-O", "raw",
+                     "-S", "4k", str(child), str(decoded_failure), timeout=180)
+                host_gpt_region_diff = compare_synthetic_gpt_regions(
+                    base, decoded_failure)
+            except Exception as snapshot_error:
+                host_gpt_region_diff = {
+                    "unchanged": False,
+                    "error": str(snapshot_error)[:1000],
+                }
+            finally:
+                if decoded_failure.exists() and not decoded_failure.is_symlink():
+                    decoded_failure.unlink()
         write_set_diagnostic = None
         if trace.is_file() and not trace.is_symlink() and trace.stat().st_size <= 16_000_000:
             try:
@@ -747,6 +801,9 @@ def run_distinst_partition_test(
             "childPresentBeforeCleanup": child.exists(),
             "traceSha256": sha(trace) if trace.is_file() else None,
             "guestGptDiff": guest.get("gptDiff") if type(guest) is dict else None,
+            "hostGptRegionDiff": host_gpt_region_diff,
+            "childBackingChainVerifiedAtFailure": child_backing_chain_verified,
+            "childQcow2CheckOutput": child_qcow2_check,
             "writeSetDecision": (
                 write_set_diagnostic.get("decision")
                 if type(write_set_diagnostic) is dict else "INCOMPLETE"
