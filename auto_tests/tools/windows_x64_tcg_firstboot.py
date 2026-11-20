@@ -1383,6 +1383,17 @@ def main(argv: list[str] | None = None) -> int:
                                                     if isinstance(error, PostPacstrapWindowsError):
                                                         safe_reason = str(error)
                                                         side_by_side["failureReason"] = safe_reason
+                                                        # The verifier supplies only bounded hashes,
+                                                        # byte offsets and boolean evidence; never
+                                                        # original BCD hive bytes or guest secrets.
+                                                        if error.diagnostics is not None:
+                                                            side_by_side["readonlyDiagnostics"] = (
+                                                                error.diagnostics
+                                                            )
+                                                            print("GASLUX_CACHYOS_POST_PACSTRAP_READONLY_DIAGNOSTICS="
+                                                                  + json.dumps(error.diagnostics,
+                                                                               sort_keys=True),
+                                                                  flush=True)
                                                         print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_REASON="
                                                               + safe_reason, flush=True)
                                                     print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_FAILED="
