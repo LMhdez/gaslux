@@ -116,6 +116,7 @@ def _one(evidence_root: Path) -> dict:
                     if "second controller already holds the lease" not in str(exc):
                         raise
                 controller.verify()
+                print("QEMU stage: initial QMP witness", flush=True)
                 attestor.verify(time.monotonic() + 5)
                 surface = inspect_input_surface(seal.process, tuple(cmd), qmp, vnc)
                 try:
@@ -141,6 +142,7 @@ def _one(evidence_root: Path) -> dict:
             transport = ReadOnlyVncTransport(
                 RfbReader(unix_socket=vnc), attestor, authority, resolution
             )
+            print("QEMU stage: observation after initial RFB reader closed", flush=True)
             frame = transport.capture(time.monotonic() + 8)
             if frame.scale is not None or frame.passed_checks:
                 raise Refusal("Read-only observation must not claim guest preconditions")
@@ -237,6 +239,7 @@ def _one(evidence_root: Path) -> dict:
             # The same-UID uncooperative client DID connect; this is a blocker.
             # The other client has closed; the normal session must recover
             # without authorizing or emitting any guest input.
+            print("QEMU stage: post-concurrent-client QMP witness", flush=True)
             attestor.verify(time.monotonic() + 5)
             # Deliberate drift on a SYNTHETIC test ISO only, after capturing
             # the original read-only frame. Never do this with upstream media.
