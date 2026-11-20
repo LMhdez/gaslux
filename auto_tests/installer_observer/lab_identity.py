@@ -84,6 +84,7 @@ class QemuRunSeal:
     vnc_port: int
     iso: AttachedFile
     cow: AttachedFile
+    vnc_socket: Path | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -93,7 +94,7 @@ class QemuRunSeal:
             or self.authority.synthetic_cow_only is not True
             or self.authority.physical_disk_attached is not False
             or type(self.vnc_port) is not int
-            or not 5900 <= self.vnc_port <= 5999
+            or (self.vnc_socket is None and not 5900 <= self.vnc_port <= 5999)
             or self.iso.path == self.cow.path
             or self.process.uid != os.geteuid()
         ):
@@ -160,14 +161,15 @@ def verify_qmp_report(seal: QemuRunSeal, blocks: Any, vnc: Any, status: Any) -> 
         "paused",
     ):
         raise Refusal("VM is not in an allowed observation state")
-    if (
-        not isinstance(vnc, dict)
-        or vnc.get("enabled") is not True
-        or vnc.get("host") != "127.0.0.1"
-        or str(vnc.get("service")) != str(seal.vnc_port)
-        or vnc.get("clients") != []
-    ):
+    if not isinstance(vnc, dict) or vnc.get("enabled") is not True or vnc.get("clients") != []:
         raise Refusal("Unbound graphical endpoint or another VNC client")
+    if seal.vnc_socket is None:
+        if vnc.get("host") != "127.0.0.1" or str(vnc.get("service")) != str(
+            seal.vnc_port
+        ):
+            raise Refusal("Unbound graphical endpoint or another VNC client")
+    elif vnc.get("family") != "unix":
+        raise Refusal("VNC endpoint is not a Unix socket")
     _check_attachment(blocks, seal.iso, "raw", read_only=True)
     cow = _check_attachment(blocks, seal.cow, "qcow2", read_only=False)
     snapshots = cow.get("snapshots")
@@ -234,6 +236,17 @@ class LocalQemuAttestor:
             socket_path = seal.qmp_socket
             directory = socket_path.parent.stat()
             endpoint = socket_path.lstat()
+            if seal.vnc_socket is not None:
+                vnc_path = seal.vnc_socket
+                vnc_endpoint = vnc_path.lstat()
+                if (
+                    vnc_path.is_symlink()
+                    or vnc_path.parent != socket_path.parent
+                    or not stat.S_ISSOCK(vnc_endpoint.st_mode)
+                    or vnc_endpoint.st_uid != seal.process.uid
+                    or vnc_endpoint.st_mode & 0o077
+                ):
+                    raise Refusal("VNC Unix endpoint not private")
             if (
                 socket_path.parent.resolve(strict=True) != socket_path.parent.absolute()
                 or not stat.S_ISDIR(directory.st_mode)
@@ -241,6 +254,7 @@ class LocalQemuAttestor:
                 or directory.st_mode & 0o077
                 or not stat.S_ISSOCK(endpoint.st_mode)
                 or endpoint.st_uid != seal.process.uid
+                or endpoint.st_mode & 0o077
             ):
                 raise Refusal("QMP socket is not private to the VM controller")
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as qmp:
