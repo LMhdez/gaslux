@@ -160,7 +160,10 @@ def verify_embedded_blobs(
     if f"sha256:{config_sha}" != expected_config_digest:
         raise ReadbackError("Embedded OCI config digest mismatch")
     manifest_config = manifest.get("config")
-    if not isinstance(manifest_config, dict) or manifest_config.get("digest") != expected_config_digest:
+    if (
+        not isinstance(manifest_config, dict)
+        or manifest_config.get("digest") != expected_config_digest
+    ):
         raise ReadbackError("Embedded manifest references a different config")
     labels = config.get("config", {}).get("Labels") or {}
     version_label = labels.get("org.opencontainers.image.version") or labels.get("version")
