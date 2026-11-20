@@ -139,6 +139,19 @@ class QemuSyntheticTraceTest(unittest.TestCase):
         self.assertEqual(result["ovmfPflashWriteEventCount"], 1)
         self.assertFalse(result["nvramWriteSetAttested"])
 
+    def test_pflash_command_without_data_or_erase_does_not_attest_nvar_mutation(self):
+        trace = (TRACE +
+                 "12345@42.01:pflash_write system.flash1: single byte program (0)\n")
+        with self.assertRaises(DiskAuditError):
+            self.observe(trace=trace, nvram_sha_after="c" * 64)
+
+    def test_pflash_code_device_mutation_is_refused(self):
+        trace = (TRACE +
+                 "12345@42.01:pflash_data_write system.flash0: "
+                 "data offset:0x1000 size:8 value:0x00000001\n")
+        with self.assertRaises(DiskAuditError):
+            self.observe(trace=trace, nvram_sha_after="c" * 64)
+
     def test_no_windows_six_gpt_claim_from_independent_synthetic(self):
         result = self.observe()
         self.assertFalse(result["windowsWriteSetMatchProven"])
