@@ -99,7 +99,7 @@
     "embeddedOciManifestReadBackVerified": false,
     "isoToPayloadBindingVerified": false,
     "runFailedStage": "embedded-manifest-config-extraction",
-    "runFailureReason": "Actual containers/storage metadata identifies the Bazzite image and manifest path; previous collector incorrectly required a separate sibling config file. Corrected manifest/config digest binding is published and awaiting complete readback.",
+    "runFailureReason": "The ISO's containers/storage image record and embedded manifest path were observed, but the original extractor incorrectly required a separate sibling config blob. The corrected verifier hashes the embedded manifest and validates the config blob fetched by immutable OCI digest; complete readback is pending.",
     "sidecars": {
       "signature": {
         "file": "bazzite-stable-live-amd64.iso.sig",
@@ -133,10 +133,9 @@
     "isoBuildRunIdentityVerified": true,
     "payloadBuildRunIdentityVerified": true,
     "payloadReleaseTagVerified": true,
-    "payloadCosignVerifierVersionUsed": "v2.6.5",
+    "payloadCosignVerifierVersionUsed": "v3.1.3",
     "payloadCosignUpstreamVersion": "v3.1.3",
     "payloadCosignSignatureVerified": true,
-    "payloadCosignFailureReason": "Cosign v2.6.5 returned: no matching attestations: expected key signature, not certificate. The pinned upstream build.yml uses Cosign v3.1.3 and build.py sign explicitly sets --new-bundle-format=false and --use-signing-config=false; retry is configured with the matching version and bundle mode.",
     "payloadAttestationVerified": true,
     "isoSizeBytes": 8377878528,
     "isoSha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
