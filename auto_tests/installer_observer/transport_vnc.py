@@ -41,7 +41,11 @@ class RfbReader:
     clock: Callable[[], float] = time.monotonic
 
     def read_png(self, deadline: float, size: Size) -> bytes:
-        if (\n            self.host not in ("127.0.0.1", "::1")\n            or type(self.port) is not int\n            or not 1 <= self.port <= 65535\n        ):
+        if (
+            self.host not in ("127.0.0.1", "::1")
+            or type(self.port) is not int
+            or not 1 <= self.port <= 65535
+        ):
             raise Refusal("Only an explicitly selected loopback VNC endpoint is permitted")
         if (len(size) != 2 or any(type(n) is not int for n in size)
                 or not 0 < size[0] * size[1] <= 8_000_000):
