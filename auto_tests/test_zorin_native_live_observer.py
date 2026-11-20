@@ -1,8 +1,6 @@
 """Negative tests for diskless Zorin 18.1 UEFI live-ISO observation."""
 from __future__ import annotations
 
-import io
-import json
 import os
 from pathlib import Path
 import socket
