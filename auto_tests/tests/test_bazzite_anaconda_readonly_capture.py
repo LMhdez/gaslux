@@ -13,6 +13,7 @@ from bazzite_anaconda_readonly_capture import (  # noqa: E402
     SERVICE,
     CaptureRefusal,
     capture,
+    guest_disk_inventory,
     installed_service,
     parse_device_ids,
     process_proof,
@@ -87,9 +88,80 @@ def verifier(pid):
     }
 
 
+def example_guest_disk():
+    return {
+        "blockdevices": [
+            {
+                "name": "vda",
+                "type": "disk",
+                "serial": "GLXBAZRO001",
+                "size": 70 * 1024**3,
+                "log-sec": 512,
+                "ptuuid": "11111111-2222-4333-8444-555555555555",
+                "children": [
+                    {
+                        "type": "part",
+                        "partuuid": f"0000000{n}-2222-4333-8444-555555555555",
+                        "start": first,
+                        "size": (last - first + 1) * 512,
+                    }
+                    for n, first, last in (
+                        (1, 2048, 616447),
+                        (2, 616448, 649215),
+                        (3, 649216, 50980863),
+                    )
+                ],
+            }
+        ]
+    }
+
+
+def disk_reader():
+    return guest_disk_inventory(example_guest_disk())
+
+
+def test_guest_disk_contract_is_not_external_authentication():
+    result = disk_reader()
+    assert result["diskSerial"] == "GLXBAZRO001"
+    assert len(result["partitions"]) == 3
+    assert result["authenticatedAgainstHost"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("serial", "FOREIGN"),
+        ("size", 40 * 1024**3),
+        ("log-sec", 4096),
+        ("ptuuid", "unknown"),
+    ],
+)
+def test_guest_disk_foreign_identity_or_sector_geometry_refused(field, value):
+    data = example_guest_disk()
+    data["blockdevices"][0][field] = value
+    with pytest.raises(CaptureRefusal):
+        guest_disk_inventory(data)
+
+
+def test_guest_disk_rejects_partition_uuid_overlap_and_missing_partitions():
+    for change in ("uuid", "overlap", "missing", "extra"):
+        data = example_guest_disk()
+        parts = data["blockdevices"][0]["children"]
+        if change == "uuid":
+            parts[1]["partuuid"] = parts[0]["partuuid"]
+        elif change == "overlap":
+            parts[1]["start"] = parts[0]["start"]
+        elif change == "missing":
+            parts.pop()
+        else:
+            parts.append(dict(parts[-1]))
+        with pytest.raises(CaptureRefusal):
+            guest_disk_inventory(data)
+
+
 def test_reads_only_existing_service_from_unique_owner_and_never_authorizes():
     reader, calls = guest_reader()
-    result = capture(reader, verifier)
+    result = capture(reader, verifier, disk_reader)
     assert result["origin"] == "anaconda-dbus-readonly-untrusted"
     assert result["uniqueOwner"] == ":1.37"
     assert result["deviceIds"] == ["vda", "vda1"]
@@ -124,19 +196,19 @@ def test_reads_only_existing_service_from_unique_owner_and_never_authorizes():
 def test_missing_service_or_unparseable_devices_refused(problem):
     reader, _ = guest_reader(missing=problem)
     with pytest.raises(CaptureRefusal):
-        capture(reader, verifier)
+        capture(reader, verifier, disk_reader)
 
 
 def test_replaced_service_refused_even_if_initial_observation_valid():
     reader, _ = guest_reader(replaced=True)
     with pytest.raises(CaptureRefusal, match="replaced"):
-        capture(reader, verifier)
+        capture(reader, verifier, disk_reader)
 
 
 def test_duplicate_guest_devices_refused():
     reader, _ = guest_reader(bad_devices=True)
     with pytest.raises(CaptureRefusal, match="Duplicate"):
-        capture(reader, verifier)
+        capture(reader, verifier, disk_reader)
 
 
 @pytest.mark.parametrize(
@@ -166,7 +238,7 @@ def test_getactions_read_signature_must_have_no_inputs():
 def test_missing_optional_interfaces_are_not_conjured():
     xml = XML.replace('<method name="GetBootDevice"><arg type="s" direction="out"/></method>', "")
     reader, calls = guest_reader(xml=xml)
-    report = capture(reader, verifier)
+    report = capture(reader, verifier, disk_reader)
     assert report["unobservedMethods"] == ["GetBootDevice"]
     assert "GetBootDevice" not in report["rawResponses"]
     assert not any("GetBootDevice" in cmd for cmd in calls)
@@ -175,9 +247,9 @@ def test_missing_optional_interfaces_are_not_conjured():
 def test_bogus_installer_binary_proof_refused():
     reader, _ = guest_reader()
     with pytest.raises(CaptureRefusal, match="Executable"):
-        capture(reader, lambda pid: {"pid": pid, "executableSha256": "wrong"})
+        capture(reader, lambda pid: {"pid": pid, "executableSha256": "wrong"}, disk_reader)
     with pytest.raises(CaptureRefusal, match="Executable"):
-        capture(reader, lambda pid: {"pid": pid + 1, "executableSha256": "a" * 64})
+        capture(reader, lambda pid: {"pid": pid + 1, "executableSha256": "a" * 64}, disk_reader)
 
 
 def test_proc_rejects_invalid_pid_before_read():
@@ -209,7 +281,7 @@ def test_adversarial_device_lists_refused(value):
 
 def test_capture_does_not_verify_payload_geometry_esp_or_atomic_deployment():
     reader, _ = guest_reader()
-    report = capture(reader, verifier)
+    report = capture(reader, verifier, disk_reader)
     for name in (
         "gptPrimaryAndBackupWritesObserved",
         "efiWritesObserved",
