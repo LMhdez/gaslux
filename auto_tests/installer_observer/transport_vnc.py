@@ -12,6 +12,7 @@ import struct
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from PIL import Image
@@ -39,9 +40,10 @@ class RfbReader:
     port: int = 5900
     dial: Callable[..., socket.socket] = socket.create_connection
     clock: Callable[[], float] = time.monotonic
+    unix_socket: Path | None = None
 
     def read_png(self, deadline: float, size: Size) -> bytes:
-        if (
+        if self.unix_socket is None and (
             self.host not in ("127.0.0.1", "::1")
             or type(self.port) is not int
             or not 1 <= self.port <= 65535
@@ -56,7 +58,20 @@ class RfbReader:
         if self.clock() >= deadline:
             raise Refusal("VNC deadline expired")
         try:
-            with self.dial((self.host, self.port), timeout=deadline - self.clock()) as sock:
+            if self.unix_socket is None:
+                connection = self.dial((self.host, self.port), timeout=deadline - self.clock())
+            else:
+                endpoint = self.unix_socket
+                if endpoint.is_symlink() or endpoint.resolve(strict=True) != endpoint.absolute():
+                    raise Refusal("Invalid RFB Unix socket path")
+                connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                try:
+                    connection.settimeout(deadline - self.clock())
+                    connection.connect(str(endpoint))
+                except BaseException:
+                    connection.close()
+                    raise
+            with connection as sock:
 
                 def take(n: int) -> bytes:
                     if self.clock() >= deadline:
