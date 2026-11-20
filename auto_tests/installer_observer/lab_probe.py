@@ -164,18 +164,18 @@ def _one(evidence_root: Path) -> dict:
                         data.extend(part)
                     return bytes(data)
 
-                if take_exact(12) != b"RFB 003.008\\n":
+                if take_exact(12) != b"RFB 003.008\n":
                     raise Refusal("Unexpected second VNC protocol")
-                other.sendall(b"RFB 003.008\\n")
+                other.sendall(b"RFB 003.008\n")
                 security_count = take_exact(1)[0]
-                if security_count not in range(1, 33) or b"\\x01" not in take_exact(
+                if security_count not in range(1, 33) or b"\x01" not in take_exact(
                     security_count
                 ):
                     raise Refusal("Second VNC handshake unavailable")
-                other.sendall(b"\\x01")
+                other.sendall(b"\x01")
                 if take_exact(4) != bytes(4):
                     raise Refusal("Second VNC security refusal")
-                other.sendall(b"\\x01")  # ClientInit shared, no input messages.
+                other.sendall(b"\x01")  # ClientInit shared, no input messages.
                 take_exact(20)  # server width, height and pixel format
                 name_length = int.from_bytes(take_exact(4), "big")
                 if name_length > 256:
