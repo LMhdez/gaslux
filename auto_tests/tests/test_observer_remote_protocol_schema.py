@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 REQUEST_SCHEMA = json.loads(
@@ -85,7 +85,7 @@ def test_request_schema_accepts_only_the_four_read_only_operations():
 def test_request_schema_rejects_mutating_or_generic_operations(operation):
     payload = valid_request()
     payload["operation"] = operation
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         REQUEST_VALIDATOR.validate(payload)
 
 
