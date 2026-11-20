@@ -127,9 +127,6 @@ def disposable_native_child(
             "productionInstallationAuthorized": False,
         }
         yield child, proof
-        # This does NOT validate child-written data, only parent immutability.
-        require(_sha256(base) == original_hash and _sha256(stage) == stage_hash,
-                "native guest child modified Windows backing or checkpoint stage")
     finally:
         require(
             child.parent == base.parent and child.name == CHILD_NAME
@@ -140,3 +137,8 @@ def disposable_native_child(
             "refuse cleanup of foreign native child",
         )
         child.unlink(missing_ok=True)
+        # ALWAYS verify the two read-only parents, including after a failed
+        # guest, QEMU crash or exception inside the checkpoint context.
+        # This does NOT validate any child-written data.
+        require(_sha256(base) == original_hash and _sha256(stage) == stage_hash,
+                "native guest child modified Windows backing or checkpoint stage")
