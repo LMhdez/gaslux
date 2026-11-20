@@ -219,6 +219,16 @@ def test_altered_signature_is_refused():
     assert_refused("signature-invalid", lambda: verify_one(verifier(store), request, response))
 
 
+def test_noncanonical_256_bit_nonce_is_refused():
+    private, store = trusted_material()
+    request = make_request(nonce="A" * 42 + "B")
+    response = make_response(private, request)
+    assert_refused(
+        "nonce-invalid",
+        lambda: verify_one(verifier(store), request, response),
+    )
+
+
 def test_nonce_replay_is_refused_after_first_acceptance():
     private, store = trusted_material()
     request = make_request()
