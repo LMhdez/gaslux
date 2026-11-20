@@ -118,16 +118,95 @@ class MintAbCheckpointContracts(unittest.TestCase):
             root = Path(d)
             reference, arm = root / "reference.qcow2", root / "arm-a.qcow2"
             reference.write_bytes(b"reference")
+            reference.chmod(0o400)
             arm.write_bytes(b"arm")
             arm.chmod(0o600)
             responses = [
                 subprocess.CompletedProcess([], 0, "", ""),
                 subprocess.CompletedProcess([], 0, "", ""),
             ]
-            with patch.object(ab, "command", side_effect=responses):
+            import windows_mint_ab_capacity as cap
+            with patch.object(ab, "choose_injection_offset",
+                              return_value=127 * 1024**3), \
+                 patch.object(cap, "qemu_fully_allocated_bytes",
+                              return_value=1024), \
+                 patch.object(ab, "command", side_effect=responses):
                 with self.assertRaisesRegex(ab.AbCheckpointError, "not independently detected"):
                     ab.reproduce_restore(reference, arm, root)
             self.assertTrue(arm.exists(), "must not destroy arm on unproved recovery")
+
+    def test_enospc_during_atomic_restore_leaves_arm_and_reference(self):
+        import errno
+        import windows_mint_ab_capacity as cap
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            reference, arm = root/"reference.qcow2", root/"arm-a.qcow2"
+            reference.write_bytes(b"reference")
+            reference.chmod(0o400)
+            arm.write_bytes(b"arm")
+            arm.chmod(0o600)
+            old_arm, old_ref = arm.read_bytes(), reference.read_bytes()
+            def fake_command(argv, **kwargs):
+                if argv[0] == "qemu-io":
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                if argv[0] == "qemu-img" and "compare" in argv:
+                    return subprocess.CompletedProcess(argv, 1, "", "")
+                raise AssertionError("unexpected command")
+            with patch.object(ab, "choose_injection_offset",
+                              return_value=127*1024**3), \
+                 patch.object(cap, "qemu_fully_allocated_bytes", return_value=1024), \
+                 patch.object(ab, "command", side_effect=fake_command), \
+                 patch.object(ab, "standalone",
+                              side_effect=OSError(errno.ENOSPC, "disk full")):
+                with self.assertRaises(OSError) as error:
+                    ab.reproduce_restore(reference, arm, root)
+            self.assertEqual(error.exception.errno, errno.ENOSPC)
+            self.assertEqual(arm.read_bytes(), old_arm)
+            self.assertEqual(reference.read_bytes(), old_ref)
+            self.assertFalse((root/"checkpoint.json").exists())
+
+    def test_wrong_fifth_extent_rejects_injection_before_any_write(self):
+        import struct
+        import windows_cachyos_overlay_reboot as reboot
+        import windows_cachyos_qcow2_gpt_readonly as gpt
+        entry = bytearray(128*128)
+        total = ab.VIRTUAL_BYTES//512
+        for i in range(5):
+            entry[i*128:i*128+16] = b"x"*16
+            begin = 2048 if i == 0 else (2048 + i*100000)
+            end = begin + 99999 if i != 4 else total-40
+            struct.pack_into("<QQ", entry, i*128+32, begin, end)
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d)/"reference.qcow2"
+            with patch.object(reboot, "gpt_windows",
+                              return_value=(b"x"*1048576, b"y"*1048576)), \
+                 patch.object(gpt, "header_at", return_value=b"GPT"), \
+                 patch.object(gpt, "part_array", return_value=bytes(entry)):
+                with self.assertRaisesRegex(ab.AbCheckpointError,
+                                            "no verified unallocated"):
+                    ab.choose_injection_offset(path)
+
+    def test_valid_gpt_free_extent_is_derived_from_fifth_end(self):
+        import struct
+        import windows_cachyos_overlay_reboot as reboot
+        import windows_cachyos_qcow2_gpt_readonly as gpt
+        entry = bytearray(128*128)
+        spans = []
+        for i in range(5):
+            entry[i*128:i*128+16] = b"x"*16
+            start = 2048 + i*100000
+            end = start + 99999
+            spans.append((start, end))
+            struct.pack_into("<QQ", entry, i*128+32, start, end)
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d)/"reference.qcow2"
+            with patch.object(reboot, "gpt_windows",
+                              return_value=(b"x"*1048576, b"y"*1048576)), \
+                 patch.object(gpt, "header_at", return_value=b"GPT"), \
+                 patch.object(gpt, "part_array", return_value=bytes(entry)):
+                offset = ab.choose_injection_offset(path)
+            self.assertGreater(offset, spans[-1][1]*512)
+            self.assertLess(offset+ab.WRITE_SIZE, ab.VIRTUAL_BYTES-34*512)
 
     def test_source_never_uses_production_disk_utilities_or_merge_semantics(self):
         code = (Path(__file__).parent / "tools" /
