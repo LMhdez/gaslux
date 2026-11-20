@@ -27,6 +27,7 @@ OFFICIAL_URL = re.compile(
 HASH = re.compile("[0-9a-f]{64}\\Z")
 API = "https://api.pop-os.org/builds/24.04/intel"
 LAB_CONSENT = "I_ACCEPT_VERIFIED_POP_ISO_IN_DISPOSABLE_WINDOWS_KVM_VM"
+SYNTHETIC_LAB_CONSENT = "I_ACCEPT_OFFICIAL_POP_ISO_FOR_SYNTHETIC_QEMU_LAB"
 
 # Immutable laboratory media identity, previously authenticated against the
 # upstream System76 GPG-signed SHA256SUMS. API drift requires reviewed repinning.
@@ -70,19 +71,29 @@ def validate_signed_release_identity(data: dict, manifest: bytes) -> tuple[str, 
 
 
 def require_hosted_iso_lab(workspace: Path) -> None:
-    require(
+    common = (
         os.environ.get("GITHUB_ACTIONS") == "true"
         and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
         and os.environ.get("RUNNER_OS") == "Linux"
         and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
-        and os.environ.get("GASLUX_POP_WINDOWS_COW_LIVE_ISO_CONSENT") == LAB_CONSENT
+    )
+    windows_lab = (
+        os.environ.get("GASLUX_POP_WINDOWS_COW_LIVE_ISO_CONSENT") == LAB_CONSENT
+        and workspace.name.startswith("gaslux-win-x64-")
+    )
+    synthetic_lab = (
+        os.environ.get("GASLUX_POP_SYNTHETIC_ISO_LAB_CONSENT")
+        == SYNTHETIC_LAB_CONSENT
+        and workspace.name.startswith("gaslux-pop-synthetic-")
+    )
+    require(
+        common and (windows_lab or synthetic_lab)
         and workspace.is_absolute()
         and workspace.parent == Path("/home/runner/work/_temp")
-        and workspace.name.startswith("gaslux-win-x64-")
         and workspace.is_dir() and not workspace.is_symlink()
         and workspace.stat().st_uid == os.getuid()
         and stat.S_IMODE(workspace.stat().st_mode) == 0o700,
-        "official Pop ISO fetch refused outside explicitly opted-in hosted VM",
+        "official Pop ISO fetch refused outside explicitly opted-in hosted QEMU lab",
     )
 
 
