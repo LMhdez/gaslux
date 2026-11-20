@@ -88,7 +88,9 @@ def _object(
             parsed = json.loads(canonical.decode("utf-8"), object_pairs_hook=_pairs_no_duplicates)
         except VerificationRefused:
             raise
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
+        except (
+            UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError
+        ) as exc:
             raise VerificationRefused("json-invalid", f"{label} is not a JSON object") from exc
     elif isinstance(value, str):
         return _object(value.encode("utf-8"), limit=limit, label=label)
