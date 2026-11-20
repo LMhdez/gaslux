@@ -184,8 +184,15 @@ PY
 printf 'GASLUX_POP_SYNTH_KVM_WRITE_SMOKE=1\n'
 """, encoding="utf-8")
     call("mcopy", "-i", str(esp), str(guest), "::/synthetic-smoke.sh")
+    distinst_guest = Path(__file__).with_name("windows10_popos_synthetic_distinst_guest.sh")
+    require(distinst_guest.is_file() and not distinst_guest.is_symlink(),
+            "synthetic distinst guest controller is missing or symlinked")
+    call("bash", "-n", str(distinst_guest))
+    call("mcopy", "-i", str(esp), str(distinst_guest), "::/distinst-test.sh")
     manifest = work / "lab.sha256"
-    manifest.write_text(sha(guest) + "  synthetic-smoke.sh\n", encoding="ascii")
+    manifest.write_text(
+        sha(guest) + "  synthetic-smoke.sh\n"
+        + sha(distinst_guest) + "  distinst-test.sh\n", encoding="ascii")
     call("mcopy", "-i", str(esp), str(manifest), "::/lab.sha256")
     call("dd", "if=" + str(esp), "of=" + str(img), "bs=1M",
          "seek=1", "conv=notrunc", "status=none")
