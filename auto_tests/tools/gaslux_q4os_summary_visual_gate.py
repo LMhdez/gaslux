@@ -62,7 +62,10 @@ def ocr(path: Path) -> str:
     try:
         result = subprocess.run(
             ["tesseract", str(path), "stdout"],
-            capture_output=True,\n            text=True,\n            timeout=40,\n            check=True,
+            capture_output=True,
+            text=True,
+            timeout=40,
+            check=True,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise ScreenRefusal("OCR did not complete") from exc
