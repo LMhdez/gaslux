@@ -293,7 +293,15 @@ def _one(evidence_root: Path) -> dict:
             # The other client has closed; the normal session must recover
             # without authorizing or emitting any guest input.
             print("QEMU stage: post-concurrent-client QMP witness", flush=True)
-            attestor.verify(time.monotonic() + 5)
+            idle_deadline = time.monotonic() + 3
+            while True:
+                try:
+                    attestor.verify(idle_deadline)
+                    break
+                except Refusal as exc:
+                    if "another VNC client" not in str(exc) or time.monotonic() >= idle_deadline:
+                        raise
+                    time.sleep(0.05)
             # Deliberate drift on a SYNTHETIC test ISO only, after capturing
             # the original read-only frame. Never do this with upstream media.
             original_iso = iso.read_bytes()
