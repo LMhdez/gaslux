@@ -58,6 +58,14 @@ jobs:
         with:
           cosign-release: 'v2.6.5'
 
+      - name: Install upstream-pinned payload Cosign
+        id: cosign-payload
+        continue-on-error: true
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        with:
+          cosign-release: 'v3.1.3'
+          install-dir: ${{ runner.temp }}/cosign-v3.1.3
+
       - name: Authenticate public GHCR reads
         id: ghcr
         continue-on-error: true
@@ -85,6 +93,8 @@ jobs:
           EVIDENCE="$RUNNER_TEMP/bazzite-iso-public-readback-evidence"
           MOUNT="$RUNNER_TEMP/bazzite-iso-readonly-mount"
           ISO_NAME='bazzite-stable-live-amd64.iso'
+          COSIGN_ISO="$HOME/.cosign/cosign"
+          COSIGN_PAYLOAD="$RUNNER_TEMP/cosign-v3.1.3/cosign"
           ISO_URL="https://download.bazzite.gg/$ISO_NAME"
           SOURCE_COMMIT='5d71c4376169910c25bc06a3537f4780521e7435'
           ISO_SHA256='6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5'
@@ -152,9 +162,10 @@ jobs:
           PY
 
           stage='cosign-iso-signature'
-          cosign version > "$EVIDENCE/cosign-version.txt"
-          grep -F 'v2.6.5' "$EVIDENCE/cosign-version.txt"
-          cosign verify-blob --key "$KEY" --signature "$WORK/$ISO_NAME.sig" "$WORK/$ISO_NAME" > "$EVIDENCE/iso-cosign-verification.txt" 2>&1
+          "$COSIGN_ISO" version > "$EVIDENCE/cosign-iso-version.txt"
+          grep -F 'v2.6.5' "$EVIDENCE/cosign-iso-version.txt"
+          "$COSIGN_ISO" verify-blob --key "$KEY" --signature "$WORK/$ISO_NAME.sig" "$WORK/$ISO_NAME" > "$EVIDENCE/iso-cosign-verification.txt" 2>&1
+          touch "$EVIDENCE/iso-cosign-verified.ok"
 
           stage='iso-github-attestation'
           gh attestation verify "$WORK/$ISO_NAME" \
@@ -197,7 +208,10 @@ jobs:
 
           stage='payload-cosign-signature'
           PAYLOAD_REF="$PAYLOAD_IMAGE@$PAYLOAD_DIGEST"
-          cosign verify --key "$KEY" "$PAYLOAD_REF" > "$EVIDENCE/payload-cosign-verification.json" 2>&1
+          "$COSIGN_PAYLOAD" version > "$EVIDENCE/cosign-payload-version.txt"
+          grep -F 'v3.1.3' "$EVIDENCE/cosign-payload-version.txt"
+          "$COSIGN_PAYLOAD" verify --key "$KEY" "$PAYLOAD_REF" > "$EVIDENCE/payload-cosign-verification.json" 2>&1
+          touch "$EVIDENCE/payload-cosign-verified.ok"
 
           stage='payload-github-attestation'
           gh attestation verify "oci://$PAYLOAD_REF" \
@@ -255,6 +269,7 @@ jobs:
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
           CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
           COSIGN_OUTCOME: ${{ steps.cosign.outcome }}
+          COSIGN_PAYLOAD_OUTCOME: ${{ steps.cosign-payload.outcome }}
           GHCR_OUTCOME: ${{ steps.ghcr.outcome }}
         run: |
           set -Eeuo pipefail
@@ -273,7 +288,8 @@ jobs:
                       status[key] = value
           outcomes = {
               "contracts": os.environ["CONTRACTS_OUTCOME"],
-              "cosignInstaller": os.environ["COSIGN_OUTCOME"],
+              "cosignIsoInstaller": os.environ["COSIGN_OUTCOME"],
+              "cosignPayloadInstaller": os.environ["COSIGN_PAYLOAD_OUTCOME"],
               "ghcrAuthentication": os.environ["GHCR_OUTCOME"],
               "readback": os.environ["VERIFY_OUTCOME"],
           }
@@ -282,9 +298,9 @@ jobs:
           public_readback = {
               "isoByteIdentity": json.loads(identity_path.read_text()) if identity_path.exists() else None,
               "sidecarValidation": json.loads(sidecar_path.read_text()) if sidecar_path.exists() else None,
-              "detachedCosignSignatureVerified": (evidence / "iso-cosign-verification.txt").is_file(),
+              "detachedCosignSignatureVerified": (evidence / "iso-cosign-verified.ok").is_file(),
               "githubAttestationVerified": (evidence / "iso-attestation-policy.json").is_file(),
-              "payloadCosignVerified": (evidence / "payload-cosign-verification.json").is_file(),
+              "payloadCosignVerified": (evidence / "payload-cosign-verified.ok").is_file(),
               "payloadAttestationVerified": (evidence / "payload-attestation-policy.json").is_file(),
           }
           if (evidence / "readback-facts.json").exists():
