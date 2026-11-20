@@ -1440,7 +1440,7 @@ def main(argv: list[str] | None = None) -> int:
                                                     from windows_cachyos_bcd_ab_control import (
                                                         tpm_state_tree_sha256,
                                                     )
-                                                    side_by_side["treatmentTpmPostBootStateTreeSha256"] = (
+                                                    side_by_side["treatmentTpmStateTreeSha256AfterWindowsAttempt"] = (
                                                         tpm_state_tree_sha256(treatment_tpm_state)
                                                     )
                                                 except Exception as tpm_error:
@@ -1460,9 +1460,18 @@ def main(argv: list[str] | None = None) -> int:
                                                 ).get("bcdReadOnlyForensic")
                                                 if (isinstance(control_bcd, dict)
                                                         and isinstance(treatment_bcd, dict)):
-                                                    side_by_side["bcdAbComparison"] = (
-                                                        compare_bcd_ab(control_bcd, treatment_bcd)
-                                                    )
+                                                    try:
+                                                        side_by_side["bcdAbComparison"] = (
+                                                            compare_bcd_ab(control_bcd, treatment_bcd)
+                                                        )
+                                                    except Exception as comparison_error:
+                                                        side_by_side["bcdAbComparison"] = {
+                                                            "classification": "INVALID_OR_MALFORMED_BCD_AB_EVIDENCE",
+                                                            "failureType": type(comparison_error).__name__,
+                                                            "processAttributionProven": False,
+                                                            "approvedMutation": False,
+                                                            "releaseEligible": False,
+                                                        }
                                                 else:
                                                     side_by_side["bcdAbComparison"] = {
                                                         "classification": "INCOMPLETE_CONTROL_OR_TREATMENT_BCD_EVIDENCE",
