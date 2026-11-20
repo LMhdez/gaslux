@@ -14,7 +14,7 @@ import zlib
 from pathlib import Path
 
 import pytest
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 if not (ROOT / "assets/live").exists():
@@ -22,10 +22,9 @@ if not (ROOT / "assets/live").exists():
 sys.path.insert(0, str(ROOT / "assets/live") if (ROOT / "assets/live").exists() else str(ROOT))
 from gaslux_q4os_windows_boundary import (  # noqa: E402
     ESP,
-    LINUX,
     MSR,
-    WINRE,
     WINDOWS_DATA,
+    WINRE,
     Q4osWindowsBoundaryRefusal,
     inspect_private_raw_vm_disk,
     propose_read_only_native_target,
@@ -274,5 +273,5 @@ def test_proposal_matches_json_schema(lab):
     proposal = _candidate(_report(lab))
     Draft202012Validator(schema).validate(proposal)
     bad = proposal | {"installationAuthorized": True}
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Draft202012Validator(schema).validate(bad)
