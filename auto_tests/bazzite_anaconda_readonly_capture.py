@@ -221,11 +221,9 @@ def guest_disk_inventory(data: object) -> dict:
     if len(disks) > 128 or any(not isinstance(device, dict) for device in disks):
         raise CaptureRefusal("Unbounded or malformed guest block-device inventory")
     matches = [
-        disk
-        for disk in disks
-        if disk.get("type") == "disk" and disk.get("serial") == GUEST_SERIAL
+        disk for disk in disks if disk.get("type") == "disk" and disk.get("serial") == GUEST_SERIAL
     ]
-    if len(matches) != 1:
+    if len(matches) != 1 or sum(disk.get("type") == "disk" for disk in disks) != 1:
         raise CaptureRefusal("Expected one uniquely serialized disposable QEMU disk")
     disk = matches[0]
     if (
@@ -253,9 +251,7 @@ def guest_disk_inventory(data: object) -> dict:
         size = part.get("size")
         if (
             not isinstance(unique, str)
-            or not re.fullmatch(
-                r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", unique
-            )
+            or not re.fullmatch(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", unique)
             or unique.lower() in guids
             or type(start) is not int
             or type(size) is not int
