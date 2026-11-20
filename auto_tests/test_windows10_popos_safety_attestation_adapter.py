@@ -13,7 +13,10 @@ from windows10_popos_native_write_set import propose_native_write_set, _digest
 from windows10_popos_safety_attestation_adapter import (
     safety_snapshot_from_existing_gpt, compare_safety_snapshot,
     assess_pop_safety_handoff, classify_distinst_trace,
+    interpret_safety267_no_writer,
 )
+import hashlib
+import json
 from windows_x64_installed_gpt_ro_audit import DiskAuditError
 
 
@@ -148,6 +151,85 @@ class PopSafetyAttestationNegativeContracts(unittest.TestCase):
             changed[6][name] = "f" * 64
             with self.subTest(parent=name), self.assertRaises(DiskAuditError):
                 propose_native_write_set(*changed)
+
+
+
+class Safety267NoWriterConsumerTests(unittest.TestCase):
+    def setUp(self):
+        self.inputs = lab_fixture()
+        self.proposal = propose_native_write_set(*self.inputs)
+        d = self.proposal["disk"]
+        self.plan = {
+            "planId": self.proposal["transactionId"].replace("-", ""),
+            "firmware": "uefi",
+            "disk": {"partitionStyle": "GPT",
+                     "partitionTableId": "gpt:" + d["guid"],
+                     "sizeBytes": d["sizeBytes"],
+                     "logicalSectorSizeBytes": d["logicalSectorBytes"]},
+        }
+        self.vm_id = "verified-disposable-qemu-lab-001"
+
+    def _decision(self, p=None):
+        if p is None:
+            p = self.plan
+        canonical = json.dumps(p, sort_keys=True, separators=(",", ":"),
+                               allow_nan=False).encode()
+        return (canonical, {
+            "decision": "ACCEPT_NO_WRITER",
+            "transactionId": p["planId"],
+            "planSha256": hashlib.sha256(canonical).hexdigest(),
+            "vmId": self.vm_id,
+            "writeCount": 1,
+        })
+
+    def test_safety267_accept_no_writer_is_never_pop_format_permission(self):
+        payload, decision = self._decision()
+        report = interpret_safety267_no_writer(
+            self.proposal, decision, self.plan, payload, self.vm_id)
+        self.assertTrue(report["decisionConformsToNoWriterShape"])
+        self.assertFalse(report["evidenceCryptographicallyAuthenticatedByThisAdapter"])
+        self.assertFalse(report["existingPopPartitionsWithinSafety267AllocateFreeSpace"])
+        self.assertFalse(report["nativePartitionFormatterAllowed"])
+        self.assertFalse(report["distinstExecutionAuthorized"])
+
+    def test_safety267_missing_wrong_decision_and_foreign_transaction_denied(self):
+        original, decision = self._decision()
+        for field, value in [
+            ("decision", "ACCEPT_WRITER"),
+            ("transactionId", "b" * 32),
+            ("planSha256", "0" * 64),
+            ("vmId", "foreign-qemu-guest"),
+            ("writeCount", 0),
+            ("writeCount", True),
+        ]:
+            bad = {**decision, field: value}
+            with self.subTest(field=field), self.assertRaises(DiskAuditError):
+                interpret_safety267_no_writer(
+                    self.proposal, bad, self.plan, original, self.vm_id)
+        for unknown in (None, {}, {"decision": "ACCEPT_NO_WRITER"}):
+            with self.assertRaises(DiskAuditError):
+                interpret_safety267_no_writer(
+                    self.proposal, unknown, self.plan, original, self.vm_id)
+
+    def test_safety267_changed_disk_vm_plan_or_canonical_bytes_denied(self):
+        canonical, decision = self._decision()
+        with self.assertRaises(DiskAuditError):
+            interpret_safety267_no_writer(self.proposal, decision, self.plan,
+                                          canonical + b"\n", self.vm_id)
+        with self.assertRaises(DiskAuditError):
+            interpret_safety267_no_writer(self.proposal, decision, self.plan,
+                                          canonical, "other-authorized-qemu-999")
+        for field, value in [
+            ("partitionTableId", "gpt:" + str(uuid.uuid4())),
+            ("sizeBytes", 1), ("logicalSectorSizeBytes", 4096),
+            ("partitionStyle", "MBR"),
+        ]:
+            p = copy.deepcopy(self.plan)
+            p["disk"][field] = value
+            data, dec = self._decision(p)
+            with self.subTest(field=field), self.assertRaises(DiskAuditError):
+                interpret_safety267_no_writer(
+                    self.proposal, dec, p, data, self.vm_id)
 
 
 if __name__ == "__main__":
