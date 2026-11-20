@@ -11,7 +11,14 @@ from typing import Protocol
 
 from .evidence import Refusal, digest
 from .locators import Method, Surface, Target, resolve
-from .models import Action, DistributionIdentity, Evidence, InterfaceMap, ObservationResult, Transition
+from .models import (
+    Action,
+    DistributionIdentity,
+    Evidence,
+    InterfaceMap,
+    ObservationResult,
+    Transition,
+)
 from .screenshot import Box, Screenshot
 
 
@@ -37,8 +44,9 @@ class Frame:
 class LabTransport(Protocol):
     def capture(self, deadline: float) -> Frame: ...
 
-    def click_if_current(self, run_id: str, png_sha256: str, point: tuple[int, int],
-                         deadline: float) -> None:
+    def click_if_current(
+        self, run_id: str, png_sha256: str, point: tuple[int, int], deadline: float
+    ) -> None:
         """Atomically check run, authority and current framebuffer before one guest click."""
         ...
 
@@ -60,17 +68,28 @@ class SafetyPolicy:
 
     def authorize(self, mapping: InterfaceMap, edge: Transition, frame: Frame) -> Target:
         a = self.authority
-        if (not a.run_id or not a.snapshot_id or not a.source_commit or a.source_commit != mapping.lab_commit
-            or a.synthetic_cow_only is not True or a.physical_disk_attached is not False
-            or a.media != mapping.identity or a != frame.authority
-            or self.map_sha256 != digest(mapping.document)):
+        if (
+            not a.run_id
+            or not a.snapshot_id
+            or not a.source_commit
+            or a.source_commit != mapping.lab_commit
+            or a.synthetic_cow_only is not True
+            or a.physical_disk_attached is not False
+            or a.media != mapping.identity
+            or a != frame.authority
+            or self.map_sha256 != digest(mapping.document)
+        ):
             raise Refusal("Missing disposable lab, ISO or session authorization")
-        if (mapping.scale is None or not math.isfinite(mapping.scale) or mapping.scale <= 0
-            or frame.scale != mapping.scale):
+        if (
+            mapping.scale is None
+            or not math.isfinite(mapping.scale)
+            or mapping.scale <= 0
+            or frame.scale != mapping.scale
+        ):
             raise Refusal("Unproven or divergent display scale")
         if not edge.verified or edge.source == mapping.terminal or edge.action is not Action.NEXT:
             raise Refusal("Only reviewed forward navigation from a nonterminal page is executable")
-        grants = [g for g in self.grants if (g.source,g.destination)==(edge.source,edge.target)]
+        grants = [g for g in self.grants if (g.source, g.destination) == (edge.source, edge.target)]
         if len(grants) != 1:
             raise Refusal("Missing or ambiguous transition authorization")
         target = grants[0].target
@@ -78,8 +97,13 @@ class SafetyPolicy:
             raise Refusal("Only the Next button is authorized")
         state = next(s for s in mapping.states if s.id == edge.source)
         controls = [c for c in state.controls if c.label == target.label]
-        if (len(controls) != 1 or controls[0].role != target.role or controls[0].box != target.box
-            or edge.locator.box != target.box or edge.locator.point != target.point):
+        if (
+            len(controls) != 1
+            or controls[0].role != target.role
+            or controls[0].box != target.box
+            or edge.locator.box != target.box
+            or edge.locator.point != target.point
+        ):
             raise Refusal("Map does not bind a unique authorized control")
         if not set(edge.before.requirements) <= frame.passed_checks:
             raise Refusal("Unproven preconditions")
@@ -87,10 +111,17 @@ class SafetyPolicy:
 
 
 class StateMachine:
-    def __init__(self, mapping: InterfaceMap, policy: SafetyPolicy, transport: LabTransport,
-                 recognize: Callable[[Screenshot], Iterable[str]], initial: str,
-                 *, clock: Callable[[],float] = time.monotonic,
-                 wait: Callable[[float],None] = time.sleep):
+    def __init__(
+        self,
+        mapping: InterfaceMap,
+        policy: SafetyPolicy,
+        transport: LabTransport,
+        recognize: Callable[[Screenshot], Iterable[str]],
+        initial: str,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        wait: Callable[[float], None] = time.sleep,
+    ):
         if initial not in {s.id for s in mapping.states}:
             raise Refusal("Unknown initial state")
         self.mapping, self.policy, self.transport = mapping, policy, transport
@@ -113,9 +144,15 @@ class StateMachine:
             if self.halted:
                 raise Refusal("Session has halted")
             edge = next((t for t in self.mapping.transitions if t.id == edge_id), None)
-            if not edge or edge_id in self._consumed or initial != edge.source or initial == self.mapping.terminal:
+            if (
+                not edge
+                or edge_id in self._consumed
+                or initial != edge.source
+                or initial == self.mapping.terminal
+            ):
                 raise Refusal("Transition outside current state")
             deadline = start + edge.timeout
+
             def observe() -> tuple[Frame, Screenshot, Evidence]:
                 f = self.transport.capture(deadline)
                 shot = Screenshot.decode(f.png, self.mapping.resolution)
@@ -163,6 +200,19 @@ class StateMachine:
         except Exception as exc:
             self.halted = True
             errors = (str(exc) or type(exc).__name__,)
-        return ObservationResult(self.policy.authority.run_id, "live-observation",
-            self.mapping.identity, self.mapping.installer, edge_id, initial, method, action,
-            before, after, not errors, round((self.clock()-start)*1000), errors, final)
+        return ObservationResult(
+            self.policy.authority.run_id,
+            "live-observation",
+            self.mapping.identity,
+            self.mapping.installer,
+            edge_id,
+            initial,
+            method,
+            action,
+            before,
+            after,
+            not errors,
+            round((self.clock() - start) * 1000),
+            errors,
+            final,
+        )
