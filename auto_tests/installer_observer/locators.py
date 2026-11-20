@@ -57,8 +57,11 @@ def ocr_words(frame: Screenshot, box: Box, timeout: float) -> tuple[Candidate, .
     frame.image.crop(box).save(crop, format="PNG")
     try:
         result = subprocess.run(
-            ["tesseract", "stdin", "stdout", "--psm", "6", "tsv"], input=crop.getvalue(),
-            capture_output=True, check=True, timeout=timeout,
+            ["tesseract", "stdin", "stdout", "--psm", "6", "tsv"],
+            input=crop.getvalue(),
+            capture_output=True,
+            check=True,
+            timeout=timeout,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise Refusal("Contextual OCR unavailable") from exc
@@ -67,12 +70,14 @@ def ocr_words(frame: Screenshot, box: Box, timeout: float) -> tuple[Candidate, .
         if row["level"] != "5" or not row["text"].strip():
             continue
         x, y, w, h = (int(row[k]) for k in ("left", "top", "width", "height"))
-        if not valid_box((x, y, x+w, y+h), (box[2]-box[0], box[3]-box[1])):
+        if not valid_box((x, y, x + w, y + h), (box[2] - box[0], box[3] - box[1])):
             raise Refusal("OCR outside trusted region")
         # Keep low-confidence matches as ambiguity, never as an actionable result.
         confidence = float(row["conf"])
         role = "word" if math.isfinite(confidence) and confidence >= 80 else "uncertain"
-        words.append(Candidate(row["text"], role, (box[0]+x, box[1]+y, box[0]+x+w, box[1]+y+h)))
+        words.append(
+            Candidate(row["text"], role, (box[0] + x, box[1] + y, box[0] + x + w, box[1] + y + h))
+        )
     return tuple(words)
 
 
@@ -87,8 +92,9 @@ class Target:
     accessible_id: str | None = None
 
 
-def resolve(frame: Screenshot, surface: Surface, target: Target, order: tuple[Method, ...],
-            timeout: float) -> tuple[Method, tuple[int, int]]:
+def resolve(
+    frame: Screenshot, surface: Surface, target: Target, order: tuple[Method, ...], timeout: float
+) -> tuple[Method, tuple[int, int]]:
     if frame.roi(target.box) != target.pixel_sha256:
         raise Refusal("Current target pixels differ from the reviewed control")
     left, top, right, bottom = target.box
@@ -117,13 +123,21 @@ def resolve(frame: Screenshot, surface: Surface, target: Target, order: tuple[Me
             if len(hits) != 1:
                 raise Refusal(f"{method}: expected one control, found {len(hits)}")
             hit = hits[0]
-            if hit.name != target.label or hit.role != ("word" if method is Method.OCR else target.role):
+            if hit.name != target.label or hit.role != (
+                "word" if method is Method.OCR else target.role
+            ):
                 raise Refusal("Control name, role or OCR confidence mismatch")
             x1, y1, x2, y2 = hit.box
-            if not valid_box(hit.box, frame.image.size) or not (left <= x1 < x2 <= right and top <= y1 < y2 <= bottom):
+            if not valid_box(hit.box, frame.image.size) or not (
+                left <= x1 < x2 <= right and top <= y1 < y2 <= bottom
+            ):
                 raise Refusal("Located control escapes authorized region")
-            x, y = (x1+x2)//2, (y1+y2)//2
-        if type(x) is not int or type(y) is not int or not (left <= x < right and top <= y < bottom):
+            x, y = (x1 + x2) // 2, (y1 + y2) // 2
+        if (
+            type(x) is not int
+            or type(y) is not int
+            or not (left <= x < right and top <= y < bottom)
+        ):
             raise Refusal("Point outside authorized control")
         return method, (x, y)
     raise Refusal("No supported and proven locator")
