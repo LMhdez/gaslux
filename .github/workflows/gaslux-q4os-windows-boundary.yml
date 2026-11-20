@@ -68,8 +68,6 @@ jobs:
           set -Eeuo pipefail
           python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py
           python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py
-          # Non-mutating diagnostic only; strict --check remains the enforcement gate.
-          python -m ruff format --diff --config auto_tests/pyproject.toml assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py || true
           python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py
       - name: Fetch pinned upstream Safety #267 (never into working tree)
         shell: bash
