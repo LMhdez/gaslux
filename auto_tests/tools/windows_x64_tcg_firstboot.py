@@ -1537,8 +1537,13 @@ def main(argv: list[str] | None = None) -> int:
                         ("cachyos-installed-rw-child-stderr.log", "cachyos-installed-rw-child-stderr", 256_000),
                         ("cachyos-installed-rw-child-second-serial.log", "cachyos-installed-rw-child-second-serial", 512_000),
                         ("cachyos-installed-rw-child-second-stderr.log", "cachyos-installed-rw-child-second-stderr", 256_000),
+                        ("bcd-control-windows-only-windows-serial.log", "bcd-control-windows-only-serial", 512_000),
+                        ("bcd-control-windows-only-qemu-stderr.log", "bcd-control-windows-only-qemu-stderr", 256_000),
+                        ("bcd-control-windows-only-qemu-trace.bin", "bcd-control-windows-only-qemu-trace", 10_000_000),
+                        ("bcd-ab-qemu-write-events.txt", "bcd-ab-qemu-write-events", 16_384),
                         ("sixth-post-pacstrap-windows-serial.log", "sixth-post-pacstrap-windows-serial", 512_000),
                         ("sixth-post-pacstrap-qemu-stderr.log", "sixth-post-pacstrap-qemu-stderr", 256_000),
+                        ("sixth-post-pacstrap-qemu-trace.bin", "sixth-post-pacstrap-qemu-trace", 10_000_000),
                         ("fifth-after-ext4-discard-windows-serial.log", "fifth-post-pacstrap-discard-serial", 512_000),
                         ("fifth-after-ext4-discard-qemu-stderr.log", "fifth-post-pacstrap-discard-qemu-stderr", 256_000),
                     ):
