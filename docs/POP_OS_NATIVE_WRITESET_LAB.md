@@ -367,3 +367,190 @@ ao Safety #267. Esta falha **não comprova escritas**; o monitor
 externo de QEMU permaneceu vazio e o child descartável foi
 eliminado. A execução modificadora de `distinst` continua
 bloqueada.
+
+
+## Execução real do distinst em QCOW2 sintético — 20/11/2026, 15:38 UTC
+
+### Resultado
+
+**Critério A atingido para a fase real `distinst --test` de particionamento/formatação, com recusa de write-set.**
+Isto não é uma instalação Pop completa nem prova de dual boot.
+
+[Actions #44764397442](https://github.com/LMhdez/gaslux/actions/runs/44764397442)
+executou o monitor conhecido e, depois, o `distinst` real numa VM QEMU/KVM
+isolada. O job QEMU terminou em `REFUSE_OUT_OF_WRITESET`; o job de contratos
+terminou SUCCESS. A recusa é o resultado de segurança esperado para as
+escritas GPT observadas, não uma autorização parcial.
+
+### Identidade e isolamento
+
+- QEMU `8.2.2`, KVM, Pop!_OS 24.04 Intel live; assinatura GPG System76
+  confirmada (`Good signature`).
+- ELF real `/usr/bin/distinst`: SHA-256
+  `8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5`;
+  Build ID `9a96a9af917303020505cf71d6d90943c4d2bc79`.
+- Versão Debian observada:
+  `0.3.2~1758837686~24.04~e395b7c`. O sufixo `e395b7c` é uma
+  **indicação de revisão**, não prova de proveniência reprodutível:
+  `upstreamCommitMatchProven=false` e
+  `reproducibleBuildProvenanceVerified=false`.
+- O commit upstream candidato é
+  [`e395b7cb4d32ab3ca0cb2e9e557bd2ba53973148`](https://github.com/pop-os/distinst/commit/e395b7cb4d32ab3ca0cb2e9e557bd2ba53973148).
+- Apenas um QCOW2 filho de disco GPT sintético de 8 GiB foi apresentado
+  como destino gravável, serial `GASLUX_POP_DIST`, GUID
+  `7d6e5c4b-3a29-4876-9abc-def012345678`. O raw backing, ISO, controlo FAT
+  e OVMF_CODE foram read-only; OVMF_VARS era uma cópia descartável.
+  Não havia disco Windows nem NIC na VM.
+
+### Monitor independente — calibração antes do distinst
+
+O primeiro estágio fez uma escrita conhecida de 4096 bytes no offset
+`100663296` (96 MiB) de outro destino sintético. O evento
+`virtio_blk_handle_write` do QEMU correspondeu exatamente ao intervalo;
+o hash do backing permaneceu igual e o QCOW2 filho foi descartado.
+O relatório confirma `exactSyntheticSmokeEventMatched=true`,
+`baseImageSha256Unchanged=true` e `privateChildDiscarded=true`.
+O artefacto de calibração está incluído no ZIP abaixo.
+
+### Execução real e argumentos
+
+O processo terminou com exit code 0, sem timeout. A linha de comando
+observada no convidado foi equivalente a:
+
+```text
+/usr/bin/distinst
+  --squashfs /cdrom/casper_pop-os_24.04_amd64_intel_debug_377/filesystem.squashfs
+  --remove /cdrom/casper_pop-os_24.04_amd64_intel_debug_377/filesystem.manifest-remove
+  --hostname gaslux-pop-synth
+  --block /dev/vdc
+  --use /dev/vdc:1:fat32:mount=/boot/efi:flags=esp
+  --use /dev/vdc:2:ext4:mount=/
+  --no-efi-vars
+  --test
+```
+
+Não foram passados `--new-table`, `--new` nem `--modify-boot`.
+`--no-efi-vars` foi passado. O ensaio não executou a fase de bootloader.
+
+### Descoberta crítica: --use não preservou as entradas GPT
+
+O log emitido pelo próprio processo mostra que, apesar de usar
+`--use` para as duas partições existentes, o distinst:
+
+1. Configurou e fez commit da tabela.
+2. Executou `remove operations`, removendo as entradas nos setores
+   2048 e 1052672.
+3. Executou `creation operations`, recriando as duas partições nos
+   mesmos offsets.
+4. Executou `mkfs.fat -F 32 /dev/vdc1` e
+   `mkfs.ext4 -F -q -E lazy_itable_init /dev/vdc2`.
+5. Imprimiu que estava a montar os destinos e terminou com
+   `PARTITION_TEST enabled: exiting before unsquashing`.
+
+A observação independente do QEMU confirmou os pedidos de escrita GPT;
+o tracefs do convidado atribuiu as escritas GPT ao processo `distinst`
+(PID 1349). O estado posterior tinha CRCs primária/secundária válidos e
+iguais, mas as identidades/entradas não foram preservadas:
+
+- PARTUUID ESP: `1a2b3c4d-5e6f-4789-8abc-def012345678` →
+  `ad94aedd-0bbf-4cb6-ad30-3dd29b63c666`.
+- PARTUUID root: `2b3c4d5e-6f70-489a-bcde-f0123456789a` →
+  `91e017d7-9d77-4525-b2b3-5765b03ba8ae`.
+- `endLba` ESP: 1050623 → 1050622.
+- `endLba` root: 9441279 → 9441278.
+- GUID do disco permaneceu igual; CRCs GPT primária/secundária foram
+  novamente validados; os arrays primário e secundário coincidiram.
+
+**Implicação:** não é seguro inferir que `--use` apenas reutiliza uma
+partição sem reescrever a tabela. Este build remove e recria as entradas
+no ensaio observado. A PR #232 não autoriza estes writes GPT; o contrato
+recusou-os e não será alargado para os permitir sem um novo plano e prova
+de recuperação.
+
+### Contabilidade de escritas
+
+O QEMU registou `virtio_blk_handle_write` independentemente do
+`distinst`:
+
+| Região | Pedidos QEMU | Bytes |
+|---|---:|---:|
+| ESP sintética (partição 1) | 11 | 1 070 080 |
+| Root sintética (partição 2) | 184 | 69 529 600 |
+| GPT primária/PMBR | 3 | 61 440 |
+| GPT secundária | 3 | 61 440 |
+| **Total** | **201** | **70 722 560** |
+
+Os seis pedidos fora do write-set cobriram 40 setores por pedido,
+três na GPT primária/PMBR e três na GPT secundária: 122 880 bytes.
+
+O `block_bio_queue` do kernel registou 6490 eventos de escrita
+(70 722 560 bytes) e 47 flushes. Os seus 30 eventos fora do write-set
+foram atribuídos a `distinst` (PID 1349): 15 eventos de 8 setores
+na GPT primária e 15 na GPT secundária. Os bytes e a cobertura
+corresponderam aos pedidos QEMU.
+
+O tracepoint `block_rq_issue` registou **zero** eventos. Por isso,
+a classificação final, corrigida nesta intervenção, é deliberadamente:
+`guestTracefsBioQueueCorroboratesQemu=true`,
+`guestTracefsCorroboratesQemu=false` e
+`observationComplete=false`. A evidência QEMU/bio demonstra os
+pedidos observados, mas não prova cobertura completa de todas as
+camadas de I/O.
+
+### Formatação, montagens, EFI e NVRAM
+
+- `mkfs.fat` e `mkfs.ext4` foram observados como processos
+  independentes (PIDs 1370 e 1371); os sistemas de ficheiros resultantes
+  foram identificados como vfat e ext4 e as verificações read-only
+  terminaram sem erro.
+- O log do `distinst` declara `mounting all targets` e mostra os
+  destinos temporários. Contudo, os tracepoints disponíveis
+  `sys_enter_mount` e `sys_exit_mount` produziram zero eventos.
+  Os argumentos de montagem não foram resolvidos; portanto, montagens
+  não são consideradas independentemente comprovadas. Os logs do
+  próprio instalador não substituem a observação.
+- O candidato upstream chama `mount_all_targets` antes do retorno
+  `PARTITIONING_TEST`, em
+  [`src/installer/mod.rs`](https://github.com/pop-os/distinst/blob/e395b7cb4d32ab3ca0cb2e9e557bd2ba53973148/src/installer/mod.rs#L165-L184),
+  mas a correspondência binário-fonte não está provada.
+- O hash persistente OVMF_VARS antes/depois do processo foi igual:
+  `ffc048547271db2301940c6a15a48bae1f818c3d898edce2b913d95ff7b41457`.
+  O trace QEMU da sessão inteira contém 50 825 eventos pflash,
+  todos em `system.flash1` (incluindo 16 877 `pflash_data_write`).
+  O ficheiro não tem timestamps que permitam atribuir esses eventos à
+  fase do distinst; por isso, ausência de escritas transitórias NVRAM
+  **não está provada**.
+- Não houve extração/instalação da rootfs, instalação systemd-boot,
+  criação de entrada EFI ou primeiro arranque Linux. O próprio processo
+  terminou antes de `unsquashing`.
+
+### Integridade e artefactos
+
+- Raw backing SHA-256 antes/depois:
+  `e11355db859d24980a9866a72d87d13a90cbead0f9dedfcc7bee00cf85f0e9a7`.
+- `qemu-img check`: sem erros; backing chain verificada.
+- QCOW2 filho existia antes da limpeza e foi eliminado depois;
+  hash do backing permaneceu igual após a limpeza.
+- OVMF_VARS era descartável. Nenhuma imagem de disco, ISO ou NVRAM foi
+  publicada no artefacto.
+- [Artefacto #14643831419](https://github.com/LMhdez/gaslux/actions/runs/44764397442/artifacts/14643831419):
+  ZIP SHA-256
+  `e929a8f41c9d6490e0a38534f5b29f5a4844f948ddb481c8dc18d46597f883ed`.
+  Os 11 sidecars SHA-256 foram verificados contra os respetivos ficheiros.
+- Trace QEMU completo: 2 997 058 bytes, SHA-256
+  `bc236d1b6aca41e73a96cbc472b442a16b059b53b5dbd347dba9decb1ca42a1e`.
+- Tracefs convidado: 1 083 854 bytes, SHA-256
+  `cc4674dd7bbf1858716c4d6e3cf4507529e31c7a7fa16c4052045be56e3e71df`.
+
+### Decisão
+
+`REFUSE_OUT_OF_WRITESET`; `distinstExecutionAuthorized=false`;
+`diskWritesAuthorizedForWindows=false`;
+`windowsEspWritesAuthorized=false`. A recusa foi mantida apesar do
+exit code 0 do instalador. Não foram modificados módulos Safety #267,
+nem gates Windows.
+
+A execução comprova a fase de particionamento/formatação do distinst
+autêntico sobre disco sintético e demonstra que o write-set atual não
+contém as escritas GPT que o binário efetua. Não comprova instalação
+Pop completa, bootloader, dual boot, atualização ou rollback pós-write.
