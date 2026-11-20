@@ -100,7 +100,9 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 # Preserve sanitized status without exposing runner secrets.
                 if line.startswith("QEMU stage:") or line.startswith("QEMU laboratory refused:"):
                     print(line.strip(), flush=True)
-                elif line.startswith(("ModuleNotFoundError:", "PermissionError:", "ImportError:", "sudo:", "OSError:")):
+                elif line.startswith(
+                    ("ModuleNotFoundError:", "PermissionError:", "ImportError:", "sudo:", "OSError:")
+                ):
                     worker_errors.append(line.strip()[:200])
                 continue
             try:
@@ -165,7 +167,11 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
             "dedicated_uid_external_clients_not_excluded": True,
             "guest_input_count": 0,
         }))
-        print(json.dumps({"dedicated_uid_runs": 2, "external_connect_eacces": 8, "guest_input_count": 0}))
+        print(
+            json.dumps(
+                {"dedicated_uid_runs": 2, "external_connect_eacces": 8, "guest_input_count": 0}
+            )
+        )
     finally:
         if proc.poll() is None:
             proc.terminate()
