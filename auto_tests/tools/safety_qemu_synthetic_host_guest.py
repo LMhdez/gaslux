@@ -195,8 +195,10 @@ def boot_readonly(work: Path, kernel: Path, initrd: Path, raw: Path,
         "-drive", "file=" + str(overlay) + ",format=qcow2,if=none,id=safetydrive,readonly=on",
         "-device", "virtio-blk-pci,drive=safetydrive,serial=" + SERIAL,
     ]
-    subprocess.run(args, check=True, timeout=90, stdout=subprocess.DEVNULL,
-                   stderr=subprocess.PIPE)
+    completed = subprocess.run(args, check=False, timeout=90, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, text=True)
+    if completed.returncode != 0:
+        raise RuntimeError(f"QEMU failed rc={completed.returncode}: {completed.stderr[-3500:]}")
     witness = read_guest_sections(serial_file.read_text(errors="replace"), work, label)
     if any(x not in witness["cmdline"] for x in (transaction, vm_id, nonce)):
         raise DiskIdentityError("guest challenge binding mismatch")
