@@ -289,8 +289,8 @@ def test_valid_controller_ed25519_does_not_validate_invalid_tpm_quote():
         make_request,
         make_response,
         trusted_material,
-        verify_one,
         verifier,
+        verify_one,
     )
 
     private, trust = trusted_material()
@@ -305,14 +305,14 @@ def test_valid_controller_ed25519_does_not_validate_invalid_tpm_quote():
 
 
 def test_valid_tpm_quote_does_not_validate_invalid_controller_ed25519():
+    from auto_tests.installer_observer.remote_verifier import VerificationRefused
     from auto_tests.tests.test_observer_remote_verifier import (
         make_request,
         make_response,
         trusted_material,
-        verify_one,
         verifier,
+        verify_one,
     )
-    from auto_tests.installer_observer.remote_verifier import VerificationRefused
 
     _, policy, evidence = fixture()
     assert run(policy, evidence).quote_signature_valid
