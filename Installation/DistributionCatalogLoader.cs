@@ -54,7 +54,7 @@ namespace Libertix.Installation
             }
 
             foreach (DistroInfoJson distribution in catalog.Distributions)
-                ValidateDistribution(distribution);
+                ValidateDistribution(distribution, catalog.SchemaVersion);
             var artifacts = CatalogFiles.GetAll(catalog);
             // Missing distribution ISOs are downloaded only if selected.
             var optionalFileNames = new HashSet<string>(
@@ -173,13 +173,62 @@ namespace Libertix.Installation
                 Encoding.UTF8.GetString(manifest),
                 options);
             ValidateCatalog(catalog);
+            if (catalog.SchemaVersion == 2)
+                ValidateV2CatalogueJsonShape(manifest);
             return catalog;
+        }
+
+        private static void ValidateV2CatalogueJsonShape(byte[] manifest)
+        {
+            // System.Text.Json deserialization ignores extra fields and accepts
+            // duplicate property names. Version 2 must match its signed JSON
+            // Schema exactly, including every capability/bootloader field.
+            using (var document = JsonDocument.Parse(manifest))
+            {
+                JsonElement root = document.RootElement;
+                AssertExactFields(root, "catalog",
+                    "schemaVersion", "artifacts", "distributions");
+                foreach (JsonElement distro in root.GetProperty("distributions").EnumerateArray())
+                {
+                    AssertExactFields(distro, "distribution",
+                        "id", "name", "osReleaseId", "grubDisplayName", "grubIcon",
+                        "secureBootMicrosoftAuthorities", "description", "imageUrl",
+                        "isoInstaller", "isoInstallerFileName", "isoInstallerSha256",
+                        "isoInstallerSizeBytes", "sizeInGB", "capabilities");
+                    JsonElement cap = distro.GetProperty("capabilities");
+                    AssertExactFields(cap, "capabilities",
+                        "version", "backend", "source", "firmwareLayouts", "secureBoot",
+                        "bootloader", "status", "minimumRamMiB", "minimumDiskGiB");
+                    AssertExactFields(cap.GetProperty("bootloader"), "bootloader",
+                        "bios", "uefi");
+                }
+            }
+        }
+
+        private static void AssertExactFields(
+            JsonElement json, string path, params string[] required)
+        {
+            if (json.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException(
+                    "Signed catalog field " + path + " must be an object.");
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var expected = new HashSet<string>(required, StringComparer.Ordinal);
+            foreach (JsonProperty property in json.EnumerateObject())
+            {
+                if (!expected.Contains(property.Name) || !seen.Add(property.Name))
+                    throw new InvalidOperationException(
+                        "Signed catalog field " + path + " has an unknown or duplicate key.");
+            }
+            if (!seen.SetEquals(expected))
+                throw new InvalidOperationException(
+                    "Signed catalog field " + path + " has missing keys.");
         }
 
         private static void ValidateCatalog(DistributionCatalogJson catalog)
         {
             if (catalog == null ||
-                catalog.SchemaVersion != 1 ||
+                (catalog.SchemaVersion != 1 && catalog.SchemaVersion != 2) ||
                 catalog.Artifacts?.MiniIso == null ||
                 catalog.Artifacts.Support == null ||
                 catalog.Distributions == null ||
@@ -215,12 +264,19 @@ namespace Libertix.Installation
 
             foreach (DistroInfoJson source in catalog.Distributions)
             {
-                ValidateDistribution(source);
+                ValidateDistribution(source, catalog.SchemaVersion);
                 if (!seenIds.Add(source.Id))
                 {
                     throw new InvalidOperationException(
                         "Distribution manifest contains a duplicate id.");
                 }
+
+                // Signed experimental records can be analysed but never shown in
+                // the production selection wizard or passed to the legacy backend.
+                if (catalog.SchemaVersion == 2 &&
+                    !DistributionCapabilityPolicy.IsReleased(
+                        source.Id, source.OsReleaseId, source.Capabilities))
+                    continue;
 
                 distributions.Add(new DistroInfo
                 {
@@ -248,11 +304,27 @@ namespace Libertix.Installation
                 });
             }
 
+            if (distributions.Count == 0)
+                throw new InvalidOperationException(
+                    "No released installation backend is available in this signed catalog.");
             return distributions;
         }
 
-        private static void ValidateDistribution(DistroInfoJson distribution)
+        private static void ValidateDistribution(DistroInfoJson distribution, int catalogVersion)
         {
+            if (distribution == null ||
+                (catalogVersion == 1 &&
+                    (distribution.Capabilities != null ||
+                     !DistributionBackendPolicy.CanUseLegacyDebianBackend(
+                         distribution.Id, distribution.OsReleaseId))))
+            {
+                throw new InvalidOperationException(
+                    "This distribution has no authorized installation backend.");
+            }
+            if (catalogVersion == 2)
+                DistributionCapabilityPolicy.Validate(
+                    distribution.Id, distribution.OsReleaseId, distribution.Capabilities);
+
             if (!Regex.IsMatch(
                     distribution.Id ?? string.Empty,
                     "^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$") ||

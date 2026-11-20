@@ -32,6 +32,10 @@ namespace Libertix.Installation
                 throw new InvalidOperationException("Storage preflight is required before creating the installation plan.");
             if (!(_installationState.SelectedDistro is DistroInfo distribution))
                 throw new InvalidOperationException("A distribution is required before creating the installation plan.");
+            if (!DistributionBackendPolicy.CanUseLegacyDebianBackend(
+                    distribution.Id, distribution.OsReleaseId))
+                throw new InvalidOperationException(
+                    "This distribution has no authorized installation backend.");
             if (!(_installationState.Account is AccountInfo account))
                 throw new InvalidOperationException("A Linux account is required before creating the installation plan.");
 

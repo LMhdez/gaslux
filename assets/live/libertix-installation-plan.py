@@ -232,6 +232,13 @@ def validate_plan(plan: Any, *, require_installer: bool = False) -> dict[str, An
     for name in ("id", "osReleaseId", "grubIcon"):
         if not SAFE_IDENTIFIER_PATTERN.fullmatch(distribution[name]):
             raise PlanValidationError(f"distribution.{name} must be a safe lowercase identifier")
+    # Schema v4/v5 carries no signed backend selector: never route an unknown
+    # distribution to the existing Debian/Ubuntu squashfs extraction path.
+    if (distribution["id"], distribution["osReleaseId"]) not in {
+        ("mint", "linuxmint"),
+        ("zorin", "zorin"),
+    }:
+        raise PlanValidationError("distribution backend is not enabled in this release")
     if not SAFE_GRUB_LABEL_PATTERN.fullmatch(distribution["grubDisplayName"]):
         raise PlanValidationError(
             "distribution.grubDisplayName contains unsupported GRUB label characters"

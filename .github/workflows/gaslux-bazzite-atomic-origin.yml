@@ -1,0 +1,70 @@
+name: Bazzite official Atomic OCI provenance (no ISO or installer)
+
+on:
+  push:
+    branches:
+      - feature/bazzite-atomic-preflight
+    paths:
+      - '.github/workflows/gaslux-bazzite-atomic-origin.yml'
+      - 'assets/keys/bazzite-upstream-cosign.pub'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-oci-trust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install upstream cosign verifier
+        uses: sigstore/cosign-installer@v3.8.2
+      - name: Verify upstream Bazzite image signature and build attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/bazzite-evidence"
+          # Project-published key is vendored unmodified from upstream:
+          # https://github.com/ublue-os/bazzite/blob/main/cosign.pub
+          cosign verify --key assets/keys/bazzite-upstream-cosign.pub \
+            ghcr.io/ublue-os/bazzite:stable \
+            > "$RUNNER_TEMP/bazzite-evidence/cosign-verify.json"
+          python3 - "$RUNNER_TEMP/bazzite-evidence/cosign-verify.json" "$RUNNER_TEMP/bazzite-evidence/resolved-digest.txt" <<'PY'
+          import json, re, sys
+          from pathlib import Path
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if not isinstance(data, list) or not data:
+              raise SystemExit("No signed upstream Bazzite OCI manifest found")
+          digests = {
+              x.get("critical", {}).get("image", {}).get("docker-manifest-digest")
+              for x in data if isinstance(x, dict)
+          }
+          if len(digests) != 1:
+              raise SystemExit("Contradictory signed manifest digests")
+          digest = digests.pop()
+          if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+              raise SystemExit("Missing signed OCI digest")
+          Path(sys.argv[2]).write_text(digest + "\n", encoding="ascii")
+          print("Verified upstream digest pinned from Cosign signature:", digest)
+          PY
+          digest="$(cat "$RUNNER_TEMP/bazzite-evidence/resolved-digest.txt")"
+          gh attestation verify "oci://ghcr.io/ublue-os/bazzite@$digest" \
+            --repo ublue-os/bazzite \
+            > "$RUNNER_TEMP/bazzite-evidence/attestation-verify.txt"
+          (cd "$RUNNER_TEMP/bazzite-evidence" &&
+            sha256sum *.json *.txt > evidence.sha256)
+          echo "PASS: upstream signed Bazzite Atomic OCI image provenance checked."
+          echo "NOT TESTED: Bazzite ISO authenticity, installer capabilities, Windows dual boot, kernel update or rollback."
+      - name: Retain OCI verification evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-atomic-oci-source-evidence
+          path: ${{ runner.temp }}/bazzite-evidence/
+          if-no-files-found: warn
+          retention-days: 14

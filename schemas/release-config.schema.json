@@ -4,15 +4,26 @@
   "title": "Libertix release configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "mainRelease", "distributions"],
+  "required": [
+    "schemaVersion",
+    "mainRelease",
+    "distributions"
+  ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "enum": [
+        1,
+        2
+      ]
     },
     "mainRelease": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "title", "notes"],
+      "required": [
+        "version",
+        "title",
+        "notes"
+      ],
       "properties": {
         "version": {
           "type": "string",
@@ -85,7 +96,10 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {
-            "enum": ["2011", "2023"]
+            "enum": [
+              "2011",
+              "2023"
+            ]
           }
         },
         "description": {
@@ -118,8 +132,269 @@
         "sizeInGB": {
           "type": "number",
           "minimum": 20
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "backend",
+        "source",
+        "firmwareLayouts",
+        "secureBoot",
+        "bootloader",
+        "status",
+        "minimumRamMiB",
+        "minimumDiskGiB"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "backend": {
+          "enum": [
+            "debian-squashfs",
+            "archiso-cachyos",
+            "system76",
+            "q4os-native",
+            "fedora-atomic"
+          ]
+        },
+        "source": {
+          "enum": [
+            "casper-squashfs",
+            "archiso",
+            "pop-live",
+            "q4os-native-iso",
+            "fedora-atomic-iso"
+          ]
+        },
+        "firmwareLayouts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "bios/mbr",
+              "uefi/gpt"
+            ]
+          }
+        },
+        "secureBoot": {
+          "enum": [
+            "ms-shim",
+            "unsupported",
+            "manual-enrollment"
+          ]
+        },
+        "bootloader": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bios",
+            "uefi"
+          ],
+          "properties": {
+            "bios": {
+              "enum": [
+                "grub",
+                "none"
+              ]
+            },
+            "uefi": {
+              "enum": [
+                "grub",
+                "systemd-boot",
+                "none"
+              ]
+            }
+          }
+        },
+        "status": {
+          "enum": [
+            "released",
+            "lab-only",
+            "unavailable"
+          ]
+        },
+        "minimumRamMiB": {
+          "type": "integer",
+          "minimum": 1024
+        },
+        "minimumDiskGiB": {
+          "type": "integer",
+          "minimum": 20
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "backend": {
+                "const": "fedora-atomic"
+              }
+            },
+            "required": [
+              "backend"
+            ]
+          },
+          "then": {
+            "properties": {
+              "firmwareLayouts": {
+                "const": [
+                  "uefi/gpt"
+                ]
+              },
+              "bootloader": {
+                "properties": {
+                  "bios": {
+                    "const": "none"
+                  },
+                  "uefi": {
+                    "const": "grub"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "backend": {
+                "const": "system76"
+              }
+            },
+            "required": [
+              "backend"
+            ]
+          },
+          "then": {
+            "properties": {
+              "bootloader": {
+                "properties": {
+                  "uefi": {
+                    "const": "systemd-boot"
+                  }
+                }
+              },
+              "secureBoot": {
+                "const": "unsupported"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "backend": {
+                "const": "debian-squashfs"
+              }
+            },
+            "required": [
+              "backend"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "const": "casper-squashfs"
+              },
+              "firmwareLayouts": {
+                "const": [
+                  "bios/mbr",
+                  "uefi/gpt"
+                ]
+              },
+              "secureBoot": {
+                "const": "ms-shim"
+              },
+              "bootloader": {
+                "properties": {
+                  "bios": {
+                    "const": "grub"
+                  },
+                  "uefi": {
+                    "const": "grub"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          }
+        },
+        "required": [
+          "schemaVersion"
+        ]
+      },
+      "then": {
+        "properties": {
+          "distributions": {
+            "items": {
+              "allOf": [
+                {
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "id": {
+                          "const": "mint"
+                        },
+                        "osReleaseId": {
+                          "const": "linuxmint"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "id": {
+                          "const": "zorin"
+                        },
+                        "osReleaseId": {
+                          "const": "zorin"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "not": {
+                    "required": [
+                      "capabilities"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "distributions": {
+            "items": {
+              "required": [
+                "capabilities"
+              ]
+            }
+          }
         }
       }
     }
-  }
+  ]
 }
