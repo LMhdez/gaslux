@@ -3,10 +3,14 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).parent / "tools"))
 from windows_x64_installed_gpt_ro_audit import DiskAuditError
+from windows10_popos_synthetic_qemu_write_smoke import (
+    compare_synthetic_gpt_regions, DISK_SIZE as DISTINST_DISK_SIZE,
+)
 from windows10_popos_synthetic_qemu_trace_contract import (
     classify_trace, synthetic_plan, SERIAL, DISK_SIZE,
     SMOKE_OFFSET, SMOKE_LENGTH,
@@ -157,6 +161,42 @@ class QemuSyntheticTraceTest(unittest.TestCase):
         self.assertFalse(result["windowsWriteSetMatchProven"])
         self.assertFalse(result["installerProcessObserved"])
         self.assertFalse(result["rollbackAfterNativeInstallVerified"])
+
+    def test_host_snapshot_diff_independently_detects_primary_and_backup_gpt_changes(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-gpt-snapshot-") as tmp:
+            base = Path(tmp) / "base.raw"
+            decoded = Path(tmp) / "decoded.raw"
+            for path in (base, decoded):
+                with path.open("xb") as stream:
+                    stream.truncate(DISTINST_DISK_SIZE)
+            with decoded.open("r+b") as stream:
+                stream.seek(512)
+                stream.write(b"\x01")
+                stream.seek(DISTINST_DISK_SIZE - 512)
+                stream.write(b"\x02")
+            proof = compare_synthetic_gpt_regions(base, decoded)
+            self.assertFalse(proof["unchanged"])
+            self.assertEqual(
+                proof["regions"]["protective-mbr-primary-gpt"]["changedByteCount"], 1)
+            self.assertEqual(
+                proof["regions"]["backup-gpt"]["changedByteCount"], 1)
+            self.assertNotEqual(
+                proof["regions"]["protective-mbr-primary-gpt"]["beforeSha256"],
+                proof["regions"]["protective-mbr-primary-gpt"]["afterSha256"])
+            self.assertNotEqual(
+                proof["regions"]["backup-gpt"]["beforeSha256"],
+                proof["regions"]["backup-gpt"]["afterSha256"])
+
+    def test_host_snapshot_diff_accepts_unchanged_primary_and_backup_gpt(self):
+        with tempfile.TemporaryDirectory(prefix="gaslux-gpt-snapshot-") as tmp:
+            base = Path(tmp) / "base.raw"
+            decoded = Path(tmp) / "decoded.raw"
+            for path in (base, decoded):
+                with path.open("xb") as stream:
+                    stream.truncate(DISTINST_DISK_SIZE)
+            proof = compare_synthetic_gpt_regions(base, decoded)
+            self.assertTrue(proof["unchanged"])
+            self.assertTrue(all(x["unchanged"] for x in proof["regions"].values()))
 
 
 if __name__ == "__main__":
