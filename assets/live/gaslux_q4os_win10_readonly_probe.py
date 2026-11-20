@@ -8,11 +8,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
 import secrets
 import stat
 import subprocess
 import sys
+from contextlib import suppress
+from pathlib import Path
 
 from gaslux_q4os_safety_adapter import refuse_calamares
 from gaslux_q4os_windows_boundary import (
@@ -96,10 +97,8 @@ def _read_only_appliance(qcow: Path, scratch: Path, sector: int) -> dict:
         observed["transportAuthenticatedToWindowsHost"] = False
         return observed
     finally:
-        try:
+        with suppress(RuntimeError):
             g.shutdown()
-        except RuntimeError:
-            pass
         g.close()
 
 
@@ -115,7 +114,7 @@ def _real_safety_denial(host: dict) -> dict:
     }
     plan_bytes = canonical(plan)
     try:
-        decision = decide_no_writer(
+        decide_no_writer(
             plan=plan, plan_bytes=plan_bytes, transaction_id=txid,
             vm_id=secrets.token_hex(16),
             host_evidence=None, guest_evidence=None, immediate_evidence=None,
