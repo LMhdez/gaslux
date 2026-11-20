@@ -20,6 +20,23 @@ MINT_BYTES = 3091660800
 MAX_PROOF_BYTES = 16 * 1024
 MAX_SERIAL_BYTES = 1024 * 1024
 MAX_REPORT_BYTES = 128 * 1024
+MAX_FOURTH_PROOF_BYTES = 16 * 1024
+MAX_FOURTH_SERIAL_BYTES = 512_000
+
+# Exact witnesses generated inside Windows by the VM-only protected startup
+# task; repeated, merged, out-of-order, or absent lines must fail closed.
+WINDOWS_FOURTH_MARKERS = (
+    b"GASLUX_COW_WIN10_REBOOT_LIVE=1",
+    b"GASLUX_COW_WIN10_REBOOT_BUILD=19045",
+    b"GASLUX_COW_WIN10_REBOOT_ESP=1",
+    b"GASLUX_COW_WIN10_REBOOT_BCD=1",
+    b"GASLUX_COW_WIN10_REBOOT_WINRE=1",
+    b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1",
+)
+WINDOWS_BOOT_MANAGER = re.compile(
+    rb'BdsDxe: starting Boot[0-9A-Fa-f]{4} "Windows Boot Manager"'
+)
+
 
 
 class MintBootEvidenceError(ValueError):
@@ -54,6 +71,66 @@ def read_regular(directory: Path, name: str, maximum: int) -> tuple[Path, bytes]
     require(0 < metadata.st_size <= maximum,
             f"evidence size is outside the allowed bound: {name}")
     return path, path.read_bytes()
+
+
+def validate_fourth_windows_evidence(evidence_dir: Path, profile: str, report: dict) -> dict:
+    """Require a separate, hash-bound fourth Windows boot after fifth-GPT staging.
+
+    This is a synthetic COW audit, not evidence of a native Mint installation.
+    """
+    fourth_path, fourth_bytes = read_regular(
+        evidence_dir, f"{profile}-fourth-post-ext4.json", MAX_FOURTH_PROOF_BYTES)
+    fourth_serial, fourth_serial_bytes = read_regular(
+        evidence_dir, f"{profile}-fourth-boot-serial.log", MAX_FOURTH_SERIAL_BYTES)
+    fourth_sidecar, fourth_sidecar_bytes = read_regular(
+        evidence_dir, f"{profile}-fourth-boot-serial.sha256", 256)
+    try:
+        fourth = json.loads(fourth_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MintBootEvidenceError("fourth Windows proof is invalid JSON") from exc
+    require(type(fourth) is dict, "fourth Windows proof must be a JSON object")
+
+    # Do not infer EFI/BCD/WinRE preservation from a booleans-only report:
+    # bind the fourth Windows guest's complete log, sidecar and JSON proof.
+    fourth_hash = hashlib.sha256(fourth_bytes).hexdigest()
+    require(report.get("windowsBootAfterExt4Verified") is True
+            and report.get("thirdBootBcdWinreEspVerified") is True
+            and report.get("fourthPostExt4EvidenceSha256") == fourth_hash,
+            "Windows result is not bound to the genuine fourth-boot BCD/WinRE proof")
+    for field in (
+        "windowsBootAfterExt4Verified",
+        "windowsBcdWinreEspAfterExt4Verified",
+        "fourthGuestCleanShutdownVerified",
+        "fifthExt4UuidSurvivedWindowsBoot",
+        "windowsGptUnchangedAfterExt4Boot",
+        "windowsBackingUnchangedAfterExt4Boot",
+        "originalWindowsUefiUnchangedAfterExt4Boot",
+    ):
+        require(fourth.get(field) is True,
+                f"fourth Windows boot has no verified guest/ESP/BCD/WinRE witness: {field}")
+    for field in ("sameDiskDualBootVerified", "rollbackProven", "releaseEligible",
+                  "storageWritesAuthorized", "windowsRecoveryAfterLinuxVerified"):
+        require(fourth.get(field) is False,
+                f"fourth Windows boot overstates a capability: {field}")
+    fourth_serial_hash = hashlib.sha256(fourth_serial_bytes).hexdigest()
+    require(fourth.get("fourthGuestSerialSha256") == fourth_serial_hash,
+            "fourth Windows COM1 digest disagrees with the fourth boot proof")
+    require(fourth_sidecar_bytes == (
+        f"{fourth_serial_hash}  {fourth_serial.name}\n".encode("ascii")),
+        "fourth Windows COM1 sidecar SHA-256 mismatch")
+    require(len(WINDOWS_BOOT_MANAGER.findall(fourth_serial_bytes)) == 1
+            and b"UEFI QEMU DVD-ROM" not in fourth_serial_bytes
+            and b"GASLUX_COW_WIN10_REBOOT_FAIL=1" not in fourth_serial_bytes,
+            "fourth Windows guest booted from DVD, rebooted, or reported audit failure")
+    lines = fourth_serial_bytes.splitlines()
+    require(all(lines.count(line) == 1 for line in WINDOWS_FOURTH_MARKERS),
+            "fourth Windows COM1 lacks unique ESP/BCD/WinRE and fifth-GPT markers")
+
+    return {
+        "fourthWindowsProofSha256": fourth_hash,
+        "fourthWindowsSerialSha256": fourth_serial_hash,
+        "windowsEspBcdWinreFourthBootVerified": True,
+    }
 
 
 def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
@@ -158,6 +235,26 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
             "Windows report lacks the independent Windows reboot after Mint root boot")
     require(report.get("mintCowEvidenceSha256") == proof_hash,
             "Windows report does not bind the exact Mint proof JSON")
+    # A fourth-boot claim is never accepted from report booleans alone.
+    # Older test profiles without a fourth boot remain explicitly unproven.
+    fourth_claim_fields = (
+        "windowsBootAfterExt4Verified",
+        "thirdBootBcdWinreEspVerified",
+        "fourthPostExt4EvidenceSha256",
+    )
+    fourth_files = (
+        f"{profile}-fourth-post-ext4.json",
+        f"{profile}-fourth-boot-serial.log",
+        f"{profile}-fourth-boot-serial.sha256",
+    )
+    fourth_details = {}
+    if any(field in report for field in fourth_claim_fields):
+        fourth_details = validate_fourth_windows_evidence(
+            evidence_dir, profile, report)
+    else:
+        require(not any((evidence_dir / name).exists() for name in fourth_files),
+                "unbound fourth Windows boot evidence is not accepted")
+
     require(report.get("nativeGrubDualBootVerified") is False
             and report.get("sameDiskDualBootVerified") is False
             and report.get("updatesVerified") is False
@@ -167,6 +264,8 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
     return {
         "proofSha256": proof_hash,
         "serialSha256": serial_hash,
+        "windowsEspBcdWinreFourthBootVerified": bool(fourth_details),
+        **fourth_details,
         "rootUuid": canonical_uuid,
         "kernel": kernel,
         "nativeGrubDualBootVerified": False,
