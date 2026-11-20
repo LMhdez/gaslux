@@ -17,15 +17,15 @@ import threading
 from collections.abc import Mapping
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol
 
+import rfc8785
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
-import rfc8785
 
 
 _ROOT = Path(__file__).resolve().parents[2]
