@@ -185,6 +185,14 @@ matching the pinned upstream build subject. The downloaded
 signature with the key pinned above. The downloaded metadata JSON identified
 attestation #68711578.
 
+Measured sidecars from the same readback:
+
+| Object | Size (bytes) | SHA-256 |
+|---|---:|---|
+| ISO.sig | 96 | `8d09506458f13b34609d2b6c6992621fe30cbac1119265a379fbdc7614eb4c1d` |
+| ISO.json | 167 | `9d8e7cb940b4c096bc7c700b765b9c05b22d0ce0d6329eab80bdd62f071f83f5` |
+| ISO-CHECKSUM | 96 | `7f29f544cbfc27cd6b77c95df88ac52eae7e075fa387f57c77223ec4f793881f` |
+
 Evidence artifact:
 [Actions #44751586997 / artifact #14635702681](https://github.com/LMhdez/gaslux/actions/runs/44751586997/artifacts/14635702681).
 
