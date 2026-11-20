@@ -107,9 +107,7 @@ def validate_archives(zip_dir: Path, metadata_dir: Path, originals: Path) -> dic
                         if digest(data) != expected["reports"][short_name]:
                             raise Refusal(f"Original report SHA-256 mismatch: {aid}")
                     else:
-                        frame = next(
-                            x for x in run["screenshots"] if x["path"] == short_name
-                        )
+                        frame = next(x for x in run["screenshots"] if x["path"] == short_name)
                         Screenshot.decode(data, (1280, 800), frame["sha256"])
         except (zipfile.BadZipFile, EOFError, RuntimeError) as exc:
             raise Refusal(f"Historical ZIP invalid: {aid}") from exc
