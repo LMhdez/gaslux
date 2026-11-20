@@ -13,6 +13,10 @@ on:
       - 'auto_tests/tests/test_observer_isolation_host.py'
       - 'auto_tests/tests/test_observer_fd_audit.py'
       - 'auto_tests/tests/test_observer_boundary_model.py'
+      - 'auto_tests/tests/test_observer_remote_protocol_schema.py'
+      - 'auto_tests/tests/test_observer_remote_verifier.py'
+      - 'schemas/observer-readonly-*.schema.json'
+      - 'docs/INSTALLER_OBSERVER.md'
       - 'auto_tests/tests/test_q4os_*.py'
       - 'auto_tests/fixtures/installer_observer/**'
       - 'schemas/distro-ui-*.schema.json'
@@ -58,7 +62,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends tesseract-ocr
       - name: Install observer validation dependencies
-        run: python -m pip install 'pytest>=9,<10' 'pillow>=11,<13' 'jsonschema>=4,<5' 'ruff>=0.8,<1'
+        run: python -m pip install 'pytest>=9,<10' 'pillow>=11,<13' 'jsonschema>=4,<5' 'rfc8785>=0.1.4,<1' 'cryptography>=50,<51' 'ruff>=0.8,<1'
       - name: Validate reviewed Q4OS map and manifest JSON Schemas
         shell: bash
         run: |
@@ -78,9 +82,9 @@ jobs:
               print("Validated", name)
           PY
       - name: Compile Python observer and adversarial tests
-        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py
+        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py auto_tests/installer_observer/remote_verifier.py auto_tests/tests/test_observer_remote_verifier.py
       - name: Ruff lint new transport and hostile-input tests
-        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/installer_observer/fd_audit.py auto_tests/installer_observer/boundary_model.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/installer_observer/fd_audit.py auto_tests/installer_observer/boundary_model.py auto_tests/installer_observer/remote_verifier.py auto_tests/tests/test_observer_remote_verifier.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py
       - name: Ruff format check new transport and hostile-input tests
         run: python -m ruff format --diff --check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/installer_observer/fd_audit.py auto_tests/installer_observer/boundary_model.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py
       - name: Adversarial tests including Linux symlink and hardlink cases
