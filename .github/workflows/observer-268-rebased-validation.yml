@@ -164,7 +164,8 @@ jobs:
               "auto_tests/tests/test_observer_controller_lease.py",
               "auto_tests/tests/test_observer_lab_identity.py",
               "auto_tests/tests/test_observer_rebased_primitives.py",
-              "auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py",
+              "auto_tests/tests/test_observer_replay_synthetic.py",
+              "auto_tests/tests/test_observer_q4os_history.py",
               "docs/distro-backends/SHARED_CONTRACTS.md",
           }
           from auto_tests.installer_observer import q4os
