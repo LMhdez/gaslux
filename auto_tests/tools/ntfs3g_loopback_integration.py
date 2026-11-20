@@ -175,6 +175,7 @@ def main() -> int:
     mount_verified = False
     mount_command_succeeded = False
     trace_process: subprocess.Popen[str] | None = None
+    trace_path: Path | None = None
     detached = False
     result: dict[str, Any] = {
         "status": "FAILED",
@@ -311,6 +312,8 @@ def main() -> int:
             try:
                 if mountpoint.exists():
                     mountpoint.rmdir()
+                if trace_path is not None and trace_path.parent == workspace and trace_path.is_file():
+                    trace_path.unlink()
                 if image.exists():
                     image.unlink()
                 workspace.rmdir()
