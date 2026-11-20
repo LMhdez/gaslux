@@ -127,6 +127,7 @@ def prepare_independent_tpm_clones(workspace: Path) -> tuple[Path, Path, str]:
     )
     require(setup.returncode == 0,
             "could not initialize disposable TPM 2.0 baseline")
+    template.chmod(0o700)
     template_hash = tpm_state_tree_sha256(template)
     shutil.copytree(template, control, symlinks=False)
     shutil.copytree(template, treatment, symlinks=False)
@@ -166,7 +167,7 @@ def running_swtpm(state_dir: Path, workspace: Path, label: str) -> Iterator[Path
         try:
             proc = subprocess.Popen(
                 ["swtpm", "socket", "--tpm2", "--tpmstate", f"dir={state_dir}",
-                 "--ctrl", f"type=unixio,path={socket}",
+                 "--server", f"type=unixio,path={socket},mode=0600",
                  "--flags", "not-need-init"],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=stderr,
