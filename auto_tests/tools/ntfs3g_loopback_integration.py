@@ -8,6 +8,7 @@ that device must be proven to reference the exact temporary image before mkfs.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -22,7 +23,9 @@ from typing import Any
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPOSITORY_ROOT / "assets" / "live"))
-from libertix_windows_sharing import validate_existing_readonly_ntfs_mount
+validate_existing_readonly_ntfs_mount = importlib.import_module(
+    "libertix_windows_sharing"
+).validate_existing_readonly_ntfs_mount
 
 
 def command(arguments: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -112,7 +115,7 @@ def validate_real_mount(filesystems: list[dict[str, Any]], mountpoint: Path, loo
     return {
         "source": source,
         "filesystem": filesystem["fstype"],
-        "options": tokens,
+        "options": options,
         "target": str(mountpoint),
     }
 
