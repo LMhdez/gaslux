@@ -120,17 +120,54 @@ def validate_attestation_report(
             found.append((entry, verification, statement))
     if len(found) != 1:
         raise ReadbackError("No unique SLSA provenance statement matches the downloaded digest")
-    entry, verification, statement = found[0]
-    certificate = verification.get("signature", {}).get("certificate", {})
+    _, verification, statement = found[0]
+    signature = verification.get("signature")
+    certificate = signature.get("certificate") if isinstance(signature, dict) else None
     if not isinstance(certificate, dict) or not certificate:
         raise ReadbackError("Verified attestation JSON has no parsed signing certificate")
+    timestamps = verification.get("verifiedTimestamps")
+    if not isinstance(timestamps, list) or not timestamps:
+        raise ReadbackError("Verified attestation has no independently verified transparency timestamp")
+    if expected_workflow.endswith("/build_iso.yml"):
+        expected_identity = (
+            "https://github.com/ublue-os/bazzite/.github/workflows/"
+            "build_iso.yml@refs/heads/main"
+        )
+        expected_run_id = "44121421800"
+    elif expected_workflow.endswith("/build.yml"):
+        expected_identity = (
+            "https://github.com/ublue-os/bazzite/.github/workflows/"
+            "build.yml@refs/heads/main"
+        )
+        expected_run_id = "44115557508"
+    else:
+        raise ReadbackError("Unexpected upstream signer workflow policy")
+    certificate_checks = {
+        "subjectAlternativeName": expected_identity,
+        "issuer": "https://token.actions.githubusercontent.com",
+        "githubWorkflowRepository": REPOSITORY,
+        "githubWorkflowRef": "refs/heads/main",
+        "sourceRepositoryURI": "https://github.com/ublue-os/bazzite",
+        "sourceRepositoryDigest": SOURCE_COMMIT,
+        "runnerEnvironment": "github-hosted",
+    }
+    for field, expected in certificate_checks.items():
+        if certificate.get(field) != expected:
+            raise ReadbackError(f"Attestation certificate {field} does not match pinned provenance")
+    invocation = certificate.get("runInvocationURI", "")
+    if f"/actions/runs/{expected_run_id}/" not in invocation:
+        raise ReadbackError("Attestation certificate invocation does not match the pinned upstream run")
     return {
         "verifiedByGhCli": True,
         "predicateType": PREDICATE_TYPE,
         "subjectDigest": expected_digest,
         "signerWorkflowPolicy": expected_workflow,
-        "certificatePresent": True,
-        "verifiedTimestampCount": len(verification.get("verifiedTimestamps", [])),
+        "certificateIdentity": certificate["subjectAlternativeName"],
+        "sourceRepositoryDigest": certificate["sourceRepositoryDigest"],
+        "sourceRepositoryRef": certificate["githubWorkflowRef"],
+        "runInvocationURI": invocation,
+        "runnerEnvironment": certificate["runnerEnvironment"],
+        "verifiedTimestampCount": len(timestamps),
         "statementType": statement.get("_type"),
     }
 
