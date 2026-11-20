@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import time
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from .evidence import Refusal, canonical, digest
@@ -90,6 +90,48 @@ def _one(evidence_root: Path) -> dict:
             frame = transport.capture(time.monotonic() + 8)
             if frame.scale is not None or frame.passed_checks:
                 raise Refusal("Read-only observation must not claim guest preconditions")
+            # Run negative checks against THIS live process and QMP endpoint.
+            # No negative check sends guest input or attaches any device.
+            negative = []
+
+            def must_refuse(name, check):
+                try:
+                    check()
+                except Refusal:
+                    negative.append(name)
+                else:
+                    raise Refusal(f"Live negative QEMU gate admitted drift: {name}")
+
+            must_refuse(
+                "process-start-mismatch",
+                lambda: LocalQemuAttestor(replace(
+                    seal, process=replace(seal.process, start_ticks=seal.process.start_ticks + 1)
+                )).verify(time.monotonic() + 5),
+            )
+            must_refuse(
+                "snapshot-mismatch",
+                lambda: LocalQemuAttestor(replace(
+                    seal, authority=replace(authority, snapshot_id="unauthorized-snapshot")
+                )).verify(time.monotonic() + 5),
+            )
+            must_refuse(
+                "qcow2-inode-mismatch",
+                lambda: LocalQemuAttestor(replace(
+                    seal, cow=replace(seal.cow, ino=seal.cow.ino + 1)
+                )).verify(time.monotonic() + 5),
+            )
+            must_refuse("expired-deadline", lambda: attestor.verify(time.monotonic() - 1))
+            moved = qmp.with_name("qmp-temporarily-unavailable.sock")
+            qmp.rename(moved)
+            try:
+                must_refuse("qmp-disconnected", lambda: attestor.verify(time.monotonic() + 5))
+            finally:
+                moved.rename(qmp)
+            # Deliberate drift on a SYNTHETIC test ISO only, after capturing
+            # the original read-only frame. Never do this with upstream media.
+            original_iso = iso.read_bytes()
+            iso.write_bytes(b"X" + original_iso[1:])
+            must_refuse("iso-mutated", lambda: attestor.verify(time.monotonic() + 5))
             # The only proof published here is a *read-only* VM frame and
             # independently corroborated host/QMP identities. Zero guest clicks.
             location = evidence_root / run_id
@@ -115,6 +157,7 @@ def _one(evidence_root: Path) -> dict:
                 "qmp_identity_checked": True,
                 "physical_block_fd_rejected": True,
                 "guest_clicks": 0,
+                "live_negative_gates_refused": negative,
                 "q4os_booted": False,
                 "installer_navigated": False,
             }
