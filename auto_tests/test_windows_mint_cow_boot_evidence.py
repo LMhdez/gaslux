@@ -166,7 +166,7 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         report["mintRootPersistenceEvidenceSha256"] = hashlib.sha256(data).hexdigest()
         report_path.write_text(json.dumps(report))
         with self.assertRaisesRegex(validator.MintBootEvidenceError,
-                                    "same Windows/Mint COW transaction"):
+                                    "exact Windows/Mint COW transaction"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
     def test_rejects_fourth_windows_serial_not_bound_to_mint_persistence(self):
@@ -180,7 +180,7 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         report["mintRootPersistenceEvidenceSha256"] = hashlib.sha256(data).hexdigest()
         report_path.write_text(json.dumps(report))
         with self.assertRaisesRegex(validator.MintBootEvidenceError,
-                                    "same Windows/Mint COW transaction"):
+                                    "exact Windows/Mint COW transaction"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
     def test_accepts_bound_direct_kernel_boot_and_shutdown_evidence(self):
@@ -328,6 +328,10 @@ class MintCowBootEvidenceTests(unittest.TestCase):
             (self.directory / f"{PROFILE}-{suffix}").unlink()
         report_path = self.directory / f"{PROFILE}-result.json"
         report = json.loads(report_path.read_text())
+        (self.directory / "mint-after-windows.json").unlink()
+        for field in ("mintRootPersistenceAfterWindowsVerified",
+                      "mintRootPersistenceEvidenceSha256"):
+            report.pop(field)
         for field in ("windowsBootAfterExt4Verified", "thirdBootBcdWinreEspVerified",
                       "fourthPostExt4EvidenceSha256"):
             report.pop(field)
