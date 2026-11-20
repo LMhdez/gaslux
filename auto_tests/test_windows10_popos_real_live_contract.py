@@ -27,12 +27,12 @@ class RealPopGenuineWindowsLabGateTests(unittest.TestCase):
     def setUp(self):
         self.release = {
             "version": "24.04", "channel": "intel",
-            "url": "https://iso.pop-os.org/24.04/amd64/intel/123/pop-os_24.04_amd64_intel_123.iso",
-            "size": 3_500_000_000,
-            "sha_sum": "a"*64,
+            "url": "https://iso.pop-os.org/24.04/amd64/intel/20/pop-os_24.04_amd64_intel_20.iso",
+            "size": 2_955_067_392,
+            "sha_sum": "a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c",
         }
         self.manifest = (
-            self.release["sha_sum"]+"  *pop-os_24.04_amd64_intel_123.iso\n"
+            self.release["sha_sum"]+"  *pop-os_24.04_amd64_intel_20.iso\n"
         ).encode("ascii")
 
     def test_upstream_signed_manifest_identity(self):
@@ -40,8 +40,21 @@ class RealPopGenuineWindowsLabGateTests(unittest.TestCase):
             self.release, self.manifest,
         )
         self.assertEqual(url, self.release["url"])
-        self.assertEqual(sha, "a"*64)
-        self.assertEqual(size, 3_500_000_000)
+        self.assertEqual(sha, "a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c")
+        self.assertEqual(size, 2_955_067_392)
+
+    def test_refuse_other_validly_shaped_upstream_build_even_if_manifest_matches(self):
+        new = dict(self.release)
+        new["url"] = (
+            "https://iso.pop-os.org/24.04/amd64/intel/21/"
+            "pop-os_24.04_amd64_intel_21.iso"
+        )
+        new["sha_sum"] = "b" * 64
+        new["size"] = 2_955_067_393
+        validly_shaped_manifest = (new["sha_sum"] +
+                                   "  *pop-os_24.04_amd64_intel_21.iso\\n").encode("ascii")
+        with self.assertRaises(DiskAuditError):
+            validate_signed_release_identity(new, validly_shaped_manifest)
 
     def test_forged_api_version_channel_origin_digest_and_size_refused(self):
         altered = {
@@ -62,9 +75,9 @@ class RealPopGenuineWindowsLabGateTests(unittest.TestCase):
         manifest = self.manifest.decode("ascii")
         for bad in (
             b"",
-            manifest.replace("a"*64,"b"*64).encode(),
+            manifest.replace(self.release["sha_sum"],"b"*64).encode(),
             (manifest+manifest).encode(),
-            manifest.replace("123.iso", "124.iso").encode(),
+            manifest.replace("20.iso", "21.iso").encode(),
             manifest.replace("*pop-os", "*/traversal/pop-os").encode(),
             manifest.encode("ascii")+b"\xff",
         ):
