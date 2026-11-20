@@ -102,7 +102,8 @@ def tpm_state_tree_sha256(root: Path) -> str:
         if path.is_dir():
             continue
         require(stat.S_ISREG(st.st_mode) and st.st_nlink == 1
-                and 0 < st.st_size <= MAX_TPM_FILE_BYTES,
+                and 0 <= st.st_size <= MAX_TPM_FILE_BYTES
+                and (st.st_size > 0 or path.name.endswith(".lock")),
                 "TPM state contains an unsafe or oversized file")
         rel = path.relative_to(root).as_posix().encode("utf-8")
         digest.update(rel + b"\0" + bytes.fromhex(sha256_file(path)) + b"\n")
