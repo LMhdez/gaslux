@@ -280,6 +280,18 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
             and os.environ.get("GASLUX_MINT_AB_BOOT_CONSENT")
                 == "I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE",
             "missing separate single A/B KVM experiment consent")
+    early_file = evidence/"mint-ab-capacity-early.json"
+    checked_file(early_file, evidence)
+    early = json.loads(early_file.read_bytes())
+    require(early.get("schema") == "gaslux-mint-ab-capacity-v1"
+            and early.get("phase") == "early"
+            and early.get("result") == "PASS"
+            and early.get("checkpointReadyForReview") is False
+            and early.get("compressionAssumedForCapacity") is False
+            and early.get("githubRunId") == os.environ.get("GITHUB_RUN_ID")
+            and early.get("sourceCommit") == os.environ.get("GITHUB_SHA"),
+            "missing same-run approved conservative A/B capacity preflight")
+    early_hash = sha256_file(early_file)
     code_args = [arg.removeprefix("if=pflash,format=raw,readonly=on,file=")
                  for arg in original
                  if arg.startswith("if=pflash,format=raw,readonly=on,file=")]
@@ -302,6 +314,7 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
           "runIdentity": os.environ.get("GITHUB_RUN_ID"),
           "sourceCommit": os.environ.get("GITHUB_SHA"),
           "checkpointManifestSha256": sha256_file(directory/"checkpoint.json"),
+          "earlyCapacityManifestSha256": early_hash,
           "sameWindowsOrdinalBeforeArms": True,
           "rootBefore": before[0]["mintRootFiles"],
           "partitionSha256Before": before[0]["partitionSha256"],
