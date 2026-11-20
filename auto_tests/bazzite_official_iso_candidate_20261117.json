@@ -98,8 +98,6 @@
     "githubIsoAttestationVerified": true,
     "embeddedOciManifestReadBackVerified": true,
     "isoToPayloadBindingVerified": true,
-    "runFailedStage": "embedded-manifest-config-extraction",
-    "runFailureReason": "The ISO's containers/storage image record and embedded manifest path were observed, but the original extractor incorrectly required a separate sibling config blob. The corrected verifier hashes the embedded manifest and validates the config blob fetched by immutable OCI digest; complete readback is pending.",
     "sidecars": {
       "signature": {
         "file": "bazzite-stable-live-amd64.iso.sig",
@@ -157,6 +155,10 @@
     "installationAuthorized": false,
     "failureStage": "complete",
     "failureReason": null,
-    "payloadConfigBlobVerified": true
+    "payloadConfigBlobVerified": true,
+    "terminalZipSha256": "1ad0ccbfec8b2316c89aac9bf58067d73a2541d734c7fcff3e053dd55757fee2",
+    "terminalRunExitCode": 0,
+    "configBlobRetrievedFromISO": false,
+    "configBlobVerificationSource": "ghcr-immutable-oci-config-digest-crosschecked-with-embedded-iso-manifest"
   }
 }

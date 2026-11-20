@@ -65,3 +65,28 @@ def test_candidate_never_confuses_oci_digest_with_iso_digest():
         "sha256:"
     )
     assert evidence["payload"]["digest"] != evidence["payload"]["configDigest"]
+
+
+def test_terminal_run_evidence_is_consistent_without_fictitious_embedded_config():
+    evidence = load_candidate()
+    readback = evidence["publicReadback"]
+    assert evidence["result"] == readback["result"] == "A"
+    assert readback["workflowRunId"] == 44759529218
+    assert readback["terminalZipSha256"] == (
+        "1ad0ccbfec8b2316c89aac9bf58067d73a2541d734c7fcff3e053dd55757fee2"
+    )
+    assert readback["terminalRunExitCode"] == 0
+    assert readback["failureStage"] == "complete"
+    assert readback["failureReason"] is None
+    assert "runFailedStage" not in readback
+    assert "runFailureReason" not in readback
+    assert readback["embeddedManifestBytesVerified"] is True
+    assert readback["embeddedConfigBlobVerified"] is False
+    assert readback["configBlobRetrievedFromISO"] is False
+    assert readback["payloadConfigBlobVerified"] is True
+    assert readback["configBlobVerificationSource"] == (
+        "ghcr-immutable-oci-config-digest-crosschecked-with-embedded-iso-manifest"
+    )
+    assert evidence["relationship"]["embeddedOciManifestReadBackVerified"] is True
+    assert evidence["relationship"]["isoAttestationResolvedPayloadDigestIndependentlyVerified"] is False
+    assert evidence["installationAuthorized"] is False
