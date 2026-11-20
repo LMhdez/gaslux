@@ -16,6 +16,7 @@ import uuid
 from dataclasses import asdict, replace
 from pathlib import Path
 
+from .controller_lease import ControllerLease
 from .evidence import Refusal, canonical, digest
 from .lab_identity import LocalQemuAttestor, QemuRunSeal, process_seal, seal_file
 from .models import DistributionIdentity
@@ -92,6 +93,18 @@ def _one(evidence_root: Path) -> dict:
                 authority, process_seal(proc.pid), qmp, port, seal_file(iso), seal_file(cow)
             )
             attestor = LocalQemuAttestor(seal)
+            # Real-process negative: a second cooperating controller must not
+            # acquire the same lease. This does NOT authorize guest input.
+            with ControllerLease(sandbox, seal.process) as controller:
+                controller.verify()
+                try:
+                    with ControllerLease(sandbox, seal.process):
+                        raise Refusal("Second controller was admitted")
+                except Refusal as exc:
+                    if "second controller already holds the lease" not in str(exc):
+                        raise
+                controller.verify()
+                attestor.verify(time.monotonic() + 5)
             png = None
             resolution = None
             # RFB observation is harmless. An unexpected screen size refuses a
@@ -234,6 +247,7 @@ def _one(evidence_root: Path) -> dict:
                 "qmp_identity_checked": True,
                 "physical_block_fd_rejected": True,
                 "guest_clicks": 0,
+                "cooperative_controller_contention_refused": True,
                 "live_negative_gates_refused": negative,
                 "q4os_booted": False,
                 "installer_navigated": False,
