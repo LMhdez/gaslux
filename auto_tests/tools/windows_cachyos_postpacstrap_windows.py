@@ -297,6 +297,7 @@ def verify_windows_with_installed_root(
             "bcdReadOnlyForensic": bcd_forensic,
             "qemuWriteTraceSha256": boot.get("qemuWriteTraceSha256"),
             "qemuWriteTraceBytes": boot.get("qemuWriteTraceBytes"),
+            "qemuWriteTraceStatus": boot.get("qemuWriteTraceStatus"),
             "windowsPostPacstrapSerialSha256": boot.get("fourthGuestSerialSha256"),
         }
         raise PostPacstrapWindowsError(
@@ -317,6 +318,7 @@ def verify_windows_with_installed_root(
         "bcdReadOnlyForensic": bcd_forensic,
         "qemuWriteTraceSha256": boot.get("qemuWriteTraceSha256"),
         "qemuWriteTraceBytes": boot.get("qemuWriteTraceBytes"),
+        "qemuWriteTraceStatus": boot.get("qemuWriteTraceStatus"),
         "cachyosBootloaderInstalledToWindowsEsp": False,
         "sameDiskDualBootVerified": False,
         "updatesVerified": False,
