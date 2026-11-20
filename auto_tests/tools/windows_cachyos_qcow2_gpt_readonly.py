@@ -287,6 +287,59 @@ def inspect_owned_qcow2(disk: Path) -> dict[str, object]:
     return inspect_gpt_windows(region[0], region[1])
 
 
+def correlate_host_gpt_and_guestfs(
+    candidate: dict[str, object], filesystem: dict[str, object], profile: str
+) -> dict[str, object]:
+    """Require byte-exact agreement between two read-only QCOW2 inspections.
+
+    This is an offline geometry consistency check, not an authorization to
+    change a disk, a proof of Windows guest provenance, or a dual-boot test.
+    """
+    require(profile in ("win10_22h2_en_us_x64", "win11_26h2_en_us_x64"),
+            "unsupported Windows host GPT profile")
+    require(candidate.get("candidateWindowsGptPrimaryAndBackupConsistent") is True
+            and candidate.get("sameDiskDualBootVerified") is False
+            and candidate.get("storageWritesAuthorized") is False
+            and candidate.get("releaseEligible") is False
+            and candidate.get("windowsBootVerified") is False,
+            "untrusted or overclaiming host GPT report")
+    require(filesystem.get("profile") == profile
+            and filesystem.get("source") ==
+            "gaslux-host-libguestfs-readonly-after-verified-firstboot"
+            and filesystem.get("partitionCount") == 4
+            and filesystem.get("diskVirtualSizeBytes") == VIRTUAL_BYTES
+            and filesystem.get("sameDiskDualBootVerified") is False
+            and filesystem.get("storageWritesAuthorized") is False
+            and filesystem.get("stable") is False,
+            "untrusted libguestfs evidence or mismatched Windows profile")
+    for key in ("espBootManagerPresent", "espBcdPresent",
+                "ntfsWindowsLoaderPresent", "ntfsWindowsSystemHivePresent",
+                "recoveryGptPartitionPresent"):
+        require(filesystem.get(key) is True,
+                "missing Windows EFI/BCD/NTFS offline verification")
+    host_partitions = candidate.get("windowsPartitions")
+    mounted_partitions = filesystem.get("partitions")
+    require(isinstance(host_partitions, list) and len(host_partitions) == 4
+            and isinstance(mounted_partitions, list)
+            and len(mounted_partitions) == 4,
+            "host and guestfs Windows partition lists do not match")
+    for host, mounted in zip(host_partitions, mounted_partitions):
+        require(isinstance(host, dict) and isinstance(mounted, dict)
+                and mounted.get("number") == host.get("index")
+                and mounted.get("typeGuid") == host.get("type")
+                and mounted.get("partitionGuid") == host.get("partitionGuid")
+                and mounted.get("offsetBytes") == host.get("firstLba") * SECTOR
+                and mounted.get("sizeBytes") == host.get("lengthBytes")
+                and (host.get("lastLba") - host.get("firstLba") + 1) * SECTOR
+                == host.get("lengthBytes"),
+                "host GPT and libguestfs partition geometry/identity disagree")
+    require(type(candidate.get("unallocatedAfterWindowsBytes")) is int
+            and candidate["unallocatedAfterWindowsBytes"] >= MIN_UNALLOCATED,
+            "missing safe unallocated post-Windows extent")
+    return dict(candidate, profile=profile,
+                independentLibguestfsPartitionAgreement=True)
+
+
 if __name__ == "__main__":
     raise SystemExit(
         "Library only: invoked after genuine Windows shutdown in an authorized VM")

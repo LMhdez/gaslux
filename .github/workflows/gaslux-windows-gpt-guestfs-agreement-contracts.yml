@@ -1,0 +1,28 @@
+name: Windows QCOW2 GPT and libguestfs independent agreement contracts
+on:
+  push:
+    branches:
+      - test/cachyos-win10-archiso-windows-hashes-ro-issue3
+  pull_request:
+    paths:
+      - auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+      - auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py
+      - .github/workflows/gaslux-windows-gpt-guestfs-agreement-contracts.yml
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-agreement-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Test independent GPT/libguestfs geometry identity gates with synthetic bytes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m compileall -q auto_tests/tools/windows_cachyos_qcow2_gpt_readonly.py auto_tests/test_windows_cachyos_qcow2_gpt_readonly.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_qcow2_gpt_readonly.py' -v
