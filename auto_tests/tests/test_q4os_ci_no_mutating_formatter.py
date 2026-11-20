@@ -5,8 +5,7 @@ import re
 from pathlib import Path
 
 WORKFLOW = (
-    Path(__file__).resolve().parents[2]
-    / ".github/workflows/gaslux-q4os-windows-boundary.yml"
+    Path(__file__).resolve().parents[2] / ".github/workflows/gaslux-q4os-windows-boundary.yml"
 )
 
 
