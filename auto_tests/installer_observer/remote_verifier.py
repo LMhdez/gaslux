@@ -89,7 +89,11 @@ def _object(
         except VerificationRefused:
             raise
         except (
-            UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            TypeError,
+            ValueError,
+            RecursionError,
         ) as exc:
             raise VerificationRefused("json-invalid", f"{label} is not a JSON object") from exc
     elif isinstance(value, str):
