@@ -10,6 +10,9 @@ on:
       - 'assets/live/bazzite_cosign_20261120.pub'
       - 'auto_tests/bazzite_iso_public_readback.py'
       - 'auto_tests/tests/test_bazzite_iso_public_readback.py'
+      - 'auto_tests/bazzite_iso45_passive_gate.py'
+      - 'auto_tests/tests/test_bazzite_iso45_passive_gate.py'
+      - 'auto_tests/bazzite_iso45_passive_boot.sh'
 
 permissions:
   contents: read
@@ -46,10 +49,11 @@ jobs:
           sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xorriso squashfs-tools skopeo jq
           python -m pip install --disable-pip-version-check pytest ruff
-          python -m pytest -q auto_tests/tests/test_bazzite_iso_public_readback.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
-          python -m compileall -q auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
+          python -m pytest -q auto_tests/tests/test_bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso45_passive_gate.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py auto_tests/bazzite_iso45_passive_gate.py auto_tests/tests/test_bazzite_iso45_passive_gate.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py auto_tests/bazzite_iso45_passive_gate.py auto_tests/tests/test_bazzite_iso45_passive_gate.py
+          python -m compileall -q auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py auto_tests/bazzite_iso45_passive_gate.py auto_tests/tests/test_bazzite_iso45_passive_gate.py
+          bash -n auto_tests/bazzite_iso45_passive_boot.sh
 
       - name: Install upstream-pinned Cosign
         id: cosign
@@ -415,7 +419,63 @@ jobs:
               output.write(f"result={report['result']}\n")
           PY
 
-      - name: Upload text-only provenance evidence
+      - name: Boot verified ISO45 once with isolated read-only GPT (no UI input)
+        id: passive_boot
+        if: steps.report.outputs.result == 'A'
+        continue-on-error: true
+        shell: bash
+        run: |
+          bash auto_tests/bazzite_iso45_passive_boot.sh
+
+      - name: Classify bounded passive screenshot evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "auto_tests")
+          from bazzite_iso45_passive_gate import classify
+          ev = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          ev.mkdir(parents=True, exist_ok=True)
+          readback_file = ev / "bazzite-iso-public-readback.json"
+          readback = json.loads(readback_file.read_text()) if readback_file.exists() else {}
+          ocr = sorted(ev.glob("iso45-ocr-*.txt"))
+          texts = [p.read_text(encoding="utf-8", errors="replace")[:8192] for p in ocr]
+          exitfile = ev / "iso45-boot-step-exit.txt"
+          boot_succeeded = exitfile.exists() and exitfile.read_text().strip() == "0"
+          attempted = (ev / "iso45-cpu-resume-requested.flag").exists()
+          result = classify(texts, boot_succeeded and attempted)
+          if readback.get("result") != "A":
+              result["result"] = "C"
+              result["reason"] = "Same-run ISO/OCI authentication not completed"
+          result.update({
+              "provenanceResult": readback.get("result"),
+              "qemuBootStepExitCode": exitfile.read_text().strip() if exitfile.exists() else None,
+              "cpuResumeRequested": attempted,
+              "screenshotCount": len(ocr),
+              "screenshotsSha256Recorded": (ev / "iso45-screen-sha256.txt").exists(),
+              "hostGuestIdentityAuthenticated": False,
+              "runtimeAnacondaVersionProven": False,
+              "runtimeBlivetVersionProven": False,
+              "realGetActionsCaptured": False,
+              "nativeInstallerWriteSetVerified": False,
+              "noWindowsDiskAttached": True,
+              "guestDiskConfiguredReadOnly": True,
+              "bootloaderOrNVRAMPersistenceVerified": False,
+              "windowsBootVerified": False,
+              "rollbackVerified": False,
+          })
+          (ev / "iso45-passive-boot-result.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+      - name: Upload signed provenance and passive boot screens
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
