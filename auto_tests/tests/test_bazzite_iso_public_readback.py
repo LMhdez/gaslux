@@ -14,6 +14,7 @@ from auto_tests.bazzite_iso_public_readback import (
     validate_metadata,
     validate_run_metadata,
     verify_embedded_blobs,
+    inspect_embedded_payload,
 )
 
 
@@ -225,3 +226,30 @@ def test_embedded_payload_rejects_wrong_manifest_config_and_version():
             expected_config_digest=wrong_cd,
             expected_version="45.20261117.1",
         )
+
+
+
+def test_embedded_storage_layout_failure_emits_read_only_diagnostics(tmp_path, monkeypatch):
+    listing = (
+        "drwxr-xr-x root/root squashfs-root/var/lib/containers/storage\n"
+        "drwxr-xr-x root/root squashfs-root/var/lib/containers/storage/overlay-images\n"
+        "--------- root/root squashfs-root/var/lib/containers/storage/overlay-images/metadata.db\n"
+    )
+
+    def fake_unsquashfs(_squashfs, *args, binary=False):
+        assert args == ("-ll",)
+        assert binary is False
+        return listing
+
+    monkeypatch.setattr(
+        "auto_tests.bazzite_iso_public_readback._unsquashfs", fake_unsquashfs
+    )
+    diagnostic_file = tmp_path / "evidence" / "embedded-payload-diagnostics.json"
+    with pytest.raises(ReadbackError, match="images.json"):
+        inspect_embedded_payload(
+            tmp_path / "squashfs.img", diagnostics_path=diagnostic_file
+        )
+    diagnostic = json.loads(diagnostic_file.read_text(encoding="utf-8"))
+    assert diagnostic["listingEntryCount"] == 3
+    assert any("overlay-images" in path for path in diagnostic["storageRelatedPaths"])
+    assert diagnostic["imagesJsonCandidates"] == []
