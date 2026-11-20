@@ -26,8 +26,7 @@ def fixture_manifest():
         "installationAuthorized": False,
         "virtualSizeBytes": 70 * 1024**3,
         "partitions": [
-            {"number": n, "typeGuid": guid, "name": name,
-             "firstSector": first, "lastSector": last}
+            {"number": n, "typeGuid": guid, "name": name, "firstSector": first, "lastSector": last}
             for n, guid, name, first, last in PARTITIONS
         ],
     }
@@ -38,9 +37,14 @@ def snapshot():
         "diskGuid": "11111111-2222-4333-8444-555555555555",
         "sectorBytes": 512,
         "partitions": [
-            {"number": n, "typeGuid": guid, "name": name,
-             "firstSector": first, "lastSector": last,
-             "partuuid": f"0000000{n}-2222-4333-8444-555555555555"}
+            {
+                "number": n,
+                "typeGuid": guid,
+                "name": name,
+                "firstSector": first,
+                "lastSector": last,
+                "partuuid": f"0000000{n}-2222-4333-8444-555555555555",
+            }
             for n, guid, name, first, last in PARTITIONS
         ],
         "largestFreeFirstSector": 50980864,
