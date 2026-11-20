@@ -207,10 +207,7 @@ def expected_actions(plan: dict) -> dict:
                 exact_sectors is not None
                 and part["lastSector"] - part["firstSector"] + 1 != exact_sectors
             )
-            or (
-                fs == "btrfs"
-                and part["lastSector"] != ((size // 512 - 33) // 2048) * 2048 - 1
-            )
+            or (fs == "btrfs" and part["lastSector"] != ((size // 512 - 33) // 2048) * 2048 - 1)
             or part["lastSector"] >= size // 512 - 33
         ):
             raise Refusal("Invalid candidate partition operation")

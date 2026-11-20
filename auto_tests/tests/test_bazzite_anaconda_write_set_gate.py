@@ -256,7 +256,6 @@ def test_no_real_capture_accepted_merely_by_claiming_dbus_origin():
         compare(plan, observed)
 
 
-
 @pytest.mark.parametrize(
     ("flag", "bad_value"),
     [
