@@ -79,6 +79,19 @@ class BcdAbControlContracts(unittest.TestCase):
         )
         self.assertEqual(result["classification"], "NO_BCD_MUTATION_IN_EITHER_ARM")
 
+    def test_bcd_forensic_bounds_spans_but_hashes_the_complete_offset_set(self):
+        before = b"regf" + b"\\x00" * 4092
+        changed = bytearray(before)
+        for offset in range(4, 140, 2):
+            changed[offset] = 1
+        result = lab.summarize_bcd_difference(before, bytes(changed))
+        self.assertEqual(result["changedByteCount"], 68)
+        self.assertEqual(result["changedRunCount"], 68)
+        self.assertEqual(len(result["firstChangedByteSpans"]), 64)
+        self.assertTrue(result["truncatedToFirst64Spans"])
+        self.assertEqual(len(result["changedOffsetSetSha256"]), 64)
+        self.assertEqual(len(result["changedSpansSha256"]), 64)
+
     def test_qemu_write_event_discovery_filters_read_only_and_unrelated_events(self):
         sample = """Available trace events:
 bdrv_co_pwritev
