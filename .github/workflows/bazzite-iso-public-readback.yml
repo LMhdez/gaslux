@@ -145,20 +145,25 @@ jobs:
           stage='pinned-key-readback'
           KEY="$GITHUB_WORKSPACE/assets/live/bazzite_cosign_20261120.pub"
           curl --fail --location --show-error --silent --retry 2 --retry-all-errors --output "$WORK/upstream-cosign.pub" "https://raw.githubusercontent.com/ublue-os/bazzite/f8580007fb1fb4241378fd99b33800aefe62c3b5/cosign.pub"
+          curl --fail --location --show-error --silent --retry 2 --retry-all-errors --output "$WORK/build-commit-cosign.pub" "https://raw.githubusercontent.com/ublue-os/bazzite/5d71c4376169910c25bc06a3537f4780521e7435/cosign.pub"
           cmp -- "$KEY" "$WORK/upstream-cosign.pub"
+          cmp -- "$KEY" "$WORK/build-commit-cosign.pub"
           test "$(sha256sum "$KEY" | awk '{print $1}')" = 'af78ecfda6eb21c35195af3739341715e9cfc3f2f5911dd9c10b0670547bf6e8'
           test "$(openssl pkey -pubin -in "$KEY" -outform DER | sha256sum | awk '{print $1}')" = 'efaae036a5afefcfe2c64686db0311ab64e57ae794be634d80c25286695336a6'
           gh api repos/ublue-os/bazzite/commits/f8580007fb1fb4241378fd99b33800aefe62c3b5 > "$EVIDENCE/key-introduction-commit.json"
           gh api 'repos/ublue-os/bazzite/contents/cosign.pub?ref=f8580007fb1fb4241378fd99b33800aefe62c3b5' > "$EVIDENCE/key-file-github-record.json"
+          gh api 'repos/ublue-os/bazzite/contents/cosign.pub?ref=5d71c4376169910c25bc06a3537f4780521e7435' > "$EVIDENCE/key-file-build-commit-record.json"
           python - <<'PY'
           import json, os
           from pathlib import Path
           evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
           commit = json.loads((evidence / "key-introduction-commit.json").read_text())
           key = json.loads((evidence / "key-file-github-record.json").read_text())
+          build_key = json.loads((evidence / "key-file-build-commit-record.json").read_text())
           assert commit["commit"]["verification"]["verified"] is True
           assert commit["sha"] == "f8580007fb1fb4241378fd99b33800aefe62c3b5"
           assert key["sha"] == "bd5b1927189e8af5566a8ff399c46cbf7085d3b1"
+          assert build_key["sha"] == key["sha"]
           PY
 
           stage='cosign-iso-signature'
