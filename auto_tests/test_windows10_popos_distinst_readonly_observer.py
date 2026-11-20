@@ -53,6 +53,23 @@ class ReadonlyDistinstObserver(unittest.TestCase):
         self.assertFalse(proof["nativeInstallObserved"])
         self.assertFalse(proof["distinstExecutionAuthorized"])
 
+    def test_live_guest_help_runs_after_gpt_and_host_target_readonly(self):
+        root = Path(__file__).parent / "tools"
+        guest = (root / "windows10_popos_genuine_live_guest_probe.py").read_text(
+            encoding="utf-8")
+        host = (root / "windows10_popos_genuine_live_same_cow_vm.py").read_text(
+            encoding="utf-8")
+        console = (root / "windows10_popos_genuine_live_console.py").read_text(
+            encoding="utf-8")
+        self.assertLess(guest.index("output = probe_linux_guest_gpt("),
+                        guest.index("help_result = inspect_distinst_help()"))
+        self.assertIn("windows10_popos_distinst_readonly_observer.py", host)
+        self.assertIn("windows10_popos_official_iso_signed_lab.py", host)
+        self.assertIn("win10readonly,readonly=on,format=qcow2", host)
+        self.assertIn("GASLUX_POP_DISTINST_READONLY_CONSENT=", console)
+        self.assertNotIn("GASLUX_POP_NATIVE_COW_WRITER_CONSENT", console)
+        self.assertIn("nativeInstallationExecuted", guest)
+
     def test_no_untrusted_elf_can_reach_help_subprocess(self):
         with patch.object(obs, "require_readonly_distinst_environment",
                           side_effect=DiskAuditError("invalid ELF")), \
