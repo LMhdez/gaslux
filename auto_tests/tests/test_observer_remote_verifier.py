@@ -203,7 +203,7 @@ def test_valid_signed_response_verifies_separate_trust_dimensions():
 
 
 def test_missing_trust_anchor_is_always_refused():
-    private, _ = trusted_material()
+    private, store = trusted_material()
     request = make_request()
     response = make_response(private, request)
     assert_refused(
