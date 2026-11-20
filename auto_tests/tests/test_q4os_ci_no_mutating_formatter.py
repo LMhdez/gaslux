@@ -29,6 +29,8 @@ def test_ruff_format_is_non_modifying_and_applies_to_committed_sources():
         "auto_tests/tests/test_q4os_windows_boundary.py",
         "auto_tests/tests/test_q4os_safety_adapter.py",
         "auto_tests/tests/test_q4os_safety_actual_contract.py",
+        "assets/live/gaslux_q4os_win10_readonly_probe.py",
+        "auto_tests/tests/test_q4os_win10_readonly_probe.py",
         "auto_tests/tests/test_q4os_ci_no_mutating_formatter.py",
     ):
         assert path in commands[0], f"Missing Ruff format --check target: {path}"
