@@ -1,0 +1,90 @@
+name: Installer Observer contracts (no guest input)
+on:
+  push:
+    branches:
+      - feature/installer-observer-engine
+    paths:
+      - 'auto_tests/installer_observer/**'
+      - 'auto_tests/tests/test_installer_observer.py'
+      - 'auto_tests/tests/test_q4os_*.py'
+      - 'auto_tests/fixtures/installer_observer/**'
+      - 'schemas/distro-ui-*.schema.json'
+      - 'docs/distro-backends/ui-maps/q4os.json'
+      - 'docs/distro-backends/evidence/q4os-manifest.json'
+      - '.github/workflows/installer-observer-contracts.yml'
+  pull_request:
+    paths:
+      - 'auto_tests/installer_observer/**'
+      - 'auto_tests/tests/test_installer_observer.py'
+      - 'auto_tests/fixtures/installer_observer/**'
+      - 'schemas/distro-ui-*.schema.json'
+      - 'docs/distro-backends/**'
+      - '.github/workflows/installer-observer-contracts.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  adversarial-and-q4os-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: auto_tests/requirements-dev.txt
+      - name: Install observer validation dependencies
+        run: python -m pip install 'pytest>=9,<10' 'pillow>=11,<13' 'jsonschema>=4,<5' 'ruff>=0.8,<1'
+      - name: Validate reviewed Q4OS map and manifest JSON Schemas
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+          for name, schema_name in (
+              ("docs/distro-backends/ui-maps/q4os.json", "schemas/distro-ui-map.schema.json"),
+              ("docs/distro-backends/evidence/q4os-manifest.json", "schemas/distro-ui-evidence.schema.json"),
+          ):
+              schema = json.loads(Path(schema_name).read_text())
+              document = json.loads(Path(name).read_text())
+              Draft202012Validator.check_schema(schema)
+              Draft202012Validator(schema).validate(document)
+              print("Validated", name)
+          PY
+      - name: Compile Python observer and adversarial tests
+        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_installer_observer.py
+      - name: Ruff lint new transport and hostile-input tests
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/tests/test_installer_observer.py
+      - name: Ruff format check new transport and hostile-input tests
+        run: python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/tests/test_installer_observer.py
+      - name: Adversarial tests including Linux symlink and hardlink cases
+        run: python -m pytest -q auto_tests/tests/test_installer_observer.py
+      - name: Historical Q4OS contracts including Linux symlink cases
+        run: |
+          python -m pytest -q \
+            auto_tests/tests/test_q4os_ui_map_contract.py \
+            auto_tests/tests/test_q4os_summary_gate.py \
+            auto_tests/tests/test_q4os_pair_verify.py \
+            auto_tests/tests/test_q4os_native_preflight.py
+      - name: Verify original Q4OS PNG SHA-256 and replay all four immutable artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m auto_tests.installer_observer.cli inspect
+          python -m auto_tests.installer_observer.cli replay > "$RUNNER_TEMP/q4os-observer-replay.json"
+          python -m auto_tests.installer_observer.cli verify-report "$RUNNER_TEMP/q4os-observer-replay.json"
+          python - "$RUNNER_TEMP/q4os-observer-replay.json" <<'PY'
+          import json
+          import sys
+          report = json.load(open(sys.argv[1], encoding="utf-8"))["manifest"]
+          assert len(report["sessions"]) == 4
+          assert sum(len(s["frames"]) for s in report["sessions"]) == 40
+          assert sum(len(s["steps"]) for s in report["sessions"]) == 36
+          assert report["live_input_count"] == 0
+          print("Verified: 40 original screenshots, 36 historical transitions, zero live clicks")
+          PY
