@@ -9,6 +9,7 @@ SO_PEERCRED and independently pin process start identity.
 from __future__ import annotations
 
 import copy
+import math
 import re
 import time
 import uuid
@@ -99,16 +100,20 @@ class ObservationBoundaryModel:
             or self._peer.pid <= 1
             or type(self._peer.start_ticks) is not int
             or self._peer.start_ticks <= 0
+            or type(self._expires_at) not in (int, float)
+            or not math.isfinite(self._expires_at)
             or not self._clock() < self._expires_at
+            or not isinstance(self._state, dict)
             or not self._framebuffer
             or any(
-                not _SHA256.fullmatch(value)
+                not isinstance(value, str) or not _SHA256.fullmatch(value)
                 for value in (
                     self._evidence.controller_artifact_sha256,
                     self._evidence.policy_sha256,
                     self._evidence.qemu_identity_sha256,
                 )
             )
+            or not isinstance(self._evidence.source_commit, str)
             or not self._evidence.source_commit
         ):
             raise Refusal("Incomplete or invalid simulation fixture")
