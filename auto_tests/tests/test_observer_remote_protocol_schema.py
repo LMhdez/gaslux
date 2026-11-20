@@ -98,11 +98,11 @@ def test_request_schema_rejects_mutating_or_generic_operations(operation):
 def test_request_schema_requires_fresh_nonce_and_rejects_unknown_fields():
     payload = valid_request()
     payload["nonce"] = "short"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         REQUEST_VALIDATOR.validate(payload)
     payload = valid_request()
     payload["qmp_command"] = "query-status"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         REQUEST_VALIDATOR.validate(payload)
 
 
@@ -113,23 +113,23 @@ def test_response_schema_requires_signed_identity_bound_envelope():
 def test_guest_claim_cannot_be_mislabelled_as_cryptographically_attested():
     payload = valid_response()
     payload["guest"]["identity_assurance"] = "cryptographically-attested"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RESPONSE_VALIDATOR.validate(payload)
 
 
 def test_refusal_response_cannot_smuggle_success_payload():
     payload = valid_response()
     payload["status"] = "refused"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RESPONSE_VALIDATOR.validate(payload)
 
 
 def test_response_rejects_unknown_signature_algorithm_and_fields():
     payload = valid_response()
     payload["signature"]["algorithm"] = "none"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RESPONSE_VALIDATOR.validate(payload)
     payload = valid_response()
     payload["shell"] = "not-an-operation"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RESPONSE_VALIDATOR.validate(payload)
