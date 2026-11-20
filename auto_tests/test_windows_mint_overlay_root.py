@@ -45,6 +45,20 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertTrue(mint.has_orderly_shutdown_witness(
             b"[   23.521817] reboot: Power down\n"))
 
+    def test_orderly_shutdown_witness_accepts_crlf_serial_output(self):
+        for witness in (
+            b"systemd-shutdown[1]: Powering off.\r\n",
+            b"[  OK  ] Finished systemd-poweroff.service - System Power Off.\r\n",
+            b"[   23.521817] reboot: Power down\r\n",
+        ):
+            with self.subTest(witness=witness):
+                self.assertTrue(mint.has_orderly_shutdown_witness(
+                    b"Linux version 6.14\r\n" + witness))
+
+    def test_orderly_shutdown_witness_rejects_embedded_carriage_return(self):
+        self.assertFalse(mint.has_orderly_shutdown_witness(
+            b"Linux version 6.14\nnoise\rsystemd-shutdown[1]: Powering off.\n"))
+
     def test_orderly_shutdown_witness_rejects_boot_or_login_only(self):
         self.assertFalse(mint.has_orderly_shutdown_witness(
             b"Linux version 6.14\nGASLUXMINT login:\n"))
