@@ -20,7 +20,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify 113 archived histories and current branch safety without writing
+      - name: Verify 114 archived histories and current branch safety without writing
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -33,14 +33,14 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_branch_archive.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_archive_verify.py' -v
           python3 auto_tests/tools/gaslux_branch_prune.py audit --output "$RUNNER_TEMP/gaslux-prune-readonly.json"
-          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-113-readonly.json"
+          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-114-readonly.json"
       - name: Upload independently verified read-only evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: gaslux-archive-113-readonly-final-evidence
+          name: gaslux-archive-114-readonly-final-evidence
           path: |
             ${{ runner.temp }}/gaslux-prune-readonly.json
-            ${{ runner.temp }}/gaslux-archive-113-readonly.json
+            ${{ runner.temp }}/gaslux-archive-114-readonly.json
           retention-days: 30
           if-no-files-found: warn
