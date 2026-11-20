@@ -172,11 +172,13 @@ def verify_windows_with_installed_root(
     with tempfile.TemporaryDirectory(prefix="gaslux-postpacstrap-after-",
                                      dir=workspace) as scratch:
         after_front, after_back = gpt_windows(overlay, Path(scratch))
-    require((after_front, after_back) == (front, back)
-            and hashlib.sha256(after_front + after_back).hexdigest()
-                == plan["gptWindowsSha256"]
-            and read_windows_file_hashes(overlay) == plan["windowsHashes"],
-            "Windows GPT/ESP/BCD/WinRE hashes changed after Windows re-entry")
+    require((after_front, after_back) == (front, back),
+            "primary or backup GPT bytes changed after Windows re-entry")
+    require(hashlib.sha256(after_front + after_back).hexdigest()
+            == plan["gptWindowsSha256"],
+            "postboot GPT windows no longer match signed plan")
+    require(read_windows_file_hashes(overlay) == plan["windowsHashes"],
+            "Windows ESP/BCD/winload/WinRE hashes changed after Windows re-entry")
     print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_GPT_AND_WINDOWS_FILES_VERIFIED=1", flush=True)
     after_root = _verify_installed_root(overlay, plan, plan["runId"])
     print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_NATIVE_ROOT_VERIFIED=1", flush=True)
