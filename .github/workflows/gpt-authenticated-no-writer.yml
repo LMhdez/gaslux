@@ -1,0 +1,30 @@
+name: GPT authenticated no-writer gate
+
+on:
+  pull_request:
+    paths:
+      - 'assets/live/libertix_prewrite_no_writer.py'
+      - 'assets/live/libertix_disk_identity_gate.py'
+      - 'auto_tests/tests/test_prewrite_no_writer.py'
+      - 'auto_tests/tests/test_disk_identity_gate.py'
+      - '.github/workflows/gpt-authenticated-no-writer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial-no-writer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pytest
+        run: python -m pip install 'pytest>=9,<10'
+      - name: Run no-writer and GPT identity tests
+        run: |
+          python -m compileall -q assets/live/libertix_prewrite_no_writer.py assets/live/libertix_disk_identity_gate.py
+          python -m pytest -q auto_tests/tests/test_disk_identity_gate.py auto_tests/tests/test_prewrite_no_writer.py
