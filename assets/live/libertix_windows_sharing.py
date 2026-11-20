@@ -308,12 +308,30 @@ def readonly_volume(device: Path):
     mounted = run("findmnt", "-J", "-S", str(device), "-o", "TARGET,FSTYPE,OPTIONS", allow_no_match=True)
     if mounted:
         filesystems = json.loads(mounted)["filesystems"]
-        if len(filesystems) != 1 or filesystems[0]["fstype"] not in {"fuseblk", "ntfs3", "ntfs"}:
+        if len(filesystems) != 1:
             raise RuntimeError("Existing Windows mount is ambiguous or unsupported")
-        options = filesystems[0].get("options")
-        if not isinstance(options, str) or "ro" not in options.split(",") or "rw" in options.split(","):
-            raise RuntimeError("Existing Windows mount is not provably read-only")
-        yield Path(filesystems[0]["target"])
+        filesystem = filesystems[0]
+        options = filesystem.get("options")
+        if filesystem.get("fstype") != "fuseblk" or not isinstance(options, str):
+            raise RuntimeError("Existing Windows mount cannot prove NTFS-3G no-recovery mode")
+        tokens = options.split(",")
+        allowed = {
+            "ro", "norecover", "relatime", "strictatime", "noatime", "nodiratime",
+            "nosuid", "nodev", "noexec", "default_permissions", "allow_other",
+        }
+        if (
+            len(tokens) != len(set(tokens))
+            or "ro" not in tokens
+            or "rw" in tokens
+            or "norecover" not in tokens
+            or any(
+                token not in allowed
+                and not re.fullmatch(r"(?:user_id|group_id|blksize)=\\d+", token)
+                for token in tokens
+            )
+        ):
+            raise RuntimeError("Existing Windows mount is not provably read-only without journal recovery")
+        yield Path(filesystem["target"])
         return
     run("ntfs-3g.probe", "--readwrite", str(device))
     with tempfile.TemporaryDirectory(prefix="libertix-sharing-", dir="/run") as directory:
