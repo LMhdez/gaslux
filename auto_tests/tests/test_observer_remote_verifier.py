@@ -5,10 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import sqlite3
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
 import rfc8785
@@ -62,13 +59,13 @@ def trusted_material():
     return private_key, TrustStore({KEY_ID: policy})
 
 
-def make_request(operation="session.identify", *, sequence=0, nonce="A" * 43):
+def make_request(operation="session.identify", *, sequence=0, nonce="A" * 43, request_id=None):
     return {
         "protocol": 1,
         "operation": operation,
         "session_id": None if operation == "session.identify" else SESSION_ID,
         "transaction_id": TRANSACTION_ID,
-        "request_id": REQUEST_ID if sequence == 0 else f"{sequence:08d}-3333-4333-8333-333333333333",
+        "request_id": request_id or (REQUEST_ID if sequence == 0 else f"{sequence:08d}-3333-4333-8333-333333333333"),
         "nonce": nonce,
         "sequence": sequence,
         "timeout_ms": 5000,
@@ -254,20 +251,36 @@ def test_caller_deadline_is_enforced():
     )
 
 
-@pytest.mark.parametrize(
-    ("field", "code"),
-    [("session_id", "session-binding-failed"), ("transaction_id", "request-binding-failed")],
-)
-def test_session_or_transaction_mismatch_is_refused(field, code):
+def test_transaction_mismatch_is_refused():
     private, store = trusted_material()
     request = make_request()
+    response = make_response(private, request)
 
-    def mismatch(response):
-        response[field] = "99999999-9999-4999-8999-999999999999"
+    def mismatch(payload):
+        payload["transaction_id"] = "99999999-9999-4999-8999-999999999999"
+
+    mismatch_response = make_response(private, request, mutate=mismatch)
+    assert_refused(
+        "request-binding-failed",
+        lambda: verify_one(verifier(store), request, mismatch_response),
+    )
+
+
+def test_session_mismatch_is_refused_after_session_creation():
+    private, store = trusted_material()
+    v = verifier(store)
+    identify = make_request()
+    verify_one(v, identify, make_response(private, identify))
+    request = make_request("state.read", sequence=1, nonce="B" * 43)
+
+    def mismatch(payload):
+        payload["session_id"] = "99999999-9999-4999-8999-999999999999"
 
     response = make_response(private, request, mutate=mismatch)
-    assert_refused(code, lambda: verify_one(verifier(store), request, response))
-
+    assert_refused(
+        "session-binding-failed",
+        lambda: verify_one(v, request, response),
+    )
 
 def test_sequence_must_advance_monotonically():
     private, store = trusted_material()
@@ -277,7 +290,10 @@ def test_sequence_must_advance_monotonically():
     request = make_request("state.read", sequence=1, nonce="B" * 43)
     response = make_response(private, request)
     verify_one(v, request, response)
-    repeated_sequence = make_request("state.read", sequence=1, nonce="C" * 43)
+    repeated_sequence = make_request(
+        "state.read", sequence=1, nonce="C" * 43,
+        request_id="99999999-3333-4333-8333-333333333333",
+    )
     repeated_response = make_response(private, repeated_sequence)
     assert_refused(
         "replay",
