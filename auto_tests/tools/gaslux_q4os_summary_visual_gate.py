@@ -22,6 +22,10 @@ APP_HEADER = (
     (128, 75, 1152, 113),
     "731210917d9d988773c1ee3dbcc8641e1d50a342c492d87659204ae1ec0243a9",
 )
+SUMMARY_SIDEBAR = (
+    (128, 479, 318, 522),
+    "2f968b65c423100662dd3899c9c345aadc03ec685db725883648683b3663c494",
+)
 TITLE = ((128, 118, 1152, 180), "b565add1ff9d5061918278f5cd8871a26b136dfdb04df78e6bcf74c8341b41e5")
 USERS_SIDEBAR = (
     (128, 436, 318, 478),
@@ -118,9 +122,11 @@ def summary_only(before: Path, after: Path) -> None:
     region = (128, 150, 1152, 610)
     if crop_sha(summary, region) == crop_sha(users, region):
         raise ScreenRefusal("No central content transition after Users Next")
+    if crop_sha(summary, SUMMARY_SIDEBAR[0]) == SUMMARY_SIDEBAR[1]:
+        raise ScreenRefusal("Calamares Summary sidebar not selected")
     text = ocr(after)
-    if "summary" not in text or "what is your name?" in text:
-        raise ScreenRefusal("Summary page not visually confirmed")
+    if text.count("summary") < 2 or "what is your name?" in text:
+        raise ScreenRefusal("Summary page title and sidebar not both visibly confirmed")
     if any(t in text for t in ("installing...", "installation in progress", "copying files")):
         raise ScreenRefusal("Installer execution appears to have begun")
 
