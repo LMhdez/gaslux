@@ -554,3 +554,30 @@ A execução comprova a fase de particionamento/formatação do distinst
 autêntico sobre disco sintético e demonstra que o write-set atual não
 contém as escritas GPT que o binário efetua. Não comprova instalação
 Pop completa, bootloader, dual boot, atualização ou rollback pós-write.
+
+
+### Semântica dos argumentos — fonte upstream candidata e uso real
+
+A CLI no commit candidato
+[`cli/src/main.rs`](https://github.com/pop-os/distinst/blob/e395b7cb4d32ab3ca0cb2e9e557bd2ba53973148/cli/src/main.rs#L108-L171)
+declara:
+
+| Argumento | Semântica declarada | Nesta execução |
+|---|---|---|
+| `--block` | Disco a manipular | `/dev/vdc` |
+| `--use` | Reutilizar partição existente | ESP e root sintéticas |
+| `--new` | Criar nova partição | Não passado |
+| `--new-table` | Criar tabela nova, clobbering a existente | Não passado |
+| `--test` | Testar a fase de particionamento | Passado; não é dry-run |
+| `--no-efi-vars` | Desativar montagem de efivars | Passado |
+| `--modify-boot` | Modificar ordem de arranque após instalação | Não passado |
+
+No candidato upstream, a fase
+[`steps/partition.rs`](https://github.com/pop-os/distinst/blob/e395b7cb4d32ab3ca0cb2e9e557bd2ba53973148/src/installer/steps/partition.rs#L8-L36)
+faz `disk.commit()` e executa formatação antes de
+[`installer/mod.rs`](https://github.com/pop-os/distinst/blob/e395b7cb4d32ab3ca0cb2e9e557bd2ba53973148/src/installer/mod.rs#L165-L184)
+chamar `mount_all_targets` e só depois retornar por
+`PARTITIONING_TEST`. A implementação candidata de
+[`mount_all_targets`](https://github.com/pop-os/distinst/blob/e395b7cb4d32ab3ca0cb2e9e557bd2ba53973148/crates/disks/src/config/disks.rs#L185-L265)
+usa `sys_mount::Mount::new`. Estes links documentam a revisão
+candidata; não provam que o ELF foi reproduzido exatamente dessa fonte.
