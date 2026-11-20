@@ -6,7 +6,6 @@ fingerprint and cooperative flock do not prevent same-UID QMP/RFB clients.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,7 +55,7 @@ def inspect_input_surface(
     if not launched or actual != launched:
         raise Refusal("Actual QEMU argv differs from recorded launch")
     if (
-        len(launched) != 28
+        len(launched) != 29
         or Path(launched[0]).name != "qemu-system-x86_64"
         or launched[1:3] != ("-no-user-config", "-nodefaults")
         or launched[3:7] != ("-machine", "pc", "-accel", "tcg")
@@ -73,7 +72,7 @@ def inspect_input_surface(
         )
         or launched[23] != "-drive"
         or launched[25] != "-drive"
-        or launched[27] != "-boot"
+        or launched[27:29] != ("-boot", "order=d")
     ):
         raise Refusal("QEMU contains unsupported monitor, display or input channels")
     # Drives and boot configuration are authenticated separately by QMP/procfs;
