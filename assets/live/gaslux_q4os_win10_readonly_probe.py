@@ -81,6 +81,59 @@ def _private_regular(path: Path) -> None:
     )
 
 
+def extract_host_gpt_edges(image: Path, scratch: Path, size: int) -> tuple[Path, Path]:
+    """Extract both GPT edge windows with QEMU's QCOW2 decoder, read-only.
+
+    Crucial: last-edge dd has skip but NO count. qemu-img's count bounds
+    the input before skip, so count=2 + skip=size/1MiB-2 yields zero bytes.
+    Both exact lengths are checked; outputs are scratch-only and never uploaded.
+    """
+    block = 1024**2
+    require(
+        size >= 2 * EDGE and size % block == 0,
+        "invalid GPT edge extraction geometry",
+    )
+    _private_regular(image)
+    require(scratch.is_dir() and not scratch.is_symlink(), "unsafe GPT scratch directory")
+    first_edge = scratch / "host-gpt-first.bin"
+    last_edge = scratch / "host-gpt-last.bin"
+    require(
+        not first_edge.exists() and not last_edge.exists(),
+        "GPT edge evidence destination already exists",
+    )
+    run(
+        "qemu-img",
+        "dd",
+        "-f",
+        "qcow2",
+        "-O",
+        "raw",
+        "bs=1M",
+        "count=2",
+        "if=" + str(image),
+        "of=" + str(first_edge),
+    )
+    run(
+        "qemu-img",
+        "dd",
+        "-f",
+        "qcow2",
+        "-O",
+        "raw",
+        "bs=1M",
+        "skip=" + str(size // block - EDGE // block),
+        "if=" + str(image),
+        "of=" + str(last_edge),
+    )
+    _private_regular(first_edge)
+    _private_regular(last_edge)
+    require(
+        first_edge.stat().st_size == EDGE and last_edge.stat().st_size == EDGE,
+        "incomplete host GPT edges",
+    )
+    return first_edge, last_edge
+
+
 def _read_only_appliance(qcow: Path, scratch: Path, sector: int) -> dict:
     """Independent QEMU libguestfs transport. Shared Safety parser, no GPT fork."""
     import guestfs
@@ -196,40 +249,11 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
     scratch.mkdir(mode=0o700)
     raw = scratch / "windows-target.raw"
     require(not raw.exists(), "refusing existing converted image")
-    # Materialize ONLY GPT edge observations from qemu-img's independent
-    # read-only QCOW2 decoder, not the Windows NTFS/ESP content.
-    # No full 48-GiB raw clone and no exposure of real guest data as artifact.
-    first_edge = scratch / "host-gpt-first.bin"
-    last_edge = scratch / "host-gpt-last.bin"
-    run(
-        "qemu-img",
-        "dd",
-        "-f",
-        "qcow2",
-        "-O",
-        "raw",
-        "bs=1M",
-        "count=2",
-        "if=" + str(image),
-        "of=" + str(first_edge),
-    )
-    run(
-        "qemu-img",
-        "dd",
-        "-f",
-        "qcow2",
-        "-O",
-        "raw",
-        "bs=1M",
-        "count=2",
-        "skip=" + str(SIZE // (1024**2) - 2),
-        "if=" + str(image),
-        "of=" + str(last_edge),
-    )
-    require(
-        first_edge.stat().st_size == EDGE and last_edge.stat().st_size == EDGE,
-        "incomplete host GPT edges",
-    )
+    # Extract only the first/last GPT metadata windows, not NTFS data.
+    # NOTE: qemu-img dd count=N is an input *limit* applied BEFORE skip.
+    # Using count=2 with a near-end skip creates an empty output even if
+    # qemu-img returns 0; no count is permitted for the final edge.
+    first_edge, last_edge = extract_host_gpt_edges(image, scratch, SIZE)
     with raw.open("xb") as destination:
         destination.truncate(SIZE)
         destination.seek(0)
