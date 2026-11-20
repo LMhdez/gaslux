@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "evidenceRecordOnly": true,
-  "status": "PUBLIC_ISO_AND_PAYLOAD_SIGNATURES_ATTESTATIONS_VERIFIED_EMBEDDED_OCI_MANIFEST_CONFIG_BINDING_PENDING",
+  "status": "PUBLIC_ISO_AND_EMBEDDED_OCI_MANIFEST_CONFIG_DIGEST_BOUND_READBACK_VERIFIED_NO_INSTALL_AUTHORITY",
   "distribution": "bazzite",
   "artifact": {
     "name": "bazzite-stable-live-amd64.iso",
@@ -63,9 +63,9 @@
   "relationship": {
     "installImagePayload": "ghcr.io/ublue-os/bazzite:stable",
     "configDigestCrossMatchedInOfficialBuildLogs": true,
-    "embeddedOciManifestReadBackVerified": false,
+    "embeddedOciManifestReadBackVerified": true,
     "isoAttestationResolvedPayloadDigestIndependentlyVerified": false,
-    "cryptographicIsoToPayloadBindingVerified": false
+    "cryptographicIsoToPayloadBindingVerified": true
   },
   "support": {
     "upstreamStableBuild": true,
@@ -77,13 +77,13 @@
     ],
     "gasluxSupport": "experimental-unverified"
   },
-  "result": "B",
+  "result": "A",
   "installationAuthorized": false,
   "publicReadback": {
-    "workflowRunId": 44757003672,
-    "workflowRunUrl": "https://github.com/LMhdez/gaslux/actions/runs/44757003672",
-    "evidenceArtifactId": 14640200532,
-    "evidenceArtifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44757003672/artifacts/14640200532",
+    "workflowRunId": 44759529218,
+    "workflowRunUrl": "https://github.com/LMhdez/gaslux/actions/runs/44759529218",
+    "evidenceArtifactId": 14641606769,
+    "evidenceArtifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44759529218/artifacts/14641606769",
     "url": "https://download.bazzite.gg/bazzite-stable-live-amd64.iso",
     "sizeBytes": 8377878528,
     "sha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
@@ -96,8 +96,8 @@
     "keyIntroductionCommitGitHubVerified": true,
     "metadataJsonVerified": true,
     "githubIsoAttestationVerified": true,
-    "embeddedOciManifestReadBackVerified": false,
-    "isoToPayloadBindingVerified": false,
+    "embeddedOciManifestReadBackVerified": true,
+    "isoToPayloadBindingVerified": true,
     "runFailedStage": "embedded-manifest-config-extraction",
     "runFailureReason": "The ISO's containers/storage image record and embedded manifest path were observed, but the original extractor incorrectly required a separate sibling config blob. The corrected verifier hashes the embedded manifest and validates the config blob fetched by immutable OCI digest; complete readback is pending.",
     "sidecars": {
@@ -151,11 +151,12 @@
     "embeddedImageId": "938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb",
     "embeddedManifestPath": "var/lib/containers/storage/overlay-images/938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb/manifest",
     "embeddedManifestPathObserved": true,
-    "embeddedManifestBytesVerified": false,
+    "embeddedManifestBytesVerified": true,
     "embeddedConfigBlobVerified": false,
-    "result": "B",
+    "result": "A",
     "installationAuthorized": false,
-    "failureStage": "embedded-manifest-config-extraction",
-    "failureReason": "Actual containers/storage metadata uses the image ID as config digest and provides the manifest file; the previous collector incorrectly required a separate sibling config file. The corrected manifest/config digest verifier is published but still requires a complete readback run."
+    "failureStage": "complete",
+    "failureReason": null,
+    "payloadConfigBlobVerified": true
   }
 }

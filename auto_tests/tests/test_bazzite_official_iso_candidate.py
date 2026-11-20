@@ -27,10 +27,10 @@ def test_official_build_candidate_has_consistent_pinned_identities():
     assert evidence["relationship"]["configDigestCrossMatchedInOfficialBuildLogs"] is True
 
 
-def test_candidate_remains_blocked_until_public_iso_and_payload_are_read_back():
+def test_authenticated_public_iso_record_is_still_not_an_installation_grant():
     evidence = load_candidate()
     assert evidence["evidenceRecordOnly"] is True
-    assert evidence["result"] == "B"
+    assert evidence["result"] == "A"
     assert evidence["artifact"]["sizeBytes"] == 8377878528
     assert evidence["artifact"]["signature"]["publicReadbackVerified"] is True
     assert evidence["artifact"]["signature"]["verifiedAgainstLocalIsoBytes"] is True
@@ -40,14 +40,21 @@ def test_candidate_remains_blocked_until_public_iso_and_payload_are_read_back():
     assert evidence["publicReadback"]["githubIsoAttestationVerified"] is True
     assert evidence["publicReadback"]["payloadCosignSignatureVerified"] is True
     assert evidence["publicReadback"]["payloadAttestationVerified"] is True
-    assert evidence["publicReadback"]["embeddedOciManifestReadBackVerified"] is False
+    assert evidence["publicReadback"]["embeddedOciManifestReadBackVerified"] is True
+    assert evidence["publicReadback"]["embeddedManifestBytesVerified"] is True
+    assert evidence["publicReadback"]["payloadConfigBlobVerified"] is True
+    assert evidence["publicReadback"]["workflowRunId"] == 44759529218
+    assert evidence["publicReadback"]["evidenceArtifactId"] == 14641606769
     assert evidence["artifact"]["provenance"]["verifiedAgainstLocalIsoBytes"] is True
-    assert evidence["relationship"]["embeddedOciManifestReadBackVerified"] is False
+    assert evidence["relationship"]["embeddedOciManifestReadBackVerified"] is True
     assert (
         evidence["relationship"]["isoAttestationResolvedPayloadDigestIndependentlyVerified"]
         is False
     )
-    assert evidence["relationship"]["cryptographicIsoToPayloadBindingVerified"] is False
+    assert evidence["relationship"]["cryptographicIsoToPayloadBindingVerified"] is True
+    assert evidence["publicReadback"]["isoToPayloadBindingVerified"] is True
+    assert evidence["publicReadback"]["installationAuthorized"] is False
+    assert evidence["support"]["gasluxSupport"] == "experimental-unverified"
     assert evidence["installationAuthorized"] is False
 
 

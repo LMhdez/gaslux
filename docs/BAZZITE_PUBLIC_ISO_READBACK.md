@@ -54,3 +54,26 @@ Safety and Observer gates remain mandatory.
 Bazzite remains UEFI/GPT-only. BIOS/MBR, ISO boot, Anaconda execution,
 partition writes, EFI writes, NVRAM writes, Secure Boot key changes, and
 installation are outside this workflow and are not authorized by it.
+
+## Verified readback — 20 November 2026
+
+- [Actions #44759529218](https://github.com/LMhdez/gaslux/actions/runs/44759529218)
+  completed **SUCCESS** on HEAD `0ae92174a3acbc305aa3bbcc50986cfbcdcf34b6`.
+  Its final step refuses anything other than Result A and checks all earlier
+  attestation, signature, raw OCI config and embedded-manifest gates.
+- Evidence artifact [#14641606769](https://github.com/LMhdez/gaslux/actions/runs/44759529218/artifacts/14641606769)
+  contains text reports; no ISO or OCI binary is published.
+- The pinned signed ISO is linked to the signed OCI manifest/config by exact
+  readback of the containers/storage manifest inside the ISO. The ISO SLSA
+  statement itself does **not** independently declare the payload digest;
+  this is why `isoAttestationResolvedPayloadDigestIndependentlyVerified`
+  remains false in the evidence ledger. The upstream key has no independently
+  verified out-of-band fingerprint.
+- The ledger's Result A is **provenance-only**. The ISO has not been booted in
+  this workflow; the Anaconda/Blivet action graph, GPT metadata writes, Windows
+  ESP protection, NVRAM writes, deployment, kernel updates, dual boot and
+  recovery remain unverified. Installation and stable catalog are denied.
+- The synthetic Anaconda action-comparison gate now checks ESP ownership flags,
+  boot/ESP roles and exact sizes, alignment, the trailing root extent and
+  the prerequisite recovery/metadata gates. It does not equate a synthetic
+  match with a live, authenticated Anaconda action capture.

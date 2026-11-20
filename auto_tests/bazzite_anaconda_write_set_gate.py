@@ -109,6 +109,30 @@ def expected_actions(plan: dict) -> dict:
         or plan.get("windowsEspWriteAuthorized") is not False
     ):
         raise Refusal("Proposal is missing explicit no-write authority")
+    # These are *claims in a synthetic proposal*, not write grants. A missing
+    # or contradictory safety flag is a contract failure, not an optional field.
+    required_false = (
+        "windowsEspReuseProposed",
+        "windowsEspFormatProposed",
+        "legacyIso42IndependentSignatureVerified",
+        "nativeInstallerWriteSetObserved",
+        "atomicDeploymentVerified",
+        "nvramWriteAuthorized",
+        "secureBootEnrollmentAuthorized",
+        "stableCatalogAuthorized",
+    )
+    required_true = (
+        "gptHeadersAndPartitionTablesWouldChange",
+        "protectiveMbrWouldRequirePrePostEvidence",
+        "requiresAnacondaBlivetExactActionDiff",
+        "requiresIndependentIsoAndPayloadAttestation",
+        "requiresRecoverySnapshotAndWindowsBootProof",
+        "requiresGptMetadataBackupAndPostwriteVerification",
+    )
+    if any(plan.get(name) is not False for name in required_false) or any(
+        plan.get(name) is not True for name in required_true
+    ):
+        raise Refusal("Proposal omits or contradicts critical protection gates")
     candidates = plan.get("candidateNewPartitions")
     protected = plan.get("protectedExistingPartitions")
     size = plan.get("virtualSizeBytes")
@@ -159,19 +183,34 @@ def expected_actions(plan: dict) -> dict:
     if plan.get("btrfsSubvolumesProposed") != ["/", "/var", "/var/home"]:
         raise Refusal("Unrecognized Atomic Btrfs subvolume proposal")
     operations = []
-    fixed_formats = [("vfat", "/boot/efi"), ("ext4", "/boot"), ("btrfs", "/")]
+    fixed_formats = [
+        ("vfat", "/boot/efi", "new-linux-esp", 300 * 1024 * 1024 // 512),
+        ("ext4", "/boot", "linux-boot", 2 * 1024**3 // 512),
+        ("btrfs", "/", "atomic-root", None),
+    ]
     previous_end = PARTITIONS[-1][4]
-    for part, (fs, mount) in zip(candidates, fixed_formats, strict=True):
+    for part, (fs, mount, role, exact_sectors) in zip(candidates, fixed_formats, strict=True):
         if (
             not isinstance(part, dict)
             or set(part)
             != {"number", "firstSector", "lastSector", "filesystem", "mountPoint", "role"}
             or part["filesystem"] != fs
             or part["mountPoint"] != mount
+            or part["role"] != role
             or type(part["firstSector"]) is not int
             or type(part["lastSector"]) is not int
             or part["firstSector"] >= part["lastSector"]
             or part["firstSector"] <= previous_end
+            or part["firstSector"] % 2048 != 0
+            or (part["lastSector"] + 1) % 2048 != 0
+            or (
+                exact_sectors is not None
+                and part["lastSector"] - part["firstSector"] + 1 != exact_sectors
+            )
+            or (
+                fs == "btrfs"
+                and part["lastSector"] != ((size // 512 - 33) // 2048) * 2048 - 1
+            )
             or part["lastSector"] >= size // 512 - 33
         ):
             raise Refusal("Invalid candidate partition operation")

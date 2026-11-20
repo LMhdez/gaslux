@@ -254,3 +254,48 @@ def test_no_real_capture_accepted_merely_by_claiming_dbus_origin():
     observed["origin"] = "anaconda-dbus-readonly-untrusted"
     with pytest.raises(Refusal, match="lacks independent"):
         compare(plan, observed)
+
+
+
+@pytest.mark.parametrize(
+    ("flag", "bad_value"),
+    [
+        ("windowsEspReuseProposed", True),
+        ("windowsEspFormatProposed", True),
+        ("nvramWriteAuthorized", True),
+        ("secureBootEnrollmentAuthorized", True),
+        ("stableCatalogAuthorized", True),
+        ("gptHeadersAndPartitionTablesWouldChange", False),
+        ("protectiveMbrWouldRequirePrePostEvidence", False),
+        ("requiresRecoverySnapshotAndWindowsBootProof", False),
+        ("requiresGptMetadataBackupAndPostwriteVerification", False),
+        ("requiresIndependentIsoAndPayloadAttestation", False),
+    ],
+)
+def test_proposal_security_flags_fail_closed(flag, bad_value):
+    plan = proposal()
+    plan[flag] = bad_value
+    with pytest.raises(Refusal, match="protection gates"):
+        expected_actions(plan)
+    plan = proposal()
+    del plan[flag]
+    with pytest.raises(Refusal, match="protection gates"):
+        expected_actions(plan)
+
+
+@pytest.mark.parametrize(
+    ("partition", "attribute", "bad_value"),
+    [
+        (0, "role", "windows-esp"),
+        (1, "role", "unmanaged"),
+        (2, "role", "windows-root"),
+        (0, "lastSector", 1),
+        (1, "lastSector", 1),
+        (2, "lastSector", 1),
+    ],
+)
+def test_proposal_fstype_role_size_and_free_extent_are_bound(partition, attribute, bad_value):
+    plan = proposal()
+    plan["candidateNewPartitions"][partition][attribute] = bad_value
+    with pytest.raises(Refusal, match="candidate partition"):
+        expected_actions(plan)
