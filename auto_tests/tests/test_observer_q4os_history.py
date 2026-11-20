@@ -10,7 +10,6 @@ import io
 import json
 import shutil
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -50,10 +49,16 @@ def test_four_original_sessions_are_distinct_and_read_only(mapping, originals):
     report = q4os.replay_q4os()
     assert len(originals) == 4
     assert tuple(x.artifact_id for x in originals) == (
-        14587306682, 14586773677, 14590616864, 14589299655
+        14587306682,
+        14586773677,
+        14590616864,
+        14589299655,
     )
     assert tuple(x.run_id for x in originals) == (
-        "44641233701", "44641233701", "44648406729", "44648406729"
+        "44641233701",
+        "44641233701",
+        "44648406729",
+        "44648406729",
     )
     assert tuple(x.replica for x in originals) == (1, 2, 1, 2)
     assert tuple(len(x.states) for x in originals) == (9, 9, 11, 11)
@@ -68,8 +73,9 @@ def test_four_original_sessions_are_distinct_and_read_only(mapping, originals):
     assert sessions[-2]["final_state"] == "calamares-summary"
     assert mapping.terminal == "calamares-summary"
     assert report["manifest"]["live_input_count"] == 0
-    assert all(step["authorized_action"] is None for session in sessions
-               for step in session["steps"])
+    assert all(
+        step["authorized_action"] is None for session in sessions for step in session["steps"]
+    )
 
 
 @pytest.mark.parametrize("field", ("runId", "artifactId", "replica", "attempt"))
@@ -155,10 +161,13 @@ def test_undeclared_and_unverified_edges_refused(mapping, local_recording):
     )
     with pytest.raises(Refusal):
         run_record(missing_edge, local_recording)
-    broken = replace(mapping, transitions=tuple(
-        replace(t, verified=False) if t.source == local_recording.states[0].id else t
-        for t in mapping.transitions
-    ))
+    broken = replace(
+        mapping,
+        transitions=tuple(
+            replace(t, verified=False) if t.source == local_recording.states[0].id else t
+            for t in mapping.transitions
+        ),
+    )
     with pytest.raises(Refusal):
         run_record(broken, local_recording)
 
@@ -217,13 +226,17 @@ def test_fail_closed_on_unchanged_review_roi(mapping, local_recording):
     rows[1] = replace(second, sha256=first.sha256)
     seen = iter((row.id,) for row in rows)
     with pytest.raises(Refusal):
-        run_record(mapping, replace(local_recording, states=tuple(rows)),
-                   recognize=lambda _frame: next(seen))
+        run_record(
+            mapping,
+            replace(local_recording, states=tuple(rows)),
+            recognize=lambda _frame: next(seen),
+        )
 
 
 def test_ocr_and_pixel_gate_failure_propagate(monkeypatch, mapping, originals):
     def failed_ocr(_png):
         raise ScreenRefusal("OCR unavailable")
+
     monkeypatch.setattr(q4os.summary, "ocr", failed_ocr)
     with pytest.raises((Refusal, ScreenRefusal)):
         run_record(mapping, originals[2])
@@ -231,16 +244,18 @@ def test_ocr_and_pixel_gate_failure_propagate(monkeypatch, mapping, originals):
 
 def test_original_replay_never_opens_transport(monkeypatch):
     import socket
+
     def forbidden_socket(*_args, **_kwargs):
         pytest.fail("Historical replay must remain offline")
+
     monkeypatch.setattr(socket, "socket", forbidden_socket)
     replayed = q4os.replay_q4os()
     assert replayed["manifest"]["live_input_count"] == 0
 
 
 def test_cli_has_no_input_subcommand():
-    import argparse
     from auto_tests.installer_observer.cli import main
+
     with pytest.raises(SystemExit):
         main(["click"])
     with pytest.raises(SystemExit):
