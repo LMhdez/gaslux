@@ -1,0 +1,28 @@
+name: Mint Debian SquashFS identity regression contracts
+on:
+  push:
+    branches:
+      - fix/mint-shutdown-witness-kernel-powerdown-20261119
+  pull_request:
+    paths:
+      - auto_tests/tests/test_debian_squashfs_backend.py
+      - assets/live/libertix-distribution-common.sh
+      - .github/workflows/mint-squashfs-identity-regressions.yml
+
+permissions:
+  contents: read
+
+jobs:
+  mint-identity-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Run synthetic Debian family identity/capability rejection tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check pytest
+          python3 -m pytest -q auto_tests/tests/test_debian_squashfs_backend.py

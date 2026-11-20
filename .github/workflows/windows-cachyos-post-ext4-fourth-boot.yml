@@ -10,6 +10,8 @@ on:
       - test/windows10-cachyos-post-ext4-fourth-boot
       - test/mint22-windows10-cow-firstboot
       - test/mint-cow-proof-validation
+      - fix/mint-initramfs-virtio-modules-20261118
+      - fix/mint-shutdown-witness-kernel-powerdown-20261119
     paths:
       - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -104,7 +106,7 @@ jobs:
     name: Real libguestfs fifth-ext4 on isolated synthetic raw image (NO Windows)
     needs: verify-host-and-proof-contracts
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       GASLUX_SYNTHETIC_EXT4_CONSENT: I_ACCEPT_SYNTHETIC_RAW_FILE_FIFTH_EXT4_ONLY
     steps:

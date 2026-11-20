@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import socket
@@ -31,6 +32,16 @@ class MintOverlayError(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise MintOverlayError(message)
+
+
+def has_orderly_shutdown_witness(serial_log: bytes) -> bool:
+    """Require a complete, line-anchored systemd or kernel poweroff witness."""
+    witnesses = (
+        rb"^systemd-shutdown\[\d+\]: Powering off\.$",
+        rb"^\[\s*OK\s*\]\s+Finished systemd-poweroff\.service - System Power Off\.$",
+        rb"^\[\s*\d+(?:\.\d+)?\s*\]\s+reboot: Power down$",
+    )
+    return any(re.search(pattern, serial_log, re.MULTILINE) for pattern in witnesses)
 
 
 def run(args: list[str], *, timeout: int = 120, capture: bool = True):
@@ -68,6 +79,47 @@ def write_target_configuration(target: Path, root_uuid: str) -> None:
     )
 
 
+def configure_ephemeral_shutdown_service(target: Path) -> None:
+    """Install a one-boot shutdown witness in the disposable CI-only COW root."""
+    require(target.is_dir() and not target.is_symlink(),
+            "Mint target mount is not a real directory")
+    system_dir = target / "etc/systemd/system"
+    wants_dir = system_dir / "multi-user.target.wants"
+    unit = system_dir / "gaslux-ci-shutdown.service"
+    link = wants_dir / "gaslux-ci-shutdown.service"
+    require(system_dir.is_dir() and not system_dir.is_symlink(),
+            "Mint systemd unit directory is missing or unsafe")
+    if wants_dir.exists() or wants_dir.is_symlink():
+        require(wants_dir.is_dir() and not wants_dir.is_symlink(),
+                "Mint systemd wants directory is unsafe")
+    require(not unit.exists() and not unit.is_symlink()
+            and not link.exists() and not link.is_symlink(),
+            "refusing to replace an existing Mint shutdown unit")
+    subprocess.run(["sudo", "install", "-d", "-m", "0755", str(wants_dir)],
+                   check=True, text=True, capture_output=True, timeout=30)
+    contents = (
+        "[Unit]\n"
+        "Description=Gaslux disposable COW shutdown witness\n"
+        "After=serial-getty@ttyS0.service\n"
+        "Wants=serial-getty@ttyS0.service\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "ExecStartPre=/bin/sleep 15\n"
+        "ExecStart=/bin/systemctl poweroff\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+    subprocess.run(["sudo", "tee", str(unit)], input=contents, check=True,
+                   text=True, stdout=subprocess.DEVNULL, timeout=30)
+    subprocess.run(["sudo", "ln", "-s", "../gaslux-ci-shutdown.service", str(link)],
+                   check=True, text=True, capture_output=True, timeout=30)
+    require(unit.is_file() and not unit.is_symlink()
+            and unit.read_text(encoding="utf-8") == contents
+            and link.is_symlink()
+            and link.readlink() == Path("../gaslux-ci-shutdown.service"),
+            "ephemeral Mint shutdown witness was not installed exactly")
+
+
 def guestmount_command(overlay: Path, target: Path) -> list[str]:
     """Mount the stopped COW through FUSE for the runner with kernel permission checks."""
     return [
@@ -90,6 +142,37 @@ def guestfish_download_command(overlay: Path, guest_path: str, destination: Path
         "sudo", "guestfish", "--ro", "-a", str(overlay), "-m", "/dev/sda5",
         "download", guest_path, str(destination),
     ]
+
+
+def unmount_private_tree(mountpoint: Path) -> None:
+    """Unmount one private chroot mount and all nested mounts, without lazy detach."""
+    require(mountpoint.is_absolute() and not mountpoint.is_symlink(),
+            "refusing unsafe chroot mount cleanup path")
+    path = str(mountpoint)
+    result = subprocess.run(
+        ["sudo", "umount", "--recursive", path],
+        check=False, text=True, capture_output=True, timeout=90,
+    )
+    mounts = subprocess.run(
+        ["sudo", "findmnt", "-rn", "-o", "TARGET"],
+        check=False, text=True, capture_output=True, timeout=30,
+    )
+    remaining = [
+        line.strip() for line in mounts.stdout.splitlines()
+        if line.strip() == path or line.strip().startswith(path + "/")
+    ]
+    if result.returncode != 0 or mounts.returncode != 0 or remaining:
+        holders = subprocess.run(
+            ["sudo", "fuser", "-vm", path],
+            check=False, text=True, capture_output=True, timeout=30,
+        )
+        detail = (result.stderr or result.stdout or "").strip()
+        holder_detail = (holders.stderr or holders.stdout or "").strip()
+        raise MintOverlayError(
+            f"chroot mount tree remains busy at {path}; "
+            f"umount_rc={result.returncode}; findmnt_rc={mounts.returncode}; "
+            f"remaining={remaining!r}; umount={detail}; holders={holder_detail}"
+        )
 
 
 def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
@@ -124,6 +207,93 @@ def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
             guest.shutdown()
         finally:
             guest.close()
+
+
+def _kernel_module_names(modules_root: Path, version: str) -> tuple[set[str], set[str]]:
+    """Return built-in and loadable module names from the exact Mint kernel tree."""
+    root = modules_root / version
+    require(root.is_dir() and not root.is_symlink(),
+            "Mint kernel module directory is missing or unsafe")
+    builtin_file = root / "modules.builtin"
+    dep_file = root / "modules.dep"
+    for metadata in (builtin_file, dep_file):
+        require(metadata.is_file() and not metadata.is_symlink(),
+                f"Mint kernel metadata is missing or unsafe: {metadata.name}")
+
+    def module_name(value: str) -> str | None:
+        name = Path(value).name
+        match = re.fullmatch(r"(.+)\.ko(?:\.(?:xz|zst|gz))?", name)
+        return match.group(1).replace("-", "_") if match else None
+
+    builtins = {
+        name for line in builtin_file.read_text(encoding="utf-8").splitlines()
+        if (name := module_name(line.strip()))
+    }
+    loadable = {
+        name for line in dep_file.read_text(encoding="utf-8").splitlines()
+        if (name := module_name(line.partition(":")[0].strip()))
+    }
+    return builtins, loadable
+
+
+def prepare_initramfs_modules(target: Path, version: str) -> tuple[set[str], set[str]]:
+    """Require storage drivers and explicitly request loadable ones in initramfs."""
+    builtins, loadable = _kernel_module_names(target / "lib/modules", version)
+    required = {"virtio_pci", "virtio_blk", "ext4"}
+    missing = sorted(required - builtins - loadable)
+    require(not missing,
+            "Mint kernel lacks required initramfs drivers: " + ", ".join(missing))
+
+    etc = target / "etc"
+    config_dir = etc / "initramfs-tools"
+    config = config_dir / "modules"
+    require(etc.is_dir() and not etc.is_symlink()
+            and config_dir.is_dir() and not config_dir.is_symlink(),
+            "Mint initramfs-tools configuration directory is missing or unsafe")
+    if config.exists() or config.is_symlink():
+        require(not config.is_symlink() and config.is_file(),
+                "Mint initramfs modules configuration is not a regular file")
+        original = config.read_text(encoding="utf-8")
+    else:
+        original = ""
+    present = {
+        line.split()[0] for line in original.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    additions = sorted(required - builtins - present)
+    if additions:
+        updated = original
+        if updated and not updated.endswith("\n"):
+            updated += "\n"
+        updated += "".join(f"{name}\n" for name in additions)
+        subprocess.run(
+            ["sudo", "tee", str(config)], input=updated, check=True, text=True,
+            stdout=subprocess.DEVNULL,
+        )
+    actual = config.read_text(encoding="utf-8")
+    actual_modules = {
+        line.split()[0] for line in actual.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    require(required <= builtins | actual_modules,
+            "Mint initramfs modules configuration omitted a required driver")
+    return builtins, loadable
+
+
+def validate_initramfs_driver_support(
+    modules_root: Path, version: str, listing: str,
+) -> None:
+    """Accept built-ins or verify each loadable storage driver is in the initramfs."""
+    builtins, loadable = _kernel_module_names(modules_root, version)
+    required = {"virtio_pci", "virtio_blk", "ext4"}
+    require(required <= builtins | loadable,
+            "Mint kernel lacks required virtio/ext4 driver capability")
+    for name in sorted(required - builtins):
+        pattern = re.compile(
+            rf"(?:^|/){re.escape(name)}\.ko(?:\.(?:xz|zst|gz))?$"
+        )
+        require(any(pattern.search(line.strip()) for line in listing.splitlines()),
+                f"Mint initramfs lacks loadable {name} driver")
 
 
 def install_mint_root_and_boot(
@@ -242,7 +412,9 @@ def install_mint_root_and_boot(
         version = kernel.name.removeprefix("vmlinuz-")
         require((unpacked / "lib/modules" / version).is_dir(),
                 "Mint target kernel modules are missing")
+        prepare_initramfs_modules(target, version)
         write_target_configuration(target, root_uuid)
+        configure_ephemeral_shutdown_service(target)
         run(["sudo", "mount", "--bind", "/dev", str(target / "dev")])
         run(["sudo", "mount", "-t", "proc", "proc", str(target / "proc")])
         run(["sudo", "mount", "-t", "sysfs", "sysfs", str(target / "sys")])
@@ -255,13 +427,35 @@ def install_mint_root_and_boot(
             require(initrd.is_file() and initrd.stat().st_size > 1024 * 1024,
                     "Mint initramfs was not generated")
         finally:
-            for path in (target / "dev/pts", target / "dev", target / "sys", target / "proc"):
-                subprocess.run(["sudo", "umount", str(path)], check=False,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Reverse the mount dependency order. Recursive unmount handles
+            # nested sysfs/procfs mounts created by initramfs tooling; lazy detach
+            # is deliberately forbidden because it would hide live references.
+            for bind_mount in (target / "dev/pts", target / "sys", target / "proc", target / "dev"):
+                unmount_private_tree(bind_mount)
         # Release FUSE before reading large boot artifacts. guestfish downloads
         # directly from ext4 to runner-local storage, avoiding slow initramfs
-        # traversal through the mounted guest filesystem.
-        run(["sudo", "guestunmount", str(target)], timeout=120)
+        # traversal through the mounted guest filesystem. If guestunmount cannot
+        # talk to its daemon, try the standard FUSE unmount once and verify that
+        # the mount is actually gone; never continue with a live guestmount.
+        try:
+            run(["sudo", "guestunmount", str(target)], timeout=120)
+        except subprocess.CalledProcessError as exc:
+            fallback = subprocess.run(
+                ["sudo", "fusermount3", "-u", str(target)],
+                check=False, text=True, capture_output=True, timeout=60,
+            )
+            mounted = subprocess.run(
+                ["sudo", "findmnt", "-rn", "--mountpoint", str(target)],
+                check=False, text=True, capture_output=True, timeout=30,
+            )
+            if fallback.returncode != 0 or mounted.stdout.strip():
+                detail = (fallback.stderr or fallback.stdout or "").strip()
+                raise MintOverlayError(
+                    "guestmount FUSE could not be safely unmounted; "
+                    f"guestunmount exit={exc.returncode}; "
+                    f"fusermount3 exit={fallback.returncode}; "
+                    f"remaining mount={mounted.stdout.strip()!r}; {detail}"
+                ) from exc
         guest_mounted = False
         kernel_copy = temp / "vmlinuz"
         initrd_copy = temp / "initrd.img"
@@ -277,8 +471,7 @@ def install_mint_root_and_boot(
         require(initrd_copy.is_file() and initrd_copy.stat().st_size > 1024 * 1024,
                 "Mint initramfs download from ext4 failed")
         listing = run(["lsinitramfs", str(initrd_copy)], timeout=600).stdout
-        require("virtio_blk" in listing or "virtio/virtio_blk" in listing,
-                "Mint initramfs lacks virtio block support")
+        validate_initramfs_driver_support(unpacked / "lib/modules", version, listing)
         require("conf/conf.d/default-boot-to-casper.conf" not in listing,
                 "Mint initramfs still redirects to Casper")
         run(["sudo", "umount", str(iso_mount)], timeout=60)
@@ -290,13 +483,9 @@ def install_mint_root_and_boot(
         serial = evidence / "mint-same-windows-cow-serial.log"
         require(not serial.exists() and not serial.is_symlink(),
                 "refusing reused Mint boot evidence")
-        monitor = temp / "mint-qemu-monitor.sock"
-        require(not monitor.exists() and not monitor.is_symlink(),
-                "refusing reused Mint QEMU monitor socket")
         qemu = subprocess.Popen([
             "qemu-system-x86_64", "-machine", "q35,accel=kvm", "-cpu", "host",
             "-smp", "2", "-m", "4096", "-display", "none",
-            "-monitor", f"unix:{monitor},server,nowait",
             "-net", "none", "-no-reboot", "-drive",
             f"if=none,id=windows-cow,format=qcow2,file={overlay}",
             "-device", "virtio-blk-pci,drive=windows-cow,bootindex=1",
@@ -314,32 +503,20 @@ def install_mint_root_and_boot(
                     if b"GASLUXMINT login:" in raw and b"Linux version" in raw:
                         break
                 if qemu.poll() is not None:
-                    raise MintOverlayError("QEMU stopped before Mint installed-root login")
+                    raise MintOverlayError("QEMU stopped before Mint live-root serial login")
                 time.sleep(3)
             else:
                 raise MintOverlayError("Mint same-COW firstboot timed out")
-            monitor_deadline = time.monotonic() + 30
-            channel = None
-            while time.monotonic() < monitor_deadline:
-                if monitor.exists() and monitor.is_socket():
-                    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    channel.connect(str(monitor))
-                    break
-                time.sleep(0.5)
-            require(channel is not None, "Mint QEMU monitor did not become available")
             try:
-                channel.recv(4096)
-                channel.sendall(b"system_powerdown\n")
-            finally:
-                channel.close()
-            try:
-                qemu.wait(timeout=90)
+                qemu.wait(timeout=120)
             except subprocess.TimeoutExpired as exc:
-                raise MintOverlayError("Mint guest did not complete ACPI poweroff") from exc
-            require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after guest poweroff")
+                raise MintOverlayError(
+                    "ephemeral systemd shutdown witness did not power off the Mint guest"
+                ) from exc
+            require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after systemd poweroff")
             shutdown_log = serial.read_bytes()
-            require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
-                    "Mint guest did not emit a shutdown witness")
+            require(has_orderly_shutdown_witness(shutdown_log),
+                    "Mint guest did not emit a systemd/kernel orderly-shutdown witness")
         finally:
             if qemu.poll() is None:
                 qemu.terminate()
