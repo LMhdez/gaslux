@@ -6,7 +6,7 @@ import unittest
 
 from tools.windows10_popos_synthetic_distinst_trace_contract import (
     DISK_GUID, DISK_SERIAL, DISK_SIZE, ESP_PARTUUID, ROOT_PARTUUID,
-    PINNED_DISTINST_SHA256, synthetic_distinst_plan, classify_distinst_writes,
+    PINNED_DISTINST_SHA256, ROOT_START, synthetic_distinst_plan, classify_distinst_writes,
 )
 from tools.windows_x64_installed_gpt_ro_audit import DiskAuditError
 
@@ -51,7 +51,7 @@ def fixtures():
         "virtio_blk_handle_write vdev 0x10 req 0x20 "
         "sector 2048 nsectors 8\n"
         "virtio_blk_handle_write vdev 0x10 req 0x21 "
-        "sector 262144 nsectors 8\n"
+        "sector {ROOT_START} nsectors 8\n"
     )
     tracefs = {
         "available": True,
@@ -59,13 +59,13 @@ def fixtures():
         "blockBioQueue": [
             {"major": 253, "minor": 16, "rwbs": "W", "sector": 2048,
              "count": 8, "comm": "mkfs.fat", "pid": 1235},
-            {"major": 253, "minor": 16, "rwbs": "W", "sector": 262144,
+            {"major": 253, "minor": 16, "rwbs": "W", "sector": ROOT_START,
              "count": 8, "comm": "mke2fs", "pid": 1236},
         ],
         "blockRqIssue": [
             {"major": 253, "minor": 16, "rwbs": "W", "sector": 2048,
              "count": 8, "comm": "mkfs.fat", "pid": 1235},
-            {"major": 253, "minor": 16, "rwbs": "W", "sector": 262144,
+            {"major": 253, "minor": 16, "rwbs": "W", "sector": ROOT_START,
              "count": 8, "comm": "mke2fs", "pid": 1236},
         ],
         "execs": [
@@ -111,7 +111,7 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
     def test_gpt_gap_backup_gpt_and_out_of_disk_writes_are_refused(self):
         bad = [
             "virtio_blk_handle_write vdev 0x10 req 0x22 sector 1 nsectors 8\n",
-            "virtio_blk_handle_write vdev 0x10 req 0x22 sector 196608 nsectors 8\n",
+            "virtio_blk_handle_write vdev 0x10 req 0x22 sector 1050624 nsectors 8\n",
             f"virtio_blk_handle_write vdev 0x10 req 0x22 sector {DISK_SIZE // 512 - 33} nsectors 8\n",
             f"virtio_blk_handle_write vdev 0x10 req 0x22 sector {DISK_SIZE // 512 - 2} nsectors 8\n",
         ]
