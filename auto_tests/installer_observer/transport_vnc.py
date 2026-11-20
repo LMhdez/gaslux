@@ -65,16 +65,16 @@ class RfbReader:
                         chunks.extend(data)
                     return bytes(chunks)
 
-                if take(12) != b"RFB 003.008\\n":
+                if take(12) != b"RFB 003.008\n":
                     raise Refusal("Unsupported RFB protocol")
-                sock.sendall(b"RFB 003.008\\n")
+                sock.sendall(b"RFB 003.008\n")
                 count = take(1)[0]
                 if not count or count > 32 or 1 not in take(count):
                     raise Refusal("VNC requires unsupported authentication")
-                sock.sendall(b"\\x01")
-                if take(4) != b"\\x00" * 4:
+                sock.sendall(b"\x01")
+                if take(4) != b"\x00" * 4:
                     raise Refusal("VNC security negotiation failed")
-                sock.sendall(b"\\x01")  # shared desktop; never request exclusive ownership
+                sock.sendall(b"\x01")  # shared desktop; never request exclusive ownership
                 width, height = struct.unpack(">HH", take(4))
                 take(16)  # server pixel format: replaced with a fixed 32-bit true-colour format
                 (name_size,) = struct.unpack(">I", take(4))
@@ -84,8 +84,8 @@ class RfbReader:
                 if (width, height) != size:
                     raise Refusal("Unexpected VNC framebuffer resolution")
                 pixel_format = struct.pack(">BBBBHHHBBBxxx", 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
-                sock.sendall(b"\\x00\\x00\\x00\\x00" + pixel_format)
-                sock.sendall(b"\\x02\\x00\\x00\\x01" + struct.pack(">i", 0))
+                sock.sendall(b"\x00\x00\x00\x00" + pixel_format)
+                sock.sendall(b"\x02\x00\x00\x01" + struct.pack(">i", 0))
                 sock.sendall(struct.pack(">BBHHHH", 3, 0, 0, 0, width, height))
                 message = take(4)
                 if message[0] != 0 or message[1] != 0:
