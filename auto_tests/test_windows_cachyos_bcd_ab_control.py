@@ -62,7 +62,7 @@ class BcdAbControlContracts(unittest.TestCase):
             " TREATMENT_ASSOCIATION_OR_WINDOWS_NONDETERMINISM",
         )
         self.assertFalse(result["controlAndTreatmentPostBootBcdEqual"])
-        self.assertFalse(result["first24ChangedSpansEqual"])
+        self.assertFalse(result["first64ChangedSpansEqual"])
 
     def test_initial_bcd_mismatch_invalidates_experiment(self):
         result = lab.compare_bcd_ab(
