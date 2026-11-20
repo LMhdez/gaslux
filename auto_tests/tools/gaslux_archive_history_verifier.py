@@ -11,7 +11,12 @@ import subprocess
 ARCHIVE = "archive/gaslux-experiments-preserved-20261119"
 ROOT = "5be372eb1bccbe07b2c2db2f4616291345e1df0a"
 ROOT_TREE = "663396d7205b73dae73b9763cf928d6bf515bc3f"
-EXPECTED_SOURCES = 113
+EXPECTED_SOURCES = 114
+PR216_REF = "fix/windows-vnc-owned-unix-consolidation-20261118"
+PR216_SHA = "3718b8a7951f7e9e7318cd5b7f9d89d5e8c5250f"
+PR216_ARCHIVE_COMMIT = "4c955ed329baf986e5e5a1d40258d7815c124dcd"
+PR216_BASE_REF = "fix/windows-hmp-readonly-framebuffer-complete-prompt"
+PR216_BASE_SHA = "170faa0d066e5caeb67e4b87a6c34bd5271611c0"
 
 
 def git(*argv: str, check: bool = True) -> str:
@@ -68,6 +73,19 @@ def main() -> None:
         if ref_exists != 1:
             raise RuntimeError("archived source ref unexpectedly remains: " + ref)
         originals[ref] = {"source_sha": original_sha, "archive_commit": node}
+    if originals.get(PR216_REF) != {
+            "source_sha": PR216_SHA, "archive_commit": PR216_ARCHIVE_COMMIT}:
+        raise RuntimeError("PR216 archive source identity differs")
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", PR216_BASE_SHA, PR216_SHA],
+        check=True, timeout=60,
+    )
+    if subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet",
+             "refs/remotes/origin/" + PR216_BASE_REF],
+            check=False, timeout=60,
+    ).returncode != 1:
+        raise RuntimeError("PR216 predecessor source ref unexpectedly remains")
     if git("rev-parse", tip + "^{tree}") != ROOT_TREE:
         raise RuntimeError("archive HEAD changed executable working tree")
     report = {
