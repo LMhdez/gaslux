@@ -5,6 +5,7 @@ on:
     branches:
       - test/mint-cow-proof-validation
       - fix/mint-shutdown-witness-kernel-powerdown-20261119
+      - fix/mint-cow-crlf-shutdown-proof-20261120
     paths:
       - .github/workflows/mint-cow-proof-contracts.yml
       - auto_tests/tools/validate_mint_cow_boot_evidence.py

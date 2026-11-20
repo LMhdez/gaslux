@@ -41,7 +41,10 @@ def has_orderly_shutdown_witness(serial_log: bytes) -> bool:
         rb"^\[\s*OK\s*\]\s+Finished systemd-poweroff\.service - System Power Off\.$",
         rb"^\[\s*\d+(?:\.\d+)?\s*\]\s+reboot: Power down$",
     )
-    return any(re.search(pattern, serial_log, re.MULTILINE) for pattern in witnesses)
+    # QEMU serial output can use CRLF; preserve full-line witness matching.
+    # A lone/embedded CR is not a line boundary or shutdown evidence.
+    normalized = serial_log.replace(b"\r\n", b"\n")
+    return any(re.search(pattern, normalized, re.MULTILINE) for pattern in witnesses)
 
 
 def run(args: list[str], *, timeout: int = 120, capture: bool = True):
@@ -207,6 +210,214 @@ def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
             guest.shutdown()
         finally:
             guest.close()
+
+
+def classify_mint_post_windows_differences(
+    *, mint_uuid_before: str, mint_uuid_after: str,
+    windows_before: list[str], windows_after: list[str],
+    backing_before: str, backing_after: str,
+    fourth: dict,
+) -> dict:
+    """Classify observed read-only checksums; NEVER authorize a write.
+
+    The Windows OS NTFS digest may legitimately change during its own boot.
+    ESP, MSR, Recovery and Mint root UUID remain strict equality gates.
+    """
+    require(len(windows_before) == len(windows_after) == 4
+            and all(type(x) is str and re.fullmatch(r"[0-9a-f]{64}", x)
+                    for x in [*windows_before, *windows_after]),
+            "post-Windows diagnostic has incomplete partition checksums")
+    require(all(type(x) is str and re.fullmatch(r"[0-9a-f]{64}", x)
+                for x in (backing_before, backing_after)),
+            "post-Windows diagnostic has incomplete backing checksums")
+    return {
+        "schema": "gaslux-mint-post-windows-divergence-v1",
+        "result": "BLOCKED",
+        "mintRootUuidBeforeWindows": mint_uuid_before,
+        "mintRootUuidAfterWindows": mint_uuid_after,
+        "mintRootUuidChanged": mint_uuid_before != mint_uuid_after,
+        "windowsPartitionSha256BeforeMint": windows_before,
+        "windowsPartitionSha256AfterWindows": windows_after,
+        "windowsEspDigestChanged": windows_before[0] != windows_after[0],
+        "windowsMsrDigestChanged": windows_before[1] != windows_after[1],
+        "windowsOsNtfsDigestChanged": windows_before[2] != windows_after[2],
+        "windowsRecoveryDigestChanged": windows_before[3] != windows_after[3],
+        "diskIdentityChanged": fourth.get("windowsGptUnchangedAfterExt4Boot") is not True,
+        "diskIdentityEvidence": "fourth-boot GPT read-only before/after comparison",
+        "backingChanged": backing_before != backing_after,
+        "windowsBackingQcow2Sha256BeforeMint": backing_before,
+        "windowsBackingQcow2Sha256AfterWindows": backing_after,
+        "fourthGuestSerialSha256": fourth.get("fourthGuestSerialSha256"),
+        "partitionAcquisition": "libguestfs readonly=1 checksum_device(sha256) on partitions 1..4",
+        "rootUuidAcquisition": "libguestfs readonly=1 vfs_uuid on fifth ext4",
+        "mintRootPersistenceAfterWindowsVerified": False,
+        "nativeGrubDualBootVerified": False,
+        "rollbackVerified": False,
+        "releaseEligible": False,
+    }
+
+
+def verify_mint_persistence_after_windows(
+    *, overlay: Path, base: Path, mint_proof: dict, fourth: dict,
+    diagnostic_dir: Path | None = None,
+) -> dict:
+    """Read-only audit of Mint files on the SAME COW after the Windows fourth boot.
+
+    This is an installed-root persistence check, never a GRUB dual-boot claim.
+    Do not reuse the earlier Mint copy/boot booleans as evidence of persistence.
+    """
+    from uuid import UUID
+    from windows_cachyos_cow_checkpoint import CHECKPOINT_DIR, OVERLAY_NAME, owned_regular
+    from windows_cachyos_qcow2_gpt_readonly import require_unchanged_qcow2, qcow2_file_identity
+
+    require(type(mint_proof) is dict and type(fourth) is dict
+            and fourth.get("windowsBootAfterExt4Verified") is True
+            and fourth.get("windowsBcdWinreEspAfterExt4Verified") is True
+            and fourth.get("fifthExt4UuidSurvivedWindowsBoot") is True
+            and fourth.get("fourthGuestCleanShutdownVerified") is True
+            and fourth.get("windowsGptUnchangedAfterExt4Boot") is True
+            and fourth.get("windowsBackingUnchangedAfterExt4Boot") is True
+            and fourth.get("originalWindowsUefiUnchangedAfterExt4Boot") is True
+            and fourth.get("sameDiskDualBootVerified") is False
+            and fourth.get("rollbackProven") is False,
+            "Mint persistence requires successful fourth Windows guest evidence")
+    expected_uuid = mint_proof.get("mintRootUuid")
+    try:
+        require(str(UUID(expected_uuid)) == expected_uuid,
+                "invalid Mint root UUID after Windows")
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise MintOverlayError("invalid Mint root UUID after Windows") from exc
+    kernel_name = mint_proof.get("mintKernel")
+    require(type(kernel_name) is str
+            and re.fullmatch(r"vmlinuz-[A-Za-z0-9.+_-]{1,128}", kernel_name),
+            "unsafe Mint kernel identity")
+    for key in ("mintKernelSha256", "mintInitramfsSha256", "mintOsReleaseSha256",
+                "windowsBackingQcow2Sha256"):
+        require(type(mint_proof.get(key)) is str
+                and re.fullmatch(r"[0-9a-f]{64}", mint_proof[key]),
+                f"missing source digest for Mint persistence: {key}")
+    hashes = mint_proof.get("windowsPartitionSha256")
+    require(type(hashes) is list and len(hashes) == 4
+            and all(type(h) is str and re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes),
+            "missing four Windows partition baselines")
+    require(base.is_file() and not base.is_symlink()
+            and stat.S_IMODE(base.stat().st_mode) == 0o400
+            and overlay == base.parent / CHECKPOINT_DIR / OVERLAY_NAME,
+            "wrong Windows base or COW ownership for Mint persistence")
+    owned_regular(overlay, overlay.parent, OVERLAY_NAME)
+    require(stat.S_IMODE(overlay.stat().st_mode) == 0o600,
+            "post-Windows Mint overlay permissions are unsafe")
+    info = json.loads(run(["qemu-img", "info", "-f", "qcow2",
+                           "--output=json", str(overlay)]).stdout)
+    require(info.get("format") == "qcow2"
+            and info.get("virtual-size") == 128 * 1024**3
+            and info.get("backing-filename") == str(base)
+            and info.get("backing-filename-format") == "qcow2"
+            and not info.get("encrypted", False),
+            "post-Windows Mint read-only audit is not bound to the original COW")
+
+    base_identity = qcow2_file_identity(base)
+    require(sha256(base) == mint_proof["windowsBackingQcow2Sha256"],
+            "Windows backing changed before Mint persistence audit")
+    # Do not pass expected_uuid into this initial read-only acquisition: that
+    # would raise before the divergent UUID and four observed digests can be
+    # preserved. The exact same strict equality gate remains BELOW.
+    actual_uuid, actual_windows_hashes = _guest_disk_audit(overlay)
+    observed_backing_sha256 = sha256(base)
+    differences = classify_mint_post_windows_differences(
+        mint_uuid_before=expected_uuid, mint_uuid_after=actual_uuid,
+        windows_before=hashes, windows_after=actual_windows_hashes,
+        backing_before=mint_proof["windowsBackingQcow2Sha256"],
+        backing_after=observed_backing_sha256, fourth=fourth,
+    )
+    protected = ("mintRootUuidChanged", "windowsEspDigestChanged",
+                 "windowsMsrDigestChanged", "windowsRecoveryDigestChanged",
+                 "diskIdentityChanged", "backingChanged")
+    divergent = [name for name in protected if differences[name]]
+    if divergent:
+        if diagnostic_dir is not None:
+            require(diagnostic_dir.is_dir() and not diagnostic_dir.is_symlink(),
+                    "unsafe Mint evidence directory")
+            source_mint = diagnostic_dir / "mint-same-windows-cow.json"
+            source_fourth = diagnostic_dir / "win10_22h2_en_us_x64-fourth-post-ext4.json"
+            for source in (source_mint, source_fourth):
+                require(source.is_file() and not source.is_symlink(),
+                        "missing same-run Mint/Windows proof for divergence manifest")
+            require(json.loads(source_mint.read_bytes()) == mint_proof
+                    and json.loads(source_fourth.read_bytes()) == fourth,
+                    "cross-session Mint/Windows source proof mismatch")
+            differences["mintSourceProofSha256"] = sha256(source_mint)
+            differences["fourthWindowsProofSha256"] = sha256(source_fourth)
+            path = diagnostic_dir / "mint-after-windows-divergence.json"
+            require(not path.exists() and not path.is_symlink(),
+                    "refusing reused Mint divergence evidence")
+            # Immutable exclusive creation only in the CI evidence directory,
+            # never to the Windows disk, Mint partition or QCOW2 backing.
+            with path.open("xb") as stream:
+                stream.write((json.dumps(differences, sort_keys=True, indent=2)
+                              + "\n").encode("utf-8"))
+        raise MintOverlayError("protected post-Windows integrity mismatch: "
+                               + ", ".join(divergent))
+    # Windows OS NTFS is informative, never silently substituted as baseline.
+
+    import guestfs
+    guest = guestfs.GuestFS(python_return_dict=True)
+    try:
+        guest.add_drive_opts(str(overlay), format="qcow2", readonly=1)
+        guest.launch()
+        devices = guest.list_devices()
+        require(len(devices) == 1
+                and guest.blockdev_getsize64(devices[0]) == 128 * 1024**3,
+                "post-Windows Mint root is not on the exact single QEMU COW disk")
+        partitions = guest.list_partitions()
+        device = devices[0]
+        suffix = "p" if device[-1].isdigit() else ""
+        require(partitions == [device + suffix + str(n) for n in range(1, 6)],
+                "post-Windows Mint guest has unexpected partitions")
+        require(guest.blockdev_getsize64(partitions[4]) == 24 * 1024**3
+                and guest.vfs_type(partitions[4]) == "ext4"
+                and guest.vfs_uuid(partitions[4]) == expected_uuid,
+                "post-Windows Mint fifth ext4 identity changed")
+        guest.mount_ro(partitions[4], "/")
+        os_release = guest.read_file("/etc/os-release")
+        require(re.search(rb"^ID=linuxmint$", os_release, re.MULTILINE)
+                and hashlib.sha256(os_release).hexdigest()
+                    == mint_proof["mintOsReleaseSha256"],
+                "Mint OS identity or installed root contents changed")
+        fstab = guest.read_file("/etc/fstab")
+        require(fstab == f"UUID={expected_uuid} / ext4 defaults 0 1\n".encode("ascii"),
+                "Mint root mount configuration changed after Windows boot")
+        kernel_digest = guest.checksum("sha256", "/boot/" + kernel_name)
+        initramfs_digest = guest.checksum(
+            "sha256", "/boot/initrd.img-" + kernel_name.removeprefix("vmlinuz-"))
+        require(kernel_digest == mint_proof["mintKernelSha256"]
+                and initramfs_digest == mint_proof["mintInitramfsSha256"],
+                "Mint kernel or installed initramfs changed after Windows boot")
+        guest.umount_all()
+    finally:
+        try:
+            guest.shutdown()
+        finally:
+            guest.close()
+    require_unchanged_qcow2(base, base_identity)
+    require(sha256(base) == mint_proof["windowsBackingQcow2Sha256"],
+            "Windows QCOW2 backing changed during Mint read-only audit")
+    return {
+        "mintRootFilesPersistAfterWindowsVerified": True,
+        "mintRootUuid": expected_uuid,
+        "mintKernel": kernel_name,
+        "mintKernelSha256": kernel_digest,
+        "mintInitramfsSha256": initramfs_digest,
+        "mintOsReleaseSha256": hashlib.sha256(os_release).hexdigest(),
+        "windowsPartitionSha256BeforeMint": hashes,
+        "windowsPartitionSha256AfterWindows": actual_windows_hashes,
+        "fourthGuestSerialSha256": fourth["fourthGuestSerialSha256"],
+        "nativeGrubDualBootVerified": False,
+        "sameDiskDualBootVerified": False,
+        "updatesVerified": False,
+        "rollbackVerified": False,
+        "releaseEligible": False,
+    }
 
 
 def _kernel_module_names(modules_root: Path, version: str) -> tuple[set[str], set[str]]:
@@ -515,7 +726,18 @@ def install_mint_root_and_boot(
                 ) from exc
             require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after systemd poweroff")
             shutdown_log = serial.read_bytes()
-            require(has_orderly_shutdown_witness(shutdown_log),
+            if not has_orderly_shutdown_witness(shutdown_log):
+                # Preserve exact raw serial in the artifact; report only bounded
+                # shutdown-related candidate lines with escaped bytes to triage
+                # CRLF, ANSI and missing-witness failures without false success.
+                candidates = [
+                    line[-200:] for line in shutdown_log.split(b"\n")
+                    if any(token in line for token in
+                           (b"systemd-shutdown", b"systemd-poweroff", b"reboot: Power down"))
+                ]
+                print("Mint shutdown candidates (escaped raw bytes):",
+                      [repr(line) for line in candidates[-8:]], flush=True)
+                raise MintOverlayError(
                     "Mint guest did not emit a systemd/kernel orderly-shutdown witness")
         finally:
             if qemu.poll() is None:
@@ -541,6 +763,9 @@ def install_mint_root_and_boot(
             "mintIsoBytes": MINT_BYTES,
             "mintRootUuid": root_uuid,
             "mintKernel": kernel.name,
+            "mintKernelSha256": sha256(kernel_copy),
+            "mintInitramfsSha256": sha256(initrd_copy),
+            "mintOsReleaseSha256": sha256(os_release),
             "mintSquashfsRootCopiedToWindowsCOWPartition5": True,
             "mintFirstBootFromSameWindowsCOWVerified": True,
             "windowsFourPartitionSha256Unchanged": True,

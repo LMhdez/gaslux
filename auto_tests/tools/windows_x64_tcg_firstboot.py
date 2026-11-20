@@ -1356,12 +1356,40 @@ def main(argv: list[str] | None = None) -> int:
                                                 out.write(fourth_bytes)
                                             report["windowsBootAfterExt4Verified"] = True
                                             if args.install_mint_cow_root:
+                                                from windows_mint_overlay_root import (
+                                                    verify_mint_persistence_after_windows,
+                                                )
+                                                # The fourth Windows guest must finish before
+                                                # verifying Mint root files, not just ext4 UUID.
+                                                persistence = verify_mint_persistence_after_windows(
+                                                    overlay=disk.parent / "windows-uefi-cow-checkpoint" /
+                                                            "cachyos-unwritten-trial-overlay.qcow2",
+                                                    base=disk, mint_proof=mint_proof,
+                                                    fourth=fourth,
+                                                    diagnostic_dir=evidence,
+                                                )
+                                                persistence_path = evidence / "mint-after-windows.json"
+                                                require(not persistence_path.exists()
+                                                        and not persistence_path.is_symlink(),
+                                                        "refusing reused Mint persistence evidence")
+                                                persistence_bytes = (
+                                                    json.dumps(persistence, indent=2, sort_keys=True)
+                                                    + "\n"
+                                                ).encode("utf-8")
+                                                with persistence_path.open("xb") as out:
+                                                    out.write(persistence_bytes)
+                                                report["mintRootPersistenceAfterWindowsVerified"] = True
+                                                report["mintRootPersistenceEvidenceSha256"] = (
+                                                    hashlib.sha256(persistence_bytes).hexdigest()
+                                                )
                                                 report["windowsBootAfterMintRootVerified"] = True
                                                 report["sameDiskBothOperatingSystemsBootVerified"] = True
                                                 report["nativeGrubDualBootVerified"] = False
                                                 report["sameDiskDualBootVerified"] = False
                                                 report["updatesVerified"] = False
                                                 report["rollbackVerified"] = False
+                                                print("GASLUX_MINT_AFTER_WINDOWS_FILES_PERSIST=1",
+                                                      flush=True)
                                             report["fourthPostExt4EvidenceSha256"] = (
                                                 hashlib.sha256(fourth_bytes).hexdigest())
                                             print("GASLUX_WINDOWS_FOURTH_BOOT_POST_EXT4_VERIFIED=1",

@@ -1,6 +1,8 @@
 """Fail-closed contracts for the Mint/Windows disposable COW harness."""
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sys
 import unittest
@@ -45,6 +47,20 @@ class MintOverlayContracts(unittest.TestCase):
         self.assertTrue(mint.has_orderly_shutdown_witness(
             b"[   23.521817] reboot: Power down\n"))
 
+    def test_orderly_shutdown_witness_accepts_crlf_serial_output(self):
+        for witness in (
+            b"systemd-shutdown[1]: Powering off.\r\n",
+            b"[  OK  ] Finished systemd-poweroff.service - System Power Off.\r\n",
+            b"[   23.521817] reboot: Power down\r\n",
+        ):
+            with self.subTest(witness=witness):
+                self.assertTrue(mint.has_orderly_shutdown_witness(
+                    b"Linux version 6.14\r\n" + witness))
+
+    def test_orderly_shutdown_witness_rejects_embedded_carriage_return(self):
+        self.assertFalse(mint.has_orderly_shutdown_witness(
+            b"Linux version 6.14\nnoise\rsystemd-shutdown[1]: Powering off.\n"))
+
     def test_orderly_shutdown_witness_rejects_boot_or_login_only(self):
         self.assertFalse(mint.has_orderly_shutdown_witness(
             b"Linux version 6.14\nGASLUXMINT login:\n"))
@@ -73,6 +89,184 @@ class MintOverlayContracts(unittest.TestCase):
                 GuestFS=lambda **kwargs: fake)}):
             with self.assertRaisesRegex(mint.MintOverlayError, "ambiguous"):
                 mint._guest_disk_audit(Path("/tmp/unused"))
+
+    def test_post_windows_read_only_guestfs_checks_mint_files_and_hashes(self):
+        import tempfile
+        uuid = "12345678-1234-4234-8234-123456789abc"
+        os_release = b"NAME=Linux Mint\nID=linuxmint\n"
+        hashes = ["a" * 64, "b" * 64, "c" * 64, "d" * 64]
+        class AfterWindowsGuest(FakeGuest):
+            def __init__(self):
+                super().__init__(uuid=uuid)
+                self.mounts = []
+            def mount_ro(self, part, directory):
+                self.mounts.append((part, directory))
+            def read_file(self, path):
+                if path == "/etc/os-release":
+                    return os_release
+                if path == "/etc/fstab":
+                    return f"UUID={uuid} / ext4 defaults 0 1\n".encode()
+                raise AssertionError("unexpected file")
+            def checksum(self, algorithm, path):
+                assert algorithm == "sha256"
+                return ("2" if path.startswith("/boot/vmlinuz-") else "3") * 64
+            def umount_all(self):
+                self.mounts.append("unmounted")
+        fake = AfterWindowsGuest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "windows.qcow2"
+            base.write_bytes(b"private Windows COW test base")
+            base.chmod(0o400)
+            checkpoint = root / "windows-uefi-cow-checkpoint"
+            checkpoint.mkdir(mode=0o700)
+            overlay = checkpoint / "cachyos-unwritten-trial-overlay.qcow2"
+            overlay.write_bytes(b"disposable")
+            overlay.chmod(0o600)
+            proof = {
+                "mintRootUuid": uuid,
+                "mintKernel": "vmlinuz-6.14.0-37-generic",
+                "mintKernelSha256": "2" * 64,
+                "mintInitramfsSha256": "3" * 64,
+                "mintOsReleaseSha256": hashlib.sha256(os_release).hexdigest(),
+                "windowsBackingQcow2Sha256": "e" * 64,
+                "windowsPartitionSha256": hashes,
+            }
+            fourth = {
+                "windowsBootAfterExt4Verified": True,
+                "windowsBcdWinreEspAfterExt4Verified": True,
+                "fifthExt4UuidSurvivedWindowsBoot": True,
+                "fourthGuestCleanShutdownVerified": True,
+                "windowsGptUnchangedAfterExt4Boot": True,
+                "windowsBackingUnchangedAfterExt4Boot": True,
+                "originalWindowsUefiUnchangedAfterExt4Boot": True,
+                "sameDiskDualBootVerified": False,
+                "rollbackProven": False,
+                "fourthGuestSerialSha256": "f" * 64,
+            }
+            qemu_info = {"format": "qcow2", "virtual-size": 128 * 1024**3,
+                         "backing-filename": str(base),
+                         "backing-filename-format": "qcow2"}
+            with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
+                    GuestFS=lambda **kwargs: fake)}), \
+                 patch("windows_cachyos_cow_checkpoint.owned_regular"), \
+                 patch("windows_cachyos_qcow2_gpt_readonly.qcow2_file_identity",
+                       return_value="identity"), \
+                 patch("windows_cachyos_qcow2_gpt_readonly.require_unchanged_qcow2"), \
+                 patch.object(mint, "sha256", side_effect=lambda path: (
+                     "e" * 64 if path == base else
+                     hashlib.sha256(path.read_bytes()).hexdigest())), \
+                 patch.object(mint, "run", return_value=SimpleNamespace(
+                     stdout=json.dumps(qemu_info))), \
+                 patch.object(mint, "_guest_disk_audit", return_value=(uuid, hashes)):
+                persistence = mint.verify_mint_persistence_after_windows(
+                    overlay=overlay, base=base, mint_proof=proof, fourth=fourth)
+                self.assertTrue(persistence["mintRootFilesPersistAfterWindowsVerified"])
+                self.assertEqual(persistence["windowsPartitionSha256AfterWindows"], hashes)
+                self.assertEqual(persistence["fourthGuestSerialSha256"], "f" * 64)
+                self.assertEqual(fake.mounts[0], ("/dev/sda5", "/"))
+                self.assertTrue(fake.closed)
+                # Fault injection: the protected-partition gate must deny
+                # writes and preserve each OBSERVED digest on failed QEMU.
+                evidence = root / "evidence"
+                evidence.mkdir()
+                mint_source = evidence / "mint-same-windows-cow.json"
+                fourth_source = evidence / "win10_22h2_en_us_x64-fourth-post-ext4.json"
+                mint_source.write_text(json.dumps(proof))
+                fourth_source.write_text(json.dumps(fourth))
+                with patch.object(mint, "_guest_disk_audit",
+                                  return_value=(uuid, ["0" * 64] * 4)):
+                    with self.assertRaisesRegex(mint.MintOverlayError,
+                                                "windowsEspDigestChanged"):
+                        mint.verify_mint_persistence_after_windows(
+                            overlay=overlay, base=base, mint_proof=proof,
+                            fourth=fourth, diagnostic_dir=evidence)
+                divergence = json.loads(
+                    (evidence / "mint-after-windows-divergence.json").read_text())
+                self.assertEqual(divergence["result"], "BLOCKED")
+                self.assertEqual(divergence["windowsPartitionSha256BeforeMint"], hashes)
+                self.assertEqual(divergence["windowsPartitionSha256AfterWindows"],
+                                 ["0" * 64] * 4)
+                self.assertEqual(divergence["mintSourceProofSha256"],
+                                 hashlib.sha256(mint_source.read_bytes()).hexdigest())
+                self.assertEqual(divergence["fourthWindowsProofSha256"],
+                                 hashlib.sha256(fourth_source.read_bytes()).hexdigest())
+                self.assertFalse(divergence["mintRootPersistenceAfterWindowsVerified"])
+                self.assertFalse((evidence / "mint-after-windows.json").exists())
+                # Fault injection: changed installed initramfs is not persistence.
+                original = fake.checksum
+                fake.checksum = lambda algorithm, path: (
+                    "0" * 64 if path.startswith("/boot/initrd") else
+                    original(algorithm, path))
+                with self.assertRaisesRegex(mint.MintOverlayError,
+                                            "kernel or installed initramfs"):
+                    mint.verify_mint_persistence_after_windows(
+                        overlay=overlay, base=base, mint_proof=proof, fourth=fourth)
+
+    def test_post_windows_individual_digests_fail_closed_and_ntfs_is_informative(self):
+        before = ["1" * 64, "2" * 64, "3" * 64, "4" * 64]
+        kwargs = {
+            "mint_uuid_before": "12345678-1234-4234-8234-123456789abc",
+            "mint_uuid_after": "12345678-1234-4234-8234-123456789abc",
+            "windows_before": before,
+            "windows_after": before.copy(),
+            "backing_before": "5" * 64,
+            "backing_after": "5" * 64,
+            "fourth": {"windowsGptUnchangedAfterExt4Boot": True,
+                       "fourthGuestSerialSha256": "6" * 64},
+        }
+        base = mint.classify_mint_post_windows_differences(**kwargs)
+        for name in ("mintRootUuidChanged", "windowsEspDigestChanged",
+                     "windowsMsrDigestChanged", "windowsOsNtfsDigestChanged",
+                     "windowsRecoveryDigestChanged", "diskIdentityChanged",
+                     "backingChanged"):
+            self.assertFalse(base[name], name)
+        self.assertEqual(base["result"], "BLOCKED")
+        changes = (
+            ("windowsEspDigestChanged", {"windows_after": ["0" * 64, *before[1:]]}),
+            ("windowsMsrDigestChanged", {"windows_after": [before[0], "0" * 64, *before[2:]]}),
+            ("windowsOsNtfsDigestChanged", {"windows_after": [*before[:2], "0" * 64, before[3]]}),
+            ("windowsRecoveryDigestChanged", {"windows_after": [*before[:3], "0" * 64]}),
+            ("mintRootUuidChanged", {"mint_uuid_after": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}),
+            ("diskIdentityChanged", {"fourth": {"windowsGptUnchangedAfterExt4Boot": False}}),
+            ("backingChanged", {"backing_after": "0" * 64}),
+        )
+        for flag, delta in changes:
+            with self.subTest(flag=flag):
+                outcome = mint.classify_mint_post_windows_differences(**(kwargs | delta))
+                self.assertTrue(outcome[flag])
+                self.assertEqual(
+                    [k for k in ("mintRootUuidChanged", "windowsEspDigestChanged",
+                                  "windowsMsrDigestChanged", "windowsOsNtfsDigestChanged",
+                                  "windowsRecoveryDigestChanged", "diskIdentityChanged",
+                                  "backingChanged") if outcome[k]], [flag])
+                self.assertFalse(outcome["mintRootPersistenceAfterWindowsVerified"])
+
+    def test_post_windows_refuses_incomplete_digest_without_success(self):
+        kwargs = {
+            "mint_uuid_before": "12345678-1234-4234-8234-123456789abc",
+            "mint_uuid_after": "12345678-1234-4234-8234-123456789abc",
+            "windows_before": ["1" * 64] * 4,
+            "windows_after": ["2" * 64] * 3,
+            "backing_before": "3" * 64, "backing_after": "3" * 64,
+            "fourth": {"windowsGptUnchangedAfterExt4Boot": True},
+        }
+        with self.assertRaisesRegex(mint.MintOverlayError,
+                                    "incomplete partition checksums"):
+            mint.classify_mint_post_windows_differences(**kwargs)
+        kwargs["windows_after"] = ["z" * 64] * 4
+        with self.assertRaisesRegex(mint.MintOverlayError,
+                                    "incomplete partition checksums"):
+            mint.classify_mint_post_windows_differences(**kwargs)
+
+    def test_post_windows_persistence_rejects_missing_fourth_boot_before_guestfs(self):
+        with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
+                GuestFS=lambda **kwargs: self.fail("should not open guestfs"))}):
+            with self.assertRaisesRegex(mint.MintOverlayError,
+                                        "fourth Windows"):
+                mint.verify_mint_persistence_after_windows(
+                    overlay=Path("/no/overlay"), base=Path("/no/base"),
+                    mint_proof={}, fourth={})
 
     def test_ephemeral_shutdown_service_is_explicit_and_one_boot_scoped(self):
         import tempfile
