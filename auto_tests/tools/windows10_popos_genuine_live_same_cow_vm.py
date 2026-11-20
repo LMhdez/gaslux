@@ -38,6 +38,7 @@ CONTROL_SOURCES = (
     "windows10_popos_live_readonly_gpt_probe.py",
     "windows10_popos_genuine_live_guest_probe.py",
     "windows10_popos_distinst_readonly_observer.py",
+    "windows10_popos_official_iso_signed_lab.py",
 )
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 
