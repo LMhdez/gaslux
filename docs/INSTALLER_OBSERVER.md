@@ -148,3 +148,74 @@ Pop!_OS or Bazzite. No stable distribution catalog, Windows code, bootloader,
 ESP, BCD, WinRE or partition logic has been changed.
 
 GPL-3.0; human review required under `AI_POLICY.md`.
+
+## QEMU identity witness and disposable laboratory (20 November 2026)
+
+The existing observer motor, RFB reader, state machine, reviewed Q4OS map,
+historical replays and immutable original evidence are unchanged. Two new
+modules are deliberately restricted to Linux QEMU **observation**:
+
+- `lab_identity.py` seals the QEMU executable inode/device, actual
+  `/proc/<pid>/stat` start ticks, process UID and complete command-line
+  digest; it pins exact ISO and QCOW2 inode/dev identities, checks the ISO's
+  full SHA-256 and length, and rechecks metadata on each observation. It
+  independently inspects the running QEMU process's open file descriptors,
+  refusing attached block-special devices and missing sealed media. QMP is
+  reached through a private Unix socket and the *kernel-provided* peer
+  PID/UID (`SO_PEERCRED`) must match the sealed QEMU process. Only fixed,
+  read-only QMP queries (`query-block`, `query-vnc`, `query-status`)
+  and capability negotiation are emitted. Exactly one read-only raw ISO and
+  one writable, non-backed QCOW2 must be present. QMP must corroborate the
+  unique internal snapshot name and an empty VNC client list.
+- `lab_probe.py` constructs its **own** scratch ISO and fresh QCOW2 for
+  each of two separate QEMU processes. It does not accept a disk pathname,
+  executable, ISO download URL, QMP command or guest action from parameters
+  or JSON. It refuses root execution, boots only the synthetic test media
+  with no network, no monitor and no serial input, reads RAW loopback VNC
+  frames, independently validates host/QMP identity, writes SHA-256 evidence
+  and destroys its temporary VM resources. The test does not run Calamares
+  and it sends **zero** guest actions.
+- `.github/workflows/installer-observer-lab.yml` is the separate
+  least-privilege, push/dispatch QEMU witness. Its evidence archive is
+  `observer-qemu-synthetic-readonly`. Unlike pytest mocks this workflow
+  attempts actual QEMU process, socket, disk and frame observations; the
+  Actions job and emitted `manifest.json` are required to determine
+  whether these attempts succeeded.
+
+For local reproduction on an isolated, non-root Linux VM with `qemu-img`,
+`qemu-system-x86_64` and Pillow available:
+
+```bash
+export RUNNER_TEMP="$(mktemp -d)"
+python -m auto_tests.installer_observer.lab_probe
+# Inspect $RUNNER_TEMP/observer-qemu-lab/manifest.json and the frame PNGs.
+```
+
+The **independent seal is not a cryptographic VM launch authorization**:
+a privileged host or an adversary with the same user identity can replace
+the controller, connect to the loopback VNC service or manipulate QEMU
+between checks. A QMP query confirming no VNC clients does not establish
+exclusive future input ownership; QMP image reporting and procfs file
+descriptors do not establish atomic framebuffer/input behavior. The ISO
+hash is a local pin, **not** a verified upstream signature; an existing
+QCOW2 whose contents were copied from Windows cannot be disproved solely
+by identifying its file type. The disposable provenance in this experiment
+derives from the fixed in-process creation of new scratch media. Do not
+substitute caller-provided VM images.
+
+`LabAuthority` and the read-only transport are **not** upgraded to an
+input-capable grant. In particular, `ReadOnlyVncTransport.click_if_current`
+still always refuses, and Q4OS's unmeasured display scale, inaccessible Qt
+widget IDs, screen ambiguity and `installEFIFallback=true` remain hard
+blockers. Neither serialising QMP calls nor matching framebuffer hashes
+eliminates the time-of-check/time-of-use race with guest changes or external
+input. No physical disk, Windows image, Calamares Install, Apply, NVRAM,
+ESP, bootloader, partition write or dual-boot action is authorized here.
+
+The adversarial tests exercise mutated QMP block inventory, media format,
+read-only flag, backing chain, snapshot, VNC client/endpoint, process
+identity, ISO mismatch, device paths and QMP command allow-list. Their
+fixtures are **not** a live process takeover, real hot-plug, proven
+exclusive input or a completed Q4OS Summary journey. Treat QEMU Actions
+evidence, mock contracts and historical Q4OS replay as distinct categories
+in every report.
