@@ -212,8 +212,54 @@ def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
             guest.close()
 
 
+def classify_mint_post_windows_differences(
+    *, mint_uuid_before: str, mint_uuid_after: str,
+    windows_before: list[str], windows_after: list[str],
+    backing_before: str, backing_after: str,
+    fourth: dict,
+) -> dict:
+    """Classify observed read-only checksums; NEVER authorize a write.
+
+    The Windows OS NTFS digest may legitimately change during its own boot.
+    ESP, MSR, Recovery and Mint root UUID remain strict equality gates.
+    """
+    require(len(windows_before) == len(windows_after) == 4
+            and all(type(x) is str and re.fullmatch(r"[0-9a-f]{64}", x)
+                    for x in [*windows_before, *windows_after]),
+            "post-Windows diagnostic has incomplete partition checksums")
+    require(all(type(x) is str and re.fullmatch(r"[0-9a-f]{64}", x)
+                for x in (backing_before, backing_after)),
+            "post-Windows diagnostic has incomplete backing checksums")
+    return {
+        "schema": "gaslux-mint-post-windows-divergence-v1",
+        "result": "BLOCKED",
+        "mintRootUuidBeforeWindows": mint_uuid_before,
+        "mintRootUuidAfterWindows": mint_uuid_after,
+        "mintRootUuidChanged": mint_uuid_before != mint_uuid_after,
+        "windowsPartitionSha256BeforeMint": windows_before,
+        "windowsPartitionSha256AfterWindows": windows_after,
+        "windowsEspDigestChanged": windows_before[0] != windows_after[0],
+        "windowsMsrDigestChanged": windows_before[1] != windows_after[1],
+        "windowsOsNtfsDigestChanged": windows_before[2] != windows_after[2],
+        "windowsRecoveryDigestChanged": windows_before[3] != windows_after[3],
+        "diskIdentityChanged": fourth.get("windowsGptUnchangedAfterExt4Boot") is not True,
+        "diskIdentityEvidence": "fourth-boot GPT read-only before/after comparison",
+        "backingChanged": backing_before != backing_after,
+        "windowsBackingQcow2Sha256BeforeMint": backing_before,
+        "windowsBackingQcow2Sha256AfterWindows": backing_after,
+        "fourthGuestSerialSha256": fourth.get("fourthGuestSerialSha256"),
+        "partitionAcquisition": "libguestfs readonly=1 checksum_device(sha256) on partitions 1..4",
+        "rootUuidAcquisition": "libguestfs readonly=1 vfs_uuid on fifth ext4",
+        "mintRootPersistenceAfterWindowsVerified": False,
+        "nativeGrubDualBootVerified": False,
+        "rollbackVerified": False,
+        "releaseEligible": False,
+    }
+
+
 def verify_mint_persistence_after_windows(
     *, overlay: Path, base: Path, mint_proof: dict, fourth: dict,
+    diagnostic_dir: Path | None = None,
 ) -> dict:
     """Read-only audit of Mint files on the SAME COW after the Windows fourth boot.
 
@@ -273,13 +319,46 @@ def verify_mint_persistence_after_windows(
     base_identity = qcow2_file_identity(base)
     require(sha256(base) == mint_proof["windowsBackingQcow2Sha256"],
             "Windows backing changed before Mint persistence audit")
-    actual_uuid, actual_windows_hashes = _guest_disk_audit(overlay, expected_uuid)
-    # Windows legitimately writes to its own OS NTFS volume on fourth boot.
-    # Require byte-identical ESP, MSR and Recovery; preserve both OS hashes
-    # as evidence without misclassifying legitimate NTFS activity as corruption.
-    require(actual_uuid == expected_uuid
-            and all(actual_windows_hashes[i] == hashes[i] for i in (0, 1, 3)),
-            "protected Windows ESP/MSR/Recovery digest or Mint UUID changed")
+    # Do not pass expected_uuid into this initial read-only acquisition: that
+    # would raise before the divergent UUID and four observed digests can be
+    # preserved. The exact same strict equality gate remains BELOW.
+    actual_uuid, actual_windows_hashes = _guest_disk_audit(overlay)
+    observed_backing_sha256 = sha256(base)
+    differences = classify_mint_post_windows_differences(
+        mint_uuid_before=expected_uuid, mint_uuid_after=actual_uuid,
+        windows_before=hashes, windows_after=actual_windows_hashes,
+        backing_before=mint_proof["windowsBackingQcow2Sha256"],
+        backing_after=observed_backing_sha256, fourth=fourth,
+    )
+    protected = ("mintRootUuidChanged", "windowsEspDigestChanged",
+                 "windowsMsrDigestChanged", "windowsRecoveryDigestChanged",
+                 "diskIdentityChanged", "backingChanged")
+    divergent = [name for name in protected if differences[name]]
+    if divergent:
+        if diagnostic_dir is not None:
+            require(diagnostic_dir.is_dir() and not diagnostic_dir.is_symlink(),
+                    "unsafe Mint evidence directory")
+            source_mint = diagnostic_dir / "mint-same-windows-cow.json"
+            source_fourth = diagnostic_dir / "win10_22h2_en_us_x64-fourth-post-ext4.json"
+            for source in (source_mint, source_fourth):
+                require(source.is_file() and not source.is_symlink(),
+                        "missing same-run Mint/Windows proof for divergence manifest")
+            require(json.loads(source_mint.read_bytes()) == mint_proof
+                    and json.loads(source_fourth.read_bytes()) == fourth,
+                    "cross-session Mint/Windows source proof mismatch")
+            differences["mintSourceProofSha256"] = sha256(source_mint)
+            differences["fourthWindowsProofSha256"] = sha256(source_fourth)
+            path = diagnostic_dir / "mint-after-windows-divergence.json"
+            require(not path.exists() and not path.is_symlink(),
+                    "refusing reused Mint divergence evidence")
+            # Immutable exclusive creation only in the CI evidence directory,
+            # never to the Windows disk, Mint partition or QCOW2 backing.
+            with path.open("xb") as stream:
+                stream.write((json.dumps(differences, sort_keys=True, indent=2)
+                              + "\n").encode("utf-8"))
+        raise MintOverlayError("protected post-Windows integrity mismatch: "
+                               + ", ".join(divergent))
+    # Windows OS NTFS is informative, never silently substituted as baseline.
 
     import guestfs
     guest = guestfs.GuestFS(python_return_dict=True)
