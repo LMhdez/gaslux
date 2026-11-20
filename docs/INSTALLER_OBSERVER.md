@@ -247,3 +247,23 @@ is never treated as sufficient authority; the attestation deliberately
 requires independent kernel observations. This does not change the non-atomic
 RFB input boundary: until secure input exclusivity and a measured Q4OS
 locator/scale can be demonstrated, **no click is authorized**.
+
+### Second live VNC client — negative experiment (20 November 2026)
+
+[Actions #44699875258](https://github.com/LMhdez/gaslux/actions/runs/44699875258)
+passed an extended two-VM lab: in **each separate real QEMU process**
+the controller observed a valid frame, a second local RFB 3.8
+spectator established a complete **shared** VNC handshake without sending
+pointer or keyboard messages, and a simultaneous Observer capture was
+**refused** while that second client was present. The second socket was
+closed and QMP identity verification succeeded again. The test also
+preserved the six earlier drift refusals per process, for **14/14
+real-QEMU negative checks** and **zero guest input** across both runs.
+Unlike the synthetic QMP-report fixture, this test observes an actual
+additional VNC connection in a running QEMU process.
+
+This result demonstrates only a fail-closed check **at that instant**:
+the VNC service still permits another client to connect later, and RFB
+does not provide atomic check-and-click. The transport therefore remains
+read-only. No verified Q4OS ISO was booted; there is no automatic journey
+to Summary and no action against disk partitions, firmware or Windows.
