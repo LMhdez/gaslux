@@ -164,7 +164,7 @@ def verify_qmp_report(seal: QemuRunSeal, blocks: Any, vnc: Any, status: Any) -> 
     if not isinstance(vnc, dict) or vnc.get("enabled") is not True:
         raise Refusal("QMP VNC endpoint disabled or malformed")
     if vnc.get("clients") != []:
-        raise Refusal("Unbound graphical endpoint or another VNC client")
+        raise Refusal("Unbound graphical endpoint or another VNC client: " + str(len(vnc.get("clients", []))))
     if seal.vnc_socket is None:
         if vnc.get("host") != "127.0.0.1" or str(vnc.get("service")) != str(
             seal.vnc_port
