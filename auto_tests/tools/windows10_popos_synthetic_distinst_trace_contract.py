@@ -82,7 +82,7 @@ def synthetic_distinst_plan(base_sha256: str, child_name: str) -> dict:
                 "allowedOperations": ["format", "mount"],
             },
         ],
-        "expectedDistinstPhase": "partition-format-test",
+        "expectedDistinstPhase": "partition-reuse-test",
         "distinstExecutionAuthorized": False,
         "diskWritesAuthorizedForWindows": False,
         "windowsEspWritesAuthorized": False,
@@ -131,13 +131,31 @@ def _validate_identity(plan: dict, guest: dict) -> None:
             "distinst argv contains a writer mode or foreign target")
     uses = [argv[i + 1] for i, value in enumerate(argv[:-1]) if value == "--use"]
     require(uses == [
-        "/dev/vdc:1:fat32:mount=/boot/efi:flags=esp",
-        "/dev/vdc:2:ext4:mount=/",
+        "/dev/vdc:1:reuse:mount=/boot/efi",
+        "/dev/vdc:2:reuse:mount=/",
     ], "distinst --use list is incomplete, reordered or targets another disk")
+    prep = guest.get("syntheticPreformat")
+    require(type(prep) is dict
+            and prep.get("onlySyntheticOwnedPartitions") is True
+            and prep.get("performedBeforeDistinst") is True
+            and prep.get("gptByteIdentical") is True
+            and prep.get("filesystemsBefore") == {"1": None, "2": None}
+            and prep.get("filesystemsAfter") == {"1": "vfat", "2": "ext4"}
+            and prep.get("formatterCommands") == [
+                ["mkfs.fat", "-F", "32", "-n", "POPSYN", "/dev/vdc1"],
+                ["mkfs.ext4", "-F", "-q", "/dev/vdc2"],
+            ]
+            and type(prep.get("gptRegionHashesBefore")) is dict
+            and prep.get("gptRegionHashesAfter") == prep.get("gptRegionHashesBefore")
+            and set(prep["gptRegionHashesBefore"]) ==
+                {"pmbrAndPrimary", "secondary"}
+            and all(type(x) is str and SHA.fullmatch(x) is not None
+                    for x in prep["gptRegionHashesBefore"].values()),
+            "synthetic preformat is not bounded or GPT byte identity differs")
     require(guest.get("gptPrimaryBackupVerified") is True
             and guest.get("filesystemsAfter") == {"1": "vfat", "2": "ext4"}
-            and guest.get("distinstPhase") == "partition-format-test",
-            "post-distinst GPT/filesystem/phase witness missing")
+            and guest.get("distinstPhase") == "partition-reuse-test",
+            "post-distinst GPT/filesystem/reuse-phase witness missing")
 
 
 def _intervals(items: list[dict], *, source: str) -> list[tuple[int, int]]:
@@ -554,7 +572,7 @@ def classify_distinst_writes(
             "lengthBytes": count * SECTOR,
             "source": "external-qemu-virtio-blk-trace",
         })
-    require(qemu_events, "QEMU trace contains no actual distinst target writes")
+    require(qemu_events, "QEMU trace contains no synthetic target writes")
     for partition in plan["partitions"]:
         require(any(item["partitionIndex"] == partition["number"]
                     for item in qemu_events),
@@ -596,7 +614,7 @@ def classify_distinst_writes(
     }
     require(any(name in child_tools for name in ("mkfs.fat", "mkfs.vfat"))
             and any(name in child_tools for name in ("mkfs.ext4", "mke2fs")),
-            "tracefs did not observe both FAT32 and ext4 formatter processes")
+            "tracefs did not observe both explicit synthetic preformatters")
 
     return {
         "schemaVersion": 1,
@@ -604,7 +622,9 @@ def classify_distinst_writes(
         "distinstElfSha256": PINNED_DISTINST_SHA256,
         "distinstProcessPid": process["pid"],
         "distinstProcessIdentityVerified": True,
-        "distinstChildFormatterExecsObserved": True,
+        "distinstChildFormatterExecsObserved": False,
+        "syntheticPreformatFormatterExecsObserved": True,
+        "distinstReuseModeObserved": True,
         "qemuWriteEventCount": len(qemu_events),
         "qemuWriteBytes": sum(x["lengthBytes"] for x in qemu_events),
         "guestBlockBioQueueEventCount": len(bio),

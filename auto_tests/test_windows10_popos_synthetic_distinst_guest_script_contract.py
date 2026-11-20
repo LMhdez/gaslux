@@ -28,12 +28,23 @@ class SyntheticDistinstGuestScriptTests(unittest.TestCase):
                       self.python_source)
         self.assertIn('"--no-efi-vars", "--test"', self.python_source)
         self.assertIn('"--block", device', self.python_source)
-        self.assertIn('f"{device}:1:fat32:mount=/boot/efi:flags=esp"',
+        self.assertIn('f"{device}:1:reuse:mount=/boot/efi"',
                       self.python_source)
-        self.assertIn('f"{device}:2:ext4:mount=/"', self.python_source)
+        self.assertIn('f"{device}:2:reuse:mount=/"', self.python_source)
         for forbidden in ('"--modify-boot"', '"--new-table"', '"--new"',
                           '"--delete"', '"--move"'):
             self.assertNotIn(forbidden, self.python_source)
+
+    def test_reuse_variant_requires_preformat_and_byte_identical_gpt(self):
+        self.assertIn('formatter_commands = [', self.python_source)
+        self.assertIn('["mkfs.fat", "-F", "32", "-n", "POPSYN", device + "1"]',
+                      self.python_source)
+        self.assertIn('["mkfs.ext4", "-F", "-q", device + "2"]',
+                      self.python_source)
+        self.assertIn('gpt_bytes_before_formats == gpt_bytes_after_formats',
+                      self.python_source)
+        self.assertIn('preformat_proof = {', self.python_source)
+        self.assertNotIn('fat32:mount=/boot/efi', self.python_source)
 
     def test_target_identity_and_tracefs_fail_closed_before_writer(self):
         self.assertLess(self.python_source.index("def preflight()"),
@@ -55,7 +66,7 @@ class SyntheticDistinstGuestScriptTests(unittest.TestCase):
         self.assertIn('mountTraceEventsAvailable', self.python_source)
         self.assertIn('mountObservations', self.python_source)
         self.assertIn('"targetArgumentsResolved": False', self.python_source)
-        self.assertIn('"distinstPhase": "partition-format-test"', self.python_source)
+        self.assertIn('"distinstPhase": "partition-reuse-test"', self.python_source)
         self.assertIn('mount tracepoint availability changed after preflight',
                       self.python_source)
 

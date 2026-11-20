@@ -182,6 +182,18 @@ def compare_gpt(before: dict, after: dict) -> dict:
     }
 
 
+def gpt_region_hashes(device: str) -> dict:
+    """Hash PMBR/primary and backup GPT including unused entry bytes."""
+    with open(device, "rb", buffering=0) as f:
+        first = f.read(34 * SECTOR)
+        f.seek(EXPECTED_SIZE - 33 * SECTOR)
+        last = f.read(33 * SECTOR)
+    need(len(first) == 34 * SECTOR and len(last) == 33 * SECTOR,
+         "incomplete GPT byte-range read")
+    return {"pmbrAndPrimary": hashlib.sha256(first).hexdigest(),
+            "secondary": hashlib.sha256(last).hexdigest()}
+
+
 def filesystem_type(partition: str) -> str | None:
     obj = run(["blkid", "-p", "-s", "TYPE", "-o", "value", partition], check=False)
     return obj.stdout.strip() or None
@@ -320,11 +332,44 @@ def run_distinst() -> None:
     trace_file.write_text("")
     (TRACE_ROOT / "tracing_on").write_text("1\n")
     device = disk["device"]
+    # Synthetic-only: provision exactly the two target filesystems outside
+    # distinst, then use the System76 native "reuse" mode without FORMAT.
+    before_formats = {"1": filesystem_type(device + "1"),
+                      "2": filesystem_type(device + "2")}
+    need(before_formats == {"1": None, "2": None},
+         "synthetic preformat target is not blank")
+    gpt_bytes_before_formats = gpt_region_hashes(device)
+    formatter_commands = [
+        ["mkfs.fat", "-F", "32", "-n", "POPSYN", device + "1"],
+        ["mkfs.ext4", "-F", "-q", device + "2"],
+    ]
+    for command in formatter_commands:
+        need(shutil.which(command[0]) is not None,
+             "required synthetic formatter missing: " + command[0])
+        run(command, timeout=240)
+    after_formats = {"1": filesystem_type(device + "1"),
+                     "2": filesystem_type(device + "2")}
+    need(after_formats == {"1": "vfat", "2": "ext4"},
+         "synthetic preformat types do not match owned partitions")
+    gpt_bytes_after_formats = gpt_region_hashes(device)
+    need(gpt_bytes_before_formats == gpt_bytes_after_formats
+         and compare_gpt(gpt, parse_gpt(device))["unchanged"],
+         "synthetic preformat changed PMBR, GPT or partition identity")
+    preformat_proof = {
+        "formatterCommands": formatter_commands,
+        "filesystemsBefore": before_formats,
+        "filesystemsAfter": after_formats,
+        "gptRegionHashesBefore": gpt_bytes_before_formats,
+        "gptRegionHashesAfter": gpt_bytes_after_formats,
+        "gptByteIdentical": True,
+        "onlySyntheticOwnedPartitions": True,
+        "performedBeforeDistinst": True,
+    }
     argv = [
         "/usr/bin/distinst", "--squashfs", squash, "--remove", remove,
         "--hostname", "gaslux-pop-synth", "--block", device,
-        "--use", f"{device}:1:fat32:mount=/boot/efi:flags=esp",
-        "--use", f"{device}:2:ext4:mount=/",
+        "--use", f"{device}:1:reuse:mount=/boot/efi",
+        "--use", f"{device}:2:reuse:mount=/",
         "--no-efi-vars", "--test",
     ]
     output_path = Path("/run/gaslux-pop-distinst-output.log")
@@ -422,7 +467,7 @@ def run_distinst() -> None:
          "authentic distinst --test failed or exceeded 600-second limit")
     types = {"1": filesystem_type(device + "1"), "2": filesystem_type(device + "2")}
     need(types == {"1": "vfat", "2": "ext4"},
-         "distinst did not create expected FAT32/EXT4 filesystems")
+         "distinst reuse did not preserve preformatted FAT32/EXT4 filesystems")
     need(not run(["findmnt", "-rn", "-S", device + "1"], check=False).stdout.strip()
          and not run(["findmnt", "-rn", "-S", device + "2"], check=False).stdout.strip(),
          "distinst --test left synthetic target mounted")
@@ -471,7 +516,8 @@ def run_distinst() -> None:
         "gptPrimaryBackupUnchanged": gpt_delta["unchanged"],
         "gptBefore": gpt, "gptAfter": gpt_after, "gptDiff": gpt_delta,
         "filesystemsAfter": types,
-        "distinstPhase": "partition-format-test",
+        "syntheticPreformat": preformat_proof,
+        "distinstPhase": "partition-reuse-test",
         "mountObservations": mount_observations,
         "distinstProcess": {
             "pid": pid, "exePath": exe_path, "exeSha256": exe_hash,

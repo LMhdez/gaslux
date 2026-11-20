@@ -24,8 +24,8 @@ ARGV = [
     "/cdrom/casper_pop-os_24.04_amd64_intel_20/filesystem.manifest-remove",
     "--hostname", "gaslux-pop-synth",
     "--block", "/dev/vdc",
-    "--use", "/dev/vdc:1:fat32:mount=/boot/efi:flags=esp",
-    "--use", "/dev/vdc:2:ext4:mount=/",
+    "--use", "/dev/vdc:1:reuse:mount=/boot/efi",
+    "--use", "/dev/vdc:2:reuse:mount=/",
     "--no-efi-vars", "--test",
 ]
 
@@ -44,7 +44,22 @@ def fixtures():
         "targetDevice": "/dev/vdc",
         "gptPrimaryBackupVerified": True,
         "filesystemsAfter": {"1": "vfat", "2": "ext4"},
-        "distinstPhase": "partition-format-test",
+        "distinstPhase": "partition-reuse-test",
+        "syntheticPreformat": {
+            "onlySyntheticOwnedPartitions": True,
+            "performedBeforeDistinst": True,
+            "gptByteIdentical": True,
+            "filesystemsBefore": {"1": None, "2": None},
+            "filesystemsAfter": {"1": "vfat", "2": "ext4"},
+            "formatterCommands": [
+                ["mkfs.fat", "-F", "32", "-n", "POPSYN", "/dev/vdc1"],
+                ["mkfs.ext4", "-F", "-q", "/dev/vdc2"],
+            ],
+            "gptRegionHashesBefore": {"pmbrAndPrimary": "c" * 64,
+                                      "secondary": "d" * 64},
+            "gptRegionHashesAfter": {"pmbrAndPrimary": "c" * 64,
+                                     "secondary": "d" * 64},
+        },
         "distinstProcess": {
             "pid": 1234,
             "exePath": "/usr/bin/distinst",
@@ -104,7 +119,9 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
     def test_two_partition_distinst_writes_correlate_and_never_authorize_windows(self):
         result = observe()
         self.assertTrue(result["distinstProcessIdentityVerified"])
-        self.assertTrue(result["distinstChildFormatterExecsObserved"])
+        self.assertFalse(result["distinstChildFormatterExecsObserved"])
+        self.assertTrue(result["syntheticPreformatFormatterExecsObserved"])
+        self.assertTrue(result["distinstReuseModeObserved"])
         self.assertTrue(result["qemuGuestWriteCoverageCorrelated"])
         self.assertTrue(result["allObservedWritesWithinSyntheticPopPartitions"])
         self.assertEqual(result["partitionWriteEventCounts"], {"1": 1, "2": 1})
@@ -113,6 +130,34 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         self.assertFalse(result["diskWritesAuthorizedForWindows"])
         self.assertFalse(result["windowsEspWritesAuthorized"])
         self.assertFalse(result["productionInstallationAuthorized"])
+
+    def test_reuse_preformat_attestation_is_fail_closed(self):
+        for mutation in (
+            lambda g: g.pop("syntheticPreformat"),
+            lambda g: g["syntheticPreformat"].update(gptByteIdentical=False),
+            lambda g: g["syntheticPreformat"]["gptRegionHashesAfter"].update(
+                secondary="e" * 64),
+            lambda g: g["syntheticPreformat"].update(
+                formatterCommands=[["mkfs.fat", "-F", "32", "/dev/vda1"]]),
+            lambda g: g["syntheticPreformat"].update(
+                filesystemsAfter={"1": "ntfs", "2": "ext4"}),
+        ):
+            _, guest, _, _ = fixtures()
+            mutation(guest)
+            with self.subTest(mutation=str(mutation)), self.assertRaises(DiskAuditError):
+                observe(guest=guest)
+
+    def test_old_formatting_cli_and_relabelled_partition_are_refused(self):
+        _, guest, _, _ = fixtures()
+        argv = guest["distinstProcess"]["argv"]
+        argv[argv.index("/dev/vdc:1:reuse:mount=/boot/efi")] = (
+            "/dev/vdc:1:fat32:mount=/boot/efi:flags=esp")
+        with self.assertRaises(DiskAuditError):
+            observe(guest=guest)
+        _, guest, _, _ = fixtures()
+        guest["rootPartuuid"] = "00000000-0000-0000-0000-000000000000"
+        with self.assertRaises(DiskAuditError):
+            observe(guest=guest)
 
     def test_gpt_gap_backup_gpt_and_out_of_disk_writes_are_refused(self):
         bad = [

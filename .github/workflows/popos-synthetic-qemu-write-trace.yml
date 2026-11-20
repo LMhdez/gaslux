@@ -103,7 +103,8 @@ jobs:
           bash -n auto_tests/tools/windows10_popos_synthetic_distinst_guest.sh
           python3 auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
           echo 'REAL QEMU: known-write monitor passed before authentic distinst --test on a separate disposable synthetic QCOW2. No Windows disk attached.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'distinst --test formats/mounts only synthetic ESP/root; it is NOT a dry-run or full system install. Windows writer/ESP authorization remains DENIED; no dual-boot or rollback claim.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'SYNTHETIC VARIANT: explicit preformat of owned ESP/root, followed by authentic distinst --use reuse --test. PMBR/GPT bytes and independent QEMU write-set must pass; no Windows disk attached.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'distinst --test is NOT a dry-run or full system install. Windows writer/ESP authorization remains DENIED; no dual-boot or rollback claim.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain only bounded JSON/sector trace/sidecar, never raw or QCOW2
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
