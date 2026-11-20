@@ -7,6 +7,7 @@ NOT a security boundary against an attacker controlling sudo or CI source.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import select
@@ -64,6 +65,11 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
     dedicated_uid = pwd.getpwnam(service_user).pw_uid
     if dedicated_uid == os.geteuid() or dedicated_uid == 0:
         raise Refusal("Dedicated UID must differ from original runner and root")
+    sudo_probe = subprocess.run(
+        ["sudo", "-n", "true"], check=False, capture_output=True, timeout=8
+    ).returncode == 0
+    if not sudo_probe:
+        raise Refusal("Expected GitHub runner sudo capability was not available")
     # The root folder is 0700 owned by dedicated_uid. These are supplementary
     # barriers, not a defense against privileged original-runner escalation.
     info = private_root.stat()
@@ -240,6 +246,35 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
             ["sudo", "-n", "chown", "-R", f"{os.geteuid()}:{os.getegid()}", str(public_evidence)],
             check=True,
             timeout=15,
+        )
+        staged_source = private_root / "auto_tests/installer_observer/lab_probe.py"
+        staged_source_hash = hashlib.sha256(staged_source.read_bytes()).hexdigest()
+        public_evidence.joinpath("trust_boundary_status.json").write_bytes(
+            canonical(
+                {
+                    "classification": "same-host-github-hosted-runner-not-independent",
+                    "runner_sudo_available": sudo_probe,
+                    "runner_can_assume_dedicated_uid": True,
+                    "runner_can_connect_qmp": all(
+                        item["sudo_impersonated_qmp_connect"] for item in evidence
+                    ),
+                    "runner_can_connect_rfb": all(
+                        item["sudo_impersonated_rfb_connect"] for item in evidence
+                    ),
+                    "runner_can_modify_staged_controller_source": all(
+                        item["sudo_impersonated_uid_can_write_staged_source"]
+                        for item in evidence
+                    ),
+                    "staged_controller_source_sha256": staged_source_hash,
+                    "source_signature_verified": False,
+                    "controller_policy_signature_verified": False,
+                    "independent_control_domain": False,
+                    "criterion_A": False,
+                    "criterion_C": True,
+                    "production_service_installed": False,
+                    "guest_input_count": 0,
+                }
+            )
         )
         public_evidence.joinpath("external_uid_probes.json").write_bytes(
             canonical(
