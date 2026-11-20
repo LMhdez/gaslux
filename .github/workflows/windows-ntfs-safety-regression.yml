@@ -37,7 +37,7 @@ jobs:
       - name: Install NTFS-3G on the disposable runner
         run: |
           sudo -n apt-get update
-          sudo -n apt-get install -y ntfs-3g
+          sudo -n apt-get install -y ntfs-3g strace
       - name: Compile the integration probe
         run: python3 -m py_compile auto_tests/tools/ntfs3g_loopback_integration.py
       - name: Exercise real NTFS-3G ro,norecover on an owned loopback image
