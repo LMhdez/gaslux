@@ -80,7 +80,7 @@ def classify_trace(trace: str, plan: dict, *, reported_serial: str,
                    installer_elf_sha256: str | None,
                    trace_untruncated: bool = True) -> dict:
     """Every guest request must be represented. Return no Windows authority."""
-    require(type(trace) is str and 0 < len(trace) <= 4_000_000
+    require(type(trace) is str and 0 < len(trace) <= 16_000_000
             and type(plan) is dict and plan.get("schemaVersion") == 1
             and plan.get("scenario") == "isolated-pop-synthetic-qemu-smoke"
             and plan.get("windowsDiskAttached") is False
