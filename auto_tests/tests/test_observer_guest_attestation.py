@@ -282,3 +282,44 @@ def test_replay_guard_missing_and_invalid():
         )
     assert missing.value.code == "REPLAY_GUARD_MISSING"
     refused("REPLAY_GUARD_INVALID", policy, evidence, guard=object())
+
+
+def test_valid_controller_ed25519_does_not_validate_invalid_tpm_quote():
+    from auto_tests.tests.test_observer_remote_verifier import (
+        make_request,
+        make_response,
+        trusted_material,
+        verify_one,
+        verifier,
+    )
+
+    private, trust = trusted_material()
+    request = make_request()
+    signed_response = make_response(private, request)
+    authenticated = verify_one(verifier(trust), request, signed_response)
+    assert authenticated.controller_signature_verified is True
+    assert authenticated.guest_attestation_verified_locally is False
+    _, policy, evidence = fixture()
+    corrupt = evidence.signature[:-1] + bytes((evidence.signature[-1] ^ 1,))
+    refused("QUOTE_SIGNATURE_INVALID", policy, replace(evidence, signature=corrupt))
+
+
+def test_valid_tpm_quote_does_not_validate_invalid_controller_ed25519():
+    from auto_tests.tests.test_observer_remote_verifier import (
+        make_request,
+        make_response,
+        trusted_material,
+        verify_one,
+        verifier,
+    )
+    from auto_tests.installer_observer.remote_verifier import VerificationRefused
+
+    _, policy, evidence = fixture()
+    assert run(policy, evidence).quote_signature_valid
+    private, trust = trusted_material()
+    request = make_request()
+    signed_response = make_response(private, request)
+    signed_response["signature"]["value"] = "A" * 86
+    with pytest.raises(VerificationRefused) as caught:
+        verify_one(verifier(trust), request, signed_response)
+    assert caught.value.code == "signature-invalid"
