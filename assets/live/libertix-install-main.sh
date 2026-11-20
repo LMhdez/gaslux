@@ -271,6 +271,11 @@ ISO_SOURCE="/mnt/windows/$ISO_WINDOWS_REL"
 
 mount_windows_ro_with_retry "$WINDOWS_PART" /mnt/windows
 wait_for_iso_source_or_die "$ISO_SOURCE" "$ISO_WINDOWS_REL"
+# Windows has already created the owned staging partition. Before altering its
+# geometry or filesystem, independently check the pinned ISO and payload.
+preflight_legacy_installer_iso_or_die \
+    "$ISO_SOURCE" "$ISO_SHA256" "$DISTRIBUTION_ID" "$DISTRIBUTION_OS_RELEASE_ID" || \
+    die "installer ISO or Mint/Zorin payload failed pre-write verification"
 PASSWORD_HASH_WINDOWS_REL=$(windows_path_to_relative "$PASSWORD_HASH_WINDOWS_PATH")
 PASSWORD_HASH_SOURCE="/mnt/windows/$PASSWORD_HASH_WINDOWS_REL"
 [ -f "$PASSWORD_HASH_SOURCE" ] || die "protected account secret is missing from Windows"

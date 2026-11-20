@@ -1,0 +1,120 @@
+name: Mint 22.3 real Casper kernel and login in disposable OVMF VM (NO INSTALL)
+
+on:
+  push:
+    branches:
+      - test/mint223-official-ovmf-live-boot
+    paths:
+      - '.github/workflows/mint-223-live-ovmf-boot.yml'
+      - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
+      - 'release-config.json'
+  pull_request:
+    paths:
+      - '.github/workflows/mint-223-live-ovmf-boot.yml'
+      - 'auto_tests/tools/gaslux_candidate_live_boot.sh'
+      - 'release-config.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mint223-real-live-boot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      MINT_SHA: a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4
+      MINT_BYTES: '3091660800'
+      MINT_SOURCE: https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso
+      GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: /tmp/gaslux-mint223/evidence/guest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require exact catalog identity and scratch capacity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          releases = json.loads(Path("release-config.json").read_text(encoding="utf-8"))
+          mint = [x for x in releases["distributions"] if x["id"] == "mint"]
+          assert len(mint) == 1, "Mint selection ambiguous"
+          m = mint[0]
+          assert m["name"] == "Linux Mint 22.3 Cinnamon"
+          assert m["osReleaseId"] == "linuxmint"
+          assert m["isoInstaller"] == os.environ["MINT_SOURCE"]
+          assert m["isoInstallerSizeBytes"] == int(os.environ["MINT_BYTES"])
+          assert m["isoInstallerSha256"] == os.environ["MINT_SHA"]
+          assert shutil.disk_usage("/tmp").free > 6 * 1024**3
+          print("Mint 22.3 Cinnamon identity and pinned ISO metadata verified")
+          PY
+      - name: Install private QEMU/OVMF, GRUB and read-only tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aria2 qemu-system-x86 ovmf grub-common grub-efi-amd64-bin \
+            mtools dosfstools gdisk util-linux
+      - name: Download exact official Mint ISO and verify SHA-256 and size
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/gaslux-mint223/evidence
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=4 --retry-wait=10 --connect-timeout=30 --timeout=90 \
+            --check-integrity=true --checksum="sha-256=$MINT_SHA" \
+            --dir=/tmp/gaslux-mint223 --out=mint.iso "$MINT_SOURCE"
+          test -f /tmp/gaslux-mint223/mint.iso
+          test ! -L /tmp/gaslux-mint223/mint.iso
+          test "$(stat -c %s /tmp/gaslux-mint223/mint.iso)" = "$MINT_BYTES"
+          printf '%s  %s\n' "$MINT_SHA" /tmp/gaslux-mint223/mint.iso | sha256sum -c -
+          printf 'source=%s\nsha256=%s\nbytes=%s\n' \
+            "$MINT_SOURCE" "$MINT_SHA" "$MINT_BYTES" \
+            > /tmp/gaslux-mint223/evidence/official-source.txt
+      - name: Reject corrupt Mint media and unknown backend before QEMU
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+          if bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            mint /tmp/gaslux-mint223/mint.iso \
+            0000000000000000000000000000000000000000000000000000000000000000; then
+            echo "::error::Mint guest boot accepted wrong SHA-256"
+            exit 1
+          fi
+          if bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            invalid /tmp/gaslux-mint223/mint.iso "$MINT_SHA"; then
+            echo "::error::Mint guest boot accepted unsupported backend"
+            exit 1
+          fi
+          echo "Rejected SHA mismatch and unknown distro without creating VM"
+      - name: Boot real Mint Casper under OVMF and demand kernel and serial login
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash auto_tests/tools/gaslux_candidate_live_boot.sh \
+            mint /tmp/gaslux-mint223/mint.iso "$MINT_SHA"
+          test -s "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/serial.log"
+          test -s "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/qemu.rc"
+          grep -Eiq 'Linux version|Freeing unused kernel|systemd\[1\]' \
+            "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/serial.log"
+          grep -Eiq '(^|[^A-Za-z])login:|login: $' \
+            "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/serial.log"
+          printf '%s\n' \
+            'PASS: real Linux Mint 22.3 live kernel and userspace reached OVMF VM serial login' \
+            'NOT TESTED: installed Mint, Windows boot, dual boot, updates, uninstall or rollback' \
+            > /tmp/gaslux-mint223/evidence/result.txt
+      - name: Publish guest-boot evidence only, never ISO/disk image
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mint223-official-ovmf-live-login-evidence
+          path: /tmp/gaslux-mint223/evidence/
+          if-no-files-found: warn
+          retention-days: 14
