@@ -150,7 +150,7 @@ def test_unsafe_media_firmware_source_and_target_are_refused(path, value):
 def test_legacy_source_never_proves_atomic_payload_or_signature():
     record = example_observation(proposal())["installer"]
     audit = assess_legacy_media(record)
-    assert audit["localHashMatchesHistoricalPin"] is True
+    assert audit["reportedLocalHashMatchesHistoricalPin"] is True
     assert audit["historicalChecksumIndependentlyAuthenticated"] is False
     assert audit["payloadBoundToIso"] is False
     assert audit["installationAuthorized"] is False
