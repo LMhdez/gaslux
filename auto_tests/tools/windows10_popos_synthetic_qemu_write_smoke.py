@@ -175,11 +175,11 @@ device = Path("/dev/disk/by-id/virtio-GASLUX_POP_SYNTH").resolve(strict=True)
 assert str(device).startswith("/dev/vd")
 with device.open("r+b", buffering=0) as disk:
     disk.seek(96*1024*1024)
-    data = b"GASLUX_POP_SYNTHETIC_QEMU_WRITE_SMOKE".ljust(512, b"\x5a")
-    assert disk.write(data) == 512
+    data = b"GASLUX_POP_SYNTHETIC_QEMU_WRITE_SMOKE".ljust(4096, b"\x5a")
+    assert disk.write(data) == 4096
     os.fsync(disk.fileno())
     disk.seek(96*1024*1024)
-    assert disk.read(512) == data
+    assert disk.read(4096) == data
 PY
 printf 'GASLUX_POP_SYNTH_KVM_WRITE_SMOKE=1\n'
 """, encoding="utf-8")
@@ -292,7 +292,7 @@ def extract_smoke(decoded: Path) -> bytes:
         source.seek(SMOKE_OFFSET)
         data = source.read(SMOKE_LENGTH)
     require(len(data) == SMOKE_LENGTH
-            and data == b"GASLUX_POP_SYNTHETIC_QEMU_WRITE_SMOKE".ljust(512, b"\x5a"),
+            and data == b"GASLUX_POP_SYNTHETIC_QEMU_WRITE_SMOKE".ljust(4096, b"\x5a"),
             "independent sparse QCOW2 conversion lacks expected guest sector write")
     return data
 
