@@ -8,7 +8,6 @@ expectations must be provisioned by the caller through an independent channel.
 from __future__ import annotations
 
 import base64
-from contextlib import closing
 import hashlib
 import json
 import os
@@ -16,6 +15,7 @@ import sqlite3
 import stat
 import threading
 from collections.abc import Mapping
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -315,7 +315,11 @@ class SQLiteReplayGuard:
         fd = os.open(self.path, flags, 0o600)
         try:
             metadata = os.fstat(fd)
-            if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != os.getuid()
+                or metadata.st_nlink != 1
+            ):
                 raise ValueError("Replay database must be a regular file owned by this user")
             os.fchmod(fd, 0o600)
         finally:
@@ -357,7 +361,7 @@ class SQLiteReplayGuard:
         session_expires_at: datetime | None,
     ) -> None:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 if connection.execute(
                     "SELECT 1 FROM consumed WHERE nonce = ? OR request_id = ?",
@@ -540,8 +544,9 @@ class RemoteResponseVerifier:
         result_hash = _sha256(_canonical(result))
         if response_value["result_sha256"] != result_hash:
             _refuse("result-integrity-failed", "Canonical result digest does not match")
-        if result["kind"] == "state" and len(_canonical(result["snapshot"])) > _MAX_STATE_BYTES:
-            _refuse("limit-exceeded", "State snapshot exceeds 64 KiB")
+        if result["kind"] == "state":
+            if len(_canonical(result["snapshot"])) > _MAX_STATE_BYTES:
+                _refuse("limit-exceeded", "State snapshot exceeds 64 KiB")
         if result["kind"] == "frame":
             self._verify_frame(result)
 
@@ -555,6 +560,10 @@ class RemoteResponseVerifier:
             _refuse("expired", "Response has expired or has an invalid expiry interval")
         if expires_at - issued_at > _MAX_RESPONSE_LIFETIME:
             _refuse("expiry-invalid", "Response validity exceeds the 30-second protocol limit")
+        if result["kind"] == "state":
+            observed_at = _parse_time(result["observed_at"], "observed_at")
+            if observed_at > issued_at + self.clock_skew or observed_at < issued_at - _MAX_RESPONSE_LIFETIME:
+                _refuse("observation-time-invalid", "State observation is outside the response validity window")
 
         session_expires_at: datetime | None = None
         if operation == "session.identify" and response_value["status"] == "ok":
