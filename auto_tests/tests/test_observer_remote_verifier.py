@@ -181,7 +181,6 @@ def verify_one(v, request, response, *, deadline=None):
         now=NOW,
     )
 
-
 def test_valid_signed_response_verifies_separate_trust_dimensions():
     private, store = trusted_material()
     request = make_request()
@@ -196,7 +195,6 @@ def test_valid_signed_response_verifies_separate_trust_dimensions():
     assert verified.guest_attestation_verified_locally is False
     assert verified.distribution_id == "q4os"
 
-
 def test_missing_trust_anchor_is_always_refused():
     private, _ = trusted_material()
     request = make_request()
@@ -210,14 +208,12 @@ def test_missing_trust_anchor_is_always_refused():
         lambda: verify_one(verifier(TrustStore({})), request, response),
     )
 
-
 def test_altered_signature_is_refused():
     private, store = trusted_material()
     request = make_request()
     response = make_response(private, request)
     response["signature"]["value"] = "A" * 86
     assert_refused("signature-invalid", lambda: verify_one(verifier(store), request, response))
-
 
 def test_noncanonical_256_bit_nonce_is_refused():
     private, store = trusted_material()
@@ -228,7 +224,6 @@ def test_noncanonical_256_bit_nonce_is_refused():
         lambda: verify_one(verifier(store), request, response),
     )
 
-
 def test_nonce_replay_is_refused_after_first_acceptance():
     private, store = trusted_material()
     request = make_request()
@@ -236,7 +231,6 @@ def test_nonce_replay_is_refused_after_first_acceptance():
     v = verifier(store)
     verify_one(v, request, response)
     assert_refused("replay", lambda: verify_one(v, request, response))
-
 
 def test_expired_response_is_refused():
     private, store = trusted_material()
@@ -249,7 +243,6 @@ def test_expired_response_is_refused():
     response = make_response(private, request, mutate=expire)
     assert_refused("expired", lambda: verify_one(verifier(store), request, response))
 
-
 def test_caller_deadline_is_enforced():
     private, store = trusted_material()
     request = make_request()
@@ -261,7 +254,6 @@ def test_caller_deadline_is_enforced():
         ),
     )
 
-
 def test_deadline_equal_to_current_time_is_expired():
     private, store = trusted_material()
     request = make_request()
@@ -270,7 +262,6 @@ def test_deadline_equal_to_current_time_is_expired():
         "deadline-exceeded",
         lambda: verifier(store).verify(request, response, deadline=NOW, now=NOW),
     )
-
 
 def test_transaction_mismatch_is_refused():
     private, store = trusted_material()
@@ -284,7 +275,6 @@ def test_transaction_mismatch_is_refused():
         "request-binding-failed",
         lambda: verify_one(verifier(store), request, mismatch_response),
     )
-
 
 def test_session_mismatch_is_refused_after_session_creation():
     private, store = trusted_material()
@@ -322,7 +312,6 @@ def test_sequence_must_advance_monotonically():
         lambda: verify_one(v, repeated_sequence, repeated_response),
     )
 
-
 def test_attestation_absent_is_refused_even_when_signature_is_valid():
     private, store = trusted_material()
 
@@ -341,7 +330,6 @@ def test_attestation_absent_is_refused_even_when_signature_is_valid():
         "guest-attestation-required",
         lambda: verify_one(verifier(store), request, response),
     )
-
 
 def test_attestation_verifier_and_anchor_must_be_pinned():
     private, store = trusted_material()
@@ -374,7 +362,6 @@ def test_controller_identity_and_artifact_are_pinned(field, value, code):
     response = make_response(private, request, mutate=tamper)
     assert_refused(code, lambda: verify_one(verifier(store), request, response))
 
-
 def test_collector_identity_is_pinned():
     private, store = trusted_material()
 
@@ -388,7 +375,6 @@ def test_collector_identity_is_pinned():
         lambda: verify_one(verifier(store), request, response),
     )
 
-
 def test_distribution_and_guest_identity_are_pinned():
     private, store = trusted_material()
 
@@ -401,7 +387,6 @@ def test_distribution_and_guest_identity_are_pinned():
         "distribution-identity-mismatch",
         lambda: verify_one(verifier(store), request, response),
     )
-
 
 def test_result_digest_is_checked_independently_of_signature():
     private, store = trusted_material()
@@ -417,7 +402,6 @@ def test_result_digest_is_checked_independently_of_signature():
         lambda: verify_one(verifier(store), request, response),
     )
 
-
 def test_rfc8785_is_required_not_python_json_sorting():
     private, store = trusted_material()
 
@@ -431,7 +415,6 @@ def test_rfc8785_is_required_not_python_json_sorting():
         "signature-invalid",
         lambda: verify_one(verifier(store), request, response),
     )
-
 
 def test_framebuffer_content_hash_is_checked():
     private, store = trusted_material()
@@ -447,7 +430,6 @@ def test_framebuffer_content_hash_is_checked():
         lambda: verify_one(verifier(store), request, response),
     )
 
-
 def test_duplicate_json_properties_are_refused():
     private, store = trusted_material()
     request = b'{"protocol":1,"protocol":1}'
@@ -459,7 +441,6 @@ def test_duplicate_json_properties_are_refused():
         ),
     )
 
-
 def test_durable_replay_guard_survives_verifier_reconstruction(tmp_path):
     private, store = trusted_material()
     guard = SQLiteReplayGuard(tmp_path / "replay.sqlite3")
@@ -470,7 +451,6 @@ def test_durable_replay_guard_survives_verifier_reconstruction(tmp_path):
     reopened = SQLiteReplayGuard(tmp_path / "replay.sqlite3")
     assert_refused("replay", lambda: verify_one(verifier(store, reopened), request, response))
 
-
 def test_durable_replay_guard_refuses_symlink_database(tmp_path):
     target = tmp_path / "real.sqlite3"
     target.touch(mode=0o600)
@@ -478,7 +458,6 @@ def test_durable_replay_guard_refuses_symlink_database(tmp_path):
     link.symlink_to(target)
     with pytest.raises(ValueError, match="symlinks"):
         SQLiteReplayGuard(link)
-
 
 def test_signed_broker_refusal_is_returned_as_refusal_not_success():
     private, store = trusted_material()
