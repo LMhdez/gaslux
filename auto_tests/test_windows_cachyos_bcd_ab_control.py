@@ -1,7 +1,6 @@
 """Pure contracts for the matched Windows-only/CachyOS BCD A/B experiment."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import sys
 import tempfile
@@ -82,7 +81,7 @@ class BcdAbControlContracts(unittest.TestCase):
         sample = """Available trace events:
 bdrv_co_pwritev
 bdrv_co_preadv
-qcow2_cache_entry_flush
+qcow2_cache_entry_write
 virtio_blk_req_complete
 usb_packet_state
 """
