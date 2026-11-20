@@ -107,8 +107,6 @@ def test_actual_safety_refuses_equivalent_size_foreign_gpt(tmp_path, monkeypatch
             writer.seek(512 + 56)
             writer.write(b"DIFFERENT-GUID-12")
         # CRC rejection is also a valid refusal, before identity equality.
-        from libertix_disk_identity_gate import inspect_gpt_image
-
         with pytest.raises(DiskIdentityError):
             inspect_gpt_image(foreign, logical_sector_size=512)
         return
