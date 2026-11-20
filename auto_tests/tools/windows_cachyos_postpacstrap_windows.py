@@ -177,8 +177,20 @@ def verify_windows_with_installed_root(
     require(hashlib.sha256(after_front + after_back).hexdigest()
             == plan["gptWindowsSha256"],
             "postboot GPT windows no longer match signed plan")
-    require(read_windows_file_hashes(overlay) == plan["windowsHashes"],
-            "Windows ESP/BCD/winload/WinRE hashes changed after Windows re-entry")
+    postboot_hashes = read_windows_file_hashes(overlay)
+    protected_keys = (
+        "espBootManagerSha256", "espBcdSha256",
+        "windowsLoaderSha256", "winreImageSha256",
+    )
+    require(type(plan.get("windowsHashes")) is dict
+            and set(plan["windowsHashes"]) == set(protected_keys)
+            and type(postboot_hashes) is dict
+            and set(postboot_hashes) == set(protected_keys),
+            "postboot protected Windows hash manifest missing or unexpected")
+    for protected_key in protected_keys:
+        require(postboot_hashes[protected_key] == plan["windowsHashes"][protected_key],
+                "Windows protected file hash changed after Windows re-entry: "
+                + protected_key)
     print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_GPT_AND_WINDOWS_FILES_VERIFIED=1", flush=True)
     after_root = _verify_installed_root(overlay, plan, plan["runId"])
     print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_NATIVE_ROOT_VERIFIED=1", flush=True)
