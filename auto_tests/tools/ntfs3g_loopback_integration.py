@@ -140,6 +140,7 @@ def main() -> int:
     original_stat: os.stat_result | None = None
     hash_before: str | None = None
     mount_verified = False
+    mount_command_succeeded = False
     detached = False
     result: dict[str, Any] = {
         "status": "FAILED",
@@ -152,7 +153,7 @@ def main() -> int:
     try:
         descriptor = os.open(image, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
         try:
-            os.ftruncate(descriptor, 64 * 1024 * 1024)
+            os.ftruncate(descriptor, 128 * 1024 * 1024)
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
@@ -161,6 +162,13 @@ def main() -> int:
         loop_device = command(["losetup", "--find", "--show", str(image)]).stdout.strip()
         prove_owned_loop(loop_device, image, original_stat)
         loop_owned = True
+        result.update(
+            {
+                "loopDevice": loop_device,
+                "backingFileVerified": True,
+                "backingImageBytes": original_stat.st_size,
+            }
+        )
 
         formatter = shutil.which("mkfs.ntfs") or shutil.which("mkntfs")
         if not formatter:
@@ -168,9 +176,11 @@ def main() -> int:
         command([formatter, "-F", "-Q", "-L", "GASLUX_TEST", loop_device])
         prove_owned_loop(loop_device, image, original_stat)
         hash_before = sha256_file(image)
+        result["sha256Before"] = hash_before
 
         mountpoint.mkdir(mode=0o700)
         command(["mount", "-t", "ntfs-3g", "-o", "ro,norecover", loop_device, str(mountpoint)])
+        mount_command_succeeded = True
         mounted = find_mounts(mountpoint)
         observed = validate_real_mount(mounted, mountpoint, loop_device)
         mount_verified = True
@@ -193,6 +203,8 @@ def main() -> int:
         if loop_device and loop_owned and original_stat is not None:
             try:
                 current_mounts = find_mounts(mountpoint) if mountpoint.exists() else []
+                if mount_command_succeeded and not current_mounts:
+                    raise RuntimeError("Mount command succeeded but findmnt cannot prove its state")
                 if current_mounts:
                     if len(current_mounts) != 1:
                         raise RuntimeError("Refusing to unmount an ambiguous mount state")
@@ -224,6 +236,16 @@ def main() -> int:
                 cleanup_errors.append(str(error))
         elif loop_device and not loop_owned:
             cleanup_errors.append("Loop ownership could not be proven; device and image were left untouched")
+        elif loop_device is None:
+            try:
+                if mountpoint.exists():
+                    mountpoint.rmdir()
+                if image.exists():
+                    image.unlink()
+                workspace.rmdir()
+                result["temporaryResourcesRemoved"] = True
+            except Exception as error:
+                cleanup_errors.append(f"Temporary cleanup failed before loop allocation: {error}")
 
         if detached and not cleanup_errors:
             try:
