@@ -372,6 +372,109 @@ def verify_synthetic_gpt_unchanged(base: Path, decoded: Path) -> dict:
     return out
 
 
+def distinst_console(sock: Path, stream: bytearray, nvram: Path):
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        until = time.monotonic() + 30
+        while True:
+            try:
+                connection.connect(str(sock))
+                break
+            except (FileNotFoundError, ConnectionRefusedError):
+                require(time.monotonic() < until,
+                        "synthetic distinst QEMU serial unavailable")
+                time.sleep(.2)
+        wait_for(connection, stream, re.compile(rb"Linux version|systemd\[1\]"),
+                 timeout_seconds=200)
+        wait_for(connection, stream, re.compile(rb"Startup finished in"),
+                 timeout_seconds=350)
+        for trial in range(10):
+            start = len(stream)
+            connection.sendall(b"printf 'GASLUX_POP_LIVE_SHELL_READY\\n'\r")
+            try:
+                wait_for(connection, stream, READY, timeout_seconds=20, start=start)
+                break
+            except GuestProbeError as exc:
+                if trial == 9 or "timed out" not in str(exc):
+                    raise
+        start = len(stream)
+        connection.sendall(
+            b"mkdir -p /run/gaslux-pop-lab && "
+            b"mount -t vfat -o ro /dev/disk/by-label/GASLXSYN "
+            b"/run/gaslux-pop-lab && "
+            b"cd /run/gaslux-pop-lab && sha256sum -c lab.sha256 && "
+            b"printf 'GASLUX_POP_SYNTH_DISTINST_CONTROL_MOUNTED=1\\n'\r"
+        )
+        wait_for(connection, stream,
+                 re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_CONTROL_MOUNTED=1\r?\n"),
+                 timeout_seconds=90, start=start)
+        start = len(stream)
+        connection.sendall(
+            b"cd /run/gaslux-pop-lab && bash distinst-test.sh --preflight\r"
+        )
+        wait_for(connection, stream,
+                 re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_PREFLIGHT_READY=1\r?\n"),
+                 timeout_seconds=120, start=start)
+        normalized_stream = normalized(bytes(stream))
+        preflight_match = PREFLIGHT_JSON.search(normalized_stream)
+        require(preflight_match is not None,
+                "synthetic distinst preflight JSON witness absent")
+        preflight = json.loads(preflight_match.group(1))
+        require(preflight.get("diskSerial") == DISTINST_SERIAL
+                and preflight.get("diskGuid") == DISTINST_GUID
+                and preflight.get("targetDevice") == "/dev/vdc"
+                and preflight.get("tracefsAvailable") is True
+                and preflight.get("distinstElf", {}).get("exeSha256")
+                == PINNED_DISTINST_SHA256,
+                "guest preflight identity/ELF/tracefs mismatch")
+        nvram_before_distinst = sha(nvram)
+        start = len(stream)
+        command = (
+            f"GASLUX_POP_DISTINST_SYNTHETIC_CONSENT={DISTINST_CONSENT} "
+            "bash /run/gaslux-pop-lab/distinst-test.sh --run\r"
+        )
+        connection.sendall(command.encode("ascii"))
+        wait_for(connection, stream, DISTINST_TERMINAL,
+                 timeout_seconds=700, start=start)
+        terminal_text = normalized(bytes(stream[start:]))
+        refused = re.search(
+            rb"(?m)^GASLUX_POP_SYNTH_DISTINST_REFUSED=([^\r\n]+)", terminal_text)
+        result_match = DISTINST_RESULT_JSON.search(normalized(bytes(stream)))
+        # Always shut down the disposable VM cleanly, including partial failure.
+        sync_start = len(stream)
+        connection.sendall(
+            b"sync && printf 'GASLUX_POP_SYNTH_DISTINST_SYNC_DONE=1\\n'\r"
+        )
+        wait_for(connection, stream,
+                 re.compile(rb"(?m)^GASLUX_POP_SYNTH_DISTINST_SYNC_DONE=1\r?\n"),
+                 timeout_seconds=60, start=sync_start)
+        connection.sendall(b"systemctl poweroff -i\r")
+        until = time.monotonic() + 150
+        while time.monotonic() < until:
+            connection.settimeout(2)
+            try:
+                data = connection.recv(16384)
+            except TimeoutError:
+                continue
+            if not data:
+                break
+            stream.extend(data)
+            require(len(stream) <= 12_000_000,
+                    "synthetic distinst serial evidence exceeds 12MiB")
+        else:
+            raise GuestProbeError("synthetic distinst VM did not power off")
+        if refused:
+            raise GuestProbeError(
+                "synthetic distinst guest refused: "
+                + refused.group(1).decode("utf-8", errors="replace")[:350])
+        require(result_match is not None,
+                "synthetic distinst result JSON absent")
+        guest = json.loads(result_match.group(1))
+        return preflight, guest, nvram_before_distinst
+    finally:
+        connection.close()
+
+
 def run(evidence: Path) -> dict:
     hosted()
     require(evidence.is_dir() and not evidence.is_symlink()
