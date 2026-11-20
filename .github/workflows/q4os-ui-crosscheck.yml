@@ -1,0 +1,101 @@
+name: Q4OS independent 2-VM artifact proof (NO VM / NO DISK WRITES)
+on:
+  push:
+    branches:
+      - docs/distro-one-shot-playbooks-20261119
+    paths:
+      - 'docs/distro-backends/evidence/q4os-manifest.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-original-artifacts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb
+          path: q4os-lab
+          persist-credentials: false
+      - name: Prepare exact original run and artifact identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C q4os-lab rev-parse HEAD)" = 6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb
+          run="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          doc=json.loads(Path('docs/distro-backends/evidence/q4os-manifest.json').read_text())
+          assert doc['status']=='two-vm-verified'
+          assert len(doc['runs'])==2
+          assert doc['runs'][0]['runId']==doc['runs'][1]['runId']
+          assert all(item['result']=='success' for item in doc['runs'])
+          print(doc['runs'][0]['runId'])
+          PY
+          )"
+          gh api "repos/LMhdez/gaslux/actions/runs/$run" |
+            jq -e '.conclusion=="success" and .head_branch=="docs/distro-one-shot-playbooks-20261119" and .event=="push"' >/dev/null
+          mkdir -p "$RUNNER_TEMP/q4os-pair/replica1" "$RUNNER_TEMP/q4os-pair/replica2"
+          for replica in 1 2; do
+            gh run download "$run" -R LMhdez/gaslux --name "q4os-official-ui-replica-$replica-$run" --dir "$RUNNER_TEMP/q4os-pair/replica$replica"
+          done
+          echo "Q4OS_AUTHENTICATED_SOURCE_RUN=$run" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Rehash every original screenshot, replay independent RGB gates, compare two guests and doc manifest
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install Pillow jsonschema
+          python3 auto_tests/tools/q4os_ui_pair_verify.py \
+            "$PWD/docs/distro-backends/ui-maps/q4os.json" \
+            "$PWD/q4os-lab/auto_tests/tools/gaslux_q4os_vnc_visual_gate.py" \
+            "$RUNNER_TEMP/q4os-pair/replica1" \
+            "$RUNNER_TEMP/q4os-pair/replica2" |
+            tee "$RUNNER_TEMP/q4os-pair/two-vm-independent-verification.log"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import os
+          base=Path(os.environ["RUNNER_TEMP"])/"q4os-pair"
+          raw=(base/"two-vm-independent-verification.log").read_text().strip()
+          assert raw.startswith("Q4OS_TWO_VM_PROOF=")
+          data=json.loads(raw.split("=",1)[1])
+          docs=json.loads(Path("docs/distro-backends/evidence/q4os-manifest.json").read_text())
+          assert docs["status"]=="two-vm-verified"
+          assert docs["stateCountVerifiedInTwoGuests"]==data["stateCountVerifiedInTwoGuests"]==9
+          assert docs["transitionCountVerifiedInTwoGuests"]==data["transitionCountVerifiedInTwoGuests"]==8
+          assert data["runId"]==docs["runs"][0]["runId"]==docs["runs"][1]["runId"]
+          for replica in data["replicas"]:
+              doc=next(r for r in docs["runs"] if r["replica"]==replica["replica"])
+              assert doc["result"]=="success"
+              assert len(doc["screenshots"])==9
+              assert len(doc["transitions"])==8
+              assert {row["state"]:row["sha256"] for row in doc["screenshots"]}==replica["screenshots"]
+          (base/"two-vm-independent-verification.json").write_text(
+              json.dumps(data,sort_keys=True,indent=2)+"\n"
+          )
+          assert data["nativeCalamaresInstallExecuted"] is False
+          assert data["windowsDiskAttached"] is False
+          assert data["summaryVisited"] is False
+          print("PASS: two independent original Q4OS VMs, 9 screens and 8 transitions each; no install.")
+          PY
+          (cd "$RUNNER_TEMP/q4os-pair" &&
+            sha256sum two-vm-independent-verification.* > pair-summary.sha256)
+      - name: Publish read-only independent verification summary (not ISO, VM disk or screenshots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-two-vm-independent-verification-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/q4os-pair/two-vm-independent-verification.log
+            ${{ runner.temp }}/q4os-pair/two-vm-independent-verification.json
+            ${{ runner.temp }}/q4os-pair/pair-summary.sha256
+          if-no-files-found: warn
+          retention-days: 14
