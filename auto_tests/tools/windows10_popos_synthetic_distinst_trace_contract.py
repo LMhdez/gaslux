@@ -9,7 +9,10 @@ from __future__ import annotations
 import hashlib
 import re
 
-from windows_x64_installed_gpt_ro_audit import DiskAuditError, require
+try:
+    from windows_x64_installed_gpt_ro_audit import DiskAuditError, require
+except ImportError:
+    from tools.windows_x64_installed_gpt_ro_audit import DiskAuditError, require
 
 SECTOR = 512
 DISK_SIZE = 8 * 1024**3
