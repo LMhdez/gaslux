@@ -371,6 +371,11 @@ def inspect_embedded_payload(
     image_id = str(image.get("id", "")).removeprefix("sha256:")
     image_dir = Path(images_path).parent / image_id
     manifest_path = str(image_dir / "manifest")
+    config_paths = sorted(
+        path
+        for path in paths
+        if image_id in Path(path).parts and Path(path).name in {"config", "config.json"}
+    )
     diagnostics["imageRecord"] = {
         "id": image_id,
         "names": sorted(image.get("names") or []),
@@ -379,9 +384,12 @@ def inspect_embedded_payload(
         "layer": image.get("layer"),
         "manifestPath": manifest_path,
         "manifestPresent": manifest_path in paths,
+        "configBlobPaths": config_paths,
     }
     if manifest_path not in paths:
         fail("Embedded containers/storage image manifest is missing")
+    if len(config_paths) > 1:
+        fail("Embedded containers/storage image has ambiguous config blob paths")
     manifest_bytes = _unsquashfs(squashfs, "-cat", manifest_path, binary=True)
     blob_evidence = verify_embedded_manifest(
         image,
@@ -389,15 +397,25 @@ def inspect_embedded_payload(
         expected_manifest_digest=PAYLOAD_DIGEST,
         expected_config_digest=CONFIG_DIGEST,
     )
+    embedded_config_report = None
+    if config_paths:
+        embedded_config_bytes = _unsquashfs(squashfs, "-cat", config_paths[0], binary=True)
+        embedded_config_report = verify_config_blob(
+            embedded_config_bytes,
+            expected_config_digest=CONFIG_DIGEST,
+            expected_version=PAYLOAD_VERSION,
+        )
     result = {
         "image": PAYLOAD_IMAGE,
         "names": sorted(set(image.get("names") or [])),
         **blob_evidence,
         "manifestPath": manifest_path,
         "imagesJsonPath": images_path,
+        "configBlobRetrievedFromISO": bool(config_paths),
+        "embeddedConfigBlobVerification": embedded_config_report,
         "isoBooted": False,
         "readOnlySquashfsInspection": True,
-        "configBlobSource": "GHCR immutable OCI digest; verified separately against embedded manifest config digest",
+        "configBlobSource": "ISO and GHCR immutable digest" if config_paths else "GHCR immutable OCI digest; embedded manifest config digest and storage image ID independently match",
     }
     if diagnostics_path is not None:
         diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
