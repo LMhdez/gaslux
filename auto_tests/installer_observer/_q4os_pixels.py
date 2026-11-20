@@ -2,9 +2,11 @@
 
 Run the original predicates on an already verified RGB framebuffer.
 """
+
 from __future__ import annotations
 
 import hashlib
+
 from PIL import Image
 
 # Exact (x1,y1,x2,y2) and RGB pixel SHA of the desktop Install Q4OS icon.
@@ -235,5 +237,3 @@ def verified_native_calamares_users(screen: Image.Image) -> bool:
             _CALAMARES_USERS_DISABLED_NEXT,
         )
     )
-
-
