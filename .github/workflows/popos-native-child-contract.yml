@@ -18,6 +18,9 @@ on:
       - auto_tests/test_windows10_popos_safety_attestation_adapter.py
       - auto_tests/tools/windows10_popos_distinst_readonly_observer.py
       - auto_tests/test_windows10_popos_distinst_readonly_observer.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
       - docs/POP_OS_NATIVE_WRITESET_LAB.md
       - auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
       - auto_tests/tools/windows10_popos_native_realwin10_firstboot_guest.sh
@@ -37,6 +40,9 @@ on:
       - auto_tests/test_windows10_popos_safety_attestation_adapter.py
       - auto_tests/tools/windows10_popos_distinst_readonly_observer.py
       - auto_tests/test_windows10_popos_distinst_readonly_observer.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
   workflow_dispatch:
 
 permissions:
@@ -61,6 +67,8 @@ jobs:
               windows10_popos_native_write_set.py \
               windows10_popos_safety_attestation_adapter.py \
               windows10_popos_distinst_readonly_observer.py \
+              windows10_popos_synthetic_qemu_trace_contract.py \
+              windows10_popos_synthetic_qemu_write_smoke.py \
               windows10_popos_genuine_live_console.py \
               windows10_popos_genuine_live_same_cow_vm.py \
               windows10_popos_genuine_live_guest_probe.py \
@@ -91,6 +99,7 @@ jobs:
               test_windows10_popos_native_write_set.py \
               test_windows10_popos_safety_attestation_adapter.py \
               test_windows10_popos_distinst_readonly_observer.py \
+              test_windows10_popos_synthetic_qemu_trace_contract.py \
               test_windows10_popos_real_live_contract.py \
               test_windows10_popos_live_readonly_gpt_probe.py \
               test_windows10_popos_native_readonly_handoff_candidate.py \
