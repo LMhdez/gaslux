@@ -77,6 +77,9 @@ def run(port: Path, transcript: bytearray) -> bytes:
                 b"cd /run/gaslux-pop-lab && "
                 b"GASLUX_POP_LIVE_GPT_RO_CONSENT="
                 b"I_ACCEPT_DISPOSABLE_GUEST_GPT_READ_ONLY "
+                b"GASLUX_POP_SIGNED_ISO_GPG_VERIFIED=1 "
+                b"GASLUX_POP_DISTINST_READONLY_CONSENT="
+                b"I_ACCEPT_READONLY_DISTINST_ELF_HELP_INSPECTION "
                 b"python3 -B windows10_popos_genuine_live_guest_probe.py\r",
                 RESULT, 190,
             ),
