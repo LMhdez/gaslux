@@ -19,7 +19,7 @@ SHA = "a" * 64
 NV = "b" * 64
 TRACE = (
     "12345@42.01:qemu virtio_blk_handle_write vdev 0x10 "
-    "req 0x20 sector 196608 nsectors 1\n"
+    "req 0x20 sector 196608 nsectors 8\n"
 )
 
 
@@ -106,6 +106,7 @@ class QemuSyntheticTraceTest(unittest.TestCase):
 
     def test_wrong_extent_and_partial_install_declined(self):
         cases = [
+            "virtio_blk_handle_write vdev 0x10 sector 196608 nsectors 1\n",
             "virtio_blk_handle_write vdev 0x10 sector 196608 nsectors 2\n",
             "virtio_blk_handle_write vdev 0x10 sector 8193 nsectors 1\n",
             TRACE + "virtio_blk_handle_write vdev 0x10 sector 8193 nsectors 1\n",
