@@ -48,17 +48,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
-          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
-          python -m ruff format --config auto_tests/pyproject.toml assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
-          printf 'GASLUX_RUFF_FORMATTED_ADAPTER_START\\n'
-          base64 -w0 assets/live/gaslux_q4os_safety_adapter.py
-          printf '\\nGASLUX_RUFF_FORMATTED_TESTS_START\\n'
-          base64 -w0 auto_tests/tests/test_q4os_safety_adapter.py
-          printf '\\nGASLUX_RUFF_FORMATTED_ACTUAL_START\\n'
-          base64 -w0 auto_tests/tests/test_q4os_safety_actual_contract.py
-          printf '\\nGASLUX_RUFF_FORMATTED_END\\n' auto_tests/tests/test_q4os_safety_actual_contract.py
-          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
+          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py
       - name: Fetch pinned upstream Safety #267 (never into working tree)
         shell: bash
         run: |
@@ -77,7 +69,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE"
-          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py \
+          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py \
             --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/pytest.xml"
           test -s "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/checkpoint-verified.json"
           python - <<'PY'
@@ -106,6 +98,19 @@ jobs:
             auto_tests/tests/test_q4os_snapshot_recovery.py \
             auto_tests/tests/test_q4os_vm_target_plan.py \
             --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/regression-pytest.xml"
+      - name: Confirm exact committed source remained untouched throughout tests
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code -- \
+            assets/live/gaslux_q4os_windows_boundary.py \
+            assets/live/gaslux_q4os_safety_adapter.py \
+            auto_tests/tests/test_q4os_windows_boundary.py \
+            auto_tests/tests/test_q4os_safety_adapter.py \
+            auto_tests/tests/test_q4os_safety_actual_contract.py \
+            auto_tests/tests/test_q4os_ci_no_mutating_formatter.py \
+            .github/workflows/gaslux-q4os-windows-boundary.yml
       - name: Preserve synthetic-only evidence (no disk or ISO artifacts)
         if: always()
         uses: actions/upload-artifact@v4
