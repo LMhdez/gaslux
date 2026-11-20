@@ -83,11 +83,17 @@ def session(mapping, pictures, *, authority=None, scale=1.0, initial=None):
     second = Frame(target, scale, a, surface, frozenset(edge.after.requirements))
     transport = FakeTransport(first, second)
     policy = SafetyPolicy(
-        digest(mapping.document), a, (Grant(edge.source, edge.target, locator_target),),
-        q4os.REGION, (Method.POINT,),
+        digest(mapping.document),
+        a,
+        (Grant(edge.source, edge.target, locator_target),),
+        q4os.REGION,
+        (Method.POINT,),
     )
     machine = StateMachine(
-        replace(mapping, scale=1.0), policy, transport, q4os.recognize,
+        replace(mapping, scale=1.0),
+        policy,
+        transport,
+        q4os.recognize,
         initial or edge.source,
     )
     return edge, machine, transport
@@ -223,9 +229,7 @@ def test_ambiguous_locator_never_clicks(mapping, pictures):
     first = fake.frames[0]
     duplicate = Candidate("Next", "button", target.box)
     fake.frames[0] = replace(
-        first, surface=Surface(
-            controls=(duplicate, duplicate), supported=frozenset({Method.TEXT})
-        )
+        first, surface=Surface(controls=(duplicate, duplicate), supported=frozenset({Method.TEXT}))
     )
     machine.policy = replace(machine.policy, methods=(Method.TEXT,))
     assert not machine.step(edge.id).passed
@@ -288,6 +292,7 @@ def test_duplicate_json_properties_and_missing_manifest_envelope(tmp_path):
     with pytest.raises(Refusal):
         parse(b'{"sha256":"a","sha256":"b"}')
     from auto_tests.installer_observer.evidence import unseal
+
     with pytest.raises(Refusal):
         unseal({"manifest": {}})
     path = tmp_path / "empty.json"
@@ -326,6 +331,7 @@ def test_manifest_tampering_and_missing_frame_refused(mapping, tmp_path):
     with pytest.raises(Refusal):
         list(q4os.recordings(mapping, file, q4os.ORIGINALS))
     from auto_tests.installer_observer.replay import RecordedState, Recording, replay
+
     first = RecordedState("calamares-welcome", "missing.png", "0" * 64)
     incomplete = Recording("x", 1, 1, tmp_path, (first,), (), (), "sha")
     with pytest.raises(Refusal):
@@ -339,7 +345,9 @@ def test_original_replay_four_replicas_and_summary_timing():
     assert [len(session["frames"]) for session in sessions].count(11) == 2
     assert [len(session["frames"]) for session in sessions].count(9) == 2
     times = sorted(
-        step["elapsed_ms"] for session in sessions for step in session["steps"]
+        step["elapsed_ms"]
+        for session in sessions
+        for step in session["steps"]
         if step["final_state"] == "calamares-summary"
     )
     assert times == [3279, 3328]
@@ -402,7 +410,11 @@ def test_observation_only_transport_refuses_any_click_and_checks_attestor(pictur
             return identity
 
     transport = ReadOnlyVncTransport(
-        Reader(), Attestor(), identity, mapping.resolution, events.append,
+        Reader(),
+        Attestor(),
+        identity,
+        mapping.resolution,
+        events.append,
     )
     frame = transport.capture(99999999999.0)
     assert frame.scale is None
