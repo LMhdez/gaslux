@@ -120,7 +120,7 @@ def validate_real_mount(filesystems: list[dict[str, Any]], mountpoint: Path, loo
         or "rw" in tokens
         or any(
             token not in allowed
-            and not re.fullmatch(r"(?:user_id|group_id|blksize)=\\d+", token)
+            and not re.fullmatch(r"(?:user_id|group_id|blksize)=\d+", token)
             for token in tokens
         )
     ):
