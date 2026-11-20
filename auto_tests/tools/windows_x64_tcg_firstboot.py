@@ -1414,6 +1414,13 @@ def main(argv: list[str] | None = None) -> int:
                                                     if isinstance(error, PostPacstrapWindowsError):
                                                         safe_reason = str(error)
                                                         side_by_side["failureReason"] = safe_reason
+                                                        if (error.diagnostics is not None
+                                                                and error.diagnostics.get(
+                                                                    "windowsPostPacstrapSerialSha256"
+                                                                )):
+                                                            side_by_side["windowsPostPacstrapSerialSha256"] = (
+                                                                error.diagnostics["windowsPostPacstrapSerialSha256"]
+                                                            )
                                                         # The verifier supplies only bounded hashes,
                                                         # byte offsets and boolean evidence; never
                                                         # original BCD hive bytes or guest secrets.
