@@ -170,3 +170,61 @@ def classify_distinst_trace(proposal: dict, events: list[dict]) -> dict:
             "allWritesObserved": False,
             "safetyAttestationAuthenticated": False,
             "distinstExecutionAuthorized": False}
+
+
+def interpret_safety267_no_writer(proposal: dict, decision: dict | None,
+                                  safety_plan: dict, plan_bytes: bytes,
+                                  vm_id: str) -> dict:
+    """Consume EXACT PR #267 ACCEPT_NO_WRITER output as diagnostic only.
+
+    No HMAC keys/signatures are accepted by this adapter: the trusted
+    verifier/plan authentication must be performed externally by Safety.
+    In particular, #267 supports allocate-free-space outside existing
+    partitions, not formatting Pop partitions #5/#6, and grants NO WRITER.
+    """
+    require(type(proposal) is dict
+            and proposal.get("distinstExecutionAuthorized") is False
+            and type(proposal.get("transactionId")) is str
+            and type(decision) is dict
+            and set(decision) == {
+                "decision", "transactionId", "planSha256", "vmId", "writeCount"
+            },
+            "missing or noncanonical Safety #267 no-writer decision")
+    require(type(safety_plan) is dict and type(plan_bytes) is bytes
+            and json.dumps(safety_plan, sort_keys=True, separators=(",", ":"),
+                           allow_nan=False).encode() == plan_bytes
+            and type(vm_id) is str and len(vm_id) >= 16,
+            "untrusted Safety #267 plan bytes or VM binding")
+    tx_id = proposal["transactionId"].replace("-", "")
+    require(len(tx_id) == 32
+            and safety_plan.get("planId") == tx_id
+            and safety_plan.get("firmware") == "uefi"
+            and type(safety_plan.get("disk")) is dict
+            and safety_plan["disk"].get("partitionStyle") == "GPT"
+            and safety_plan["disk"].get("partitionTableId")
+            == "gpt:" + proposal["disk"]["guid"]
+            and safety_plan["disk"].get("sizeBytes")
+            == proposal["disk"]["sizeBytes"]
+            and safety_plan["disk"].get("logicalSectorSizeBytes")
+            == proposal["disk"]["logicalSectorBytes"],
+            "Safety #267 transaction or disk mismatch")
+    require(decision["decision"] == "ACCEPT_NO_WRITER"
+            and decision["transactionId"] == tx_id
+            and decision["vmId"] == vm_id
+            and decision["planSha256"]
+            == hashlib.sha256(plan_bytes).hexdigest()
+            and type(decision["writeCount"]) is int
+            and decision["writeCount"] > 0,
+            "Safety #267 decision origin, plan or challenge mismatch")
+    return {
+        "schemaVersion": 1,
+        "sourceContract": "Safety PR #267 ACCEPT_NO_WRITER",
+        "decisionConformsToNoWriterShape": True,
+        "evidenceCryptographicallyAuthenticatedByThisAdapter": False,
+        "existingPopPartitionsWithinSafety267AllocateFreeSpace": False,
+        "nativePartitionFormatterAllowed": False,
+        "distinstExecutionAuthorized": False,
+        "productionInstallationAuthorized": False,
+        "reason": "ACCEPT_NO_WRITER authorizes no writer; #267 limits operation "
+                  "to unpartitioned free-space allocation, not Pop #5/#6 formatting",
+    }
