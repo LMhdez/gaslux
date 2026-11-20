@@ -1431,6 +1431,17 @@ def main(argv: list[str] | None = None) -> int:
                                                               + safe_reason, flush=True)
                                                     print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_FAILED="
                                                           + type(error).__name__, flush=True)
+                                                try:
+                                                    from windows_cachyos_bcd_ab_control import (
+                                                        tpm_state_tree_sha256,
+                                                    )
+                                                    side_by_side["treatmentTpmPostBootStateTreeSha256"] = (
+                                                        tpm_state_tree_sha256(treatment_tpm_state)
+                                                    )
+                                                except Exception as tpm_error:
+                                                    side_by_side["treatmentTpmPostBootEvidenceFailureType"] = (
+                                                        type(tpm_error).__name__
+                                                    )
                                                 # Compare only read-only BCD hashes/offsets from
                                                 # the independent Windows-only and treatment arms.
                                                 # Missing evidence remains an explicit blocker.
