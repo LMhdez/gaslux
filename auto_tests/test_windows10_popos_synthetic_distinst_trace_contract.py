@@ -218,9 +218,9 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
             "0.3.2~1758837686~24.04~e395b7c")
         guest["distinstProcess"]["sourceRevisionHint"] = "e395b7c"
         gpt_writes = (
-            "virtio_blk_handle_write vdev 0x10 req 0x30 sector 0 nsectors 40\\n"
+            "virtio_blk_handle_write vdev 0x10 req 0x30 sector 0 nsectors 40\n"
             f"virtio_blk_handle_write vdev 0x10 req 0x31 sector "
-            f"{DISK_SIZE // 512 - 40} nsectors 40\\n"
+            f"{DISK_SIZE // 512 - 40} nsectors 40\n"
         )
         result = diagnose_qemu_write_set(plan, trace + gpt_writes, guest)
         self.assertFalse(result["writeSetMatch"])
@@ -255,9 +255,9 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         plan, guest, _, _ = fixtures()
         with self.assertRaises(DiskAuditError):
             diagnose_qemu_write_set(
-                plan, "virtio_blk_handle_write malformed\\n", guest)
+                plan, "virtio_blk_handle_write malformed\n", guest)
         with self.assertRaises(DiskAuditError):
-            diagnose_qemu_write_set(plan, "pflash_data_write system.flash1\\n", guest)
+            diagnose_qemu_write_set(plan, "pflash_data_write system.flash1\n", guest)
 
     def test_plan_is_synthetic_and_inert(self):
         plan, _, _, _ = fixtures()
