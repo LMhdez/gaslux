@@ -89,7 +89,7 @@ def propose_native_write_set(
             "missing authenticated-shaped transaction and prewrite recovery claims")
     expected_digest = _digest({
         "before": before, "after": after, "plan": plan,
-        "media": media, "guest": guest,
+        "media": media, "guest": guest, "checkpoint": checkpoint,
         "transactionId": transaction["transactionId"],
     })
     require(transaction["handoffSha256"] == expected_digest,
