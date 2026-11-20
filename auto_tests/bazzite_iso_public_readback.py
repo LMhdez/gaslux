@@ -176,7 +176,6 @@ def validate_attestation_report(
     }
 
 
-
 def verify_embedded_manifest(
     image: dict[str, Any],
     manifest_bytes: bytes,
