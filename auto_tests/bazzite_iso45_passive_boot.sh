@@ -83,7 +83,7 @@ qemu-system-x86_64 \
   -device ich9-ahci,id=ahci -device ide-cd,bus=ahci.0,drive=optical \
   -drive "file=$overlay,if=none,format=qcow2,readonly=on,id=owned" \
   -device virtio-blk-pci,drive=owned,serial=GLXBAZRO001 \
-  -serial "file=$EVIDENCE/iso45-serial.txt" \
+  -serial "file:$EVIDENCE/iso45-serial.txt" \
   -monitor "unix:$SOCK,server=on,wait=off" \
   > "$EVIDENCE/iso45-qemu-stdout.txt" 2> "$EVIDENCE/iso45-qemu-stderr.txt" &
 qpid=$!

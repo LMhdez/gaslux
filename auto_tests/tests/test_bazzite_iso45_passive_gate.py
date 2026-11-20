@@ -168,3 +168,14 @@ def test_observed_installation_page_without_control_yields_a():
 def test_ocr_without_running_guest_is_not_proof():
     result = classify(["Bazzite installation destination"], guest_running=False)
     assert result["result"] == "C"
+
+
+def test_qemu_serial_file_backend_uses_qemu_chardev_syntax():
+    script = Path(__file__).resolve().parents[1] / "bazzite_iso45_passive_boot.sh"
+    source = script.read_text(encoding="utf-8")
+    assert '-serial "file:$EVIDENCE/iso45-serial.txt"' in source
+    assert '-serial "file=$EVIDENCE/iso45-serial.txt"' not in source
+    assert "-nic none" in source
+    assert "-S -no-reboot" in source
+    assert "readonly=on,id=owned" in source
+    assert "readonly=on,id=optical" in source
