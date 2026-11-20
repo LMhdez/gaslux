@@ -9,12 +9,12 @@ from auto_tests.bazzite_iso_public_readback import (
     PAYLOAD_IMAGE,
     PREDICATE_TYPE,
     ReadbackError,
+    inspect_embedded_payload,
     parse_checksum,
     validate_attestation_report,
     validate_metadata,
     validate_run_metadata,
     verify_embedded_blobs,
-    inspect_embedded_payload,
 )
 
 
