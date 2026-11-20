@@ -38,7 +38,7 @@ def parse_checksum(data: bytes, iso_name: str = ISO_NAME) -> str:
         raise ReadbackError("Checksum sidecar is not ASCII") from exc
     matches = []
     for line in text.splitlines():
-        match = re.fullmatch(r"([0-9a-fA-F]{64})\\s+\\*?(.+)", line.strip())
+        match = re.fullmatch(r"([0-9a-fA-F]{64})\s+\*?(.+)", line.strip())
         if match and Path(match.group(2)).name == iso_name:
             matches.append(match.group(1).lower())
     if len(matches) != 1:
@@ -57,7 +57,7 @@ def validate_metadata(data: bytes) -> dict[str, str]:
     if value.get("attestation_url") != expected_url:
         raise ReadbackError("ISO metadata points to an unexpected attestation")
     if not isinstance(value.get("build_date"), str) or not re.fullmatch(
-        r"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z", value["build_date"]
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", value["build_date"]
     ):
         raise ReadbackError("ISO metadata build_date is missing or malformed")
     return {
@@ -129,8 +129,13 @@ def validate_attestation_report(
 
 def _unsquashfs(squashfs: Path, *args: str, binary: bool = False):
     try:
+        command = (
+            ["unsquashfs", "-cat", str(squashfs), *args[1:]]
+            if args and args[0] == "-cat"
+            else ["unsquashfs", *args, str(squashfs)]
+        )
         return subprocess.run(
-            ["unsquashfs", *args, str(squashfs)],
+            command,
             check=True,
             capture_output=True,
             text=not binary,
