@@ -32,11 +32,11 @@ class ReadonlyDistinstObserver(unittest.TestCase):
                          "8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5")
 
     def test_help_result_pins_exact_argv_and_bounded_real_option_shape(self):
-        cli = ("Usage: distinst [OPTIONS]\\n\\nOptions:\\n"
-               "  -b, --block <disk>       Select disk\\n"
-               "  -u, --use <part>         Reuse partition\\n"
-               "      --no-efi-vars        Do not mount efivars\\n"
-               "      --modify-boot        Change boot variables\\n")
+        cli = ("Usage: distinst [OPTIONS]\n\nOptions:\n"
+               "  -b, --block <disk>       Select disk\n"
+               "  -u, --use <part>         Reuse partition\n"
+               "      --no-efi-vars        Do not mount efivars\n"
+               "      --modify-boot        Change boot variables\n")
         with patch.object(obs, "require_readonly_distinst_environment"), \
              patch.object(obs.subprocess, "run",
                           return_value=SimpleNamespace(
