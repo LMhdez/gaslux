@@ -93,6 +93,11 @@ class QemuSyntheticTraceTest(unittest.TestCase):
             ("sizeBytes", 1),
             ("logicalSectorBytes", 4096),
             ("serial", "OTHER"),
+            ("diskGuid", "00000000-0000-0000-0000-000000000000"),
+            ("esp", {"partitionIndex": 1, "partuuid": ROOT,
+                     "offsetBytes": 1024**2, "lengthBytes": 64 * 1024**2}),
+            ("root", {"partitionIndex": 2, "partuuid": ESP,
+                      "offsetBytes": 128 * 1024**2, "lengthBytes": 2 * 1024**3}),
         ):
             plan = copy.deepcopy(self.plan)
             plan[change[0]] = change[1]
