@@ -5,6 +5,7 @@ All screenshot coordinates and crop hashes were measured from two official
 SHA-256-verified 1280x800 VMs in Actions #44641233701. This file never
 sends input or writes an installation/partition. Unknown screens fail closed.
 """
+
 from __future__ import annotations
 
 import hashlib
