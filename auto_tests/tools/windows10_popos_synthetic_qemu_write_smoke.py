@@ -493,6 +493,7 @@ def run_distinst_partition_test(
     qemu_args = [
         "qemu-system-x86_64",
         "-machine", "q35,accel=kvm,usb=off",
+        "-nodefaults",
         "-cpu", "host",
         "-m", "4096",
         "-smp", "2",
@@ -510,7 +511,6 @@ def run_distinst_partition_test(
         "-monitor", "none",
         "-display", "none",
         "-no-reboot",
-        "-no-shutdown",
         "-net", "none",
         "-boot", "order=c,strict=on",
         "-trace", f"events={event_file},file={trace}",
