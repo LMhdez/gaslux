@@ -28,6 +28,14 @@ python3 -B /run/gaslux-pop-lab/windows10_popos_native_prewrite_guest.py ||
   fail 'native Windows owner GPT/signed handoff refused before any write'
 printf 'GASLUX_POP_NATIVE_INSTALL_PREFLIGHT_OK=1\n' > /dev/ttyS0
 
+# HARD DENIAL: the upstream System76 disk.commit() / partition change path
+# has not been proved to stay inside the six-GPT owned Pop byte ranges.
+# Prewrite validation is diagnostic only and MUST NOT grant formatter access.
+# Remove only after trusted Safety identity, signed write-set, real ELF trace,
+# durable recovery and QEMU negative fault tests are independently reviewed.
+fail 'GASLUX_POP_NATIVE_WRITESET_UNPROVEN: refuse all System76 disk writes'
+
+
 # Host QEMU only attaches private native child writable. Guest uniquely binds
 # serial, disk geometry and GUIDs. Windows partitions 1-4 are never mounted.
 byid=/dev/disk/by-id/virtio-GASLUX_POP_WIN10_COW
