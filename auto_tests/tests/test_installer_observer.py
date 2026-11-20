@@ -203,10 +203,11 @@ def test_session_identity_divergence_never_clicks(mapping, pictures, tamper):
     assert fake.inputs == []
 
 
-def test_install_and_non_next_action_never_click(mapping, pictures):
+@pytest.mark.parametrize("attempt", [Action.PREVIEW, "Install", "os.system('rm -rf /')"])
+def test_install_and_non_next_action_never_click(mapping, pictures, attempt):
     edge, machine, fake = session(mapping, pictures)
     edges = tuple(
-        replace(t, action=Action.PREVIEW) if t.id == edge.id else t
+        replace(t, action=attempt) if t.id == edge.id else t
         for t in machine.mapping.transitions
     )
     machine.mapping = replace(machine.mapping, transitions=edges)
