@@ -35,7 +35,12 @@ CHILD = "gaslux-pop-synthetic-write-child.qcow2"
 BASE = "gaslux-pop-synthetic-raw-base.img"
 P1GUID = "ae228a25-0ecd-4f62-83b4-88dd48b88edd"
 P2GUID = "f81482ad-e0e1-491a-8ea5-9c246f82ded8"
-MARKER = re.compile(rb"(?m)^GASLUX_POP_SYNTH_KVM_WRITE_SMOKE=1\r?$")
+MARKER = re.compile(rb"(?m)^GASLUX_POP_SYNTH_KVM_WRITE_SMOKE=1\\r?$")
+REFUSAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_WRITE_REFUSED=([^\\r\\n]+)\\r?$")
+RESULT = re.compile(
+    rb"(?m)^GASLUX_POP_SYNTH_(?:KVM_WRITE_SMOKE=1|"
+    rb"WRITE_REFUSED=[^\\r\\n]+)\\r?$"
+)
 
 
 def call(*cmd: str, timeout: int = 120, **kw):
@@ -138,11 +143,21 @@ menuentry 'Gaslux ONLY SYNTHETIC write smoke (no distinst)' {
     guest = work / "synthetic-smoke.sh"
     guest.write_text(r"""#!/usr/bin/env bash
 set -Eeuo pipefail
-[[ "$(systemd-detect-virt --vm)" == qemu || "$(systemd-detect-virt --vm)" == kvm ]] || exit 30
-[[ "$(/usr/bin/lsblk -dn -o SERIAL /dev/disk/by-id/virtio-GASLUX_POP_SYNTH | tr -d '[:space:]')" == "GASLUX_POP_SYNTH" ]] || exit 31
-[[ "$(blockdev --getsize64 /dev/disk/by-id/virtio-GASLUX_POP_SYNTH)" == 8589934592 ]] || exit 32
-[[ "$(blockdev --getss /dev/disk/by-id/virtio-GASLUX_POP_SYNTH)" == 512 ]] || exit 33
-[[ -z "$(lsblk -dn -o NAME,TYPE,RO | awk '$2=="disk" && $3=="0" {print $1}' | grep -v -x "$(basename "$(readlink -f /dev/disk/by-id/virtio-GASLUX_POP_SYNTH)")" || true)" ]] || exit 34
+fail() { printf 'GASLUX_POP_SYNTH_WRITE_REFUSED=%s\n' "$*"; exit 1; }
+trap 'rc=$?; printf "GASLUX_POP_SYNTH_WRITE_REFUSED=guest_script_exit_%s\n" "$rc"' ERR
+virt="$(systemd-detect-virt --vm)"
+printf 'GASLUX_SYNTH_GUEST_VM_TYPE=%s\n' "$virt"
+[[ "$virt" == qemu || "$virt" == kvm ]] || fail 'not_qemu_kvm'
+byid=/dev/disk/by-id/virtio-GASLUX_POP_SYNTH
+[[ -b "$byid" ]] || fail 'synthetic_by_id_device_absent'
+serial="$(/usr/bin/lsblk -dn -o SERIAL "$byid" | tr -d '[:space:]')"
+printf 'GASLUX_SYNTH_GUEST_SERIAL_SEEN=%s\n' "$serial"
+[[ "$serial" == "GASLUX_POP_SYNTH" ]] || fail 'virtio_serial_mismatch'
+[[ "$(blockdev --getsize64 "$byid")" == 8589934592 ]] || fail 'disk_byte_size_mismatch'
+[[ "$(blockdev --getss "$byid")" == 512 ]] || fail 'logical_sector_mismatch'
+rw="$(lsblk -dn -o NAME,TYPE,RO | awk '$2=="disk" && $3=="0" {print $1}')"
+printf 'GASLUX_SYNTH_GUEST_RW_DISKS=%s\n' "$rw"
+[[ "$rw" == "$(basename "$(readlink -f "$byid")")" ]] || fail 'multiple_or_wrong_writable_disks'
 python3 -B - <<'PY'
 import os
 from pathlib import Path
@@ -198,12 +213,18 @@ def smoke_console(sock: Path, stream: bytearray) -> None:
              b"printf 'GASLUX_SYNTH_CONTROL_MOUNTED=1\\n'\r",
              re.compile(rb"(?m)^GASLUX_SYNTH_CONTROL_MOUNTED=1\r?$"), 60),
             (b"cd /run/gaslux-synth && sha256sum -c lab.sha256 && "
-             b"bash synthetic-smoke.sh\r", MARKER, 120),
+             b"bash synthetic-smoke.sh\r", RESULT, 120),
         ]
         for command, marker, limit in steps:
             start = len(stream)
             connection.sendall(command)
             wait_for(connection, stream, marker, timeout_seconds=limit, start=start)
+            observed = normalized(bytes(stream[start:]))
+            refused = REFUSAL.search(observed)
+            require(refused is None,
+                    "synthetic guest refused before write: " +
+                    (refused.group(1).decode("ascii", errors="replace")
+                     if refused else "unknown"))
         connection.sendall(b"sync && systemctl poweroff -i\r")
         until = time.monotonic() + 150
         while time.monotonic() < until:
