@@ -248,3 +248,87 @@ systemd-boot ou NVRAM. `nativeInstallObserved=false`,
 `distinstExecutionAuthorized=false`, `rollbackVerified=false`
 e `popInstalled=false`. O resultado é **B (CLI read-only real)**;
 não é A, P3, dual boot ou estabilidade.
+
+
+## Laboratório QEMU independente de Windows — 20/11/2026, 11:40 UTC
+
+A intervenção implementou um ensaio separado na
+[workflow `popos-synthetic-qemu-write-trace.yml`](../.github/workflows/popos-synthetic-qemu-write-trace.yml),
+com os módulos
+`auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py`
+e `auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py`.
+
+### Desenho da prova e isolamento
+
+1. Executar apenas em GitHub-hosted Ubuntu 24.04 com `/dev/kvm`,
+   `GITHUB_REPOSITORY=LMhdez/gaslux` e consentimento específico
+   `I_ACCEPT_ONLY_DISPOSABLE_SYNTHETIC_QEMU_WRITE_TRACE`.
+2. Criar um **novo ficheiro regular raw** de 8 GiB, modo exclusivo
+   `xb` (não um dispositivo de bloco), com GPT sintética e GUID
+   `a6784e03-11a6-4544-b61c-87b66db8e117`, ESP #1 de 64 MiB e
+   raiz #2 de 2 GiB. O intervalo de teste no LBA `196608`
+   (96 MiB, 512 bytes) fica **fora** dessas partições e das GPT.
+3. Validar a GPT sintética primária/secundária com `sgdisk --verify`,
+   calcular SHA-256 do raw, criar um QCOW2 filho com backing
+   explícito `raw`, e verificar via `qemu-img info --output=json`.
+   O raw pai nunca é entregue ao QEMU como drive.
+4. Obter a ISO Pop 24.04 Intel build20 pelo verificador GPG
+   pré-existente; extrair novamente o hash do ELF do mesmo SquashFS
+   e exigir o SHA-256 já observado independentemente:
+   `8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5`.
+5. Controlos de boot/OVMF exclusivamente privados:
+   GRUB EFI num ficheiro raw temporário, controlo FAT com script
+   autorizado e SHA-256, control disk e ISO apenas **read-only**,
+   NVRAM OVMF em cópia privada, sem rede ou disco externo.
+   Entre as cinco entradas `-drive` do QEMU, os **únicos ficheiros
+   escritos** devem ser a cópia NVRAM e o child QCOW2 sintético.
+6. Em Pop live, após verificar serial `GASLUX_POP_SYNTH`, geometria
+   exata (8 GiB, 512 bytes/setor) e ausência de outro disco RW,
+   executar **apenas** um `write(512)` com padrão fixado em
+   96 MiB; confirmar leitura de retorno e `fsync`. Este primeiro
+   ensaio é propositalmente um writer `python3`, **não o `distinst`**.
+7. O host QEMU, fora do processo guest, regista pedidos
+   `virtio_blk_handle_write` com os setores e comprimentos.
+   O parser exige a escrita prevista no LBA `196608` e recusa
+   qualquer outro offset, GPT primária/secundária, formatação ESP,
+   operação desconhecida ou evento não classificado.
+8. Terminado QEMU, `qemu-img dd` lê o setor da vista QCOW2,
+   confirmando os 512 bytes exatos. Compara ainda bytes de
+   MBR + GPT primária (LBA 0..33) e GPT backup
+   (últimos 33 setores) entre o raw pai e a vista do filho.
+   Depois verifica SHA-256 do pai, apaga o filho e volta a
+   verificar que o pai está intacto.
+9. Apenas são publicados JSON, eventos de escrita textuais
+   e respetivos sidecars SHA-256; **nunca ISO, raw, QCOW2,
+   NVRAM ou material privado**. Todos os ficheiros de trabalho
+   ficam num diretório temporário do runner.
+
+### Limites da monitorização e comparação com #232
+
+O trace é emitido pelo QEMU, não pelo próprio instalador; permite
+observar pedidos ao dispositivo virtio. **Não** comprova sucesso
+atómico de cada pedido, ausência de escritas transitórias fora
+dos eventos selecionados, atividades de discard/write-zeroes,
+montagens internas, paths EFI ou o processo guest que iniciou
+cada pedido. Alterações à NVRAM privada são avaliadas com hashes
+antes/depois; a sua granularidade continua não instrumentada.
+
+A operação de teste é sobre espaço sintético ainda não alocado.
+**Não corresponde** ao write-set seis-GPT Windows da #232
+(formatações ESP #5 e root #6), nem pode ser convertida
+numa autorização de escrita de `distinst`. O relatório mantém
+`distinstExecutionAuthorized=false`,
+`diskWritesAuthorizedForWindows=false`,
+`windowsEspWritesAuthorized=false`,
+`installerWritesObserved=false`,
+`windowsWriteSetMatchProven=false`,
+`productionInstallationAuthorized=false`
+e `rollbackAfterNativeInstallVerified=false`.
+
+Uma execução modificadora do `distinst` exigirá **nova experiência**
+em child sintético, depois de provar que o monitor observa pedidos
+conhecidos e que nenhuma unidade Windows está acessível.
+Como já demonstrado em fonte upstream, `--test` não é dry-run:
+pode alterar a tabela de partições e formatar antes do retorno.
+Nenhuma alteração aos módulos Safety #267 nem às proteções
+da instalação nativa com Windows genuíno foi feita.
