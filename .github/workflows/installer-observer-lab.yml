@@ -10,6 +10,7 @@ on:
       - 'auto_tests/installer_observer/lab_probe.py'
       - 'auto_tests/installer_observer/isolation_host.py'
       - 'auto_tests/installer_observer/fd_audit.py'
+      - 'auto_tests/installer_observer/boundary_model.py'
       - '.github/workflows/installer-observer-lab.yml'
   pull_request:
     paths:
@@ -17,6 +18,9 @@ on:
       - 'auto_tests/installer_observer/lab_identity.py'
       - 'auto_tests/installer_observer/controller_lease.py'
       - 'auto_tests/installer_observer/qemu_surface.py'
+      - 'auto_tests/installer_observer/isolation_host.py'
+      - 'auto_tests/installer_observer/fd_audit.py'
+      - 'auto_tests/installer_observer/boundary_model.py'
       - '.github/workflows/installer-observer-lab.yml'
   workflow_dispatch:
 permissions:
@@ -44,7 +48,7 @@ jobs:
           test "$(id -u)" -ne 0
           command -v qemu-system-x86_64
           command -v qemu-img
-          python -m compileall -q auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/isolation_host.py
+          python -m compileall -q auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/isolation_host.py auto_tests/installer_observer/fd_audit.py auto_tests/installer_observer/boundary_model.py
       - name: Two independent QEMU processes; scratch ISO/QCOW2; zero input
         shell: bash
         run: |
