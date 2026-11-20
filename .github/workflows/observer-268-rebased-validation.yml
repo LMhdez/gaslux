@@ -28,17 +28,6 @@ jobs:
         run: python -m pip install 'pytest>=8,<10' 'pillow>=11,<13' 'ruff>=0.8,<1' 'jsonschema>=4,<5'
       - name: Compile every incorporated Observer module
         run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py
-      - name: Normalize imported sources for explicit review (temporary)
-        run: |
-          python -m ruff check --fix --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py || true
-          python -m ruff format --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py
-          python - <<'PY'
-          import base64
-          from pathlib import Path
-          import subprocess
-          for path in subprocess.check_output(['git','diff','--name-only'], text=True).splitlines():
-              print('FORMATTED_SOURCE|'+path+'|'+base64.b64encode(Path(path).read_bytes()).decode())
-          PY
       - name: Ruff lint ALL incorporated Observer modules and tests
         run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py
       - name: Ruff formatting ALL incorporated Observer modules and tests
