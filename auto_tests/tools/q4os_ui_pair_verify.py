@@ -36,11 +36,8 @@ def read_regular(directory: Path, name: str, *, limit: int = 8 * 1024 * 1024) ->
 
 
 def verify_manifest(directory: Path) -> dict[str, str]:
-    rows = (
-        read_regular(directory, "evidence.sha256", limit=1024 * 1024)
-        .decode("ascii")
-        .splitlines()
-    )
+    manifest_bytes = read_regular(directory, "evidence.sha256", limit=1024 * 1024)
+    rows = manifest_bytes.decode("ascii").splitlines()
     entries = {}
     for line in rows:
         hit = _HASH_LINE.fullmatch(line)
@@ -49,11 +46,7 @@ def verify_manifest(directory: Path) -> dict[str, str]:
         entries[hit[2]] = hit[1]
     if list(entries) != sorted(entries):
         raise PairProofError("Unsorted SHA evidence manifest")
-    actual = {
-        path.name
-        for path in directory.iterdir()
-        if path.name != "evidence.sha256"
-    }
+    actual = {path.name for path in directory.iterdir() if path.name != "evidence.sha256"}
     if set(entries) != actual:
         raise PairProofError("Missing/unlisted evidence files")
     for name, expected in entries.items():
@@ -112,18 +105,19 @@ def audit_replica(artifact: Path, mapping: dict, gate) -> dict:
             or actual.get("centralPixelTransition") is not True
         ):
             raise PairProofError("Transition not positively observed")
-        before = directory / mapping["states"][mapping["states"].index(next(
-            s for s in mapping["states"] if s["id"] == expected["from"]
-        ))]["screenshot"]
+        before_name = next(
+            state["screenshot"] for state in mapping["states"]
+            if state["id"] == expected["from"]
+        )
+        before = directory / before_name
         after = directory / next(
             s["screenshot"] for s in mapping["states"] if s["id"] == expected["to"]
         )
         if not gate.verified_centre_changed(before.resolve(), after.resolve()):
             raise PairProofError("No independent central ROI transition detected")
-        if (
-            actual["beforeSha256"] != entries.get(before.name)
-            or actual["afterSha256"] != entries.get(after.name)
-        ):
+        before_matches = actual["beforeSha256"] == entries.get(before.name)
+        after_matches = actual["afterSha256"] == entries.get(after.name)
+        if not (before_matches and after_matches):
             raise PairProofError("State-to-transition PNG linkage mismatch")
     if len(report["transitions"]) != len(mapping["transitions"]):
         raise PairProofError("Unexpected transition count")
