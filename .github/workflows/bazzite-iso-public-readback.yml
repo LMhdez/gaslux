@@ -119,14 +119,14 @@ jobs:
 
           stage='checksum-and-metadata'
           python - <<'PY'
-          import hashlib, json, os
+          import json, os
           from pathlib import Path
-          from auto_tests.bazzite_iso_public_readback import parse_checksum, validate_metadata
+          from auto_tests.bazzite_iso_public_readback import parse_checksum, sha256_file, validate_metadata
           root = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-work"
           evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
           iso = root / "bazzite-stable-live-amd64.iso"
           checksum = parse_checksum((root / (iso.name + "-CHECKSUM")).read_bytes())
-          actual = hashlib.sha256(iso.read_bytes()).hexdigest()
+          actual = sha256_file(iso)
           assert checksum == actual, "official checksum sidecar mismatch"
           metadata = validate_metadata((root / (iso.name + ".json")).read_bytes())
           (evidence / "sidecar-validation.json").write_text(json.dumps({"checksumVerified": True, "metadata": metadata}, indent=2) + "\n")
