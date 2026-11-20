@@ -23,6 +23,11 @@ on:
 permissions:
   contents: read
 
+# Cancel stale hosted ISO/QEMU media runs; do not burn multiple runners on edits.
+concurrency:
+  group: pop-synthetic-qemu-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   synthetic-write-contracts:
     runs-on: ubuntu-24.04
