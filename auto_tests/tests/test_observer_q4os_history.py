@@ -121,6 +121,17 @@ def test_original_png_tampering_refused(mapping, local_recording):
         run_record(mapping, local_recording)
 
 
+def test_original_cross_replica_png_substitution_refused(
+    mapping, local_recording, originals
+):
+    first = local_recording.states[0]
+    donor = originals[1].directory / first.filename
+    assert digest(read(donor, 2 * 1024 * 1024)) != first.sha256
+    shutil.copyfile(donor, local_recording.directory / first.filename)
+    with pytest.raises(Refusal):
+        run_record(mapping, local_recording)
+
+
 def test_original_png_wrong_dimensions_refused(mapping, local_recording):
     second = local_recording.states[1]
     buffer = io.BytesIO()
