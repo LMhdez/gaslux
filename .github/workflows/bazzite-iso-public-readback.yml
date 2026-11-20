@@ -243,7 +243,17 @@ jobs:
           stage='versioned-payload-manifest'
           skopeo inspect --raw "docker://$PAYLOAD_TAG" > "$EVIDENCE/versioned-payload-manifest.json"
           test "sha256:$(sha256sum "$EVIDENCE/versioned-payload-manifest.json" | awk '{print $1}')" = "$PAYLOAD_DIGEST"
-          skopeo inspect --config "docker://$PAYLOAD_REF" > "$WORK/payload-config.json"
+          stage='ghcr-config-blob-readback'
+          GHCR_BEARER_TOKEN="$(curl --fail --location --show-error --silent --retry 3 --retry-all-errors --get \
+            --data-urlencode 'scope=repository:ublue-os/bazzite:pull' \
+            --data-urlencode 'service=ghcr.io' \
+            'https://ghcr.io/token' | jq -er '.token // .access_token')"
+          curl --fail --location --show-error --silent --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer $GHCR_BEARER_TOKEN" \
+            --header 'Accept: application/vnd.oci.image.config.v1+json,application/vnd.docker.container.image.v1+json' \
+            --output "$WORK/payload-config.json" \
+            "https://ghcr.io/v2/ublue-os/bazzite/blobs/sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb"
+          unset GHCR_BEARER_TOKEN
           python - <<'PY'
           import json, os
           from pathlib import Path
