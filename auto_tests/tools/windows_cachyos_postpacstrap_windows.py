@@ -33,8 +33,81 @@ CONSENT = "I_ACCEPT_WIN10_BOOT_WITH_INSTALLED_CACHYOS_FIFTH_ROOT_ON_DISPOSABLE_C
 
 
 class PostPacstrapWindowsError(ValueError):
-    pass
+    def __init__(self, message: str, *, diagnostics: dict[str, Any] | None = None):
+        super().__init__(message)
+        # Only bounded digests/offsets; never BCD bytes, Windows content or keys.
+        self.diagnostics = diagnostics
 
+
+def _read_bcd_readonly(overlay: Path) -> bytes:
+    """Read only the Microsoft ESP BCD hive on the already-owned QCOW2.
+
+    Never mount the ESP writable, repair a hive or inspect a physical device.
+    """
+    import guestfs
+    g = guestfs.GuestFS(python_return_dict=True)
+    try:
+        g.add_drive_opts(str(overlay), format="qcow2", readonly=1)
+        g.launch()
+        parts = g.list_partitions()
+        require(len(parts) == 5, "read-only BCD witness missing five GPT partitions")
+        g.mount_ro(parts[0], "/")
+        bcd = "/EFI/Microsoft/Boot/BCD"
+        require(g.is_file(bcd), "protected BCD missing for read-only forensic")
+        size = g.statns(bcd)["st_size"]
+        require(type(size) is int and 4096 <= size <= 2 * 1024 * 1024,
+                "protected BCD size outside forensic bounds")
+        raw = g.read_file(bcd)
+        require(type(raw) is bytes and len(raw) == size and raw[:4] == b"regf",
+                "invalid Windows BCD registry hive read-only witness")
+        return raw
+    finally:
+        try:
+            g.shutdown()
+        finally:
+            g.close()
+
+
+def summarize_bcd_difference(before: bytes, after: bytes) -> dict[str, Any]:
+    """Only SHA-256, lengths and bounded byte offsets; no hive bytes are emitted.
+
+    Pure diagnostic, never an authorization to disregard a changed signed hash.
+    """
+    require(type(before) is bytes and type(after) is bytes
+            and 4096 <= len(before) <= 2 * 1024 * 1024
+            and 4096 <= len(after) <= 2 * 1024 * 1024
+            and before[:4] == b"regf" and after[:4] == b"regf",
+            "invalid BCD forensic inputs")
+    spans: list[dict[str, int]] = []
+    changes = 0
+    start = None
+    for offset in range(min(len(before), len(after))):
+        different = before[offset] != after[offset]
+        if different:
+            changes += 1
+            if start is None:
+                start = offset
+        elif start is not None:
+            if len(spans) < 24:
+                spans.append({"offset": start, "length": offset - start})
+            start = None
+    if start is not None and len(spans) < 24:
+        spans.append({"offset": start, "length": min(len(before),len(after))-start})
+    changes += abs(len(before)-len(after))
+    if len(before) != len(after) and len(spans) < 24:
+        spans.append({"offset": min(len(before),len(after)),
+                      "length": abs(len(before)-len(after))})
+    return {
+        "prebootBcdSha256": hashlib.sha256(before).hexdigest(),
+        "postbootBcdSha256": hashlib.sha256(after).hexdigest(),
+        "prebootBcdBytes": len(before),
+        "postbootBcdBytes": len(after),
+        "changedByteCount": changes,
+        "firstChangedByteSpans": spans,
+        "truncatedToFirst24Spans": len(spans) == 24,
+        "approvedMutation": False,
+        "productionStorageWritesAuthorized": False,
+    }
 
 def require(ok: bool, message: str) -> None:
     if not ok:
@@ -157,6 +230,10 @@ def verify_windows_with_installed_root(
     require(read_windows_file_hashes(overlay) == plan["windowsHashes"],
             "protected Windows files differ before post-pacstrap boot")
     before_root = _verify_installed_root(overlay, plan, plan["runId"])
+    before_bcd = _read_bcd_readonly(overlay)
+    require(hashlib.sha256(before_bcd).hexdigest()
+            == plan["windowsHashes"]["espBcdSha256"],
+            "preboot read-only BCD bytes differ from signed file hash")
     print("GASLUX_CACHYOS_WIN10_REENTRY_PREBOOT_GPT_FILES_ROOT_VERIFIED=1", flush=True)
 
     # Existing fourth-boot verifier enforces a single genuine Windows COM1
@@ -187,19 +264,39 @@ def verify_windows_with_installed_root(
             and type(postboot_hashes) is dict
             and set(postboot_hashes) == set(protected_keys),
             "postboot protected Windows hash manifest missing or unexpected")
-    for protected_key in protected_keys:
-        require(postboot_hashes[protected_key] == plan["windowsHashes"][protected_key],
-                "Windows protected file hash changed after Windows re-entry: "
-                + protected_key)
-    print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_GPT_AND_WINDOWS_FILES_VERIFIED=1", flush=True)
+    # Recheck installed root even if the Windows boot mutated its BCD.
+    # Never turn a changed protected BCD hash into an accepted result.
     after_root = _verify_installed_root(overlay, plan, plan["runId"])
-    print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_NATIVE_ROOT_VERIFIED=1", flush=True)
     require(before_root == after_root
             and sha256_file(base) == before_base
             and sha256_file(nvram) == before_nvram
             and qcow2_file_identity(base) == before_base_identity,
             "CachyOS root identity or protected Windows backing/NVRAM changed")
-    print("GASLUX_CACHYOS_WIN10_REENTRY_ROOT_AND_BACKING_PRESERVED=1", flush=True)
+    print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_NATIVE_ROOT_AND_BACKING_VERIFIED=1",
+          flush=True)
+    mismatches = [key for key in protected_keys
+                  if postboot_hashes[key] != plan["windowsHashes"][key]]
+    if mismatches:
+        diagnosis: dict[str, Any] = {
+            "protectedFileHashMismatchKeys": mismatches,
+            "postbootGptMatchesSignedPlan": True,
+            "postbootInstalledRootAndBackingPreserved": True,
+            "protectedFilesUnchanged": False,
+            "windowsWithInstalledLinuxFullyVerified": False,
+            "releaseEligible": False,
+        }
+        if "espBcdSha256" in mismatches:
+            after_bcd = _read_bcd_readonly(overlay)
+            require(hashlib.sha256(after_bcd).hexdigest()
+                    == postboot_hashes["espBcdSha256"],
+                    "postboot read-only BCD bytes differ from protected file hash")
+            diagnosis["bcdReadOnlyForensic"] = summarize_bcd_difference(
+                before_bcd, after_bcd)
+        raise PostPacstrapWindowsError(
+            "Windows protected file hash changed after Windows re-entry: "
+            + mismatches[0], diagnostics=diagnosis)
+    print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_GPT_AND_WINDOWS_FILES_VERIFIED=1",
+          flush=True)
     serial = workspace / "sixth-post-pacstrap-windows-serial.log"
     require(serial.is_file() and not serial.is_symlink(),
             "missing independent Windows re-entry witness")
