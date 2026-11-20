@@ -182,6 +182,7 @@ def main() -> int:
         command(["mount", "-t", "ntfs-3g", "-o", "ro,norecover", loop_device, str(mountpoint)])
         mount_command_succeeded = True
         mounted = find_mounts(mountpoint)
+        result["findmntObservation"] = mounted
         observed = validate_real_mount(mounted, mountpoint, loop_device)
         mount_verified = True
         prove_owned_loop(loop_device, image, original_stat)
