@@ -130,3 +130,68 @@ autenticação; investigação reprodutível iniciada, mas **grafo de operaçõe
 real do instalador ainda não observado**. O script com Windows genuíno
 continua a recusar incondicionalmente antes de `mkfs.vfat` e `distinst`.
 Não se fez merge, instalação nativa, dual boot nem rollback pós-instalação.
+
+
+## Intervenção 20/11/2026 09:45 UTC — execução autenticada de CLI read-only
+
+### Safety #267
+A [PR #267](https://github.com/LMhdez/gaslux/pull/267), HEAD
+`f55633c90973f633dda678f583f7730fc2cdc0ce`, introduz
+`libertix_prewrite_no_writer.py`. A saída de
+`decide_no_writer` contém **exatamente**
+`decision=ACCEPT_NO_WRITER`, `transactionId` (32 hex sem separadores),
+`planSha256`, `vmId` e `writeCount`.
+O contrato admite **apenas** `allocate-free-space` em regiões ainda
+não particionadas. As partições Pop #5/#6 do cenário Windows 10 são
+pré-existentes: formatar FAT32/ext4 ou instalar bootloader **não é**
+uma operação admitida por #267. Mesmo com HMAC de laboratório válido,
+`ACCEPT_NO_WRITER` continua a proibir qualquer writer.
+
+O novo `interpret_safety267_no_writer` consome esse mesmo formato:
+confronta transação, digest dos bytes canónicos do plano, VM, GUID,
+capacidade e tamanho lógico de setor já declarados no contrato Pop.
+Expõe apenas resultado diagnóstico com
+`nativePartitionFormatterAllowed=false` e
+`distinstExecutionAuthorized=false`, sem importação de chaves, sem
+credenciais estáticas e sem atestação sintética forjada. HMAC não
+substitui certificação da origem das medições host/guest.
+
+### A opção CLI --test NÃO é dry-run
+
+O código upstream fixado
+[cli/src/main.rs](https://github.com/pop-os/distinst/blob/282dfc441ee608e963930d0ce01f04b672ca4f71/cli/src/main.rs#L144-L147)
+ativa `PARTITIONING_TEST`, mas o retorno condicional surge
+**depois** da fase `Step::Partition` e de
+`mount_all_targets`, como se verifica em
+[src/installer/mod.rs](https://github.com/pop-os/distinst/blob/282dfc441ee608e963930d0ce01f04b672ca4f71/src/installer/mod.rs#L141-L186).
+A fase de particionamento pode chamar `disk.commit()`, alterar
+metadados e formatar. Logo, **não** é permitido experimentar
+`distinst --test` sobre o QCOW2 Windows nem assumir ausência de
+efeitos só por constar "test" na CLI. A implementação Rust upstream
+pode também divergir da versão realmente instalada na ISO fixada.
+
+### Observação não gráfica do executável real
+
+O laboratório `windows10-popos-signed-live-same-cow.yml` instala
+Windows 10 numa VM de laboratório, arranca-o após o estágio GPT e
+inicia o Pop live autêntico com a unidade alvo montada pelo QEMU
+**exclusivamente read-only**. O controlo serial agora executa primeiro
+a auditoria GPT, com manifesto GPG previamente validado no host, e
+depois invoca `inspect_distinst_help()` no mesmo guest.
+
+O observador recusa ELF divergente do SHA-256 já extraído da ISO,
+exige QEMU, Pop 24.04, consentimento read-only, e chama
+**somente** `/usr/bin/distinst --help` com timeout.
+O relatório inclui SHA-256 do texto real apresentado pela CLI,
+opções efetivamente listadas, código de saída e garantias negativas:
+`nativeInstallObserved=false`,
+`diskWritesIndependentlyTraced=false`,
+`distinstExecutionAuthorized=false`. O host valida também
+estes campos, verifica os GUIDs/GPT do QCOW2 e o shutdown controlado.
+
+**Limite essencial:** o `--help` executa o ELF para descrever opções,
+não caracteriza operações de particionamento/ESP/rootfs ou efeito de
+escrita transitória. Nenhum grafo real de alterações de bloco é obtido
+nesta execução. Observação da instalação efetiva exigirá VM sintética
+independente, instrumentação autónoma e snapshot recuperável, com
+permissão de laboratório específica.
