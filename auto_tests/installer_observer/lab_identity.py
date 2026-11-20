@@ -71,7 +71,9 @@ def seal_file(path: Path) -> AttachedFile:
         info = path.stat()
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size <= 0:
             raise Refusal("VM media must be a single-link regular file")
-        return AttachedFile(path.absolute(), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+        return AttachedFile(
+            path.absolute(), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+        )
     except OSError as exc:
         raise Refusal("Cannot seal VM media") from exc
 
@@ -127,7 +129,9 @@ def _execute(sock: socket.socket, stream: Any, name: str) -> Any:
     return reply["return"]
 
 
-def _check_attachment(blocks: list[dict], sealed: AttachedFile, fmt: str, *, read_only: bool) -> dict:
+def _check_attachment(
+    blocks: list[dict], sealed: AttachedFile, fmt: str, *, read_only: bool
+) -> dict:
     matched = [
         b["inserted"] for b in blocks
         if isinstance(b, dict) and isinstance(b.get("inserted"), dict)
@@ -150,7 +154,9 @@ def verify_qmp_report(seal: QemuRunSeal, blocks: Any, vnc: Any, status: Any) -> 
     """Pure contract. A JSON report alone is NEVER valid attestation."""
     if not isinstance(blocks, list) or len(blocks) != 2:
         raise Refusal("Unexpected number of QEMU block devices")
-    if not isinstance(status, dict) or status.get("status") not in ("running", "prelaunch", "paused"):
+    if not isinstance(status, dict) or status.get("status") not in (
+        "running", "prelaunch", "paused"
+    ):
         raise Refusal("VM is not in an allowed observation state")
     if (
         not isinstance(vnc, dict)
