@@ -33,7 +33,7 @@ permissions:
 
 # Cancel stale hosted ISO/QEMU media runs; do not burn multiple runners on edits.
 concurrency:
-  group: pop-synthetic-qemu-${{ github.ref }}
+  group: pop-synthetic-qemu-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
