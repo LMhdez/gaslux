@@ -1,0 +1,54 @@
+name: Windows NTFS sharing safety regression
+
+on:
+  pull_request:
+    paths:
+      - 'assets/live/libertix_windows_sharing.py'
+      - 'auto_tests/tests/test_windows_sharing_inventory.py'
+      - 'auto_tests/tools/ntfs3g_loopback_integration.py'
+      - 'auto_tests/tests/test_installation_contracts.py'
+      - 'assets/live/libertix_installation_policy.py'
+      - 'Scripts/config/Libertix.InstallationPolicy.json'
+      - '.github/workflows/windows-ntfs-safety-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-ntfs-sharing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install 'pytest>=9,<10' 'jsonschema>=4,<5'
+      - name: Verify sharing safety without block writes
+        run: python -m pytest -q auto_tests/tests/test_windows_sharing_inventory.py
+
+  ntfs3g-loopback-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NTFS-3G on the disposable runner
+        run: |
+          sudo -n apt-get update
+          sudo -n apt-get install -y ntfs-3g strace
+      - name: Compile the integration probe
+        run: python3 -m py_compile auto_tests/tools/ntfs3g_loopback_integration.py
+      - name: Exercise real NTFS-3G ro,norecover on an owned loopback image
+        run: |
+          set -o pipefail
+          sudo --preserve-env=RUNNER_TEMP python3 auto_tests/tools/ntfs3g_loopback_integration.py | tee "$RUNNER_TEMP/ntfs3g-loopback-result.json"
+      - name: Publish disposable loopback evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-ntfs3g-loopback-evidence
+          path: ${{ runner.temp }}/ntfs3g-loopback-result.json
+          if-no-files-found: ignore
+          retention-days: 14

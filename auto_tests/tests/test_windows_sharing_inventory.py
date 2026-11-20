@@ -292,6 +292,80 @@ def test_live_resolution_refuses_changed_storage(plan, sharing, devices, change)
         sharing.resolve_volumes(plan)
 
 
+@pytest.mark.parametrize(
+    ("fstype", "options", "accepted"),
+    [
+        ("fuseblk", "ro,norecover,relatime", True),
+        ("fuseblk", "ro,norecover,nosuid,nodev,relatime,user_id=0,group_id=0,allow_other,blksize=4096", True),
+        ("fuseblk", "ro,relatime", False),
+        ("fuseblk", "rw,norecover,relatime", False),
+        ("fuseblk", "ro,rw,norecover", False),
+        ("fuseblk", "ro,norecover,unknown", False),
+        ("fuseblk", "ro,norecover,force", False),
+        ("fuseblk", "ro,ro,norecover", False),
+        ("ntfs3", "ro,norecover", False),
+        ("ntfs", "ro,norecover", False),
+        ("fuseblk", None, False),
+    ],
+)
+def test_existing_windows_mount_requires_readonly_norecover_and_known_options(
+    sharing, monkeypatch, tmp_path, fstype, options, accepted
+):
+    calls = []
+
+    def fake_run(*arguments, **kwargs):
+        calls.append(arguments)
+        assert arguments[:4] == ("findmnt", "-J", "-S", "/dev/mock")
+        return json.dumps({"filesystems": [{"target": str(tmp_path), "fstype": fstype, "options": options}]})
+
+    monkeypatch.setattr(sharing, "run", fake_run)
+    if accepted:
+        with sharing.readonly_volume(Path("/dev/mock")) as mount:
+            assert mount == tmp_path
+    else:
+        with pytest.raises(RuntimeError):
+            with sharing.readonly_volume(Path("/dev/mock")):
+                pytest.fail("Unsafe pre-mounted NTFS volume was accepted")
+    assert len(calls) == 1
+    assert calls[0][-1] == "TARGET,FSTYPE,OPTIONS"
+
+
+
+def test_existing_windows_mount_rejects_ambiguous_findmnt_state(
+    sharing, monkeypatch, tmp_path
+):
+    def fake_run(*arguments, **kwargs):
+        assert arguments[:4] == ("findmnt", "-J", "-S", "/dev/mock")
+        return json.dumps(
+            {
+                "filesystems": [
+                    {
+                        "target": str(tmp_path / "one"),
+                        "fstype": "fuseblk",
+                        "options": "ro,norecover",
+                    },
+                    {
+                        "target": str(tmp_path / "two"),
+                        "fstype": "fuseblk",
+                        "options": "ro,norecover",
+                    },
+                ]
+            }
+        )
+
+    monkeypatch.setattr(sharing, "run", fake_run)
+    with pytest.raises(RuntimeError, match="ambiguous"):
+        with sharing.readonly_volume(Path("/dev/mock")):
+            pytest.fail("Ambiguous pre-mounted NTFS state was accepted")
+
+
+def test_existing_windows_mount_rejects_missing_mount_target(sharing):
+    with pytest.raises(RuntimeError, match="cannot prove"):
+        sharing.validate_existing_readonly_ntfs_mount(
+            [{"fstype": "fuseblk", "options": "ro,norecover"}]
+        )
+
+
 def test_a_directory_symlink_cannot_escape_the_shared_volume(sharing, tmp_path):
     root = tmp_path / "volume"
     root.mkdir()
