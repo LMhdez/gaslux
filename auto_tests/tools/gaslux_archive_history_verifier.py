@@ -11,7 +11,7 @@ import subprocess
 ARCHIVE = "archive/gaslux-experiments-preserved-20261119"
 ROOT = "5be372eb1bccbe07b2c2db2f4616291345e1df0a"
 ROOT_TREE = "663396d7205b73dae73b9763cf928d6bf515bc3f"
-EXPECTED_SOURCES = 110
+EXPECTED_SOURCES = 112
 
 
 def git(*argv: str, check: bool = True) -> str:

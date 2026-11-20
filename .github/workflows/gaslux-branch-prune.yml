@@ -1,4 +1,4 @@
-name: Gaslux preserve two distinct closed-PR histories before ref deletion
+name: Gaslux exact three already-preserved source ref pruning
 on:
   push:
     branches:
@@ -12,45 +12,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  archive-exact-two:
+  prune-three:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           persist-credentials: true
-      - name: Verify archive-110 and fail-closed exact history contracts
+      - name: Validate exact source ancestry and 112 archived source histories
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
           set -Eeuo pipefail
-          python3 -m py_compile auto_tests/tools/gaslux_branch_prune.py
-          python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_archive.py' -v
+          python3 -m py_compile auto_tests/tools/gaslux_archive_history_verifier.py auto_tests/tools/gaslux_branch_prune.py
+          python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_prune.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_branch_archive.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_archive_verify.py' -v
-          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-110-before.json"
-      - name: Archive exactly two distinct original Git trees then lease-delete old refs
-        shell: bash
+          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/verified-archive-112.json"
+      - name: Delete only SHA-pinned sources already ancestral of PR or permanent archive
         env:
           GH_TOKEN: ${{ github.token }}
-          GIT_AUTHOR_NAME: github-actions[bot]
-          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          GASLUX_ARCHIVE_APPROVED: PRESERVE_HISTORY_LEASE_25
-          GASLUX_ARCHIVE_EXACT: '{"feature/bazzite-legacy-iso-scout-20261118":"a601557a415bbd1f597df48ce00ab52513712138","test/windows10-partitioned-fat32-usb-explicit-removable":"0ab6c16d2ab271f0ef8847175f12a343b99f7333"}'
+          GASLUX_PRUNE_APPROVED: LEASE_GUARDED_30
+          GASLUX_PRUNE_EXACT: '{"feature/bazzite-owned-qcow2-storage-discovery":{"sha":"b1a4f7dc19c5be2076f91f7df1cc37b065e1feee","preserved_in":"test/bazzite-blivet-gui-observer-cow-20261119"},"test/popos-genuine-win10-cow-live-iso-20261119":{"sha":"fb670eb411de1ef51f2501890d5c1d17d014356f","preserved_in":"archive/gaslux-experiments-preserved-20261119"},"test/windows10-fat32-usb-partitioned-mbr-setup":{"sha":"74fa459dac328094224634f20abaff082bdc4eae","preserved_in":"archive/gaslux-experiments-preserved-20261119"}}'
+        shell: bash
         run: |
           set -Eeuo pipefail
-          python3 auto_tests/tools/gaslux_branch_prune.py archive --output "$RUNNER_TEMP/gaslux-two-source-drafts.json"
-      - name: Publish source SHA and archival provenance
+          python3 auto_tests/tools/gaslux_branch_prune.py prune --output "$RUNNER_TEMP/gaslux-three-preserved-refs.json"
+      - name: Upload source and keeper SHA evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: gaslux-archived-two-closed-draft-heads
+          name: gaslux-three-exact-preserved-ref-deletions
           path: |
-            ${{ runner.temp }}/gaslux-archive-110-before.json
-            ${{ runner.temp }}/gaslux-three-old-drafts.json
+            ${{ runner.temp }}/verified-archive-112.json
+            ${{ runner.temp }}/gaslux-three-preserved-refs.json
           retention-days: 30
           if-no-files-found: warn
