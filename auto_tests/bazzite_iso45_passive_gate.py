@@ -144,8 +144,10 @@ def verify_iso_file(path: Path, runner_temp: Path) -> dict:
     _deny(not path.is_symlink() and path.absolute() == expected, "Foreign ISO path")
     _deny(not expected.is_symlink() and expected.is_file(), "Missing or redirected ISO")
     info = os.stat(expected, follow_symlinks=False)
-    _deny(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size == ISO_SIZE,
-          "ISO inode, link count or size mismatch")
+    _deny(
+        stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size == ISO_SIZE,
+        "ISO inode, link count or size mismatch",
+    )
     digest = hashlib.sha256()
     with expected.open("rb") as handle:
         for chunk in iter(lambda: handle.read(4 * 1024 * 1024), b""):
@@ -159,15 +161,22 @@ def classify(ocr_records: list[str], guest_running: bool) -> dict:
     combined = "\n".join(ocr_records).casefold()
     bazzite = "bazzite" in combined
     installer = bazzite and any(
-        mark in combined for mark in (
-            "select installation target", "installation destination",
-            "choose installation disk", "select a destination",
+        mark in combined
+        for mark in (
+            "select installation target",
+            "installation destination",
+            "choose installation disk",
+            "select a destination",
         )
     )
     live = bazzite and any(
-        mark in combined for mark in (
-            "live session", "welcome to bazzite", "install bazzite",
-            "bazzite desktop", "live desktop",
+        mark in combined
+        for mark in (
+            "live session",
+            "welcome to bazzite",
+            "install bazzite",
+            "bazzite desktop",
+            "live desktop",
         )
     )
     if guest_running and installer:
