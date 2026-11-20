@@ -297,8 +297,7 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                         item["sudo_impersonated_rfb_connect"] for item in evidence
                     ),
                     "runner_can_modify_staged_controller_source": all(
-                        item["sudo_impersonated_uid_can_write_staged_source"]
-                        for item in evidence
+                        item["sudo_impersonated_uid_can_write_staged_source"] for item in evidence
                     ),
                     "staged_controller_source_sha256": staged_source_hash,
                     "signature_verified": False,
