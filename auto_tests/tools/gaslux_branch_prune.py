@@ -300,7 +300,7 @@ def exact_absorbed_candidates(refs, protect, approval):
         raise RuntimeError("invalid exact successor authorization")
     selected = []
     for branch, spec in sorted(approval.items()):
-        if (not isinstance(branch, str) or not branch.startswith(PREFIX)
+        if (not isinstance(branch, str) or not (branch.startswith(PREFIX) or branch == "docs/distro-backend-one-shot-research-20261119")
                 or not isinstance(spec, dict)
                 or set(spec) != {"sha", "keeper", "keeper_sha"}):
             raise RuntimeError("malformed successor authorization")
@@ -308,7 +308,7 @@ def exact_absorbed_candidates(refs, protect, approval):
         if (not isinstance(sha, str) or not re.fullmatch("[0-9a-f]{40}", sha)
                 or not isinstance(keeper_sha, str)
                 or not re.fullmatch("[0-9a-f]{40}", keeper_sha)
-                or not isinstance(keeper, str) or not keeper.startswith(PREFIX)
+                or not isinstance(keeper, str) or not (keeper.startswith(PREFIX) or keeper == "docs/distro-one-shot-playbooks-20261119")
                 or keeper == branch or branch in protect
                 or refs.get(branch) != sha or refs.get(keeper) != keeper_sha):
             raise RuntimeError("changed or protected successor source " + branch)

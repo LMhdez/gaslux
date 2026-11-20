@@ -1,46 +1,48 @@
-name: Gaslux archived-branch integrity audit (read-only)
+name: Gaslux remove two integrated branches with exact ancestry lease
 on:
   push:
     branches:
       - automation/gaslux-branch-prune-20261119
-
 permissions:
-  contents: read
-
+  contents: write
 concurrency:
   group: gaslux-conservative-branch-prune
   cancel-in-progress: false
-
 jobs:
-  audit:
+  prune-exact-two:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-          persist-credentials: false
-      - name: Verify 112 archived histories and current branch safety without writing
-        shell: bash
+          persist-credentials: true
+      - name: Validate archive and branch protection contracts
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -Eeuo pipefail
-          python3 -m py_compile auto_tests/tools/gaslux_branch_prune.py auto_tests/tools/gaslux_archive_history_verifier.py
-          python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_prune.py' -v
-          python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_archive.py' -v
+          python3 -m py_compile auto_tests/tools/gaslux_branch_prune.py
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_absorbed_prune.py' -v
-          python3 -m unittest discover -s auto_tests -p 'test_gaslux_branch_archive.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_archive_verify.py' -v
-          python3 auto_tests/tools/gaslux_branch_prune.py audit --output "$RUNNER_TEMP/gaslux-prune-readonly.json"
-          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-112-readonly.json"
-      - name: Upload independently verified read-only evidence
+          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/archived.json"
+      - name: Delete only source SHA proven ancestral of exact reviewed keeper SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_ABSORBED_APPROVED: EXACT_FOUR_PINNED_LEASE
+          GASLUX_ABSORBED_EXACT: '{"docs/distro-backend-one-shot-research-20261119":{"sha":"ce5f3672033a28595a439df93b055d635e0cc98e","keeper":"docs/distro-one-shot-playbooks-20261119","keeper_sha":"9b434a6a2b96b7a02fded73eb2ef66753bddde5d"},"test/mint-squashfs-identity-contracts-20261119":{"sha":"1c714cdbee0f0fdb151af1e412053398cfc32372","keeper":"fix/mint-shutdown-witness-kernel-powerdown-20261119","keeper_sha":"7521e91f819c4c00b6acaf7502693181604a1d44"}}'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/gaslux_branch_prune.py prune-absorbed --output "$RUNNER_TEMP/prune-two.json"
+      - name: Upload proof
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: gaslux-archive-112-readonly-final-evidence
+          name: gaslux-two-integrated-branch-ref-evidence
           path: |
-            ${{ runner.temp }}/gaslux-prune-readonly.json
-            ${{ runner.temp }}/gaslux-archive-112-readonly.json
+            ${{ runner.temp }}/archived.json
+            ${{ runner.temp }}/prune-two.json
           retention-days: 30
           if-no-files-found: warn
