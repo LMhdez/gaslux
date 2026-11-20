@@ -12,6 +12,7 @@ on:
       - 'auto_tests/tests/test_q4os_vnc_visual_gate.py'
       - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
       - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
+      - 'auto_tests/tests/test_q4os_users_visual_gate.py'
       - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
       - 'auto_tests/tests/test_q4os_evidence_manifest.py'
   pull_request:
@@ -22,6 +23,7 @@ on:
       - 'auto_tests/tools/gaslux_q4os_vnc_visual_gate.py'
       - 'auto_tests/tools/gaslux_q4os_native_cow_view_guard.py'
       - 'auto_tests/tests/test_q4os_native_cow_view_lab.py'
+      - 'auto_tests/tests/test_q4os_users_visual_gate.py'
       - 'auto_tests/tools/gaslux_q4os_evidence_manifest.py'
       - 'auto_tests/tests/test_q4os_evidence_manifest.py'
   workflow_dispatch:
@@ -69,6 +71,7 @@ jobs:
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
             auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_users_visual_gate.py \
             auto_tests/tests/test_q4os_calamares_gui_lab.py \
             auto_tests/tests/test_q4os_evidence_manifest.py
           python -m ruff check --config auto_tests/pyproject.toml \
@@ -76,6 +79,7 @@ jobs:
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
             auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_users_visual_gate.py \
             auto_tests/tests/test_q4os_calamares_gui_lab.py \
             auto_tests/tests/test_q4os_evidence_manifest.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
@@ -83,10 +87,12 @@ jobs:
             auto_tests/tools/gaslux_q4os_vnc_visual_gate.py \
             auto_tests/tools/gaslux_q4os_evidence_manifest.py \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_users_visual_gate.py \
             auto_tests/tests/test_q4os_calamares_gui_lab.py \
             auto_tests/tests/test_q4os_evidence_manifest.py
           python -m pytest -q \
             auto_tests/tests/test_q4os_native_cow_view_lab.py \
+            auto_tests/tests/test_q4os_users_visual_gate.py \
             auto_tests/tests/test_q4os_calamares_gui_lab.py \
             auto_tests/tests/test_q4os_evidence_manifest.py
 
