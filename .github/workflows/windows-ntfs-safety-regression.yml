@@ -1,0 +1,29 @@
+name: Windows NTFS sharing safety regression
+
+on:
+  pull_request:
+    paths:
+      - 'assets/live/libertix_windows_sharing.py'
+      - 'auto_tests/tests/test_windows_sharing_inventory.py'
+      - 'auto_tests/tests/test_installation_contracts.py'
+      - 'assets/live/libertix_installation_policy.py'
+      - 'Scripts/config/Libertix.InstallationPolicy.json'
+      - '.github/workflows/windows-ntfs-safety-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-ntfs-sharing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install 'pytest>=9,<10' 'jsonschema>=4,<5'
+      - name: Verify sharing safety without block writes
+        run: python -m pytest -q auto_tests/tests/test_windows_sharing_inventory.py
