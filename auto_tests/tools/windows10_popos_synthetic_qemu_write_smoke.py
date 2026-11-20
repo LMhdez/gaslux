@@ -106,6 +106,36 @@ def make_base(work: Path) -> tuple[Path, str, dict]:
     return base, img, plan
 
 
+def make_distinst_base(work: Path):
+    base = work / "gaslux-pop-synthetic-distinst-base.raw"
+    with base.open("xb") as stream:
+        stream.truncate(DISTINST_DISK_SIZE)
+    call("sgdisk", "--zap-all", "--clear",
+         "--disk-guid=" + DISTINST_GUID,
+         "--new=1:2048:+512M", "--typecode=1:EF00",
+         "--partition-guid=1:" + DISTINST_ESP_PARTUUID,
+         "--new=2:1052672:+4G", "--typecode=2:8300",
+         "--partition-guid=2:" + DISTINST_ROOT_PARTUUID,
+         str(base))
+    output = call("sgdisk", "--verify", str(base),
+                  capture_output=True, text=True).stdout
+    require("No problems found" in output,
+            "synthetic distinst GPT primary/backup integrity failed")
+    base_sha = sha(base)
+    child = work / "gaslux-pop-synthetic-distinst-child.qcow2"
+    call("qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b",
+         str(base), str(child))
+    info = json.loads(call("qemu-img", "info", "--output=json", str(child),
+                           capture_output=True, text=True).stdout)
+    require(info.get("format") == "qcow2"
+            and info.get("virtual-size") == DISTINST_DISK_SIZE
+            and info.get("backing-filename") == str(base)
+            and info.get("backing-filename-format") == "raw",
+            "synthetic distinst QCOW2 backing chain mismatch")
+    plan = synthetic_distinst_plan(base_sha, child.name)
+    return base, base_sha, plan, child
+
+
 def build_control(work: Path, kernel: Path, initrd: Path) -> Path:
     # A synthetic-only EFI bootstrap/control image, not Windows image code.
     require(len(kernel.parts) == 2 and len(initrd.parts) == 2
