@@ -100,7 +100,8 @@ class MintCowBootEvidenceTests(unittest.TestCase):
             "mintKernelSha256": self.proof["mintKernelSha256"],
             "mintInitramfsSha256": self.proof["mintInitramfsSha256"],
             "mintOsReleaseSha256": self.proof["mintOsReleaseSha256"],
-            "windowsPartitionSha256": self.proof["windowsPartitionSha256"],
+            "windowsPartitionSha256BeforeMint": self.proof["windowsPartitionSha256"],
+            "windowsPartitionSha256AfterWindows": self.proof["windowsPartitionSha256"],
             "fourthGuestSerialSha256": fourth_digest,
             "nativeGrubDualBootVerified": False,
             "sameDiskDualBootVerified": False,
@@ -131,6 +132,19 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         (self.directory / f"{PROFILE}-result.json").write_text(
             json.dumps(report), encoding="utf-8")
 
+    def test_accepts_legitimate_windows_system_ntfs_changes_after_reboot(self):
+        path = self.directory / "mint-after-windows.json"
+        persistence = json.loads(path.read_text())
+        persistence["windowsPartitionSha256AfterWindows"][2] = "9" * 64
+        data = (json.dumps(persistence, sort_keys=True, indent=2) + "\n").encode()
+        path.write_bytes(data)
+        report_path = self.directory / f"{PROFILE}-result.json"
+        report = json.loads(report_path.read_text())
+        report["mintRootPersistenceEvidenceSha256"] = hashlib.sha256(data).hexdigest()
+        report_path.write_text(json.dumps(report))
+        result = validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
+        self.assertTrue(result["mintRootPersistenceAfterWindowsVerified"])
+
     def test_accepts_hash_bound_mint_root_after_genuine_windows_boot(self):
         result = validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
         self.assertTrue(result["mintRootPersistenceAfterWindowsVerified"])
@@ -158,7 +172,7 @@ class MintCowBootEvidenceTests(unittest.TestCase):
     def test_rejects_rehashed_wrong_windows_partition_after_mint(self):
         path = self.directory / "mint-after-windows.json"
         persistence = json.loads(path.read_text())
-        persistence["windowsPartitionSha256"] = ["0" * 64] * 4
+        persistence["windowsPartitionSha256AfterWindows"][0] = "0" * 64
         data = (json.dumps(persistence, sort_keys=True, indent=2) + "\n").encode()
         path.write_bytes(data)
         report_path = self.directory / f"{PROFILE}-result.json"
@@ -166,7 +180,7 @@ class MintCowBootEvidenceTests(unittest.TestCase):
         report["mintRootPersistenceEvidenceSha256"] = hashlib.sha256(data).hexdigest()
         report_path.write_text(json.dumps(report))
         with self.assertRaisesRegex(validator.MintBootEvidenceError,
-                                    "exact Windows/Mint COW transaction"):
+                                    "protected Windows ESP/MSR/Recovery"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE)
 
     def test_rejects_fourth_windows_serial_not_bound_to_mint_persistence(self):
