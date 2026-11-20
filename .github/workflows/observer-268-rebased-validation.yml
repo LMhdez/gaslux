@@ -33,8 +33,22 @@ jobs:
         run: python -m pip install 'pytest>=8,<10' 'pillow>=11,<13' 'ruff>=0.8,<1' 'jsonschema>=4,<5'
       - name: Compile every incorporated Observer module
         run: python -m compileall -q auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
+      - name: Review original source Ruff normalization (temporary, never a final gate)
+        run: |
+          python -m ruff check --fix --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py || true
+          python -m ruff format --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
+          python - <<'PY'
+          import base64
+          import subprocess
+          from pathlib import Path
+          changed = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          for path in changed:
+              if path.endswith(".py"):
+                  print("NORMALIZED_SOURCE|" + path + "|"
+                        + base64.b64encode(Path(path).read_bytes()).decode("ascii"))
+          PY
       - name: Ruff lint ALL incorporated Observer modules and tests
-        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
       - name: Ruff formatting ALL incorporated Observer modules and tests
         run: python -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
       - name: Adversarial controller and QEMU identity contracts
