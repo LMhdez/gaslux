@@ -1,0 +1,95 @@
+name: Pop synthetic-only QEMU write trace and no-writer contracts
+
+on:
+  push:
+    branches:
+      - test/popos-genuine-windows-native-live-20261119
+    paths:
+      - .github/workflows/popos-synthetic-qemu-write-trace.yml
+      - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_distinst_readonly_observer.py
+      - auto_tests/tools/windows10_popos_official_iso_signed_lab.py
+      - auto_tests/tools/windows10_popos_genuine_live_same_cow_vm.py
+  pull_request:
+    paths:
+      - .github/workflows/popos-synthetic-qemu-write-trace.yml
+      - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-write-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate QEMU write-trace parser and isolation tests without disks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py \
+            auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py \
+            auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows10_popos_synthetic_qemu_trace_contract.py' -v
+          bash -n auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
+          echo "SYNTHETIC contract only; all Windows writer guards remain DENIED." >> "$GITHUB_STEP_SUMMARY"
+
+  synthetic-qemu-observe-real-smoke:
+    name: REAL QEMU / signed Pop live / synthetic 8-GiB-only known write
+    needs: synthetic-write-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_POP_SYNTHETIC_WRITE_CONSENT: I_ACCEPT_ONLY_DISPOSABLE_SYNTHETIC_QEMU_WRITE_TRACE
+      GASLUX_POP_WINDOWS_COW_LIVE_ISO_CONSENT: I_ACCEPT_VERIFIED_POP_ISO_IN_DISPOSABLE_WINDOWS_KVM_VM
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require hosted KVM, install QEMU and verified signed ISO helpers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf dosfstools mtools \
+            grub-common grub-efi-amd64-bin gdisk aria2 squashfs-tools \
+            curl gnupg ca-certificates
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -m 700 "$GITHUB_WORKSPACE/pop-synthetic-qemu-evidence"
+      - name: Observe a REAL guest sector write with external QEMU virtio-blk trace
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py \
+            auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+          python3 auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
+          echo 'REAL QEMU synthetic smoke only. No Windows disk attached. Actual System76 installer NOT executed.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No native write-set containment or Windows writer authorization: synthetic smoke is NOT dual-boot evidence.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain only bounded JSON/sector trace/sidecar, never raw or QCOW2
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pop-synthetic-qemu-virtio-write-smoke
+          path: pop-synthetic-qemu-evidence/
+          retention-days: 7
+          if-no-files-found: warn
