@@ -219,19 +219,29 @@ def find_iso_inputs() -> tuple[str, str]:
          "official Pop installer inputs are not regular files")
     return squash[0], remove[0]
 
-def prepare_tracefs() -> None:
+def prepare_tracefs() -> list[str]:
     if not (TRACE_ROOT / "trace").exists():
         run(["mount", "-t", "tracefs", "tracefs", str(TRACE_ROOT)])
-    for event in ("block/block_bio_queue", "block/block_rq_issue",
-                  "sched/sched_process_exec"):
+    required = ("block/block_bio_queue", "block/block_rq_issue",
+                "sched/sched_process_exec")
+    optional_mount = (
+        "syscalls/sys_enter_mount", "syscalls/sys_exit_mount",
+        "syscalls/sys_enter_umount2", "syscalls/sys_exit_umount2",
+    )
+    for event in required:
         need((TRACE_ROOT / "events" / event / "enable").is_file(),
              "required tracefs event absent: " + event)
+    available_mount = [
+        event for event in optional_mount
+        if (TRACE_ROOT / "events" / event / "enable").is_file()
+    ]
+    enabled = (*required, *available_mount)
     (TRACE_ROOT / "tracing_on").write_text("0\n")
     (TRACE_ROOT / "trace").write_text("")
     (TRACE_ROOT / "buffer_size_kb").write_text("8192\n")
-    for event in ("block/block_bio_queue", "block/block_rq_issue",
-                  "sched/sched_process_exec"):
+    for event in enabled:
         (TRACE_ROOT / "events" / event / "enable").write_text("1\n")
+    return list(available_mount)
 
 def preflight() -> None:
     need(os.geteuid() == 0, "guest preflight requires root")
@@ -242,7 +252,7 @@ def preflight() -> None:
          and filesystem_type(disk["device"] + "2") is None,
          "synthetic partitions are not initially blank")
     meta = distinst_metadata(); squash, remove = find_iso_inputs()
-    prepare_tracefs()
+    mount_trace_events = prepare_tracefs()
     report = {
         "guestVmType": vm, "diskSerial": disk["serial"],
         "diskGuid": gpt["diskGuid"], "diskSizeBytes": disk["sizeBytes"],
@@ -255,6 +265,7 @@ def preflight() -> None:
         "filesystemTypesBefore": {"1": None, "2": None},
         "distinstElf": meta, "squashfsPath": squash,
         "removePath": remove, "tracefsAvailable": True,
+        "mountTraceEventsAvailable": mount_trace_events,
     }
     PREFLIGHT.write_text(json.dumps(report, sort_keys=True, separators=(",", ":")))
     print("GASLUX_POP_SYNTH_DISTINST_PREFLIGHT_JSON="
@@ -302,7 +313,7 @@ def run_distinst() -> None:
     squash, remove = find_iso_inputs()
     need(squash == pre["squashfsPath"] and remove == pre["removePath"],
          "installer payload identity changed after preflight")
-    prepare_tracefs()
+    mount_trace_events = prepare_tracefs()
     trace_file = TRACE_ROOT / "trace"
     trace_file.write_text("")
     (TRACE_ROOT / "tracing_on").write_text("1\n")
@@ -363,7 +374,7 @@ def run_distinst() -> None:
         fields = line.split()
         if len(fields) == 4 and fields[0].startswith("zram"):
             zram_ids.add(tuple(int(x) for x in fields[1].split(":")))
-    bio, rq, other_writes, execs = [], [], [], []
+    bio, rq, other_writes, execs, mount_events = [], [], [], [], []
     for line in raw_trace.splitlines():
         for name, dest in (("block_bio_queue", bio), ("block_rq_issue", rq)):
             event = trace_event(line, name)
@@ -382,6 +393,26 @@ def run_distinst() -> None:
             m = re.search(r"filename=(\S+)\s+pid=(\d+)", payload)
             if m:
                 execs.append({"filename": m.group(1), "pid": int(m.group(2))})
+        for event_path in mount_trace_events:
+            event_name = event_path.rsplit("/", 1)[-1]
+            if event_name + ":" not in line:
+                continue
+            prefix, payload = line.split(event_name + ":", 1)
+            pm = re.search(r"(?P<comm>.+)-(?P<pid>\d+)\s+\[", prefix)
+            if pm:
+                result = None
+                if event_name.startswith("sys_exit_"):
+                    rm = re.search(r"(-?0x[0-9a-fA-F]+|-?\d+)\s*$",
+                                   payload.strip())
+                    if rm:
+                        result = int(rm.group(1), 0)
+                mount_events.append({
+                    "event": event_name,
+                    "comm": pm.group("comm").strip(),
+                    "pid": int(pm.group("pid")),
+                    "result": result,
+                    "raw": payload.strip()[:512],
+                })
     need(not other_writes, "guest tracefs observed write to non-target block device")
     need(len(bio) <= 20000 and len(rq) <= 20000 and len(execs) <= 2000,
          "guest tracefs evidence exceeds bounded event count")
@@ -400,6 +431,28 @@ def run_distinst() -> None:
     gpt_after = parse_gpt(device, validate_expected_layout=False)
     gpt_delta = compare_gpt(gpt, gpt_after)
     meta = pre["distinstElf"]
+    distinst_mount_events = [
+        event for event in mount_events
+        if event["comm"] == "distinst" or event["pid"] == pid
+    ]
+    mount_observations = {
+        "traceEventsAvailable": mount_trace_events,
+        "eventCount": len(mount_events),
+        "distinstProcessEventCount": len(distinst_mount_events),
+        "enterMountCount": sum(x["event"] == "sys_enter_mount"
+                               for x in distinst_mount_events),
+        "exitMountCount": sum(x["event"] == "sys_exit_mount"
+                              for x in distinst_mount_events),
+        "successfulMountExitCount": sum(
+            x["event"] == "sys_exit_mount" and x["result"] == 0
+            for x in distinst_mount_events),
+        "enterUmount2Count": sum(x["event"] == "sys_enter_umount2"
+                                 for x in distinst_mount_events),
+        "exitUmount2Count": sum(x["event"] == "sys_exit_umount2"
+                                for x in distinst_mount_events),
+        "targetArgumentsResolved": False,
+        "events": distinst_mount_events[:256],
+    }
     report = {
         "guestVmType": pre["guestVmType"], "diskSerial": disk["serial"],
         "diskGuid": gpt_after["diskGuid"], "diskSizeBytes": disk["sizeBytes"],
@@ -416,7 +469,8 @@ def run_distinst() -> None:
         "gptPrimaryBackupUnchanged": gpt_delta["unchanged"],
         "gptBefore": gpt, "gptAfter": gpt_after, "gptDiff": gpt_delta,
         "filesystemsAfter": types,
-        "distinstPhase": "partition-format-mount-test",
+        "distinstPhase": "partition-format-test",
+        "mountObservations": mount_observations,
         "distinstProcess": {
             "pid": pid, "exePath": exe_path, "exeSha256": exe_hash,
             "argv": cmdline, "exitCode": exit_code,
@@ -437,6 +491,8 @@ def run_distinst() -> None:
             "targetMajorMinor": f"{target_major}:{target_minor}",
             "blockBioQueue": bio, "blockRqIssue": rq, "execs": execs,
             "otherWritableBlockDeviceEvents": other_writes,
+            "mountObservations": mount_observations,
+            "mountTraceEventsAvailable": mount_trace_events,
             "rawTraceSha256": hashlib.sha256(raw_trace.encode()).hexdigest(),
             "rawTraceBytes": len(raw_trace.encode()),
             "toolHashes": tool_hashes(),
