@@ -44,7 +44,7 @@ def fixtures():
         "targetDevice": "/dev/vdc",
         "gptPrimaryBackupVerified": True,
         "filesystemsAfter": {"1": "vfat", "2": "ext4"},
-        "distinstPhase": "partition-format-mount-test",
+        "distinstPhase": "partition-format-test",
         "distinstProcess": {
             "pid": 1234,
             "exePath": "/usr/bin/distinst",
@@ -236,7 +236,10 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         self.assertTrue(projection["espFormatObserved"])
         self.assertTrue(projection["rootFormatObserved"])
         self.assertFalse(projection["mountSyscallsIndependentlyObserved"])
-        self.assertTrue(projection["upstreamMountAllTargetsReached"])
+        self.assertFalse(projection["upstreamMountAllTargetsReached"])
+        self.assertFalse(projection["mountSyscallsIndependentlyObserved"])
+        self.assertFalse(projection["mountSyscallTargetsResolved"])
+        self.assertTrue(projection["upstreamCandidateSequenceCallsMountAllTargetsBeforeTestReturn"])
         self.assertFalse(result["distinstExecutionAuthorized"])
         self.assertFalse(result["diskWritesAuthorizedForWindows"])
         self.assertFalse(result["windowsEspWritesAuthorized"])
@@ -250,6 +253,39 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         self.assertEqual(result["outOfSetEventCount"], 0)
         self.assertEqual(result["writesBySyntheticPartition"][1]["eventCount"], 1)
         self.assertEqual(result["writesBySyntheticPartition"][2]["eventCount"], 1)
+
+    def test_missing_block_rq_issue_stream_is_incomplete_not_corroborated(self):
+        plan, guest, trace, tracefs = fixtures()
+        tracefs["blockRqIssue"] = []
+        guest["tracefs"] = tracefs
+        result = diagnose_qemu_write_set(plan, trace, guest)
+        self.assertFalse(result["writeSetMatch"])
+        self.assertFalse(result["observationComplete"])
+        self.assertTrue(result["guestTracefsBioQueueCorroboratesQemu"])
+        self.assertFalse(result["guestTracefsRqIssueCorroboratesQemu"])
+        self.assertFalse(result["guestTracefsCorroboratesQemu"])
+        self.assertEqual(result["decision"], "REFUSE_INCOMPLETE_OBSERVATION")
+        self.assertFalse(result["distinstExecutionAuthorized"])
+
+    def test_mount_syscall_evidence_is_separate_from_upstream_source_hint(self):
+        plan, guest, trace, tracefs = fixtures()
+        guest["tracefs"] = tracefs
+        guest["distinstProcess"]["sourceRevisionHint"] = "e395b7c"
+        guest["mountObservations"] = {
+            "distinstProcessEventCount": 2,
+            "successfulMountExitCount": 1,
+            "targetArgumentsResolved": False,
+        }
+        result = diagnose_qemu_write_set(plan, trace, guest)
+        projection = result["pr232Projection"]
+        self.assertTrue(projection["mountSyscallsIndependentlyObserved"])
+        self.assertFalse(projection["mountSyscallTargetsResolved"])
+        self.assertFalse(projection["upstreamMountAllTargetsReached"])
+        self.assertTrue(
+            projection["upstreamCandidateSequenceCallsMountAllTargetsBeforeTestReturn"]
+        )
+        self.assertEqual(result["guestMountSyscallEventCount"], 2)
+        self.assertEqual(result["guestMountSyscallSuccessfulExitCount"], 1)
 
     def test_qemu_trace_diagnostic_rejects_unparseable_or_missing_write_events(self):
         plan, guest, _, _ = fixtures()
