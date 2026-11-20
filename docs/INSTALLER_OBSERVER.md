@@ -267,3 +267,59 @@ the VNC service still permits another client to connect later, and RFB
 does not provide atomic check-and-click. The transport therefore remains
 read-only. No verified Q4OS ISO was booted; there is no automatic journey
 to Summary and no action against disk partitions, firmware or Windows.
+
+
+### Authenticated QEMU input-surface audit and cooperative lease (20 November 2026)
+
+The observer now includes `auto_tests/installer_observer/qemu_surface.py`.
+The probe cross-checks the actual Linux `/proc/<pid>/cmdline` bytes
+against the command recorded before spawning QEMU and the existing
+independent process seal. An exact allowlist rejects unexpected or
+modified launch arguments. The tested lab uses `-no-user-config`,
+`-nodefaults`, `-monitor none`, `-serial none`, `-display none`,
+`-net none`, TCG, and no SPICE option. Its QMP endpoint is a Unix
+socket under a private temporary directory, verified through peer
+credentials by the existing attestor. Storage identity still requires
+the independent QMP/procfs checks.
+
+**This audit DOES NOT authorize input.** The RFB listener remains
+unauthenticated TCP loopback `127.0.0.1:5900`. Another local client
+completed an RFB shared session in the existing live negative experiment.
+The QMP Unix socket is accessible to a process with the same UID.
+Neither a `flock` controller lease nor a sealed process identity
+prevents these independent emitters. Moreover, there is no atomic
+compare-framebuffer-and-input primitive, and guest-side visual
+control/scale proofs are incomplete. Even a fabricated blocker-free
+`InputSurface` refuses authorization unless a separately proven
+atomic primitive is implemented.
+
+The new live QEMU probe tests a second `ControllerLease` holder,
+the exact QEMU launch-channel contract, and the input-authority
+refusal, all *before any guest input*. Its evidence manifest now records
+`input_surface`, `input_authority_refused` and
+`cooperative_controller_contention_refused`.
+
+- [Real QEMU run #44709056193](https://github.com/LMhdez/gaslux/actions/runs/44709056193):
+  **success**, two distinct scratch-media QEMU processes, two observed
+  frames, second cooperative lease refused for each VM, 14/14 existing
+  live QMP/VNC drift refusals, zero guest input.
+  Evidence artifact ID `14615544390`, SHA-256 ZIP
+  `4ca083afa85b714fcf447b16660efcaf7154b17057a34a0e7332e879daf9ebbd`.
+- [Contracts #44709056418](https://github.com/LMhdez/gaslux/actions/runs/44709056418):
+  **success**, Pytest adversarial/contract suites, Ruff,
+  Python compilation, JSON Schema and the four historical Q4OS
+  replays (40 PNGs/36 edges).
+- Earlier runs during this change initially failed on a NUL
+  decoding error in the `argv` auditor and Ruff formatting;
+  both causes were corrected and retested successfully.
+
+**Residual blocker (criterion C):** The TCP RFB listener admits an
+untrusted concurrent host connection, and independent same-UID QMP
+clients cannot be excluded by the current lease. The transport must
+remain read-only; there is no safe authority for even a reversible
+test click. A future lab should use a genuinely isolated input-capable
+endpoint under a separate dedicated OS account/process namespace,
+prove the absence of alternate emitters, and implement an action
+transaction with fresh framebuffer binding and bounded races before
+attempting one harmless action. Do not mistake the present evidence
+for Q4OS Calamares navigation or disk/Windows validation.
