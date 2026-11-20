@@ -159,7 +159,18 @@ def _one(evidence_root: Path) -> dict:
                         raise
                 controller.verify()
                 print("QEMU stage: initial QMP witness", flush=True)
-                attestor.verify(time.monotonic() + 5)
+                idle_deadline = time.monotonic() + 3
+                while True:
+                    try:
+                        attestor.verify(idle_deadline)
+                        break
+                    except Refusal as exc:
+                        if (
+                            "another VNC client" not in str(exc)
+                            or time.monotonic() >= idle_deadline
+                        ):
+                            raise
+                        time.sleep(0.05)
                 surface = inspect_input_surface(seal.process, tuple(cmd), qmp, vnc)
                 try:
                     surface.require_exclusive_input()
