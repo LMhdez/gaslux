@@ -7,6 +7,7 @@ import json
 import os
 import struct
 from dataclasses import replace
+
 import pytest
 from PIL import Image
 
