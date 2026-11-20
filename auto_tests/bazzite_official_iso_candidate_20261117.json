@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "evidenceRecordOnly": true,
-  "status": "PUBLIC_ISO_COSIGN_AND_GITHUB_SLSA_ATTESTATION_VERIFIED_PAYLOAD_SIGNATURE_AND_EMBEDDED_MANIFEST_PENDING",
+  "status": "PUBLIC_ISO_AND_PAYLOAD_SIGNATURES_ATTESTATIONS_VERIFIED_EMBEDDED_OCI_MANIFEST_CONFIG_BINDING_PENDING",
   "distribution": "bazzite",
   "artifact": {
     "name": "bazzite-stable-live-amd64.iso",
@@ -55,7 +55,10 @@
       "workflowIdentity": "https://github.com/ublue-os/bazzite/.github/workflows/build.yml@refs/heads/main",
       "runId": 44115557508,
       "sourceCommit": "5d71c4376169910c25bc06a3537f4780521e7435"
-    }
+    },
+    "cosignSignatureVerifiedAgainstImmutableDigest": true,
+    "githubAttestationVerifiedAgainstImmutableDigest": true,
+    "versionedManifestReadBackVerified": true
   },
   "relationship": {
     "installImagePayload": "ghcr.io/ublue-os/bazzite:stable",
@@ -77,10 +80,10 @@
   "result": "B",
   "installationAuthorized": false,
   "publicReadback": {
-    "workflowRunId": 44752996712,
-    "workflowRunUrl": "https://github.com/LMhdez/gaslux/actions/runs/44752996712",
-    "evidenceArtifactId": 14636383225,
-    "evidenceArtifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44752996712/artifacts/14636383225",
+    "workflowRunId": 44757003672,
+    "workflowRunUrl": "https://github.com/LMhdez/gaslux/actions/runs/44757003672",
+    "evidenceArtifactId": 14640200532,
+    "evidenceArtifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44757003672/artifacts/14640200532",
     "url": "https://download.bazzite.gg/bazzite-stable-live-amd64.iso",
     "sizeBytes": 8377878528,
     "sha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
@@ -134,6 +137,26 @@
     "payloadCosignUpstreamVersion": "v3.1.3",
     "payloadCosignSignatureVerified": false,
     "payloadCosignFailureReason": "Cosign v2.6.5 returned: no matching attestations: expected key signature, not certificate. The pinned upstream build.yml uses Cosign v3.1.3 and build.py sign explicitly sets --new-bundle-format=false and --use-signing-config=false; retry is configured with the matching version and bundle mode.",
-    "payloadAttestationVerified": false
+    "payloadAttestationVerified": true,
+    "isoSizeBytes": 8377878528,
+    "isoSha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
+    "isoCosignVerified": true,
+    "isoAttestationVerified": true,
+    "isoCosignVersion": "v2.6.5",
+    "payloadCosignVerified": true,
+    "payloadCosignVersion": "v3.1.3",
+    "versionedPayloadManifestDigestVerified": true,
+    "embeddedStorageImageRecordObserved": true,
+    "embeddedImagesJsonPath": "var/lib/containers/storage/overlay-images/images.json",
+    "embeddedImageName": "ghcr.io/ublue-os/bazzite:stable",
+    "embeddedImageId": "938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb",
+    "embeddedManifestPath": "var/lib/containers/storage/overlay-images/938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb/manifest",
+    "embeddedManifestPathObserved": true,
+    "embeddedManifestBytesVerified": false,
+    "embeddedConfigBlobVerified": false,
+    "result": "B",
+    "installationAuthorized": false,
+    "failureStage": "embedded-manifest-config-extraction",
+    "failureReason": "Actual containers/storage metadata uses the image ID as config digest and provides the manifest file; the previous collector incorrectly required a separate sibling config file. The corrected manifest/config digest verifier is published but still requires a complete readback run."
   }
 }
