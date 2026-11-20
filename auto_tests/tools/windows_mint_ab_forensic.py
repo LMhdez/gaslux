@@ -371,11 +371,17 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
     ab["initialOvmfVarsSha256"] = checkpoint["initialOvmfVarsSha256"]
     ab["controlOvmfVarsSha256After"] = sha256_file(directory/VARS[0])
     ab["treatmentOvmfVarsSha256After"] = sha256_file(directory/VARS[1])
-    ab["windowsProtectedIntegrityAccepted"] = (
+    ab["protectedWindowsDigestsUnchanged"] = (
         not any(ab["treatment"]["changedPartitionFlags"][i] for i in (0, 1, 3))
         and ab["backingUnchanged"] and ab["referenceUnchanged"]
         and ab["treatment"]["gptUnchanged"]
-        and ab["treatment"]["mintRootContentsPreserved"])
+        and ab["treatment"]["mintRootContentsPreserved"]
+        and all(d["fileInventories"][part]["available"]
+                for d in (before[0], before[1], after_a, after_b)
+                for part in ("esp", "recovery")))
+    # The A/B experiment NEVER declares OS safety/installation acceptance,
+    # even if a diagnostic happens to show equal protected digests.
+    ab["windowsProtectedIntegrityAccepted"] = False
     write_manifest(evidence, "mint-ab-forensic.json", ab)
     # After forensic read-only acquisition, prove BOTH writable arms can
     # be reconstituted from the unchanged standalone checkpoint. No release
