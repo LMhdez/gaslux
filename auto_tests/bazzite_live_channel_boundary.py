@@ -58,6 +58,7 @@ def read_qemu_process(pid: int) -> dict:
         "pid": pid,
         "startTicks": int(words[19]),
         "executable": str(executable),
+        "executableSha256": _sha256(executable),
         "argv": args,
     }
 
@@ -97,6 +98,8 @@ def verify_paused_topology(
         or type(process.get("startTicks")) is not int
         or process["startTicks"] <= 0
         or Path(str(process.get("executable", ""))).name != "qemu-system-x86_64"
+        or not isinstance(process.get("executableSha256"), str)
+        or not SHA256.fullmatch(process["executableSha256"])
     ):
         raise Refusal("Unexpected QEMU executable, PID or start time")
     options = _options(process.get("argv"))
@@ -152,6 +155,7 @@ def verify_paused_topology(
         "qemuPid": process["pid"],
         "qemuStartTicks": process["startTicks"],
         "qemuExecutable": process["executable"],
+        "qemuExecutableSha256": process["executableSha256"],
         "qemuCommandSha256": hashlib.sha256("\0".join(process["argv"]).encode("utf-8")).hexdigest(),
         "configuredGuestSerial": SERIAL,
         "qemuCpuStopped": True,
