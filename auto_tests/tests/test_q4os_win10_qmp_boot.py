@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "auto_tests/tools"))
 
@@ -239,3 +241,23 @@ def test_workflow_runs_qmp_once_and_never_exports_vm_password():
     assert "tail -n 120" not in workflow
     assert "name: q4os-windows10-genuine-readonly-safety-refusal-text" in workflow
     assert "boot-controller.json" in workflow
+
+
+def test_windows_qemu_workflow_bash_scripts_parse_without_execution():
+    workflow_path = (
+        Path(__file__).resolve().parents[2] / ".github/workflows/gaslux-q4os-windows10-qcow2.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["windows10-uefi-gpt"]["steps"]
+    assert len(steps) >= 8
+    for step in steps:
+        if step.get("shell") != "bash":
+            continue
+        result = subprocess.run(
+            ["bash", "-n"],
+            input=step["run"],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert result.returncode == 0, (step["name"], result.stderr)
