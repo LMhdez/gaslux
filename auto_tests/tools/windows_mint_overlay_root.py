@@ -212,6 +212,130 @@ def _guest_disk_audit(overlay: Path, expected_uuid: str | None = None):
             guest.close()
 
 
+def verify_mint_persistence_after_windows(
+    *, overlay: Path, base: Path, mint_proof: dict, fourth: dict,
+) -> dict:
+    """Read-only audit of Mint files on the SAME COW after the Windows fourth boot.
+
+    This is an installed-root persistence check, never a GRUB dual-boot claim.
+    Do not reuse the earlier Mint copy/boot booleans as evidence of persistence.
+    """
+    from uuid import UUID
+    from windows_cachyos_cow_checkpoint import CHECKPOINT_DIR, OVERLAY_NAME, owned_regular
+    from windows_cachyos_qcow2_gpt_readonly import require_unchanged_qcow2, qcow2_file_identity
+
+    require(type(mint_proof) is dict and type(fourth) is dict
+            and fourth.get("windowsBootAfterExt4Verified") is True
+            and fourth.get("windowsBcdWinreEspAfterExt4Verified") is True
+            and fourth.get("fifthExt4UuidSurvivedWindowsBoot") is True
+            and fourth.get("fourthGuestCleanShutdownVerified") is True
+            and fourth.get("windowsGptUnchangedAfterExt4Boot") is True
+            and fourth.get("windowsBackingUnchangedAfterExt4Boot") is True
+            and fourth.get("originalWindowsUefiUnchangedAfterExt4Boot") is True
+            and fourth.get("sameDiskDualBootVerified") is False
+            and fourth.get("rollbackProven") is False,
+            "Mint persistence requires successful fourth Windows guest evidence")
+    expected_uuid = mint_proof.get("mintRootUuid")
+    try:
+        require(str(UUID(expected_uuid)) == expected_uuid,
+                "invalid Mint root UUID after Windows")
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise MintOverlayError("invalid Mint root UUID after Windows") from exc
+    kernel_name = mint_proof.get("mintKernel")
+    require(type(kernel_name) is str
+            and re.fullmatch(r"vmlinuz-[A-Za-z0-9.+_-]{1,128}", kernel_name),
+            "unsafe Mint kernel identity")
+    for key in ("mintKernelSha256", "mintInitramfsSha256", "mintOsReleaseSha256",
+                "windowsBackingQcow2Sha256"):
+        require(type(mint_proof.get(key)) is str
+                and re.fullmatch(r"[0-9a-f]{64}", mint_proof[key]),
+                f"missing source digest for Mint persistence: {key}")
+    hashes = mint_proof.get("windowsPartitionSha256")
+    require(type(hashes) is list and len(hashes) == 4
+            and all(type(h) is str and re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes),
+            "missing four Windows partition baselines")
+    require(base.is_file() and not base.is_symlink()
+            and stat.S_IMODE(base.stat().st_mode) == 0o400
+            and overlay == base.parent / CHECKPOINT_DIR / OVERLAY_NAME,
+            "wrong Windows base or COW ownership for Mint persistence")
+    owned_regular(overlay, overlay.parent, OVERLAY_NAME)
+    require(stat.S_IMODE(overlay.stat().st_mode) == 0o600,
+            "post-Windows Mint overlay permissions are unsafe")
+    info = json.loads(run(["qemu-img", "info", "-f", "qcow2",
+                           "--output=json", str(overlay)]).stdout)
+    require(info.get("format") == "qcow2"
+            and info.get("virtual-size") == 128 * 1024**3
+            and info.get("backing-filename") == str(base)
+            and info.get("backing-filename-format") == "qcow2"
+            and not info.get("encrypted", False),
+            "post-Windows Mint read-only audit is not bound to the original COW")
+
+    base_identity = qcow2_file_identity(base)
+    require(sha256(base) == mint_proof["windowsBackingQcow2Sha256"],
+            "Windows backing changed before Mint persistence audit")
+    actual_uuid, actual_windows_hashes = _guest_disk_audit(overlay, expected_uuid)
+    require(actual_uuid == expected_uuid and actual_windows_hashes == hashes,
+            "Windows partition hashes or Mint root UUID changed after Windows boot")
+
+    import guestfs
+    guest = guestfs.GuestFS(python_return_dict=True)
+    try:
+        guest.add_drive_opts(str(overlay), format="qcow2", readonly=1)
+        guest.launch()
+        devices = guest.list_devices()
+        require(len(devices) == 1
+                and guest.blockdev_getsize64(devices[0]) == 128 * 1024**3,
+                "post-Windows Mint root is not on the exact single QEMU COW disk")
+        partitions = guest.list_partitions()
+        device = devices[0]
+        suffix = "p" if device[-1].isdigit() else ""
+        require(partitions == [device + suffix + str(n) for n in range(1, 6)],
+                "post-Windows Mint guest has unexpected partitions")
+        require(guest.blockdev_getsize64(partitions[4]) == 24 * 1024**3
+                and guest.vfs_type(partitions[4]) == "ext4"
+                and guest.vfs_uuid(partitions[4]) == expected_uuid,
+                "post-Windows Mint fifth ext4 identity changed")
+        guest.mount_ro(partitions[4], "/")
+        os_release = guest.read_file("/etc/os-release")
+        require(re.search(rb"^ID=linuxmint$", os_release, re.MULTILINE)
+                and hashlib.sha256(os_release).hexdigest()
+                    == mint_proof["mintOsReleaseSha256"],
+                "Mint OS identity or installed root contents changed")
+        fstab = guest.read_file("/etc/fstab")
+        require(fstab == f"UUID={expected_uuid} / ext4 defaults 0 1\n".encode("ascii"),
+                "Mint root mount configuration changed after Windows boot")
+        kernel_digest = guest.checksum("sha256", "/boot/" + kernel_name)
+        initramfs_digest = guest.checksum(
+            "sha256", "/boot/initrd.img-" + kernel_name.removeprefix("vmlinuz-"))
+        require(kernel_digest == mint_proof["mintKernelSha256"]
+                and initramfs_digest == mint_proof["mintInitramfsSha256"],
+                "Mint kernel or installed initramfs changed after Windows boot")
+        guest.umount_all()
+    finally:
+        try:
+            guest.shutdown()
+        finally:
+            guest.close()
+    require_unchanged_qcow2(base, base_identity)
+    require(sha256(base) == mint_proof["windowsBackingQcow2Sha256"],
+            "Windows QCOW2 backing changed during Mint read-only audit")
+    return {
+        "mintRootFilesPersistAfterWindowsVerified": True,
+        "mintRootUuid": expected_uuid,
+        "mintKernel": kernel_name,
+        "mintKernelSha256": kernel_digest,
+        "mintInitramfsSha256": initramfs_digest,
+        "mintOsReleaseSha256": hashlib.sha256(os_release).hexdigest(),
+        "windowsPartitionSha256": actual_windows_hashes,
+        "fourthGuestSerialSha256": fourth["fourthGuestSerialSha256"],
+        "nativeGrubDualBootVerified": False,
+        "sameDiskDualBootVerified": False,
+        "updatesVerified": False,
+        "rollbackVerified": False,
+        "releaseEligible": False,
+    }
+
+
 def _kernel_module_names(modules_root: Path, version: str) -> tuple[set[str], set[str]]:
     """Return built-in and loadable module names from the exact Mint kernel tree."""
     root = modules_root / version
@@ -555,6 +679,9 @@ def install_mint_root_and_boot(
             "mintIsoBytes": MINT_BYTES,
             "mintRootUuid": root_uuid,
             "mintKernel": kernel.name,
+            "mintKernelSha256": sha256(kernel_copy),
+            "mintInitramfsSha256": sha256(initrd_copy),
+            "mintOsReleaseSha256": sha256(os_release),
             "mintSquashfsRootCopiedToWindowsCOWPartition5": True,
             "mintFirstBootFromSameWindowsCOWVerified": True,
             "windowsFourPartitionSha256Unchanged": True,
