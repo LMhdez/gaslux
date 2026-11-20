@@ -44,6 +44,13 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - name: Checkout pinned existing libguestfs kernel selector
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
+          path: safety-pop-lab
+          persist-credentials: false
       - name: Check hosted-runner scope and KVM before any disk creation
         shell: bash
         run: |
@@ -66,6 +73,12 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils gdisk libguestfs-tools python3-guestfs \
             libguestfs0 linux-image-generic ca-certificates
+      - name: Select a complete, readable guestfs generic kernel using the existing lab helper
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C safety-pop-lab rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
+          source safety-pop-lab/auto_tests/tools/windows_x64_libguestfs_kernel.sh
       - name: Observe real QEMU Linux appliance and enforce no-writer
         shell: bash
         env:
