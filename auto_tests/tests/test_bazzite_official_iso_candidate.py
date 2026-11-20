@@ -36,7 +36,10 @@ def test_candidate_remains_blocked_until_public_iso_and_payload_are_read_back():
     assert evidence["artifact"]["signature"]["verifiedAgainstLocalIsoBytes"] is False
     assert evidence["artifact"]["provenance"]["verifiedAgainstLocalIsoBytes"] is False
     assert evidence["relationship"]["embeddedOciManifestReadBackVerified"] is False
-    assert evidence["relationship"]["isoAttestationResolvedPayloadDigestIndependentlyVerified"] is False
+    assert (
+        evidence["relationship"]["isoAttestationResolvedPayloadDigestIndependentlyVerified"]
+        is False
+    )
     assert evidence["relationship"]["cryptographicIsoToPayloadBindingVerified"] is False
     assert evidence["installationAuthorized"] is False
 
@@ -44,5 +47,8 @@ def test_candidate_remains_blocked_until_public_iso_and_payload_are_read_back():
 def test_candidate_never_confuses_oci_digest_with_iso_digest():
     evidence = load_candidate()
     assert evidence["artifact"]["sha256"] != evidence["payload"]["digest"].removeprefix("sha256:")
-    assert evidence["artifact"]["sha256"] != evidence["payload"]["configDigest"].removeprefix("sha256:")
+    assert (
+        evidence["artifact"]["sha256"]
+        != evidence["payload"]["configDigest"].removeprefix("sha256:")
+    )
     assert evidence["payload"]["digest"] != evidence["payload"]["configDigest"]
