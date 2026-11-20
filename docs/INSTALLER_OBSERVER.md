@@ -605,3 +605,53 @@ A future Bazzite backend may consume this protocol only through a dedicated read
 Before the protocol can be called an independent trust boundary, human-reviewed infrastructure evidence must show: (a) broker administration and signing keys are outside the runner's privileged domain; (b) runner/root cannot replace controller, collector, policy or guest; (c) client authentication and authorization are independently enforced; (d) guest attestation is validated against a separately provisioned trust root or explicitly marked unavailable; (e) signed response verification and nonce/replay rejection work against hostile clients; (f) real QMP/RFB sessions and old descriptors are revoked; and (g) audit evidence is independently retained.
 
 No broker endpoint, independent control VM, trust root, public key, certificate, KMS/HSM key, guest attestation verifier or remote execution infrastructure was available in this intervention. Therefore the protocol is **specified but not implemented**, and the trust classification remains **`NOT_INDEPENDENT` / criterion C**. The same-host runner experiment and its limitations remain unchanged.
+
+
+## Local remote-response verifier (implemented; no broker)
+
+`auto_tests/installer_observer/remote_verifier.py` implements a client-side verifier for the protocol above. It does not start a server, contact a broker, create production keys, open QMP/RFB, or provide any input operation.
+
+### Trust provisioning
+
+The caller must construct `TrustStore` from an independently provisioned `TrustedController` record. It pins the raw 32-byte Ed25519 public key and the expected key ID, controller ID, controller artifact SHA-256, policy SHA-256, collector ID and artifact SHA-256, VM UUID, QEMU executable SHA-256, distribution ID/version, ISO SHA-256, installer ID, attestation verifier ID and attestation trust-anchor ID.
+
+The verifier never imports a public key or trust anchor from the response. A missing or empty trust store returns `trust-anchor-missing`; an unknown key ID returns `untrusted-key`. Test keys are generated ephemerally by tests only. No production key material or trust store is committed.
+
+### Verification order and fail-closed behavior
+
+1. Parse bounded UTF-8 JSON; reject duplicate properties, non-JSON constants and oversized requests/responses.
+2. Validate request and response against the strict Draft 2020-12 schemas, including distribution identity and per-session request sequence.
+3. Canonicalize with the RFC 8785 implementation; hash the canonical request and require exact `request_sha256` binding.
+4. Bind operation, request ID, nonce, sequence, transaction ID and session ID. A successful `session.identify` must return a fresh session ID; all later responses must echo the requested session.
+5. Resolve the signature key exclusively from the local trust store; compare key ID and controller/collector artifact and policy identities with pinned values.
+6. Verify Ed25519 over the RFC 8785 canonical response object with only the `signature` member omitted.
+7. Verify canonical `result_sha256`; for framebuffer responses, strictly decode base64, require PNG magic, enforce the byte limit and verify the raw PNG SHA-256.
+8. Verify issue/expiry timestamps, the 30-second response lifetime, caller deadline, request timeout, state snapshot bound, and ten-minute maximum session lifetime.
+9. For successful observations, pin VM UUID, QEMU executable digest, distribution, version, ISO digest and installer ID. By default require a signed attestation assertion whose verifier and trust-anchor IDs match local policy.
+10. Atomically consume nonce/request ID and advance the session sequence through a replay guard. A duplicate, stale sequence, closed/expired session, transaction mismatch or storage failure is refused.
+
+The request schema requires sequence zero for `session.identify` and sequence at least one for subsequent operations. The response sequence must exactly echo the request sequence.
+
+### Replay state
+
+`SQLiteReplayGuard` persists consumed nonces, request IDs, session transaction IDs, monotonic sequence, expiry and closure state using SQLite transactions. Its parent directory must already be owned by the current user and mode 0700; the database is created as a regular mode-0600 file, and symlinks are refused. Storage errors fail closed. `InMemoryReplayGuard` is provided for tests and short-lived processes only; it does not protect across process restarts.
+
+A production client must protect and back up the SQLite state against rollback/tampering, and must not restore an older replay database. This local database is replay state, not a trust anchor.
+
+### Attestation semantics — important limitation
+
+The verifier distinguishes:
+- `controller_signature_verified`: the pinned Ed25519 key signed the response.
+- `controller_workload_trusted` / `collector_trusted`: controller, policy and collector hashes match local pins.
+- `guest_identity_assurance`: the signed controller's declared assurance level.
+- `guest_attestation_status`: the signed controller's declared attestation status.
+
+The current response envelope contains only an attestation evidence digest, verifier ID and trust-anchor ID; it does not carry the TPM/vTPM quote or measured-boot event log. Consequently `guest_attestation_verified_locally` is always **false** and `guest_attestation_assertion` is explicitly `trusted-controller-asserted`. The verifier requires the controller to assert `cryptographically-attested` and the pinned verifier/trust-anchor IDs by default, but it does **not** independently validate the quote. A future protocol revision must carry bounded attestation evidence or a separately verifiable attestation receipt and add a local verifier before claiming guest attestation is independently established.
+
+A valid Ed25519 signature is not TPM attestation. A trusted controller/collector hash is not proof that the guest is genuine. A correct result digest proves consistency of the signed bytes, not truthfulness of the observation.
+
+### API and operational status
+
+The public API is `RemoteResponseVerifier.verify(request, response, deadline=..., now=...)`. It returns a `VerifiedRemoteResponse` only after all configured gates pass, or a `VerificationRefused` with a stable refusal code. A correctly signed broker refusal is returned with `status="refused"`; it is never represented as a successful observation.
+
+No network client, broker, workload identity exchange, TPM quote verifier, WPF integration, Bazzite adapter or installer automation is implemented. `click_if_current` remains an unconditional refusal. The verifier is a local cryptographic/contract component and does not change the overall trust classification: **`NOT_INDEPENDENT`**.
