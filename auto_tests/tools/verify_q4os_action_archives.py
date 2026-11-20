@@ -18,9 +18,7 @@ from auto_tests.installer_observer.evidence import Refusal, canonical, digest, p
 from auto_tests.installer_observer.screenshot import MAX_PNG, Screenshot
 
 MAX_ARCHIVE = 16 * 1024 * 1024
-EXPECTED_ARTIFACTS = (
-    14587306682, 14586773677, 14590616864, 14589299655
-)
+EXPECTED_ARTIFACTS = (14587306682, 14586773677, 14590616864, 14589299655)
 EXPECTED_RUNS = (44641233701, 44641233701, 44648406729, 44648406729)
 
 
@@ -102,21 +100,26 @@ def validate_archives(zip_dir: Path, metadata_dir: Path, originals: Path) -> dic
         transitions += len(run["transitions"])
     if (frames, transitions) != (40, 36):
         raise Refusal("Historical screenshot/transition totals changed")
-    return {"verified_artifacts": list(EXPECTED_ARTIFACTS), "screenshots": frames,
-            "historical_edges": transitions, "guest_input_events": 0}
+    return {
+        "verified_artifacts": list(EXPECTED_ARTIFACTS),
+        "screenshots": frames,
+        "historical_edges": transitions,
+        "guest_input_events": 0,
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--zip-dir", required=True, type=Path)
     parser.add_argument("--metadata-dir", required=True, type=Path)
-    parser.add_argument(
-        "--originals", type=Path, default=q4os.ORIGINALS
-    )
+    parser.add_argument("--originals", type=Path, default=q4os.ORIGINALS)
     args = parser.parse_args()
     try:
-        print(json.dumps(validate_archives(args.zip_dir, args.metadata_dir, args.originals),
-                         sort_keys=True))
+        print(
+            json.dumps(
+                validate_archives(args.zip_dir, args.metadata_dir, args.originals), sort_keys=True
+            )
+        )
         return 0
     except (OSError, ValueError) as exc:
         parser.exit(1, f"REFUSE_Q4OS_ARCHIVE_PROVENANCE: {exc}\n")
