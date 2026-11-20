@@ -325,8 +325,16 @@ def main() -> int:
             try:
                 if mountpoint.exists():
                     mountpoint.rmdir()
+                if trace_path is not None and trace_path.parent == workspace:
+                    if trace_path.is_symlink():
+                        raise RuntimeError("Refusing to remove an unexpected symlink in the temporary workspace")
+                    if trace_path.is_file():
+                        trace_path.unlink()
                 if image.exists():
                     image.unlink()
+                remaining = sorted(entry.name for entry in workspace.iterdir())
+                if remaining:
+                    raise RuntimeError(f"Unexpected temporary entries remain; preserving them: {remaining!r}")
                 workspace.rmdir()
                 result["temporaryResourcesRemoved"] = True
             except Exception as error:
