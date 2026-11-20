@@ -528,6 +528,9 @@ def run_distinst_partition_test(
             and drives[-1]["path"] != drives[0]["path"],
             "synthetic distinst QEMU drive allowlist invalid")
     proc = None
+    preflight = None
+    guest = None
+    nvram_before_distinst = None
     try:
         with stderr.open("wb") as err:
             proc = subprocess.Popen(qemu_args, stdout=subprocess.DEVNULL,
@@ -678,10 +681,41 @@ def run_distinst_partition_test(
         retain_bounded_failure(
             evidence, stream, stderr, trace,
             "synthetic distinst writer VM failed: " + str(exc)[:500])
+        if trace.is_file() and not trace.is_symlink() and trace.stat().st_size <= 16_000_000:
+            shutil.copyfile(trace, evidence / "synthetic-distinst-failure-full-qemu-trace.log")
+            data = (evidence / "synthetic-distinst-failure-full-qemu-trace.log").read_bytes()
+            (evidence / "synthetic-distinst-failure-full-qemu-trace.log.sha256").write_text(
+                hashlib.sha256(data).hexdigest()
+                + "  synthetic-distinst-failure-full-qemu-trace.log\n",
+                encoding="ascii")
+        if serial_log.is_file() and not serial_log.is_symlink() and serial_log.stat().st_size <= 4_000_000:
+            shutil.copyfile(serial_log, evidence / "synthetic-distinst-failure-serial.log")
+        if guest is not None:
+            (evidence / "synthetic-distinst-failure-guest-report.json").write_text(
+                json.dumps(guest, sort_keys=True, indent=2), encoding="utf-8")
+        failure_checkpoint = {
+            "baseSha256Before": base_sha,
+            "baseSha256After": sha(base) if base.is_file() else None,
+            "baseUnchanged": base.is_file() and sha(base) == base_sha,
+            "nvramSha256BeforeDistinst": nvram_before_distinst,
+            "nvramSha256AtFailure": sha(nvram) if nvram.is_file() else None,
+            "childPresentBeforeCleanup": child.exists(),
+            "traceSha256": sha(trace) if trace.is_file() else None,
+            "failure": str(exc)[:1000],
+        }
+        (evidence / "synthetic-distinst-failure-checkpoint.json").write_text(
+            json.dumps(failure_checkpoint, sort_keys=True, indent=2), encoding="utf-8")
         raise
     finally:
         if child.exists() and not child.is_symlink():
             child.unlink()
+        cleanup_checkpoint = {
+            "childDiscardedAfterCleanup": not child.exists(),
+            "baseSha256AfterCleanup": sha(base) if base.is_file() else None,
+            "baseUnchangedAfterCleanup": base.is_file() and sha(base) == base_sha,
+        }
+        (evidence / "synthetic-distinst-cleanup-checkpoint.json").write_text(
+            json.dumps(cleanup_checkpoint, sort_keys=True, indent=2), encoding="utf-8")
 
 
 def run(evidence: Path) -> dict:
