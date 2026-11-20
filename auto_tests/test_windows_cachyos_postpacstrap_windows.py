@@ -155,7 +155,12 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
             (root / "sixth-post-pacstrap-windows-serial.log").write_bytes(
                 b"synthetic serial (NOT a Windows boot proof)")
             front, back = b"synthetic-gpt-primary", b"synthetic-gpt-backup"
-            original_hashes = {"efi": "test-hash"}
+            original_hashes = {
+                "espBootManagerSha256": "a" * 64,
+                "espBcdSha256": "b" * 64,
+                "windowsLoaderSha256": "c" * 64,
+                "winreImageSha256": "d" * 64,
+            }
             plan = {
                 "runId": "gaslux-test-txn",
                 "gptWindowsSha256": hashlib.sha256(front + back).hexdigest(),
@@ -163,7 +168,7 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
             }
             for tamper, error in (
                 ("gpt", "primary or backup GPT bytes changed"),
-                ("windows_files", "ESP/BCD/winload/WinRE hashes changed"),
+                ("windows_files", "espBcdSha256"),
                 ("none", None),
             ):
                 gpt_reads = [
@@ -172,7 +177,8 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
                 ]
                 file_reads = [
                     original_hashes,
-                    {"efi": "tampered"} if tamper == "windows_files" else original_hashes,
+                    {**original_hashes, "espBcdSha256": "e" * 64}
+                    if tamper == "windows_files" else original_hashes,
                 ]
                 with self.subTest(tamper=tamper), mock.patch.dict(
                     os.environ, lab_env(), clear=True
