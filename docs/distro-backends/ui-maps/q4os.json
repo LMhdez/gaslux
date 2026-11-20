@@ -766,6 +766,103 @@
           ]
         }
       ]
+    },
+    {
+      "id": "calamares-users-filled",
+      "order": 9,
+      "screenshot": "vnc-users-dummy-filled.png",
+      "visualGate": "verified_users_filled",
+      "title": "Users",
+      "visibleTextObserved": "Gaslux Lab",
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Next",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": [
+            957,
+            622,
+            1051,
+            663
+          ],
+          "action": "advance to Summary"
+        }
+      ],
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44648406729",
+          "artifactId": 14590616864,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14590616864",
+          "screenshot": "vnc-users-dummy-filled.png",
+          "sha256": "4bdcdff75da26734c18fd0319a1d9c8f353ac34babaa597b35ac22ea46538400",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44648406729",
+          "artifactId": 14589299655,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14589299655",
+          "screenshot": "vnc-users-dummy-filled.png",
+          "sha256": "2bacbf6419d7a5cee1f7446360de43c80b37e1796c7bf23d5b43e665b895e375",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
+    },
+    {
+      "id": "calamares-summary",
+      "order": 10,
+      "screenshot": "vnc-summary-page.png",
+      "visualGate": "verified_summary",
+      "title": "Summary",
+      "visibleTextObserved": "This is an overview",
+      "qtAccessibilityId": null,
+      "controls": [
+        {
+          "label": "Install",
+          "type": "button",
+          "qtId": null,
+          "boundingBox": null,
+          "action": "Forbidden terminal control"
+        }
+      ],
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44648406729",
+          "artifactId": 14590616864,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14590616864",
+          "screenshot": "vnc-summary-page.png",
+          "sha256": "12f1738adfa5ace802e63487799e0e629dab86701d66d0141b7808eb4ecb3a30",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        },
+        {
+          "replica": 2,
+          "runId": "44648406729",
+          "artifactId": 14589299655,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14589299655",
+          "screenshot": "vnc-summary-page.png",
+          "sha256": "bf7c95bd27237a3f907698967d792881a040d571bbdebf2d4e5d9860ef8c94b8",
+          "visualGatePassed": true,
+          "resolution": [
+            1280,
+            800
+          ]
+        }
+      ]
     }
   ],
   "transitions": [
@@ -1232,14 +1329,129 @@
           "centralRegionChanged": true
         }
       ]
+    },
+    {
+      "id": "t9-calamares-users-unfilled-to-calamares-users-filled",
+      "from": "calamares-users-unfilled",
+      "to": "calamares-users-filled",
+      "action": "populate synthetic guest fields",
+      "locator": {
+        "type": "none",
+        "x": null,
+        "y": null,
+        "boundingBox": null,
+        "selectionRule": "Historical five-field fixture sequence in the pinned hook; no single click or live authorization."
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes",
+        "Guarded dummy-only lab hook and original Users gate"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44648406729",
+          "artifactId": 14590616864,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14590616864",
+          "beforeScreenshot": "vnc-users-page.png",
+          "beforeSha256": "201309226db419647d7c27c6b9b8fcc6751c40785bd5b55a6a02957d5cdd7b24",
+          "afterScreenshot": "vnc-users-dummy-filled.png",
+          "afterSha256": "4bdcdff75da26734c18fd0319a1d9c8f353ac34babaa597b35ac22ea46538400",
+          "centralRegionChanged": true,
+          "visualGatesPassed": true
+        },
+        {
+          "replica": 2,
+          "runId": "44648406729",
+          "artifactId": 14589299655,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14589299655",
+          "beforeScreenshot": "vnc-users-page.png",
+          "beforeSha256": "5818b14efd912b9f8a4ef7a3fac11add2424328a3be914e9f934d8b127fc0517",
+          "afterScreenshot": "vnc-users-dummy-filled.png",
+          "afterSha256": "2bacbf6419d7a5cee1f7446360de43c80b37e1796c7bf23d5b43e665b895e375",
+          "centralRegionChanged": true,
+          "visualGatesPassed": true
+        }
+      ]
+    },
+    {
+      "id": "t10-calamares-users-filled-to-calamares-summary",
+      "from": "calamares-users-filled",
+      "to": "calamares-summary",
+      "action": "advance to Summary",
+      "locator": {
+        "type": "sha-gated-vnc-coordinate",
+        "x": 1002,
+        "y": 644,
+        "boundingBox": [
+          957,
+          622,
+          1051,
+          663
+        ],
+        "selectionRule": "Exactly matched screenshot RGB ROIs; coordinate valid only in pinned 1280x800 QEMU guest"
+      },
+      "preconditions": [
+        "Verified SHA-256 official ISO",
+        "Pinned lab script commit",
+        "Synthetic COW disk is owned and pre-snapshotted",
+        "Source screenshot visual gate passes",
+        "Guarded dummy-only lab hook and original Users gate"
+      ],
+      "postconditions": [
+        "Destination screenshot visual gate passes",
+        "Central screenshot region differs from source",
+        "No Calamares install job executed"
+      ],
+      "configuredCommandTimeoutSeconds": 20,
+      "observedDurationMs": null,
+      "status": "verified",
+      "proofs": [
+        {
+          "replica": 1,
+          "runId": "44648406729",
+          "artifactId": 14590616864,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14590616864",
+          "beforeScreenshot": "vnc-users-dummy-filled.png",
+          "beforeSha256": "4bdcdff75da26734c18fd0319a1d9c8f353ac34babaa597b35ac22ea46538400",
+          "afterScreenshot": "vnc-summary-page.png",
+          "afterSha256": "12f1738adfa5ace802e63487799e0e629dab86701d66d0141b7808eb4ecb3a30",
+          "centralRegionChanged": true,
+          "visualGatesPassed": true,
+          "observedDurationMs": 3279
+        },
+        {
+          "replica": 2,
+          "runId": "44648406729",
+          "artifactId": 14589299655,
+          "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44648406729/artifacts/14589299655",
+          "beforeScreenshot": "vnc-users-dummy-filled.png",
+          "beforeSha256": "2bacbf6419d7a5cee1f7446360de43c80b37e1796c7bf23d5b43e665b895e375",
+          "afterScreenshot": "vnc-summary-page.png",
+          "afterSha256": "bf7c95bd27237a3f907698967d792881a040d571bbdebf2d4e5d9860ef8c94b8",
+          "centralRegionChanged": true,
+          "visualGatesPassed": true,
+          "observedDurationMs": 3328
+        }
+      ]
     }
   ],
   "stopBoundary": {
-    "lastObservedState": "calamares-users-unfilled",
-    "nextStateUnobserved": "calamares-summary",
+    "lastObservedState": "calamares-summary",
+    "nextStateUnobserved": "calamares-install",
     "nativeCalamaresInstallExecuted": false,
     "windowsDiskModified": false,
-    "accountInputAttempted": false,
-    "reason": "The lab intentionally stops at the blank Users screen: no credentials, Summary navigation, Install confirmation or Calamares execution is authorized."
+    "accountInputAttempted": true,
+    "reason": "Summary observed in the synthetic Users experiment. Stop before Install; prompt-install=false."
   }
 }

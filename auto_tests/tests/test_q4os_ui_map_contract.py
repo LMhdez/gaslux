@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -49,7 +50,7 @@ def test_state_machine_order_and_coordinates(documents: tuple[dict, dict]) -> No
     mapping, _ = documents
     states = mapping["states"]
     transitions = mapping["transitions"]
-    assert len(states) == 9 and len(transitions) == 8
+    assert len(states) == 11 and len(transitions) == 10
     ids = [s["id"] for s in states]
     assert len(ids) == len(set(ids))
     assert [s["order"] for s in states] == list(range(len(states)))
@@ -63,6 +64,10 @@ def test_state_machine_order_and_coordinates(documents: tuple[dict, dict]) -> No
         assert transition["configuredCommandTimeoutSeconds"] == 20
         assert transition["preconditions"] and transition["postconditions"]
         loc = transition["locator"]
+        if transition["to"] == "calamares-users-filled":
+            assert loc["type"] == "none" and loc["x"] is loc["y"] is loc["boundingBox"] is None
+            assert len(transition["proofs"]) == 2
+            continue
         assert loc["type"] == "sha-gated-vnc-coordinate"
         x, y = loc["x"], loc["y"]
         assert isinstance(x, int) and isinstance(y, int)
@@ -100,12 +105,12 @@ def test_only_original_images_can_support_a_verified_claim(
         else:
             assert len(transition["proofs"]) < 2
     if evidence["status"] == "two-vm-verified":
-        assert len(artifact_ids) == 2
-        assert evidence["stateCountVerifiedInTwoGuests"] == 9
-        assert evidence["transitionCountVerifiedInTwoGuests"] == 8
+        assert len(artifact_ids) == 4
+        assert evidence["stateCountVerifiedInTwoGuests"] == 11
+        assert evidence["transitionCountVerifiedInTwoGuests"] == 10
         assert len(evidence["runs"]) == 2
         assert all(r["result"] == "success" for r in evidence["runs"])
-        assert {r["artifactId"] for r in evidence["runs"]} == artifact_ids
+        assert {r["artifactId"] for r in evidence["runs"] + evidence["summaryRuns"]} == artifact_ids
         assert len({r["replica"] for r in evidence["runs"]}) == 2
         assert all(
             len(run["screenshots"]) == 9 and len(run["transitions"]) == 8
@@ -116,13 +121,13 @@ def test_only_original_images_can_support_a_verified_claim(
 
 def test_no_destructive_promotion(documents: tuple[dict, dict]) -> None:
     mapping, evidence = documents
-    assert mapping["stopBoundary"]["lastObservedState"] == "calamares-users-unfilled"
-    assert mapping["stopBoundary"]["nextStateUnobserved"] == "calamares-summary"
+    assert mapping["stopBoundary"]["lastObservedState"] == "calamares-summary"
+    assert mapping["stopBoundary"]["nextStateUnobserved"] == "calamares-install"
     assert mapping["stopBoundary"]["nativeCalamaresInstallExecuted"] is False
     assert mapping["stopBoundary"]["windowsDiskModified"] is False
-    assert mapping["stopBoundary"]["accountInputAttempted"] is False
+    assert mapping["stopBoundary"]["accountInputAttempted"] is True
     assert "Summary" in mapping["stopBoundary"]["reason"]
-    assert evidence["blockedAt"].startswith("calamares-users-unfilled")
+    assert evidence["blockedAt"].startswith("calamares-summary")
     assert all(r["result"] != "success" or r["isoHashVerified"] for r in evidence["runs"])
 
 
@@ -159,3 +164,23 @@ def test_exact_source_workflow_is_lab_only() -> None:
         "official Q4OS",
     ):
         assert required in workflow
+
+
+def test_preserve_original_experiment_and_bind_summary_replicas(documents):
+    mapping, evidence = documents
+    original = [mapping["states"][:9], mapping["transitions"][:8], evidence["runs"]]
+    canonical = json.dumps(original, sort_keys=True, separators=(",", ":")).encode()
+    # Canonical projection of #258 at a91e8b6.
+    assert (
+        hashlib.sha256(canonical).hexdigest()
+        == "29c119e5007b43807167e5c4608269543db4a39f9b16ef5f2d58a62ebfdfae45"
+    )
+    for run, proof, duration in zip(
+        evidence["summaryRuns"], mapping["transitions"][-1]["proofs"], [3279, 3328], strict=True
+    ):
+        assert run["runId"] == proof["runId"] == "44648406729"
+        assert run["artifactId"] == proof["artifactId"]
+        assert len(run["screenshots"]) == 11 and len(run["transitions"]) == 10
+        assert proof["observedDurationMs"] == duration
+        assert proof["beforeSha256"] == run["screenshots"][-2]["sha256"]
+        assert proof["afterSha256"] == run["screenshots"][-1]["sha256"]

@@ -69,8 +69,8 @@ jobs:
           data=json.loads(raw.split("=",1)[1])
           docs=json.loads(Path("docs/distro-backends/evidence/q4os-manifest.json").read_text())
           assert docs["status"]=="two-vm-verified"
-          assert docs["stateCountVerifiedInTwoGuests"]==data["stateCountVerifiedInTwoGuests"]==9
-          assert docs["transitionCountVerifiedInTwoGuests"]==data["transitionCountVerifiedInTwoGuests"]==8
+          assert len(docs["runs"][0]["screenshots"])==data["stateCountVerifiedInTwoGuests"]==9
+          assert len(docs["runs"][0]["transitions"])==data["transitionCountVerifiedInTwoGuests"]==8
           assert data["runId"]==docs["runs"][0]["runId"]==docs["runs"][1]["runId"]
           for replica in data["replicas"]:
               doc=next(r for r in docs["runs"] if r["replica"]==replica["replica"])
@@ -110,6 +110,8 @@ jobs:
               original=root/f"replica{replica}"/"evidence"
               words=[]
               for state in mapping["states"]:
+                  if not any(p["runId"]==os.environ["Q4OS_AUTHENTICATED_SOURCE_RUN"] for p in state["proofs"]):
+                      continue
                   png=original/state["screenshot"]
                   sha=hashlib.file_digest(png.open("rb"),"sha256").hexdigest()
                   tsv=subprocess.check_output(

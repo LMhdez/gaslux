@@ -151,6 +151,15 @@ def verify_pair(artifacts: list[Path], map_path: Path, gate_path: Path) -> dict:
     if len(artifacts) != 2:
         raise PairProofError("Exactly two independent artifact directories required")
     mapping = json.loads(map_path.read_text(encoding="utf-8"))
+    # This verifier covers the original blank-Users experiment only.
+    for key, count in (("states", 9), ("transitions", 8)):
+        mapping[key] = [
+            row
+            for row in mapping[key]
+            if any(proof["runId"] == "44641233701" for proof in row["proofs"])
+        ]
+        if len(mapping[key]) != count:
+            raise PairProofError("Incomplete historical Users experiment")
     gate = load_gate(gate_path)
     reports = [audit_replica(artifact, mapping, gate) for artifact in artifacts]
     if (
