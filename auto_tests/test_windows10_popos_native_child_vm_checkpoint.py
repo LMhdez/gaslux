@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -13,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent/"tools"))
 from windows_x64_installed_gpt_ro_audit import DiskAuditError
 from windows10_popos_native_child_vm_checkpoint import (
     VM_SIZE, validate_native_child_chain, disposable_native_child,
+    require_unchanged_parent_checkpoints,
 )
 
 
@@ -67,6 +70,38 @@ class NativeChildProtectionTests(unittest.TestCase):
                     validate_native_child_chain(
                         bad_base, bad_stage, bad_child, src_info, dst_info,
                     )
+
+
+    def test_refuse_parent_checkpoint_sha_drift_even_when_guest_has_failed(self):
+        # Tiny private synthetic files: never a guest, real disk or writer.
+        with tempfile.TemporaryDirectory(prefix="gaslux-pop-parent-sha-") as work:
+            base = Path(work) / "synthetic-windows.qcow2"
+            stage = Path(work) / "synthetic-stage.qcow2"
+            original_base = b"windows-readonly-parent"
+            original_stage = b"post-windows-boot-gpt-stage"
+            base.write_bytes(original_base)
+            stage.write_bytes(original_stage)
+            base_sha = hashlib.sha256(original_base).hexdigest()
+            stage_sha = hashlib.sha256(original_stage).hexdigest()
+            require_unchanged_parent_checkpoints(base, stage, base_sha, stage_sha)
+            for target, mutated in [
+                (base, original_base + b"!"),
+                (stage, original_stage + b"!"),
+            ]:
+                with self.subTest(parent=target.name):
+                    saved = target.read_bytes()
+                    target.write_bytes(mutated)
+                    with self.assertRaises(DiskAuditError):
+                        require_unchanged_parent_checkpoints(
+                            base, stage, base_sha, stage_sha,
+                        )
+                    target.write_bytes(saved)
+                    require_unchanged_parent_checkpoints(
+                        base, stage, base_sha, stage_sha,
+                    )
+            base.unlink()
+            with self.assertRaises(OSError):
+                require_unchanged_parent_checkpoints(base, stage, base_sha, stage_sha)
 
     def test_refuse_absent_live_proof_and_hosted_consent_before_any_create(self):
         base, stage, _, _, _ = fixture()
