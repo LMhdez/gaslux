@@ -13,6 +13,8 @@ on:
       - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
       - 'auto_tests/tests/test_q4os_ci_no_mutating_formatter.py'
       - 'auto_tests/tests/test_q4os_win10_readonly_probe.py'
+      - 'auto_tests/tools/q4os_win10_qmp_boot.py'
+      - 'auto_tests/tests/test_q4os_win10_qmp_boot.py'
       - 'assets/live/gaslux_q4os_win10_readonly_probe.py'
       - 'schemas/gaslux-q4os-windows-boundary.schema.json'
       - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
@@ -28,6 +30,8 @@ on:
       - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
       - 'auto_tests/tests/test_q4os_ci_no_mutating_formatter.py'
       - 'auto_tests/tests/test_q4os_win10_readonly_probe.py'
+      - 'auto_tests/tools/q4os_win10_qmp_boot.py'
+      - 'auto_tests/tests/test_q4os_win10_qmp_boot.py'
       - 'assets/live/gaslux_q4os_win10_readonly_probe.py'
       - 'schemas/gaslux-q4os-windows-boundary.schema.json'
       - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
@@ -66,9 +70,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py
-          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py
-          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py
+          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py auto_tests/tools/q4os_win10_qmp_boot.py auto_tests/tests/test_q4os_win10_qmp_boot.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py auto_tests/tools/q4os_win10_qmp_boot.py auto_tests/tests/test_q4os_win10_qmp_boot.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py auto_tests/tools/q4os_win10_qmp_boot.py auto_tests/tests/test_q4os_win10_qmp_boot.py
       - name: Fetch pinned upstream Safety #267 (never into working tree)
         shell: bash
         run: |
@@ -92,7 +96,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE"
-          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py auto_tests/tests/test_q4os_win10_readonly_probe.py \
+          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py auto_tests/tests/test_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_qmp_boot.py \
             --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/pytest.xml"
           test -s "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/checkpoint-verified.json"
           python - <<'PY'
@@ -139,6 +143,8 @@ jobs:
             auto_tests/tests/test_q4os_ci_no_mutating_formatter.py \
             assets/live/gaslux_q4os_win10_readonly_probe.py \
             auto_tests/tests/test_q4os_win10_readonly_probe.py \
+            auto_tests/tools/q4os_win10_qmp_boot.py \
+            auto_tests/tests/test_q4os_win10_qmp_boot.py \
             .github/workflows/gaslux-q4os-windows10-qcow2.yml \
             .github/workflows/gaslux-q4os-windows-boundary.yml
       - name: Preserve synthetic-only evidence (no disk or ISO artifacts)
