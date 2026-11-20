@@ -1350,6 +1350,47 @@ def main(argv: list[str] | None = None) -> int:
                                                 )
                                                 print("GASLUX_CACHYOS_SHARED_ROOT_PACSTRAP_VERIFIED=1",
                                                       flush=True)
+                                                # Re-enter genuine Windows while GPT #5 still
+                                                # contains installed native CachyOS. This test
+                                                # does NOT write a Linux loader into Windows ESP.
+                                                # Any failure is retained and the owned COW is
+                                                # still discarded before the Windows baseline boot.
+                                                from windows_cachyos_postpacstrap_windows import (
+                                                    verify_windows_with_installed_root,
+                                                )
+                                                side_by_side = {
+                                                    "windowsBootWithPacstrappedCachyosOnSameDiskVerified": False,
+                                                    "sameDiskDualBootVerified": False,
+                                                    "releaseEligible": False,
+                                                }
+                                                try:
+                                                    side_by_side = verify_windows_with_installed_root(
+                                                        base, disk, nvram, candidate, cow, staged,
+                                                        third, ext4, fourth, pacstrap_proof,
+                                                        timeout=1500,
+                                                    )
+                                                except (ValueError, OSError, RuntimeError,
+                                                        subprocess.TimeoutExpired) as error:
+                                                    side_by_side["failureType"] = type(error).__name__
+                                                    print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_FAILED="
+                                                          + type(error).__name__, flush=True)
+                                                side_bytes = (json.dumps(
+                                                    side_by_side, sort_keys=True, indent=2
+                                                ) + "\\n").encode("utf-8")
+                                                side_path = evidence / (
+                                                    f"{args.profile}-post-pacstrap-windows-with-linux.json"
+                                                )
+                                                require(not side_path.exists() and
+                                                        not side_path.is_symlink(),
+                                                        "refusing reused Windows/Linux re-entry proof")
+                                                with side_path.open("xb") as out:
+                                                    out.write(side_bytes)
+                                                report["windowsBootWithPacstrappedCachyosOnSameDiskVerified"] = (
+                                                    side_by_side["windowsBootWithPacstrappedCachyosOnSameDiskVerified"]
+                                                )
+                                                report["windowsWithInstalledLinuxEvidenceSha256"] = (
+                                                    hashlib.sha256(side_bytes).hexdigest()
+                                                )
                                                 from windows_cachyos_postext4_cow_rollback import (
                                                     verify_discard_postext4_cow,
                                                 )
@@ -1416,6 +1457,8 @@ def main(argv: list[str] | None = None) -> int:
                         ("cachyos-installed-rw-child-stderr.log", "cachyos-installed-rw-child-stderr", 256_000),
                         ("cachyos-installed-rw-child-second-serial.log", "cachyos-installed-rw-child-second-serial", 512_000),
                         ("cachyos-installed-rw-child-second-stderr.log", "cachyos-installed-rw-child-second-stderr", 256_000),
+                        ("sixth-post-pacstrap-windows-serial.log", "sixth-post-pacstrap-windows-serial", 512_000),
+                        ("sixth-post-pacstrap-qemu-stderr.log", "sixth-post-pacstrap-qemu-stderr", 256_000),
                         ("fifth-after-ext4-discard-windows-serial.log", "fifth-post-pacstrap-discard-serial", 512_000),
                         ("fifth-after-ext4-discard-qemu-stderr.log", "fifth-post-pacstrap-discard-qemu-stderr", 256_000),
                     ):
