@@ -323,3 +323,47 @@ prove the absence of alternate emitters, and implement an action
 transaction with fresh framebuffer binding and bounded races before
 attempting one harmless action. Do not mistake the present evidence
 for Q4OS Calamares navigation or disk/Windows validation.
+
+
+### Unix-domain RFB/QMP laboratory: verified scope (20 November 2026)
+
+The experimental `lab_probe.py` now launches QEMU with
+`-vnc unix:<private-run>/rfb.sock` and
+`-qmp unix:<private-run>/qmp.sock,server=on,wait=off`.
+There is no TCP VNC configuration or alternative TCP QMP endpoint.
+The run directory is owned by the unprivileged runner and mode 0700;
+socket files are mode 0600, authenticated by filesystem owner,
+inode and mode. Unix peer PID/UID is verified using SO_PEERCRED and
+compared with independently sealed QEMU process identity.
+
+`endpoint_gates.py` inventories the actual QEMU socket descriptors
+and TCP LISTEN entries from procfs; a match immediately refuses the lab.
+It also verifies socket inodes, rejects symlink/permission drift and only
+removes owned original endpoint inodes after QEMU exit. Process shutdown
+and removal of both sockets are checked before a successful manifest
+is written. Full RFB observations remain read-only.
+
+**Live two-VM evidence:**
+[QEMU #44713137089](https://github.com/LMhdez/gaslux/actions/runs/44713137089)
+passed using distinct real QEMU processes, synthetic scratch images,
+independent QCOW2 snapshots, authenticated Unix socket peers, zero
+QEMU TCP listeners and zero input. In each VM an external process under
+the distinct `nobody` UID received EACCES from both RFB/QMP Unix paths.
+A separate process with the **same UID** connected successfully to both
+endpoints despite not holding the `ControllerLease`. This is an observed
+counterexample to process-exclusive input isolation and deliberately
+remains an active blocker. The second cooperative controller continued
+to be refused, 7 existing live drift gates per VM refused as expected,
+and both endpoint paths were removed safely after shutdown.
+
+The proof is limited to the CI runner and the processes tested. A host
+privileged process, a process sharing the QEMU UID, or kernel compromise
+remains outside the exclusion guarantee. Even with Unix socket
+confinement, framebuffer-to-input atomicity and visual-control identity
+remain unproven. `ReadOnlyVncTransport.click_if_current` is unchanged
+and refuses every event; no Calamares action or disk installer operation
+has been performed.
+
+The QEMU run and artifacts are **real**, while the independent
+adversarial endpoint unit tests use temporary sockets and Python
+process-seal fixtures and must not be conflated with guest-input proof.
