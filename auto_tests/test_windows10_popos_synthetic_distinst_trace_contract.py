@@ -51,7 +51,7 @@ def fixtures():
         "virtio_blk_handle_write vdev 0x10 req 0x20 "
         "sector 2048 nsectors 8\n"
         "virtio_blk_handle_write vdev 0x10 req 0x21 "
-        "sector {ROOT_START} nsectors 8\n"
+        f"sector {ROOT_START} nsectors 8\n"
     )
     tracefs = {
         "available": True,
