@@ -475,6 +475,208 @@ def distinst_console(sock: Path, stream: bytearray, nvram: Path):
         connection.close()
 
 
+def run_distinst_partition_test(
+    work: Path, evidence: Path, control: Path, iso: Path, code: Path,
+    vars_template: Path, event_file: Path,
+) -> dict:
+    base, base_sha, plan, child = make_distinst_base(work)
+    nvram = work / "distinst-ovmf-vars.fd"
+    shutil.copyfile(vars_template, nvram)
+    nvram_before_boot = sha(nvram)
+    code_before = sha(code)
+    control_before = sha(control)
+    trace = work / "distinst-qemu-write-trace.log"
+    sock = work / "distinst-serial.sock"
+    serial_log = work / "distinst-serial.log"
+    stderr = work / "distinst-qemu-stderr.log"
+    stream = bytearray()
+    qemu_args = [
+        "qemu-system-x86_64",
+        "-machine", "q35,accel=kvm,usb=off",
+        "-cpu", "host",
+        "-m", "4096",
+        "-smp", "2",
+        "-global", "ICH9-LPC.disable_s3=1",
+        "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
+        "-drive", f"if=pflash,format=raw,file={nvram}",
+        "-drive", f"if=none,id=distcontrol,format=raw,readonly=on,file={control}",
+        "-device", "virtio-blk-pci,drive=distcontrol,serial=GASLUX_DISTCTRL,bootindex=1,readonly=on",
+        "-drive", f"if=none,id=popiso,format=raw,readonly=on,file={iso}",
+        "-device", "virtio-blk-pci,drive=popiso,serial=GASLUX_POPISO,bootindex=2,readonly=on",
+        "-drive", f"if=none,id=syntarget,format=qcow2,file={child}",
+        "-device", f"virtio-blk-pci,drive=syntarget,serial={DISTINST_SERIAL},bootindex=3,discard=off,write-zeroes=off",
+        "-chardev", f"socket,id=serial,path={sock},server=on,wait=off,logfile={serial_log}",
+        "-serial", "chardev:serial",
+        "-monitor", "none",
+        "-display", "none",
+        "-no-reboot",
+        "-no-shutdown",
+        "-net", "none",
+        "-boot", "order=c,strict=on",
+        "-trace", f"events={event_file},file={trace}",
+    ]
+    drives = [
+        {"path": str(code), "readOnly": True, "kind": "OVMF_CODE"},
+        {"path": str(nvram), "readOnly": False, "kind": "OVMF_VARS_DISPOSABLE"},
+        {"path": str(control), "readOnly": True, "kind": "GASLUX_CONTROL"},
+        {"path": str(iso), "readOnly": True, "kind": "POP_SIGNED_ISO"},
+        {"path": str(child), "readOnly": False, "kind": "SYNTHETIC_DISTINST_TARGET"},
+    ]
+    require(len(drives) == 5
+            and [x["readOnly"] for x in drives]
+            == [True, False, True, True, False]
+            and drives[-1]["path"] != drives[0]["path"],
+            "synthetic distinst QEMU drive allowlist invalid")
+    proc = None
+    try:
+        with stderr.open("wb") as err:
+            proc = subprocess.Popen(qemu_args, stdout=subprocess.DEVNULL,
+                                    stderr=err, close_fds=True)
+        preflight, guest, nvram_before_distinst = distinst_console(
+            sock, stream, nvram)
+        try:
+            proc.wait(timeout=180)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=15)
+            raise DiskAuditError("synthetic distinst QEMU did not exit after guest poweroff")
+        require(proc.returncode == 0,
+                "synthetic distinst QEMU exited nonzero after poweroff")
+        trace_size = trace.stat().st_size if trace.is_file() and not trace.is_symlink() else -1
+        if trace_size < 0 or trace_size > 16_000_000:
+            reason = f"synthetic distinst QEMU trace missing/oversized: bytes={trace_size}"
+            retain_bounded_failure(evidence, stream, stderr, trace, reason)
+            raise DiskAuditError(reason)
+        trace_text = trace.read_text(encoding="utf-8", errors="replace")
+        nvram_after_distinst = sha(nvram)
+        code_after = sha(code)
+        control_after = sha(control)
+        base_after = sha(base)
+        require(code_after == code_before,
+                "read-only OVMF CODE image changed during synthetic distinst")
+        require(control_after == control_before,
+                "read-only control image changed during synthetic distinst")
+        require(base_after == base_sha,
+                "synthetic distinst backing base was modified")
+        qemu_img_check = call("qemu-img", "check", str(child),
+                              capture_output=True, text=True).stdout
+        decoded = decode_child_sparse(child, work / "distinst-child-decoded.raw")
+        gpt_proof = verify_synthetic_gpt_unchanged(base, decoded)
+        decoded.unlink()
+        child.unlink()
+        child_discarded = not child.exists()
+        require(child_discarded,
+                "synthetic distinst child QCOW2 was not discarded")
+        write_set = classify_distinst_writes(
+            plan, trace_text, guest, guest["tracefs"],
+            base_sha_after=base_after,
+            nvram_sha_before_distinst=nvram_before_distinst,
+            nvram_sha_after_distinst=nvram_after_distinst,
+            gpt_primary_backup_unchanged=True,
+            child_discarded=child_discarded,
+            qemu_clean_poweroff=True,
+        )
+        pflash_lines = [line for line in trace_text.splitlines()
+                        if "pflash_" in line]
+        pflash_mutations = [
+            line for line in pflash_lines
+            if any(name in line for name in (
+                "pflash_data_write", "pflash_data_write_block",
+                "pflash_write_block_erase", "pflash_sector_erase_start",
+                "pflash_chip_erase_start", "pflash_erase_complete",
+            ))
+        ]
+        pflash_vars = [line for line in pflash_mutations if "system.flash1" in line]
+        pflash_code = [line for line in pflash_mutations if "system.flash0" in line]
+        require(not pflash_code,
+                "read-only OVMF CODE pflash0 mutation observed")
+        report = {
+            **write_set,
+            "qemuDistinstTestExecuted": True,
+            "distinstMode": "--test",
+            "distinstTestIsDryRun": False,
+            "distinstFullSystemInstallCompleted": False,
+            "distinstElfSha256": guest["distinstProcess"]["exeSha256"],
+            "distinstPackageVersion": guest["distinstProcess"].get("packageVersion"),
+            "distinstElfBuildId": guest["distinstProcess"].get("elfBuildId"),
+            "upstreamRevisionExamined": "282dfc441ee608e963930d0ce01f04b672ca4f71",
+            "upstreamCargoCliVersion": "0.4.0",
+            "upstreamCommitMatchProven": False,
+            "syntheticDiskGuid": DISTINST_GUID,
+            "syntheticDiskSerial": DISTINST_SERIAL,
+            "syntheticDiskSizeBytes": DISTINST_DISK_SIZE,
+            "backingBaseSha256Before": base_sha,
+            "backingBaseSha256After": base_after,
+            "backingBaseUnchanged": base_after == base_sha,
+            "gptPrimaryBackupProof": gpt_proof,
+            "qemuImgCheck": qemu_img_check[-2000:],
+            "ovmfVarsSha256BeforeBoot": nvram_before_boot,
+            "ovmfVarsSha256BeforeDistinst": nvram_before_distinst,
+            "ovmfVarsSha256AfterDistinst": nvram_after_distinst,
+            "ovmfVarsChangedDuringBoot": nvram_before_boot != nvram_before_distinst,
+            "ovmfVarsPersistentStateUnchangedDuringDistinst":
+                nvram_before_distinst == nvram_after_distinst,
+            "ovmfVarsTransientWritesDuringDistinstProvenAbsent": False,
+            "ovmfCodeSha256Before": code_before,
+            "ovmfCodeSha256After": code_after,
+            "ovmfCodeUnchanged": code_before == code_after,
+            "controlImageSha256Before": control_before,
+            "controlImageSha256After": control_after,
+            "controlImageUnchanged": control_before == control_after,
+            "pflashEventCount": len(pflash_lines),
+            "pflashMutationEventCount": len(pflash_mutations),
+            "ovmfVarsPflashMutationEventCount": len(pflash_vars),
+            "ovmfCodePflashMutationEventCount": len(pflash_code),
+            "qemuTraceSha256": hashlib.sha256(trace_text.encode()).hexdigest(),
+            "qemuTraceBytes": len(trace_text.encode()),
+            "qemuTraceLineCount": len(trace_text.splitlines()),
+            "qemuTraceArtifactComplete": True,
+            "guestPreflight": preflight,
+            "guestDistinstReport": guest,
+            "windowsDiskAttached": False,
+            "distinstExecutionAuthorized": False,
+            "diskWritesAuthorizedForWindows": False,
+            "windowsEspWritesAuthorized": False,
+            "productionInstallationAuthorized": False,
+            "rollbackAfterNativeInstallVerified": False,
+        }
+        (evidence / "synthetic-distinst-guest-report.json").write_text(
+            json.dumps(guest, sort_keys=True, indent=2), encoding="utf-8")
+        (evidence / "synthetic-distinst-preflight.json").write_text(
+            json.dumps(preflight, sort_keys=True, indent=2), encoding="utf-8")
+        (evidence / "synthetic-distinst-write-report.json").write_text(
+            json.dumps(report, sort_keys=True, indent=2), encoding="utf-8")
+        (evidence / "synthetic-distinst-qemu-write-trace.log").write_text(
+            trace_text if trace_text.endswith("\n") else trace_text + "\n",
+            encoding="utf-8")
+        for name in (
+            "synthetic-distinst-guest-report.json",
+            "synthetic-distinst-preflight.json",
+            "synthetic-distinst-write-report.json",
+            "synthetic-distinst-qemu-write-trace.log",
+        ):
+            data = (evidence / name).read_bytes()
+            (evidence / (name + ".sha256")).write_text(
+                hashlib.sha256(data).hexdigest() + "  " + name + "\n",
+                encoding="ascii")
+        if serial_log.is_file() and serial_log.stat().st_size <= 4_000_000:
+            shutil.copyfile(serial_log, evidence / "synthetic-distinst-serial.log")
+        if stderr.is_file() and stderr.stat().st_size <= 1_000_000:
+            shutil.copyfile(stderr, evidence / "synthetic-distinst-qemu-stderr.log")
+        return report
+    except Exception as exc:
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=15)
+        retain_bounded_failure(
+            evidence, stream, stderr, trace,
+            "synthetic distinst writer VM failed: " + str(exc)[:500])
+        raise
+    finally:
+        if child.exists() and not child.is_symlink():
+            child.unlink()
+
+
 def run(evidence: Path) -> dict:
     hosted()
     require(evidence.is_dir() and not evidence.is_symlink()
