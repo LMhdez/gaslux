@@ -28,9 +28,18 @@ HASH = re.compile("[0-9a-f]{64}\\Z")
 API = "https://api.pop-os.org/builds/24.04/intel"
 LAB_CONSENT = "I_ACCEPT_VERIFIED_POP_ISO_IN_DISPOSABLE_WINDOWS_KVM_VM"
 
+# Immutable laboratory media identity, previously authenticated against the
+# upstream System76 GPG-signed SHA256SUMS. API drift requires reviewed repinning.
+PINNED_ISO_URL = (
+    "https://iso.pop-os.org/24.04/amd64/intel/20/"
+    "pop-os_24.04_amd64_intel_20.iso"
+)
+PINNED_ISO_SHA256 = "a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c"
+PINNED_ISO_BYTES = 2955067392
+
 
 def validate_signed_release_identity(data: dict, manifest: bytes) -> tuple[str, str, int]:
-    """Exactly one signed checksum entry for the API-selected Pop ISO."""
+    """Require the fixed lab release AND its unique signed ISO checksum."""
     require(type(data) is dict
             and data.get("version") == "24.04"
             and data.get("channel") == "intel"
@@ -39,7 +48,10 @@ def validate_signed_release_identity(data: dict, manifest: bytes) -> tuple[str, 
             and type(data.get("size")) is int
             and 2_000_000_000 <= data["size"] <= 6_000_000_000
             and type(data.get("sha_sum")) is str
-            and HASH.fullmatch(data["sha_sum"]) is not None,
+            and HASH.fullmatch(data["sha_sum"]) is not None
+            and data["url"] == PINNED_ISO_URL
+            and data["size"] == PINNED_ISO_BYTES
+            and data["sha_sum"] == PINNED_ISO_SHA256,
             "unsupported/unpinned official System76 ISO metadata",
     )
     filename = data["url"].rsplit("/", 1)[1]
