@@ -230,10 +230,17 @@ def test_real_qemu_img_dd_extracts_both_gpt_edges_without_mutating_qcow2(tmp_pat
     broken = scratch / "legacy-count-before-skip.raw"
     subprocess.run(
         [
-            "qemu-img", "dd", "-f", "qcow2", "-O", "raw",
-            "bs=1M", "count=2",
+            "qemu-img",
+            "dd",
+            "-f",
+            "qcow2",
+            "-O",
+            "raw",
+            "bs=1M",
+            "count=2",
             "skip=" + str(SECTORS * 512 // block - 2),
-            "if=" + str(qcow), "of=" + str(broken),
+            "if=" + str(qcow),
+            "of=" + str(broken),
         ],
         capture_output=True,
         check=True,
