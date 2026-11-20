@@ -79,6 +79,7 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
     ]
     evidence = []
     seen = set()
+    endpoint_paths = []
     worker_errors = []
     proc = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -131,6 +132,7 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 # 0700 directory without privilege.
                 if not path.startswith("/tmp/observer-qemu-"):
                     raise Refusal("Unexpected isolated endpoint root")
+            endpoint_paths.extend((qmp, rfb))
             tests = {
                 "original_runner_uid": os.geteuid(),
                 "isolated_uid": dedicated_uid,
@@ -158,6 +160,16 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 "Isolated laboratory failed or did not expose two VMs; "
                 + ("; ".join(worker_errors[-3:]) if worker_errors else f"exit={proc.returncode}")
             )
+        # Trusted post-exit inspection: stale names must be absent, including
+        # broken symlinks. The original UID alone cannot traverse this tree.
+        for stale in endpoint_paths:
+            for test_flag in ("-e", "-L"):
+                result = subprocess.run(
+                    ["sudo", "-n", "test", "!", test_flag, stale],
+                    check=False, timeout=8, capture_output=True,
+                )
+                if result.returncode != 0:
+                    raise Refusal("Stale or replaced QEMU endpoint survived shutdown")
         # Evidence is copied by sudo only AFTER the dedicated worker exited.
         # Never return the private socket directory as an input-capable proxy.
         source = private_root / "observer-qemu-lab"
@@ -176,6 +188,7 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
             "privileged_original_uid_out_of_scope": True,
             "dedicated_uid_external_clients_not_excluded": True,
             "guest_input_count": 0,
+            "stale_endpoints_absent_after_worker_exit": True,
         }))
         print(
             json.dumps(
