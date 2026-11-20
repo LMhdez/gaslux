@@ -48,8 +48,10 @@ def _one(evidence_root: Path) -> dict:
         snapshot = "snap-" + run_id
         _command(["qemu-img", "snapshot", "-c", snapshot, str(cow)])
         authority = LabAuthority(run_id, identity, "lab-probe-v1", snapshot, True, False)
+        sandbox.chmod(0o700)
         qmp = sandbox / "qmp.sock"
-        port = 5900  # single process per run; second run has new pid and fresh media
+        vnc = sandbox / "rfb.sock"
+        port = 0  # no TCP VNC listener
         cmd = [
             "qemu-system-x86_64",
             "-no-user-config",
@@ -71,7 +73,7 @@ def _one(evidence_root: Path) -> dict:
             "-net",
             "none",
             "-vnc",
-            "127.0.0.1:0",
+            f"unix:{vnc}",
             "-qmp",
             f"unix:{qmp},server=on,wait=off",
             "-drive",
@@ -86,12 +88,17 @@ def _one(evidence_root: Path) -> dict:
         )
         try:
             deadline = time.monotonic() + 25
-            while not qmp.exists() and time.monotonic() < deadline and proc.poll() is None:
+            while (not qmp.exists() or not vnc.exists()) and time.monotonic() < deadline and proc.poll() is None:
                 time.sleep(0.1)
-            if proc.poll() is not None or not qmp.exists():
+            if proc.poll() is not None or not qmp.exists() or not vnc.exists():
                 raise Refusal("QEMU did not expose its private QMP endpoint")
+            # QEMU creates sockets in our inaccessible-to-other-UID directory.
+            # Restrict endpoint mode as an additional defence, not an isolation proof.
+            qmp.chmod(0o600)
+            vnc.chmod(0o600)
             seal = QemuRunSeal(
-                authority, process_seal(proc.pid), qmp, port, seal_file(iso), seal_file(cow)
+                authority, process_seal(proc.pid), qmp, port, seal_file(iso), seal_file(cow),
+                vnc_socket=vnc,
             )
             attestor = LocalQemuAttestor(seal)
             # Real-process negative: a second cooperating controller must not
@@ -106,11 +113,11 @@ def _one(evidence_root: Path) -> dict:
                         raise
                 controller.verify()
                 attestor.verify(time.monotonic() + 5)
-                surface = inspect_input_surface(seal.process, tuple(cmd), qmp)
+                surface = inspect_input_surface(seal.process, tuple(cmd), qmp, vnc)
                 try:
                     surface.require_exclusive_input()
                 except Refusal as exc:
-                    if "Loopback RFB admits external host clients" not in str(exc):
+                    if "RFB Unix endpoint remains accessible to same-UID processes" not in str(exc):
                         raise
                 else:
                     raise Refusal("Unisolated QEMU input was accidentally authorized")
@@ -120,14 +127,14 @@ def _one(evidence_root: Path) -> dict:
             # read; it does not relax any identity or input validation.
             for candidate in RESOLUTIONS:
                 try:
-                    png = RfbReader(port=port).read_png(time.monotonic() + 4, candidate)
+                    png = RfbReader(unix_socket=vnc).read_png(time.monotonic() + 4, candidate)
                     resolution = candidate
                     break
                 except Refusal:
                     continue
             if png is None or resolution is None:
                 raise Refusal("No complete RFB RAW framebuffer at reviewed probe resolutions")
-            transport = ReadOnlyVncTransport(RfbReader(port=port), attestor, authority, resolution)
+            transport = ReadOnlyVncTransport(RfbReader(unix_socket=vnc), attestor, authority, resolution)
             frame = transport.capture(time.monotonic() + 8)
             if frame.scale is not None or frame.passed_checks:
                 raise Refusal("Read-only observation must not claim guest preconditions")
@@ -187,7 +194,9 @@ def _one(evidence_root: Path) -> dict:
             # A second VNC reader is still an external input-capable client.
             # It sends only RFB protocol negotiation, NEVER pointer/keyboard data.
             # The QMP witness must refuse while that client is connected.
-            with socket.create_connection(("127.0.0.1", port), timeout=3) as other:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as other:
+                other.settimeout(3)
+                other.connect(str(vnc))
                 other.settimeout(3)
 
                 def take_exact(size: int) -> bytes:
@@ -219,6 +228,7 @@ def _one(evidence_root: Path) -> dict:
                     lambda: transport.capture(time.monotonic() + 5),
                     "Unbound graphical endpoint or another VNC client",
                 )
+            # The same-UID uncooperative client DID connect; this is a blocker.
             # The other client has closed; the normal session must recover
             # without authorizing or emitting any guest input.
             attestor.verify(time.monotonic() + 5)
@@ -258,6 +268,8 @@ def _one(evidence_root: Path) -> dict:
                 "guest_clicks": 0,
                 "input_surface": asdict(surface),
                 "input_authority_refused": True,
+                "same_uid_external_rfb_connection": "admitted",
+                "tcp_rfb_listener_configured": False,
                 "cooperative_controller_contention_refused": True,
                 "live_negative_gates_refused": negative,
                 "q4os_booted": False,
