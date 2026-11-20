@@ -287,7 +287,8 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
     _guest_disk_audit(overlay, root_uuid)  # all five roots and four Windows SHA
     checkpoint = prepare_checkpoint(base=base, nvram=nvram, overlay=overlay,
                                     mint_root_uuid=root_uuid,
-                                    ovmf_code=Path(code_args[0]))
+                                    ovmf_code=Path(code_args[0]),
+                                    diagnostic_dir=evidence)
     verify_ab_source(workspace, checkpoint, base)
     write_manifest(evidence, "mint-ab-checkpoint.json", checkpoint)
     directory = workspace / AB_DIR
