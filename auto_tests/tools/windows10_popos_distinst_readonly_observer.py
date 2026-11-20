@@ -42,7 +42,8 @@ def require_readonly_distinst_environment() -> None:
     with AGENT.open("rb") as fd:
         require(hashlib.file_digest(fd, "sha256").hexdigest() ==
                 PINNED_DISTINST_SHA256, "actual ELF not pinned System76 agent")
-    require(AGENT.open("rb").read(4) == b"\x7fELF", "not a valid ELF header")
+    with AGENT.open("rb") as fd:
+        require(fd.read(4) == b"\x7fELF", "not a valid ELF header")
 
 
 def inspect_distinst_help() -> dict:
@@ -60,7 +61,6 @@ def inspect_distinst_help() -> dict:
         "agentSha256": PINNED_DISTINST_SHA256,
         "argv": [str(AGENT), "--help"],
         "observerExecutedInstaller": False,
-        "diskBlockOpenedWritable": False,  # not an independently traced assertion
         "diskWritesIndependentlyTraced": False,
         "efiNvrAMObserved": False,
         "nativeInstallObserved": False,
