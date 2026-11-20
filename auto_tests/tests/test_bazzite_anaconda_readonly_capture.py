@@ -143,6 +143,35 @@ def test_guest_disk_foreign_identity_or_sector_geometry_refused(field, value):
         guest_disk_inventory(data)
 
 
+def test_second_guest_disk_or_foreign_transaction_refused():
+    data = example_guest_disk()
+    data["blockdevices"].append(
+        {"type": "disk", "name": "vdb", "serial": "FOREIGN", "size": 5 * 1024**3}
+    )
+    with pytest.raises(CaptureRefusal, match="one uniquely"):
+        guest_disk_inventory(data)
+
+
+def test_busctl_wrapper_refuses_mutating_calls_before_subprocess():
+    from bazzite_anaconda_readonly_capture import run
+
+    with pytest.raises(CaptureRefusal, match="mutating"):
+        run(
+            BUS,
+            "--system",
+            "call",
+            ":1.37",
+            "/org/fedoraproject/Anaconda/Modules/Storage/DeviceTree",
+            SERVICE + ".DeviceTreeViewer",
+            "ApplyPartitioning",
+            "o",
+            "/arbitrary",
+        )
+    with pytest.raises(CaptureRefusal, match="mutating"):
+        run(BUS, "--system", "call", ":1.37", "/org/fedoraproject/Anaconda/Modules/Storage",
+            SERVICE + ".Storage", "InstallWithTasks")
+
+
 def test_guest_disk_rejects_partition_uuid_overlap_and_missing_partitions():
     for change in ("uuid", "overlap", "missing", "extra"):
         data = example_guest_disk()
