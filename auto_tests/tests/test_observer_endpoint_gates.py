@@ -86,3 +86,24 @@ def test_wrong_process_refused_by_peer_gate(monkeypatch, endpoint):
 
     with pytest.raises(Refusal, match="identity"):
         endpoint_gates.verified_unix_peer(endpoint, expected, time.monotonic() + 1)
+
+
+def test_actual_tcp_listener_descriptor_refused(monkeypatch):
+    # Real kernel socket (no QEMU guest), exercising the /proc fd-to-TCP join.
+    expected = ProcessSeal(os.getpid(), os.geteuid(), 1, "test", 1, 1)
+    monkeypatch.setattr(endpoint_gates, "process_seal", lambda _pid: expected)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        with pytest.raises(Refusal, match="unexpected TCP listening socket"):
+            endpoint_gates.assert_no_qemu_tcp_listeners(expected)
+
+
+def test_unrelated_unix_server_pid_refused(monkeypatch, endpoint):
+    # The fixture server is this process; fake only the expected QEMU PID.
+    expected = ProcessSeal(os.getpid() + 1000, os.geteuid(), 1, "test", 1, 1)
+    monkeypatch.setattr(endpoint_gates, "process_seal", lambda _pid: expected)
+    import time
+
+    with pytest.raises(Refusal, match="not the authenticated QEMU"):
+        endpoint_gates.verified_unix_peer(endpoint, expected, time.monotonic() + 2)
