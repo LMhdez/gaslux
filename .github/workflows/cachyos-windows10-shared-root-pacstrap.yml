@@ -21,8 +21,10 @@ on:
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
       - auto_tests/tools/cachyos_windows_shared_cow_firstboot.py
       - auto_tests/tools/cachyos_windows_shared_cow_rw_child.py
-      - auto_tests/tools/windows_cachyos_postpacstrap_windows.py\n      - auto_tests/tools/windows_cachyos_bcd_ab_control.py
-      - auto_tests/test_windows_cachyos_postpacstrap_windows.py\n      - auto_tests/test_windows_cachyos_bcd_ab_control.py
+      - auto_tests/tools/windows_cachyos_postpacstrap_windows.py
+      - auto_tests/tools/windows_cachyos_bcd_ab_control.py
+      - auto_tests/test_windows_cachyos_postpacstrap_windows.py
+      - auto_tests/test_windows_cachyos_bcd_ab_control.py
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -54,8 +56,10 @@ on:
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
       - auto_tests/tools/cachyos_windows_shared_cow_firstboot.py
       - auto_tests/tools/cachyos_windows_shared_cow_rw_child.py
-      - auto_tests/tools/windows_cachyos_postpacstrap_windows.py\n      - auto_tests/tools/windows_cachyos_bcd_ab_control.py
-      - auto_tests/test_windows_cachyos_postpacstrap_windows.py\n      - auto_tests/test_windows_cachyos_bcd_ab_control.py
+      - auto_tests/tools/windows_cachyos_postpacstrap_windows.py
+      - auto_tests/tools/windows_cachyos_bcd_ab_control.py
+      - auto_tests/test_windows_cachyos_postpacstrap_windows.py
+      - auto_tests/test_windows_cachyos_bcd_ab_control.py
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -134,6 +138,7 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_firstboot.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_rw_child.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postpacstrap_windows.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_bcd_ab_control.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_cow_rollback.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_windows.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_ext4_only.py' -v
@@ -178,6 +183,7 @@ jobs:
       GASLUX_CACHYOS_INSTALLED_RO_BOOT_CONSENT: I_ACCEPT_READONLY_CACHYOS_INSTALLED_ROOT_POWER_OFF_VM_ONLY
       GASLUX_CACHYOS_RW_CHILD_CONSENT: I_ACCEPT_CHILD_QCOW2_WRITABLE_CACHYOS_FIRSTBOOT_VM_ONLY
       GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_CONSENT: I_ACCEPT_WIN10_BOOT_WITH_INSTALLED_CACHYOS_FIFTH_ROOT_ON_DISPOSABLE_COW
+      GASLUX_CACHYOS_BCD_AB_CONTROL_CONSENT: I_ACCEPT_WINDOWS_ONLY_BCD_AB_CONTROL_ON_DISPOSABLE_COW
       GASLUX_CACHYOS_VERIFIED_ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
