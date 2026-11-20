@@ -182,7 +182,7 @@ def test_embedded_manifest_binds_storage_id_and_config_digest():
     assert result["manifestDigest"] == manifest_digest
     assert result["configDigestFromManifest"] == config_digest
     assert result["storageImageId"] == config_digest.removeprefix("sha256:")
-    assert result["configBlobStoredSeparately"] is False
+    assert result["configBlobRetrievedFromISO"] is False
 
 
 def test_embedded_manifest_rejects_wrong_storage_id_or_config_reference():
