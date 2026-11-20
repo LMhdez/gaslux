@@ -88,7 +88,11 @@ def _one(evidence_root: Path) -> dict:
         )
         try:
             deadline = time.monotonic() + 25
-            while (not qmp.exists() or not vnc.exists()) and time.monotonic() < deadline and proc.poll() is None:
+            while (
+                (not qmp.exists() or not vnc.exists())
+                and time.monotonic() < deadline
+                and proc.poll() is None
+            ):
                 time.sleep(0.1)
             if proc.poll() is not None or not qmp.exists() or not vnc.exists():
                 raise Refusal("QEMU did not expose its private QMP endpoint")
@@ -134,7 +138,9 @@ def _one(evidence_root: Path) -> dict:
                     continue
             if png is None or resolution is None:
                 raise Refusal("No complete RFB RAW framebuffer at reviewed probe resolutions")
-            transport = ReadOnlyVncTransport(RfbReader(unix_socket=vnc), attestor, authority, resolution)
+            transport = ReadOnlyVncTransport(
+                RfbReader(unix_socket=vnc), attestor, authority, resolution
+            )
             frame = transport.capture(time.monotonic() + 8)
             if frame.scale is not None or frame.passed_checks:
                 raise Refusal("Read-only observation must not claim guest preconditions")
