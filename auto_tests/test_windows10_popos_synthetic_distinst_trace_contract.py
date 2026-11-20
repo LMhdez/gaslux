@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
+import re
 import unittest
 
 from tools.windows10_popos_synthetic_distinst_trace_contract import (
@@ -188,6 +190,20 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
             observe(gpt_primary_backup_unchanged=False)
         with self.assertRaises(DiskAuditError):
             observe(qemu_clean_poweroff=False)
+
+    def test_qemu_readonly_is_a_drive_backend_property_not_device_property(self):
+        source = (Path(__file__).parent / "tools" /
+                  "windows10_popos_synthetic_qemu_write_smoke.py").read_text(
+                      encoding="utf-8")
+        device_args = re.findall(r'"-device",\\s*f?"([^"]+)"', source)
+        self.assertGreaterEqual(len(device_args), 5)
+        self.assertTrue(all("readonly=" not in arg for arg in device_args))
+        self.assertIn('if=none,id=distcontrol,format=raw,readonly=on,file={control}',
+                      source)
+        self.assertIn('if=none,id=popiso,format=raw,readonly=on,file={iso}',
+                      source)
+        self.assertIn('drive=syntarget,serial={DISTINST_SERIAL},bootindex=3,discard=off,write-zeroes=off',
+                      source)
 
     def test_plan_is_synthetic_and_inert(self):
         plan, _, _, _ = fixtures()
