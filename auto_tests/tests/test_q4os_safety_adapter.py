@@ -32,7 +32,11 @@ def sample():
         "diskWritesAuthorized": False, "windowsEspWritesAuthorized": False,
         "rollbackVerified": False,
     }
-    tx = {"id": "lab-1", "diskGuid": guid, "observedStateSha256": "a" * 64}
+    tx = {"id": "lab-1", "diskGuid": guid, "observedStateSha256": "a" * 64,
+          "safetyPlanSha256": "b" * 64, "vmId": "q4os-synthetic-vm-01"}
+    safety_attestation = {"decision": "ACCEPT_NO_WRITER", "transactionId": "lab-1",
+                          "planSha256": "b" * 64, "vmId": "q4os-synthetic-vm-01",
+                          "writeCount": 1}
     writes = [{
         "operation": "create-root-ext4",
         "partGuid": "11111111-2222-3333-4444-555555555555",
@@ -49,7 +53,8 @@ def sample():
             raise ValueError("identity or geometry changed")
     return dict(q4os=q4os, expected=snapshot, safety_observed=snapshot,
                 safety_compare=comparator, plan=plan, transaction=tx,
-                write_set=writes, calamares=calamares)
+                write_set=writes, calamares=calamares,
+                safety_attestation=safety_attestation)
 
 
 def test_projection_preserves_safety_contract_geometry():
@@ -71,6 +76,10 @@ def test_verified_mock_still_refuses_fallback():
 @pytest.mark.parametrize("change", [
     lambda x: x.update(safety_compare=None),
     lambda x: x.update(expected=None),
+    lambda x: x.update(safety_attestation=None),
+    lambda x: x["safety_attestation"].update(decision="DENY"),
+    lambda x: x["safety_attestation"].update(vmId="wrong-vm"),
+    lambda x: x["safety_attestation"].update(transactionId="wrong-transaction"),
     lambda x: x["safety_observed"].update(partitionTableId="gpt:foreign"),
     lambda x: x["plan"].update(diskWritesAuthorized=True),
     lambda x: x["transaction"].update(id="foreign"),
@@ -96,6 +105,7 @@ def test_even_claimed_fallback_suppression_cannot_authorize():
     result = refuse_calamares(**case)
     assert result["decision"] == "refuse"
     assert result["calamaresJobsAuthorized"] is False
+    assert any("ACCEPT_NO_WRITER never authorizes" in r for r in result["reasons"])
     assert any("not authenticated" in r for r in result["reasons"])
 
 
@@ -105,3 +115,39 @@ def test_mbr_not_accepted_as_valid_safety_snapshot():
     assert refuse_calamares(**case)["decision"] == "refuse"
     with pytest.raises(ValueError):
         to_safety_snapshot(case["q4os"])
+
+
+@pytest.mark.parametrize("hazard", [
+    "efi-fallback-copy",
+    "write-EFI/debian/grub.cfg",
+    "overwrite-windows-esp",
+    "grub-install --force --bootloader-id=debian",
+    "efibootmgr --create",
+    "efibootmgr --bootorder",
+    "modify-gpt-backup",
+    "mount-shared-esp",
+])
+def test_native_calamares_efi_grub_and_nvram_operations_are_refused(hazard):
+    case = sample()
+    case["write_set"].append({**case["write_set"][0], "operation": hazard})
+    result = refuse_calamares(**case)
+    assert result["decision"] == "refuse"
+    assert result["writerPresent"] is False
+    assert result["diskWritesAuthorized"] is False
+    assert any("unauthorized Calamares operation" in r for r in result["reasons"])
+
+
+def test_missing_safety_attestation_fails_closed_without_writer():
+    case = sample()
+    case.pop("safety_attestation")
+    result = refuse_calamares(**case)
+    assert result["installationAuthorized"] is False
+    assert any("missing verified Safety" in r for r in result["reasons"])
+
+
+def test_unlisted_writer_does_not_become_owned_by_safety_no_writer():
+    case = sample()
+    case["write_set"][0]["operation"] = "write-efi-windows-bootmgfw"
+    result = refuse_calamares(**case)
+    assert result["windowsEspWritesAuthorized"] is False
+    assert any("unauthorized Calamares operation" in r for r in result["reasons"])
