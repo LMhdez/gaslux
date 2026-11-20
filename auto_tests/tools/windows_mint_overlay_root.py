@@ -510,6 +510,7 @@ def validate_initramfs_driver_support(
 def install_mint_root_and_boot(
     *, overlay: Path, base: Path, nvram: Path, workspace: Path,
     ext4_proof: dict, iso: Path, evidence: Path,
+    ab_runner=None,
 ) -> dict:
     """Copy Mint SquashFS to exact #5, build initramfs and direct-kernel boot it."""
     require(os.environ.get("GITHUB_ACTIONS") == "true"
@@ -690,6 +691,19 @@ def install_mint_root_and_boot(
         root_uuid_after_copy, windows_after_copy = _guest_disk_audit(overlay, expected_uuid)
         require(root_uuid_after_copy == root_uuid and windows_after_copy == windows_before,
                 "Mint extraction changed Windows partitions or ext4 identity")
+
+        # An explicitly consented A/B forensic executor can intercept here:
+        # root extracted and configured, zero Mint boots have occurred.
+        # The executor MUST verify independently restored A and B checkpoints
+        # before starting any guest, then run the actual Windows/Mint comparison.
+        if ab_runner is not None:
+            require(callable(ab_runner), "forensic callback must be callable")
+            return ab_runner(
+                overlay=overlay, base=base, nvram=nvram,
+                workspace=workspace, root_uuid=root_uuid,
+                kernel=kernel_copy, initramfs=initrd_copy,
+                evidence=evidence,
+            )
 
         serial = evidence / "mint-same-windows-cow-serial.log"
         require(not serial.exists() and not serial.is_symlink(),
