@@ -479,6 +479,9 @@ def run(evidence: Path) -> dict:
             "ovmfCodeSha256After": code_after,
             "ovmfCodeUnchanged": code_before == code_after,
             "qemuTraceSha256": hashlib.sha256(trace.read_bytes()).hexdigest(),
+            "qemuTraceBytes": trace.stat().st_size,
+            "qemuTraceLineCount": len(trace_text.splitlines()),
+            "qemuTraceArtifactComplete": True,
             "qemuVersion": call("qemu-system-x86_64", "--version",
                                 capture_output=True, text=True).stdout.splitlines()[0],
         })
@@ -488,21 +491,16 @@ def run(evidence: Path) -> dict:
         (evidence / "synthetic-qemu-write-report.json.sha256").write_text(
             hashlib.sha256(payload.encode()).hexdigest() +
             "  synthetic-qemu-write-report.json\n", encoding="ascii")
-        trace_lines = [line for line in trace_text.splitlines()
-                       if re.search(
-                           r"\b(?:virtio_blk_handle_write|pflash_(?:data_write|"
-                           r"data_write_block|write_block_erase|write_block_start|"
-                           r"write_block_flush|write_block_abort|write|write_failed|"
-                           r"write_invalid|write_invalid_command|write_invalid_state|"
-                           r"write_start|write_unknown|sector_erase_start|"
-                           r"chip_erase_start|erase_complete|erase_timeout|"
-                           r"unlock0_failed|unlock1_failed))\b", line)]
-        bounded = "\n".join(trace_lines[:1000]) + "\n"
-        (evidence / "synthetic-qemu-block-write.trace").write_text(
-            bounded, encoding="utf-8")
-        (evidence / "synthetic-qemu-block-write.trace.sha256").write_text(
-            hashlib.sha256(bounded.encode()).hexdigest() +
-            "  synthetic-qemu-block-write.trace\n", encoding="ascii")
+        # The configured QEMU trace contains only the target virtio write
+        # event family and OVMF pflash write/erase events. Preserve the COMPLETE
+        # bounded trace; truncating the first 1,000 events would omit the later
+        # synthetic disk write after firmware NVRAM initialization.
+        complete_trace = trace_text if trace_text.endswith("\n") else trace_text + "\n"
+        (evidence / "synthetic-qemu-write-trace.log").write_text(
+            complete_trace, encoding="utf-8")
+        (evidence / "synthetic-qemu-write-trace.log.sha256").write_text(
+            hashlib.sha256(complete_trace.encode()).hexdigest() +
+            "  synthetic-qemu-write-trace.log\n", encoding="ascii")
         print("GASLUX_POP_SYNTH_QEMU_WRITE_MONITOR_REAL=1", flush=True)
         print(payload, flush=True)
         return report
