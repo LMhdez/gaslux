@@ -92,8 +92,11 @@ def guest_ro_inventory(disk: Path, root_uuid: str) -> dict:
                         "A/B forensic file inventory exceeded safety bound")
                 contents = {}
                 for path in names:
-                    if path.startswith("/") and guest.is_file(path):
-                        contents[path] = guest.checksum("sha256", path)
+                    absolute = "/" + path.lstrip("/")
+                    require("\x00" not in absolute and len(absolute) <= 4096,
+                            "unsafe guestfs inventory path")
+                    if guest.is_file(absolute):
+                        contents[absolute] = guest.checksum("sha256", absolute)
                 require(bool(contents),
                         "read-only ESP/Recovery file enumeration was empty")
                 inventories[name] = {"available": True,
