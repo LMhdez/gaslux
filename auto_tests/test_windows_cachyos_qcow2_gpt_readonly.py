@@ -174,6 +174,71 @@ class WindowsQcow2GptCandidateTests(unittest.TestCase):
             with self.assertRaisesRegex(gpt.GeometryError, "exclusive regular file"):
                 gpt.require_unchanged_qcow2(disk, before)
 
+    def test_independent_guestfs_byte_exact_identity_agreement(self):
+        front, back = create_disk_windows()
+        candidate = gpt.inspect_gpt_windows(front, back)
+        filesystem = self.matched_guestfs(candidate)
+        result = gpt.correlate_host_gpt_and_guestfs(
+            candidate, filesystem, "win11_26h2_en_us_x64")
+        self.assertTrue(result["independentLibguestfsPartitionAgreement"])
+        self.assertGreaterEqual(result["unallocatedAfterWindowsBytes"],
+                                gpt.MIN_UNALLOCATED)
+        for key in ("sameDiskDualBootVerified", "storageWritesAuthorized",
+                    "releaseEligible", "windowsBootVerified"):
+            self.assertIs(result[key], False)
+
+    @staticmethod
+    def matched_guestfs(candidate):
+        return {
+            "profile": "win11_26h2_en_us_x64",
+            "source": "gaslux-host-libguestfs-readonly-after-verified-firstboot",
+            "partitionCount": 4,
+            "diskVirtualSizeBytes": gpt.VIRTUAL_BYTES,
+            "sameDiskDualBootVerified": False,
+            "storageWritesAuthorized": False, "stable": False,
+            "espBootManagerPresent": True, "espBcdPresent": True,
+            "ntfsWindowsLoaderPresent": True,
+            "ntfsWindowsSystemHivePresent": True,
+            "recoveryGptPartitionPresent": True,
+            "partitions": [
+                {
+                    "number": part["index"],
+                    "typeGuid": part["type"],
+                    "partitionGuid": part["partitionGuid"],
+                    "offsetBytes": part["firstLba"] * gpt.SECTOR,
+                    "sizeBytes": part["lengthBytes"],
+                }
+                for part in candidate["windowsPartitions"]
+            ],
+        }
+
+    def test_mismatched_independent_partition_guid_refused(self):
+        candidate = gpt.inspect_gpt_windows(*create_disk_windows())
+        filesystem = self.matched_guestfs(candidate)
+        filesystem["partitions"][1]["partitionGuid"] = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+        with self.assertRaisesRegex(gpt.GeometryError, "geometry/identity disagree"):
+            gpt.correlate_host_gpt_and_guestfs(
+                candidate, filesystem, "win11_26h2_en_us_x64")
+
+    def test_mismatched_independent_partition_size_refused(self):
+        candidate = gpt.inspect_gpt_windows(*create_disk_windows())
+        filesystem = self.matched_guestfs(candidate)
+        filesystem["partitions"][2]["sizeBytes"] -= gpt.SECTOR
+        with self.assertRaisesRegex(gpt.GeometryError, "geometry/identity disagree"):
+            gpt.correlate_host_gpt_and_guestfs(
+                candidate, filesystem, "win11_26h2_en_us_x64")
+
+    def test_wrong_profile_and_false_windows_files_refused(self):
+        candidate = gpt.inspect_gpt_windows(*create_disk_windows())
+        filesystem = self.matched_guestfs(candidate)
+        with self.assertRaisesRegex(gpt.GeometryError, "mismatched Windows profile"):
+            gpt.correlate_host_gpt_and_guestfs(
+                candidate, filesystem, "win10_22h2_en_us_x64")
+        filesystem["espBcdPresent"] = False
+        with self.assertRaisesRegex(gpt.GeometryError, "missing Windows EFI/BCD"):
+            gpt.correlate_host_gpt_and_guestfs(
+                candidate, filesystem, "win11_26h2_en_us_x64")
+
     def test_clean_windows_gpt_and_free_extent_are_document_only(self):
         front, back = create_disk_windows()
         result = gpt.inspect_gpt_windows(front, back)
