@@ -195,6 +195,22 @@ class ZorinOwnedRootContracts(unittest.TestCase):
             with self.assertRaisesRegex(ubuntu.MintOverlayError, "escapes extracted root"):
                 ubuntu.read_target_os_release(root)
 
+    def test_extracted_os_release_intermediate_symlink_escape_rejected(self):
+        import windows_mint_overlay_root as ubuntu
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            root = parent / "root"
+            outside = parent / "outside"
+            (root / "etc").mkdir(parents=True)
+            (outside / "lib").mkdir(parents=True)
+            (outside / "lib/os-release").write_text(
+                "ID=linuxmint\n", encoding="utf-8")
+            (root / "usr").symlink_to(outside, target_is_directory=True)
+            (root / "etc/os-release").symlink_to("../usr/lib/os-release")
+            with self.assertRaisesRegex(ubuntu.MintOverlayError,
+                                        "escapes extracted root"):
+                ubuntu.read_target_os_release(root)
+
     def test_extracted_os_release_broken_link_rejected(self):
         import windows_mint_overlay_root as ubuntu
         with tempfile.TemporaryDirectory() as tmp:

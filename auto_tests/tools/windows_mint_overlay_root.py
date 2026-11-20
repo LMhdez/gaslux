@@ -50,7 +50,15 @@ def read_target_os_release(root: Path) -> str:
     root = root.resolve(strict=True)
     path = root / "etc/os-release"
     for _ in range(8):
+        # A relative os-release link may traverse an intermediate symlink
+        # (e.g. usr -> another directory). Lexical containment is insufficient.
+        # Resolve each parent BEFORE following the final component, and refuse
+        # all host paths outside the owned extracted root.
+        require(path.parent.resolve(strict=False).is_relative_to(root),
+                "target OS release symlink parent escapes extracted root")
         if not path.is_symlink():
+            require(path.resolve(strict=False).is_relative_to(root),
+                    "target OS release symlink escapes extracted root")
             require(path.is_file() and path.is_relative_to(root),
                     "target OS release file is missing or escapes extracted root")
             return path.read_text(encoding="utf-8")

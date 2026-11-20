@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: zorin-genuine-windows-cow-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   fail-closed-contracts:
@@ -28,11 +28,14 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py \
             auto_tests/tools/windows_mint_overlay_root.py \
             auto_tests/tools/validate_mint_cow_boot_evidence.py \
-            auto_tests/test_windows_zorin_cow_boot_evidence.py
+            auto_tests/test_windows_zorin_cow_boot_evidence.py \
+            auto_tests/tools/zorin_official_iso_installer_inventory.py \
+            auto_tests/test_zorin_official_iso_installer_inventory.py
           for suite in \
               test_windows_mint_overlay_root.py \
               test_windows_mint_cow_boot_evidence.py \
               test_windows_zorin_cow_boot_evidence.py \
+              test_zorin_official_iso_installer_inventory.py \
               test_windows_x64_two_stage_boot.py \
               test_windows_cachyos_overlay_ext4_only.py \
               test_windows_cachyos_postext4_windows.py; do
@@ -57,6 +60,7 @@ jobs:
       GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT: I_ACCEPT_EXT4_ONLY_FIFTH_PARTITION_ON_HOSTED_WIN10_COW
       GASLUX_WINDOWS_POST_EXT4_REBOOT_CONSENT: I_ACCEPT_WINDOWS_FOURTH_GUEST_ON_EXT4_ONLY_QCOW2_COW
       GASLUX_ZORIN_WINDOWS_COW_CONSENT: I_ACCEPT_ZORIN_ROOT_ON_VERIFIED_HOSTED_WINDOWS10_COW
+      GASLUX_ZORIN_ISO_INVENTORY_CONSENT: I_ACCEPT_ZORIN_OFFICIAL_ISO_READONLY_INVENTORY
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -115,6 +119,30 @@ jobs:
           assert z["isoInstaller"] == "https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso"
           print("PASS: pinned official Zorin ISO and catalog identity")
           PY
+      - name: Inventory installer files from pinned Zorin ISO (read-only; no boot writes)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          target="$RUNNER_TEMP/zorin-installer-inventory-iso"
+          test ! -e "$target" && test ! -L "$target"
+          mkdir -m 700 -- "$target"
+          mounted=0
+          cleanup() {
+            if [ "$mounted" = 1 ]; then
+              sudo umount -- "$target" || echo "::error::Refusing to treat uncleared ISO mount as success"
+            fi
+          }
+          trap cleanup EXIT
+          sudo mount -t iso9660 -o ro,loop,nosuid,nodev,noexec \
+            "$RUNNER_TEMP/zorin-windows-source/zorin.iso" "$target"
+          mounted=1
+          python3 auto_tests/tools/zorin_official_iso_installer_inventory.py \
+            --iso "$RUNNER_TEMP/zorin-windows-source/zorin.iso" \
+            --mounted "$target" \
+            --out "$GITHUB_WORKSPACE/windows-x64-tcg-evidence/zorin-official-installer-inventory.json"
+          sudo umount -- "$target"
+          mounted=0
+          echo 'ISO installer launchers/packages inventoried read-only. Native installer and EFI write behavior NOT verified.' >> "$GITHUB_STEP_SUMMARY"
       - name: Run independent synthetic libguestfs fifth-ext4 importer preflight
         shell: bash
         env:
