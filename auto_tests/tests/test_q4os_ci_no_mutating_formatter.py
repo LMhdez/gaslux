@@ -37,6 +37,7 @@ def test_ruff_format_is_non_modifying_and_applies_to_committed_sources():
 def test_ci_asserts_clean_working_tree_and_uses_pinned_safety_source():
     workflow = _workflow()
     assert "git diff --exit-code" in workflow
+    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
     assert "f55633c90973f633dda678f583f7730fc2cdc0ce" in workflow
     assert "GASLUX_Q4OS_PINNED_SAFETY_SOURCE_DIR" in workflow
     assert "test_q4os_safety_actual_contract.py" in workflow
