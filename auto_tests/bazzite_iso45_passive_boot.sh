@@ -36,8 +36,15 @@ python auto_tests/bazzite_iso45_passive_gate.py \
   --report "$EVIDENCE/bazzite-iso-public-readback.json" \
   --facts "$EVIDENCE/readback-facts.json" \
   --iso "$ISO" --runner-temp "$RUNNER_TEMP" > "$EVIDENCE/iso45-boot-preflight.json"
+if [[ ! -c /dev/kvm ]]; then
+  echo 'No KVM device; boot not attempted' > "$EVIDENCE/iso45-boot-refusal.txt"
+  exit 3
+fi
+# Reuse the exact hosted-runner KVM access step already proven in Bazzite
+# legacy/owned-QCOW2 QEMU workflows. No physical disk access is granted.
+sudo chmod 0666 /dev/kvm
 if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
-  echo 'No usable KVM; boot not attempted' > "$EVIDENCE/iso45-boot-refusal.txt"
+  echo 'KVM remains inaccessible; boot not attempted' > "$EVIDENCE/iso45-boot-refusal.txt"
   exit 3
 fi
 sudo env DEBIAN_FRONTEND=noninteractive timeout 360s apt-get install -y -qq \
