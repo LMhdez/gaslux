@@ -188,8 +188,8 @@ def test_valid_signed_response_verifies_separate_trust_dimensions():
     response = make_response(private, request)
     verified = verify_one(verifier(store), request, response)
     assert verified.controller_signature_verified is True
-    assert verified.controller_workload_trusted is True
-    assert verified.collector_trusted is True
+    assert verified.controller_artifact_hash_matches_pin is True
+    assert verified.collector_artifact_hash_matches_pin is True
     assert verified.controller_declared_guest_attestation_status == "verified"
     assert verified.guest_attestation_assertion == "trusted-controller-asserted"
     # The verifier checks the signed controller assertion, not the TPM quote itself.
