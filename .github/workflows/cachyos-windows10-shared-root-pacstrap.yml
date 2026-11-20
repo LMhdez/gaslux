@@ -377,6 +377,7 @@ jobs:
           assert control_recorded == hashlib.sha256(control_serial.read_bytes()).hexdigest()
           from windows_cachyos_overlay_reboot import audit_complete_third_serial
           assert audit_complete_third_serial(control_serial) == control_recorded
+          assert control_recorded == ab["controlWindowsSerialSha256"]
           assert control_serial.read_bytes().splitlines().count(
               b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1") == 1
 
