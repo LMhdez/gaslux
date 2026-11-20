@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 CANDIDATE = Path(__file__).resolve().parents[1] / "bazzite_official_iso_candidate_20261117.json"
-SHA256 = re.compile(r"sha256:[0-9a-f]{64}\\Z")
+SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 def load_candidate():
