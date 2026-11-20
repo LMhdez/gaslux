@@ -1,5 +1,6 @@
 """Adversarial read-only Anaconda D-Bus capture, not synthetic write-set approval."""
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -150,6 +151,34 @@ def test_second_guest_disk_or_foreign_transaction_refused():
     )
     with pytest.raises(CaptureRefusal, match="one uniquely"):
         guest_disk_inventory(data)
+
+
+def test_readonly_dbus_rejects_oversized_replies(monkeypatch):
+    import bazzite_anaconda_readonly_capture as collector
+
+    def oversized(command, **kwargs):
+        assert kwargs["timeout"] == 12
+        assert kwargs["check"] is True
+        return subprocess.CompletedProcess(command, 0, "x" * (1024 * 1024 + 1), "")
+
+    monkeypatch.setattr(collector.subprocess, "run", oversized)
+    with pytest.raises(CaptureRefusal, match="Unbounded"):
+        collector.run(BUS, "--system", "list", "--no-legend", "--no-pager")
+
+
+@pytest.mark.parametrize("failure", ("timeout", "service-error"))
+def test_readonly_dbus_refuses_timeout_or_service_failure(monkeypatch, failure):
+    import bazzite_anaconda_readonly_capture as collector
+
+    def failed(command, **kwargs):
+        assert kwargs["timeout"] == 12
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(command, 12)
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(collector.subprocess, "run", failed)
+    with pytest.raises(CaptureRefusal, match="timeout" if failure == "timeout" else "failed"):
+        collector.run(BUS, "--system", "list", "--no-legend", "--no-pager")
 
 
 def test_busctl_wrapper_refuses_mutating_calls_before_subprocess():
