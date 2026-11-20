@@ -32,7 +32,9 @@ class InputSurface:
 
 
 def inspect_input_surface(
-    process: ProcessSeal, launched: tuple[str, ...], qmp_socket: Path,
+    process: ProcessSeal,
+    launched: tuple[str, ...],
+    qmp_socket: Path,
     vnc_socket: Path | None = None,
 ) -> InputSurface:
     """Cross-check actual /proc argv against a tightly reviewed QEMU launch.
