@@ -52,17 +52,32 @@ def test_screenshot_bounds_hashes_and_truncated_png():
 def test_locator_requires_proven_capture_and_target_pixels():
     frame = png_frame()
     target = Target("Next", "button", (2, 2, 8, 8), frame.roi((2, 2, 8, 8)), (4, 4))
-    assert resolve(frame, Surface(supported=frozenset({Method.POINT})), target, (Method.POINT,), 0.1) == (Method.POINT, (4, 4))
+    supported = Surface(supported=frozenset({Method.POINT}))
+    assert resolve(frame, supported, target, (Method.POINT,), 0.1) == (Method.POINT, (4, 4))
     with pytest.raises(Refusal):
-        resolve(frame, Surface(unproven=frozenset({Method.POINT})), target, (Method.POINT,), 0.1)
+        resolve(
+            frame,
+            Surface(unproven=frozenset({Method.POINT})),
+            target,
+            (Method.POINT,),
+            0.1,
+        )
     with pytest.raises(Refusal):
-        resolve(frame, Surface(supported=frozenset({Method.POINT})), Target("Next", "button", (2, 2, 8, 8), "0" * 64, (4, 4)), (Method.POINT,), 0.1)
+        resolve(
+            frame,
+            supported,
+            Target("Next", "button", (2, 2, 8, 8), "0" * 64, (4, 4)),
+            (Method.POINT,),
+            0.1,
+        )
 
 
 def test_distribution_identity_checks_size_and_digest(tmp_path):
     source = tmp_path / "test.iso"
     source.write_bytes(b"not-an-ISO--synthetic")
-    identity = DistributionIdentity("fixture", "0", digest(source.read_bytes()), source.stat().st_size)
+    identity = DistributionIdentity(
+        "fixture", "0", digest(source.read_bytes()), source.stat().st_size
+    )
     identity.verify_iso(source)
     source.write_bytes(b"not-an-ISO--synthEtic")
     with pytest.raises(Refusal):
