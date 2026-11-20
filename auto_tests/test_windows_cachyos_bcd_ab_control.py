@@ -87,7 +87,7 @@ usb_packet_state
 """
         self.assertEqual(
             lab.block_write_event_names(sample),
-            ["bdrv_co_pwritev", "qcow2_cache_entry_flush"],
+            ["bdrv_co_pwritev", "qcow2_cache_entry_write"],
         )
 
     def test_tpm_state_digest_is_stable_for_independent_byte_copies(self):
