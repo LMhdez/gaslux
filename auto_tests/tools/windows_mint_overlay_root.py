@@ -471,12 +471,21 @@ def install_mint_root_and_boot(
         require(not serial.exists() and not serial.is_symlink(),
                 "refusing reused Mint boot evidence")
         monitor = temp / f"{distribution}-qemu-monitor.sock"
+        qmp_monitor = temp / f"{distribution}-qmp-monitor.sock"
         require(not monitor.exists() and not monitor.is_symlink(),
                 "refusing reused Mint QEMU monitor socket")
+        require(not qmp_monitor.exists() and not qmp_monitor.is_symlink(),
+                "refusing reused Zorin QMP monitor socket")
         qemu = subprocess.Popen([
             "qemu-system-x86_64", "-machine", "q35,accel=kvm", "-cpu", "host",
             "-smp", "2", "-m", "4096", "-display", "none",
             "-monitor", f"unix:{monitor},server,nowait",
+            # QMP command acknowledgements and ACPI POWERDOWN events are
+            # required for Zorin. The original HMP Mint path is unchanged.
+            *(
+                ["-qmp", f"unix:{qmp_monitor},server=on,wait=off"]
+                if distribution == "zorin" else []
+            ),
             "-net", "none", "-no-reboot", "-drive",
             f"if=none,id=windows-cow,format=qcow2,file={overlay}",
             "-device", "virtio-blk-pci,drive=windows-cow,bootindex=1",
@@ -498,24 +507,48 @@ def install_mint_root_and_boot(
                 time.sleep(3)
             else:
                 raise MintOverlayError("Mint same-COW firstboot timed out")
-            monitor_deadline = time.monotonic() + 30
-            channel = None
-            while time.monotonic() < monitor_deadline:
-                if monitor.exists() and monitor.is_socket():
-                    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    channel.connect(str(monitor))
-                    break
-                time.sleep(0.5)
-            require(channel is not None, "Mint QEMU monitor did not become available")
-            try:
-                channel.recv(4096)
-                channel.sendall(b"system_powerdown\n")
-            finally:
-                channel.close()
+            if distribution == "zorin":
+                # Historical HMP fire-and-forget had no command ACK or
+                # POWERDOWN event witness. Do not diagnose guest ACPI until
+                # the hypervisor confirms it actually delivered the request.
+                from zorin_qmp_powerdown import request_guest_acpi_powerdown
+                qmp_proof = request_guest_acpi_powerdown(
+                    qmp_monitor, timeout_seconds=20)
+                qmp_evidence = evidence / "zorin-qmp-powerdown-request.json"
+                require(not qmp_evidence.exists() and not qmp_evidence.is_symlink(),
+                        "refusing reused Zorin QMP powerdown evidence")
+                with qmp_evidence.open("x", encoding="utf-8") as stream:
+                    json.dump({
+                        "qmpCommandAcknowledged":
+                            qmp_proof["qmpCommandAcknowledged"],
+                        "qmpPowerdownEventObserved":
+                            qmp_proof["qmpPowerdownEventObserved"],
+                        "orderlyGuestShutdownProven": False,
+                        "requestType": "ACPI-system_powerdown",
+                        "nativeBootloaderProven": False,
+                    }, stream, sort_keys=True, indent=2)
+                    stream.write("\n")
+            else:
+                monitor_deadline = time.monotonic() + 30
+                channel = None
+                while time.monotonic() < monitor_deadline:
+                    if monitor.exists() and monitor.is_socket():
+                        channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                        channel.connect(str(monitor))
+                        break
+                    time.sleep(0.5)
+                require(channel is not None, "Mint QEMU monitor did not become available")
+                try:
+                    channel.recv(4096)
+                    channel.sendall(b"system_powerdown\n")
+                finally:
+                    channel.close()
             try:
                 qemu.wait(timeout=90)
             except subprocess.TimeoutExpired as exc:
-                raise MintOverlayError("Mint guest did not complete ACPI poweroff") from exc
+                raise MintOverlayError(
+                    f"{distribution} guest did not complete ACPI poweroff"
+                ) from exc
             require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after guest poweroff")
             shutdown_log = serial.read_bytes()
             require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
