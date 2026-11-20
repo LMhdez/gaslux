@@ -84,6 +84,15 @@ class FullReuseContractTests(unittest.TestCase):
         self.assertIn(ROOT_GUID, s)
         self.assertIn("systemd-detect-virt", s)
 
+    def test_native_firstboot_requests_controlled_shutdown_not_host_kill(self):
+        guest = BOOT.read_text()
+        runner = RUNNER.read_text()
+        self.assertIn("GASLUX_POP_NATIVE_FIRSTBOOT_CONTROLLED_SHUTDOWN_REQUESTED=1", guest)
+        self.assertIn("systemctl --no-block poweroff -i", guest)
+        self.assertIn("Installed Pop did not shut down", runner)
+        self.assertIn('[[ "$qemu_rc" == 0 ]]', runner)
+        self.assertIn("GASLUX_POP_NATIVE_FIRSTBOOT_CONTROLLED_SHUTDOWN_REQUESTED=1", runner)
+
     def test_guest_streaming_bio_has_no_false_completion_claim(self):
         s = MONITOR.read_text()
         self.assertIn("block_bio_queue", s)

@@ -81,7 +81,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -d "$RUNNER_TEMP/gaslux-pop-synthetic-fulliso-XXXXXX" > "$RUNNER_TEMP/pop-full-iso-workdir.txt"
+          mktemp -d "$RUNNER_TEMP/gaslux-pop-synthetic-fulliso-XXXXXX" > "$RUNNER_TEMP/pop-full-iso-workdir.txt"
           PYTHONPATH=auto_tests/tools python3 - <<'PY'
           from pathlib import Path
           import os, json
@@ -107,7 +107,7 @@ jobs:
           head=os.environ["GITHUB_SHA"]
           current=int(os.environ["GITHUB_RUN_ID"])
           url=f"https://api.github.com/repos/{repo}/actions/runs?"+urlencode({
-              "head_sha":head,"per_page":"30"})
+              "branch":os.environ["GITHUB_REF_NAME"],"per_page":"30"})
           for _ in range(40):
               req=urllib.request.Request(url,headers={"Accept":"application/vnd.github+json",
                   "User-Agent":"Gaslux-Linux-only-QEMU-concurrency-guard"})
@@ -115,7 +115,7 @@ jobs:
                   runs=json.load(res)["workflow_runs"]
               active=[x for x in runs
                   if x["id"]!=current and x["status"]!="completed"
-                  and x["head_sha"]==head
+                  and x["head_branch"]==os.environ["GITHUB_REF_NAME"]
                   and x["name"]=="Pop synthetic-only QEMU write trace and no-writer contracts"]
               if not active:
                   print("GASLUX_POP_FULL_REUSE_NO_CONCURRENT_OLD_QEMU=1")

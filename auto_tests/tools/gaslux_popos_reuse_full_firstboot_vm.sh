@@ -307,7 +307,17 @@ for _ in $(seq 1 290); do
   kill -0 "$guest" >/dev/null 2>&1 || break
   sleep 1
 done
-kill "$guest" >/dev/null 2>&1 || true
+if [[ "$verified" == 1 ]]; then
+  # Never infer controlled first-boot shutdown from serial marker or SIGTERM.
+  for _ in $(seq 1 120); do
+    kill -0 "$guest" >/dev/null 2>&1 || break
+    sleep 1
+  done
+  kill -0 "$guest" >/dev/null 2>&1 &&
+    die 'Installed Pop did not shut down after its own systemd request'
+else
+  kill "$guest" >/dev/null 2>&1 || true
+fi
 set +e
 wait "$guest"
 qemu_rc="$?"
@@ -318,6 +328,11 @@ if [[ "$verified" != 1 ]]; then
   tail -n 70 "$work/installed.serial.log" >&2 || true
   die 'No first boot of actual installed Pop via native systemd-boot proved'
 fi
+[[ "$qemu_rc" == 0 ]] ||
+  die 'Native Pop firstboot QEMU did not complete cleanly'
+grep -Fxq 'GASLUX_POP_NATIVE_FIRSTBOOT_CONTROLLED_SHUTDOWN_REQUESTED=1' \
+  "$work/installed.normalized.log" ||
+  die 'Installed Pop never requested controlled shutdown'
 python3 auto_tests/tools/gaslux_popos_reuse_snapshot_gate.py audit \
   --work "$work" --phase firstboot ||
   die 'REFUSE_OUT_OF_WRITESET: native firstboot trace'

@@ -43,3 +43,6 @@ printf 'GASLUX_POP_NATIVE_FIRSTBOOT_ROOT_PARTUUID=%s\n' \
    6a8555cd-6dc0-45fa-8e66-9de78e41557b ]] ||
    fail 'native booted unexpected root PARTUUID'
 printf 'GASLUX_POP_NATIVE_FIRSTBOOT_VERIFIED=1\n' > /dev/ttyS0
+sync
+printf 'GASLUX_POP_NATIVE_FIRSTBOOT_CONTROLLED_SHUTDOWN_REQUESTED=1\n' > /dev/ttyS0
+systemctl --no-block poweroff -i || fail 'firstboot controlled poweroff request failed'

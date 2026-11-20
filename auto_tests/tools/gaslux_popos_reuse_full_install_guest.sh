@@ -144,16 +144,15 @@ while kill -0 "$native_pid" >/dev/null 2>&1; do
 done
 native_rc=0
 wait "$native_pid" || native_rc="$?"
-sync
-touch /run/gaslux-pop-bio-stop
-bio_rc=0
-wait "$bio_pid" || bio_rc="$?"
-if [[ -s /run/gaslux-pop-bio-report.json ]]; then
-  printf 'GASLUX_POP_FULL_BIO_JSON=%s\n' \
-    "$(tr -d '\r\n' </run/gaslux-pop-bio-report.json)" > /dev/ttyS0
-fi
-[[ "$bio_rc" == 0 ]] || fail 'guest BIO stream incomplete or foreign disk write'
 if [[ "$native_rc" != 0 ]]; then
+  # Retain the partial native-write witness even when Extract/Configure fails.
+  sync
+  touch /run/gaslux-pop-bio-stop
+  wait "$bio_pid" || true
+  if [[ -s /run/gaslux-pop-bio-report.json ]]; then
+    printf 'GASLUX_POP_FULL_BIO_JSON=%s\n' \
+      "$(tr -d '\r\n' </run/gaslux-pop-bio-report.json)" > /dev/ttyS0
+  fi
   tail -n 55 "$log" > /dev/ttyS0
   fail "System76 native full installation failed (exit=$native_rc)"
 fi
@@ -212,6 +211,18 @@ ln -s ../gaslux-pop-firstboot-lab.service \
 sync
 umount "$mnt/boot/efi" || fail 'native ESP unmount failed'
 umount "$mnt" || fail 'installed root unmount failed'
+# Continue streaming the independent BIO witness through postinstall lab-only
+# service injection, filesystem unmount and final sync. The host will not
+# misclassify those writes as distinst-only writes.
+sync
+touch /run/gaslux-pop-bio-stop
+bio_rc=0
+wait "$bio_pid" || bio_rc="$?"
+if [[ -s /run/gaslux-pop-bio-report.json ]]; then
+  printf 'GASLUX_POP_FULL_BIO_JSON=%s\n' \
+    "$(tr -d '\r\n' </run/gaslux-pop-bio-report.json)" > /dev/ttyS0
+fi
+[[ "$bio_rc" == 0 ]] || fail 'guest BIO stream incomplete or foreign disk write'
 [[ "$(blkid -s PTUUID -o value "$disk" | tr '[:upper:]' '[:lower:]')" == \
    6c8e012e-6c29-457e-a119-0cde4fa54dd6 ]] ||
   fail 'complete installation changed GPT disk GUID'

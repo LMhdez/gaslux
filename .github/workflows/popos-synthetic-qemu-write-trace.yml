@@ -61,6 +61,10 @@ jobs:
           echo "SYNTHETIC contract only; all Windows writer guards remain DENIED." >> "$GITHUB_STEP_SUMMARY"
 
   synthetic-qemu-observe-real-smoke:
+    # Signed reuse --test already passed. Keep automatic no-writer contracts,
+    # but require explicit dispatch for this costly synthetic QEMU experiment.
+    # New full-install PR edits must not cancel or duplicate an older --test.
+    if: github.event_name == 'workflow_dispatch'
     name: REAL QEMU / signed Pop live / known-write monitor + distinst --test synthetic-only
     needs: synthetic-write-contracts
     runs-on: ubuntu-24.04
