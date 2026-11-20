@@ -141,7 +141,8 @@ def _one(evidence_root: Path) -> dict:
                 # Unprivileged original-runner process probes both endpoints.
                 # This protocol carries paths only, NEVER QMP/RFB commands.
                 print(
-                    "EXTERNAL_PROBE " + json.dumps(
+                    "EXTERNAL_PROBE "
+                    + json.dumps(
                         {"run_id": run_id, "qmp": str(qmp), "rfb": str(vnc)},
                         sort_keys=True,
                     ),
