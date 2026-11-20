@@ -266,7 +266,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git refs/heads/safety/gpt-authenticated-no-writer-20261120
+          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git f55633c90973f633dda678f583f7730fc2cdc0ce
           test "$(git rev-parse FETCH_HEAD)" = "f55633c90973f633dda678f583f7730fc2cdc0ce"
           mkdir -m 0700 "$RUNNER_TEMP/q4os-safety-src"
           git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
@@ -276,7 +276,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -m 0700 "$RUNNER_TEMP/q4os-win10-readonly-evidence"
+          test -d "$RUNNER_TEMP/q4os-win10-readonly-evidence"
+          test ! -L "$RUNNER_TEMP/q4os-win10-readonly-evidence"
           PYTHONPATH="assets/live:$RUNNER_TEMP/q4os-safety-src" /usr/bin/python3 \
             assets/live/gaslux_q4os_win10_readonly_probe.py
           git diff --exit-code -- .github/workflows/gaslux-q4os-windows10-qcow2.yml assets/live/gaslux_q4os_win10_readonly_probe.py
