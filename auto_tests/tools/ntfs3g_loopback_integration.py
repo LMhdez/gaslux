@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -173,6 +174,7 @@ def main() -> int:
     hash_before: str | None = None
     mount_verified = False
     mount_command_succeeded = False
+    trace_process: subprocess.Popen[str] | None = None
     detached = False
     result: dict[str, Any] = {
         "status": "FAILED",
@@ -212,14 +214,34 @@ def main() -> int:
 
         mountpoint.mkdir(mode=0o700)
         trace_path = workspace / "ntfs3g-execve.trace"
-        command([
-            "strace", "-f", "-qq", "-e", "trace=execve", "-s", "4096",
-            "-o", str(trace_path), "mount", "-t", "ntfs-3g", "-o", "ro,norecover",
-            loop_device, str(mountpoint),
-        ])
-        mount_command_succeeded = True
+        trace_process = subprocess.Popen(
+            [
+                "strace", "-f", "-qq", "-e", "trace=execve", "-s", "4096",
+                "-o", str(trace_path), "mount", "-t", "ntfs-3g", "-o", "ro,norecover",
+                loop_device, str(mountpoint),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + 20
+        mounted: list[dict[str, Any]] = []
+        while time.monotonic() < deadline:
+            mounted = find_mounts(mountpoint)
+            if mounted:
+                mount_command_succeeded = True
+                break
+            if trace_process.poll() is not None:
+                stdout, stderr = trace_process.communicate()
+                raise RuntimeError(
+                    "strace/mount exited without creating the expected mount: "
+                    f"returncode={trace_process.returncode}, stdout={stdout[-1000:]}, "
+                    f"stderr={stderr[-2000:]}"
+                )
+            time.sleep(0.1)
+        if not mounted:
+            raise RuntimeError("Timed out waiting for the NTFS-3G loopback mount")
         helper_execve = verify_ntfs3g_execve(trace_path, loop_device, mountpoint)
-        mounted = find_mounts(mountpoint)
         result["findmntObservation"] = mounted
         observed = validate_real_mount(mounted, mountpoint, loop_device)
         mount_verified = True
@@ -260,6 +282,15 @@ def main() -> int:
                     command(["umount", str(mountpoint)])
                 if mountpoint.exists() and find_mounts(mountpoint):
                     raise RuntimeError("Test mount remains active; preserving temporary resources")
+                if trace_process is not None:
+                    try:
+                        stdout, stderr = trace_process.communicate(timeout=15)
+                    except subprocess.TimeoutExpired as error:
+                        raise RuntimeError("strace did not exit after the test mount was detached") from error
+                    if trace_process.returncode != 0:
+                        raise RuntimeError(
+                            f"strace/mount exited with {trace_process.returncode}: {stderr[-2000:]}"
+                        )
                 if hash_before is not None:
                     hash_after = sha256_file(image)
                     result["sha256After"] = hash_after
