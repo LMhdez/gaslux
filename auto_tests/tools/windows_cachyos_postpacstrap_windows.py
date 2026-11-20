@@ -26,7 +26,9 @@ from windows_cachyos_cow_checkpoint import (
     validate_workspace,
 )
 from windows_cachyos_overlay_reboot import gpt_windows
-from windows_cachyos_postext4_windows import verify_windows_post_ext4
+from windows_cachyos_postext4_windows import (
+    add_qemu_trace, add_tpm_device, verify_windows_post_ext4,
+)
 from windows_cachyos_qcow2_gpt_readonly import qcow2_file_identity
 
 CONSENT = "I_ACCEPT_WIN10_BOOT_WITH_INSTALLED_CACHYOS_FIFTH_ROOT_ON_DISPOSABLE_COW"
@@ -206,6 +208,9 @@ def verify_windows_with_installed_root(
     staged: dict[str, Any], third: dict[str, Any],
     ext4: dict[str, Any], fourth: dict[str, Any],
     pacstrap: dict[str, Any], *, timeout: int = 1200,
+    tpm_socket: Path | None = None,
+    trace_events_file: Path | None = None,
+    trace_file: Path | None = None,
 ) -> dict[str, Any]:
     root_uuid = preflight(pacstrap, fourth, ext4)
     require(type(timeout) is int and 120 <= timeout <= 1800,
@@ -241,6 +246,8 @@ def verify_windows_with_installed_root(
     boot = verify_windows_post_ext4(
         original, base, nvram, geometry, cow, staged, third, ext4,
         timeout=timeout, evidence_stem="sixth-post-pacstrap",
+        tpm_socket=tpm_socket, trace_events_file=trace_events_file,
+        trace_file=trace_file,
     )
     require(boot["windowsBootAfterExt4Verified"] is True
             and boot["fifthExt4UuidSurvivedWindowsBoot"] is True,
@@ -276,6 +283,11 @@ def verify_windows_with_installed_root(
           flush=True)
     mismatches = [key for key in protected_keys
                   if postboot_hashes[key] != plan["windowsHashes"][key]]
+    after_bcd = _read_bcd_readonly(overlay)
+    require(hashlib.sha256(after_bcd).hexdigest()
+            == postboot_hashes["espBcdSha256"],
+            "postboot read-only BCD bytes differ from protected file hash")
+    bcd_forensic = summarize_bcd_difference(before_bcd, after_bcd)
     if mismatches:
         diagnosis: dict[str, Any] = {
             "protectedFileHashMismatchKeys": mismatches,
@@ -284,14 +296,8 @@ def verify_windows_with_installed_root(
             "protectedFilesUnchanged": False,
             "windowsWithInstalledLinuxFullyVerified": False,
             "releaseEligible": False,
+            "bcdReadOnlyForensic": bcd_forensic,
         }
-        if "espBcdSha256" in mismatches:
-            after_bcd = _read_bcd_readonly(overlay)
-            require(hashlib.sha256(after_bcd).hexdigest()
-                    == postboot_hashes["espBcdSha256"],
-                    "postboot read-only BCD bytes differ from protected file hash")
-            diagnosis["bcdReadOnlyForensic"] = summarize_bcd_difference(
-                before_bcd, after_bcd)
         raise PostPacstrapWindowsError(
             "Windows protected file hash changed after Windows re-entry: "
             + mismatches[0], diagnostics=diagnosis)
@@ -307,6 +313,9 @@ def verify_windows_with_installed_root(
         "windowsProtectedFilesAndGptAfterReentryUnchanged": True,
         "windowsBaseAndOriginalNvramAfterReentryUnchanged": True,
         "windowsEfiBootManagerUsed": True,
+        "bcdReadOnlyForensic": bcd_forensic,
+        "qemuWriteTraceSha256": boot.get("qemuWriteTraceSha256"),
+        "qemuWriteTraceBytes": boot.get("qemuWriteTraceBytes"),
         "cachyosBootloaderInstalledToWindowsEsp": False,
         "sameDiskDualBootVerified": False,
         "updatesVerified": False,
