@@ -430,8 +430,13 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
         tracefs_rq_available and tracefs_rq_target_matched
         and tracefs_rq_byte_match and tracefs_rq_coverage_match
     )
+    # Only QEMU (outside the guest) and BIO queue (inside the guest) are
+    # mandatory independent write-location witnesses. Neither block_rq_issue
+    # nor block_bio_complete emitted events in genuine Pop 24.04 KVM, despite
+    # enabled tracepoints. If either emits events, all must corroborate QEMU.
     tracefs_crosscheck = (
-        tracefs_bio_crosscheck and tracefs_complete_crosscheck
+        tracefs_bio_crosscheck
+        and (not completed or tracefs_complete_crosscheck)
         and (not rq_issue or tracefs_rq_crosscheck)
     )
     gpt_changed = type(gpt_diff) is dict and gpt_diff.get("unchanged") is False
@@ -465,6 +470,9 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
         "guestTracefsBlockBioWriteEventCount": len(bio_write),
         "guestTracefsFlushEventCount": len(bio_flush),
         "guestTracefsBioCompleteEventCount": len(completed),
+        "guestCompletionWitnessAvailable": bool(completed),
+        "writeObservationScope": "external-QEMU-plus-guest-BIO-queue",
+        "fullOperationObservationProven": False,
         "guestTracefsBioCompleteWriteEventCount": len(completed_write),
         "guestTracefsBioCompleteIoErrorCount": len(completed_errors),
         "guestTracefsBioCompleteWriteBytes": complete_bytes,
@@ -653,19 +661,23 @@ def classify_distinst_writes(
         require(event.get("major") == major and event.get("minor") == minor,
                 "guest tracefs event belongs to a different block device")
     bio_intervals = _intervals(bio, source="block_bio_queue")
-    complete_intervals = _intervals(completed, source="block_bio_complete")
+    complete_intervals = (
+        _intervals(completed, source="block_bio_complete") if completed else []
+    )
     # Virtio may not generate block_rq_issue in this live kernel. Do not
     # waive another independent witness: require completed BIOs (with error=0)
     # and exact QEMU byte count + sector coverage in both guest BIO streams.
     rq_intervals = _intervals(rq, source="block_rq_issue") if rq else []
     require(_same_coverage(qemu_intervals, bio_intervals)
-            and _same_coverage(qemu_intervals, complete_intervals)
+            and (not completed or _same_coverage(qemu_intervals, complete_intervals))
             and (not rq or _same_coverage(qemu_intervals, rq_intervals)),
             "QEMU/queued/completed BIO sector coverage diverges")
     qemu_bytes = sum((end - start) * SECTOR for start, end in qemu_intervals)
-    require(all(sum((end - start) * SECTOR for start, end in intervals)
-                == qemu_bytes for intervals in
-                (bio_intervals, complete_intervals))
+    require(sum((end - start) * SECTOR for start, end in bio_intervals)
+            == qemu_bytes
+            and (not completed or sum((end - start) * SECTOR
+                                      for start, end in complete_intervals)
+                 == qemu_bytes)
             and (not rq or sum((end - start) * SECTOR
                                for start, end in rq_intervals) == qemu_bytes),
             "QEMU/queued/completed BIO byte counts diverge")
@@ -701,7 +713,10 @@ def classify_distinst_writes(
         "qemuWriteBytes": sum(x["lengthBytes"] for x in qemu_events),
         "guestBlockBioQueueEventCount": len(bio),
         "guestBlockBioCompleteEventCount": len(completed),
-        "guestCompletedBioSuccessVerified": True,
+        "guestCompletedBioSuccessVerified": bool(completed),
+        "guestCompletionWitnessAvailable": bool(completed),
+        "writeObservationScope": "external-QEMU-plus-guest-BIO-queue",
+        "fullOperationObservationProven": False,
         "guestBlockRqIssueEventCount": len(rq),
         "guestRqIssueWitnessAvailable": bool(rq),
         "qemuGuestWriteCoverageCorrelated": True,

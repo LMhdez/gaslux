@@ -254,18 +254,32 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(DiskAuditError):
                 observe(tracefs=bad)
 
-    def test_failed_or_missing_completed_bio_is_refused(self):
+    def test_available_completed_bio_must_be_valid_and_correlate(self):
         for mutation in (
-            lambda t: t.pop("blockBioComplete"),
-            lambda t: t.update(blockBioComplete=[]),
+            lambda t: t.update(blockBioComplete=t["blockBioComplete"][:1]),
             lambda t: t["blockBioComplete"][0].update(ioError=-5),
             lambda t: t["blockBioComplete"][0].pop("ioError"),
             lambda t: t["blockBioComplete"][0].update(sector=1),
+            lambda t: t["blockBioComplete"][0].update(major=253, minor=99),
         ):
             _, _, _, t = fixtures()
             mutation(t)
             with self.subTest(mutation=str(mutation)), self.assertRaises(DiskAuditError):
                 observe(tracefs=t)
+
+    def test_no_kernel_completion_events_only_with_two_independent_write_witnesses(self):
+        _, _, _, t = fixtures()
+        t["blockBioComplete"] = []
+        t["blockRqIssue"] = []
+        result = observe(tracefs=t)
+        self.assertFalse(result["guestCompletionWitnessAvailable"])
+        self.assertFalse(result["fullOperationObservationProven"])
+        self.assertTrue(result["qemuGuestWriteCoverageCorrelated"])
+        self.assertFalse(result["distinstExecutionAuthorized"])
+        self.assertFalse(result["diskWritesAuthorizedForWindows"])
+        t["blockBioQueue"] = []
+        with self.assertRaises(DiskAuditError):
+            observe(tracefs=t)
 
     def test_missing_tracefs_or_nvram_or_backing_recovery_proof_is_refused(self):
         _, _, _, tracefs = fixtures()
@@ -354,17 +368,22 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         self.assertFalse(result["guestTracefsRqIssueCorroboratesQemu"])
         self.assertFalse(result["guestRqIssueWitnessAvailable"])
         self.assertTrue(result["guestTracefsCorroboratesQemu"])
+        self.assertEqual(result["writeObservationScope"],
+                         "external-QEMU-plus-guest-BIO-queue")
+        self.assertFalse(result["fullOperationObservationProven"])
         self.assertEqual(result["decision"], "MATCH_SYNTHETIC_PARTITION_WRITESET")
         self.assertFalse(result["distinstExecutionAuthorized"])
 
-    def test_missing_completed_bio_is_incomplete_not_approved(self):
+    def test_missing_guest_bio_queue_remains_incomplete_not_approved(self):
         plan, guest, trace, tracefs = fixtures()
         tracefs["blockRqIssue"] = []
         tracefs["blockBioComplete"] = []
+        tracefs["blockBioQueue"] = []
         guest["tracefs"] = tracefs
         result = diagnose_qemu_write_set(plan, trace, guest)
         self.assertFalse(result["observationComplete"])
         self.assertFalse(result["guestTracefsBioCompleteCorroboratesQemu"])
+        self.assertFalse(result["guestTracefsBioQueueCorroboratesQemu"])
         self.assertEqual(result["decision"], "REFUSE_INCOMPLETE_OBSERVATION")
         self.assertFalse(result["distinstExecutionAuthorized"])
 
