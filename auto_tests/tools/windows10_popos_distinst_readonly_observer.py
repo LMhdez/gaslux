@@ -56,7 +56,20 @@ def inspect_distinst_help() -> dict:
     help_text = obj.stdout
     for token in ("--use", "--no-efi-vars", "--modify-boot", "--block"):
         require(token in help_text, "native CLI help lacks expected option " + token)
+    require(len(obj.stderr) < 8000, "unbounded native CLI stderr")
+    options = [line.strip() for line in help_text.splitlines()
+               if line.strip().startswith("-")]
+    require(4 <= len(options) <= 100
+            and all(len(line) <= 260 for line in options),
+            "missing or unbounded actual System76 CLI option inventory")
     return {
+        "cliElfExecutedForHelp": True,
+        "cliHelpExitCode": obj.returncode,
+        "cliHelpOutputSha256": hashlib.sha256(
+            help_text.encode("utf-8")).hexdigest(),
+        "cliHelpStderrSha256": hashlib.sha256(
+            obj.stderr.encode("utf-8")).hexdigest(),
+        "cliOptionLines": options,
         "source": "pinned-pop-24.04-build-20-live-guest",
         "agentSha256": PINNED_DISTINST_SHA256,
         "argv": [str(AGENT), "--help"],
