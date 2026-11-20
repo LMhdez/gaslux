@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -117,7 +118,8 @@ def _run_safety(*, corrupt_mac=False):
     case, safety_plan, txid, vm_id, start, size = _fixture()
     plan_bytes = canonical(safety_plan)
     plan_sha = hashlib.sha256(plan_bytes).hexdigest()
-    nonce, host_key, guest_key = "n" * 32, b"h" * 32, b"g" * 32
+    nonce = secrets.token_hex(32)
+    host_key, guest_key = secrets.token_bytes(32), secrets.token_bytes(32)
 
     def record(source, key):
         return authenticated(
