@@ -199,7 +199,8 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
         )
         subprocess.run(
             ["sudo", "-n", "chown", "-R", f"{os.geteuid()}:{os.getegid()}", str(public_evidence)],
-            check=True, timeout=15,
+            check=True,
+            timeout=15,
         )
         public_evidence.joinpath("external_uid_probes.json").write_bytes(
             canonical(
