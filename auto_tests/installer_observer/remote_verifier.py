@@ -456,8 +456,8 @@ class VerifiedRemoteResponse:
     transaction_id: str
     request_id: str
     controller_signature_verified: bool
-    controller_workload_trusted: bool
-    collector_trusted: bool
+    controller_artifact_hash_matches_pin: bool
+    collector_artifact_hash_matches_pin: bool
     controller_declared_guest_identity_assurance: str
     controller_declared_guest_attestation_status: str
     guest_attestation_assertion: str
@@ -661,8 +661,8 @@ class RemoteResponseVerifier:
             transaction_id=response_value["transaction_id"],
             request_id=response_value["request_id"],
             controller_signature_verified=True,
-            controller_workload_trusted=True,
-            collector_trusted=True,
+            controller_artifact_hash_matches_pin=True,
+            collector_artifact_hash_matches_pin=True,
             controller_declared_guest_identity_assurance=guest["identity_assurance"],
             controller_declared_guest_attestation_status=attestation["status"],
             guest_attestation_assertion=attestation_assertion,
