@@ -14,7 +14,7 @@ from tools.windows10_popos_synthetic_distinst_trace_contract import (
     PINNED_DISTINST_SHA256, ROOT_START, synthetic_distinst_plan,
     classify_distinst_writes, diagnose_qemu_write_set,
 )
-from tools.windows_x64_installed_gpt_ro_audit import DiskAuditError
+from windows_x64_installed_gpt_ro_audit import DiskAuditError
 
 ARGV = [
     "/usr/bin/distinst",
