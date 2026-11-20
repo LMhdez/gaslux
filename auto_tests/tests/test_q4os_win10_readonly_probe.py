@@ -2,6 +2,7 @@
 
 No genuine Windows disk, firmware, installation or network is used here.
 """
+
 from __future__ import annotations
 
 import os
@@ -122,9 +123,7 @@ def test_actual_safety_refuses_equivalent_size_foreign_gpt(tmp_path, monkeypatch
     observation = _read_only_appliance(foreign, tmp_path, 512)
     host = inspect_gpt_image(source, logical_sector_size=512)
     with pytest.raises(DiskIdentityError):
-        assert_snapshot_matches(
-            host, {key: observation[key] for key in host}
-        )
+        assert_snapshot_matches(host, {key: observation[key] for key in host})
 
 
 def test_guest_probe_requires_only_one_attached_disk(tmp_path, monkeypatch):
@@ -167,9 +166,7 @@ def test_no_secret_or_writer_exposed_in_safety_denial(tmp_path):
     source = tmp_path / "synthetic.raw"
     make_image(source)
     result = _real_safety_denial(inspect_gpt_image(source, logical_sector_size=512))
-    assert set(result) == {
-        "decision", "reason", "hostGuestTransactionAuthenticated"
-    }
+    assert set(result) == {"decision", "reason", "hostGuestTransactionAuthenticated"}
     assert "secret" not in str(result).lower()
     assert "ACCEPT_NO_WRITER" not in str(result)
 
