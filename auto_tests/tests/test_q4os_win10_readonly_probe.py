@@ -18,6 +18,7 @@ if SAFETY is None or not Path(SAFETY).is_dir():
     pytest.fail("Real pinned Safety #267 sources are required for probe contracts")
 sys.path.insert(0, SAFETY)
 sys.path.insert(0, str(ROOT / "assets/live"))
+sys.path.insert(0, str(ROOT / "auto_tests/tests"))
 
 from gaslux_q4os_win10_readonly_probe import (  # noqa: E402
     _private_regular,
