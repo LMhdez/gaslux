@@ -256,7 +256,7 @@ jobs:
           from auto_tests.bazzite_iso_public_readback import inspect_embedded_payload
           evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
           mount = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-readonly-mount"
-          result = inspect_embedded_payload(mount / "LiveOS" / "squashfs.img")
+          result = inspect_embedded_payload(\n    mount / "LiveOS" / "squashfs.img",\n    diagnostics_path=evidence / "embedded-payload-diagnostics.json",\n)
           result["mountOptions"] = "ro"
           (evidence / "embedded-oci-payload.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
           PY
