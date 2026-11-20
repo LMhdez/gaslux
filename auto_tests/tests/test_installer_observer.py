@@ -207,8 +207,7 @@ def test_session_identity_divergence_never_clicks(mapping, pictures, tamper):
 def test_install_and_non_next_action_never_click(mapping, pictures, attempt):
     edge, machine, fake = session(mapping, pictures)
     edges = tuple(
-        replace(t, action=attempt) if t.id == edge.id else t
-        for t in machine.mapping.transitions
+        replace(t, action=attempt) if t.id == edge.id else t for t in machine.mapping.transitions
     )
     machine.mapping = replace(machine.mapping, transitions=edges)
     assert not machine.step(edge.id).passed
