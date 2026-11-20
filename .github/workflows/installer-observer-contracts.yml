@@ -65,7 +65,7 @@ jobs:
               print("Validated", name)
           PY
       - name: Compile Python observer and adversarial tests
-        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_controller_lease.py
+        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py
       - name: Ruff lint new transport and hostile-input tests
         run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py
       - name: Ruff format check new transport and hostile-input tests
