@@ -16,7 +16,7 @@ import re
 from windows_x64_installed_gpt_ro_audit import require
 
 SECTOR = 512
-SERIAL = "GASLUX_POP_SYNTH_ONLY"
+SERIAL = "GASLUX_POP_SYNTH"
 DISK_SIZE = 8 * 1024**3
 SMOKE_OFFSET = 96 * 1024 * 1024
 SMOKE_LENGTH = 512
