@@ -642,9 +642,9 @@ A production client must protect and back up the SQLite state against rollback/t
 
 The verifier distinguishes:
 - `controller_signature_verified`: the pinned Ed25519 key signed the response.
-- `controller_workload_trusted` / `collector_trusted`: controller, policy and collector hashes match local pins.
-- `guest_identity_assurance`: the signed controller's declared assurance level.
-- `guest_attestation_status`: the signed controller's declared attestation status.
+- `controller_artifact_hash_matches_pin` / `collector_artifact_hash_matches_pin`: signed controller-reported hashes match local pins; they are not independent measurements of live processes.
+- `controller_declared_guest_identity_assurance`: the signed controller's declared assurance level.
+- `controller_declared_guest_attestation_status`: the signed controller's declared attestation status.
 
 The current response envelope contains only an attestation evidence digest, verifier ID and trust-anchor ID; it does not carry the TPM/vTPM quote or measured-boot event log. Consequently `guest_attestation_verified_locally` is always **false** and `guest_attestation_assertion` is explicitly `trusted-controller-asserted`. The verifier requires the controller to assert `cryptographically-attested` and the pinned verifier/trust-anchor IDs by default, but it does **not** independently validate the quote. A future protocol revision must carry bounded attestation evidence or a separately verifiable attestation receipt and add a local verifier before claiming guest attestation is independently established.
 
