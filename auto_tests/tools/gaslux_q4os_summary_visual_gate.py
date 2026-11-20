@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Strict read-only Q4OS 6.10 Calamares Users-to-Summary VNC screenshot gates.
 
-All screenshot coordinates and crop hashes were measured from two official
-SHA-256-verified 1280x800 VMs in Actions #44641233701. This file never
+Original Users ROI hashes come from two verified 1280x800 VMs, Actions
+#44641233701; Summary ROI hashes match both independent original Summary
+PNGs retained in failed-closed #44646209124 (no install was clicked). This file never
 sends input or writes an installation/partition. Unknown screens fail closed.
 """
 
@@ -18,13 +19,19 @@ from pathlib import Path
 from PIL import Image
 
 SCREEN = (1280, 800)
-APP_HEADER = (
-    (128, 75, 1152, 113),
-    "731210917d9d988773c1ee3dbcc8641e1d50a342c492d87659204ae1ec0243a9",
+# Summary switches Calamares to a taller window whose top edge is at y=35
+# rather than y=118 on Users. Never reuse Users' window-position ROI as proof.
+SUMMARY_TOP_BAR = (
+    (128, 35, 1152, 62),
+    "a646832591ac4dcf3a5422faf34ef33ba88b2f6d3fe3747cbfa6e2300983d09d",
 )
-SUMMARY_SIDEBAR = (
-    (128, 479, 318, 522),
-    "2f968b65c423100662dd3899c9c345aadc03ec685db725883648683b3663c494",
+SUMMARY_SELECTED_SIDEBAR = (
+    (128, 395, 318, 437),
+    "e8e215c58f151ea1835a61f89c7ca2cf9eb4b2a69f71e343332931b80764ba2a",
+)
+SUMMARY_PARTITION_PLAN_HEADER = (
+    (320, 323, 1152, 405),
+    "edf5ff0bece1e7dde7677d298fe7f110b5841e1046cc561f3ccb3abed8949cd6",
 )
 TITLE = ((128, 118, 1152, 180), "b565add1ff9d5061918278f5cd8871a26b136dfdb04df78e6bcf74c8341b41e5")
 USERS_SIDEBAR = (
@@ -113,8 +120,13 @@ def users_with_dummy_data(before: Path, after: Path) -> None:
 def summary_only(before: Path, after: Path) -> None:
     users = load(before)
     summary = load(after)
-    if crop_sha(summary, APP_HEADER[0]) != APP_HEADER[1]:
-        raise ScreenRefusal("Unknown top-level Calamares window after Users Next")
+    for bbox, expected in (
+        SUMMARY_TOP_BAR,
+        SUMMARY_SELECTED_SIDEBAR,
+        SUMMARY_PARTITION_PLAN_HEADER,
+    ):
+        if crop_sha(summary, bbox) != expected:
+            raise ScreenRefusal("Unknown official Calamares Summary ROI")
     if crop_sha(summary, TITLE[0]) == TITLE[1]:
         raise ScreenRefusal("Users page title did not advance to Summary")
     if crop_sha(summary, USERS_SIDEBAR[0]) == crop_sha(users, USERS_SIDEBAR[0]):
@@ -122,11 +134,10 @@ def summary_only(before: Path, after: Path) -> None:
     region = (128, 150, 1152, 610)
     if crop_sha(summary, region) == crop_sha(users, region):
         raise ScreenRefusal("No central content transition after Users Next")
-    if crop_sha(summary, SUMMARY_SIDEBAR[0]) == SUMMARY_SIDEBAR[1]:
-        raise ScreenRefusal("Calamares Summary sidebar not selected")
     text = ocr(after)
-    if text.count("summary") < 2 or "what is your name?" in text:
-        raise ScreenRefusal("Summary page title and sidebar not both visibly confirmed")
+    required_text = ("summary", "this is an overview", "partitions", "erase disk")
+    if any(token not in text for token in required_text) or "what is your name?" in text:
+        raise ScreenRefusal("Native Calamares Summary/partition preview text absent")
     if any(t in text for t in ("installing...", "installation in progress", "copying files")):
         raise ScreenRefusal("Installer execution appears to have begun")
 
