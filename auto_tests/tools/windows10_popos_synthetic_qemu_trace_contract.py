@@ -35,8 +35,11 @@ UNKNOWN_WRITE = re.compile(
 )
 HASH = re.compile(r"[a-f0-9]{64}\Z")
 PFLASH_WRITE = re.compile(
-    r"\bpflash_(?:data_write|data_write_block|io_write|write_block_erase|"
-    r"write_block_start|write_block_flush|write_block_abort|write|write_failed)\b"
+    r"\bpflash_(?:data_write|data_write_block|write_block_erase|write_block_start|"
+    r"write_block_flush|write_block_abort|write|write_failed|write_invalid|"
+    r"write_invalid_command|write_invalid_state|write_start|write_unknown|"
+    r"sector_erase_start|chip_erase_start|erase_complete|erase_timeout|"
+    r"unlock0_failed|unlock1_failed)\b"
 )
 GUID = re.compile(r"[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\Z")
 
