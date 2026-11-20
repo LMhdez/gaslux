@@ -494,3 +494,47 @@ encoding or sending an RFB input or QMP mutating command.
 All tests use only synthetic ISO/QCOW2 media. Neither Windows nor
 Calamares nor a physical disk is touched. Passing CI is not a claim
 of exclusive input authority or verified installation.
+
+
+### Independent trust-boundary experiment — infrastructure result (20 November 2026)
+
+**Classification: criterion C — the available GitHub-hosted runner cannot establish an independent trusted control domain.** The current runner is both the CI client and the administrator of the host: it has non-interactive `sudo`, checks out the same mutable source tree that is staged for the dedicated UID, can impersonate `gaslux_observer_ci`, can connect to that UID's QMP/RFB sockets, and can write the staged Python controller source. The new QEMU job records these facts in `trust_boundary_status.json`, including the measured SHA-256 of the staged source. The digest identifies the bytes observed; it is **not a signature, trusted provenance or proof of immutability**. The manifest deliberately records `source_signature_verified=false`, `independent_control_domain=false`, `criterion_A=false` and `criterion_C=true`. No service or privileged production component was installed.
+
+#### Domains and threat model
+
+- **A — trusted control domain (required, unavailable here):** separately provisioned control VM or dedicated runner; root-owned, reviewed, immutable controller artifact and policy; service identity and QEMU lifecycle controlled before the job/client starts.
+- **B — untrusted client domain:** WPF/CI client with no sudo, no membership in the controller/QEMU groups, no private socket or media access, no ptrace/process-memory/fd injection capability. It receives only the fixed observation API.
+- **C — QEMU domain:** process and disposable media owned by the control domain. QMP and RFB endpoints are private to the controller; never exposed to the client.
+- **D — observation channel:** a narrow authenticated local API. It does not proxy arbitrary QMP or RFB bytes and has no keyboard, pointer, shell, installer, disk or boot operations.
+
+An administrator/root of the trusted control domain, a compromised hypervisor/host kernel, or an attacker with equivalent privileged execution remains outside the threat model. A same-host GitHub-hosted job cannot manufacture this trust separation by changing UIDs or adding `sudo` commands.
+
+#### Experimental client contract
+
+`auto_tests/installer_observer/boundary_model.py` is an **in-memory architectural simulation only**. It is intentionally named a model and does not open sockets, launch QEMU, attest an executable, validate a signature or create an OS security boundary. The test harness supplies synthetic peer credentials. The fixed operations are:
+
+1. `session.identify` — session/transaction IDs and controller, policy and QEMU identity digests, explicitly labelled as synthetic and unsigned.
+2. `state.read` — bounded read-only state.
+3. `frame.read` — framebuffer fixture bytes and SHA-256.
+4. `session.close` — invalidate the in-memory session and discard its fixture data.
+
+Requests have an exact field allowlist, protocol version, canonical UUIDs, session and transaction binding, one-use request ID, strictly increasing sequence and expiry. Peer UID/PID/start ticks must match the fixture. Unknown fields and operations such as `qmp.execute`, `rfb.input`, `shell.exec`, `install` and `partition` are refused. The model's close operation is **not** real QEMU termination or real socket revocation.
+
+#### Required production architecture (not implemented)
+
+A separately managed runner/control VM must provision a signed, pinned controller artifact and policy before any untrusted job starts. The client must not possess sudo or any route to modify the controller, its service unit, policy, QEMU media or private endpoint directory. The control service should run under a dedicated OS identity with no unnecessary capabilities, a restrictive systemd sandbox (including no-new-privileges, protected system/home/kernel paths, constrained address families and syscall policy), and a separate client identity.
+
+The controller alone owns QEMU, its QMP/RFB Unix sockets and media. It authenticates client connections using kernel peer credentials (e.g. `SO_PEERCRED`) plus independently resolved process start identity; it returns only the four fixed operations above, with session/transaction binding and a bounded response size. The API must never forward arbitrary QMP/RFB payloads. Controller and policy artifact hashes must be verified against a trust root provisioned outside the job; a locally computed SHA-256 is only an identifier.
+
+#### Revocation
+
+The existing synthetic test proves that a preconnected Unix descriptor remains usable after pathname permissions are changed. The model proves only in-memory session invalidation. Neither proves revocation of a live QMP/RFB connection. A real revocation test must have the trusted controller close the accepted channel(s), terminate/restart the QEMU process that owns the servers (thereby destroying all server-side client sessions), remove the old endpoints, rotate session and transaction IDs, and prove that old clients/descriptors cannot issue further protocol messages while new connections to the old endpoint fail. No such trusted controller is available on the current runner; **real QMP/RFB revocation remains unproven**.
+
+#### Validation classification
+
+- **Real QEMU:** the existing read-only lab still boots two independent disposable QEMU processes with synthetic ISO/QCOW2 media. It proves QEMU identity and the runner's ability to impersonate the dedicated UID and connect to QMP/RFB, not an independent trust boundary.
+- **Synthetic contract tests:** the new boundary model tests client identity mismatch, transaction/session mismatch, request replay and sequence, unknown fields, unsupported/mutating operations, expiry, evidence hash binding and model-session close.
+- **Not exercised:** an independently provisioned controller VM/runner, signed artifact verification, a hostile client unable to administer that domain, ptrace/fd injection across that boundary, real pre-opened RFB/QMP FD revocation, and atomic framebuffer/action handling.
+- **Input remains disabled:** no RFB events, no mutating QMP commands, no installer navigation and no production WPF integration.
+
+This is a concrete infrastructure blocker, not a claim that a green GitHub Actions run has achieved criterion A. A dedicated trusted runner/control VM and human-approved provisioning/security policy are prerequisites before any real boundary or graphical action can be accepted.
