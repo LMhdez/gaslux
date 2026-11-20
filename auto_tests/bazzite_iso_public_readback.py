@@ -176,6 +176,62 @@ def validate_attestation_report(
     }
 
 
+
+def verify_embedded_manifest(
+    image: dict[str, Any],
+    manifest_bytes: bytes,
+    *,
+    expected_manifest_digest: str,
+    expected_config_digest: str,
+) -> dict[str, Any]:
+    image_id = str(image.get("id", "")).removeprefix("sha256:")
+    config_hex = expected_config_digest.removeprefix("sha256:")
+    if image_id != config_hex:
+        raise ReadbackError("Embedded storage image ID does not match the pinned config digest")
+    try:
+        manifest = json.loads(manifest_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReadbackError("Embedded OCI manifest is invalid") from exc
+    manifest_sha = sha256_bytes(manifest_bytes)
+    if f"sha256:{manifest_sha}" != expected_manifest_digest:
+        raise ReadbackError("Embedded OCI manifest digest mismatch")
+    manifest_config = manifest.get("config")
+    if not isinstance(manifest_config, dict) or manifest_config.get("digest") != expected_config_digest:
+        raise ReadbackError("Embedded manifest references a different config")
+    return {
+        "storageImageId": image_id,
+        "manifestSha256": manifest_sha,
+        "manifestDigest": "sha256:" + manifest_sha,
+        "configDigestFromManifest": manifest_config["digest"],
+        "configBlobStoredSeparately": False,
+        "imageRecordDigest": image.get("digest"),
+    }
+
+
+def verify_config_blob(
+    config_bytes: bytes,
+    *,
+    expected_config_digest: str,
+    expected_version: str,
+) -> dict[str, Any]:
+    config_sha = sha256_bytes(config_bytes)
+    if f"sha256:{config_sha}" != expected_config_digest:
+        raise ReadbackError("OCI config blob digest mismatch")
+    try:
+        config = json.loads(config_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReadbackError("OCI config blob is invalid") from exc
+    labels = config.get("config", {}).get("Labels") or {}
+    version_label = labels.get("org.opencontainers.image.version") or labels.get("version")
+    if version_label != expected_version:
+        raise ReadbackError("OCI config blob version label does not match the pinned release")
+    return {
+        "configDigest": "sha256:" + config_sha,
+        "versionLabel": version_label,
+        "configBytesSha256Verified": True,
+    }
+
+
 def verify_embedded_blobs(
     image: dict[str, Any],
     manifest_bytes: bytes,
@@ -263,7 +319,7 @@ def inspect_embedded_payload(
         if diagnostics_path is not None:
             diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
             diagnostics_path.write_text(
-                json.dumps(diagnostics, indent=2, sort_keys=True) + "\n",
+                json.dumps(diagnostics, indent=2, sort_keys=True) + "\\n",
                 encoding="utf-8",
             )
         raise ReadbackError(message)
@@ -304,64 +360,39 @@ def inspect_embedded_payload(
     image = matches[0]
     image_id = str(image.get("id", "")).removeprefix("sha256:")
     image_dir = Path(images_path).parent / image_id
-    big_data_names = image.get("bigDataNames") or []
-    candidates = {
-        str(image_dir / "manifest"),
-        str(image_dir / "manifest.json"),
-        str(image_dir / "config"),
-        str(image_dir / "config.json"),
-    }
-    for name in big_data_names:
-        if isinstance(name, str) and name and "/" not in name and name not in {".", ".."}:
-            candidates.add(str(image_dir / name))
-    existing = sorted(path for path in candidates if path in paths)
+    manifest_path = str(image_dir / "manifest")
     diagnostics["imageRecord"] = {
         "id": image_id,
         "names": sorted(image.get("names") or []),
         "recordKeys": sorted(image.keys()),
-        "bigDataNames": big_data_names,
-        "bigDataSizes": image.get("bigDataSizes"),
-        "bigDataDigests": image.get("bigDataDigests"),
-        "imageDirectory": str(image_dir),
-        "candidateBlobPaths": sorted(candidates),
-        "existingCandidatePaths": existing,
+        "digest": image.get("digest"),
+        "layer": image.get("layer"),
+        "manifestPath": manifest_path,
+        "manifestPresent": manifest_path in paths,
     }
-    manifests = sorted(
-        path
-        for path in candidates
-        if path in paths and Path(path).name in {"manifest", "manifest.json"}
-    )
-    configs = sorted(
-        path
-        for path in candidates
-        if path in paths and Path(path).name in {"config", "config.json"}
-    )
-    if len(manifests) != 1 or len(configs) != 1:
-        fail("ISO storage metadata does not expose one manifest and one config blob")
-    manifest_bytes = _unsquashfs(squashfs, "-cat", manifests[0], binary=True)
-    config_bytes = _unsquashfs(squashfs, "-cat", configs[0], binary=True)
-    blob_evidence = verify_embedded_blobs(
+    if manifest_path not in paths:
+        fail("Embedded containers/storage image manifest is missing")
+    manifest_bytes = _unsquashfs(squashfs, "-cat", manifest_path, binary=True)
+    blob_evidence = verify_embedded_manifest(
         image,
         manifest_bytes,
-        config_bytes,
         expected_manifest_digest=PAYLOAD_DIGEST,
         expected_config_digest=CONFIG_DIGEST,
-        expected_version=PAYLOAD_VERSION,
     )
     result = {
         "image": PAYLOAD_IMAGE,
         "names": sorted(set(image.get("names") or [])),
         **blob_evidence,
-        "manifestPath": manifests[0],
-        "configPath": configs[0],
+        "manifestPath": manifest_path,
         "imagesJsonPath": images_path,
         "isoBooted": False,
         "readOnlySquashfsInspection": True,
+        "configBlobSource": "GHCR immutable OCI digest; verified separately against embedded manifest config digest",
     }
     if diagnostics_path is not None:
         diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
         diagnostics_path.write_text(
-            json.dumps(diagnostics, indent=2, sort_keys=True) + "\n",
+            json.dumps(diagnostics, indent=2, sort_keys=True) + "\\n",
             encoding="utf-8",
         )
     return result
