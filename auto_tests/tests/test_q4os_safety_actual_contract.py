@@ -1,4 +1,5 @@
 """Contract regression against separately pinned Safety #265/#267 source; no writer."""
+
 from __future__ import annotations
 
 import hashlib
@@ -25,6 +26,7 @@ def _safety():
         canonical,
         decide_no_writer,
     )
+
     return (
         assert_snapshot_matches,
         PrewriteDenied,
@@ -38,44 +40,69 @@ def _fixture():
     disk_guid = "12345678-1234-1234-1234-123456789abc"
     esp_guid = "87654321-4321-4321-4321-cba987654321"
     q4os = {
-        "layout": "uefi/gpt", "diskGuid": disk_guid,
-        "diskSizeBytes": 64 * 1024 * 1024, "logicalSectorBytes": 512,
+        "layout": "uefi/gpt",
+        "diskGuid": disk_guid,
+        "diskSizeBytes": 64 * 1024 * 1024,
+        "logicalSectorBytes": 512,
         "observedStateSha256": "c" * 64,
-        "partitions": [{
-            "index": 1, "type": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
-            "guid": esp_guid, "first": 2048, "last": 4095, "attributes": 0,
-        }],
+        "partitions": [
+            {
+                "index": 1,
+                "type": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+                "guid": esp_guid,
+                "first": 2048,
+                "last": 4095,
+                "attributes": 0,
+            }
+        ],
     }
     snapshot = to_safety_snapshot(q4os)
     transaction_id = "a" * 32
     vm_id = "q4os-pinned-safety-vm-lab-only"
     safety_plan = {
-        "planId": transaction_id, "firmware": "uefi",
-        "disk": {key: snapshot[key] for key in (
-            "partitionStyle", "partitionTableId", "sizeBytes", "logicalSectorSizeBytes"
-        )},
+        "planId": transaction_id,
+        "firmware": "uefi",
+        "disk": {
+            key: snapshot[key]
+            for key in ("partitionStyle", "partitionTableId", "sizeBytes", "logicalSectorSizeBytes")
+        },
     }
     start, size = 16 * 1024 * 1024, 4 * 1024 * 1024
     plan = {
-        "backend": "q4os-native", "firmwareLayout": "uefi/gpt",
-        "diskGuid": disk_guid, "observedStateSha256": "c" * 64,
-        "transactionId": transaction_id, "proposedRootStartLba": start // 512,
+        "backend": "q4os-native",
+        "firmwareLayout": "uefi/gpt",
+        "diskGuid": disk_guid,
+        "observedStateSha256": "c" * 64,
+        "transactionId": transaction_id,
+        "proposedRootStartLba": start // 512,
         "proposedRootEndLba": (start + size) // 512 - 1,
-        "installationAuthorized": False, "calamaresJobsAuthorized": False,
-        "diskWritesAuthorized": False, "windowsEspWritesAuthorized": False,
-        "rollbackVerified": False, "windowsEspFallbackWriteBlocked": True,
+        "installationAuthorized": False,
+        "calamaresJobsAuthorized": False,
+        "diskWritesAuthorized": False,
+        "windowsEspWritesAuthorized": False,
+        "rollbackVerified": False,
+        "windowsEspFallbackWriteBlocked": True,
         "efiDebianHookWriteBlocked": True,
     }
     case = {
-        "q4os": q4os, "expected": snapshot, "safety_observed": snapshot,
-        "plan": plan, "transaction": {
-            "id": transaction_id, "diskGuid": disk_guid,
+        "q4os": q4os,
+        "expected": snapshot,
+        "safety_observed": snapshot,
+        "plan": plan,
+        "transaction": {
+            "id": transaction_id,
+            "diskGuid": disk_guid,
             "observedStateSha256": "c" * 64,
         },
-        "write_set": [{
-            "operation": "create-root-ext4", "partGuid": "11111111-2222-3333-4444-555555555555",
-            "ownerTransactionId": transaction_id, "startBytes": start, "sizeBytes": size,
-        }],
+        "write_set": [
+            {
+                "operation": "create-root-ext4",
+                "partGuid": "11111111-2222-3333-4444-555555555555",
+                "ownerTransactionId": transaction_id,
+                "startBytes": start,
+                "sizeBytes": size,
+            }
+        ],
         "calamares": {
             "nativeCalamaresConfigVerified": True,
             "upstreamInstallsEfiFallback": True,
@@ -93,22 +120,39 @@ def _run_safety(*, corrupt_mac=False):
     nonce, host_key, guest_key = "n" * 32, b"h" * 32, b"g" * 32
 
     def record(source, key):
-        return authenticated({
-            "source": source, "transactionId": txid, "planSha256": plan_sha,
-            "vmId": vm_id, "nonce": nonce, "snapshot": case["expected"],
-        }, key)
+        return authenticated(
+            {
+                "source": source,
+                "transactionId": txid,
+                "planSha256": plan_sha,
+                "vmId": vm_id,
+                "nonce": nonce,
+                "snapshot": case["expected"],
+            },
+            key,
+        )
 
     host = record("host", host_key)
     if corrupt_mac:
         host["mac"] = "0" * 64
     report = decide(
-        plan=safety_plan, plan_bytes=plan_bytes, transaction_id=txid, vm_id=vm_id,
-        host_evidence=host, guest_evidence=record("guest", guest_key),
+        plan=safety_plan,
+        plan_bytes=plan_bytes,
+        transaction_id=txid,
+        vm_id=vm_id,
+        host_evidence=host,
+        guest_evidence=record("guest", guest_key),
         immediate_evidence=record("guest-immediate", guest_key),
-        host_key=host_key, guest_key=guest_key, fresh_nonce=nonce,
-        owned_regions=[{
-            "offsetBytes": start, "sizeBytes": size, "ownerTransactionId": txid,
-        }],
+        host_key=host_key,
+        guest_key=guest_key,
+        fresh_nonce=nonce,
+        owned_regions=[
+            {
+                "offsetBytes": start,
+                "sizeBytes": size,
+                "ownerTransactionId": txid,
+            }
+        ],
         write_set=[{"offsetBytes": start, "sizeBytes": size, "operation": "allocate-free-space"}],
     )
     case["transaction"]["safetyPlanSha256"] = plan_sha
