@@ -19,7 +19,7 @@ SHA = "a" * 64
 NV = "b" * 64
 TRACE = (
     "12345@42.01:qemu virtio_blk_handle_write vdev 0x10 "
-    "req 0x20 sector 8192 nsectors 1\n"
+    "req 0x20 sector 196608 nsectors 1\n"
 )
 
 
@@ -54,11 +54,11 @@ class QemuSyntheticTraceTest(unittest.TestCase):
 
     def test_no_provenance_no_write_trace_and_unknown_io_refused(self):
         for trace in ("", "qemu something-other-than-write",
-                      "blk_co_pwritev blk 0x1 bs 0x2 offset 4194304 bytes 512 flags 0x0",
+                      "blk_co_pwritev blk 0x1 bs 0x2 offset 100663296 bytes 512 flags 0x0",
                       "virtio_blk_handle_write vdev 0x1 sector bad nsectors 1",
-                      "virtio_blk_handle_discard disk 0x1 sector 8192 nsectors 1",
-                      "virtio_blk_handle_write_zeroes sector 8192 nsectors 1",
-                      "virtio_blk_handle_write vdev 0x1 sector 8192 nsectors 0"):
+                      "virtio_blk_handle_discard disk 0x1 sector 196608 nsectors 1",
+                      "virtio_blk_handle_write_zeroes sector 196608 nsectors 1",
+                      "virtio_blk_handle_write vdev 0x1 sector 196608 nsectors 0"):
             with self.subTest(trace=trace), self.assertRaises(DiskAuditError):
                 self.observe(trace)
 
@@ -101,10 +101,10 @@ class QemuSyntheticTraceTest(unittest.TestCase):
 
     def test_wrong_extent_and_partial_install_declined(self):
         cases = [
-            "virtio_blk_handle_write vdev 0x10 sector 8192 nsectors 2\n",
+            "virtio_blk_handle_write vdev 0x10 sector 196608 nsectors 2\n",
             "virtio_blk_handle_write vdev 0x10 sector 8193 nsectors 1\n",
             TRACE + "virtio_blk_handle_write vdev 0x10 sector 8193 nsectors 1\n",
-            "virtio_blk_handle_write vdev 0x10 sector 8192 nsectors 100000000\n",
+            "virtio_blk_handle_write vdev 0x10 sector 196608 nsectors 100000000\n",
         ]
         for data in cases:
             with self.subTest(data=data), self.assertRaises(DiskAuditError):
