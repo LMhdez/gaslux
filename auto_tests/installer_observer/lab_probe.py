@@ -25,6 +25,7 @@ from .endpoint_gates import (
     verified_unix_peer,
 )
 from .evidence import Refusal, canonical, digest
+from .fd_audit import audit_child_fds
 from .lab_identity import LocalQemuAttestor, QemuRunSeal, process_seal, seal_file
 from .models import DistributionIdentity
 from .qemu_surface import inspect_input_surface
@@ -112,7 +113,11 @@ def _one(evidence_root: Path) -> dict:
             "order=d",
         ]
         proc = subprocess.Popen(
-            cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            close_fds=True,
         )
         report = None
         location = None
@@ -132,6 +137,7 @@ def _one(evidence_root: Path) -> dict:
             qmp.chmod(0o600)
             vnc.chmod(0o600)
             endpoints = (seal_endpoint(qmp, os.geteuid()), seal_endpoint(vnc, os.geteuid()))
+            fd_report = audit_child_fds()
             assert_no_qemu_tcp_listeners(process_seal(proc.pid))
             # PID/UID attestation is independent of filesystem permissions.
             verified_unix_peer(endpoints[0], process_seal(proc.pid), time.monotonic() + 5)
@@ -365,6 +371,7 @@ def _one(evidence_root: Path) -> dict:
                 "qmp_identity_checked": True,
                 "physical_block_fd_rejected": True,
                 "guest_clicks": 0,
+                "fd_inheritance_audit": fd_report,
                 "input_surface": asdict(surface),
                 "input_authority_refused": True,
                 "same_uid_external_rfb_connection": "admitted",
