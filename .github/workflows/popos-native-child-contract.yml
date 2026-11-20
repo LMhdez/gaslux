@@ -18,6 +18,7 @@ on:
       - auto_tests/test_windows10_popos_safety_attestation_adapter.py
       - auto_tests/tools/windows10_popos_distinst_readonly_observer.py
       - auto_tests/test_windows10_popos_distinst_readonly_observer.py
+      - docs/POP_OS_NATIVE_WRITESET_LAB.md
       - auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
       - auto_tests/tools/windows10_popos_native_realwin10_firstboot_guest.sh
       - auto_tests/tools/windows10_popos_official_iso_signed_lab.py
