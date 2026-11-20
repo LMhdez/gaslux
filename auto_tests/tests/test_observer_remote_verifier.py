@@ -5,23 +5,23 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-import pytest
-import rfc8785
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+import pytest
+import rfc8785
 
 from auto_tests.installer_observer.remote_verifier import (
     InMemoryReplayGuard,
     RemoteResponseVerifier,
     SQLiteReplayGuard,
-    TrustStore,
     TrustedController,
+    TrustStore,
     VerificationRefused,
 )
 
-NOW = datetime(2026, 11, 20, 13, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 20, 13, 0, tzinfo=UTC)
 SESSION_ID = "11111111-1111-4111-8111-111111111111"
 TRANSACTION_ID = "22222222-2222-4222-8222-222222222222"
 REQUEST_ID = "33333333-3333-4333-8333-333333333333"
@@ -255,7 +255,6 @@ def test_caller_deadline_is_enforced():
 def test_transaction_mismatch_is_refused():
     private, store = trusted_material()
     request = make_request()
-    response = make_response(private, request)
 
     def mismatch(payload):
         payload["transaction_id"] = "99999999-9999-4999-8999-999999999999"
