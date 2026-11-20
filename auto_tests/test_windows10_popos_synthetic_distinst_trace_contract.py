@@ -195,7 +195,7 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         source = (Path(__file__).parent / "tools" /
                   "windows10_popos_synthetic_qemu_write_smoke.py").read_text(
                       encoding="utf-8")
-        device_args = re.findall(r'"-device",\\s*f?"([^"]+)"', source)
+        device_args = re.findall(r'"-device",\s*f?"([^"]+)"', source)
         self.assertGreaterEqual(len(device_args), 5)
         self.assertTrue(all("readonly=" not in arg for arg in device_args))
         self.assertIn('if=none,id=distcontrol,format=raw,readonly=on,file={control}',
