@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "distribution": "q4os",
+  "iso": {
+    "version": "6.10 r2",
+    "officialUrl": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso",
+    "sha256": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d",
+    "sizeBytes": 1851392000,
+    "upstreamGpgSignatureVerified": false
+  },
+  "labSourceCommit": "6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb",
+  "workflow": ".github/workflows/q4os-ui-repro-2vm.yml",
+  "status": "two-vm-verified",
+  "runs": [
+    {
+      "replica": 1,
+      "runId": "44641233701",
+      "attempt": 1,
+      "result": "success",
+      "artifactId": 14587306682,
+      "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682",
+      "isoHashVerified": true,
+      "calamaresPolicyAudited": true,
+      "screenshots": [
+        {
+          "state": "desktop-before-launch",
+          "path": "vnc-before-icon-click.png",
+          "sha256": "ee066fb79b12b036c02a115c5f2b89511f9df59d5699f1ac643554ff225376b8",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-welcome",
+          "path": "vnc-after-installer-icon.png",
+          "sha256": "8645651790c54b777aa053b299ba8baa8cbf1265467ce465a50aac4b4cf1460e",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-location",
+          "path": "vnc-location-page.png",
+          "sha256": "ef0bccc4f42829d83645824a4a3e183fd9eaff96d0d4ec558cb4b9dcded8f936",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-keyboard",
+          "path": "vnc-keyboard-page.png",
+          "sha256": "ae8e182ff95fa520439ff9c9fe77f3e84300e81801309c9b2f9b0b590d438407",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-software-unselected",
+          "path": "vnc-software-page.png",
+          "sha256": "e444febab3151ae4a3d8e0fced9a7e0025218d708d5adc95fd383140f2a9240b",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-software-desktop-selected",
+          "path": "vnc-software-selected.png",
+          "sha256": "a1f1ec7ac889e677015890e5ed7480e1d324391f9fdfb9bc5754d0d7ab76e52f",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-partitions",
+          "path": "vnc-partitions-page.png",
+          "sha256": "26a928c429146b30aa04ed87741050c5ae103e545cc9ffe2312588ea99cac03d",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-partitions-proposal-only",
+          "path": "vnc-partitions-radio-selected.png",
+          "sha256": "07b9eb4ac30dc4890db2f56599238082c6782f79441b1ea782d0150796c2f10b",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-users-unfilled",
+          "path": "vnc-users-page.png",
+          "sha256": "42d61fd37547c0dcef4a677aed080fe352a1bf63c1a71d1649c5fbcd42d76956",
+          "visualGatePassed": true
+        }
+      ],
+      "transitions": [
+        {
+          "from": "desktop-before-launch",
+          "to": "calamares-welcome",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-welcome",
+          "to": "calamares-location",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-location",
+          "to": "calamares-keyboard",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-keyboard",
+          "to": "calamares-software-unselected",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-software-unselected",
+          "to": "calamares-software-desktop-selected",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-software-desktop-selected",
+          "to": "calamares-partitions",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-partitions",
+          "to": "calamares-partitions-proposal-only",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-partitions-proposal-only",
+          "to": "calamares-users-unfilled",
+          "centralRegionChanged": true
+        }
+      ]
+    },
+    {
+      "replica": 2,
+      "runId": "44641233701",
+      "attempt": 1,
+      "result": "success",
+      "artifactId": 14586773677,
+      "artifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677",
+      "isoHashVerified": true,
+      "calamaresPolicyAudited": true,
+      "screenshots": [
+        {
+          "state": "desktop-before-launch",
+          "path": "vnc-before-icon-click.png",
+          "sha256": "30c47abcddd4e446ef1917363e40d2f8429e0735c28f4ccf1453468209ea6dc3",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-welcome",
+          "path": "vnc-after-installer-icon.png",
+          "sha256": "d013fe7f81c6a0f8225f9f28e45386d5958f4ade8cfa90960f54ef4c473a9e42",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-location",
+          "path": "vnc-location-page.png",
+          "sha256": "0f8f508e8f26592bab8b05e5a2474ead07dc3b1dab28b5cd802d9ec4a97e7c33",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-keyboard",
+          "path": "vnc-keyboard-page.png",
+          "sha256": "f5e9cb5322808c3f6419e2f738517406d53856fc165d164c2fd2f5ec4d59e857",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-software-unselected",
+          "path": "vnc-software-page.png",
+          "sha256": "4c60144dc65baea926801332330bfd02e7da669358ed823bff6650c096ef36f9",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-software-desktop-selected",
+          "path": "vnc-software-selected.png",
+          "sha256": "ecc4cf02c2feb3328372c813abe2d2c9a222ce0218a50dc2edbdd4d73edd84a8",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-partitions",
+          "path": "vnc-partitions-page.png",
+          "sha256": "33423d8167ef4444ae17b5071f2a3fd5b575c8c6e2cfafd61e1021465f040fac",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-partitions-proposal-only",
+          "path": "vnc-partitions-radio-selected.png",
+          "sha256": "628c32e6526e2500d0b0924f4462db81ed7c6e0015c67cf237d62f5e99ae8df1",
+          "visualGatePassed": true
+        },
+        {
+          "state": "calamares-users-unfilled",
+          "path": "vnc-users-page.png",
+          "sha256": "2f280829501426be6a2079974b283f9824bdd21a7cff7f9e2cb81337ba843003",
+          "visualGatePassed": true
+        }
+      ],
+      "transitions": [
+        {
+          "from": "desktop-before-launch",
+          "to": "calamares-welcome",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-welcome",
+          "to": "calamares-location",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-location",
+          "to": "calamares-keyboard",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-keyboard",
+          "to": "calamares-software-unselected",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-software-unselected",
+          "to": "calamares-software-desktop-selected",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-software-desktop-selected",
+          "to": "calamares-partitions",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-partitions",
+          "to": "calamares-partitions-proposal-only",
+          "centralRegionChanged": true
+        },
+        {
+          "from": "calamares-partitions-proposal-only",
+          "to": "calamares-users-unfilled",
+          "centralRegionChanged": true
+        }
+      ]
+    }
+  ],
+  "stateCountVerifiedInTwoGuests": 9,
+  "transitionCountVerifiedInTwoGuests": 8,
+  "blockedAt": "calamares-users-unfilled; no Summary/Install",
+  "limitations": [
+    "Qt accessibility objectName and AT-SPI identifiers not observed in either guest; cannot claim real Qt selectors.",
+    "Configured timeout is 20 seconds per VNC action and 720 seconds for QEMU; elapsed durations per transition were not instrumented.",
+    "Screen resolution 1280x800 proven by screenshot; physical display scaling factor not independently measured.",
+    "Two original per-VM screenshots sets and SHA-256 manifests published; host-side independent crosscheck workflow still required to validate raw PNG content after download.",
+    "No Summary state, account entry, Install click, storage/bootloader jobs or native Linux installation attempted.",
+    "Only fully owned synthetic GPT COW (no Windows disk); real Windows partitions, BCD, WinRE, EFI and recovery not tested.",
+    "Official ISO integrity SHA-256 matched pinned lab hash; upstream detached GPG signature not independently proven."
+  ]
+}
