@@ -162,6 +162,13 @@ def early_cli() -> None:
             "early A/B capacity proof restricted to isolated hosted CI")
     report = measure_capacity(directory=args.root, phase="early",
                               full_allocated_bytes=qemu_fully_allocated_bytes())
+    report["githubRunId"] = os.environ.get("GITHUB_RUN_ID")
+    report["sourceCommit"] = os.environ.get("GITHUB_SHA")
+    require(type(report["githubRunId"]) is str
+            and report["githubRunId"].isdigit()
+            and type(report["sourceCommit"]) is str
+            and len(report["sourceCommit"]) == 40,
+            "missing same-run GitHub capacity identity")
     evidence(args.evidence/"mint-ab-capacity-early.json", report)
     print("GASLUX_MINT_AB_CAPACITY_EARLY_JSON=" + json.dumps(report, sort_keys=True),
           flush=True)
