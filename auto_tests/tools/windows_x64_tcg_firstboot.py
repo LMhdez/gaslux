@@ -1318,6 +1318,7 @@ def main(argv: list[str] | None = None) -> int:
                                                     run_shared_root_pacstrap,
                                                 )
                                                 pacstrap_proof = run_shared_root_pacstrap(
+                                                    original=base,
                                                     iso=Path(os.environ["GASLUX_CACHYOS_VERIFIED_ISO_PATH"]),
                                                     pinned_sha256=os.environ["GASLUX_CACHYOS_VERIFIED_ISO_SHA256"],
                                                     base=disk,
@@ -1331,6 +1332,24 @@ def main(argv: list[str] | None = None) -> int:
                                                     ext4=ext4,
                                                     fourth=fourth,
                                                     fourth_serial=workspace / "fourth-post-ext4-windows-serial.log",
+                                                )
+                                                # Keep host-private TPM/trace paths out of the
+                                                # retained JSON; only hashes and bounded evidence
+                                                # are published with the artifact.
+                                                treatment_tpm_state = Path(
+                                                    pacstrap_proof.pop("_treatmentTpmStatePath")
+                                                )
+                                                trace_events_raw = pacstrap_proof.pop(
+                                                    "_qemuTraceEventsPath", ""
+                                                )
+                                                treatment_trace_raw = pacstrap_proof.pop(
+                                                    "_treatmentQemuTracePath", ""
+                                                )
+                                                trace_events_file = (
+                                                    Path(trace_events_raw) if trace_events_raw else None
+                                                )
+                                                treatment_trace_file = (
+                                                    Path(treatment_trace_raw) if treatment_trace_raw else None
                                                 )
                                                 pacstrap_bytes = (
                                                     json.dumps(pacstrap_proof, sort_keys=True, indent=2)
@@ -1364,10 +1383,24 @@ def main(argv: list[str] | None = None) -> int:
                                                     "releaseEligible": False,
                                                 }
                                                 try:
-                                                    side_by_side = verify_windows_with_installed_root(
-                                                        base, disk, nvram, candidate, cow, staged,
-                                                        third, ext4, fourth, pacstrap_proof,
-                                                        timeout=1500,
+                                                    from windows_cachyos_bcd_ab_control import (
+                                                        compare_bcd_ab, running_swtpm,
+                                                        tpm_state_tree_sha256,
+                                                    )
+                                                    with running_swtpm(
+                                                        treatment_tpm_state, workspace,
+                                                        "bcd-ab-treatment-tpm",
+                                                    ) as treatment_tpm_socket:
+                                                        side_by_side = verify_windows_with_installed_root(
+                                                            base, disk, nvram, candidate, cow, staged,
+                                                            third, ext4, fourth, pacstrap_proof,
+                                                            timeout=1500,
+                                                            tpm_socket=treatment_tpm_socket,
+                                                            trace_events_file=trace_events_file,
+                                                            trace_file=treatment_trace_file,
+                                                        )
+                                                    side_by_side["treatmentTpmPostBootStateTreeSha256"] = (
+                                                        tpm_state_tree_sha256(treatment_tpm_state)
                                                     )
                                                 except Exception as error:
                                                     # Fail closed without bypassing the existing
@@ -1398,6 +1431,29 @@ def main(argv: list[str] | None = None) -> int:
                                                               + safe_reason, flush=True)
                                                     print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_FAILED="
                                                           + type(error).__name__, flush=True)
+                                                # Compare only read-only BCD hashes/offsets from
+                                                # the independent Windows-only and treatment arms.
+                                                # Missing evidence remains an explicit blocker.
+                                                control_bcd = pacstrap_proof.get(
+                                                    "bcdAbControl", {}
+                                                ).get("controlBcdForensic")
+                                                treatment_bcd = side_by_side.get(
+                                                    "bcdReadOnlyForensic"
+                                                ) or side_by_side.get(
+                                                    "readonlyDiagnostics", {}
+                                                ).get("bcdReadOnlyForensic")
+                                                if (isinstance(control_bcd, dict)
+                                                        and isinstance(treatment_bcd, dict)):
+                                                    side_by_side["bcdAbComparison"] = (
+                                                        compare_bcd_ab(control_bcd, treatment_bcd)
+                                                    )
+                                                else:
+                                                    side_by_side["bcdAbComparison"] = {
+                                                        "classification": "INCOMPLETE_CONTROL_OR_TREATMENT_BCD_EVIDENCE",
+                                                        "processAttributionProven": False,
+                                                        "approvedMutation": False,
+                                                        "releaseEligible": False,
+                                                    }
                                                 side_bytes = (json.dumps(
                                                     side_by_side, sort_keys=True, indent=2
                                                 ) + "\n").encode("utf-8")
