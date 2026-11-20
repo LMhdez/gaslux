@@ -248,14 +248,15 @@ def inspect_embedded_payload(
     diagnostics: dict[str, Any] = {
         "listingEntryCount": len(paths),
         "storageRelatedPaths": sorted(
-            path for path in paths
+            path
+            for path in paths
             if "containers/storage" in path
             or "overlay-images" in path
             or path.endswith("/images.json")
         )[:500],
-        "imagesJsonCandidates": sorted(
-            path for path in paths if path.endswith("images.json")
-        )[:100],
+        "imagesJsonCandidates": sorted(path for path in paths if path.endswith("images.json"))[
+            :100
+        ],
     }
 
     def fail(message: str) -> None:
@@ -293,7 +294,8 @@ def inspect_embedded_payload(
         diagnostics["matchingNames"] = sorted(
             {
                 name
-                for item in images if isinstance(item, dict)
+                for item in images
+                if isinstance(item, dict)
                 for name in item.get("names", [])
                 if "bazzite" in str(name).lower()
             }
@@ -325,11 +327,13 @@ def inspect_embedded_payload(
         "existingCandidatePaths": existing,
     }
     manifests = sorted(
-        path for path in candidates
+        path
+        for path in candidates
         if path in paths and Path(path).name in {"manifest", "manifest.json"}
     )
     configs = sorted(
-        path for path in candidates
+        path
+        for path in candidates
         if path in paths and Path(path).name in {"config", "config.json"}
     )
     if len(manifests) != 1 or len(configs) != 1:
