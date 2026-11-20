@@ -127,6 +127,45 @@ def validate_attestation_report(
     }
 
 
+def verify_embedded_blobs(
+    image: dict[str, Any],
+    manifest_bytes: bytes,
+    config_bytes: bytes,
+    *,
+    expected_manifest_digest: str,
+    expected_config_digest: str,
+    expected_version: str,
+) -> dict[str, Any]:
+    image_id = str(image.get("id", "")).removeprefix("sha256:")
+    config_hex = expected_config_digest.removeprefix("sha256:")
+    if image_id != config_hex:
+        raise ReadbackError("Embedded storage image ID does not match the pinned config digest")
+    try:
+        manifest = json.loads(manifest_bytes)
+        config = json.loads(config_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReadbackError("Embedded OCI manifest or config is invalid") from exc
+    manifest_sha = sha256_bytes(manifest_bytes)
+    config_sha = sha256_bytes(config_bytes)
+    if f"sha256:{manifest_sha}" != expected_manifest_digest:
+        raise ReadbackError("Embedded OCI manifest digest mismatch")
+    if f"sha256:{config_sha}" != expected_config_digest:
+        raise ReadbackError("Embedded OCI config digest mismatch")
+    if not isinstance(manifest.get("config"), dict) or manifest["config"].get("digest") != expected_config_digest:
+        raise ReadbackError("Embedded manifest references a different config")
+    labels = config.get("config", {}).get("Labels") or {}
+    version_label = labels.get("org.opencontainers.image.version") or labels.get("version")
+    if version_label is not None and version_label != expected_version:
+        raise ReadbackError("Embedded OCI config has an unexpected version label")
+    return {
+        "storageImageId": image_id,
+        "manifestSha256": manifest_sha,
+        "configDigest": expected_config_digest,
+        "configSha256": config_sha,
+        "embeddedVersionLabel": version_label,
+    }
+
+
 def _unsquashfs(squashfs: Path, *args: str, binary: bool = False):
     try:
         command = (
@@ -172,10 +211,6 @@ def inspect_embedded_payload(squashfs: Path) -> dict[str, Any]:
         raise ReadbackError("ISO does not contain one unique Bazzite install payload")
     image = matches[0]
     image_id = str(image.get("id", "")).removeprefix("sha256:")
-    config_hex = CONFIG_DIGEST.removeprefix("sha256:")
-    if image_id != config_hex:
-        raise ReadbackError("Embedded storage image ID does not match the pinned config digest")
-
     image_dir = Path(images_path).parent / image_id
     candidates = {
         str(image_dir / "manifest"),
@@ -196,31 +231,18 @@ def inspect_embedded_payload(squashfs: Path) -> dict[str, Any]:
         raise ReadbackError("ISO storage metadata does not expose one manifest and one config blob")
     manifest_bytes = _unsquashfs(squashfs, "-cat", manifests[0], binary=True)
     config_bytes = _unsquashfs(squashfs, "-cat", configs[0], binary=True)
-    try:
-        manifest = json.loads(manifest_bytes)
-        config = json.loads(config_bytes)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ReadbackError("Embedded OCI manifest or config is invalid") from exc
-    manifest_sha = sha256_bytes(manifest_bytes)
-    config_sha = sha256_bytes(config_bytes)
-    if f"sha256:{manifest_sha}" != PAYLOAD_DIGEST:
-        raise ReadbackError("Embedded OCI manifest digest mismatch")
-    if f"sha256:{config_sha}" != CONFIG_DIGEST:
-        raise ReadbackError("Embedded OCI config digest mismatch")
-    if not isinstance(manifest.get("config"), dict) or manifest["config"].get("digest") != CONFIG_DIGEST:
-        raise ReadbackError("Embedded manifest references a different config")
-    labels = config.get("config", {}).get("Labels") or {}
-    version_label = labels.get("org.opencontainers.image.version") or labels.get("version")
-    if version_label is not None and version_label != PAYLOAD_VERSION:
-        raise ReadbackError("Embedded OCI config has an unexpected version label")
+    blob_evidence = verify_embedded_blobs(
+        image,
+        manifest_bytes,
+        config_bytes,
+        expected_manifest_digest=PAYLOAD_DIGEST,
+        expected_config_digest=CONFIG_DIGEST,
+        expected_version=PAYLOAD_VERSION,
+    )
     return {
         "image": PAYLOAD_IMAGE,
         "names": sorted(set(image.get("names") or [])),
-        "storageImageId": image_id,
-        "manifestSha256": manifest_sha,
-        "configDigest": CONFIG_DIGEST,
-        "configSha256": config_sha,
-        "embeddedVersionLabel": version_label,
+        **blob_evidence,
         "manifestPath": manifests[0],
         "configPath": configs[0],
         "imagesJsonPath": images_path,
