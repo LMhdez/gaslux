@@ -22,8 +22,7 @@ def test_checksum_requires_exact_iso_name_and_single_digest():
         parse_checksum(f"{digest}  other.iso\n".encode())
     with pytest.raises(ReadbackError):
         duplicate = (
-            f"{digest}  bazzite-stable-live-amd64.iso\n"
-            f"{digest}  bazzite-stable-live-amd64.iso\n"
+            f"{digest}  bazzite-stable-live-amd64.iso\n{digest}  bazzite-stable-live-amd64.iso\n"
         )
         parse_checksum(duplicate.encode())
 
@@ -71,7 +70,9 @@ def _attestation(digest="b" * 64, predicate_type=PREDICATE_TYPE):
                     "predicateType": predicate_type,
                     "predicate": {},
                 },
-                "signature": {"certificate": {"issuer": "https://token.actions.githubusercontent.com"}},
+                "signature": {
+                    "certificate": {"issuer": "https://token.actions.githubusercontent.com"}
+                },
                 "verifiedTimestamps": [{"kind": "rekor"}],
             }
         }
@@ -172,8 +173,8 @@ def test_embedded_payload_rejects_wrong_manifest_config_and_version():
             expected_config_digest=config_digest,
             expected_version="45.20261117.1",
         )
-    wrong_version_image, wrong_manifest, wrong_config, wrong_md, wrong_cd = (
-        _embedded_fixture("45.20261116.1")
+    wrong_version_image, wrong_manifest, wrong_config, wrong_md, wrong_cd = _embedded_fixture(
+        "45.20261116.1"
     )
     with pytest.raises(ReadbackError):
         verify_embedded_blobs(
