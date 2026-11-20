@@ -54,6 +54,11 @@ jobs:
           lab_private="$(sudo mktemp -d /tmp/gaslux-obs-XXXXXXXX)"
           sudo chown gaslux_observer_ci:gaslux_observer_ci "$lab_private"
           sudo chmod 0700 "$lab_private"
+          # Do not open the runner's home or checkout to the service UID.
+          sudo install -d -m 0700 "$lab_private/auto_tests"
+          sudo cp -a -- auto_tests/installer_observer "$lab_private/auto_tests/installer_observer"
+          sudo cp -- auto_tests/__init__.py "$lab_private/auto_tests/__init__.py"
+          sudo chown -R gaslux_observer_ci:gaslux_observer_ci "$lab_private/auto_tests"
           cleanup() {
             sudo rm -rf -- "$lab_private"
             sudo userdel gaslux_observer_ci || true
