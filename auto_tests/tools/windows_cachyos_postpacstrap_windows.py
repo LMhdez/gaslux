@@ -26,9 +26,7 @@ from windows_cachyos_cow_checkpoint import (
     validate_workspace,
 )
 from windows_cachyos_overlay_reboot import gpt_windows
-from windows_cachyos_postext4_windows import (
-    add_qemu_trace, add_tpm_device, verify_windows_post_ext4,
-)
+from windows_cachyos_postext4_windows import verify_windows_post_ext4
 from windows_cachyos_qcow2_gpt_readonly import qcow2_file_identity
 
 CONSENT = "I_ACCEPT_WIN10_BOOT_WITH_INSTALLED_CACHYOS_FIFTH_ROOT_ON_DISPOSABLE_COW"
