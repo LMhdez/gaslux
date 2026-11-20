@@ -132,20 +132,25 @@ def expected_actions(plan: dict) -> dict:
     if size != 70 * 1024**3:
         raise Refusal("Not the known 70 GiB laboratory GPT fixture")
     existing_ids = {disk_guid}
-    for existing, (number, part_type, name, first, last) in zip(
-        protected, PARTITIONS, strict=True
-    ):
+    for existing, (number, part_type, name, first, last) in zip(protected, PARTITIONS, strict=True):
         if not isinstance(existing, dict) or set(existing) != {
-            "number", "typeGuid", "partuuid", "name", "firstSector", "lastSector"
+            "number",
+            "typeGuid",
+            "partuuid",
+            "name",
+            "firstSector",
+            "lastSector",
         }:
             raise Refusal("Invalid protected GPT partition identity")
-        if any((
-            existing["number"] != number,
-            existing["typeGuid"] != part_type,
-            existing["name"] != name,
-            existing["firstSector"] != first,
-            existing["lastSector"] != last,
-        )):
+        if any(
+            (
+                existing["number"] != number,
+                existing["typeGuid"] != part_type,
+                existing["name"] != name,
+                existing["firstSector"] != first,
+                existing["lastSector"] != last,
+            )
+        ):
             raise Refusal("Foreign or changed protected partition")
         part_id = _guid(existing["partuuid"])
         if part_id in existing_ids:
@@ -207,6 +212,7 @@ def expected_actions(plan: dict) -> dict:
 def _compare_multiset(observed: object, expected: list, context: str) -> None:
     if not isinstance(observed, list) or any(not isinstance(x, dict) for x in observed):
         raise Refusal(f"Missing {context} actions")
+
     def pack(value: dict) -> str:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
