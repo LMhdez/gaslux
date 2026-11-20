@@ -10,6 +10,13 @@ on:
       - 'auto_tests/tests/test_bazzite_anaconda_write_set_gate.py'
       - 'auto_tests/bazzite_gpt_fixture.py'
   workflow_dispatch:
+  push:
+    branches:
+      - test/bazzite-atomic-write-set-readonly-20261120
+    paths:
+      - '.github/workflows/gaslux-bazzite-atomic-target-readonly.yml'
+      - 'auto_tests/bazzite_anaconda_readonly_capture.py'
+      - 'auto_tests/tests/test_bazzite_anaconda_readonly_capture.py'
 
 permissions:
   contents: read
@@ -41,7 +48,7 @@ jobs:
           echo 'No signed Bazzite 42 ISO or authenticated real Anaconda GetActions export: installation remains denied'
 
   synthetic-gpt-native-target:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     needs: fail-closed-contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 25
