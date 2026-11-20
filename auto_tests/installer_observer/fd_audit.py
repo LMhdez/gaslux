@@ -52,6 +52,7 @@ def audit_child_fds() -> dict[str, bool]:
                     stderr=subprocess.DEVNULL,
                     timeout=5,
                 ).returncode
+
             # Inheritable FD is visible when close_fds=False (positive control).
             if inspect(False) != 0:
                 raise Refusal("FD inheritance positive control failed")
