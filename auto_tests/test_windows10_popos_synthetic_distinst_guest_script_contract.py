@@ -47,6 +47,18 @@ class SyntheticDistinstGuestScriptTests(unittest.TestCase):
         self.assertIn('"sched/sched_process_exec"', self.python_source)
         self.assertIn('need(not other_writes,', self.python_source)
 
+    def test_mount_and_unmount_syscalls_are_observed_when_tracepoints_exist(self):
+        self.assertIn('"syscalls/sys_enter_mount"', self.python_source)
+        self.assertIn('"syscalls/sys_exit_mount"', self.python_source)
+        self.assertIn('"syscalls/sys_enter_umount2"', self.python_source)
+        self.assertIn('"syscalls/sys_exit_umount2"', self.python_source)
+        self.assertIn('mountTraceEventsAvailable', self.python_source)
+        self.assertIn('mountObservations', self.python_source)
+        self.assertIn('"targetArgumentsResolved": False', self.python_source)
+        self.assertIn('"distinstPhase": "partition-format-test"', self.python_source)
+        self.assertIn('mount tracepoint availability changed after preflight',
+                      self.python_source)
+
     def test_no_windows_or_host_device_path_is_embedded(self):
         for forbidden in ("/dev/sda", "/dev/nvme0n1", "/mnt/c/", "C:\\\\"):
             self.assertNotIn(forbidden, self.source)
