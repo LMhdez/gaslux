@@ -108,6 +108,22 @@ def test_missing_or_reordered_manifest_transition_refused(tmp_path, mapping):
         tuple(q4os.recordings(mapping, altered, q4os.ORIGINALS))
 
 
+def test_original_report_sha_mutation_refused(tmp_path, originals):
+    from auto_tests.installer_observer.evidence import parse
+
+    original = originals[0]
+    manifest = parse(read(q4os.MANIFEST))
+    archive = next(
+        a for a in manifest["archives"] if a["artifactId"] == original.artifact_id
+    )
+    report = read(original.directory / "ui-screenshots-report.json")
+    altered_dir = tmp_path / "report-tamper"
+    altered_dir.mkdir()
+    (altered_dir / "ui-screenshots-report.json").write_bytes(report + b" ")
+    with pytest.raises(Refusal, match="report SHA-256"):
+        q4os._report(altered_dir, archive, "ui-screenshots-report.json")
+
+
 def test_original_png_missing_refused(mapping, local_recording):
     (local_recording.directory / local_recording.states[1].filename).unlink()
     with pytest.raises(Refusal):
