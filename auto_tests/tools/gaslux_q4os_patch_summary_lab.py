@@ -30,9 +30,11 @@ def main() -> None:
     if not path.is_absolute() or path.is_symlink() or not path.is_file():
         raise SystemExit("Cannot patch non-regular or non-absolute VM lab script")
     original = path.read_text(encoding="utf-8")
-    if original.count(OLD) != 1 or original.count("calamares_users_view_verified=1") != 1:
+    anchor = "\n" + OLD + "\n"
+    injected = "\n" + NEW + "\n"
+    if original.count(anchor) != 1 or original.count("calamares_users_view_verified=1") != 1:
         raise SystemExit("Pinned Q4OS source anchor changed; refused to patch")
-    replacement = original.replace(OLD, NEW, 1)
+    replacement = original.replace(anchor, injected, 1)
     if replacement.count(NEW) != 1:
         raise SystemExit("Patched lab hook not unique")
     path.write_text(replacement, encoding="utf-8")
