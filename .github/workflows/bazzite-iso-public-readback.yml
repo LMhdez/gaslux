@@ -287,6 +287,9 @@ jobs:
           config_report = json.loads((evidence / "payload-config-readback.json").read_text())
           if result["configDigestFromManifest"] != config_report["configDigest"]:
               raise RuntimeError("Embedded manifest config digest does not match verified OCI config blob")
+          embedded_config = result.get("embeddedConfigBlobVerification")
+          if embedded_config and embedded_config["configDigest"] != config_report["configDigest"]:
+              raise RuntimeError("Embedded config blob does not match the authenticated GHCR config blob")
           result["verifiedConfigBlob"] = config_report
           result["mountOptions"] = "ro"
           (evidence / "embedded-oci-payload.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
