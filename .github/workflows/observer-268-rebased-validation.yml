@@ -12,6 +12,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   observer-full-file-contracts:
     runs-on: ubuntu-24.04
@@ -24,18 +25,91 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install original Summary OCR dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tesseract-ocr
       - name: Install requirements
         run: python -m pip install 'pytest>=8,<10' 'pillow>=11,<13' 'ruff>=0.8,<1' 'jsonschema>=4,<5'
       - name: Compile every incorporated Observer module
-        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py
+        run: python -m compileall -q auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
       - name: Ruff lint ALL incorporated Observer modules and tests
-        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
       - name: Ruff formatting ALL incorporated Observer modules and tests
-        run: python -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py
+        run: python -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
       - name: Adversarial controller and QEMU identity contracts
-        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py
+        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
       - name: Q4OS native preflight and related read-only contract regression
         run: python -m pytest -q auto_tests/tests/test_q4os_native_preflight.py
+      - name: Validate pinned original Q4OS map and manifest against their schemas
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+          for path, schema_path in (
+              ("docs/distro-backends/ui-maps/q4os.json", "schemas/distro-ui-map.schema.json"),
+              ("docs/distro-backends/evidence/q4os-manifest.json", "schemas/distro-ui-evidence.schema.json"),
+          ):
+              Draft202012Validator(json.loads(Path(schema_path).read_text())).validate(
+                  json.loads(Path(path).read_text())
+              )
+              print("Validated", path)
+          PY
+      - name: Execute original four-session Q4OS replay and independent report verification
+        env:
+          HISTORICAL_REPORT: ${{ runner.temp }}/q4os-historical-replay.json
+        run: |
+          python -m auto_tests.installer_observer.cli inspect
+          python -m auto_tests.installer_observer.cli replay > "$HISTORICAL_REPORT"
+          python -m auto_tests.installer_observer.cli verify-report "$HISTORICAL_REPORT"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          data = json.loads(Path(os.environ["HISTORICAL_REPORT"]).read_text())
+          sessions = data["manifest"]["sessions"]
+          assert len(sessions) == 4
+          assert [s["artifact_id"] for s in sessions] == [
+              14587306682, 14586773677, 14590616864, 14589299655
+          ]
+          assert [s["replica"] for s in sessions] == [1, 2, 1, 2]
+          assert [s["run_id"] for s in sessions] == [
+              "44641233701", "44641233701", "44648406729", "44648406729"
+          ]
+          assert [len(s["frames"]) for s in sessions] == [9, 9, 11, 11]
+          assert [len(s["steps"]) for s in sessions] == [8, 8, 10, 10]
+          assert [s["final_state"] for s in sessions[-2:]] == [
+              "calamares-summary", "calamares-summary"
+          ]
+          assert data["manifest"]["live_input_count"] == 0
+          print("HISTORIC_Q4OS_REPLAY_VERIFIED: 4 artifacts, 40 PNG, 36 edges, 0 input")
+          PY
+      - name: Retrieve original GitHub Actions ZIP and metadata (provenance only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          Q4OS_ORIGINALS: ${{ runner.temp }}/q4os-originals
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$Q4OS_ORIGINALS/zips" "$Q4OS_ORIGINALS/metadata"
+          for aid in 14587306682 14586773677 14590616864 14589299655; do
+            gh api "repos/LMhdez/gaslux/actions/artifacts/$aid" > "$Q4OS_ORIGINALS/metadata/$aid.json"
+            gh api "repos/LMhdez/gaslux/actions/artifacts/$aid/zip" > "$Q4OS_ORIGINALS/zips/$aid.zip"
+          done
+      - name: Match GitHub archive SHA and original blob bytes exactly
+        env:
+          Q4OS_ORIGINALS: ${{ runner.temp }}/q4os-originals
+        run: |
+          python -m auto_tests.tools.verify_q4os_action_archives \
+            --zip-dir "$Q4OS_ORIGINALS/zips" \
+            --metadata-dir "$Q4OS_ORIGINALS/metadata"
+      - name: Publish offline replay evidence report only
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-offline-replay-validated
+          path: ${{ runner.temp }}/q4os-historical-replay.json
+          retention-days: 14
+          if-no-files-found: error
       - name: JSON Schema validity
         run: |
           python - <<'PY'
@@ -49,7 +123,7 @@ jobs:
         run: |
           python - <<'PY'
           import importlib
-          for name in ("evidence", "screenshot", "locators", "models", "state_machine", "lab_identity", "controller_lease", "replay"):
+          for name in ("evidence", "screenshot", "locators", "models", "state_machine", "lab_identity", "controller_lease", "replay", "q4os", "_q4os_pixels", "schema", "cli"):
               importlib.import_module("auto_tests.installer_observer." + name)
           PY
       - name: Fail closed if any production writer or release surface changed
@@ -73,14 +147,51 @@ jobs:
               "auto_tests/installer_observer/locators.py",
               "auto_tests/installer_observer/models.py",
               "auto_tests/installer_observer/replay.py",
+              "auto_tests/installer_observer/q4os.py",
+              "auto_tests/installer_observer/_q4os_pixels.py",
+              "auto_tests/installer_observer/schema.py",
+              "auto_tests/installer_observer/cli.py",
+              "auto_tests/tools/gaslux_q4os_summary_visual_gate.py",
+              "auto_tests/tools/verify_q4os_action_archives.py",
+              "auto_tests/tests/test_observer_q4os_history.py",
+              "docs/distro-backends/ui-maps/q4os.json",
+              "docs/distro-backends/evidence/q4os-manifest.json",
+              "schemas/distro-ui-map.schema.json",
+              "schemas/distro-ui-evidence.schema.json",
+              "auto_tests/fixtures/installer_observer/.gitattributes",
               "auto_tests/installer_observer/screenshot.py",
               "auto_tests/installer_observer/state_machine.py",
               "auto_tests/tests/test_observer_controller_lease.py",
               "auto_tests/tests/test_observer_lab_identity.py",
               "auto_tests/tests/test_observer_rebased_primitives.py",
-              "auto_tests/tests/test_observer_replay_synthetic.py",
+              "auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py",
               "docs/distro-backends/SHARED_CONTRACTS.md",
           }
+          from auto_tests.installer_observer import q4os
+          from auto_tests.installer_observer.evidence import canonical, digest, parse, read
+          manifest = parse(read(q4os.MANIFEST))
+          if digest(canonical(manifest)) != q4os.MANIFEST_SHA:
+              raise SystemExit("Historical manifest differs from pinned original")
+          original = manifest["runs"] + manifest["summaryRuns"]
+          if [x["artifactId"] for x in original] != [
+              14587306682, 14586773677, 14590616864, 14589299655
+          ]:
+              raise SystemExit("Original artifact list changed")
+          for run in original:
+              aid = run["artifactId"]
+              if len({r["path"] for r in run["screenshots"]}) != len(run["screenshots"]):
+                  raise SystemExit("Duplicate original screenshot names")
+              for screenshot in run["screenshots"]:
+                  permitted.add("auto_tests/fixtures/installer_observer/" + str(aid)
+                                + "/" + screenshot["path"])
+              archive = next(a for a in manifest["archives"] if a["artifactId"] == aid)
+              for name in archive["reports"]:
+                  permitted.add("auto_tests/fixtures/installer_observer/"
+                                + str(aid) + "/" + name)
+          if sum(len(x["screenshots"]) for x in original) != 40:
+              raise SystemExit("Original evidence frame count mismatch")
+          if sum(len(x["transitions"]) for x in original) != 36:
+              raise SystemExit("Original evidence edge count mismatch")
           if set(changed) != permitted:
               raise SystemExit("Scope diff does not match reviewed offline-replay allowlist")
           forbidden = ("release-config.json", "Installation/", "Scripts/", "assets/live/", "Pages/", "release-config/")
@@ -91,5 +202,5 @@ jobs:
           for marker in ("LOCK_EX | fcntl.LOCK_NB", "os.O_NOFOLLOW", "process_seal(self.expected.pid)", "raise Refusal"):
               if marker not in lease:
                   raise SystemExit("ControllerLease gate missing: " + marker)
-          print("Offline synthetic replay only: exact scope, no transport, no release or disk writer modifications")
+          print("Original Q4OS replay, exact reviewed scope, no transport or writers")
           PY
