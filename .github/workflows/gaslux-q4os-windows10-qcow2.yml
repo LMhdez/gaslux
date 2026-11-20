@@ -1,16 +1,13 @@
-name: Q4OS Windows 10 installed QCOW2 UEFI/GPT lab
+name: Q4OS genuine Windows10 read-only QEMU Safety refusal
 
 on:
   push:
     branches:
-      - feature/q4os-windows10-qcow2-lab
+      - feature/q4os-windows-native-boundary-20261120
     paths:
       - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
       - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
-  pull_request:
-    paths:
-      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
-      - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
+      - 'assets/live/gaslux_q4os_win10_readonly_probe.py'
   workflow_dispatch:
 
 permissions:
@@ -35,7 +32,8 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl
+            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl \
+            python3-guestfs libguestfs-tools
           sudo modprobe nbd max_part=8
           if [[ -c /dev/kvm ]]; then
             sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
@@ -222,59 +220,31 @@ jobs:
           sudo qemu-nbd --disconnect /dev/nbd0
           trap - EXIT
 
-      - name: Produce self-contained compressed Windows 10 QCOW2 and SHA-256 evidence
+      - name: Load exact pinned Safety #267 source for observational refusals
         shell: bash
         run: |
           set -Eeuo pipefail
-          work="$GASLUX_WIN10_WORK"
-          source="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
-          output="$work/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2"
-          qemu-img convert -p -f qcow2 -O qcow2 -c "$source" "$output"
-          qemu-img check "$output"
-          info="$(qemu-img info --output=json "$output")"
-          python - "$info" <<'PY'
-          import json, sys
-          x=json.loads(sys.argv[1])
-          assert x["format"]=="qcow2"
-          assert x["virtual-size"]==48*1024**3
-          assert not x.get("backing-filename")
-          print("GASLUX_WIN10_SELF_CONTAINED_QCOW2=PASS")
-          PY
-          sha="$(sha256sum "$output" | awk '{print $1}')"
-          printf '%s  %s\n' "$sha" "$(basename "$output")" > "$work/windows10-qcow2.sha256"
-          cat > "$work/windows10-install-manifest.json" <<JSON
-          {
-            "schemaVersion": 1,
-            "distribution": "Windows 10 Enterprise Evaluation 22H2",
-            "architecture": "x86_64",
-            "firmware": "UEFI",
-            "partitionTable": "GPT",
-            "isoSha256": "$GASLUX_WIN10_ISO_SHA256",
-            "qcow2Filename": "$(basename "$output")",
-            "qcow2Sha256": "$sha",
-            "virtualSizeBytes": 51539607552,
-            "selfContained": true,
-            "windowsRootVerified": true,
-            "efiBootManagerVerified": true,
-            "bcdVerified": true,
-            "firstLogonVerified": true,
-            "networkAttached": false,
-            "qemuAccelerator": "$GASLUX_WIN10_ACCEL",
-            "evaluationLicense": true
-          }
-          JSON
-          printf 'GASLUX_WIN10_QCOW2_SHA256=%s\n' "$sha" >> "$GITHUB_ENV"
-          printf 'GASLUX_WIN10_INSTALLED=PASS\n'
-          printf 'GASLUX_WIN10_QCOW2_SHA256=%s\n' "$sha"
-
-      - name: Upload verified Windows 10 installed QCOW2 and manifest
+          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git refs/heads/safety/gpt-authenticated-no-writer-20261120
+          test "$(git rev-parse FETCH_HEAD)" = "f55633c90973f633dda678f583f7730fc2cdc0ce"
+          mkdir -m 0700 "$RUNNER_TEMP/q4os-safety-src"
+          git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
+          git show FETCH_HEAD:assets/live/libertix_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+          git diff --exit-code -- .github/workflows/gaslux-q4os-windows10-qcow2.yml assets/live/gaslux_q4os_win10_readonly_probe.py
+      - name: Real Windows 10 host GPT versus readonly QEMU guestfs and Safety #267 refusal
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -m 0700 "$RUNNER_TEMP/q4os-win10-readonly-evidence"
+          PYTHONPATH="assets/live:$RUNNER_TEMP/q4os-safety-src" /usr/bin/python3 \
+            assets/live/gaslux_q4os_win10_readonly_probe.py
+          git diff --exit-code -- .github/workflows/gaslux-q4os-windows10-qcow2.yml assets/live/gaslux_q4os_win10_readonly_probe.py
+          echo 'READ-ONLY Windows source: GPT host + QEMU guestfs, Q4OS refuse, Safety no-writer denial' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No Q4OS installation, partitioning, GRUB, EFI, NVRAM or Windows restoration' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload bounded metadata only (NEVER ISO, QCOW2, NVRAM or passwords)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gaslux-windows10-enterprise-eval-22h2-uefi-gpt-installed
-          path: |
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-qcow2.sha256
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-install-manifest.json
-          if-no-files-found: error
+          name: q4os-windows10-genuine-readonly-safety-refusal-text
+          path: ${{ runner.temp }}/q4os-win10-readonly-evidence/
+          if-no-files-found: warn
           retention-days: 7
