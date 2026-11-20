@@ -1366,6 +1366,7 @@ def main(argv: list[str] | None = None) -> int:
                                                             "cachyos-unwritten-trial-overlay.qcow2",
                                                     base=disk, mint_proof=mint_proof,
                                                     fourth=fourth,
+                                                    diagnostic_dir=evidence,
                                                 )
                                                 persistence_path = evidence / "mint-after-windows.json"
                                                 require(not persistence_path.exists()
