@@ -168,8 +168,15 @@ def test_busctl_wrapper_refuses_mutating_calls_before_subprocess():
             "/arbitrary",
         )
     with pytest.raises(CaptureRefusal, match="mutating"):
-        run(BUS, "--system", "call", ":1.37", "/org/fedoraproject/Anaconda/Modules/Storage",
-            SERVICE + ".Storage", "InstallWithTasks")
+        run(
+            BUS,
+            "--system",
+            "call",
+            ":1.37",
+            "/org/fedoraproject/Anaconda/Modules/Storage",
+            SERVICE + ".Storage",
+            "InstallWithTasks",
+        )
 
 
 def test_guest_disk_rejects_partition_uuid_overlap_and_missing_partitions():
