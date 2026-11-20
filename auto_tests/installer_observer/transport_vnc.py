@@ -134,9 +134,13 @@ class ReadOnlyVncTransport:
     def capture(self, deadline: float) -> Frame:
         if self.clock() >= deadline:
             raise Refusal("Observation timeout")
-        if (not self.expected.run_id or not self.expected.snapshot_id or not self.expected.source_commit
-                or self.expected.synthetic_cow_only is not True
-                or self.expected.physical_disk_attached is not False):
+        if (
+            not self.expected.run_id
+            or not self.expected.snapshot_id
+            or not self.expected.source_commit
+            or self.expected.synthetic_cow_only is not True
+            or self.expected.physical_disk_attached is not False
+        ):
             raise Refusal("Missing disposable lab authorization")
         if self.attestor.verify(deadline) != self.expected:
             raise Refusal("VM, snapshot, ISO or disk provenance changed")
