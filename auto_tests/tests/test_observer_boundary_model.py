@@ -23,7 +23,8 @@ def boundary():
         qemu_identity_sha256="c" * 64,
         source_commit="reviewed-fixture-commit",
     )
-    clock = lambda: 100.0
+    def clock():
+        return 100.0
     model = ObservationBoundaryModel(
         peer=peer,
         session_id=session_id,
@@ -65,7 +66,9 @@ def test_state_and_frame_are_read_only_and_hash_bound(boundary):
     assert frame["framebuffer_sha256"] == digest(frame["framebuffer_png"])
 
 
-@pytest.mark.parametrize("operation", ["qmp.execute", "rfb.input", "shell.exec", "install", "partition"])
+@pytest.mark.parametrize(
+    "operation", ["qmp.execute", "rfb.input", "shell.exec", "install", "partition"]
+)
 def test_mutating_or_arbitrary_operations_are_refused(boundary, operation):
     model, peer, session, transaction = boundary
     with pytest.raises(Refusal, match="allowlist"):
