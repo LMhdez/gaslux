@@ -22,10 +22,10 @@ class ArchiveVerifierContracts(unittest.TestCase):
     def test_pr216_history_is_pinned(self):
         self.assertEqual(mod.EXPECTED_SOURCES, 114)
         body = (
-            "Source-ref: refs/heads/" + mod.PR216_REF + "\\n"
-            "Source-sha: " + mod.PR216_SHA + "\\n"
-            "Archive-only: no experimental code included in working tree\\n"
-            "Production-merge: false\\n"
+            "Source-ref: refs/heads/" + mod.PR216_REF + "\n"
+            "Source-sha: " + mod.PR216_SHA + "\n"
+            "Archive-only: no experimental code included in working tree\n"
+            "Production-merge: false\n"
         )
         self.assertEqual(mod.source_message(body),
                          (mod.PR216_REF, mod.PR216_SHA))
