@@ -1,0 +1,61 @@
+name: Safety real QEMU synthetic host guest GPT no-writer
+
+on:
+  pull_request:
+    paths:
+      - 'auto_tests/tools/safety_qemu_synthetic_host_guest.py'
+      - '.github/workflows/safety-qemu-synthetic-host-guest.yml'
+      - 'assets/live/libertix_disk_identity_gate.py'
+      - 'assets/live/libertix_prewrite_no_writer.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qemu-host-guest-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Require hosted KVM and controlled temporary storage
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test -c /dev/kvm
+          test -d "$RUNNER_TEMP"
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+      - name: Install QEMU, kernel and static guest toolchain
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             qemu-system-x86 qemu-utils gdisk busybox-static cpio gzip kmod linux-image-generic
+      - name: Compile gate and probe
+        run: |
+          python3 -m compileall -q assets/live/libertix_disk_identity_gate.py assets/live/libertix_prewrite_no_writer.py auto_tests/tools/safety_qemu_synthetic_host_guest.py
+      - name: Run KVM guest and compare GPT sector evidence against host
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/safety_qemu_synthetic_host_guest.py
+          test -s "$RUNNER_TEMP/gaslux-safety-qemu-report.json"
+          python3 - "$RUNNER_TEMP/gaslux-safety-qemu-report.json" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          assert data["classification"]=="QEMU_SYNTHETIC_LAB_ONLY_NOT_INDEPENDENT"
+          assert data["decision"]=="ACCEPT_NO_WRITER"
+          assert data["negativeDecisions"]=={"swappedQcow2":"DENY","changedPartuuid":"DENY","changedTransaction":"DENY"}
+          assert data["backingUnchanged"] is True and data["productionWriteAuthorized"] is False
+          PY
+      - name: Upload bounded non-sensitive evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-safety-qemu-synthetic-host-guest
+          path: ${{ runner.temp }}/gaslux-safety-qemu-report.json
+          if-no-files-found: warn
+          retention-days: 7
