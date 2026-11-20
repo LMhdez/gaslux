@@ -270,21 +270,34 @@ def retain_bounded_failure(evidence: Path, stream: bytearray,
             encoding="ascii")
 
 
-def extract_smoke(child: Path, destination: Path) -> bytes:
-    sector = SMOKE_OFFSET // 512
-    call("qemu-img", "dd", "-f", "qcow2", "-O", "raw",
-         "if=" + str(child), "of=" + str(destination),
-         "bs=512", "skip=" + str(sector), "count=1")
-    data = destination.read_bytes()
+def decode_child_sparse(child: Path, destination: Path) -> Path:
+    """Read an offline QCOW2 through qemu-img convert, no host block devices."""
+    require(child.is_file() and not child.is_symlink()
+            and destination.parent == child.parent and not destination.exists(),
+            "unsafe independent QCOW2 conversion destination")
+    # qemu-img dd skip does not support random seeking in all QCOW2 builds.
+    # Convert only the disposable child to sparse raw (no /dev mapping).
+    call("qemu-img", "check", "-f", "qcow2", str(child), timeout=150,
+         stdout=subprocess.DEVNULL)
+    call("qemu-img", "convert", "-f", "qcow2", "-O", "raw", "-S", "4k",
+         str(child), str(destination), timeout=300)
+    require(destination.is_file() and not destination.is_symlink()
+            and destination.stat().st_size == DISK_SIZE,
+            "sparse synthetic decoded raw view has wrong geometry")
+    return destination
+
+
+def extract_smoke(decoded: Path) -> bytes:
+    with decoded.open("rb") as source:
+        source.seek(SMOKE_OFFSET)
+        data = source.read(SMOKE_LENGTH)
     require(len(data) == SMOKE_LENGTH
             and data == b"GASLUX_POP_SYNTHETIC_QEMU_WRITE_SMOKE".ljust(512, b"\x5a"),
-            "independently decoded QCOW2 changed data mismatch")
-    destination.unlink()
+            "independent sparse QCOW2 conversion lacks expected guest sector write")
     return data
 
 
-def verify_synthetic_gpt_unchanged(base: Path, child: Path,
-                                   scratch: Path) -> dict:
+def verify_synthetic_gpt_unchanged(base: Path, decoded: Path) -> dict:
     """Check actual PRIMARY+BACKUP GPT bytes via independent QCOW2 readback.
 
     Do not parse GPT a second time. sgdisk already independently validates
@@ -302,12 +315,9 @@ def verify_synthetic_gpt_unchanged(base: Path, child: Path,
             source.seek(start * 512)
             original = source.read(length)
         require(len(original) == length, "baseline synthetic GPT truncated")
-        path = scratch / (name + ".raw")
-        call("qemu-img", "dd", "-f", "qcow2", "-O", "raw",
-             "if=" + str(child), "of=" + str(path),
-             "bs=512", "skip=" + str(start), "count=" + str(count))
-        actual = path.read_bytes()
-        path.unlink()
+        with decoded.open("rb") as converted:
+            converted.seek(start * 512)
+            actual = converted.read(length)
         require(actual == original,
                 "unexpected synthetic GPT primary/backup modification: " + name)
         out[name] = hashlib.sha256(original).hexdigest()
@@ -402,8 +412,10 @@ def run(evidence: Path) -> dict:
                     process.wait(timeout=30)
         require(ok and MARKER.search(normalized(stream)) is not None,
                 "synthetic actual guest write witness absent")
-        actual_data = extract_smoke(child, work / "smoke-byte-diff.bin")
-        gpt_proof = verify_synthetic_gpt_unchanged(base, child, work)
+        decoded = decode_child_sparse(child, work / "decoded-child-sparse.raw")
+        actual_data = extract_smoke(decoded)
+        gpt_proof = verify_synthetic_gpt_unchanged(base, decoded)
+        decoded.unlink()
         after = sha(base)
         nvram_after = sha(nvram)
         require(after == before, "immutable synthetic backing base modified")
