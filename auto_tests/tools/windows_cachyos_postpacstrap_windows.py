@@ -148,6 +148,7 @@ def verify_windows_with_installed_root(
     before_nvram = sha256_file(nvram)
     before_base_identity = qcow2_file_identity(base)
     plan = signed_lab_plan(workspace, root_uuid, pacstrap["installedWritableChildRunId"])
+    print("GASLUX_CACHYOS_WIN10_REENTRY_SIGNED_PLAN_VERIFIED=1", flush=True)
     with tempfile.TemporaryDirectory(prefix="gaslux-postpacstrap-before-",
                                      dir=workspace) as scratch:
         front, back = gpt_windows(overlay, Path(scratch))
@@ -156,6 +157,7 @@ def verify_windows_with_installed_root(
     require(read_windows_file_hashes(overlay) == plan["windowsHashes"],
             "protected Windows files differ before post-pacstrap boot")
     before_root = _verify_installed_root(overlay, plan, plan["runId"])
+    print("GASLUX_CACHYOS_WIN10_REENTRY_PREBOOT_GPT_FILES_ROOT_VERIFIED=1", flush=True)
 
     # Existing fourth-boot verifier enforces a single genuine Windows COM1
     # witness, clean QEMU shutdown and unchanged fifth ext4 UUID/GPT.
@@ -166,6 +168,7 @@ def verify_windows_with_installed_root(
     require(boot["windowsBootAfterExt4Verified"] is True
             and boot["fifthExt4UuidSurvivedWindowsBoot"] is True,
             "Windows did not boot with installed CachyOS root present")
+    print("GASLUX_CACHYOS_WIN10_REENTRY_WINDOWS_BOOT_AND_EXT4_UUID_VERIFIED=1", flush=True)
     with tempfile.TemporaryDirectory(prefix="gaslux-postpacstrap-after-",
                                      dir=workspace) as scratch:
         after_front, after_back = gpt_windows(overlay, Path(scratch))
@@ -174,12 +177,15 @@ def verify_windows_with_installed_root(
                 == plan["gptWindowsSha256"]
             and read_windows_file_hashes(overlay) == plan["windowsHashes"],
             "Windows GPT/ESP/BCD/WinRE hashes changed after Windows re-entry")
+    print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_GPT_AND_WINDOWS_FILES_VERIFIED=1", flush=True)
     after_root = _verify_installed_root(overlay, plan, plan["runId"])
+    print("GASLUX_CACHYOS_WIN10_REENTRY_POSTBOOT_NATIVE_ROOT_VERIFIED=1", flush=True)
     require(before_root == after_root
             and sha256_file(base) == before_base
             and sha256_file(nvram) == before_nvram
             and qcow2_file_identity(base) == before_base_identity,
             "CachyOS root identity or protected Windows backing/NVRAM changed")
+    print("GASLUX_CACHYOS_WIN10_REENTRY_ROOT_AND_BACKING_PRESERVED=1", flush=True)
     serial = workspace / "sixth-post-pacstrap-windows-serial.log"
     require(serial.is_file() and not serial.is_symlink(),
             "missing independent Windows re-entry witness")
