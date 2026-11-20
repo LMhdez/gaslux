@@ -6,6 +6,8 @@ on:
       - '.github/workflows/gaslux-bazzite-atomic-target-readonly.yml'
       - 'auto_tests/bazzite_atomic_destination_plan.py'
       - 'auto_tests/tests/test_bazzite_atomic_destination_plan.py'
+      - 'auto_tests/bazzite_anaconda_write_set_gate.py'
+      - 'auto_tests/tests/test_bazzite_anaconda_write_set_gate.py'
       - 'auto_tests/bazzite_gpt_fixture.py'
   workflow_dispatch:
 
@@ -38,9 +40,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py
       - name: Build and inspect the verified immutable GPT fixture
         shell: bash
         run: |
@@ -59,6 +61,31 @@ jobs:
           assert report['gptHeadersAndPartitionTablesWouldChange'] is True
           assert all(p['partuuid'] for p in report['protectedExistingPartitions'])
           print('Verified proposal only; zero installation or disk-write authority')
+          PY
+      - name: Prove Anaconda evidence is unavailable and must fail closed
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          printf '{}\\n' > "$RUNNER_TEMP/missing-anaconda-actions.json"
+          rc=0
+          python auto_tests/bazzite_anaconda_write_set_gate.py \\
+            --proposal atomic-target-proposal.json \\
+            --observation "$RUNNER_TEMP/missing-anaconda-actions.json" \\
+            > "$RUNNER_TEMP/invalid-action-result.json" 2> anaconda-comparison-refusal.txt || rc=$?
+          test "$rc" -eq 2
+          grep -F 'REFUSED:' anaconda-comparison-refusal.txt
+          python - <<'PY' > anaconda-write-set-status.json
+          import json
+          print(json.dumps({
+              "comparisonAllowed": False,
+              "realAnacondaActionsCaptured": False,
+              "realActionGraphAuthenticated": False,
+              "legacyIsoIndependentlyAuthenticated": False,
+              "partitionWriteAuthorized": False,
+              "windowsEspWriteAuthorized": False,
+              "installationAuthorized": False,
+              "reason": "No signed installer and no actual GetActions DBus action graph"
+          }, sort_keys=True, indent=2))
           PY
       - name: Inventory QEMU/OVMF attachment without starting guest or writing
         shell: bash
@@ -102,6 +129,8 @@ jobs:
           path: |
             synthetic-gpt-before.json
             atomic-target-proposal.json
+            anaconda-write-set-status.json
+            anaconda-comparison-refusal.txt
             qemu-ovmf-no-boot-inventory.txt
             synthetic-gpt-after.json
             synthetic-gpt-discard.json
