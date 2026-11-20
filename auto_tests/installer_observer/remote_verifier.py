@@ -17,15 +17,15 @@ import threading
 from collections.abc import Mapping
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol
 
+import rfc8785
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
-import rfc8785
 
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -143,7 +143,7 @@ def _parse_time(value: str, field: str) -> datetime:
 def _aware(value: datetime, field: str) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         _refuse("time-invalid", f"{field} must be timezone-aware")
-    return value.astimezone(timezone.utc)
+    return value.astimezone(UTC)
 
 
 def _decode_signature(value: str) -> bytes:
