@@ -292,6 +292,38 @@ def test_live_resolution_refuses_changed_storage(plan, sharing, devices, change)
         sharing.resolve_volumes(plan)
 
 
+@pytest.mark.parametrize(
+    ("options", "accepted"),
+    [
+        ("ro,relatime", True),
+        ("rw,relatime", False),
+        ("relatime", False),
+        ("errors=remount-ro,rw", False),
+        ("ro,rw", False),
+        ("ro", True),
+        (None, False),
+    ],
+)
+def test_existing_windows_mount_requires_proven_readonly(sharing, monkeypatch, tmp_path, options, accepted):
+    calls = []
+
+    def fake_run(*arguments, **kwargs):
+        calls.append(arguments)
+        assert arguments[:4] == ("findmnt", "-J", "-S", "/dev/mock")
+        return json.dumps({"filesystems": [{"target": str(tmp_path), "fstype": "ntfs3", "options": options}]})
+
+    monkeypatch.setattr(sharing, "run", fake_run)
+    if accepted:
+        with sharing.readonly_volume(Path("/dev/mock")) as mount:
+            assert mount == tmp_path
+    else:
+        with pytest.raises(RuntimeError, match="not provably read-only"):
+            with sharing.readonly_volume(Path("/dev/mock")):
+                pytest.fail("Writable mount was accepted")
+    assert len(calls) == 1
+    assert calls[0][-1] == "TARGET,FSTYPE,OPTIONS"
+
+
 def test_a_directory_symlink_cannot_escape_the_shared_volume(sharing, tmp_path):
     root = tmp_path / "volume"
     root.mkdir()
