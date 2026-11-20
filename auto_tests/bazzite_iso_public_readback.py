@@ -216,7 +216,8 @@ def inspect_embedded_payload(squashfs: Path) -> dict[str, Any]:
         raise ReadbackError("Embedded images.json has an unsupported shape")
     names = {f"{PAYLOAD_IMAGE}:stable", PAYLOAD_TAG}
     matches = [
-        item for item in images
+        item
+        for item in images
         if isinstance(item, dict) and names.intersection(set(item.get("names") or []))
     ]
     if len(matches) != 1:
