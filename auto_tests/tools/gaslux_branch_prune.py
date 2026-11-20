@@ -276,6 +276,24 @@ def exact_prune_candidates(report, approval):
     return selected
 
 
+def exact_archive_candidates(candidates, approval):
+    """Allow only the explicitly named and immutable independent histories."""
+    if not isinstance(approval, dict) or not 1 <= len(approval) <= 6:
+        raise RuntimeError("invalid exact archive authorization")
+    known = {item["branch"]: item for item in candidates}
+    selected = []
+    for name, sha in sorted(approval.items()):
+        if (not isinstance(name, str) or not name.startswith(PREFIX)
+                or not isinstance(sha, str)
+                or not re.fullmatch("[0-9a-f]{40}", sha)):
+            raise RuntimeError("malformed exact archive authorization")
+        item = known.get(name)
+        if item is None or item["sha"] != sha:
+            raise RuntimeError("unverified archived history " + name)
+        selected.append(item)
+    return selected
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=("audit", "prune", "archive"))
@@ -303,7 +321,9 @@ def main():
         print("CANDIDATE", c["branch"], c["sha"],
               ",".join(c["reachable_from"][:3]), flush=True)
     if args.mode == "archive":
-        archive_history_and_delete(report, archiveable, refs)
+        exact_archive = json.loads(os.environ.get("GASLUX_ARCHIVE_EXACT", "null"))
+        selected_archive = exact_archive_candidates(archiveable, exact_archive)
+        archive_history_and_delete(report, selected_archive, refs)
     if args.mode == "prune":
         if os.getenv("GASLUX_PRUNE_APPROVED") != "LEASE_GUARDED_30":
             raise RuntimeError("no bounded user-authorized prune gate")
