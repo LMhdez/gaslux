@@ -207,7 +207,9 @@ def verify_embedded_manifest(
         if re.fullmatch(r"[0-9a-f]{64}", normalized_record_digest):
             normalized_record_digest = "sha256:" + normalized_record_digest
         if normalized_record_digest != expected_manifest_digest:
-            raise ReadbackError("Embedded storage image record digest does not match the OCI manifest")
+            raise ReadbackError(
+                "Embedded storage image record digest does not match the OCI manifest"
+            )
     return {
         "storageImageId": image_id,
         "manifestSha256": manifest_sha,
@@ -405,6 +407,11 @@ def inspect_embedded_payload(
             expected_config_digest=CONFIG_DIGEST,
             expected_version=PAYLOAD_VERSION,
         )
+    config_source = (
+        "ISO and GHCR immutable digest"
+        if config_paths
+        else "GHCR immutable OCI digest; embedded manifest config digest and storage image ID match"
+    )
     result = {
         "image": PAYLOAD_IMAGE,
         "names": sorted(set(image.get("names") or [])),
@@ -415,7 +422,7 @@ def inspect_embedded_payload(
         "embeddedConfigBlobVerification": embedded_config_report,
         "isoBooted": False,
         "readOnlySquashfsInspection": True,
-        "configBlobSource": "ISO and GHCR immutable digest" if config_paths else "GHCR immutable OCI digest; embedded manifest config digest and storage image ID independently match",
+        "configBlobSource": config_source,
     }
     if diagnostics_path is not None:
         diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
