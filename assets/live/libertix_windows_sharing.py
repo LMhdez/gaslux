@@ -330,7 +330,7 @@ def validate_existing_readonly_ntfs_mount(filesystems: Any) -> Path:
         or "norecover" not in tokens
         or any(
             token not in allowed
-            and not re.fullmatch(r"(?:user_id|group_id|blksize)=\\d+", token)
+            and not re.fullmatch(r"(?:user_id|group_id|blksize)=\d+", token)
             for token in tokens
         )
     ):
