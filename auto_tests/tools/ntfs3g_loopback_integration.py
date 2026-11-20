@@ -20,6 +20,11 @@ from pathlib import Path
 from typing import Any
 
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPOSITORY_ROOT / "assets" / "live"))
+from libertix_windows_sharing import validate_existing_readonly_ntfs_mount
+
+
 def command(arguments: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(arguments, capture_output=True, text=True, check=False)
     if check and result.returncode != 0:
@@ -96,36 +101,14 @@ def find_mounts(mountpoint: Path) -> list[dict[str, Any]]:
 
 
 def validate_real_mount(filesystems: list[dict[str, Any]], mountpoint: Path, loop_device: str) -> dict[str, Any]:
-    if len(filesystems) != 1:
-        raise RuntimeError(f"Mount state is ambiguous: expected one mount, got {len(filesystems)}")
-    filesystem = filesystems[0]
-    if filesystem.get("fstype") != "fuseblk":
-        raise RuntimeError(f"Expected fuseblk from ntfs-3g, got {filesystem.get('fstype')!r}")
-    if Path(str(filesystem.get("target", ""))).resolve() != mountpoint.resolve():
+    validated_target = validate_existing_readonly_ntfs_mount(filesystems)
+    if validated_target.resolve() != mountpoint.resolve():
         raise RuntimeError("findmnt target does not match the test mountpoint")
+    filesystem = filesystems[0]
     source = str(filesystem.get("source", ""))
     if not source or os.stat(source).st_rdev != os.stat(loop_device).st_rdev:
         raise RuntimeError("Mounted source is not the loop device created by this test")
-    options = filesystem.get("options")
-    if not isinstance(options, str):
-        raise RuntimeError("findmnt did not provide mount options")
-    tokens = options.split(",")
-    allowed = {
-        "ro", "norecover", "relatime", "strictatime", "noatime", "nodiratime",
-        "nosuid", "nodev", "noexec", "default_permissions", "allow_other",
-    }
-    if (
-        len(tokens) != len(set(tokens))
-        or "ro" not in tokens
-        or "rw" in tokens
-        or "norecover" not in tokens
-        or any(
-            token not in allowed
-            and not re.fullmatch(r"(?:user_id|group_id|blksize)=\d+", token)
-            for token in tokens
-        )
-    ):
-        raise RuntimeError(f"Mount is not provably ro,norecover with known options: {options!r}")
+    options = filesystem["options"].split(",")
     return {
         "source": source,
         "filesystem": filesystem["fstype"],
