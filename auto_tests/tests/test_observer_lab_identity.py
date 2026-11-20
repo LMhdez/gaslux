@@ -174,7 +174,7 @@ def test_unexpected_authority_fields_refused(contract):
 
 
 def test_qmp_replies_are_bounded_and_no_arbitrary_command_is_emitted():
-    for raw in (b"", b"not-json\n", b"[]\n", b"{}\n" * 20):
+    for raw in (b"", b"not-json\n", b"[]\n", b'{"event":"x"}\n' * 20):
         with pytest.raises(Refusal):
             _read_response(io.BytesIO(raw))
 
