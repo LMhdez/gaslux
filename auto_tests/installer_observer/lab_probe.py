@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import tempfile
 import time
@@ -148,6 +149,45 @@ def _one(evidence_root: Path) -> dict:
                 must_refuse("qmp-disconnected", lambda: attestor.verify(time.monotonic() + 5))
             finally:
                 moved.rename(qmp)
+            # A second VNC reader is still an external input-capable client.
+            # It sends only RFB protocol negotiation, NEVER pointer/keyboard data.
+            # The QMP witness must refuse while that client is connected.
+            with socket.create_connection(("127.0.0.1", port), timeout=3) as other:
+                other.settimeout(3)
+
+                def take_exact(size: int) -> bytes:
+                    data = bytearray()
+                    while len(data) < size:
+                        part = other.recv(size - len(data))
+                        if not part:
+                            raise Refusal("Second VNC observation handshake truncated")
+                        data.extend(part)
+                    return bytes(data)
+
+                if take_exact(12) != b"RFB 003.008\\n":
+                    raise Refusal("Unexpected second VNC protocol")
+                other.sendall(b"RFB 003.008\\n")
+                security_count = take_exact(1)[0]
+                if security_count not in range(1, 33) or b"\\x01" not in take_exact(
+                    security_count
+                ):
+                    raise Refusal("Second VNC handshake unavailable")
+                other.sendall(b"\\x01")
+                if take_exact(4) != bytes(4):
+                    raise Refusal("Second VNC security refusal")
+                other.sendall(b"\\x01")  # ClientInit shared, no input messages.
+                take_exact(20)  # server width, height and pixel format
+                name_length = int.from_bytes(take_exact(4), "big")
+                if name_length > 256:
+                    raise Refusal("Unbounded spectator VNC server name")
+                take_exact(name_length)
+                must_refuse(
+                    "concurrent-vnc-client",
+                    lambda: transport.capture(time.monotonic() + 5),
+                )
+            # The other client has closed; the normal session must recover
+            # without authorizing or emitting any guest input.
+            attestor.verify(time.monotonic() + 5)
             # Deliberate drift on a SYNTHETIC test ISO only, after capturing
             # the original read-only frame. Never do this with upstream media.
             original_iso = iso.read_bytes()
