@@ -4,6 +4,8 @@ import json
 import pytest
 
 from auto_tests.bazzite_iso_public_readback import (
+    ISO_COSIGN_VERSION,
+    PAYLOAD_COSIGN_VERSION,
     PAYLOAD_IMAGE,
     PREDICATE_TYPE,
     ReadbackError,
@@ -13,6 +15,11 @@ from auto_tests.bazzite_iso_public_readback import (
     validate_run_metadata,
     verify_embedded_blobs,
 )
+
+
+def test_cosign_versions_match_upstream_build_workflows():
+    assert ISO_COSIGN_VERSION == "v2.6.5"
+    assert PAYLOAD_COSIGN_VERSION == "v3.1.3"
 
 
 def test_checksum_requires_exact_iso_name_and_single_digest():
