@@ -8,6 +8,10 @@ on:
       - .github/workflows/mint-ab-forensic-checkpoint.yml
       - auto_tests/tools/windows_mint_ab_checkpoint.py
       - auto_tests/test_windows_mint_ab_checkpoint.py
+      - auto_tests/tools/windows_mint_ab_forensic.py
+      - auto_tests/test_windows_mint_ab_forensic.py
+      - auto_tests/tools/windows_mint_overlay_root.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
   workflow_dispatch:
 
 concurrency:
@@ -34,7 +38,12 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           python3 -m py_compile auto_tests/tools/windows_mint_ab_checkpoint.py auto_tests/test_windows_mint_ab_checkpoint.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+          python3 -m py_compile auto_tests/tools/windows_mint_overlay_root.py auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_checkpoint.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_forensic.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_overlay_root.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_x64_two_stage_boot.py -v
       - name: Real qemu-img standalone conversion and nonaliasing on sparse synthetic QCOW2
         shell: bash
         run: |
