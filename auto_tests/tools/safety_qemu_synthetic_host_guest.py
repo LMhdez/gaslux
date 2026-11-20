@@ -199,7 +199,11 @@ def boot_readonly(work: Path, kernel: Path, initrd: Path, raw: Path,
                                stderr=subprocess.PIPE, text=True)
     if completed.returncode != 0:
         raise RuntimeError(f"QEMU failed rc={completed.returncode}: {completed.stderr[-3500:]}")
-    witness = read_guest_sections(serial_file.read_text(errors="replace"), work, label)
+    serial_text = serial_file.read_text(errors="replace")
+    if "SAFETY_BEGIN" not in serial_text or "SAFETY_END" not in serial_text:
+        raise DiskIdentityError("guest did not produce complete GPT evidence; serial tail: "
+                                + serial_text[-3500:])
+    witness = read_guest_sections(serial_text, work, label)
     if any(x not in witness["cmdline"] for x in (transaction, vm_id, nonce)):
         raise DiskIdentityError("guest challenge binding mismatch")
     if digest(overlay) != before or info != json.loads(call("qemu-img", "info", "--output=json", str(overlay))):
