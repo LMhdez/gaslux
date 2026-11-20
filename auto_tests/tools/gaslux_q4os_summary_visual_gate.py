@@ -10,6 +10,7 @@ sends input or writes an installation/partition. Unknown screens fail closed.
 from __future__ import annotations
 
 import hashlib
+import io
 import re
 import stat
 import subprocess
@@ -55,7 +56,14 @@ class ScreenRefusal(ValueError):
     """Prevent a click unless all visual/identity gates passed."""
 
 
-def load(path: Path) -> Image.Image:
+def load(path: Path | bytes) -> Image.Image:
+    if isinstance(path, bytes):
+        if not 1024 <= len(path) <= 2 * 1024 * 1024:
+            raise ScreenRefusal("Screenshot size invalid")
+        with Image.open(io.BytesIO(path), formats=["PNG"]) as file:
+            if file.size != SCREEN:
+                raise ScreenRefusal("Unexpected Q4OS screenshot size")
+            return file.convert("RGB")
     if not path.is_absolute() or path.is_symlink():
         raise ScreenRefusal("Screenshot path not absolute or symlinked")
     try:
@@ -74,21 +82,21 @@ def crop_sha(image: Image.Image, bbox: tuple[int, ...]) -> str:
     return hashlib.sha256(image.crop(bbox).tobytes()).hexdigest()
 
 
-def ocr(path: Path) -> str:
+def ocr(path: Path | bytes) -> str:
     try:
         result = subprocess.run(
-            ["tesseract", str(path), "stdout"],
+            ["tesseract", "stdin" if isinstance(path, bytes) else str(path), "stdout"],
+            input=path if isinstance(path, bytes) else None,
             capture_output=True,
-            text=True,
             timeout=40,
             check=True,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise ScreenRefusal("OCR did not complete") from exc
-    return re.sub(r"\s+", " ", result.stdout).lower()
+    return re.sub(r"\s+", " ", result.stdout.decode("utf-8")).lower()
 
 
-def users_original(path: Path) -> None:
+def users_original(path: Path | bytes) -> None:
     image = load(path)
     for bbox, expected in (TITLE, USERS_SIDEBAR, DISABLED_NEXT):
         if crop_sha(image, bbox) != expected:
@@ -98,7 +106,7 @@ def users_original(path: Path) -> None:
         raise ScreenRefusal("Original Calamares Users fields not identified")
 
 
-def users_with_dummy_data(before: Path, after: Path) -> None:
+def users_with_dummy_data(before: Path | bytes, after: Path | bytes) -> None:
     users_original(before)
     baseline = load(before)
     filled = load(after)
@@ -117,7 +125,7 @@ def users_with_dummy_data(before: Path, after: Path) -> None:
         raise ScreenRefusal("Calamares account validation warning persisted")
 
 
-def summary_only(before: Path, after: Path) -> None:
+def summary_only(before: Path | bytes, after: Path | bytes) -> None:
     users = load(before)
     summary = load(after)
     for bbox, expected in (
