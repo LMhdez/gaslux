@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Zorin historical root candidate: never a signed installation plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "distribution",
+    "backend",
+    "mode",
+    "sourceAction",
+    "sourceArtifact",
+    "fifthEvidenceSha256",
+    "gptEvidenceSha256",
+    "target",
+    "offsetBytes",
+    "sizeBytes",
+    "requiredZorinOwnerLabel",
+    "rawDiskGuidAuthenticated",
+    "transactionOwned",
+    "snapshotIndependentlyRestorable",
+    "writeOperations",
+    "authorization",
+    "nativeInstallerInvoked",
+    "stable"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "distribution": {
+      "const": "zorin"
+    },
+    "backend": {
+      "const": "debian-squashfs"
+    },
+    "mode": {
+      "const": "READ_ONLY_CANDIDATE"
+    },
+    "sourceAction": {
+      "const": "44730944403"
+    },
+    "sourceArtifact": {
+      "const": "14627774087"
+    },
+    "fifthEvidenceSha256": {
+      "const": "b7da9a0d00b2367cc472cc79af4dea9408996dbe029c15ea5ae23d30815e1414"
+    },
+    "gptEvidenceSha256": {
+      "const": "cd1fe2df2ce7f6841fdf4bcee19969496fa8c17b996f5491ee72428821ff8ded"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disk_guid_sha256",
+        "disk_bytes",
+        "logical_sector_bytes",
+        "partition_index",
+        "first_lba",
+        "last_lba",
+        "partuuid",
+        "ext4_uuid",
+        "gpt_label"
+      ],
+      "properties": {
+        "disk_guid_sha256": {
+          "const": "154c4cb5880b403f46877f178cf8cee987e3379428ae32fd59318d3efaa2c324"
+        },
+        "disk_bytes": {
+          "const": 137438953472
+        },
+        "logical_sector_bytes": {
+          "const": 512
+        },
+        "partition_index": {
+          "const": 5
+        },
+        "first_lba": {
+          "const": 154707968
+        },
+        "last_lba": {
+          "const": 205039615
+        },
+        "partuuid": {
+          "const": "99a1212c-0662-450f-a082-291f4ba71a15"
+        },
+        "ext4_uuid": {
+          "const": "6ffb16ae-6802-47a6-a766-0c49d2468581"
+        },
+        "gpt_label": {
+          "const": "GASLUX-CACHYOS-ROOT"
+        }
+      }
+    },
+    "offsetBytes": {
+      "const": 79210479616
+    },
+    "sizeBytes": {
+      "const": 25769803776
+    },
+    "requiredZorinOwnerLabel": {
+      "const": "GASLUX-ZORIN-ROOT"
+    },
+    "rawDiskGuidAuthenticated": {
+      "const": false
+    },
+    "transactionOwned": {
+      "const": false
+    },
+    "snapshotIndependentlyRestorable": {
+      "const": false
+    },
+    "writeOperations": {
+      "const": []
+    },
+    "authorization": {
+      "const": "DENY_NO_WRITER"
+    },
+    "nativeInstallerInvoked": {
+      "const": false
+    },
+    "stable": {
+      "const": false
+    }
+  }
+}
