@@ -82,7 +82,12 @@ def run(*command: str) -> str:
         allowed = False
     if not allowed:
         raise CaptureRefusal("Refusing unapproved or mutating D-Bus invocation")
-    result = subprocess.run(command, capture_output=True, text=True, timeout=12, check=True)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=12, check=True)
+    except subprocess.TimeoutExpired as exc:
+        raise CaptureRefusal("Read-only D-Bus timeout") from exc
+    except subprocess.CalledProcessError as exc:
+        raise CaptureRefusal("Read-only D-Bus request failed") from exc
     if len(result.stdout.encode("utf-8")) > 1024 * 1024:
         raise CaptureRefusal("Unbounded Anaconda D-Bus response")
     return result.stdout
