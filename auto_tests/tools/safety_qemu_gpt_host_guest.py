@@ -147,7 +147,10 @@ def reconstruct_guest_sample(
 ) -> dict:
     require(type(first) is bytes and len(first) == GUEST_SLICE, "guest GPT front sample missing")
     require(type(last) is bytes and len(last) == GUEST_SLICE, "guest GPT rear sample missing")
-    require(size == SIZE, "guest block device geometry differs")
+    require(
+        type(size) is int and size >= 68 * SECTOR and size % SECTOR == 0
+        and size <= SIZE, "guest block device geometry differs",
+    )
     require(output.parent == folder and not output.exists(), "unsafe guest evidence destination")
     fd = os.open(str(output), os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
@@ -276,17 +279,28 @@ def evaluate(
     host_record = record("host", host, host_key)
     guest_record = record("guest", guest, guest_key)
     immediate_record = record("guest-immediate", immediate, guest_key)
+    partition_end = max(
+        (p["offsetBytes"] + p["sizeBytes"] for p in host["partitions"]),
+        default=0,
+    )
+    alignment = 1024 * 1024
+    free_start = ((max(alignment, partition_end) + alignment - 1) // alignment) * alignment
+    free_bytes = min(
+        1024 * 1024, host["sizeBytes"] - 34 * host["logicalSectorSizeBytes"] - free_start,
+    )
+    free_bytes = free_bytes // host["logicalSectorSizeBytes"] * host["logicalSectorSizeBytes"]
+    require(free_bytes >= host["logicalSectorSizeBytes"], "no safe synthetic free-space witness")
     kwargs = {
         "plan": expected, "plan_bytes": raw, "transaction_id": transaction,
         "vm_id": vm, "host_evidence": host_record, "guest_evidence": guest_record,
         "immediate_evidence": immediate_record, "host_key": host_key,
         "guest_key": guest_key, "fresh_nonce": nonce,
         "owned_regions": [{
-            "offsetBytes": 16 * 1024 * 1024, "sizeBytes": 1024 * 1024,
+            "offsetBytes": free_start, "sizeBytes": free_bytes,
             "ownerTransactionId": transaction,
         }],
         "write_set": [{
-            "offsetBytes": 16 * 1024 * 1024, "sizeBytes": 1024 * 1024,
+            "offsetBytes": free_start, "sizeBytes": free_bytes,
             "operation": "allocate-free-space",
         }],
     }
@@ -362,7 +376,7 @@ def experiment(folder: Path) -> dict:
     # Actual backing-chain metadata alteration, limited to this disposable overlay.
     run(
         "qemu-img", "rebase", "-u", "-f", "qcow2", "-F", "raw",
-        "-b", str(foreign_base), str(foreign_overlay),
+        "-b", str(base), str(foreign_overlay),
     )
     try:
         verify_chain(foreign_overlay, foreign_base, folder)
