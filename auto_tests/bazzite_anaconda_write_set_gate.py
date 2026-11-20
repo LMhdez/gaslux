@@ -14,7 +14,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from bazzite_gpt_fixture import Refusal
+from bazzite_atomic_destination_plan import _guid
+from bazzite_gpt_fixture import PARTITIONS, Refusal
 
 LEGACY_URL = "https://download.bazzite.gg/bazzite-stable-amd64.iso"
 LEGACY_LAB_SHA256 = "9c8d06cd8e57f2274678edeb14b4b13a79b8117c70571a65199919a66305b5c7"
@@ -90,7 +91,7 @@ def assess_legacy_media(record: dict) -> dict:
         if value is not None and (not isinstance(value, str) or not value.strip()):
             raise Refusal(f"Untrusted installer version field: {name}")
     return {
-        "localHashMatchesHistoricalPin": True,
+        "reportedLocalHashMatchesHistoricalPin": True,
         "historicalChecksumIndependentlyAuthenticated": False,
         "payloadBoundToIso": False,
         "installationAuthorized": False,
@@ -125,10 +126,36 @@ def expected_actions(plan: dict) -> dict:
         raise Refusal("Incomplete candidate GPT geometry or identity")
     if [p.get("number") for p in candidates if isinstance(p, dict)] != [4, 5, 6]:
         raise Refusal("Expected only three newly owned partition slots")
+    disk_guid = _guid(plan["diskGuid"])
+    if disk_guid != plan["diskGuid"]:
+        raise Refusal("Uncanonical disk GUID")
+    if size != 70 * 1024**3:
+        raise Refusal("Not the known 70 GiB laboratory GPT fixture")
+    existing_ids = {disk_guid}
+    for existing, (number, part_type, name, first, last) in zip(
+        protected, PARTITIONS, strict=True
+    ):
+        if not isinstance(existing, dict) or set(existing) != {
+            "number", "typeGuid", "partuuid", "name", "firstSector", "lastSector"
+        }:
+            raise Refusal("Invalid protected GPT partition identity")
+        if any((
+            existing["number"] != number,
+            existing["typeGuid"] != part_type,
+            existing["name"] != name,
+            existing["firstSector"] != first,
+            existing["lastSector"] != last,
+        )):
+            raise Refusal("Foreign or changed protected partition")
+        part_id = _guid(existing["partuuid"])
+        if part_id in existing_ids:
+            raise Refusal("Duplicate protected partition GUID")
+        existing_ids.add(part_id)
     if plan.get("btrfsSubvolumesProposed") != ["/", "/var", "/var/home"]:
         raise Refusal("Unrecognized Atomic Btrfs subvolume proposal")
     operations = []
     fixed_formats = [("vfat", "/boot/efi"), ("ext4", "/boot"), ("btrfs", "/")]
+    previous_end = PARTITIONS[-1][4]
     for part, (fs, mount) in zip(candidates, fixed_formats, strict=True):
         if (
             not isinstance(part, dict)
@@ -139,8 +166,11 @@ def expected_actions(plan: dict) -> dict:
             or type(part["firstSector"]) is not int
             or type(part["lastSector"]) is not int
             or part["firstSector"] >= part["lastSector"]
+            or part["firstSector"] <= previous_end
+            or part["lastSector"] >= size // 512 - 33
         ):
             raise Refusal("Invalid candidate partition operation")
+        previous_end = part["lastSector"]
         operations.extend(
             [
                 {
