@@ -70,6 +70,8 @@ class ControllerLease:
             except BaseException:
                 os.close(fd)
                 raise
+        except Refusal:
+            raise
         except (OSError, ValueError) as exc:
             raise Refusal("Controller lease acquisition failed closed") from exc
         return self
