@@ -415,3 +415,82 @@ This experiment does **not** prove exclusive UI control, and it
 does not justify Q4OS/Calamares navigation. Use a separately privileged,
 reviewed, immutable launcher and a confined worker with independent
 security-policy enforcement before any future guest input.
+
+
+### Privileged boundary and inherited descriptor audit (20 November 2026)
+
+The host-side `isolation_host.py` is **not** a trusted privileged
+launcher. The GitHub-hosted runner retains unrestricted `sudo` and can
+impersonate the dedicated `gaslux_observer_ci` UID. Its own workflow
+copies Python source from a mutable checkout into the dedicated-owned
+execution tree. Therefore filesystem DAC isolation against the
+*unprivileged* original runner remains valid, but the runner with
+administrative capabilities can gain the dedicated UID, connect to
+RFB/QMP Unix sockets, and write staged source. The new laboratory
+performs strictly connect-only `sudo -u gaslux_observer_ci` probes
+against both live sockets and tests staged-source writability with
+`test -w`; **it sends no RFB messages or QMP commands**.
+
+The real-QEMU probe now invokes `fd_audit.audit_child_fds()` for each
+discardable VM session. The audit creates an unrelated Unix socketpair,
+marks one end inheritable, and runs a no-input subprocess with
+`close_fds=False` as a *positive* control. The same descriptor must
+then disappear under `close_fds=True`. Both QEMU and the host-side
+worker launch with explicit `close_fds=True`. This detects a basic
+inherited-descriptor regression; it does **not** establish that no
+third-party process already possesses a connected RFB/QMP descriptor.
+The latter bypasses future pathname permission changes and requires
+revocation by closing the connection/terminating the server. The
+existing QMP query-vnc client inventory refuses unexpected RFB clients
+at verification time, but is not atomic with a future guest event.
+
+The hostile-process classes are:
+1. Legitimate QEMU and read-only observer: dedicated CI Unix UID, bound
+   by a process seal, a cooperative controller lease and SO_PEERCRED.
+2. Unprivileged original runner or `nobody`: rejected by the private
+   directory/socket DAC policy.
+3. Separate process with dedicated UID: **not excluded** and capable
+   of connecting if it can reach the private session paths.
+4. Original runner using unrestricted `sudo`, root, or a host
+   administrator: **not excluded**; can impersonate, change staged code,
+   traverse directories and interfere with QEMU.
+5. Process with a pre-existing open socket descriptor: potentially
+   remains connected after a pathname permission change; `FD_CLOEXEC`
+   and `close_fds` only constrain *subsequent child inheritance*.
+6. Alternative host facilities (ptrace, process namespaces, `/proc`
+   access, privileged fd injection): not yet contained by a verified
+   independent security domain.
+
+**Required independent trusted boundary:** a separately managed runner
+or isolated control VM should deploy a pinned, signed and reviewed
+launcher/service from an immutable artifact **before** running
+untrusted job source. The job account must lack arbitrary `sudo`,
+`ptrace`, process/file-descriptor injection and write access to the
+launcher, its policy and the QEMU session tree. The launcher must bind
+an authenticated client identity and transaction identifier to a
+narrow, reviewed, observation-only capability; it must expose neither
+raw QMP nor raw RFB input through a general-purpose proxy. Media,
+process, socket and session ownership must be corroborated on every
+request, and all inheritable descriptors must be closed or explicitly
+accounted for. The implementation requires a human-reviewed threat
+model, provisioning and independent infrastructure tests; **none of
+these properties is provided by the GitHub-hosted runner itself**.
+
+**Future event protocol (specification only; not implemented):**
+a sealed observation record would include `run_id`, QEMU PID/start
+ticks/executable seal, QMP/RFB socket inodes and verified peer,
+snapshot/media identities, frame digest, reviewed visual locator,
+control identity, transition ID, expected post-state and a bounded
+deadline. A trusted single-owner execution primitive would recheck
+these inputs immediately before *one* allowlisted event, consume a
+nonce/transaction exactly once, reject concurrent or stale sessions,
+and observe the expected result after the event. A framebuffer
+comparison and subsequent RFB send are **not atomic** and no number of
+double-captures eliminates the TOCTOU window. Without a mechanism that
+provides a demonstrable bounded race under a human-reviewed threat
+model, the action must remain refused. There is no code here for
+encoding or sending an RFB input or QMP mutating command.
+
+All tests use only synthetic ISO/QCOW2 media. Neither Windows nor
+Calamares nor a physical disk is touched. Passing CI is not a claim
+of exclusive input authority or verified installation.
