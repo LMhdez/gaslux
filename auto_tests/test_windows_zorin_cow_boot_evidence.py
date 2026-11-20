@@ -83,25 +83,25 @@ class ZorinCowBootEvidenceTests(unittest.TestCase):
 
     def test_rejects_missing_serial_login(self):
         self._replace_serial(SERIAL.replace(b"GASLUXZORIN login:", b""))
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "serial login prompt"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "serial login prompt"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_serial_root_uuid_mismatch_even_with_updated_hashes(self):
         serial = SERIAL.replace(ROOT_UUID.encode(), b"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
         self._replace_serial(serial)
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "authenticated root UUID"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "authenticated root UUID"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_false_native_grub_claim(self):
         self.proof["nativeGrubDualBootVerified"] = True
         self._write_evidence()
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "overstates"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "overstates"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_missing_windows_partition_hashes(self):
         self.proof["windowsPartitionSha256"] = ["a" * 64, "b" * 64]
         self._write_evidence()
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "four Windows partition"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "four Windows partition"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_report_without_windows_reboot_after_zorin(self):
@@ -109,19 +109,19 @@ class ZorinCowBootEvidenceTests(unittest.TestCase):
         report = json.loads(report_path.read_text())
         report["windowsBootAfterZorinRootVerified"] = False
         report_path.write_text(json.dumps(report))
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "independent Windows reboot"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "independent Windows reboot"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_wrong_pinned_iso(self):
         self.proof["zorinIsoSha256"] = "0" * 64
         self._write_evidence()
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "pinned ISO"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "pinned ISO"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_legacy_misleading_installation_field(self):
         self.proof["zorinInstalledIntoWindowsCOWPartition5"] = True
         self._write_evidence()
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "legacy installation claim"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "legacy installation claim"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_report_not_bound_to_proof(self):
@@ -129,7 +129,7 @@ class ZorinCowBootEvidenceTests(unittest.TestCase):
         report = json.loads(report_path.read_text())
         report["zorinCowEvidenceSha256"] = "0" * 64
         report_path.write_text(json.dumps(report))
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "does not bind"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "does not bind"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_symlinked_proof(self):
@@ -139,13 +139,13 @@ class ZorinCowBootEvidenceTests(unittest.TestCase):
         target = self.directory / "proof-target.json"
         target.write_bytes(content)
         proof_path.symlink_to(target)
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "regular file"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "regular file"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def test_rejects_missing_orderly_shutdown(self):
         serial = SERIAL.replace(b"systemd-shutdown[1]: Powering off.\n", b"")
         self._replace_serial(serial)
-        with self.assertRaisesRegex(validator.ZorinBootEvidenceError, "orderly shutdown"):
+        with self.assertRaisesRegex(validator.MintBootEvidenceError, "orderly shutdown"):
             validator.validate_mint_cow_boot_evidence(self.directory, PROFILE, distribution="zorin")
 
     def _replace_serial(self, serial):
