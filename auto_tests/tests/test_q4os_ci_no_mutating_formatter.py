@@ -1,4 +1,5 @@
 """Prevent CI from silently reformatting Q4OS sources before checking the commit."""
+
 from __future__ import annotations
 
 import re
