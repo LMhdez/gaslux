@@ -39,62 +39,94 @@ def _deny(condition: bool, message: str) -> None:
 
 def validate_record(candidate: dict, report: dict, facts: dict) -> dict:
     """Require a terminal Result A and the exact embedded OCI digest chain."""
-    _deny(isinstance(candidate, dict) and isinstance(report, dict) and isinstance(facts, dict),
-          "Missing bounded proof documents")
+    if not all(isinstance(x, dict) for x in (candidate, report, facts)):
+        raise Refusal("Missing bounded proof documents")
     public = candidate.get("publicReadback")
     payload = report.get("embeddedPayload")
     source = report.get("publicReadback")
     run = report.get("runStatus")
-    _deny(all(isinstance(x, dict) for x in (public, payload, source, run)),
-          "Missing ISO readback proof")
-    _deny(candidate.get("result") == "A" and report.get("result") == "A",
-          "Not an authenticated Result A")
-    _deny(candidate.get("evidenceRecordOnly") is True
-          and candidate.get("installationAuthorized") is False
-          and report.get("installationAuthorized") is False,
-          "Unsafe installation authority")
-    _deny(public.get("workflowRunId") == 44759529218
-          and public.get("terminalRunExitCode") == 0
-          and public.get("terminalZipSha256")
-          == "1ad0ccbfec8b2316c89aac9bf58067d73a2541d734c7fcff3e053dd55757fee2",
-          "Unreconciled terminal provenance ledger")
-    _deny(not any(key in public for key in ("runFailedStage", "runFailureReason")),
-          "Stale failed-run state")
-    _deny(run == {"exitCode": "0", "failedStage": "complete"}
-          and public.get("failureStage") == "complete"
-          and public.get("failureReason") is None, "Incomplete run")
-    _deny(all(value == "success" for value in report.get("workflowOutcomes", {}).values())
-          and len(report.get("workflowOutcomes", {})) == 5,
-          "Missing upstream Cosign/OCI verification stage")
-    _deny(report.get("candidate", {}).get("expectedIsoSha256") == ISO_SHA256
-          and candidate.get("artifact", {}).get("sha256") == ISO_SHA256
-          and candidate.get("artifact", {}).get("sizeBytes") == ISO_SIZE
-          and candidate.get("artifact", {}).get("version") == PAYLOAD_VERSION,
-          "Wrong version, size or ISO digest")
-    _deny(report.get("candidate", {}).get("expectedPayloadDigest") == PAYLOAD_DIGEST
-          and report.get("candidate", {}).get("expectedConfigDigest") == CONFIG_DIGEST
-          and candidate.get("payload", {}).get("digest") == PAYLOAD_DIGEST
-          and candidate.get("payload", {}).get("configDigest") == CONFIG_DIGEST,
-          "Wrong signed Atomic payload")
-    _deny(facts.get("sha256") == ISO_SHA256 and facts.get("sizeBytes") == ISO_SIZE
-          and all(facts.get(name) is True for name in (
-              "checksumVerified", "cosignIsoVerified", "isoAttestationVerified",
-              "payloadCosignVerified", "payloadAttestationVerified",
-              "payloadConfigBlobVerified", "embeddedPayloadVerified",
-              "isoMountedReadOnly")),
-          "Unsigned or incomplete ISO verification")
-    _deny(payload.get("manifestDigest") == PAYLOAD_DIGEST
-          and payload.get("configDigestFromManifest") == CONFIG_DIGEST
-          and payload.get("verifiedConfigBlob", {}).get("configDigest") == CONFIG_DIGEST
-          and payload.get("verifiedConfigBlob", {}).get("configBytesSha256Verified") is True
-          and payload.get("configBlobRetrievedFromISO") is False
-          and source.get("embeddedPayloadVerified") is True
-          and source.get("isoMountedReadOnly") is True,
-          "Embedded OCI chain not authenticated")
-    _deny(report.get("policy", {}).get("isoBooted") is False
-          and report.get("policy", {}).get("diskWrites") is False
-          and report.get("policy", {}).get("nvramWrites") is False,
-          "Unexpected past runtime authority")
+    if not all(isinstance(x, dict) for x in (public, payload, source, run)):
+        raise Refusal("Missing ISO readback proof")
+    if candidate.get("result") != "A" or report.get("result") != "A":
+        raise Refusal("Not an authenticated Result A")
+    if not (
+        candidate.get("evidenceRecordOnly") is True
+        and candidate.get("installationAuthorized") is False
+        and report.get("installationAuthorized") is False
+    ):
+        raise Refusal("Unsafe installation authority")
+    if not (
+        public.get("workflowRunId") == 44759529218
+        and public.get("terminalRunExitCode") == 0
+        and public.get("terminalZipSha256")
+        == "1ad0ccbfec8b2316c89aac9bf58067d73a2541d734c7fcff3e053dd55757fee2"
+    ):
+        raise Refusal("Unreconciled terminal provenance ledger")
+    if any(key in public for key in ("runFailedStage", "runFailureReason")):
+        raise Refusal("Stale failed-run state")
+    if not (
+        run == {"exitCode": "0", "failedStage": "complete"}
+        and public.get("failureStage") == "complete"
+        and public.get("failureReason") is None
+    ):
+        raise Refusal("Incomplete run")
+    outcomes = report.get("workflowOutcomes")
+    if not (
+        isinstance(outcomes, dict)
+        and len(outcomes) == 5
+        and all(value == "success" for value in outcomes.values())
+    ):
+        raise Refusal("Missing upstream Cosign/OCI verification stage")
+    if not (
+        report.get("candidate", {}).get("expectedIsoSha256") == ISO_SHA256
+        and candidate.get("artifact", {}).get("sha256") == ISO_SHA256
+        and candidate.get("artifact", {}).get("sizeBytes") == ISO_SIZE
+        and candidate.get("artifact", {}).get("version") == PAYLOAD_VERSION
+    ):
+        raise Refusal("Wrong version, size or ISO digest")
+    if not (
+        report.get("candidate", {}).get("expectedPayloadDigest") == PAYLOAD_DIGEST
+        and report.get("candidate", {}).get("expectedConfigDigest") == CONFIG_DIGEST
+        and candidate.get("payload", {}).get("digest") == PAYLOAD_DIGEST
+        and candidate.get("payload", {}).get("configDigest") == CONFIG_DIGEST
+    ):
+        raise Refusal("Wrong signed Atomic payload")
+    required = (
+        "checksumVerified",
+        "cosignIsoVerified",
+        "isoAttestationVerified",
+        "payloadCosignVerified",
+        "payloadAttestationVerified",
+        "payloadConfigBlobVerified",
+        "embeddedPayloadVerified",
+        "isoMountedReadOnly",
+    )
+    if not (
+        facts.get("sha256") == ISO_SHA256
+        and facts.get("sizeBytes") == ISO_SIZE
+        and all(facts.get(name) is True for name in required)
+    ):
+        raise Refusal("Unsigned or incomplete ISO verification")
+    config_blob = payload.get("verifiedConfigBlob")
+    if not (
+        isinstance(config_blob, dict)
+        and payload.get("manifestDigest") == PAYLOAD_DIGEST
+        and payload.get("configDigestFromManifest") == CONFIG_DIGEST
+        and config_blob.get("configDigest") == CONFIG_DIGEST
+        and config_blob.get("configBytesSha256Verified") is True
+        and payload.get("configBlobRetrievedFromISO") is False
+        and source.get("embeddedPayloadVerified") is True
+        and source.get("isoMountedReadOnly") is True
+    ):
+        raise Refusal("Embedded OCI chain not authenticated")
+    policy = report.get("policy")
+    if not (
+        isinstance(policy, dict)
+        and policy.get("isoBooted") is False
+        and policy.get("diskWrites") is False
+        and policy.get("nvramWrites") is False
+    ):
+        raise Refusal("Unexpected past runtime authority")
     return {
         "readbackResult": "A",
         "isoSha256": ISO_SHA256,

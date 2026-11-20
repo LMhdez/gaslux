@@ -15,21 +15,38 @@ def records():
     manifest = "sha256:492f83c738838861464685aed341783c2ea2266c82a9f19f0c867fd301783fd4"
     config = "sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb"
     candidate = {
-        "result": "A", "evidenceRecordOnly": True, "installationAuthorized": False,
-        "artifact": {"sha256": sha, "sizeBytes": 8377878528, "version": "45.20261117.1"},
+        "result": "A",
+        "evidenceRecordOnly": True,
+        "installationAuthorized": False,
+        "artifact": {
+            "sha256": sha,
+            "sizeBytes": 8377878528,
+            "version": "45.20261117.1",
+        },
         "payload": {"digest": manifest, "configDigest": config},
         "publicReadback": {
-            "workflowRunId": 44759529218, "terminalRunExitCode": 0,
-            "terminalZipSha256": "1ad0ccbfec8b2316c89aac9bf58067d73a2541d734c7fcff3e053dd55757fee2",
-            "failureStage": "complete", "failureReason": None,
+            "workflowRunId": 44759529218,
+            "terminalRunExitCode": 0,
+            "terminalZipSha256": (
+                "1ad0ccbfec8b2316c89aac9bf58067d73a2541d734c7fcff3e053dd55757fee2"
+            ),
+            "failureStage": "complete",
+            "failureReason": None,
         },
     }
     report = {
-        "result": "A", "installationAuthorized": False,
+        "result": "A",
+        "installationAuthorized": False,
         "runStatus": {"exitCode": "0", "failedStage": "complete"},
         "workflowOutcomes": dict.fromkeys(
-            ("contracts", "cosignIsoInstaller", "cosignPayloadInstaller",
-             "ghcrAuthentication", "readback"), "success"
+            (
+                "contracts",
+                "cosignIsoInstaller",
+                "cosignPayloadInstaller",
+                "ghcrAuthentication",
+                "readback",
+            ),
+            "success",
         ),
         "candidate": {
             "expectedIsoSha256": sha,
@@ -37,22 +54,39 @@ def records():
             "expectedConfigDigest": config,
         },
         "embeddedPayload": {
-            "manifestDigest": manifest, "configDigestFromManifest": config,
+            "manifestDigest": manifest,
+            "configDigestFromManifest": config,
             "verifiedConfigBlob": {
-                "configDigest": config, "configBytesSha256Verified": True,
+                "configDigest": config,
+                "configBytesSha256Verified": True,
             },
             "configBlobRetrievedFromISO": False,
         },
-        "publicReadback": {"embeddedPayloadVerified": True, "isoMountedReadOnly": True},
-        "policy": {"isoBooted": False, "diskWrites": False, "nvramWrites": False},
+        "publicReadback": {
+            "embeddedPayloadVerified": True,
+            "isoMountedReadOnly": True,
+        },
+        "policy": {
+            "isoBooted": False,
+            "diskWrites": False,
+            "nvramWrites": False,
+        },
     }
     facts = {
-        "sha256": sha, "sizeBytes": 8377878528,
+        "sha256": sha,
+        "sizeBytes": 8377878528,
         **dict.fromkeys(
-            ("checksumVerified", "cosignIsoVerified", "isoAttestationVerified",
-             "payloadCosignVerified", "payloadAttestationVerified",
-             "payloadConfigBlobVerified", "embeddedPayloadVerified",
-             "isoMountedReadOnly"), True
+            (
+                "checksumVerified",
+                "cosignIsoVerified",
+                "isoAttestationVerified",
+                "payloadCosignVerified",
+                "payloadAttestationVerified",
+                "payloadConfigBlobVerified",
+                "embeddedPayloadVerified",
+                "isoMountedReadOnly",
+            ),
+            True,
         ),
     }
     return candidate, report, facts
