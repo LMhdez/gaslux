@@ -64,9 +64,12 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
     dedicated_uid = pwd.getpwnam(service_user).pw_uid
     if dedicated_uid == os.geteuid() or dedicated_uid == 0:
         raise Refusal("Dedicated UID must differ from original runner and root")
-    sudo_probe = subprocess.run(
-        ["sudo", "-n", "true"], check=False, capture_output=True, timeout=8
-    ).returncode == 0
+    sudo_probe = (
+        subprocess.run(
+            ["sudo", "-n", "true"], check=False, capture_output=True, timeout=8
+        ).returncode
+        == 0
+    )
     if not sudo_probe:
         raise Refusal("Expected GitHub runner sudo capability was not available")
     # The root folder is 0700 owned by dedicated_uid. These are supplementary
@@ -269,8 +272,7 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                         item["sudo_impersonated_rfb_connect"] for item in evidence
                     ),
                     "runner_can_modify_staged_controller_source": all(
-                        item["sudo_impersonated_uid_can_write_staged_source"]
-                        for item in evidence
+                        item["sudo_impersonated_uid_can_write_staged_source"] for item in evidence
                     ),
                     "staged_controller_source_sha256": staged_source_hash,
                     "source_signature_verified": False,
