@@ -382,6 +382,15 @@ def main() -> None:
     try:
         if args.output.is_symlink() or args.output.exists():
             raise CaptureRefusal("Evidence file must be new, not reused or linked")
+        if args.output.parent.resolve(strict=True) != Path("/run").resolve(strict=True):
+            raise CaptureRefusal("Evidence must be written directly under guest /run only")
+        mounts = Path("/proc/self/mountinfo").read_text(encoding="utf-8")
+        if not any(
+            line.split()[4] == "/run" and line.split(" - ")[1].startswith("tmpfs ")
+            for line in mounts.splitlines()
+            if " - " in line and len(line.split()) >= 5
+        ):
+            raise CaptureRefusal("Guest /run must be an independently mounted tmpfs")
         result = capture()
         encoded = (json.dumps(result, sort_keys=True, indent=2) + "\n").encode("utf-8")
         if len(encoded) > 1024 * 1024:
