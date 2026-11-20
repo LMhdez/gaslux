@@ -118,13 +118,16 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         self.assertNotIn('libguestfs-tools linux-image-generic', workflow)
         self.assertIn("Kernel packaging unexpectedly requires firmware", workflow)
         self.assertIn("real-windows10-archiso-pacstrap-and-discard:", workflow)
-        # The expensive Windows/KVM guest may run on push and on one exact
-        # same-repository experimental PR only; never broaden this to forks.
+        # The expensive Windows/KVM guest may run on push and on PR #263
+        # only when repository, head ref and base ref match this experiment.
         self.assertIn("if: >-", workflow)
         self.assertIn("github.event_name != 'pull_request' ||", workflow)
+        self.assertIn("github.event.pull_request.number == 263", workflow)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", workflow)
-        self.assertIn("github.event.pull_request.head.ref == 'fix/cachyos-configured-root-grant-binding-issue3'", workflow)
-        self.assertIn("github.event.pull_request.base.ref == 'feature/cachyos-shared-cow-installed-readonly-boot-issue3'", workflow)
+        self.assertIn("github.event.pull_request.head.ref == 'test/cachyos-postpacstrap-win10-same-cow-issue3'", workflow)
+        self.assertIn("github.event.pull_request.base.ref == 'fix/cachyos-configured-root-grant-binding-issue3'", workflow)
+        self.assertNotIn("github.event.pull_request.head.ref == 'fix/cachyos-configured-root-grant-binding-issue3'", workflow)
+        self.assertNotIn("github.event.pull_request.base.ref == 'feature/cachyos-shared-cow-installed-readonly-boot-issue3'", workflow)
 
     def test_trial_firmware_uses_fresh_ovmf_template_not_windows_bootorder(self):
         with tempfile.TemporaryDirectory(prefix="gaslux-ovmf-template-") as temp:
