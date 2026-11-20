@@ -262,7 +262,7 @@ def inspect_embedded_payload(
         if diagnostics_path is not None:
             diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
             diagnostics_path.write_text(
-                json.dumps(diagnostics, indent=2, sort_keys=True) + "\\n",
+                json.dumps(diagnostics, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
         raise ReadbackError(message)
@@ -357,7 +357,7 @@ def inspect_embedded_payload(
     if diagnostics_path is not None:
         diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
         diagnostics_path.write_text(
-            json.dumps(diagnostics, indent=2, sort_keys=True) + "\\n",
+            json.dumps(diagnostics, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
     return result
