@@ -166,8 +166,24 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
     scratch.mkdir(mode=0o700)
     raw = scratch / "windows-target.raw"
     require(not raw.exists(), "refusing existing converted image")
-    run("qemu-img", "convert", "-f", "qcow2", "-O", "raw", "-S", "4096",
-        str(image), str(raw))
+    # Materialize ONLY GPT edge observations from qemu-img's independent
+    # read-only QCOW2 decoder, not the Windows NTFS/ESP content.
+    # No full 48-GiB raw clone and no exposure of real guest data as artifact.
+    first_edge = scratch / "host-gpt-first.bin"
+    last_edge = scratch / "host-gpt-last.bin"
+    run("qemu-img", "dd", "-f", "qcow2", "-O", "raw",
+        "bs=1M", "count=2", "if=" + str(image), "of=" + str(first_edge))
+    run("qemu-img", "dd", "-f", "qcow2", "-O", "raw",
+        "bs=1M", "count=2", "skip=" + str(SIZE // (1024**2) - 2),
+        "if=" + str(image), "of=" + str(last_edge))
+    require(first_edge.stat().st_size == EDGE and last_edge.stat().st_size == EDGE,
+            "incomplete host GPT edges")
+    with raw.open("xb") as destination:
+        destination.truncate(SIZE)
+        destination.seek(0)
+        destination.write(first_edge.read_bytes())
+        destination.seek(SIZE - EDGE)
+        destination.write(last_edge.read_bytes())
     _private_regular(raw)
     host = inspect_gpt_image(raw, logical_sector_size=512)
     guest = _read_only_appliance(image, scratch, 512)
@@ -188,13 +204,22 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
         label: sum(p["typeGuid"] == type_guid for p in host["partitions"])
         for label, type_guid in protected.items()
     }
-    try:
-        q4os = inspect_private_raw_vm_disk(scratch, raw, sector_bytes=512)
-    except Q4osWindowsBoundaryRefusal as exc:
-        q4os_reason = str(exc)
-        q4os = None
+    # Q4OS's full-content inspector is safe to run only as an expected
+    # early denial for a missing WinRE partition. The sparse GPT witness
+    # deliberately contains NO Windows volume data to authenticate.
+    if count["winre"] == 0:
+        try:
+            inspect_private_raw_vm_disk(scratch, raw, sector_bytes=512)
+        except Q4osWindowsBoundaryRefusal as exc:
+            q4os_reason = str(exc)
+        else:
+            raise ValueError("Q4OS unexpectedly accepted Windows lacking WinRE")
     else:
-        q4os_reason = "root ownership, Windows recovery and EFI fallback not attested"
+        q4os_reason = (
+            "Full ESP/NTFS/WinRE content not acquired by metadata-only GPT "
+            "observation; safe target plan blocked"
+        )
+    q4os = None
     adapter = refuse_calamares(
         q4os=q4os, expected=host, safety_observed=guest_safety,
         safety_compare=assert_snapshot_matches, plan=None, transaction=None,
@@ -211,7 +236,7 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
         "backingChainPresent": False,
         "qemuLibguestfsReadOnly": True,
         "guestDeviceCount": 1,
-        "hostGuestGptMatches": True,
+        "hostGuestGptMatches": True,\n        "gptWitnessOnlyNoWindowsPartitionPayload": True,
         "host": host,
         "guest": guest,
         "protectedPartitionCounts": count,
