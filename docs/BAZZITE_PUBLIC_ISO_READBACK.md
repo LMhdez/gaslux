@@ -12,8 +12,13 @@ authorization.
   the workflow, pinned key, or readback validator changes.
 - Public objects: the ISO, detached `.sig`, metadata `.json`, and
   `-CHECKSUM` sidecar from `https://download.bazzite.gg/`.
-- Cosign: upstream-compatible `v2.6.5`, installed through the upstream
-  pinned cosign-installer action commit.
+- Cosign for ISO detached signature: upstream-compatible `v2.6.5`,
+  installed through the upstream pinned cosign-installer action commit.
+- Cosign for OCI payload signature: upstream-compatible `v3.1.3`, installed
+  into a separate directory through the same pinned installer action. The
+  payload build workflow uses this version and
+  `build.py sign` explicitly selects the legacy bundle format; payload
+  verification uses `--new-bundle-format=false`.
 - Key: `assets/live/bazzite_cosign_20261120.pub`, byte-compared with the
   key at the upstream key-introduction commit. Both PEM and SPKI SHA-256
   fingerprints are checked; the introducing Git commit must be GitHub-verified.
