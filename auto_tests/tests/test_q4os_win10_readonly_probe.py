@@ -23,6 +23,7 @@ from gaslux_q4os_win10_readonly_probe import (  # noqa: E402
     _read_only_appliance,
     _real_safety_denial,
     require,
+    validate_qcow2_chain,
 )
 from libertix_disk_identity_gate import (  # noqa: E402
     DiskIdentityError,
@@ -171,3 +172,22 @@ def test_no_secret_or_writer_exposed_in_safety_denial(tmp_path):
     }
     assert "secret" not in str(result).lower()
     assert "ACCEPT_NO_WRITER" not in str(result)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("backing-filename", "foreign.qcow2"),
+        ("full-backing-filename", "/foreign.qcow2"),
+        ("data-file", "/foreign-data-file.raw"),
+        ("virtual-size", 64 * 1024**3),
+        ("encrypted", True),
+        ("snapshots", [{"name": "unexpected"}]),
+    ],
+)
+def test_qcow2_foreign_chain_or_geometry_refused(field, value):
+    source = {"format": "qcow2", "virtual-size": 48 * 1024**3}
+    validate_qcow2_chain(source)
+    source[field] = value
+    with pytest.raises(ValueError, match="unexpected QCOW2"):
+        validate_qcow2_chain(source)
