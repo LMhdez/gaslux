@@ -18,9 +18,7 @@ from q4os_win10_qmp_boot import BootRefusal, supervise  # noqa: E402
 
 
 class FakeQemu:
-    def __init__(
-        self, socket_path: Path, disk: Path, *, error=False, corrupt=False, grow=True
-    ):
+    def __init__(self, socket_path: Path, disk: Path, *, error=False, corrupt=False, grow=True):
         self.socket_path = socket_path
         self.disk = disk
         self.error = error
