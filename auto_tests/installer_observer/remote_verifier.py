@@ -22,10 +22,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol
 
-import rfc8785
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+import rfc8785
 
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -483,7 +483,7 @@ class RemoteResponseVerifier:
             _refuse("trust-anchor-missing", "No independently provisioned controller trust anchor")
         if self.replay_guard is None:
             _refuse("replay-state-unavailable", "No replay guard is configured")
-        current = _aware(now or datetime.now(timezone.utc), "now")
+        current = _aware(now or datetime.now(UTC), "now")
         absolute_deadline = _aware(deadline, "deadline")
         if current > absolute_deadline:
             _refuse("deadline-exceeded", "Request deadline has already expired")
