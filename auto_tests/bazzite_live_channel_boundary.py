@@ -103,7 +103,8 @@ def verify_paused_topology(
     if (
         not isinstance(process["argv"][0], str)
         or Path(process["argv"][0]).name != "qemu-system-x86_64"
-        or {key for key in options} != {
+        or {key for key in options}
+        != {
             "-S",
             "-nodefaults",
             "-machine",
@@ -151,9 +152,7 @@ def verify_paused_topology(
         "qemuPid": process["pid"],
         "qemuStartTicks": process["startTicks"],
         "qemuExecutable": process["executable"],
-        "qemuCommandSha256": hashlib.sha256(
-            "\0".join(process["argv"]).encode("utf-8")
-        ).hexdigest(),
+        "qemuCommandSha256": hashlib.sha256("\0".join(process["argv"]).encode("utf-8")).hexdigest(),
         "configuredGuestSerial": SERIAL,
         "qemuCpuStopped": True,
         "guestNetworkConfigured": False,
