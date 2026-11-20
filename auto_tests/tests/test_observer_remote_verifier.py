@@ -262,6 +262,16 @@ def test_caller_deadline_is_enforced():
     )
 
 
+def test_deadline_equal_to_current_time_is_expired():
+    private, store = trusted_material()
+    request = make_request()
+    response = make_response(private, request)
+    assert_refused(
+        "deadline-exceeded",
+        lambda: verifier(store).verify(request, response, deadline=NOW, now=NOW),
+    )
+
+
 def test_transaction_mismatch_is_refused():
     private, store = trusted_material()
     request = make_request()
