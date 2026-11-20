@@ -1,0 +1,230 @@
+name: Q4OS official Calamares Summary-only UI — 2 isolated VM replicas (NO INSTALL)
+on:
+  push:
+    branches:
+      - docs/distro-one-shot-playbooks-20261119
+    paths:
+      - '.github/workflows/q4os-summary-repro-2vm.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: q4os-ui-repro-${{ github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: false
+jobs:
+  two-independent-guests:
+    name: "Q4OS Calamares screenshot sequence replica ${{ matrix.replica }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+      Q4OS_SOURCE: https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso
+      GASLUX_Q4OS_GRAPHICS_LAB_ONLY: '1'
+      GASLUX_Q4OS_NATIVE_COW_VIEW_ONLY: 'yes'
+      GASLUX_Q4OS_LAUNCH_INSTALLER: 'yes'
+      GASLUX_Q4OS_ADVANCE_WELCOME: 'yes'
+      GASLUX_Q4OS_ADVANCE_LOCATION: 'yes'
+      GASLUX_Q4OS_ADVANCE_KEYBOARD: 'yes'
+      GASLUX_Q4OS_SELECT_SOFTWARE: 'yes'
+      GASLUX_Q4OS_ADVANCE_SOFTWARE: 'yes'
+      GASLUX_Q4OS_ADVANCE_PARTITIONS: 'yes'
+      GASLUX_REPLICA: ${{ matrix.replica }}
+      GASLUX_Q4OS_SUMMARY_READONLY: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned, lab-only Q4OS GUI harness; never execute production installer
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb
+          path: q4os-lab
+          persist-credentials: false
+      - name: Check exact source SHA and reject host disk access
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C q4os-lab rev-parse HEAD)" = 6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb
+          bash -n q4os-lab/auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
+          ! grep -Eq '(^|[^A-Za-z0-9])/dev/(sda|nvme0n1|vda)' q4os-lab/auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
+          echo 'Production installer not invoked; pinned isolated source verified.'
+      - name: Install QEMU, SHA, ISO parser, VNC, OCR and test dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 squashfs-tools xorriso ovmf qemu-system-x86 qemu-utils grub-common grub-efi-amd64-bin mtools dosfstools gdisk acl tesseract-ocr python3-yaml
+          python3 -m pip install --break-system-packages Pillow cryptography jsonschema pyyaml 2>/dev/null || python3 -m pip install Pillow cryptography jsonschema pyyaml
+          if [[ -c /dev/kvm ]]; then
+            sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
+          fi
+          command -v vncdo || python3 -m pip install --break-system-packages vncdotool
+          command -v vncdo
+      - name: Acquire official Q4OS 6.10 r2 ISO; cryptographically check exact bytes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/q4os-native-target/evidence" "$RUNNER_TEMP/q4os-native-target/calamares-inspect"
+          cd "$RUNNER_TEMP/q4os-native-target"
+          aria2c --continue=true --split=4 --max-connection-per-server=4 --max-tries=5 --retry-wait=8 --timeout=60 --connect-timeout=30 --file-allocation=none --check-integrity=true --checksum="sha-256=$Q4OS_SHA256" -o q4os.iso "$Q4OS_SOURCE"
+          printf '%s  %s\n' "$Q4OS_SHA256" q4os.iso | sha256sum --check --status
+          test "$(stat -c '%s' q4os.iso)" -gt 1500000000
+          test "$(stat -c '%s' q4os.iso)" -lt 3000000000
+          printf 'Q4OS_OFFICIAL_ISO_SHA256=%s\nQ4OS_OFFICIAL_ISO_BYTES=%s\n' "$Q4OS_SHA256" "$(stat -c '%s' q4os.iso)"
+          echo "GASLUX_Q4OS_ISO=$RUNNER_TEMP/q4os-native-target/q4os.iso" >> "$GITHUB_ENV"
+      - name: Inspect native Calamares YAML extracted from exact signed-off lab ISO; no installation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash q4os-lab/auto_tests/tools/gaslux_q4os_calamares_probe.sh "$GASLUX_Q4OS_ISO" "$Q4OS_SHA256" "$RUNNER_TEMP/q4os-native-target/calamares-inspect"
+          PYTHONPATH=q4os-lab/assets/live python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import os
+          from gaslux_q4os_calamares_policy import audit_q4os_calamares
+          root = Path(os.environ["RUNNER_TEMP"]) / "q4os-native-target/calamares-inspect"
+          data = audit_q4os_calamares(root)
+          assert data["installationAuthorized"] is False
+          assert data["nativeCalamaresConfigVerified"] is True
+          assert data["windowsEspFallbackWriteAuthorized"] is False
+          (root / "native-calamares-audit.json").write_text(json.dumps(data, sort_keys=True, indent=2)+"\n")
+          print("Q4OS_CALAMARES_AUDIT=" + json.dumps({k:v for k,v in data.items() if k!="calamaresModulesSha256"},sort_keys=True))
+          PY
+          mkdir -p "$RUNNER_TEMP/q4os-native-target/iso-ro"
+          sudo mount -o loop,ro,nosuid,nodev,noexec "$GASLUX_Q4OS_ISO" "$RUNNER_TEMP/q4os-native-target/iso-ro"
+          sq="$RUNNER_TEMP/q4os-native-target/iso-ro/live/filesystem.squashfs"
+          test -f "$sq"
+          unsquashfs -cat "$sq" var/lib/dpkg/status > "$RUNNER_TEMP/q4os-native-target/full-dpkg-status.txt"
+          awk '/^Package: calamares$/{p=1} p && /^(Package|Version|Status):/ {print} p && /^$/{exit}' "$RUNNER_TEMP/q4os-native-target/full-dpkg-status.txt" > "$RUNNER_TEMP/q4os-native-target/calamares-inspect/calamares-package-version.txt"
+          rm -f "$RUNNER_TEMP/q4os-native-target/full-dpkg-status.txt"
+          cat "$RUNNER_TEMP/q4os-native-target/calamares-inspect/calamares-package-version.txt"
+          sudo umount "$RUNNER_TEMP/q4os-native-target/iso-ro"
+      - name: Patch only pinned disposable Q4OS lab COPY with authenticated Summary hook
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/gaslux_q4os_patch_summary_lab.py             "$GITHUB_WORKSPACE/q4os-lab/auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh"
+          bash -n auto_tests/tools/gaslux_q4os_summary_readonly_hook.sh
+          bash -n q4os-lab/auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh
+          python3 -m py_compile auto_tests/tools/gaslux_q4os_summary_visual_gate.py             auto_tests/tools/gaslux_q4os_patch_summary_lab.py
+      - name: Two independent OVMF guests; enter dummy-only credentials, visually inspect Summary, NEVER Install
+        shell: bash
+        env:
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/q4os-native-target/evidence
+          GASLUX_Q4OS_SUMMARY_READONLY_HOOK: ${{ github.workspace }}/auto_tests/tools/gaslux_q4os_summary_readonly_hook.sh
+          GASLUX_Q4OS_SUMMARY_READONLY_GUARD: ${{ github.workspace }}/auto_tests/tools/gaslux_q4os_summary_visual_gate.py
+        run: |
+          set -Eeuo pipefail
+          cd q4os-lab
+          bash auto_tests/tools/gaslux_q4os_calamares_gui_laboratory.sh q4os "$GASLUX_Q4OS_ISO" "$Q4OS_SHA256"
+      - name: Verify each original GUI screenshot in THIS guest, capture OCR and SHA manifest
+        shell: bash
+        env:
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/q4os-native-target/evidence
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          evidence="$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"
+          python3 - <<'PY'
+          import hashlib, importlib.util, json, os, subprocess, sys
+          from pathlib import Path
+          from PIL import Image
+          root=Path(os.environ["GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"])
+          gate_path=Path("q4os-lab/auto_tests/tools/gaslux_q4os_vnc_visual_gate.py")
+          spec=importlib.util.spec_from_file_location("q4os_gate",gate_path)
+          gate=importlib.util.module_from_spec(spec);spec.loader.exec_module(gate)
+          states=[
+             ("desktop-before-launch","vnc-before-icon-click.png","verified_after_close"),
+             ("calamares-welcome","vnc-after-installer-icon.png","verified_native_calamares_welcome"),
+             ("calamares-location","vnc-location-page.png","verified_native_calamares_location"),
+             ("calamares-keyboard","vnc-keyboard-page.png","verified_native_calamares_keyboard"),
+             ("calamares-software-unselected","vnc-software-page.png","verified_native_calamares_software_unselected"),
+             ("calamares-software-desktop-selected","vnc-software-selected.png","verified_native_calamares_desktop_selected"),
+             ("calamares-partitions","vnc-partitions-page.png","verified_synthetic_calamares_partitions_view"),
+             ("calamares-partitions-proposal-only","vnc-partitions-radio-selected.png","verified_synthetic_calamares_partitions_selected"),
+             ("calamares-users-unfilled","vnc-users-page.png","verified_native_calamares_users"),
+          ]
+          observed=[];transitions=[]
+          for i,(state,name,fn) in enumerate(states):
+             path=root/name
+             if not path.is_file() or path.is_symlink(): raise SystemExit("Refuse absent/symlinked screenshot: "+name)
+             with Image.open(path) as im: dimensions=list(im.size)
+             if dimensions != [1280,800] or not getattr(gate,fn)(path):
+                 raise SystemExit("Original screenshot did not match exact upstream-derived RGB guard: "+state)
+             digest=hashlib.file_digest(path.open("rb"),"sha256").hexdigest()
+             ocr=subprocess.run(["tesseract",str(path),"stdout"],text=True,capture_output=True,timeout=40)
+             if ocr.returncode: raise SystemExit("OCR failed for "+name+": "+ocr.stderr[:100])
+             (root/(name+".ocr.txt")).write_text(ocr.stdout)
+             entry={"state":state,"png":name,"sha256":digest,"resolution":dimensions,
+                    "visualGate":fn,"visualGateVerified":True,"visibleTextObserved":ocr.stdout[:5000]}
+             observed.append(entry)
+             if i:
+                 prior=root/states[i-1][1]
+                 # The terminal clock is excluded: gate checks fixed central ROI.
+                 changed=bool(gate.verified_centre_changed(prior,path))
+                 if not changed: raise SystemExit("No central-screen transition from "+states[i-1][0]+" to "+state)
+                 transitions.append({"from":states[i-1][0],"to":state,"centralPixelTransition":True,
+                                     "beforeSha256":observed[i-1]["sha256"],"afterSha256":digest})
+          document={"schemaVersion":1,"kind":"q4os-genuine-visual-experiment","runId":os.environ["GITHUB_RUN_ID"],
+                    "attempt":int(os.environ["GITHUB_RUN_ATTEMPT"]),"replica":int(os.environ["GASLUX_REPLICA"]),
+                    "labSourceCommit":"6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb",
+                    "isoSha256":os.environ["Q4OS_SHA256"],"isoSizeBytes":Path(os.environ["GASLUX_Q4OS_ISO"]).stat().st_size,
+                    "states":observed,"transitions":transitions,"installationAuthorized":False,"windowsDiskAttached":False,
+                    "nativeCalamaresInstallExecuted":False,"nextScreen":"Install","summaryVisited":True}
+          (root/"ui-screenshots-report.json").write_text(json.dumps(document,sort_keys=True,indent=2)+"\n")
+          print("Q4OS_UI_TRANSITIONS_VERIFIED="+str(len(transitions)))
+          print("Q4OS_UI_REPORT_JSON="+json.dumps(document,sort_keys=True,separators=(",",":")))
+          PY
+          python3 q4os-lab/auto_tests/tools/gaslux_q4os_evidence_manifest.py create "$evidence"
+          python3 q4os-lab/auto_tests/tools/gaslux_q4os_evidence_manifest.py verify "$evidence" --require vnc-users-page.png --require ui-screenshots-report.json --require serial.log --require gpt-audit.txt
+          (cd "$RUNNER_TEMP/q4os-native-target/calamares-inspect" && sha256sum *.json *.txt > inspect.sha256)
+      - name: Verify original Summary PNG, synthetic-only login and hard stop before Install
+        shell: bash
+        env:
+          GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: ${{ runner.temp }}/q4os-native-target/evidence
+        run: |
+          set -Eeuo pipefail
+          d="$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"
+          test -s "$d/vnc-users-page.png"
+          test -s "$d/vnc-users-dummy-filled.png"
+          test -s "$d/vnc-summary-page.png"
+          test -s "$d/summary-experiment.json"
+          python3 auto_tests/tools/gaslux_q4os_summary_visual_gate.py pre "$d/vnc-users-page.png"
+          python3 auto_tests/tools/gaslux_q4os_summary_visual_gate.py filled "$d/vnc-users-page.png" "$d/vnc-users-dummy-filled.png"
+          python3 auto_tests/tools/gaslux_q4os_summary_visual_gate.py summary "$d/vnc-users-dummy-filled.png" "$d/vnc-summary-page.png"
+          python3 - <<'PY'
+          import json,hashlib,os
+          from pathlib import Path
+          d=Path(os.environ["GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR"])
+          data=json.loads((d/"summary-experiment.json").read_text())
+          assert data["summaryVisualGatePassed"] is True
+          assert data["calamaresInstallClicked"] is False
+          assert data["partitionWriterAuthorized"] is False
+          assert data["windowsDiskAttached"] is False
+          assert data["syntheticCredentialsOnly"] is True
+          assert data["runId"] == os.environ["GITHUB_RUN_ID"]
+          assert data["replica"] == int(os.environ["GASLUX_REPLICA"])
+          for name,key in (("vnc-users-dummy-filled.png","beforeSha256"),("vnc-summary-page.png","afterSha256")):
+              assert hashlib.file_digest((d/name).open("rb"),"sha256").hexdigest()==data[key]
+          report=json.loads((d/"ui-screenshots-report.json").read_text())
+          assert report["summaryVisited"] is True
+          assert report["nativeCalamaresInstallExecuted"] is False
+          assert report["windowsDiskAttached"] is False
+          print("PASS: visually verified Summary only on synthetic VM; no account created, no Install.")
+          PY
+      - name: Retain real PNGs, OCR, Calamares YAML and manifest from this independent guest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-summary-only-replica-${{ matrix.replica }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/q4os-native-target/evidence/
+            ${{ runner.temp }}/q4os-native-target/calamares-inspect/
+          retention-days: 14
+          if-no-files-found: warn
