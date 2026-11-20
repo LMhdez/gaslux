@@ -5,8 +5,8 @@ No genuine Windows disk, firmware, installation or network is used here.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
