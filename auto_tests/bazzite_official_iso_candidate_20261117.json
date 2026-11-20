@@ -1,21 +1,21 @@
 {
   "schemaVersion": 1,
   "evidenceRecordOnly": true,
-  "status": "CANDIDATE_PENDING_PUBLIC_READBACK_AND_EMBEDDED_PAYLOAD_VERIFICATION",
+  "status": "PUBLIC_ISO_BYTES_AND_COSIGN_VERIFIED_GITHUB_ATTESTATION_AND_EMBEDDED_PAYLOAD_PENDING",
   "distribution": "bazzite",
   "artifact": {
     "name": "bazzite-stable-live-amd64.iso",
     "version": "45.20261117.1",
     "channel": "stable",
     "architecture": "x86_64",
-    "sizeBytes": null,
+    "sizeBytes": 8377878528,
     "sha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
     "signature": {
       "method": "cosign-sign-blob",
       "sidecar": "bazzite-stable-live-amd64.iso.sig",
       "generatedInOfficialBuild": true,
-      "publicReadbackVerified": false,
-      "verifiedAgainstLocalIsoBytes": false
+      "publicReadbackVerified": true,
+      "verifiedAgainstLocalIsoBytes": true
     },
     "provenance": {
       "provider": "GitHub Actions / Sigstore Public Good",
@@ -75,5 +75,27 @@
     "gasluxSupport": "experimental-unverified"
   },
   "result": "B",
-  "installationAuthorized": false
+  "installationAuthorized": false,
+  "publicReadback": {
+    "workflowRunId": 44751586997,
+    "workflowRunUrl": "https://github.com/LMhdez/gaslux/actions/runs/44751586997",
+    "evidenceArtifactId": 14635702681,
+    "evidenceArtifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44751586997/artifacts/14635702681",
+    "url": "https://download.bazzite.gg/bazzite-stable-live-amd64.iso",
+    "sizeBytes": 8377878528,
+    "sha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
+    "sha256MatchesPinnedBuildSubject": true,
+    "officialChecksumVerified": true,
+    "detachedCosignSignatureVerified": true,
+    "cosignVersion": "v2.6.5",
+    "keyPemSha256Verified": true,
+    "keySpkiSha256Verified": true,
+    "keyIntroductionCommitGitHubVerified": true,
+    "metadataJsonVerified": true,
+    "githubIsoAttestationVerified": false,
+    "embeddedOciManifestReadBackVerified": false,
+    "isoToPayloadBindingVerified": false,
+    "runFailedStage": "iso-github-attestation",
+    "runFailureReason": "GitHub CLI rejected simultaneous --signer-repo and --signer-workflow flags; no cryptographic attestation failure was reported"
+  }
 }
