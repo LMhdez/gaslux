@@ -393,20 +393,26 @@ def inspect_embedded_payload(
     if len(config_paths) > 1:
         fail("Embedded containers/storage image has ambiguous config blob paths")
     manifest_bytes = _unsquashfs(squashfs, "-cat", manifest_path, binary=True)
-    blob_evidence = verify_embedded_manifest(
-        image,
-        manifest_bytes,
-        expected_manifest_digest=PAYLOAD_DIGEST,
-        expected_config_digest=CONFIG_DIGEST,
-    )
+    try:
+        blob_evidence = verify_embedded_manifest(
+            image,
+            manifest_bytes,
+            expected_manifest_digest=PAYLOAD_DIGEST,
+            expected_config_digest=CONFIG_DIGEST,
+        )
+    except ReadbackError as exc:
+        fail(str(exc))
     embedded_config_report = None
     if config_paths:
         embedded_config_bytes = _unsquashfs(squashfs, "-cat", config_paths[0], binary=True)
-        embedded_config_report = verify_config_blob(
-            embedded_config_bytes,
-            expected_config_digest=CONFIG_DIGEST,
-            expected_version=PAYLOAD_VERSION,
-        )
+        try:
+            embedded_config_report = verify_config_blob(
+                embedded_config_bytes,
+                expected_config_digest=CONFIG_DIGEST,
+                expected_version=PAYLOAD_VERSION,
+            )
+        except ReadbackError as exc:
+            fail(str(exc))
     config_source = (
         "ISO and GHCR immutable digest"
         if config_paths
