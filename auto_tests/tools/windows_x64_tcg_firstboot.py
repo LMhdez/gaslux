@@ -1379,13 +1379,14 @@ def main(argv: list[str] | None = None) -> int:
                                                 )
                                                 side_by_side = {
                                                     "windowsBootWithPacstrappedCachyosOnSameDiskVerified": False,
+                                                    "cachyosBootloaderInstalledToWindowsEsp": False,
                                                     "sameDiskDualBootVerified": False,
+                                                    "rollbackProven": False,
                                                     "releaseEligible": False,
                                                 }
                                                 try:
                                                     from windows_cachyos_bcd_ab_control import (
                                                         compare_bcd_ab, running_swtpm,
-                                                        tpm_state_tree_sha256,
                                                     )
                                                     with running_swtpm(
                                                         treatment_tpm_state, workspace,
@@ -1399,9 +1400,6 @@ def main(argv: list[str] | None = None) -> int:
                                                             trace_events_file=trace_events_file,
                                                             trace_file=treatment_trace_file,
                                                         )
-                                                    side_by_side["treatmentTpmPostBootStateTreeSha256"] = (
-                                                        tpm_state_tree_sha256(treatment_tpm_state)
-                                                    )
                                                 except Exception as error:
                                                     # Fail closed without bypassing the existing
                                                     # disposable-COW discard and Windows reboot.
