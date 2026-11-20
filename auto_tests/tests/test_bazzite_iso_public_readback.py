@@ -15,6 +15,8 @@ from auto_tests.bazzite_iso_public_readback import (
     validate_metadata,
     validate_run_metadata,
     verify_embedded_blobs,
+    verify_embedded_manifest,
+    verify_config_blob,
 )
 
 
@@ -167,6 +169,63 @@ def _embedded_fixture(version="45.20261117.1"):
         "names": [f"{PAYLOAD_IMAGE}:stable"],
     }
     return image, manifest_bytes, config_bytes, manifest_digest, config_digest
+
+
+def test_embedded_manifest_binds_storage_id_and_config_digest():
+    image, manifest, _config, manifest_digest, config_digest = _embedded_fixture()
+    result = verify_embedded_manifest(
+        image,
+        manifest,
+        expected_manifest_digest=manifest_digest,
+        expected_config_digest=config_digest,
+    )
+    assert result["manifestDigest"] == manifest_digest
+    assert result["configDigestFromManifest"] == config_digest
+    assert result["storageImageId"] == config_digest.removeprefix("sha256:")
+    assert result["configBlobStoredSeparately"] is False
+
+
+def test_embedded_manifest_rejects_wrong_storage_id_or_config_reference():
+    image, manifest, _config, manifest_digest, config_digest = _embedded_fixture()
+    with pytest.raises(ReadbackError, match="image ID"):
+        verify_embedded_manifest(
+            dict(image, id="0" * 64),
+            manifest,
+            expected_manifest_digest=manifest_digest,
+            expected_config_digest=config_digest,
+        )
+    wrong_config = "sha256:" + "0" * 64
+    with pytest.raises(ReadbackError, match="different config"):
+        verify_embedded_manifest(
+            image,
+            manifest,
+            expected_manifest_digest=manifest_digest,
+            expected_config_digest=wrong_config,
+        )
+
+
+def test_remote_config_blob_is_digest_and_version_verified():
+    _image, _manifest, config, _manifest_digest, config_digest = _embedded_fixture()
+    result = verify_config_blob(
+        config,
+        expected_config_digest=config_digest,
+        expected_version="45.20261117.1",
+    )
+    assert result["configDigest"] == config_digest
+    assert result["versionLabel"] == "45.20261117.1"
+    assert result["configBytesSha256Verified"] is True
+    with pytest.raises(ReadbackError, match="digest mismatch"):
+        verify_config_blob(
+            config + b" ",
+            expected_config_digest=config_digest,
+            expected_version="45.20261117.1",
+        )
+    with pytest.raises(ReadbackError, match="version label"):
+        verify_config_blob(
+            config,
+            expected_config_digest=config_digest,
+            expected_version="45.20261116.1",
+        )
 
 
 def test_embedded_manifest_and_config_are_hash_bound():
