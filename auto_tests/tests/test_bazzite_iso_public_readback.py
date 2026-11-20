@@ -21,9 +21,11 @@ def test_checksum_requires_exact_iso_name_and_single_digest():
     with pytest.raises(ReadbackError):
         parse_checksum(f"{digest}  other.iso\n".encode())
     with pytest.raises(ReadbackError):
-        parse_checksum(
-            f"{digest}  bazzite-stable-live-amd64.iso\n{digest}  bazzite-stable-live-amd64.iso\n".encode()
+        duplicate = (
+            f"{digest}  bazzite-stable-live-amd64.iso\n"
+            f"{digest}  bazzite-stable-live-amd64.iso\n"
         )
+        parse_checksum(duplicate.encode())
 
 
 def test_metadata_binds_exact_iso_and_attestation():
@@ -52,7 +54,8 @@ def test_upstream_run_requires_exact_workflow_and_source_commit():
         "conclusion": "success",
         "html_url": "https://github.com/ublue-os/bazzite/actions/runs/44121421800",
     }
-    assert validate_run_metadata(valid, run_id="44121421800", workflow="build_iso")["conclusion"] == "success"
+    result = validate_run_metadata(valid, run_id="44121421800", workflow="build_iso")
+    assert result["conclusion"] == "success"
     forged = dict(valid, head_sha="0" * 40)
     with pytest.raises(ReadbackError):
         validate_run_metadata(forged, run_id="44121421800", workflow="build_iso")
@@ -169,7 +172,9 @@ def test_embedded_payload_rejects_wrong_manifest_config_and_version():
             expected_config_digest=config_digest,
             expected_version="45.20261117.1",
         )
-    wrong_version_image, wrong_manifest, wrong_config, wrong_md, wrong_cd = _embedded_fixture("45.20261116.1")
+    wrong_version_image, wrong_manifest, wrong_config, wrong_md, wrong_cd = (
+        _embedded_fixture("45.20261116.1")
+    )
     with pytest.raises(ReadbackError):
         verify_embedded_blobs(
             wrong_version_image,
