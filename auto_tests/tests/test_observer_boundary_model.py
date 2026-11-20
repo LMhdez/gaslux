@@ -98,8 +98,10 @@ def test_replayed_request_id_and_sequence_are_refused(boundary):
     request_id = str(uuid.uuid4())
     first = request(session, transaction, "state.read", 0, request_id)
     model.dispatch(peer, first)
+    with pytest.raises(Refusal, match="replay"):
+        model.dispatch(peer, first)
     with pytest.raises(Refusal, match="sequence"):
-        model.dispatch(peer, request(session, transaction, "state.read", 0, request_id))
+        model.dispatch(peer, request(session, transaction, "state.read", 0))
 
 
 def test_extra_request_fields_are_refused(boundary):
@@ -121,18 +123,14 @@ def test_close_revokes_model_session_and_old_requests(boundary):
 
 def test_expired_session_is_refused():
     peer = PeerIdentity(2201, 4102, 99001)
-    model = ObservationBoundaryModel(
-        peer=peer,
-        session_id=str(uuid.uuid4()),
-        transaction_id=str(uuid.uuid4()),
-        expires_at=99.0,
-        evidence=BoundaryEvidence("a" * 64, "b" * 64, "c" * 64, "fixture"),
-        state={"read_only": True},
-        framebuffer_png=b"fixture",
-        clock=lambda: 100.0,
-    )
     with pytest.raises(Refusal, match="Incomplete or invalid"):
-        model.dispatch(
-            peer,
-            request(str(uuid.uuid4()), str(uuid.uuid4()), "state.read"),
+        ObservationBoundaryModel(
+            peer=peer,
+            session_id=str(uuid.uuid4()),
+            transaction_id=str(uuid.uuid4()),
+            expires_at=99.0,
+            evidence=BoundaryEvidence("a" * 64, "b" * 64, "c" * 64, "fixture"),
+            state={"read_only": True},
+            framebuffer_png=b"fixture",
+            clock=lambda: 100.0,
         )
