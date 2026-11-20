@@ -165,7 +165,20 @@ class ReadOnlyVncTransport:
             raise Refusal("VM, snapshot, ISO or disk provenance changed")
         raw = self.reader.read_png(deadline, self.resolution)
         shot = Screenshot.decode(raw, self.resolution)
-        if self.attestor.verify(deadline) != self.expected or self.clock() >= deadline:
+        # QEMU may keep a just-closed RFB connection in query-vnc until the
+        # main loop processes disconnect. This bounded wait is observation-only
+        # and NEVER grants input. Any other attestation divergence refuses now.
+        while True:
+            try:
+                observed = self.attestor.verify(deadline)
+                break
+            except Refusal as exc:
+                if "Unbound graphical endpoint or another VNC client" not in str(exc):
+                    raise
+                if self.clock() >= deadline:
+                    raise
+                time.sleep(min(0.05, max(0, deadline - self.clock())))
+        if observed != self.expected or self.clock() >= deadline:
             raise Refusal("VM identity diverged during framebuffer capture")
         self.audit("vnc-frame:" + shot.sha256)
         # Scale and guest-side preconditions are unproven through RFB alone.
