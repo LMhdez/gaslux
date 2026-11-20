@@ -45,7 +45,7 @@ class BcdAbControlContracts(unittest.TestCase):
             forensic("a" * 64, "a" * 64, 0, []),
             forensic("a" * 64, "b" * 64, 7, [{"offset": 4096, "length": 7}]),
         )
-        self.assertEqual(result["classification"], "TREATMENT_ASSOCIATED_BCD_MUTATION")
+        self.assertEqual(result["classification"], "TREATMENT_ONLY_BCD_MUTATION; TREATMENT_ASSOCIATION_OR_WINDOWS_NONDETERMINISM")
         self.assertTrue(result["initialBcdEqual"])
         self.assertFalse(result["processAttributionProven"])
 
