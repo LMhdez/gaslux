@@ -39,7 +39,7 @@ printf 'GASLUX_POP_NATIVE_FIRSTBOOT_OS_ID=pop\n' > /dev/ttyS0
 printf 'GASLUX_POP_NATIVE_FIRSTBOOT_KERNEL=%s\n' "$(uname -r)" > /dev/ttyS0
 printf 'GASLUX_POP_NATIVE_FIRSTBOOT_ROOT_PARTUUID=%s\n' \
   "$(blkid -s PARTUUID -o value "$root")" > /dev/ttyS0
-[[ "$(blkid -s PARTUUID -o value "$root" | tr '[:upper:]' '[:lower:]')" ==
+[[ "$(blkid -s PARTUUID -o value "$root" | tr '[:upper:]' '[:lower:]')" == \
    6a8555cd-6dc0-45fa-8e66-9de78e41557b ]] ||
    fail 'native booted unexpected root PARTUUID'
 printf 'GASLUX_POP_NATIVE_FIRSTBOOT_VERIFIED=1\n' > /dev/ttyS0

@@ -80,13 +80,13 @@ root_old_type="$(blkid -s TYPE -o value "$by_id-part2" 2>/dev/null || true)"
   fail 'owned root is not preformatted ext4 before reuse'
 [[ "$(blockdev --getss "$disk")" == 512 ]] ||
   fail 'unexpected synthetic sector size'
-[[ "$(blkid -s PTUUID -o value "$disk" | tr '[:upper:]' '[:lower:]')" ==
+[[ "$(blkid -s PTUUID -o value "$disk" | tr '[:upper:]' '[:lower:]')" == \
    6c8e012e-6c29-457e-a119-0cde4fa54dd6 ]] ||
   fail 'foreign disk GPT GUID'
-[[ "$(blkid -s PARTUUID -o value "$by_id-part1" | tr '[:upper:]' '[:lower:]')" ==
+[[ "$(blkid -s PARTUUID -o value "$by_id-part1" | tr '[:upper:]' '[:lower:]')" == \
    b65d9228-97af-4b13-b5fa-59f1d8d9653e ]] ||
   fail 'foreign ESP PARTUUID'
-[[ "$(blkid -s PARTUUID -o value "$by_id-part2" | tr '[:upper:]' '[:lower:]')" ==
+[[ "$(blkid -s PARTUUID -o value "$by_id-part2" | tr '[:upper:]' '[:lower:]')" == \
    6a8555cd-6dc0-45fa-8e66-9de78e41557b ]] ||
   fail 'foreign root PARTUUID'
 [[ -s /run/gaslux-pop-lab/checkpoint.proof &&
@@ -212,7 +212,7 @@ ln -s ../gaslux-pop-firstboot-lab.service \
 sync
 umount "$mnt/boot/efi" || fail 'native ESP unmount failed'
 umount "$mnt" || fail 'installed root unmount failed'
-[[ "$(blkid -s PTUUID -o value "$disk" | tr '[:upper:]' '[:lower:]')" ==
+[[ "$(blkid -s PTUUID -o value "$disk" | tr '[:upper:]' '[:lower:]')" == \
    6c8e012e-6c29-457e-a119-0cde4fa54dd6 ]] ||
   fail 'complete installation changed GPT disk GUID'
 printf 'GASLUX_POP_NATIVE_FULL_INSTALL_COMPLETED=1\n' > /dev/ttyS0

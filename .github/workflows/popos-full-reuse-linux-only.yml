@@ -96,6 +96,36 @@ jobs:
           PY
           test -s "$RUNNER_TEMP/pop-full-iso-path.txt"
 
+      - name: Wait for older synthetic Pop QEMU to terminate; refuse parallel full installation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          from urllib.parse import urlencode
+          repo=os.environ["GITHUB_REPOSITORY"]
+          head=os.environ["GITHUB_SHA"]
+          current=int(os.environ["GITHUB_RUN_ID"])
+          url=f"https://api.github.com/repos/{repo}/actions/runs?"+urlencode({
+              "head_sha":head,"per_page":"30"})
+          for _ in range(40):
+              req=urllib.request.Request(url,headers={"Accept":"application/vnd.github+json",
+                  "User-Agent":"Gaslux-Linux-only-QEMU-concurrency-guard"})
+              with urllib.request.urlopen(req,timeout=20) as res:
+                  runs=json.load(res)["workflow_runs"]
+              active=[x for x in runs
+                  if x["id"]!=current and x["status"]!="completed"
+                  and x["head_sha"]==head
+                  and x["name"]=="Pop synthetic-only QEMU write trace and no-writer contracts"]
+              if not active:
+                  print("GASLUX_POP_FULL_REUSE_NO_CONCURRENT_OLD_QEMU=1")
+                  break
+              print("GASLUX_POP_FULL_REUSE_WAIT_FOR_OLD_QEMU="+str(active[0]["id"]),flush=True)
+              time.sleep(15)
+          else:
+              raise SystemExit("REFUSE: concurrent Pop synthetic QEMU remains in progress")
+          PY
+
       - name: Prove rollback and full native reuse then test independent first boot
         shell: bash
         run: |
