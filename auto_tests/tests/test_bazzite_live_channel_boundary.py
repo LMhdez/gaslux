@@ -75,14 +75,18 @@ def synthetic_context(tmp_path, monkeypatch):
     monkeypatch.setattr(boundary, "expected_actions", lambda proposal: None)
     token = "1234567890abcdef1234567890abcdef"
     process = synthetic_qemu_process(overlay, vars_file, token)
-    return {
-        "qemu_pid": 7134,
-        "transaction": token,
-        "root": root,
-        "runner_temp": tmp_path,
-        "expected_collector_sha256": hashlib.sha256(collector.read_bytes()).hexdigest(),
-        "process_reader": lambda pid: deepcopy(process),
-    }, process, collector
+    return (
+        {
+            "qemu_pid": 7134,
+            "transaction": token,
+            "root": root,
+            "runner_temp": tmp_path,
+            "expected_collector_sha256": hashlib.sha256(collector.read_bytes()).hexdigest(),
+            "process_reader": lambda pid: deepcopy(process),
+        },
+        process,
+        collector,
+    )
 
 
 def test_host_observation_never_enables_collector_execution(tmp_path, monkeypatch):
