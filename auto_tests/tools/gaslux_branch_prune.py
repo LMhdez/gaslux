@@ -294,9 +294,35 @@ def exact_archive_candidates(candidates, approval):
     return selected
 
 
+def exact_absorbed_candidates(refs, protect, approval):
+    """A source can be removed only if a named, SHA-pinned successor keeps it."""
+    if not isinstance(approval, dict) or not 1 <= len(approval) <= 4:
+        raise RuntimeError("invalid exact successor authorization")
+    selected = []
+    for branch, spec in sorted(approval.items()):
+        if (not isinstance(branch, str) or not branch.startswith(PREFIX)
+                or not isinstance(spec, dict)
+                or set(spec) != {"sha", "keeper", "keeper_sha"}):
+            raise RuntimeError("malformed successor authorization")
+        sha, keeper, keeper_sha = spec["sha"], spec["keeper"], spec["keeper_sha"]
+        if (not isinstance(sha, str) or not re.fullmatch("[0-9a-f]{40}", sha)
+                or not isinstance(keeper_sha, str)
+                or not re.fullmatch("[0-9a-f]{40}", keeper_sha)
+                or not isinstance(keeper, str) or not keeper.startswith(PREFIX)
+                or keeper == branch or branch in protect
+                or refs.get(branch) != sha or refs.get(keeper) != keeper_sha):
+            raise RuntimeError("changed or protected successor source " + branch)
+        age = int(time.time()) - int(git(
+            "show", "-s", "--format=%ct", sha).stdout.strip())
+        if age < IDLE or not is_ancestor(sha, keeper_sha):
+            raise RuntimeError("young or unproven successor " + branch)
+        selected.append((branch, sha, keeper, keeper_sha))
+    return selected
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=("audit", "prune", "archive"))
+    ap.add_argument("mode", choices=("audit", "prune", "archive", "prune-absorbed"))
     ap.add_argument("--output", type=Path, required=True)
     args = ap.parse_args()
     if (os.getenv("GITHUB_ACTIONS") != "true"
@@ -357,6 +383,42 @@ def main():
                     "code": deletion.returncode,
                     "stderr": deletion.stderr[-400:]})
             print("PRUNE", name, deletion.returncode, flush=True)
+    if args.mode == "prune-absorbed":
+        if os.getenv("GASLUX_ABSORBED_APPROVED") != "EXACT_FOUR_PINNED_LEASE":
+            raise RuntimeError("unauthorized successor ref deletion")
+        approval = json.loads(os.environ.get("GASLUX_ABSORBED_EXACT", "null"))
+        selected = exact_absorbed_candidates(refs, protect, approval)
+        for name, sha, keeper, keeper_sha in selected:
+            refreshed_protect, _ = protected_refs()
+            fresh_refs = inventory()
+            still_valid = (
+                name not in refreshed_protect
+                and fresh_refs.get(name) == sha
+                and fresh_refs.get(keeper) == keeper_sha
+                and remote_ref(name) == sha
+                and remote_ref(keeper) == keeper_sha
+                and is_ancestor(sha, keeper_sha)
+                and int(time.time()) - int(git(
+                    "show", "-s", "--format=%ct", sha).stdout.strip()) >= IDLE
+            )
+            if not still_valid:
+                report["refused"].append({"branch": name, "reason": "changed successor or active ref"})
+                continue
+            deletion = git(
+                "push", "--porcelain",
+                "--force-with-lease=refs/heads/" + name + ":" + sha,
+                "origin", ":refs/heads/" + name, check=False)
+            if (deletion.returncode == 0 and "deleted" in deletion.stdout
+                    and remote_ref(name) is None):
+                report["deleted"].append({
+                    "branch": name, "sha": sha,
+                    "preserved_in": keeper, "keeper_sha": keeper_sha})
+                print("ABSORBED_DELETED", name, keeper, flush=True)
+            else:
+                report["refused"].append({
+                    "branch": name, "reason": "lease or remote refusal",
+                    "code": deletion.returncode,
+                    "stderr": deletion.stderr[-300:]})
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     if os.getenv("GITHUB_STEP_SUMMARY"):

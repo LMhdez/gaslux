@@ -1,45 +1,54 @@
-name: Gaslux archived-branch integrity audit (read-only)
+name: Gaslux prune four branches absorbed by SHA-pinned successors
 on:
   push:
     branches:
       - automation/gaslux-branch-prune-20261119
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: gaslux-conservative-branch-prune
   cancel-in-progress: false
 
 jobs:
-  audit:
+  prune-absorbed:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-          persist-credentials: false
-      - name: Verify 110 archived source histories, current refs, and exact leases
+          persist-credentials: true
+      - name: Read-only contract tests and complete archive proof
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 -m py_compile auto_tests/tools/gaslux_branch_prune.py auto_tests/tools/gaslux_archive_history_verifier.py
+          python3 -m py_compile auto_tests/tools/gaslux_branch_prune.py
+          python3 -m unittest discover -s auto_tests -p 'test_gaslux_absorbed_prune.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_prune.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_exact_archive.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_branch_archive.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_gaslux_archive_verify.py' -v
-          python3 auto_tests/tools/gaslux_branch_prune.py audit --output "$RUNNER_TEMP/gaslux-prune-readonly.json"
-          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-110-readonly.json"
-      - name: Upload read-only evidence
+          python3 auto_tests/tools/gaslux_archive_history_verifier.py --output "$RUNNER_TEMP/gaslux-archive-110.json"
+      - name: Delete only four precisely absorbed old refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_ABSORBED_APPROVED: EXACT_FOUR_PINNED_LEASE
+          GASLUX_ABSORBED_EXACT: '{"feature/bazzite-official-gpt-discovery-20261119":{"sha":"8844ba3b96835ed67be8ef8b847a166c70492c7b","keeper":"feature/bazzite-gpt-layout-fixture-20261119","keeper_sha":"10f231842a98870344c05d09da6dff02450b796c"},"feature/q4os-summary-view-lab-20261119":{"sha":"eba674b20a2d98d4d3512ba90604aeb150f9bd62","keeper":"feature/q4os-users-transition-lab-20261119","keeper_sha":"3a04260984e6f5f9ec12aa0b886900cd1bffff0e"},"test/q4os-ed25519-domain-separation-20261119":{"sha":"eba674b20a2d98d4d3512ba90604aeb150f9bd62","keeper":"feature/q4os-users-transition-lab-20261119","keeper_sha":"3a04260984e6f5f9ec12aa0b886900cd1bffff0e"},"fix/q4os-cow-evidence-nofollow-20261119":{"sha":"7a1928a561c181849fdca35e6910b2e9bee5caab","keeper":"fix/q4os-require-nofollow-flag-20261119","keeper_sha":"faa1c08e308674ae1c5e0da41ab2151c10a10abc"}}'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/gaslux_branch_prune.py prune-absorbed --output "$RUNNER_TEMP/gaslux-absorbed-prune.json"
+      - name: Upload exact source/keeper provenance
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: gaslux-archive-110-readonly-evidence
+          name: gaslux-four-absorbed-branch-evidence
           path: |
-            ${{ runner.temp }}/gaslux-prune-readonly.json
-            ${{ runner.temp }}/gaslux-archive-110-readonly.json
+            ${{ runner.temp }}/gaslux-archive-110.json
+            ${{ runner.temp }}/gaslux-absorbed-prune.json
           retention-days: 30
           if-no-files-found: warn
