@@ -47,8 +47,7 @@ def test_candidate_remains_blocked_until_public_iso_and_payload_are_read_back():
 def test_candidate_never_confuses_oci_digest_with_iso_digest():
     evidence = load_candidate()
     assert evidence["artifact"]["sha256"] != evidence["payload"]["digest"].removeprefix("sha256:")
-    assert (
-        evidence["artifact"]["sha256"]
-        != evidence["payload"]["configDigest"].removeprefix("sha256:")
+    assert evidence["artifact"]["sha256"] != evidence["payload"]["configDigest"].removeprefix(
+        "sha256:"
     )
     assert evidence["payload"]["digest"] != evidence["payload"]["configDigest"]
