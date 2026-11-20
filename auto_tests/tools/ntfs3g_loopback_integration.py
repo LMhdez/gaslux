@@ -8,7 +8,6 @@ that device must be proven to reference the exact temporary image before mkfs.
 from __future__ import annotations
 
 import hashlib
-import importlib
 import json
 import os
 import re
@@ -19,13 +18,6 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-
-
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPOSITORY_ROOT / "assets" / "live"))
-validate_existing_readonly_ntfs_mount = importlib.import_module(
-    "libertix_windows_sharing"
-).validate_existing_readonly_ntfs_mount
 
 
 def command(arguments: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -104,20 +96,60 @@ def find_mounts(mountpoint: Path) -> list[dict[str, Any]]:
 
 
 def validate_real_mount(filesystems: list[dict[str, Any]], mountpoint: Path, loop_device: str) -> dict[str, Any]:
-    validated_target = validate_existing_readonly_ntfs_mount(filesystems)
-    if validated_target.resolve() != mountpoint.resolve():
-        raise RuntimeError("findmnt target does not match the test mountpoint")
+    if len(filesystems) != 1:
+        raise RuntimeError(f"Mount state is ambiguous: expected one mount, got {len(filesystems)}")
     filesystem = filesystems[0]
+    if filesystem.get("fstype") != "fuseblk":
+        raise RuntimeError(f"Expected fuseblk from ntfs-3g, got {filesystem.get('fstype')!r}")
+    if Path(str(filesystem.get("target", ""))).resolve() != mountpoint.resolve():
+        raise RuntimeError("findmnt target does not match the test mountpoint")
     source = str(filesystem.get("source", ""))
     if not source or os.stat(source).st_rdev != os.stat(loop_device).st_rdev:
         raise RuntimeError("Mounted source is not the loop device created by this test")
-    options = filesystem["options"].split(",")
+    options = filesystem.get("options")
+    if not isinstance(options, str):
+        raise RuntimeError("findmnt did not provide mount options")
+    tokens = options.split(",")
+    allowed = {
+        "ro", "relatime", "strictatime", "noatime", "nodiratime",
+        "nosuid", "nodev", "noexec", "default_permissions", "allow_other",
+    }
+    if (
+        len(tokens) != len(set(tokens))
+        or "ro" not in tokens
+        or "rw" in tokens
+        or any(
+            token not in allowed
+            and not re.fullmatch(r"(?:user_id|group_id|blksize)=\\d+", token)
+            for token in tokens
+        )
+    ):
+        raise RuntimeError(f"findmnt does not prove a read-only NTFS-3G mount: {options!r}")
     return {
         "source": source,
         "filesystem": filesystem["fstype"],
-        "options": options,
+        "options": tokens,
         "target": str(mountpoint),
     }
+
+
+def verify_ntfs3g_execve(trace_path: Path, loop_device: str, mountpoint: Path) -> str:
+    trace = trace_path.read_text(encoding="utf-8", errors="replace")
+    candidates = [
+        line for line in trace.splitlines()
+        if "execve(" in line
+        and "ntfs-3g" in line
+        and "norecover" in line
+        and loop_device in line
+        and str(mountpoint) in line
+    ]
+    if not candidates:
+        raise RuntimeError(
+            "strace did not prove ntfs-3g received ro,norecover for the owned loop device"
+        )
+    if not any("ro" in line for line in candidates):
+        raise RuntimeError("strace did not prove the read-only option reached ntfs-3g")
+    return candidates[-1]
 
 
 def main() -> int:
@@ -179,8 +211,14 @@ def main() -> int:
         result["sha256Before"] = hash_before
 
         mountpoint.mkdir(mode=0o700)
-        command(["mount", "-t", "ntfs-3g", "-o", "ro,norecover", loop_device, str(mountpoint)])
+        trace_path = workspace / "ntfs3g-execve.trace"
+        command([
+            "strace", "-f", "-qq", "-e", "trace=execve", "-s", "4096",
+            "-o", str(trace_path), "mount", "-t", "ntfs-3g", "-o", "ro,norecover",
+            loop_device, str(mountpoint),
+        ])
         mount_command_succeeded = True
+        helper_execve = verify_ntfs3g_execve(trace_path, loop_device, mountpoint)
         mounted = find_mounts(mountpoint)
         result["findmntObservation"] = mounted
         observed = validate_real_mount(mounted, mountpoint, loop_device)
@@ -194,6 +232,7 @@ def main() -> int:
                 "filesystem": observed["filesystem"],
                 "mountOptions": observed["options"],
                 "mountSource": observed["source"],
+                "ntfs3gExecve": helper_execve,
                 "sha256Before": hash_before,
             }
         )
