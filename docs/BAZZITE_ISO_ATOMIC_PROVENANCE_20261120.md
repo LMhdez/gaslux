@@ -206,6 +206,42 @@ detached Cosign signature only; it does **not** yet prove the GitHub
 attestation or the embedded OCI manifest/config relationship. Result remains
 B and installation remains denied.
 
+## Public readback update — Actions #44752996712
+
+The corrected GitHub CLI invocation successfully verified the ISO's GitHub
+SLSA provenance against the downloaded bytes. The attestation subject matched
+the measured ISO SHA-256. The verified certificate identified:
+
+- SAN: `https://github.com/ublue-os/bazzite/.github/workflows/build_iso.yml@refs/heads/main`
+- Issuer: `https://token.actions.githubusercontent.com`
+- Source repository: `https://github.com/ublue-os/bazzite`
+- Source commit: `5d71c4376169910c25bc06a3537f4780521e7435`
+- Run invocation: `44121421800/attempts/1`
+- Runner: `github-hosted`
+- Verified transparency timestamps: 1
+
+The ISO build run, payload build run and release tag
+`45.20261117.1` also passed their GitHub metadata checks.
+
+The run then failed at payload signature verification. The diagnostic was
+`no matching attestations: expected key signature, not certificate`. This
+was a verifier-version mismatch: the ISO workflow installs Cosign
+`v2.6.5`, whereas the pinned payload workflow installs Cosign `v3.1.3`.
+At the pinned source commit, `build.py sign` invokes Cosign with
+`--key env://COSIGN_PRIVATE_KEY --new-bundle-format=false
+--use-signing-config=false`. The workflow has therefore been updated to
+install both upstream-pinned Cosign versions separately and verify the OCI
+signature with `v3.1.3` in legacy bundle mode. The prior error is not
+evidence that the payload signature itself is invalid.
+
+Evidence:
+[Actions #44752996712 / artifact #14636383225](https://github.com/LMhdez/gaslux/actions/runs/44752996712/artifacts/14636383225).
+
+This run proves the public ISO bytes, checksum, detached Cosign signature and
+GitHub/Sigstore SLSA attestation. It does **not** yet prove the payload
+signature, payload attestation or embedded OCI manifest/config. Result
+remains B and installation remains denied.
+
 ## Required closure evidence
 
 Before changing Result B to A:
