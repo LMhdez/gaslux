@@ -64,10 +64,30 @@ jobs:
           head = os.environ["INTEGRATION_HEAD"]
           changed = subprocess.check_output(["git", "diff", "--name-only", base, head], text=True).splitlines()
           print("Integration-only paths:", changed)
-          permitted = {\n              ".github/workflows/observer-268-rebased-validation.yml",\n              "auto_tests/installer_observer/__init__.py",\n              "auto_tests/installer_observer/controller_lease.py",\n              "auto_tests/installer_observer/evidence.py",\n              "auto_tests/installer_observer/lab_identity.py",\n              "auto_tests/installer_observer/locators.py",\n              "auto_tests/installer_observer/models.py",\n              "auto_tests/installer_observer/replay.py",\n              "auto_tests/installer_observer/screenshot.py",\n              "auto_tests/installer_observer/state_machine.py",\n              "auto_tests/tests/test_observer_controller_lease.py",\n              "auto_tests/tests/test_observer_lab_identity.py",\n              "auto_tests/tests/test_observer_rebased_primitives.py",\n              "auto_tests/tests/test_observer_replay_synthetic.py",\n              "docs/distro-backends/SHARED_CONTRACTS.md",\n          }\n          if set(changed) != permitted:\n              raise SystemExit("Scope diff does not match reviewed offline-replay allowlist")\n          forbidden = ("release-config.json", "Installation/", "Scripts/", "assets/live/", "Pages/", "release-config/")
+          permitted = {
+              ".github/workflows/observer-268-rebased-validation.yml",
+              "auto_tests/installer_observer/__init__.py",
+              "auto_tests/installer_observer/controller_lease.py",
+              "auto_tests/installer_observer/evidence.py",
+              "auto_tests/installer_observer/lab_identity.py",
+              "auto_tests/installer_observer/locators.py",
+              "auto_tests/installer_observer/models.py",
+              "auto_tests/installer_observer/replay.py",
+              "auto_tests/installer_observer/screenshot.py",
+              "auto_tests/installer_observer/state_machine.py",
+              "auto_tests/tests/test_observer_controller_lease.py",
+              "auto_tests/tests/test_observer_lab_identity.py",
+              "auto_tests/tests/test_observer_rebased_primitives.py",
+              "auto_tests/tests/test_observer_replay_synthetic.py",
+              "docs/distro-backends/SHARED_CONTRACTS.md",
+          }
+          if set(changed) != permitted:
+              raise SystemExit("Scope diff does not match reviewed offline-replay allowlist")
+          forbidden = ("release-config.json", "Installation/", "Scripts/", "assets/live/", "Pages/", "release-config/")
           if any(p == forbidden[0] or any(p.startswith(prefix) for prefix in forbidden[1:]) for p in changed):
               raise SystemExit("Unreviewed production writer or release changes")
-          assert not any(p in changed for p in ("auto_tests/installer_observer/transport_vnc.py", "auto_tests/installer_observer/remote_verifier.py", "schemas/observer-readonly-request.schema.json", "schemas/observer-readonly-response.schema.json"))\n          lease = Path("auto_tests/installer_observer/controller_lease.py").read_text()
+          assert not any(p in changed for p in ("auto_tests/installer_observer/transport_vnc.py", "auto_tests/installer_observer/remote_verifier.py", "schemas/observer-readonly-request.schema.json", "schemas/observer-readonly-response.schema.json"))
+          lease = Path("auto_tests/installer_observer/controller_lease.py").read_text()
           for marker in ("LOCK_EX | fcntl.LOCK_NB", "os.O_NOFOLLOW", "process_seal(self.expected.pid)", "raise Refusal"):
               if marker not in lease:
                   raise SystemExit("ControllerLease gate missing: " + marker)
