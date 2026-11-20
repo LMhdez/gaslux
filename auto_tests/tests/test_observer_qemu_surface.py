@@ -28,7 +28,7 @@ def sample(monkeypatch):
 
     def read_bytes(self):
         if str(self) == "/proc/12345/cmdline":
-            return b"\\0".join(part.encode() for part in args) + b"\\0"
+            return bytes([0]).join(part.encode() for part in args) + bytes([0])
         return original(self)
 
     monkeypatch.setattr(Path, "read_bytes", read_bytes)
