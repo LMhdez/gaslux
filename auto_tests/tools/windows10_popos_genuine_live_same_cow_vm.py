@@ -37,6 +37,7 @@ CONTROL_SOURCES = (
     "windows10_popos_native_readonly_handoff_candidate.py",
     "windows10_popos_live_readonly_gpt_probe.py",
     "windows10_popos_genuine_live_guest_probe.py",
+    "windows10_popos_distinst_readonly_observer.py",
 )
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -215,6 +216,11 @@ def live_probe_on_windows(
         require(SHA.fullmatch(digest) is not None,
                 "missing real native System76 distinst ELF hash")
         media["distinstSha256"] = digest
+        # The actual ELF in this ISO is rehashed inside the live guest before
+        # the ONLY permitted /usr/bin/distinst --help invocation.
+        from windows10_popos_distinst_readonly_observer import PINNED_DISTINST_SHA256
+        require(digest == PINNED_DISTINST_SHA256,
+                "official ISO contains unrecognized native System76 ELF")
         payload = {
             "before": before, "after": after, "plan": plan,
             "stageReport": {
@@ -305,6 +311,23 @@ def live_probe_on_windows(
                     and measured["distinstExecutionAuthorized"] is False
                     and guest["nativeInstallationExecuted"] is False,
                     "guest emitted inconsistent Windows/Pop live QEMU witness")
+                cli = guest.get("distinstReadonlyObservation")
+                require(
+                    type(cli) is dict
+                    and cli.get("source") == "pinned-pop-24.04-build-20-live-guest"
+                    and cli.get("agentSha256") == digest
+                    and cli.get("argv") == ["/usr/bin/distinst", "--help"]
+                    and cli.get("observerExecutedInstaller") is False
+                    and cli.get("diskWritesIndependentlyTraced") is False
+                    and cli.get("nativeInstallObserved") is False
+                    and cli.get("writeSetConfinementEstablished") is False
+                    and cli.get("distinstExecutionAuthorized") is False
+                    and cli.get("supportedFlagsPresent") ==
+                    ["--use", "--no-efi-vars", "--modify-boot", "--block"],
+                    "real signed Pop ELF --help observation missing from guest",
+                )
+                print("GASLUX_POP_REAL_DISTINST_HELP_READONLY_GUEST_VERIFIED=1",
+                      flush=True)
                 again = capture_owned_qcow2(overlay, expected_count=6)
                 reconcile_owned_pair(before, again, plan)
                 require(again == after, "read-only Pop live boot changed staged Win10 GPT")
@@ -356,6 +379,7 @@ def live_probe_on_windows(
                 return {
                     "popLiveIsoSha256": media["isoSha256"],
                     "popLiveDistinstSha256": digest,
+                    "popLiveNativeDistinstHelpReadOnlyVerified": True,
                     "popSignedIsoGpgVerified": True,
                     "popLiveGenuineWindowsGptGuestVerified": True,
                     "popLiveQemuCleanPoweroffVerified": True,
