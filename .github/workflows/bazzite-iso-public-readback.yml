@@ -257,16 +257,16 @@ jobs:
           evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
           mount = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-readonly-mount"
           try:
-    result = inspect_embedded_payload(
-        mount / "LiveOS" / "squashfs.img",
-        diagnostics_path=evidence / "embedded-payload-diagnostics.json",
-    )
-except Exception:
-    diagnostic_path = evidence / "embedded-payload-diagnostics.json"
-    if diagnostic_path.exists():
-        print("Embedded payload inspection diagnostics:")
-        print(diagnostic_path.read_text(encoding="utf-8"))
-    raise
+              result = inspect_embedded_payload(
+                  mount / "LiveOS" / "squashfs.img",
+                  diagnostics_path=evidence / "embedded-payload-diagnostics.json",
+              )
+          except Exception:
+              diagnostic_path = evidence / "embedded-payload-diagnostics.json"
+              if diagnostic_path.exists():
+                  print("Embedded payload inspection diagnostics:")
+                  print(diagnostic_path.read_text(encoding="utf-8"))
+              raise
           result["mountOptions"] = "ro"
           (evidence / "embedded-oci-payload.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
           PY
