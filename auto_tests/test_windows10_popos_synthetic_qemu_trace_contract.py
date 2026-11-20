@@ -127,9 +127,16 @@ class QemuSyntheticTraceTest(unittest.TestCase):
         with self.assertRaises(DiskAuditError):
             self.observe(TRACE * 1001)
 
-    def test_nvram_change_is_reported_not_silently_excluded(self):
-        result = self.observe(nvram_sha_after="c" * 64)
+    def test_nvram_change_requires_independent_pflash_trace(self):
+        with self.assertRaises(DiskAuditError):
+            self.observe(nvram_sha_after="c" * 64)
+        trace = (TRACE +
+                 "12345@42.01:pflash_data_write pflash1 "
+                 "data offset:0x1000 size:8 value:0x00000001\n")
+        result = self.observe(trace=trace, nvram_sha_after="c" * 64)
         self.assertTrue(result["ovmfVarsChanged"])
+        self.assertTrue(result["ovmfPflashWriteRequestsObserved"])
+        self.assertEqual(result["ovmfPflashWriteEventCount"], 1)
         self.assertFalse(result["nvramWriteSetAttested"])
 
     def test_no_windows_six_gpt_claim_from_independent_synthetic(self):
