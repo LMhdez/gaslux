@@ -145,6 +145,68 @@ class OfficialISOBootPromptTests(unittest.TestCase):
         with self.assertRaisesRegex(vm.LabError, "unowned QEMU monitor"):
             vm.send_first_iso_boot_key(pathlib.Path("/tmp/foreign-hmp.sock"))
 
+    def test_fragmented_hmp_echo_requires_complete_prompt(self):
+        safe = pathlib.Path(
+            "/home/runner/work/_temp/gaslux-win-x64-probe/initial-installer-hmp.sock"
+        )
+        sock = MagicMock()
+        sock.__enter__.return_value = sock
+        sock.recv.side_effect = [
+            b"QEMU 8.2 monitor\r\n", b"(qemu) ",
+            b"s\x1b[K", b"sendkey ret 300\r\n", b"(qemu) ",
+        ]
+        with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
+            pathlib.Path, "is_symlink", return_value=False
+        ), patch.object(vm.socket, "socket", return_value=sock):
+            vm.send_first_iso_boot_key(safe)
+        self.assertEqual(sock.recv.call_count, 5)
+        sock.sendall.assert_called_once_with(b"sendkey ret 300\n")
+
+    def test_hmp_disconnect_before_acknowledgment_is_rejected(self):
+        safe = pathlib.Path(
+            "/home/runner/work/_temp/gaslux-win-x64-probe/initial-installer-hmp.sock"
+        )
+        sock = MagicMock()
+        sock.__enter__.return_value = sock
+        sock.recv.side_effect = [b"QEMU monitor\r\n(qemu) ", b"s\x1b[K", b""]
+        with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
+            pathlib.Path, "is_symlink", return_value=False
+        ), patch.object(vm.socket, "socket", return_value=sock):
+            with self.assertRaisesRegex(vm.LabError, "closed before acknowledging"):
+                vm.send_first_iso_boot_key(safe)
+
+    def test_hmp_explicit_command_error_is_rejected(self):
+        safe = pathlib.Path(
+            "/home/runner/work/_temp/gaslux-win-x64-probe/initial-installer-hmp.sock"
+        )
+        sock = MagicMock()
+        sock.__enter__.return_value = sock
+        sock.recv.side_effect = [
+            b"QEMU monitor\r\n(qemu) ",
+            b"error: command invalid\r\n(qemu) ",
+        ]
+        with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
+            pathlib.Path, "is_symlink", return_value=False
+        ), patch.object(vm.socket, "socket", return_value=sock):
+            with self.assertRaisesRegex(vm.LabError, "refused"):
+                vm.send_first_iso_boot_key(safe)
+
+    def test_partial_hmp_prompt_inside_reply_does_not_acknowledge_key(self):
+        safe = pathlib.Path(
+            "/home/runner/work/_temp/gaslux-win-x64-probe/initial-installer-hmp.sock"
+        )
+        sock = MagicMock()
+        sock.__enter__.return_value = sock
+        sock.recv.side_effect = [
+            b"QEMU monitor\\r\\n(qemu) ",
+            b"progress (qemu) not a terminal prompt", b"",
+        ]
+        with patch.object(pathlib.Path, "is_socket", return_value=True), patch.object(
+            pathlib.Path, "is_symlink", return_value=False
+        ), patch.object(vm.socket, "socket", return_value=sock):
+            with self.assertRaisesRegex(vm.LabError, "closed before acknowledging"):
+                vm.send_first_iso_boot_key(safe)
+
     def test_exact_qemu_hmp_command_through_ephemeral_unix_socket(self):
         safe = pathlib.Path(
             "/home/runner/work/_temp/gaslux-win-x64-probe/initial-installer-hmp.sock"
