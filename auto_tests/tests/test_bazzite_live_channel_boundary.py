@@ -23,6 +23,7 @@ def synthetic_qemu_process(overlay: Path, vars_file: Path, token: str) -> dict:
         "pid": 7134,
         "startTicks": 241223,
         "executable": "/usr/bin/qemu-system-x86_64",
+        "executableSha256": "b" * 64,
         "argv": [
             "/usr/bin/qemu-system-x86_64",
             "-machine",
@@ -116,6 +117,14 @@ def test_reused_transaction_refused_without_invoking_collector(tmp_path, monkeyp
     params, _, _ = synthetic_context(tmp_path, monkeypatch)
     boundary.audit_once(**params)
     with pytest.raises(Refusal, match="Reused"):
+        boundary.audit_once(**params)
+
+
+def test_qemu_executable_hash_missing_or_changed_refused(tmp_path, monkeypatch):
+    params, process, _ = synthetic_context(tmp_path, monkeypatch)
+    process["executableSha256"] = "forged"
+    params["process_reader"] = lambda pid: deepcopy(process)
+    with pytest.raises(Refusal, match="executable"):
         boundary.audit_once(**params)
 
 
