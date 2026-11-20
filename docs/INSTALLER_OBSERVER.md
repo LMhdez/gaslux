@@ -615,7 +615,7 @@ No broker endpoint, independent control VM, trust root, public key, certificate,
 
 The caller must construct `TrustStore` from an independently provisioned `TrustedController` record. It pins the raw 32-byte Ed25519 public key and the expected key ID, controller ID, controller artifact SHA-256, policy SHA-256, collector ID and artifact SHA-256, VM UUID, QEMU executable SHA-256, distribution ID/version, ISO SHA-256, installer ID, attestation verifier ID and attestation trust-anchor ID.
 
-The verifier never imports a public key or trust anchor from the response. A missing or empty trust store returns `trust-anchor-missing`; an unknown key ID returns `untrusted-key`. Test keys are generated ephemerally by tests only. No production key material or trust store is committed.
+The verifier never imports a public key or trust anchor from the response. A missing or empty trust store returns `trust-anchor-missing`; an unknown key ID returns `untrusted-key`. Test keys are generated ephemerally by tests only. No production key material or trust store is committed. The caller must also ensure that both the verifier implementation and the trust-store provisioning path are part of an independently authenticated client package. If the same compromised runner can replace the verifier code or supply its own trust store, successful local checks provide no independent security boundary; this repository implementation alone does not protect itself from its host runner.
 
 ### Verification order and fail-closed behavior
 
