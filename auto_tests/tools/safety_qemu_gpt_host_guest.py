@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "assets" / "live"))
@@ -30,8 +31,6 @@ from libertix_prewrite_no_writer import (  # noqa: E402
 SIZE = 64 * 1024 * 1024
 SECTOR = 512
 GUEST_SLICE = 34 * SECTOR
-LAB_DISK = "dc058b81-d3a1-4248-a2de-fb0b92c2b430"
-LAB_PART = "cc0fc1ac-8036-4f70-9b98-a14c311dd211"
 GUEST_LABEL_PREFIX = "gaslux"
 
 
@@ -328,7 +327,7 @@ def evaluate(
 
 def experiment(folder: Path) -> dict:
     base, overlay = folder / "base.raw", folder / "child.qcow2"
-    make_raw(base, folder, disk_guid=LAB_DISK, part_guid=LAB_PART)
+    make_raw(base, folder, disk_guid=str(uuid.uuid4()), part_guid=str(uuid.uuid4()))
     base_stat = own_regular(base, folder)
     make_qcow(overlay, base, folder)
     overlay_stat = own_regular(overlay, folder)
@@ -346,6 +345,8 @@ def experiment(folder: Path) -> dict:
     registry = NonceRegistry()
     good = evaluate((host, guest, immediate), chain, hypervisor, registry)
     require(good["result"]["decision"] == "ACCEPT_NO_WRITER", "valid lab evidence refused")
+    original_nonce = good.pop("nonce")
+    good["nonceSha256"] = hashlib.sha256(original_nonce.encode()).hexdigest()
 
     negatives: dict[str, str] = {}
     for fault in ("mac", "vm", "immediate", "host_guest"):
@@ -383,11 +384,9 @@ def experiment(folder: Path) -> dict:
         negatives["changed_backing_real"] = "DENY_NO_WRITER"
     else:
         raise PrewriteDenied("backing chain alteration not rejected")
-    # Challenge replay in the same session, without generating a fresh nonce.
-    token = secrets.token_hex(24)
-    registry.consume(good["transactionId"], good["vmId"], token)
+    # Replay the exact successful QEMU session challenge, not a synthetic new token.
     try:
-        registry.consume(good["transactionId"], good["vmId"], token)
+        registry.consume(good["transactionId"], good["vmId"], original_nonce)
     except PrewriteDenied:
         negatives["nonce_replay"] = "DENY_NO_WRITER"
     else:
