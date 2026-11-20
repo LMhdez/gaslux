@@ -161,7 +161,9 @@ def verify_qmp_report(seal: QemuRunSeal, blocks: Any, vnc: Any, status: Any) -> 
         "paused",
     ):
         raise Refusal("VM is not in an allowed observation state")
-    if not isinstance(vnc, dict) or vnc.get("enabled") is not True or vnc.get("clients") != []:
+    if not isinstance(vnc, dict) or vnc.get("enabled") is not True:
+        raise Refusal("QMP VNC endpoint disabled or malformed")
+    if vnc.get("clients") != []:
         raise Refusal("Unbound graphical endpoint or another VNC client")
     if seal.vnc_socket is None:
         if vnc.get("host") != "127.0.0.1" or str(vnc.get("service")) != str(
@@ -169,7 +171,7 @@ def verify_qmp_report(seal: QemuRunSeal, blocks: Any, vnc: Any, status: Any) -> 
         ):
             raise Refusal("Unbound graphical endpoint or another VNC client")
     elif vnc.get("family") != "unix":
-        raise Refusal("VNC endpoint is not a Unix socket")
+        raise Refusal("VNC endpoint is not a Unix socket: " + str(vnc.get("family")))
     _check_attachment(blocks, seal.iso, "raw", read_only=True)
     cow = _check_attachment(blocks, seal.cow, "qcow2", read_only=False)
     snapshots = cow.get("snapshots")
