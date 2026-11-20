@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git refs/heads/safety/gpt-authenticated-no-writer-20261120
+          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git f55633c90973f633dda678f583f7730fc2cdc0ce
           test "$(git rev-parse FETCH_HEAD)" = "f55633c90973f633dda678f583f7730fc2cdc0ce"
           mkdir -p "$RUNNER_TEMP/q4os-safety-src"
           git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
