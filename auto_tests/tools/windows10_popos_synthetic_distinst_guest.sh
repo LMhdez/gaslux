@@ -314,6 +314,8 @@ def run_distinst() -> None:
     need(squash == pre["squashfsPath"] and remove == pre["removePath"],
          "installer payload identity changed after preflight")
     mount_trace_events = prepare_tracefs()
+    need(pre.get("mountTraceEventsAvailable") == mount_trace_events,
+         "mount tracepoint availability changed after preflight")
     trace_file = TRACE_ROOT / "trace"
     trace_file.write_text("")
     (TRACE_ROOT / "tracing_on").write_text("1\n")
