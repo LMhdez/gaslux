@@ -32,6 +32,8 @@ DBUS = "org.freedesktop.DBus"
 DBUS_PATH = "/org/freedesktop/DBus"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 OWNER = re.compile(r":1\.[0-9]+\Z")
+GUEST_SERIAL = "GLXBAZRO001"
+GUEST_DISK_SIZE = 70 * 1024**3
 
 
 class CaptureRefusal(ValueError):
@@ -58,9 +60,7 @@ def run(*command: str) -> str:
     elif action == "call":
         allowed = False
         if len(command) == 9 and command[3:6] == (DBUS, DBUS_PATH, DBUS):
-            allowed = (
-                command[6:8] == ("GetNameOwner", "s") and command[8] == SERVICE
-            ) or (
+            allowed = (command[6:8] == ("GetNameOwner", "s") and command[8] == SERVICE) or (
                 command[6:8] == ("GetConnectionUnixProcessID", "s")
                 and bool(OWNER.fullmatch(command[8]))
             )
@@ -72,9 +72,7 @@ def run(*command: str) -> str:
             and command[5].startswith(SERVICE + ".")
         ):
             name = command[6]
-            allowed = (
-                name in READS and len(command) == 7
-            ) or (
+            allowed = (name in READS and len(command) == 7) or (
                 name in DETAIL_READS
                 and len(command) == 9
                 and command[7] == "s"
@@ -211,7 +209,93 @@ def _paths(tree: str) -> list[str]:
     return sorted(paths)
 
 
-def capture(reader=run, verifier=process_proof) -> dict:
+def guest_disk_inventory(data: object) -> dict:
+    """Validate only the fixed, three-partition laboratory guest from lsblk JSON.
+
+    lsblk is a read-only kernel inventory, NOT an independent GPT parser or
+    signed host-to-guest binding. Safety #265/#267 must validate the latter.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("blockdevices"), list):
+        raise CaptureRefusal("Guest block-device inventory missing")
+    disks = data["blockdevices"]
+    if len(disks) > 128 or any(not isinstance(device, dict) for device in disks):
+        raise CaptureRefusal("Unbounded or malformed guest block-device inventory")
+    matches = [
+        disk
+        for disk in disks
+        if disk.get("type") == "disk" and disk.get("serial") == GUEST_SERIAL
+    ]
+    if len(matches) != 1:
+        raise CaptureRefusal("Expected one uniquely serialized disposable QEMU disk")
+    disk = matches[0]
+    if (
+        type(disk.get("size")) is not int
+        or disk["size"] != GUEST_DISK_SIZE
+        or disk.get("log-sec") != 512
+    ):
+        raise CaptureRefusal("Unexpected guest disk size or sector geometry")
+    disk_guid = disk.get("ptuuid")
+    if not isinstance(disk_guid, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", disk_guid
+    ):
+        raise CaptureRefusal("No observed GPT disk GUID")
+    partitions = disk.get("children")
+    if not isinstance(partitions, list) or len(partitions) != 3:
+        raise CaptureRefusal("Missing or foreign synthetic protected partitions")
+    observed = []
+    previous_last = 0
+    guids = {disk_guid.lower()}
+    for part in partitions:
+        if not isinstance(part, dict) or part.get("type") != "part":
+            raise CaptureRefusal("Unexpected synthetic partition type")
+        unique = part.get("partuuid")
+        start = part.get("start")
+        size = part.get("size")
+        if (
+            not isinstance(unique, str)
+            or not re.fullmatch(
+                r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", unique
+            )
+            or unique.lower() in guids
+            or type(start) is not int
+            or type(size) is not int
+            or size <= 0
+            or size % 512 != 0
+        ):
+            raise CaptureRefusal("Invalid GPT PARTUUID, offset or length")
+        last = start + size // 512 - 1
+        if start <= previous_last or last >= GUEST_DISK_SIZE // 512 - 33:
+            raise CaptureRefusal("Overlapping or out-of-bounds guest partition")
+        guids.add(unique.lower())
+        previous_last = last
+        observed.append({"partuuid": unique.lower(), "firstSector": start, "lastSector": last})
+    return {
+        "diskSerial": GUEST_SERIAL,
+        "diskGuid": disk_guid.lower(),
+        "logicalSectorBytes": 512,
+        "virtualSizeBytes": GUEST_DISK_SIZE,
+        "partitions": observed,
+        "authenticatedAgainstHost": False,
+    }
+
+
+def read_guest_disk() -> dict:
+    command = [
+        "/usr/bin/lsblk",
+        "--json",
+        "--bytes",
+        "--output",
+        "NAME,TYPE,SERIAL,PTUUID,PARTUUID,START,SIZE,LOG-SEC",
+    ]
+    observed = subprocess.run(
+        command, check=True, capture_output=True, text=True, timeout=12
+    ).stdout
+    if len(observed.encode("utf-8")) > 1024 * 1024:
+        raise CaptureRefusal("Unbounded guest lsblk evidence")
+    return guest_disk_inventory(json.loads(observed))
+
+
+def capture(reader=run, verifier=process_proof, disk_reader=read_guest_disk) -> dict:
     """Read an existing Anaconda service using its unique owner, never activate it."""
     unique_owner, pid = owner_and_pid(reader)
     identity = verifier(pid)
@@ -259,6 +343,9 @@ def capture(reader=run, verifier=process_proof) -> dict:
         }
     if owner_and_pid(reader) != (unique_owner, pid):
         raise CaptureRefusal("Anaconda D-Bus service replaced during observation")
+    guest_disk = disk_reader()
+    if not isinstance(guest_disk, dict) or guest_disk.get("authenticatedAgainstHost") is not False:
+        raise CaptureRefusal("Guest disk observation cannot assert external authentication")
     # Raw busctl replies are NOT converted to a Blivet write-set or authenticated.
     return {
         "schemaVersion": 1,
@@ -272,6 +359,7 @@ def capture(reader=run, verifier=process_proof) -> dict:
         "rawResponses": responses,
         "unobservedMethods": absent,
         "deviceIds": device_ids,
+        "guestDisk": guest_disk,
         "hostIsoAndQemuBindingVerified": False,
         "gptPrimaryAndBackupWritesObserved": False,
         "efiWritesObserved": False,
