@@ -151,7 +151,12 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
             impersonation = {}
             for name, endpoint in (("qmp", qmp), ("rfb", rfb)):
                 command = [
-                    "sudo", "-n", "-u", service_user, "/usr/bin/python3", "-c",
+                    "sudo",
+                    "-n",
+                    "-u",
+                    service_user,
+                    "/usr/bin/python3",
+                    "-c",
                     (
                         "import socket,sys;"
                         "s=socket.socket(socket.AF_UNIX);s.settimeout(2);"
@@ -165,10 +170,15 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                     raise Refusal("Privileged UID impersonation experiment was inconclusive")
             # Only test write access; do not alter the staged executable.
             code_path = private_root / "auto_tests/installer_observer/lab_probe.py"
-            writable = subprocess.run(
-                ["sudo", "-n", "-u", service_user, "test", "-w", str(code_path)],
-                check=False, capture_output=True, timeout=8,
-            ).returncode == 0
+            writable = (
+                subprocess.run(
+                    ["sudo", "-n", "-u", service_user, "test", "-w", str(code_path)],
+                    check=False,
+                    capture_output=True,
+                    timeout=8,
+                ).returncode
+                == 0
+            )
             if not writable:
                 raise Refusal("Privileged staged-source write-capability test inconclusive")
             tests = {
