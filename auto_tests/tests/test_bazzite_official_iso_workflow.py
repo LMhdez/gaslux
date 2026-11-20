@@ -113,9 +113,7 @@ def test_diskless_guest_meets_documented_memory_floor():
     assert "guest_mem=8192" in source
     assert "guest_mem=4096" not in source
     # Validate host capacity before downloading the 8 GiB official ISO.
-    probe = source.index(
-        "name: Verify pinned key, network endpoints and ephemeral runner capacity"
-    )
+    probe = source.index("name: Verify pinned key, network endpoints and ephemeral runner capacity")
     guard = source.index("host_kib < 11*1024*1024", probe)
     download = source.index(
         "name: Download real official ISO and verify its detached upstream signature"
