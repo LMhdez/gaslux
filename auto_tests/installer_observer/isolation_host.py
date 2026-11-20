@@ -71,19 +71,31 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
         raise Refusal("Dedicated lab scratch root is not private")
     python = sys.executable
     cmd = [
-        "sudo", "-n", "-H", "-u", service_user, "env",
+        "sudo",
+        "-n",
+        "-H",
+        "-u",
+        service_user,
+        "env",
         "GASLUX_ISOLATED_WORKER=1",
         f"RUNNER_TEMP={private_root}",
         f"PYTHONPATH={private_root}",
-        python, "-u", "-m", "auto_tests.installer_observer.lab_probe",
+        python,
+        "-u",
+        "-m",
+        "auto_tests.installer_observer.lab_probe",
     ]
     evidence = []
     seen = set()
     endpoint_paths = []
     worker_errors = []
     proc = subprocess.Popen(
-        cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
     try:
         assert proc.stdout is not None
@@ -143,10 +155,15 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 "nobody_connect_rfb": _connect_as_nobody(rfb),
                 "no_input_events": True,
             }
-            if any(tests[key] != 13 for key in (
-                "runner_connect_qmp", "runner_connect_rfb",
-                "nobody_connect_qmp", "nobody_connect_rfb",
-            )):
+            if any(
+                tests[key] != 13
+                for key in (
+                    "runner_connect_qmp",
+                    "runner_connect_rfb",
+                    "nobody_connect_qmp",
+                    "nobody_connect_rfb",
+                )
+            ):
                 raise Refusal("External UID was admitted to dedicated QEMU endpoints")
             evidence.append(tests)
             proc.stdin.write("PROBE_DONE " + run_id + "\n")
@@ -166,7 +183,9 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
             for test_flag in ("-e", "-L"):
                 result = subprocess.run(
                     ["sudo", "-n", "test", "!", test_flag, stale],
-                    check=False, timeout=8, capture_output=True,
+                    check=False,
+                    timeout=8,
+                    capture_output=True,
                 )
                 if result.returncode != 0:
                     raise Refusal("Stale or replaced QEMU endpoint survived shutdown")
@@ -175,21 +194,26 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
         source = private_root / "observer-qemu-lab"
         subprocess.run(
             ["sudo", "-n", "cp", "-a", "--", str(source), str(public_evidence)],
-            check=True, timeout=15,
+            check=True,
+            timeout=15,
         )
         subprocess.run(
             ["sudo", "-n", "chown", "-R", f"{os.geteuid()}:{os.getegid()}", str(public_evidence)],
             check=True, timeout=15,
         )
-        public_evidence.joinpath("external_uid_probes.json").write_bytes(canonical({
-            "mode": "dedicated-uid-read-only-qemu",
-            "runs": evidence,
-            "original_uid_has_sudo": True,
-            "privileged_original_uid_out_of_scope": True,
-            "dedicated_uid_external_clients_not_excluded": True,
-            "guest_input_count": 0,
-            "stale_endpoints_absent_after_worker_exit": True,
-        }))
+        public_evidence.joinpath("external_uid_probes.json").write_bytes(
+            canonical(
+                {
+                    "mode": "dedicated-uid-read-only-qemu",
+                    "runs": evidence,
+                    "original_uid_has_sudo": True,
+                    "privileged_original_uid_out_of_scope": True,
+                    "dedicated_uid_external_clients_not_excluded": True,
+                    "guest_input_count": 0,
+                    "stale_endpoints_absent_after_worker_exit": True,
+                }
+            )
+        )
         print(
             json.dumps(
                 {"dedicated_uid_runs": 2, "external_connect_eacces": 8, "guest_input_count": 0}
