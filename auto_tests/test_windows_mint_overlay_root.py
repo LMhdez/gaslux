@@ -160,6 +160,7 @@ class MintOverlayContracts(unittest.TestCase):
                 persistence = mint.verify_mint_persistence_after_windows(
                     overlay=overlay, base=base, mint_proof=proof, fourth=fourth)
                 self.assertTrue(persistence["mintRootFilesPersistAfterWindowsVerified"])
+                self.assertEqual(persistence["windowsPartitionSha256AfterWindows"], hashes)
                 self.assertEqual(persistence["fourthGuestSerialSha256"], "f" * 64)
                 self.assertEqual(fake.mounts[0], ("/dev/sda5", "/"))
                 self.assertTrue(fake.closed)
@@ -167,7 +168,7 @@ class MintOverlayContracts(unittest.TestCase):
                 with patch.object(mint, "_guest_disk_audit",
                                   return_value=(uuid, ["0" * 64] * 4)):
                     with self.assertRaisesRegex(mint.MintOverlayError,
-                                                "partition hashes"):
+                                                "protected Windows ESP/MSR/Recovery"):
                         mint.verify_mint_persistence_after_windows(
                             overlay=overlay, base=base, mint_proof=proof, fourth=fourth)
                 # Fault injection: changed installed initramfs is not persistence.
