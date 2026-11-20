@@ -69,42 +69,63 @@ def _read_bcd_readonly(overlay: Path) -> bytes:
 
 
 def summarize_bcd_difference(before: bytes, after: bytes) -> dict[str, Any]:
-    """Only SHA-256, lengths and bounded byte offsets; no hive bytes are emitted.
-
-    Pure diagnostic, never an authorization to disregard a changed signed hash.
-    """
+    """Return bounded offsets and full offset/span digests; never emit hive bytes."""
     require(type(before) is bytes and type(after) is bytes
             and 4096 <= len(before) <= 2 * 1024 * 1024
             and 4096 <= len(after) <= 2 * 1024 * 1024
             and before[:4] == b"regf" and after[:4] == b"regf",
             "invalid BCD forensic inputs")
+    common = min(len(before), len(after))
+    maximum = max(len(before), len(after))
     spans: list[dict[str, int]] = []
-    changes = 0
-    start = None
-    for offset in range(min(len(before), len(after))):
-        different = before[offset] != after[offset]
-        if different:
-            changes += 1
-            if start is None:
-                start = offset
-        elif start is not None:
-            if len(spans) < 24:
-                spans.append({"offset": start, "length": offset - start})
-            start = None
-    if start is not None and len(spans) < 24:
-        spans.append({"offset": start, "length": min(len(before),len(after))-start})
-    changes += abs(len(before)-len(after))
-    if len(before) != len(after) and len(spans) < 24:
-        spans.append({"offset": min(len(before),len(after)),
-                      "length": abs(len(before)-len(after))})
+    changed_bytes = 0
+    run_count = 0
+    run_start: int | None = None
+    offsets_digest = hashlib.sha256()
+    spans_digest = hashlib.sha256()
+
+    def record_span(start: int, end: int) -> None:
+        nonlocal run_count
+        length = end - start
+        require(start >= 0 and length > 0,
+                "invalid BCD changed-byte span")
+        run_count += 1
+        spans_digest.update(start.to_bytes(8, "big") + length.to_bytes(8, "big"))
+        if len(spans) < 64:
+            spans.append({"offset": start, "length": length})
+
+    for offset in range(common):
+        if before[offset] != after[offset]:
+            changed_bytes += 1
+            offsets_digest.update(offset.to_bytes(8, "big"))
+            if run_start is None:
+                run_start = offset
+        elif run_start is not None:
+            record_span(run_start, offset)
+            run_start = None
+
+    tail = maximum - common
+    if tail:
+        changed_bytes += tail
+        for offset in range(common, maximum):
+            offsets_digest.update(offset.to_bytes(8, "big"))
+        if run_start is None:
+            run_start = common
+
+    if run_start is not None:
+        record_span(run_start, maximum if tail else common)
+
     return {
         "prebootBcdSha256": hashlib.sha256(before).hexdigest(),
         "postbootBcdSha256": hashlib.sha256(after).hexdigest(),
         "prebootBcdBytes": len(before),
         "postbootBcdBytes": len(after),
-        "changedByteCount": changes,
+        "changedByteCount": changed_bytes,
+        "changedRunCount": run_count,
         "firstChangedByteSpans": spans,
-        "truncatedToFirst24Spans": len(spans) == 24,
+        "truncatedToFirst64Spans": run_count > 64,
+        "changedOffsetSetSha256": offsets_digest.hexdigest(),
+        "changedSpansSha256": spans_digest.hexdigest(),
         "approvedMutation": False,
         "productionStorageWritesAuthorized": False,
     }
