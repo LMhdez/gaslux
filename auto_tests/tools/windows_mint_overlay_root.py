@@ -41,7 +41,10 @@ def has_orderly_shutdown_witness(serial_log: bytes) -> bool:
         rb"^\[\s*OK\s*\]\s+Finished systemd-poweroff\.service - System Power Off\.$",
         rb"^\[\s*\d+(?:\.\d+)?\s*\]\s+reboot: Power down$",
     )
-    return any(re.search(pattern, serial_log, re.MULTILINE) for pattern in witnesses)
+    # QEMU serial output can use CRLF; preserve full-line witness matching.
+    # A lone/embedded CR is not a line boundary or shutdown evidence.
+    normalized = serial_log.replace(b"\r\n", b"\n")
+    return any(re.search(pattern, normalized, re.MULTILINE) for pattern in witnesses)
 
 
 def run(args: list[str], *, timeout: int = 120, capture: bool = True):
@@ -515,7 +518,18 @@ def install_mint_root_and_boot(
                 ) from exc
             require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after systemd poweroff")
             shutdown_log = serial.read_bytes()
-            require(has_orderly_shutdown_witness(shutdown_log),
+            if not has_orderly_shutdown_witness(shutdown_log):
+                # Preserve exact raw serial in the artifact; report only bounded
+                # shutdown-related candidate lines with escaped bytes to triage
+                # CRLF, ANSI and missing-witness failures without false success.
+                candidates = [
+                    line[-200:] for line in shutdown_log.split(b"\n")
+                    if any(token in line for token in
+                           (b"systemd-shutdown", b"systemd-poweroff", b"reboot: Power down"))
+                ]
+                print("Mint shutdown candidates (escaped raw bytes):",
+                      [repr(line) for line in candidates[-8:]], flush=True)
+                raise MintOverlayError(
                     "Mint guest did not emit a systemd/kernel orderly-shutdown witness")
         finally:
             if qemu.poll() is None:
