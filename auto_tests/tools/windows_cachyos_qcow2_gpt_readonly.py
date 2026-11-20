@@ -169,7 +169,9 @@ def inspect_gpt_windows(front: bytes, back: bytes,
                 "unexpected Windows GPT partition size")
         spans.append((start, end))
         result_parts.append({
-            "index": i + 1, "type": typ, "firstLba": start, "lastLba": end,
+            "index": i + 1, "type": typ,
+            "partitionGuid": str(uuid.UUID(bytes_le=unique_guid)),
+            "firstLba": start, "lastLba": end,
             "lengthBytes": part_bytes,
         })
     require(len(result_parts) == 4 and all(
