@@ -1,6 +1,8 @@
 """Fail-closed contracts for the Mint/Windows disposable COW harness."""
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sys
 import unittest
@@ -87,6 +89,105 @@ class MintOverlayContracts(unittest.TestCase):
                 GuestFS=lambda **kwargs: fake)}):
             with self.assertRaisesRegex(mint.MintOverlayError, "ambiguous"):
                 mint._guest_disk_audit(Path("/tmp/unused"))
+
+    def test_post_windows_read_only_guestfs_checks_mint_files_and_hashes(self):
+        import tempfile
+        uuid = "12345678-1234-4234-8234-123456789abc"
+        os_release = b"NAME=Linux Mint\\nID=linuxmint\\n"
+        hashes = ["a" * 64, "b" * 64, "c" * 64, "d" * 64]
+        class AfterWindowsGuest(FakeGuest):
+            def __init__(self):
+                super().__init__(uuid=uuid)
+                self.mounts = []
+            def mount_ro(self, part, directory):
+                self.mounts.append((part, directory))
+            def read_file(self, path):
+                if path == "/etc/os-release":
+                    return os_release
+                if path == "/etc/fstab":
+                    return f"UUID={uuid} / ext4 defaults 0 1\\n".encode()
+                raise AssertionError("unexpected file")
+            def checksum(self, algorithm, path):
+                assert algorithm == "sha256"
+                return ("2" if path.startswith("/boot/vmlinuz-") else "3") * 64
+            def umount_all(self):
+                self.mounts.append("unmounted")
+        fake = AfterWindowsGuest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "windows.qcow2"
+            base.write_bytes(b"private Windows COW test base")
+            base.chmod(0o400)
+            checkpoint = root / "windows-uefi-cow-checkpoint"
+            checkpoint.mkdir(mode=0o700)
+            overlay = checkpoint / "cachyos-unwritten-trial-overlay.qcow2"
+            overlay.write_bytes(b"disposable")
+            overlay.chmod(0o600)
+            proof = {
+                "mintRootUuid": uuid,
+                "mintKernel": "vmlinuz-6.14.0-37-generic",
+                "mintKernelSha256": "2" * 64,
+                "mintInitramfsSha256": "3" * 64,
+                "mintOsReleaseSha256": hashlib.sha256(os_release).hexdigest(),
+                "windowsBackingQcow2Sha256": "e" * 64,
+                "windowsPartitionSha256": hashes,
+            }
+            fourth = {
+                "windowsBootAfterExt4Verified": True,
+                "windowsBcdWinreEspAfterExt4Verified": True,
+                "fifthExt4UuidSurvivedWindowsBoot": True,
+                "fourthGuestCleanShutdownVerified": True,
+                "windowsGptUnchangedAfterExt4Boot": True,
+                "windowsBackingUnchangedAfterExt4Boot": True,
+                "originalWindowsUefiUnchangedAfterExt4Boot": True,
+                "sameDiskDualBootVerified": False,
+                "rollbackProven": False,
+                "fourthGuestSerialSha256": "f" * 64,
+            }
+            qemu_info = {"format": "qcow2", "virtual-size": 128 * 1024**3,
+                         "backing-filename": str(base),
+                         "backing-filename-format": "qcow2"}
+            with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
+                    GuestFS=lambda **kwargs: fake)}), \\
+                 patch("windows_cachyos_cow_checkpoint.owned_regular"), \\
+                 patch("windows_cachyos_qcow2_gpt_readonly.qcow2_file_identity",
+                       return_value="identity"), \\
+                 patch("windows_cachyos_qcow2_gpt_readonly.require_unchanged_qcow2"), \\
+                 patch.object(mint, "sha256", return_value="e" * 64), \\
+                 patch.object(mint, "run", return_value=SimpleNamespace(
+                     stdout=json.dumps(qemu_info))), \\
+                 patch.object(mint, "_guest_disk_audit", return_value=(uuid, hashes)):
+                persistence = mint.verify_mint_persistence_after_windows(
+                    overlay=overlay, base=base, mint_proof=proof, fourth=fourth)
+                self.assertTrue(persistence["mintRootFilesPersistAfterWindowsVerified"])
+                self.assertEqual(persistence["fourthGuestSerialSha256"], "f" * 64)
+                self.assertEqual(fake.mounts[0], ("/dev/sda5", "/"))
+                self.assertTrue(fake.closed)
+                # Fault injection: a changed Windows partition digest is a hard failure.
+                with patch.object(mint, "_guest_disk_audit",
+                                  return_value=(uuid, ["0" * 64] * 4)):
+                    with self.assertRaisesRegex(mint.MintOverlayError,
+                                                "partition hashes"):
+                        mint.verify_mint_persistence_after_windows(
+                            overlay=overlay, base=base, mint_proof=proof, fourth=fourth)
+                # Fault injection: changed installed initramfs is not persistence.
+                original = fake.checksum
+                fake.checksum = lambda algorithm, path: (
+                    "0" * 64 if path.startswith("/boot/initrd") else
+                    original(algorithm, path))
+                with self.assertRaisesRegex(mint.MintOverlayError,
+                                            "kernel or installed initramfs"):
+                    mint.verify_mint_persistence_after_windows(
+                        overlay=overlay, base=base, mint_proof=proof, fourth=fourth)
+
+    def test_post_windows_persistence_rejects_missing_fourth_boot_before_guestfs(self):
+        with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
+                GuestFS=lambda **kwargs: self.fail("should not open guestfs"))}):
+            with self.assertRaisesRegex(mint.MintOverlayError,
+                                        "fourth Windows"):
+                mint.verify_mint_persistence_after_windows(
+                    overlay=Path("/no/overlay"), base=Path("/no/base"),
+                    mint_proof={}, fourth={})
 
     def test_ephemeral_shutdown_service_is_explicit_and_one_boot_scoped(self):
         import tempfile
