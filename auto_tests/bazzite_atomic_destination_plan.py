@@ -200,6 +200,7 @@ def propose(manifest: dict, snapshot: dict) -> dict:
         "phase": "synthetic-native-atomic-target-proposal",
         "diskGuid": disk_guid,
         "logicalSectorBytes": SECTOR_BYTES,
+        "virtualSizeBytes": total,
         "protectedExistingPartitions": partitions,
         "candidateNewPartitions": candidate,
         "btrfsSubvolumesProposed": ["/", "/var", "/var/home"],
