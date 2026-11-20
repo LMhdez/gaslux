@@ -7,6 +7,8 @@ on:
     paths:
       - .github/workflows/mint-ab-forensic-checkpoint.yml
       - auto_tests/tools/windows_mint_ab_checkpoint.py
+      - auto_tests/tools/windows_mint_ab_capacity.py
+      - auto_tests/test_windows_mint_ab_capacity.py
       - auto_tests/test_windows_mint_ab_checkpoint.py
       - auto_tests/tools/windows_mint_ab_forensic.py
       - auto_tests/test_windows_mint_ab_forensic.py
@@ -37,9 +39,11 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_capacity.py auto_tests/test_windows_mint_ab_capacity.py
           python3 -m py_compile auto_tests/tools/windows_mint_ab_checkpoint.py auto_tests/test_windows_mint_ab_checkpoint.py
           python3 -m py_compile auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
           python3 -m py_compile auto_tests/tools/windows_mint_overlay_root.py auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_capacity.py -v
           python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_checkpoint.py -v
           python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_forensic.py -v
           python3 -m unittest discover -s auto_tests -p test_windows_mint_overlay_root.py -v
