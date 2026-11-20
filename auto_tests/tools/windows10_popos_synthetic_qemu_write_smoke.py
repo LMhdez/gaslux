@@ -35,11 +35,11 @@ CHILD = "gaslux-pop-synthetic-write-child.qcow2"
 BASE = "gaslux-pop-synthetic-raw-base.img"
 P1GUID = "ae228a25-0ecd-4f62-83b4-88dd48b88edd"
 P2GUID = "f81482ad-e0e1-491a-8ea5-9c246f82ded8"
-MARKER = re.compile(rb"(?m)^GASLUX_POP_SYNTH_KVM_WRITE_SMOKE=1\r?$")
-REFUSAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_WRITE_REFUSED=([^\r\n]+)\r?$")
+MARKER = re.compile(rb"(?m)^GASLUX_POP_SYNTH_KVM_WRITE_SMOKE=1\r?\n")
+REFUSAL = re.compile(rb"(?m)^GASLUX_POP_SYNTH_WRITE_REFUSED=([^\r\n]+)\r?\n")
 RESULT = re.compile(
     rb"(?m)^GASLUX_POP_SYNTH_(?:KVM_WRITE_SMOKE=1|"
-    rb"WRITE_REFUSED=[^\r\n]+)\r?$"
+    rb"WRITE_REFUSED=[^\r\n]+)\r?\n"
 )
 
 
@@ -155,7 +155,17 @@ printf 'GASLUX_SYNTH_GUEST_SERIAL_SEEN=%s\n' "$serial"
 [[ "$serial" == "GASLUX_POP_SYNTH" ]] || fail 'virtio_serial_mismatch'
 [[ "$(blockdev --getsize64 "$byid")" == 8589934592 ]] || fail 'disk_byte_size_mismatch'
 [[ "$(blockdev --getss "$byid")" == 512 ]] || fail 'logical_sector_mismatch'
-rw="$(lsblk -dn -o NAME,TYPE,RO | awk '$2=="disk" && $3=="0" {print $1}')"
+rw=""
+while read -r name typ ro; do
+    [[ "$typ" == disk && "$ro" == 0 ]] || continue
+    if [[ "$name" =~ ^zram[0-9]+$ ]]; then
+        # Verify in-kernel memory-backed zram identity; never blanket-ignore
+        # disk names or allow unknown writable secondary block devices.
+        [[ "$(readlink -f "/sys/block/$name")" == "/sys/devices/virtual/block/$name" ]] || fail 'unverified_zram_identity'
+        continue
+    fi
+    rw="${rw:+$rw }$name"
+done < <(lsblk -dn -o NAME,TYPE,RO)
 printf 'GASLUX_SYNTH_GUEST_RW_DISKS=%s\n' "$rw"
 [[ "$rw" == "$(basename "$(readlink -f "$byid")")" ]] || fail 'multiple_or_wrong_writable_disks'
 python3 -B - <<'PY'
