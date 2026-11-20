@@ -55,7 +55,9 @@ def has_orderly_shutdown_witness(serial_bytes: bytes) -> bool:
         rb"^\[\s*OK\s*\]\s+Finished systemd-poweroff\.service - System Power Off\.$",
         rb"^\[\s*\d+(?:\.\d+)?\s*\]\s+reboot: Power down$",
     )
-    return any(re.search(pattern, serial_bytes, re.MULTILINE) for pattern in witnesses)
+    # Accept CRLF from a genuine serial console, not substrings or bare CR.
+    normalized = serial_bytes.replace(b"\r\n", b"\n")
+    return any(re.search(pattern, normalized, re.MULTILINE) for pattern in witnesses)
 
 
 def read_regular(directory: Path, name: str, maximum: int) -> tuple[Path, bytes]:
