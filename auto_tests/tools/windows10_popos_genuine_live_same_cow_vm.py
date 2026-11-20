@@ -318,6 +318,17 @@ def live_probe_on_windows(
                     and cli.get("source") == "pinned-pop-24.04-build-20-live-guest"
                     and cli.get("agentSha256") == digest
                     and cli.get("argv") == ["/usr/bin/distinst", "--help"]
+                    and cli.get("cliElfExecutedForHelp") is True
+                    and cli.get("cliHelpExitCode") == 0
+                    and type(cli.get("cliHelpOutputSha256")) is str
+                    and SHA.fullmatch(cli["cliHelpOutputSha256"]) is not None
+                    and type(cli.get("cliOptionLines")) is list
+                    and 4 <= len(cli["cliOptionLines"]) <= 100
+                    and all(type(row) is str and 0 < len(row) <= 260
+                            for row in cli["cliOptionLines"])
+                    and all(any(flag in row for row in cli["cliOptionLines"])
+                            for flag in ("--use", "--no-efi-vars",
+                                         "--modify-boot", "--block"))
                     and cli.get("observerExecutedInstaller") is False
                     and cli.get("diskWritesIndependentlyTraced") is False
                     and cli.get("nativeInstallObserved") is False
