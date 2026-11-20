@@ -367,3 +367,51 @@ has been performed.
 The QEMU run and artifacts are **real**, while the independent
 adversarial endpoint unit tests use temporary sockets and Python
 process-seal fixtures and must not be conflated with guest-input proof.
+
+
+### Dedicated-UID operational isolation experiment (20 November 2026)
+
+The QEMU-only workflow now creates a temporary unprivileged Unix account
+`gaslux_observer_ci` distinct from the original GitHub runner UID.
+The read-only Observer source is staged in a dedicated-owned 0700 scratch
+directory, without making the runner's home or checkout traversable.
+The QEMU process and the legitimate framebuffer/QMP observer run under
+this dedicated UID; RFB and QMP use 0600 Unix sockets in private 0700
+session directories. No TCP replacement/proxy, QMP command forwarding,
+keyboard or pointer event handler is implemented.
+
+The original runner orchestrates a **connect(2)-only** test:
+the dedicated worker announces an unguessable session ID and endpoint paths,
+then pauses while the runner UID and a separate `nobody` UID attempt
+direct connections to both RFB and QMP sockets. A fixed acknowledgement
+releases the read-only worker. This channel cannot forward QMP commands
+or RFB events. The existing ControllerLease, process seals, SO_PEERCRED,
+socket inode/mode checks, QMP block/snapshot checks and no-TCP-fd
+inventory remain active. Post-exit endpoint-name cleanup is independently
+inspected with privileged `test` probes; evidence is copied only after
+the worker exits.
+
+**Threat boundary:**
+- Controller and QEMU: temporary dedicated UID, same trust domain.
+- Different-UID unprivileged client, including the original runner UID
+  without elevated privileges: kernel filesystem DAC denies `connect`
+  with EACCES to either endpoint.
+- Another process possessing the **dedicated UID**: not excluded;
+  it can access the sockets and the cooperative lease is insufficient.
+- Original GitHub runner UID with **sudo** or a process with elevated
+  privileges: **not excluded**. GitHub-hosted runners permit sudo, so
+  an adversary controlling that credential can impersonate the dedicated
+  account, replace the staged source before launch or inspect sockets.
+  This is a reproducible operational restriction, not robust protection
+  from a malicious runner account.
+- Existing open/inherited socket file descriptors and later unauthorized
+  privileged process attachment remain out of scope; the audit must not
+  claim exclusive input until these are excluded by an independent
+  process/privilege boundary.
+- No framebuffer/input atomic compare-and-act primitive has been built.
+  `ReadOnlyVncTransport.click_if_current` still refuses all events.
+
+This experiment does **not** prove exclusive UI control, and it
+does not justify Q4OS/Calamares navigation. Use a separately privileged,
+reviewed, immutable launcher and a confined worker with independent
+security-policy enforcement before any future guest input.
