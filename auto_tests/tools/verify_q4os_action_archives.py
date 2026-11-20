@@ -67,36 +67,49 @@ def validate_archives(zip_dir: Path, metadata_dir: Path, originals: Path) -> dic
             with zipfile.ZipFile(path) as archive:
                 members = archive.infolist()
                 actual = [entry.filename for entry in members]
-                if (
-                    len(actual) != len(expected_names)
-                    or len(set(actual)) != len(actual)
-                    or set(actual) != expected_names
-                ):
+                required = {"evidence/" + name for name in expected_names}
+                if len(set(actual)) != len(actual) or not required.issubset(actual):
                     raise Refusal(
                         f"Original artifact ZIP member mismatch: {aid}: "
-                        f"missing={sorted(expected_names - set(actual))}; "
-                        f"extra={sorted(set(actual) - expected_names)}"
+                        f"missing={sorted(required - set(actual))}"
                     )
+                # The pinned original ZIP includes additional QEMU/Calamares
+                # inspection files. Those bytes are covered by the exact
+                # archive SHA-256 and GitHub's independently recorded digest.
+                # The verifier NEVER extracts or executes any member.
+                total_uncompressed = 0
                 for entry in members:
+                    name = entry.filename
+                    parts = name.split("/")
                     mode = (entry.external_attr >> 16) & 0o170000
+                    total_uncompressed += entry.file_size
                     if (
                         entry.is_dir()
                         or mode not in (0, stat.S_IFREG)
-                        or entry.file_size > MAX_PNG
-                        or entry.filename.startswith(("/", "."))
-                        or "/" in entry.filename
-                        or "\\" in entry.filename
+                        or not all(parts)
+                        or any(part in (".", "..") for part in parts)
+                        or parts[0] not in ("evidence", "calamares-inspect")
+                        or len(parts) < 2
+                        or "\\" in name
+                        or ":" in name
+                        or entry.file_size > MAX_ARCHIVE
+                        or total_uncompressed > 128 * 1024 * 1024
                     ):
-                        raise Refusal("Unsafe ZIP member or filesystem alias")
+                        raise Refusal(f"Unsafe historical ZIP member: {name!r}")
+                    if name not in required:
+                        continue
+                    short_name = name.removeprefix("evidence/")
                     data = archive.read(entry)
-                    local = read(originals / str(aid) / entry.filename, MAX_PNG)
+                    local = read(originals / str(aid) / short_name, MAX_PNG)
                     if data != local:
                         raise Refusal(f"GitHub artifact differs from pinned Git blob: {aid}")
-                    if entry.filename in report_names:
-                        if digest(data) != expected["reports"][entry.filename]:
+                    if short_name in report_names:
+                        if digest(data) != expected["reports"][short_name]:
                             raise Refusal(f"Original report SHA-256 mismatch: {aid}")
                     else:
-                        frame = next(x for x in run["screenshots"] if x["path"] == entry.filename)
+                        frame = next(
+                            x for x in run["screenshots"] if x["path"] == short_name
+                        )
                         Screenshot.decode(data, (1280, 800), frame["sha256"])
         except (zipfile.BadZipFile, EOFError, RuntimeError) as exc:
             raise Refusal(f"Historical ZIP invalid: {aid}") from exc
