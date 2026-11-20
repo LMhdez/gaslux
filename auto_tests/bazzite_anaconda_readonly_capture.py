@@ -39,13 +39,51 @@ class CaptureRefusal(ValueError):
 
 
 def run(*command: str) -> str:
-    """Execute only bounded busctl read-side calls, without a shell."""
-    if (
-        len(command) < 3
-        or command[0:2] != (BUS, "--system")
-        or command[2] not in ("list", "tree", "introspect", "call")
-    ):
-        raise CaptureRefusal("Only pre-approved system D-Bus introspection is permitted")
+    """Hard allowlist; refuse every D-Bus mutator before spawning busctl."""
+    if len(command) < 4 or command[:2] != (BUS, "--system"):
+        raise CaptureRefusal("Unexpected D-Bus command")
+    action = command[2]
+    if action == "list":
+        allowed = command == (BUS, "--system", "list", "--no-legend", "--no-pager")
+    elif action == "tree":
+        allowed = len(command) == 4 and bool(OWNER.fullmatch(command[3]))
+    elif action == "introspect":
+        allowed = (
+            len(command) == 6
+            and command[3] == "--xml-interface"
+            and bool(OWNER.fullmatch(command[4]))
+            and command[5].startswith("/org/fedoraproject/Anaconda/")
+            and bool(re.fullmatch(r"/[A-Za-z0-9_/]+", command[5]))
+        )
+    elif action == "call":
+        allowed = False
+        if len(command) == 9 and command[3:6] == (DBUS, DBUS_PATH, DBUS):
+            allowed = (
+                command[6:8] == ("GetNameOwner", "s") and command[8] == SERVICE
+            ) or (
+                command[6:8] == ("GetConnectionUnixProcessID", "s")
+                and bool(OWNER.fullmatch(command[8]))
+            )
+        elif (
+            len(command) >= 7
+            and bool(OWNER.fullmatch(command[3]))
+            and command[4].startswith("/org/fedoraproject/Anaconda/")
+            and bool(re.fullmatch(r"/[A-Za-z0-9_/]+", command[4]))
+            and command[5].startswith(SERVICE + ".")
+        ):
+            name = command[6]
+            allowed = (
+                name in READS and len(command) == 7
+            ) or (
+                name in DETAIL_READS
+                and len(command) == 9
+                and command[7] == "s"
+                and bool(re.fullmatch(r"[A-Za-z0-9._:-]{1,100}", command[8]))
+            )
+    else:
+        allowed = False
+    if not allowed:
+        raise CaptureRefusal("Refusing unapproved or mutating D-Bus invocation")
     result = subprocess.run(command, capture_output=True, text=True, timeout=12, check=True)
     if len(result.stdout.encode("utf-8")) > 1024 * 1024:
         raise CaptureRefusal("Unbounded Anaconda D-Bus response")
@@ -108,7 +146,10 @@ def process_proof(pid: int) -> dict:
         try:
             query = subprocess.run(
                 ["/usr/bin/rpm", "-q", "--queryformat", "%{NAME} %{VERSION}-%{RELEASE}", package],
-                capture_output=True, check=False, text=True, timeout=8,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=8,
             )
         except (OSError, subprocess.SubprocessError):
             continue
