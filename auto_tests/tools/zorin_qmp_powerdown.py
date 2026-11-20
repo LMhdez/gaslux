@@ -58,9 +58,15 @@ def request_guest_acpi_powerdown(
                     "QEMU did not provide QMP handshake")
 
             def execute(command: str, identifier: str) -> bool:
-                conn.sendall((json.dumps({
-                    "execute": command, "id": identifier,
-                }, sort_keys=True) + "\n").encode("ascii"))
+                try:
+                    conn.sendall((json.dumps({
+                        "execute": command, "id": identifier,
+                    }, sort_keys=True) + "\n").encode("ascii"))
+                except (BrokenPipeError, ConnectionResetError,
+                        ConnectionAbortedError) as exc:
+                    raise ZorinQmpError(
+                        "QMP connection closed before command acknowledgement"
+                    ) from exc
                 saw_powerdown = False
                 while time.monotonic() < deadline:
                     record = read_response(reader)
