@@ -1,0 +1,49 @@
+name: Installer Observer QEMU read-only laboratory
+on:
+  push:
+    branches:
+      - feature/installer-observer-engine
+    paths:
+      - 'auto_tests/installer_observer/lab_identity.py'
+      - 'auto_tests/installer_observer/lab_probe.py'
+      - '.github/workflows/installer-observer-lab.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qemu-read-only-witness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated lab requirements
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils
+          python -m pip install 'pillow>=11,<13'
+      - name: Reject root and unavailable QEMU before constructing any media
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(id -u)" -ne 0
+          command -v qemu-system-x86_64
+          command -v qemu-img
+          python -m compileall -q auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py
+      - name: Two independent QEMU processes; scratch ISO/QCOW2; zero input
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m auto_tests.installer_observer.lab_probe
+      - name: Publish strictly synthetic observation evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observer-qemu-synthetic-readonly
+          path: ${{ runner.temp }}/observer-qemu-lab/
+          if-no-files-found: warn
+          retention-days: 7
