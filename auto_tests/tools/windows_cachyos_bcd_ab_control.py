@@ -69,6 +69,22 @@ def _copy_owned(source: Path, target: Path, mode: int) -> None:
             "A/B clone is not an exclusive owned regular file")
 
 
+def tpm_state_trees_independent(left: Path, right: Path) -> bool:
+    left_files = {p.relative_to(left).as_posix(): p
+                  for p in left.rglob("*") if p.is_file() and not p.is_symlink()}
+    right_files = {p.relative_to(right).as_posix(): p
+                   for p in right.rglob("*") if p.is_file() and not p.is_symlink()}
+    if not left_files or set(left_files) != set(right_files):
+        return False
+    for name in left_files:
+        a, b = left_files[name].lstat(), right_files[name].lstat()
+        if (not stat.S_ISREG(a.st_mode) or not stat.S_ISREG(b.st_mode)
+                or a.st_nlink != 1 or b.st_nlink != 1
+                or (a.st_dev, a.st_ino) == (b.st_dev, b.st_ino)):
+            return False
+    return True
+
+
 def tpm_state_tree_sha256(root: Path) -> str:
     require(root.is_dir() and not root.is_symlink()
             and root.stat().st_uid == os.getuid()
@@ -295,6 +311,9 @@ def run_windows_only_bcd_control(
     vars_a = folder / WINDOWS_CONTROL_VARS
     overlay_b_before = sha256_file(overlay_b)
     vars_b_before = sha256_file(vars_b)
+    vars_a_initial = sha256_file(vars_a)
+    require(vars_a_initial == vars_b_before,
+            "control and treatment OVMF VARS clones do not start byte-identically")
     base_before = sha256_file(base)
     base_identity = qcow2_file_identity(base)
     nvram_before = sha256_file(nvram)
@@ -451,14 +470,18 @@ def run_windows_only_bcd_control(
             vars_a != vars_b
             and vars_a.lstat().st_ino != vars_b.lstat().st_ino
             and vars_a.lstat().st_nlink == vars_b.lstat().st_nlink == 1
-            and sha256_file(vars_a) == vars_b_before
+            and vars_a_initial == vars_b_before
             and sha256_file(vars_b) == vars_b_before
         ),
-        "controlOvmfInitialSha256": vars_b_before,
+        "controlAndTreatmentInitialOvmfVarsEqual": vars_a_initial == vars_b_before,
+        "controlOvmfInitialSha256": vars_a_initial,
         "treatmentOvmfInitialSha256": vars_b_before,
         "controlOvmfPostBootSha256": vars_a_after,
-        "independentTpmStateClonesVerified": tpm_a != tpm_b
-            and tpm_initial == tpm_state_tree_sha256(tpm_b),
+        "independentTpmStateClonesVerified": (
+            tpm_a != tpm_b
+            and tpm_state_trees_independent(tpm_a, tpm_b)
+            and tpm_initial == tpm_state_tree_sha256(tpm_b)
+        ),
         "tpmVersion": "2.0",
         "previousWindows10ProfileHadNoTpm": True,
         "matchedArmsUseSameFreshTpm2Baseline": True,
@@ -489,6 +512,18 @@ def compare_bcd_ab(control: dict[str, Any], treatment: dict[str, Any]) -> dict[s
     require(all(key in control for key in required)
             and all(key in treatment for key in required),
             "A/B BCD evidence is incomplete")
+    for evidence in (control, treatment):
+        require(re.fullmatch(r"[0-9a-f]{64}", evidence["prebootBcdSha256"]) is not None
+                and re.fullmatch(r"[0-9a-f]{64}", evidence["postbootBcdSha256"]) is not None
+                and type(evidence["changedByteCount"]) is int
+                and evidence["changedByteCount"] >= 0
+                and type(evidence["firstChangedByteSpans"]) is list
+                and len(evidence["firstChangedByteSpans"]) <= 24
+                and all(type(span) is dict
+                        and type(span.get("offset")) is int and span["offset"] >= 0
+                        and type(span.get("length")) is int and span["length"] > 0
+                        for span in evidence["firstChangedByteSpans"]),
+                "A/B BCD evidence has invalid hash, byte count or spans")
     initial_equal = control["prebootBcdSha256"] == treatment["prebootBcdSha256"]
     control_changed = control["changedByteCount"] > 0
     treatment_changed = treatment["changedByteCount"] > 0
