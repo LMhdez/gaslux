@@ -106,8 +106,7 @@ def audit_replica(artifact: Path, mapping: dict, gate) -> dict:
         ):
             raise PairProofError("Transition not positively observed")
         before_name = next(
-            state["screenshot"] for state in mapping["states"]
-            if state["id"] == expected["from"]
+            state["screenshot"] for state in mapping["states"] if state["id"] == expected["from"]
         )
         before = directory / before_name
         after = directory / next(
