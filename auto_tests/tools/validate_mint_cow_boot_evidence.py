@@ -290,11 +290,18 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
         require(persistence.get("mintRootFilesPersistAfterWindowsVerified") is True
                 and persistence.get("mintRootUuid") == root_uuid
                 and persistence.get("mintKernel") == kernel
-                and persistence.get("windowsPartitionSha256")
+                and persistence.get("windowsPartitionSha256BeforeMint")
                     == proof["windowsPartitionSha256"]
                 and persistence.get("fourthGuestSerialSha256")
                     == fourth_details["fourthWindowsSerialSha256"],
                 "Mint persistence does not match the exact Windows/Mint COW transaction")
+        require(type(persistence.get("windowsPartitionSha256AfterWindows")) is list
+                and len(persistence["windowsPartitionSha256AfterWindows"]) == 4
+                and all(type(h) is str and re.fullmatch(r"[0-9a-f]{64}", h)
+                        for h in persistence["windowsPartitionSha256AfterWindows"])
+                and all(persistence["windowsPartitionSha256AfterWindows"][i]
+                        == proof["windowsPartitionSha256"][i] for i in (0, 1, 3)),
+                "protected Windows ESP/MSR/Recovery SHA-256 mismatch after Windows boot")
         for key in ("mintKernelSha256", "mintInitramfsSha256", "mintOsReleaseSha256"):
             require(persistence.get(key) == proof[key],
                     f"post-Windows Mint installed-root digest changed: {key}")
