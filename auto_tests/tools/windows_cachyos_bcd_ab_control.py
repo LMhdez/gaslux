@@ -18,6 +18,7 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 import time
 from typing import Any, Iterator
 
@@ -26,9 +27,7 @@ from windows_cachyos_cow_checkpoint import (
     CHECKPOINT_DIR, OVERLAY_NAME, owned_regular, sha256_file, validate_workspace,
 )
 from windows_cachyos_overlay_reboot import gpt_windows, third_guest_args
-from windows_cachyos_postext4_windows import (
-    add_qemu_trace, add_tpm_device, verify_windows_post_ext4,
-)
+from windows_cachyos_postext4_windows import verify_windows_post_ext4
 from windows_cachyos_postpacstrap_windows import (
     _read_bcd_readonly, summarize_bcd_difference,
 )
@@ -211,7 +210,7 @@ def prepare_qemu_write_trace(workspace: Path) -> tuple[Path | None, list[str], s
         "-trace", f"events={events_file},file={probe_trace}",
     ]
     process = subprocess.Popen(args, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         time.sleep(0.75)
         supported = process.poll() is None
@@ -329,7 +328,7 @@ def run_windows_only_bcd_control(
             == hashlib.sha256(bcd_before_b).hexdigest()
             == protected_before_a["espBcdSha256"],
             "A/B initial BCD bytes do not match the protected manifest")
-    with __import__("tempfile").TemporaryDirectory(prefix="gaslux-bcd-ab-gpt-",
+    with tempfile.TemporaryDirectory(prefix="gaslux-bcd-ab-gpt-",
                                                     dir=workspace) as scratch:
         gpt_before_a = gpt_windows(overlay_a, Path(scratch))
     with __import__("tempfile").TemporaryDirectory(prefix="gaslux-bcd-ab-gpt-b-",
@@ -441,15 +440,21 @@ def run_windows_only_bcd_control(
         "controlWindowsGptUnchanged": True,
         "controlFifthExt4IdentityPreserved": True,
         "controlWindowsBackingAndOriginalNVRAMUnchanged": True,
-        "independentOvmfCopiesVerified": vars_a != vars_b
-            and vars_a_after != vars_b_before
-            and vars_b_before == vars_b_before,
+        "independentOvmfCopiesVerified": (
+            vars_a != vars_b
+            and vars_a.lstat().st_ino != vars_b.lstat().st_ino
+            and vars_a.lstat().st_nlink == vars_b.lstat().st_nlink == 1
+            and vars_a_after == sha256_file(vars_a)
+            and vars_b_before == sha256_file(vars_b)
+        ),
         "controlOvmfInitialSha256": vars_b_before,
         "treatmentOvmfInitialSha256": vars_b_before,
         "controlOvmfPostBootSha256": vars_a_after,
         "independentTpmStateClonesVerified": tpm_a != tpm_b
             and tpm_initial == tpm_state_tree_sha256(tpm_b),
         "tpmVersion": "2.0",
+        "previousWindows10ProfileHadNoTpm": True,
+        "matchedArmsUseSameFreshTpm2Baseline": True,
         "tpmInitialStateTreeSha256": tpm_initial,
         "controlTpmPostBootStateTreeSha256": control_tpm_after,
         "treatmentTpmInitialStateTreeSha256": tpm_initial,
