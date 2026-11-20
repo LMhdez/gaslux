@@ -13,6 +13,9 @@ on:
       - 'auto_tests/bazzite_live_channel_boundary.py'
       - 'auto_tests/tests/test_bazzite_live_channel_boundary.py'
       - 'docs/BAZZITE_LIVE_GUEST_CHANNEL_BLOCKER.md'
+      - 'docs/BAZZITE_ISO_ATOMIC_PROVENANCE_20261120.md'
+      - 'auto_tests/bazzite_official_iso_candidate_20261117.json'
+      - 'auto_tests/tests/test_bazzite_official_iso_candidate.py'
       - 'auto_tests/bazzite_gpt_fixture.py'
   workflow_dispatch:
   push:
@@ -24,6 +27,9 @@ on:
       - 'auto_tests/tests/test_bazzite_anaconda_readonly_capture.py'
       - 'auto_tests/bazzite_live_channel_boundary.py'
       - 'auto_tests/tests/test_bazzite_live_channel_boundary.py'
+      - 'docs/BAZZITE_ISO_ATOMIC_PROVENANCE_20261120.md'
+      - 'auto_tests/bazzite_official_iso_candidate_20261117.json'
+      - 'auto_tests/tests/test_bazzite_official_iso_candidate.py'
 
 permissions:
   contents: read
@@ -49,11 +55,11 @@ jobs:
           set -Eeuo pipefail
           python -m pip install pytest ruff
           # Real sgdisk/qemu-img fixture requires manual QEMU job; do not skip tests.
-          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_atomic_preflight.py auto_tests/tests/test_bazzite_iso_signature.py -k 'not test_real_gpt_readonly_proposal_and_immutable_backing'
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_atomic_preflight.py auto_tests/tests/test_bazzite_iso_signature.py auto_tests/tests/test_bazzite_official_iso_candidate.py -k 'not test_real_gpt_readonly_proposal_and_immutable_backing'
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_official_iso_candidate.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_official_iso_candidate.py
           python -m compileall -q auto_tests/bazzite_*.py assets/live/gaslux_bazzite_preflight.py assets/live/gaslux_bazzite_iso_signature.py
-          echo 'No signed Bazzite 42 ISO or authenticated real Anaconda GetActions export: installation remains denied'
+          echo 'No read-back-verified current Bazzite ISO/payload chain or authenticated real Anaconda GetActions export: installation remains denied; legacy ISO 42 remains untrusted'
 
   synthetic-gpt-native-target:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
@@ -78,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_atomic_preflight.py auto_tests/tests/test_bazzite_iso_signature.py
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_atomic_preflight.py auto_tests/tests/test_bazzite_iso_signature.py auto_tests/tests/test_bazzite_official_iso_candidate.py
           python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py
           python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py
       - name: Compile Bazzite Python sources including the no-execution boundary
