@@ -221,6 +221,24 @@ def smoke_console(sock: Path, stream: bytearray) -> None:
         connection.close()
 
 
+def retain_bounded_failure(evidence: Path, stream: bytearray,
+                           stderr: Path, trace: Path, reason: str) -> None:
+    """Preserve no-media bounded diagnostics BEFORE temp-file cleanup."""
+    for name, data in (
+        ("synthetic-failure-console.txt", normalized(bytes(stream[-150_000:]))),
+        ("synthetic-failure-qemu-stderr.txt",
+         stderr.read_bytes()[-100_000:] if stderr.is_file() else b""),
+        ("synthetic-failure-trace.txt",
+         trace.read_bytes()[-250_000:] if trace.is_file() else b""),
+        ("synthetic-failure-reason.txt", reason.encode("utf-8")[:1000]),
+    ):
+        dst = evidence / name
+        dst.write_bytes(data)
+        (evidence / (name + ".sha256")).write_text(
+            hashlib.sha256(data).hexdigest() + "  " + name + "\n",
+            encoding="ascii")
+
+
 def extract_smoke(child: Path, destination: Path) -> bytes:
     sector = SMOKE_OFFSET // 512
     call("qemu-img", "dd", "-f", "qcow2", "-O", "raw",
@@ -341,6 +359,12 @@ def run(evidence: Path) -> dict:
                 require(process.wait(timeout=70) == 0,
                         "synthetic QEMU failed clean poweroff")
                 ok = True
+            except (DiskAuditError, GuestProbeError, OSError, ValueError,
+                    subprocess.TimeoutExpired) as exc:
+                retain_bounded_failure(
+                    evidence, stream, stderr, trace,
+                    type(exc).__name__ + ": " + str(exc))
+                raise
             finally:
                 if process.poll() is None:
                     process.kill()
