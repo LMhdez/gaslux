@@ -360,6 +360,16 @@ jobs:
           assert ab["controlWindowsBootOrdinal"] == ab["treatmentWindowsBootOrdinal"] == 5
           assert ab["previousWindows10ProfileHadNoTpm"] is True
           assert ab["tpmVersion"] == "2.0"
+          if ab["qemuWriteTraceStatus"] == "available":
+              events = root / (profile + "-bcd-ab-qemu-write-events.txt")
+              assert events.is_file() and not events.is_symlink()
+              events_digest, events_name = events.with_suffix(".sha256").read_text().split()
+              assert events_name == events.name
+              assert events_digest == hashlib.sha256(events.read_bytes()).hexdigest()
+              if ab.get("controlQemuWriteTraceSha256"):
+                  trace = root / (profile + "-bcd-control-windows-only-qemu-trace.bin")
+                  assert trace.is_file() and not trace.is_symlink()
+                  assert hashlib.sha256(trace.read_bytes()).hexdigest() == ab["controlQemuWriteTraceSha256"]
           control_serial = root / (profile + "-bcd-control-windows-only-serial.log")
           assert control_serial.is_file() and not control_serial.is_symlink()
           control_recorded, control_name = control_serial.with_suffix(".sha256").read_text().split()
@@ -405,6 +415,13 @@ jobs:
               b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1") == 1
           if side.get("windowsPostPacstrapSerialSha256"):
               assert recorded == side["windowsPostPacstrapSerialSha256"]
+          treatment_trace_sha = side.get("qemuWriteTraceSha256") or side.get(
+              "readonlyDiagnostics", {}
+          ).get("qemuWriteTraceSha256")
+          if treatment_trace_sha:
+              treatment_trace = root / (profile + "-sixth-post-pacstrap-qemu-trace.bin")
+              assert treatment_trace.is_file() and not treatment_trace.is_symlink()
+              assert hashlib.sha256(treatment_trace.read_bytes()).hexdigest() == treatment_trace_sha
           # Integrity remains fail-closed even if Windows-only control
           # reproduces the exact same BCD mutation.
           if comparison["controlBcdChanged"] or comparison["treatmentBcdChanged"]:
