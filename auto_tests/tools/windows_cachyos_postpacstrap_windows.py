@@ -297,6 +297,7 @@ def verify_windows_with_installed_root(
             "bcdReadOnlyForensic": bcd_forensic,
             "qemuWriteTraceSha256": boot.get("qemuWriteTraceSha256"),
             "qemuWriteTraceBytes": boot.get("qemuWriteTraceBytes"),
+            "windowsPostPacstrapSerialSha256": boot.get("fourthGuestSerialSha256"),
         }
         raise PostPacstrapWindowsError(
             "Windows protected file hash changed after Windows re-entry: "
