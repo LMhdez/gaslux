@@ -1,4 +1,5 @@
 """Q4OS read-only adapter for Safety #265; no GPT parser or writer."""
+
 from __future__ import annotations
 
 
@@ -14,12 +15,16 @@ def to_safety_snapshot(q4os: dict) -> dict:
         first, last = part["first"], part["last"]
         if type(first) is not int or type(last) is not int or first > last:
             raise ValueError("invalid partition geometry")
-        parts.append({
-            "number": part["index"], "typeGuid": part["type"],
-            "partGuid": part["guid"], "offsetBytes": first * sector,
-            "sizeBytes": (last - first + 1) * sector,
-            "attributes": part["attributes"],
-        })
+        parts.append(
+            {
+                "number": part["index"],
+                "typeGuid": part["type"],
+                "partGuid": part["guid"],
+                "offsetBytes": first * sector,
+                "sizeBytes": (last - first + 1) * sector,
+                "attributes": part["attributes"],
+            }
+        )
     return {
         "partitionStyle": "GPT",
         "partitionTableId": "gpt:" + q4os["diskGuid"],
@@ -29,11 +34,18 @@ def to_safety_snapshot(q4os: dict) -> dict:
     }
 
 
-def refuse_calamares(*, q4os: dict | None, expected: dict | None,
-                    safety_observed: dict | None, safety_compare,
-                    plan: dict | None, transaction: dict | None,
-                    write_set: list | None, calamares: dict | None,
-                    safety_attestation: dict | None = None) -> dict:
+def refuse_calamares(
+    *,
+    q4os: dict | None,
+    expected: dict | None,
+    safety_observed: dict | None,
+    safety_compare,
+    plan: dict | None,
+    transaction: dict | None,
+    write_set: list | None,
+    calamares: dict | None,
+    safety_attestation: dict | None = None,
+) -> dict:
     """Diagnose mismatches using Safety comparator; ALWAYS refuse disk/EFI writes.
 
     Safety's assert_snapshot_matches must be injected by the caller from #265.
@@ -45,24 +57,32 @@ def refuse_calamares(*, q4os: dict | None, expected: dict | None,
     try:
         if not callable(safety_compare):
             raise ValueError("Safety #265 comparator unavailable")
-        if any(type(item) is not dict for item in
-               (q4os, expected, safety_observed, plan, transaction, calamares)):
+        if any(
+            type(item) is not dict
+            for item in (q4os, expected, safety_observed, plan, transaction, calamares)
+        ):
             raise ValueError("missing required inventory/plan/transaction/config")
         if type(write_set) is not list or not write_set:
             raise ValueError("missing explicit write-set")
         safety_compare(expected, safety_observed)
         safety_compare(to_safety_snapshot(q4os), safety_observed)
         if type(safety_attestation) is not dict or set(safety_attestation) != {
-            "decision", "transactionId", "planSha256", "vmId", "writeCount"
+            "decision",
+            "transactionId",
+            "planSha256",
+            "vmId",
+            "writeCount",
         }:
             raise ValueError("missing verified Safety #267 no-writer decision")
         if safety_attestation["decision"] != "ACCEPT_NO_WRITER":
             raise ValueError("Safety decision is not ACCEPT_NO_WRITER")
-        if (safety_attestation["transactionId"] != transaction.get("id")
-                or safety_attestation["planSha256"] != transaction.get("safetyPlanSha256")
-                or safety_attestation["vmId"] != transaction.get("vmId")
-                or type(safety_attestation["writeCount"]) is not int
-                or safety_attestation["writeCount"] < 1):
+        if (
+            safety_attestation["transactionId"] != transaction.get("id")
+            or safety_attestation["planSha256"] != transaction.get("safetyPlanSha256")
+            or safety_attestation["vmId"] != transaction.get("vmId")
+            or type(safety_attestation["writeCount"]) is not int
+            or safety_attestation["writeCount"] < 1
+        ):
             raise ValueError("Safety no-writer transaction, plan, VM or extent mismatch")
         if plan.get("backend") != "q4os-native" or plan.get("firmwareLayout") != "uefi/gpt":
             raise ValueError("wrong backend or firmware")
@@ -77,8 +97,13 @@ def refuse_calamares(*, q4os: dict | None, expected: dict | None,
             transaction.get("observedStateSha256") != plan["observedStateSha256"]
         ):
             raise ValueError("transaction does not bind disk state")
-        for key in ("installationAuthorized", "calamaresJobsAuthorized",
-                    "diskWritesAuthorized", "windowsEspWritesAuthorized", "rollbackVerified"):
+        for key in (
+            "installationAuthorized",
+            "calamaresJobsAuthorized",
+            "diskWritesAuthorized",
+            "windowsEspWritesAuthorized",
+            "rollbackVerified",
+        ):
             if plan.get(key) is not False:
                 raise ValueError("writable or incomplete plan: " + key)
         if plan.get("windowsEspFallbackWriteBlocked") is not True or (
@@ -96,7 +121,11 @@ def refuse_calamares(*, q4os: dict | None, expected: dict | None,
         length = (plan["proposedRootEndLba"] - plan["proposedRootStartLba"] + 1) * sector
         for operation in write_set:
             if type(operation) is not dict or set(operation) != {
-                "operation", "partGuid", "ownerTransactionId", "startBytes", "sizeBytes"
+                "operation",
+                "partGuid",
+                "ownerTransactionId",
+                "startBytes",
+                "sizeBytes",
             }:
                 raise ValueError("incomplete write-set entry")
             if operation["operation"] not in {"create-root-ext4", "format-root-ext4"}:
@@ -105,9 +134,12 @@ def refuse_calamares(*, q4os: dict | None, expected: dict | None,
                 raise ValueError("Windows/WinRE/OEM partition targeted")
             if operation["ownerTransactionId"] != txid or operation["operation"] in owned:
                 raise ValueError("foreign or duplicate operation")
-            if type(operation["startBytes"]) is not int or (
-                type(operation["sizeBytes"]) is not int
-            ) or operation["startBytes"] != start or operation["sizeBytes"] != length:
+            if (
+                type(operation["startBytes"]) is not int
+                or (type(operation["sizeBytes"]) is not int)
+                or operation["startBytes"] != start
+                or operation["sizeBytes"] != length
+            ):
                 raise ValueError("unexpected write extent")
             owned.add(operation["operation"])
         if calamares.get("fallbackWritePreventedAndVerified") is not True:
@@ -117,8 +149,13 @@ def refuse_calamares(*, q4os: dict | None, expected: dict | None,
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         reasons.append("fail-closed: " + str(exc))
     return {
-        "backend": "q4os-native", "decision": "refuse", "reasons": reasons,
-        "writerPresent": False, "calamaresJobsAuthorized": False,
-        "diskWritesAuthorized": False, "windowsEspWritesAuthorized": False,
-        "installationAuthorized": False, "rollbackVerified": False,
+        "backend": "q4os-native",
+        "decision": "refuse",
+        "reasons": reasons,
+        "writerPresent": False,
+        "calamaresJobsAuthorized": False,
+        "diskWritesAuthorized": False,
+        "windowsEspWritesAuthorized": False,
+        "installationAuthorized": False,
+        "rollbackVerified": False,
     }
