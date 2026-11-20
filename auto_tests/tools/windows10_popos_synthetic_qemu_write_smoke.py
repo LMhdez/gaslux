@@ -707,7 +707,7 @@ def run_distinst_partition_test(
             guest_bytes = guest_path.read_bytes()
             (evidence / "synthetic-distinst-failure-guest-report.json.sha256").write_text(
                 hashlib.sha256(guest_bytes).hexdigest()
-                + "  synthetic-distinst-failure-guest-report.json\\n",
+                + "  synthetic-distinst-failure-guest-report.json\n",
                 encoding="ascii")
         write_set_diagnostic = None
         if trace.is_file() and not trace.is_symlink() and trace.stat().st_size <= 16_000_000:
@@ -732,7 +732,7 @@ def run_distinst_partition_test(
             diagnostic_bytes = diagnostic_path.read_bytes()
             (evidence / "synthetic-distinst-write-set-diagnostic.json.sha256").write_text(
                 hashlib.sha256(diagnostic_bytes).hexdigest()
-                + "  synthetic-distinst-write-set-diagnostic.json\\n",
+                + "  synthetic-distinst-write-set-diagnostic.json\n",
                 encoding="ascii")
             if write_set_diagnostic.get("decision") == "REFUSE_OUT_OF_WRITESET":
                 print("GASLUX_POP_SYNTH_DISTINST_WRITESET_REFUSED=1", flush=True)
