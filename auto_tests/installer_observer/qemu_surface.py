@@ -32,7 +32,8 @@ class InputSurface:
 
 
 def inspect_input_surface(
-    process: ProcessSeal, launched: tuple[str, ...], qmp_socket: Path
+    process: ProcessSeal, launched: tuple[str, ...], qmp_socket: Path,
+    vnc_socket: Path | None = None,
 ) -> InputSurface:
     """Cross-check actual /proc argv against a tightly reviewed QEMU launch.
 
@@ -74,7 +75,7 @@ def inspect_input_surface(
         or launched[19:23]
         != (
             "-vnc",
-            "127.0.0.1:0",
+            f"unix:{vnc_socket}" if vnc_socket is not None else "127.0.0.1:0",
             "-qmp",
             f"unix:{qmp_socket},server=on,wait=off",
         )
@@ -87,14 +88,18 @@ def inspect_input_surface(
     # this check does not replace the storage/snapshot attestor.
     return InputSurface(
         qmp_unix=str(qmp_socket),
-        rfb_listener="127.0.0.1:5900 (RFB 3.8, no authentication)",
+        rfb_listener=str(vnc_socket) if vnc_socket is not None else "127.0.0.1:5900",
         hmp_disabled=True,
         spice_disabled=True,
         serial_disabled=True,
         display_disabled=True,
         guest_network_disabled=True,
         blockers=(
-            "Loopback RFB admits external host clients",
+            (
+                "RFB Unix endpoint remains accessible to same-UID processes"
+                if vnc_socket is not None
+                else "Loopback RFB admits external host clients"
+            ),
             "QMP Unix socket remains accessible to same-UID processes",
             "Framebuffer comparison and RFB input cannot be atomic",
         ),
