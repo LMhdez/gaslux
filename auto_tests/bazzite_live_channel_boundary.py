@@ -13,9 +13,9 @@ import hashlib
 import json
 import os
 import re
-import stat
 from pathlib import Path
 
+from bazzite_anaconda_write_set_gate import expected_actions
 from bazzite_atomic_destination_plan import inspect
 from bazzite_gpt_fixture import Refusal
 
@@ -128,15 +128,26 @@ def verify_paused_topology(
     ):
         raise Refusal("QEMU not exclusively paused, headless and without command channels")
     drives = options["-drive"]
-    if not (
-        any(d.startswith("if=pflash,format=raw,unit=0,readonly=on,file=") for d in drives)
-        and f"if=pflash,format=raw,unit=1,file={expected_vars}" in drives
-        and f"file={expected_overlay},format=qcow2,if=none,id=owned,readonly=on" in drives
+    ovmf_code = [
+        d.removeprefix("if=pflash,format=raw,unit=0,readonly=on,file=")
+        for d in drives
+        if d.startswith("if=pflash,format=raw,unit=0,readonly=on,file=")
+    ]
+    approved_code = {
+        "/usr/share/OVMF/OVMF_CODE_4M.fd",
+        "/usr/share/OVMF/OVMF_CODE.fd",
+    }
+    if (
+        len(ovmf_code) != 1
+        or ovmf_code[0] not in approved_code
+        or f"if=pflash,format=raw,unit=1,file={expected_vars}" not in drives
+        or f"file={expected_overlay},format=qcow2,if=none,id=owned,readonly=on" not in drives
     ):
         raise Refusal("Foreign synthetic disk or firmware attachment")
     if len(set(drives)) != 3:
         raise Refusal("Duplicated or substituted QEMU drive")
     return {
+        "ovmfCodeSource": ovmf_code[0],
         "qemuPid": process["pid"],
         "qemuStartTicks": process["startTicks"],
         "qemuExecutable": process["executable"],
@@ -174,6 +185,7 @@ def audit_once(
     if not root.is_relative_to(runner_temp):
         raise Refusal("Synthetic transaction outside isolated runner temp")
     proposal = inspect(root, runner_temp)
+    expected_actions(proposal)  # Reuse the existing exact candidate contract.
     if proposal["diskGuid"] is None or proposal["installationAuthorized"] is not False:
         raise Refusal("Missing verified synthetic GPT or forbidden install authority")
     overlay = root / "gpt-layout-scratch.qcow2"
@@ -189,7 +201,10 @@ def audit_once(
     if not TRANSACTION.fullmatch(transaction):
         raise Refusal("Unexpected transaction replay token")
     marker = root / f"collector-channel-{transaction}.used"
-    fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError as exc:
+        raise Refusal("Reused QEMU/collector transaction") from exc
     with os.fdopen(fd, "w", encoding="utf-8") as output:
         output.write("HOST-ONLY-NO-EXECUTION\n")
         output.flush()
@@ -207,10 +222,12 @@ def audit_once(
         "hostBackingValidatedByExistingFixture": True,
         "hostGuestIdentityIndependentlyAuthenticated": False,
         "collectorInvoked": False,
+        "isoBooted": False,
+        "legacyIsoIndependentSignatureVerified": False,
         "collectorStdout": None,
         "collectorStderr": None,
         "collectorExitCode": None,
-        "anacondaDbuServiceObserved": False,
+        "anacondaDbusServiceObserved": False,
         "getActionsObserved": False,
         "writeSetRealObserved": False,
         "atomicPayloadBoundToIso": False,
