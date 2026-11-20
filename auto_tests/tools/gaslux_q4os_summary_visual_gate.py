@@ -18,6 +18,10 @@ from pathlib import Path
 from PIL import Image
 
 SCREEN = (1280, 800)
+APP_HEADER = (
+    (128, 75, 1152, 113),
+    "731210917d9d988773c1ee3dbcc8641e1d50a342c492d87659204ae1ec0243a9",
+)
 TITLE = ((128, 118, 1152, 180), "b565add1ff9d5061918278f5cd8871a26b136dfdb04df78e6bcf74c8341b41e5")
 USERS_SIDEBAR = (
     (128, 436, 318, 478),
@@ -105,8 +109,10 @@ def users_with_dummy_data(before: Path, after: Path) -> None:
 def summary_only(before: Path, after: Path) -> None:
     users = load(before)
     summary = load(after)
-    if crop_sha(summary, TITLE[0]) != TITLE[1]:
-        raise ScreenRefusal("Unknown Calamares window after Users Next")
+    if crop_sha(summary, APP_HEADER[0]) != APP_HEADER[1]:
+        raise ScreenRefusal("Unknown top-level Calamares window after Users Next")
+    if crop_sha(summary, TITLE[0]) == TITLE[1]:
+        raise ScreenRefusal("Users page title did not advance to Summary")
     if crop_sha(summary, USERS_SIDEBAR[0]) == crop_sha(users, USERS_SIDEBAR[0]):
         raise ScreenRefusal("Still on Users: sidebar did not change")
     region = (128, 150, 1152, 610)
