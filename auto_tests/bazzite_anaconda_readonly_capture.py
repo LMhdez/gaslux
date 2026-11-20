@@ -31,8 +31,7 @@ DETAIL_READS = ("GetDeviceData", "GetFormatData")
 DBUS = "org.freedesktop.DBus"
 DBUS_PATH = "/org/freedesktop/DBus"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-OWNER = re.compile(r':1\.[0-9]+\Z')
-GUID = re.compile(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
+OWNER = re.compile(r":1\.[0-9]+\Z")
 
 
 class CaptureRefusal(ValueError):
@@ -41,23 +40,20 @@ class CaptureRefusal(ValueError):
 
 def run(*command: str) -> str:
     """Execute only bounded busctl read-side calls, without a shell."""
-    if len(command) < 3 or command[0:2] != (BUS, "--system") or command[2] not in (
-        "list", "tree", "introspect", "call"
+    if (
+        len(command) < 3
+        or command[0:2] != (BUS, "--system")
+        or command[2] not in ("list", "tree", "introspect", "call")
     ):
         raise CaptureRefusal("Only pre-approved system D-Bus introspection is permitted")
-    result = subprocess.run(
-        command, capture_output=True, text=True, timeout=12, check=True
-    )
+    result = subprocess.run(command, capture_output=True, text=True, timeout=12, check=True)
     if len(result.stdout.encode("utf-8")) > 1024 * 1024:
         raise CaptureRefusal("Unbounded Anaconda D-Bus response")
     return result.stdout
 
 
 def installed_service(listing: str) -> bool:
-    return any(
-        line.split() and line.split()[0] == SERVICE
-        for line in listing.splitlines()
-    )
+    return any(line.split() and line.split()[0] == SERVICE for line in listing.splitlines())
 
 
 def _reply(value: str, kind: str) -> str:
@@ -71,14 +67,15 @@ def owner_and_pid(reader=run) -> tuple[str, int]:
     if not installed_service(reader(BUS, "--system", "list", "--no-legend", "--no-pager")):
         raise CaptureRefusal("Storage service is not currently running (no activation allowed)")
     owner = _reply(
-        reader(BUS, "--system", "call", DBUS, DBUS_PATH, DBUS,
-               "GetNameOwner", "s", SERVICE), "s"
+        reader(BUS, "--system", "call", DBUS, DBUS_PATH, DBUS, "GetNameOwner", "s", SERVICE), "s"
     )
     if not OWNER.fullmatch(owner):
         raise CaptureRefusal("Invalid unique D-Bus owner")
     pid_text = _reply(
-        reader(BUS, "--system", "call", DBUS, DBUS_PATH, DBUS,
-               "GetConnectionUnixProcessID", "s", owner), "u"
+        reader(
+            BUS, "--system", "call", DBUS, DBUS_PATH, DBUS, "GetConnectionUnixProcessID", "s", owner
+        ),
+        "u",
     )
     if not pid_text.isdecimal() or int(pid_text) <= 1:
         raise CaptureRefusal("Unexpected Anaconda service PID")
@@ -89,9 +86,7 @@ def process_proof(pid: int) -> dict:
     if type(pid) is not int or pid <= 1:
         raise CaptureRefusal("Invalid process identity")
     proc = Path("/proc") / str(pid)
-    cmdline = (proc / "cmdline").read_bytes().replace(b"\0", b" ").decode(
-        "utf-8", errors="strict"
-    )
+    cmdline = (proc / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", errors="strict")
     exe = (proc / "exe").resolve(strict=True)
     if "anaconda" not in cmdline.lower() or not exe.is_file():
         raise CaptureRefusal("D-Bus service PID is not an Anaconda process")
@@ -99,8 +94,35 @@ def process_proof(pid: int) -> dict:
     with exe.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    return {"pid": pid, "commandLine": cmdline[:4096],
-            "executablePath": str(exe), "executableSha256": digest.hexdigest()}
+    binary_hashes = {}
+    for binary in ("/usr/sbin/anaconda", "/usr/bin/anaconda", "/usr/bin/blivet-gui"):
+        path = Path(binary)
+        if path.is_file() and not path.is_symlink():
+            hasher = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    hasher.update(chunk)
+            binary_hashes[binary] = hasher.hexdigest()
+    package_versions = {}
+    for package in ("anaconda", "anaconda-core", "python3-blivet", "blivet-gui"):
+        try:
+            query = subprocess.run(
+                ["/usr/bin/rpm", "-q", "--queryformat", "%{NAME} %{VERSION}-%{RELEASE}", package],
+                capture_output=True, check=False, text=True, timeout=8,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if query.returncode == 0 and 0 < len(query.stdout) <= 256:
+            package_versions[package] = query.stdout.strip()
+    return {
+        "pid": pid,
+        "commandLine": cmdline[:4096],
+        "executablePath": str(exe),
+        "executableSha256": digest.hexdigest(),
+        "installerBinaryHashes": binary_hashes,
+        "reportedPackageVersions": package_versions,
+        "packageAndBinaryAuthenticityVerified": False,
+    }
 
 
 def viewer_from_xml(xml: str) -> tuple[str, dict[str, str]]:
@@ -119,8 +141,7 @@ def viewer_from_xml(xml: str) -> tuple[str, dict[str, str]]:
             method_name = method.get("name", "")
             arguments = method.findall("arg")
             signature = "".join(
-                arg.get("type", "") for arg in arguments
-                if arg.get("direction", "in") == "in"
+                arg.get("type", "") for arg in arguments if arg.get("direction", "in") == "in"
             )
             methods[method_name] = signature
         if methods.get("GetActions") == "":
@@ -153,8 +174,10 @@ def capture(reader=run, verifier=process_proof) -> dict:
     """Read an existing Anaconda service using its unique owner, never activate it."""
     unique_owner, pid = owner_and_pid(reader)
     identity = verifier(pid)
-    if not isinstance(identity, dict) or identity.get("pid") != pid or not SHA256.fullmatch(
-        str(identity.get("executableSha256", ""))
+    if (
+        not isinstance(identity, dict)
+        or identity.get("pid") != pid
+        or not SHA256.fullmatch(str(identity.get("executableSha256", "")))
     ):
         raise CaptureRefusal("Executable identity evidence missing")
     tree = reader(BUS, "--system", "tree", unique_owner)
@@ -190,27 +213,35 @@ def capture(reader=run, verifier=process_proof) -> dict:
         if methods[method] != "s":
             raise CaptureRefusal(f"Unexpected device detail signature: {method}")
         responses[method] = {
-            dev: reader(BUS, "--system", "call", unique_owner, path,
-                        interface, method, "s", dev)
+            dev: reader(BUS, "--system", "call", unique_owner, path, interface, method, "s", dev)
             for dev in device_ids
         }
     if owner_and_pid(reader) != (unique_owner, pid):
         raise CaptureRefusal("Anaconda D-Bus service replaced during observation")
     # Raw busctl replies are NOT converted to a Blivet write-set or authenticated.
     return {
-        "schemaVersion": 1, "origin": "anaconda-dbus-readonly-untrusted",
-        "service": SERVICE, "uniqueOwner": unique_owner, "process": identity,
-        "viewerObjectPath": path, "viewerInterface": interface,
-        "methodSignatures": methods, "rawResponses": responses,
-        "unobservedMethods": absent, "deviceIds": device_ids,
+        "schemaVersion": 1,
+        "origin": "anaconda-dbus-readonly-untrusted",
+        "service": SERVICE,
+        "uniqueOwner": unique_owner,
+        "process": identity,
+        "viewerObjectPath": path,
+        "viewerInterface": interface,
+        "methodSignatures": methods,
+        "rawResponses": responses,
+        "unobservedMethods": absent,
+        "deviceIds": device_ids,
         "hostIsoAndQemuBindingVerified": False,
         "gptPrimaryAndBackupWritesObserved": False,
-        "efiWritesObserved": False, "nvramOperationsObserved": False,
+        "efiWritesObserved": False,
+        "nvramOperationsObserved": False,
         "atomicPayloadBoundToIso": False,
         "realActionGraphAuthenticated": False,
         "nativeInstallerWriteSetVerified": False,
-        "installationAuthorized": False, "partitionWriteAuthorized": False,
-        "gptMetadataWriteAuthorized": False, "windowsEspWriteAuthorized": False,
+        "installationAuthorized": False,
+        "partitionWriteAuthorized": False,
+        "gptMetadataWriteAuthorized": False,
+        "windowsEspWriteAuthorized": False,
         "nvramWriteAuthorized": False,
     }
 
@@ -226,13 +257,13 @@ def main() -> None:
         encoded = (json.dumps(result, sort_keys=True, indent=2) + "\n").encode("utf-8")
         if len(encoded) > 1024 * 1024:
             raise CaptureRefusal("Unbounded evidence record")
-        with os.fdopen(os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                               0o600), "wb") as handle:
+        with os.fdopen(
+            os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb"
+        ) as handle:
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
-    except (CaptureRefusal, OSError, UnicodeError, ValueError,
-            subprocess.SubprocessError) as exc:
+    except (CaptureRefusal, OSError, UnicodeError, ValueError, subprocess.SubprocessError) as exc:
         parser.exit(2, f"REFUSED: {exc}\n")
     print("Untrusted read-only Anaconda capture: installation remains refused")
 
