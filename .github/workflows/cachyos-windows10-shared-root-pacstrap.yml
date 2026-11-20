@@ -360,7 +360,7 @@ jobs:
           assert ab["controlWindowsBootOrdinal"] == ab["treatmentWindowsBootOrdinal"] == 5
           assert ab["previousWindows10ProfileHadNoTpm"] is True
           assert ab["tpmVersion"] == "2.0"
-          if ab["qemuWriteTraceStatus"] == "available":
+          if ab["qemuWriteTraceBackendAvailable"] is True:
               events = root / (profile + "-bcd-ab-qemu-write-events.txt")
               assert events.is_file() and not events.is_symlink()
               events_digest, events_name = events.with_suffix(".sha256").read_text().split()
@@ -400,6 +400,8 @@ jobs:
               treatment_bcd = diagnosis["bcdReadOnlyForensic"]
           comparison = side["bcdAbComparison"]
           assert comparison["initialBcdEqual"] is True
+          assert comparison["processAttributionProven"] is False
+          assert comparison["approvedMutation"] is False
           assert comparison["classification"] != "INVALID_INITIAL_BCD_MISMATCH"
           assert comparison["controlBcdChanged"] == (
               ab["controlBcdForensic"]["changedByteCount"] > 0
