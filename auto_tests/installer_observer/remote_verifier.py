@@ -27,7 +27,6 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
-
 _ROOT = Path(__file__).resolve().parents[2]
 _REQUEST_SCHEMA = json.loads(
     (_ROOT / "schemas/observer-readonly-request.schema.json").read_text(encoding="utf-8")
