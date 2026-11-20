@@ -814,8 +814,14 @@ def run_distinst_partition_test(
             ),
             "failure": str(exc)[:1000],
         }
-        (evidence / "synthetic-distinst-failure-checkpoint.json").write_text(
+        failure_checkpoint_path = evidence / "synthetic-distinst-failure-checkpoint.json"
+        failure_checkpoint_path.write_text(
             json.dumps(failure_checkpoint, sort_keys=True, indent=2), encoding="utf-8")
+        failure_checkpoint_bytes = failure_checkpoint_path.read_bytes()
+        (evidence / "synthetic-distinst-failure-checkpoint.json.sha256").write_text(
+            hashlib.sha256(failure_checkpoint_bytes).hexdigest()
+            + "  synthetic-distinst-failure-checkpoint.json\\n",
+            encoding="ascii")
         raise
     finally:
         if child.exists() and not child.is_symlink():
@@ -825,8 +831,14 @@ def run_distinst_partition_test(
             "baseSha256AfterCleanup": sha(base) if base.is_file() else None,
             "baseUnchangedAfterCleanup": base.is_file() and sha(base) == base_sha,
         }
-        (evidence / "synthetic-distinst-cleanup-checkpoint.json").write_text(
+        cleanup_checkpoint_path = evidence / "synthetic-distinst-cleanup-checkpoint.json"
+        cleanup_checkpoint_path.write_text(
             json.dumps(cleanup_checkpoint, sort_keys=True, indent=2), encoding="utf-8")
+        cleanup_checkpoint_bytes = cleanup_checkpoint_path.read_bytes()
+        (evidence / "synthetic-distinst-cleanup-checkpoint.json.sha256").write_text(
+            hashlib.sha256(cleanup_checkpoint_bytes).hexdigest()
+            + "  synthetic-distinst-cleanup-checkpoint.json\\n",
+            encoding="ascii")
 
 
 def run(evidence: Path) -> dict:
