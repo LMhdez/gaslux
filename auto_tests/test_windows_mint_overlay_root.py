@@ -93,7 +93,7 @@ class MintOverlayContracts(unittest.TestCase):
     def test_post_windows_read_only_guestfs_checks_mint_files_and_hashes(self):
         import tempfile
         uuid = "12345678-1234-4234-8234-123456789abc"
-        os_release = b"NAME=Linux Mint\\nID=linuxmint\\n"
+        os_release = b"NAME=Linux Mint\nID=linuxmint\n"
         hashes = ["a" * 64, "b" * 64, "c" * 64, "d" * 64]
         class AfterWindowsGuest(FakeGuest):
             def __init__(self):
@@ -105,7 +105,7 @@ class MintOverlayContracts(unittest.TestCase):
                 if path == "/etc/os-release":
                     return os_release
                 if path == "/etc/fstab":
-                    return f"UUID={uuid} / ext4 defaults 0 1\\n".encode()
+                    return f"UUID={uuid} / ext4 defaults 0 1\n".encode()
                 raise AssertionError("unexpected file")
             def checksum(self, algorithm, path):
                 assert algorithm == "sha256"
@@ -148,14 +148,14 @@ class MintOverlayContracts(unittest.TestCase):
                          "backing-filename": str(base),
                          "backing-filename-format": "qcow2"}
             with patch.dict(sys.modules, {"guestfs": SimpleNamespace(
-                    GuestFS=lambda **kwargs: fake)}), \\
-                 patch("windows_cachyos_cow_checkpoint.owned_regular"), \\
+                    GuestFS=lambda **kwargs: fake)}), \
+                 patch("windows_cachyos_cow_checkpoint.owned_regular"), \
                  patch("windows_cachyos_qcow2_gpt_readonly.qcow2_file_identity",
-                       return_value="identity"), \\
-                 patch("windows_cachyos_qcow2_gpt_readonly.require_unchanged_qcow2"), \\
-                 patch.object(mint, "sha256", return_value="e" * 64), \\
+                       return_value="identity"), \
+                 patch("windows_cachyos_qcow2_gpt_readonly.require_unchanged_qcow2"), \
+                 patch.object(mint, "sha256", return_value="e" * 64), \
                  patch.object(mint, "run", return_value=SimpleNamespace(
-                     stdout=json.dumps(qemu_info))), \\
+                     stdout=json.dumps(qemu_info))), \
                  patch.object(mint, "_guest_disk_audit", return_value=(uuid, hashes)):
                 persistence = mint.verify_mint_persistence_after_windows(
                     overlay=overlay, base=base, mint_proof=proof, fourth=fourth)
