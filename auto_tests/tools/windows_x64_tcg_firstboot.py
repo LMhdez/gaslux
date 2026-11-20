@@ -18,6 +18,7 @@ import platform
 import re
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -589,10 +590,147 @@ def scan_windows_guest_tokens(
     return found, offset, carry, discarding
 
 
+def send_first_iso_boot_key_vnc(monitor_path: Path, hold_ms: int = 300) -> None:
+    """Send exactly one local RFB Return key down/up to an isolated QEMU guest.
+
+    The synthetic GRUB EFI witness in the parent PR proved this delivery
+    route; an actual Windows firstboot witness is STILL required. Only
+    GitHub-hosted KVM and an owned ephemeral HMP socket may authorize input.
+    """
+    require(hold_ms in (300, 6000), "unapproved firmware boot-key duration")
+    require(os.environ.get("GITHUB_ACTIONS") == "true" and
+            os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
+            os.environ.get("RUNNER_OS") == "Linux",
+            "VNC firmware input restricted to hosted GitHub VM laboratory")
+    owned = monitor_path.parent
+    require(monitor_path.is_absolute() and
+            monitor_path.name == "initial-installer-hmp.sock" and
+            monitor_path.is_socket() and not monitor_path.is_symlink() and
+            owned.parent == Path("/home/runner/work/_temp") and
+            owned.name.startswith("gaslux-win-x64-") and
+            owned.is_dir() and not owned.is_symlink() and
+            owned.resolve() == owned and
+            owned.stat().st_uid == os.getuid() and
+            stat.S_IMODE(owned.stat().st_mode) == 0o700 and
+            monitor_path.stat().st_uid == os.getuid(),
+            "refusing VNC input for an unowned QEMU monitor")
+    vnc_path = owned / "initial-installer-vnc.sock"
+    require(vnc_path.is_socket() and not vnc_path.is_symlink() and
+            vnc_path.stat().st_uid == os.getuid(),
+            "refusing input to foreign or missing QEMU VNC socket")
+
+    def receive_exact(conn, count: int) -> bytes:
+        result = b""
+        while len(result) != count:
+            data = conn.recv(count - len(result))
+            if not data:
+                raise LabError("loopback RFB server disconnected early")
+            result += data
+        return result
+
+    try:
+        # Authenticated via the same 0700 owned directory as the HMP monitor.
+        # No TCP listener, fixed port, or shared host VNC instance is trusted.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            conn.settimeout(5)
+            conn.connect(str(vnc_path))
+            version = receive_exact(conn, 12)
+            require(version == b"RFB 003.008\n", "unexpected RFB protocol")
+            conn.sendall(version)
+            count = receive_exact(conn, 1)[0]
+            require(0 < count <= 8, "invalid RFB security option count")
+            options = receive_exact(conn, count)
+            require(1 in options, "RFB loopback security negotiation refused")
+            conn.sendall(b"\x01")  # RFB SecurityType None (localhost only).
+            require(receive_exact(conn, 4) == b"\x00" * 4,
+                    "RFB security negotiation failed")
+            conn.sendall(b"\x01")  # shared framebuffer session
+            server_init = receive_exact(conn, 24)
+            name_length = struct.unpack(">I", server_init[20:24])[0]
+            require(0 < name_length <= 1024, "unexpected RFB desktop identity")
+            receive_exact(conn, name_length)
+            conn.sendall(struct.pack(">BBHI", 4, 1, 0, 0xFF0D))
+            time.sleep(hold_ms / 1000)
+            conn.sendall(struct.pack(">BBHI", 4, 0, 0, 0xFF0D))
+    except (TimeoutError, OSError) as exc:
+        raise LabError("QEMU local RFB failed to deliver initial ISO Return") from exc
+
+def _receive_complete_hmp_reply(monitor: socket.socket, *, banner: bool) -> bytes:
+    """Drain fragmented QEMU HMP readline echoes up to the COMPLETE prompt.
+
+    The string '(qemu)' may occur mid-reply, including fragmented terminal
+    echo output. Only a trailing prompt after an LF can terminate a command.
+    """
+    response = bytearray()
+    while len(response) < 65536:
+        fragment = monitor.recv(min(8192, 65536 - len(response)))
+        require(bool(fragment), "QEMU HMP disconnected before complete reply")
+        response.extend(fragment)
+        if response.endswith(b"(qemu) ") and b"\n" in response:
+            if banner:
+                require(b"QEMU" in response, "unexpected HMP banner identity")
+            return bytes(response)
+    raise LabError("QEMU HMP reply exceeded bounded prompt limit")
+
+def capture_vm_screen(monitor_path: Path, destination: Path) -> str:
+    """Read-only framebuffer diagnostic; never evidence of Windows boot."""
+    require(os.environ.get("GITHUB_ACTIONS") == "true" and
+            os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and
+            os.environ.get("RUNNER_OS") == "Linux",
+            "GUI capture restricted to hosted Linux runner")
+    require(monitor_path.is_absolute() and monitor_path.is_socket() and
+            not monitor_path.is_symlink() and
+            monitor_path.parent.name.startswith("gaslux-win-x64-") and
+            monitor_path.parent.parent == Path("/home/runner/work/_temp"),
+            "refusing unowned QEMU diagnostic monitor")
+    owner = monitor_path.parent
+    require(owner.is_dir() and not owner.is_symlink() and
+            owner.resolve() == owner and
+            owner.stat().st_uid == os.getuid() and
+            stat.S_IMODE(owner.stat().st_mode) == 0o700,
+            "unsafe QEMU diagnostic owner")
+    require(destination.parent == owner and
+            destination.name in ("windows-dvd-90s.ppm", "windows-dvd-180s.ppm") and
+            not destination.exists() and not destination.is_symlink(),
+            "refusing unowned framebuffer destination")
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
+            monitor.settimeout(10)
+            monitor.connect(str(monitor_path))
+            _receive_complete_hmp_reply(monitor, banner=True)
+            # Absolute path, bounded and derived exclusively from owned workspace.
+            # QEMU HMP emits an echo in tiny chunks on hosted Ubuntu runners;
+            # NEVER close the socket until the full (qemu) prompt has returned.
+            monitor.sendall(("screendump " + str(destination) + "\n").encode("ascii"))
+            response = _receive_complete_hmp_reply(monitor, banner=False)
+            require(b"screendump" in response and
+                    all(word not in response.lower() for word in (
+                        b"unknown command", b"no graphical console",
+                        b"could not", b"failed to", b"error:")),
+                    "QEMU rejected read-only screenshot command")
+        for _ in range(40):
+            if destination.is_file() and destination.stat().st_size > 100:
+                break
+            time.sleep(.1)
+        require(destination.is_file() and not destination.is_symlink() and
+                stat.S_ISREG(destination.stat().st_mode),
+                "QEMU framebuffer missing after completed HMP response")
+        require(100 < destination.stat().st_size <= 20 * 1024**2,
+                "unexpected QEMU framebuffer size")
+        with destination.open("rb") as stream:
+            require(stream.read(3) in (b"P6\n", b"P6\r"),
+                    "unexpected QEMU framebuffer format")
+        with destination.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha256").hexdigest()
+    except (TimeoutError, OSError) as exc:
+        raise LabError("QEMU read-only screendump failed") from exc
+
 def boot_vm(args: list[str], transcript: Path, limit: int,
             profile_key: str, monitor_socket: Path | None = None,
             reject_repeated_dvd_boot: bool = False,
-            require_initial_dvd_boot: bool = False) -> tuple[bool, str]:
+            require_initial_dvd_boot: bool = False,
+            boot_key_transport: str = "hmp",
+            diagnostic_dir: Path | None = None) -> tuple[bool, str]:
     """Require a real Windows client serial witness AND a clean guest poweroff.
 
     A serial marker alone is not boot durability. The real guest-side script
@@ -602,6 +740,13 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     require(type(require_initial_dvd_boot) is bool and
             (not require_initial_dvd_boot or reject_repeated_dvd_boot),
             "one-shot DVD gate requires explicit incremental boot counting")
+    require(boot_key_transport in ("hmp", "vnc"), "unknown ISO boot input route")
+    require(boot_key_transport != "vnc" or monitor_socket is not None,
+            "VNC boot key requires owned monitor")
+    require(diagnostic_dir is None or boot_key_transport == "vnc",
+            "framebuffer capture requires isolated VNC route")
+    send_boot_key = (send_first_iso_boot_key_vnc if boot_key_transport == "vnc"
+                     else send_first_iso_boot_key)
     build_by_profile = {
         "win10_22h2_en_us_x64": "19045",
         "win11_26h2_en_us_x64": "26300",
@@ -621,6 +766,8 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
     started = time.monotonic()
     witnessed_at: float | None = None
     initial_cd_key_sent = False
+    initial_cd_key_at: float | None = None
+    captured_times: set[int] = set()
     win11_dvd_started_at: float | None = None
     serial_offset = 0
     serial_carry = b""
@@ -675,8 +822,9 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             )
                     if monitor_socket is not None and not initial_cd_key_sent:
                         if BOOT_FROM_CD_PROMPT in serial_data:
-                            send_first_iso_boot_key(monitor_socket)
+                            send_boot_key(monitor_socket)
                             initial_cd_key_sent = True
+                            initial_cd_key_at = time.monotonic()
                             print("GASLUX_VM_INITIAL_OFFICIAL_ISO_PROMPT_KEY_SENT=1",
                                   flush=True)
                         elif (profile_key == "win11_26h2_en_us_x64" and
@@ -687,8 +835,9 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                             # DVD startup, but not a visible serial prompt.
                             # Hold ONE Enter through its VGA-only prompt.
                             if time.monotonic() - win11_dvd_started_at >= 1:
-                                send_first_iso_boot_key(monitor_socket, hold_ms=6000)
+                                send_boot_key(monitor_socket, hold_ms=6000)
                                 initial_cd_key_sent = True
+                                initial_cd_key_at = time.monotonic()
                                 print("GASLUX_VM_INITIAL_OFFICIAL_WIN11_DVD_KEY_SENT=1",
                                       flush=True)
                     # A guest audit failure always overrides any
@@ -699,6 +848,20 @@ def boot_vm(args: list[str], transcript: Path, limit: int,
                     if required.issubset(seen_proofs) and build_line in seen_proofs:
                         if witnessed_at is None:
                             witnessed_at = time.monotonic()
+                if (diagnostic_dir is not None and monitor_socket is not None
+                        and initial_cd_key_at is not None and proc.poll() is None):
+                    for seconds in (90, 180):
+                        if (seconds not in captured_times and
+                                time.monotonic() - initial_cd_key_at >= seconds):
+                            captured_times.add(seconds)
+                            screenshot = diagnostic_dir / f"windows-dvd-{seconds}s.ppm"
+                            try:
+                                digest = capture_vm_screen(monitor_socket, screenshot)
+                                print(f"GASLUX_VM_FRAMEBUFFER_{seconds}S_SHA256={digest}",
+                                      flush=True)
+                            except LabError as exc:
+                                print(f"GASLUX_VM_FRAMEBUFFER_{seconds}S_UNAVAILABLE={exc}",
+                                      flush=True)
                 rc = proc.poll()
                 if rc is not None:
                     # The guest can append and flush its final COM1 bytes
@@ -1139,10 +1302,22 @@ def main(argv: list[str] | None = None) -> int:
                          "with official noprompt UEFI image; never release media")
     ap.add_argument("--fixture-only", action="store_true",
                     help="generate/validate ONLY XML, no download or VM")
+    ap.add_argument("--vnc-dvd-enter", action="store_true",
+                    help="hosted KVM only: locally authenticated RFB DVD prompt Return")
+    ap.add_argument("--diagnostic-screens", action="store_true",
+                    help="read-only HMP framebuffer evidence; never Windows boot proof")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
     args = ap.parse_args(argv)
+    if args.vnc_dvd_enter and not (
+            args.accel == "kvm" and not args.derived_no_prompt
+            and not args.one_shot_install_only and not args.two_stage_install_only
+            and not args.boot_probe_only and not args.fixture_only):
+        raise SystemExit("local VNC DVD input requires exclusive disposable hosted KVM "
+                         "on unmodified, verified original media")
+    if args.diagnostic_screens and not args.vnc_dvd_enter:
+        raise SystemExit("read-only screenshots require authenticated VNC laboratory")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     # Profile-specific positive authorization: Windows 11 must never inherit
@@ -1273,7 +1448,7 @@ def main(argv: list[str] | None = None) -> int:
                 "-global", "driver=cfi.pflash01,property=secure,value=on",
                 "-cpu", ("host" if args.accel == "kvm" else "max"),
                 "-smp", "2", "-m", "4096",
-                "-display", "none", "-vga", "std",
+                "-vga", "std",
                 "-monitor", f"unix:{monitor_path},server,nowait", "-net", "none",
                 "-drive", f"if=pflash,format=raw,readonly=on,file={code}",
                 "-drive", f"if=pflash,format=raw,file={nvram}",
@@ -1291,6 +1466,13 @@ def main(argv: list[str] | None = None) -> int:
                 "-boot", ("order=c,once=d" if args.one_shot_install_only
                           else "order=dc"),
             ]
+            if args.vnc_dvd_enter:
+                vnc_path = workspace / "initial-installer-vnc.sock"
+                require(not vnc_path.exists() and not vnc_path.is_symlink(),
+                        "refusing existing QEMU RFB socket")
+                base.extend(["-vnc", f"unix:{vnc_path}"])
+            else:
+                base.extend(["-display", "none"])
             # The lab DVD probe MUST NOT expose a writable target disk,
             # unattend answer file, or any other guest storage. Its ONLY
             # attached medium is a read-only Microsoft-sourced DVD.
@@ -1354,6 +1536,8 @@ def main(argv: list[str] | None = None) -> int:
                                         else monitor_path),
                         reject_repeated_dvd_boot=args.one_shot_install_only,
                         require_initial_dvd_boot=args.one_shot_install_only,
+                        boot_key_transport=("vnc" if args.vnc_dvd_enter else "hmp"),
+                        diagnostic_dir=(workspace if args.diagnostic_screens else None),
                     )
                 if not args.boot_probe_only:
                     report["windowsClientBootVerified"] = ok
