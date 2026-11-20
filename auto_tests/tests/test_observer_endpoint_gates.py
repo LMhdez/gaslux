@@ -79,7 +79,9 @@ def test_process_replacement_refused_by_tcp_gate(monkeypatch):
 
 def test_wrong_process_refused_by_peer_gate(monkeypatch, endpoint):
     expected = ProcessSeal(1234, os.geteuid(), 7, "x", 1, 2)
-    monkeypatch.setattr(endpoint_gates, "process_seal", lambda _pid: replace(expected, start_ticks=8))
+    monkeypatch.setattr(
+        endpoint_gates, "process_seal", lambda _pid: replace(expected, start_ticks=8)
+    )
     import time
 
     with pytest.raises(Refusal, match="identity"):
