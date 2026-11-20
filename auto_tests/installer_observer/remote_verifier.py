@@ -458,8 +458,8 @@ class VerifiedRemoteResponse:
     controller_signature_verified: bool
     controller_workload_trusted: bool
     collector_trusted: bool
-    guest_identity_assurance: str
-    guest_attestation_status: str
+    controller_declared_guest_identity_assurance: str
+    controller_declared_guest_attestation_status: str
     guest_attestation_assertion: str
     guest_attestation_verified_locally: bool
     distribution_id: str
@@ -663,8 +663,8 @@ class RemoteResponseVerifier:
             controller_signature_verified=True,
             controller_workload_trusted=True,
             collector_trusted=True,
-            guest_identity_assurance=guest["identity_assurance"],
-            guest_attestation_status=attestation["status"],
+            controller_declared_guest_identity_assurance=guest["identity_assurance"],
+            controller_declared_guest_attestation_status=attestation["status"],
             guest_attestation_assertion=attestation_assertion,
             guest_attestation_verified_locally=False,
             distribution_id=distribution["id"],
