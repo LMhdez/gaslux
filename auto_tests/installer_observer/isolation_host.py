@@ -79,6 +79,7 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
     ]
     evidence = []
     seen = set()
+    worker_errors = []
     proc = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, bufsize=1,
@@ -99,6 +100,8 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 # Preserve sanitized status without exposing runner secrets.
                 if line.startswith("QEMU stage:") or line.startswith("QEMU laboratory refused:"):
                     print(line.strip(), flush=True)
+                elif line.startswith(("ModuleNotFoundError:", "PermissionError:", "ImportError:", "sudo:", "OSError:")):
+                    worker_errors.append(line.strip()[:200])
                 continue
             try:
                 packet = json.loads(line.removeprefix("EXTERNAL_PROBE "))
@@ -139,7 +142,10 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
         except subprocess.TimeoutExpired as exc:
             raise Refusal("Dedicated worker did not exit") from exc
         if proc.returncode != 0 or len(evidence) != 2:
-            raise Refusal("Isolated laboratory failed or did not expose two VMs")
+            raise Refusal(
+                "Isolated laboratory failed or did not expose two VMs; "
+                + ("; ".join(worker_errors[-3:]) if worker_errors else f"exit={proc.returncode}")
+            )
         # Evidence is copied by sudo only AFTER the dedicated worker exited.
         # Never return the private socket directory as an input-capable proxy.
         source = private_root / "observer-qemu-lab"
