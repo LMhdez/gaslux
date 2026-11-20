@@ -538,3 +538,70 @@ The existing synthetic test proves that a preconnected Unix descriptor remains u
 - **Input remains disabled:** no RFB events, no mutating QMP commands, no installer navigation and no production WPF integration.
 
 This is a concrete infrastructure blocker, not a claim that a green GitHub Actions run has achieved criterion A. A dedicated trusted runner/control VM and human-approved provisioning/security policy are prerequisites before any real boundary or graphical action can be accepted.
+
+
+## Remote Observer broker contract — protocol v1 (specification only)
+
+**Purpose:** define a future read-only interface usable by distribution observers, including a future Bazzite/Anaconda consumer, without giving the client access to QMP, RFB, shells, installer controls or host disks. This section and the JSON Schemas are interface specifications only. No broker, network endpoint, key, credential, collector or Bazzite integration is deployed by this PR.
+
+### Trust topology and deployment boundary
+
+The remote broker/controller must execute in an independently administered control domain, not as another process, container or VM whose lifecycle, host root, cloud account or signing key is controlled by the GitHub Actions runner being treated as adversarial. The runner may submit authenticated, narrowly authorized observation requests; it must not be able to administer the broker, replace its executable/policy, read its signing key, access its hypervisor sockets or impersonate its workload identity.
+
+A viable deployment requires a separately provisioned control VM/service, with its own administrator boundary, immutable reviewed controller and collector artifacts, private QEMU/QMP/RFB endpoints, restricted egress, independent audit storage and a controller signing key held by a KMS/HSM or equivalent trust domain unavailable to the runner. The broker must reject requests unless the deployed artifact, policy and collector hashes match independently pinned release metadata. A hash reported by the runner is not trusted evidence.
+
+For GitHub Actions clients, prefer short-lived GitHub OIDC workload identity exchange with exact issuer, audience, repository ID, workflow identity, ref and run/commit claims pinned in broker policy. For a future WPF client, use separately enrolled device identity and short-lived credentials. mTLS protects the transport and authenticates the presented client/controller certificates; it does not authenticate the guest or prove response correctness. No long-lived private key or bearer token may be stored in this repository or exposed to job source.
+
+### Three independent verification questions
+
+1. **Channel authenticity:** did the client reach the intended broker and did the broker authenticate the authorized client? Use TLS 1.3 with mutual authentication where applicable, strict certificate/key pinning or workload identity, short-lived credentials, audience/repository/workflow authorization and expiry. This proves the channel principals only.
+2. **Guest authenticity:** does the observed VM correspond to the intended guest, and is its boot state trusted? A QEMU PID, VM UUID, guest-agent response, ISO digest or framebuffer is not by itself a cryptographic guest attestation. Report host-observed VM/process identity separately from guest-claimed identity. Set `cryptographically-attested` only after an independent verifier validates fresh vTPM/TPM quote and measured-boot evidence against configured trust anchors, including nonce binding. If no such evidence is available, report `guest-claimed` or `host-observed` with attestation `not-provided`; never silently promote it.
+3. **Response integrity:** did the independently trusted controller sign exactly this response, for this request, session, transaction and nonce? The controller signs a deterministic RFC 8785 JSON Canonicalization Scheme representation of the response with the `signature` member omitted. Ed25519 is the protocol-v1 signature algorithm. The client verifies the signature using a controller public key/key ID pinned through a trust root provisioned outside the runner, then verifies `request_sha256`, `result_sha256`, framebuffer SHA-256, nonce, request ID, operation, sequence, transaction, session and expiry. A valid signature proves that the holder of the pinned controller key signed the envelope; it does **not** independently prove the guest's truthfulness. Guest attestation remains a separate check.
+
+### Wire contract
+
+The strict request and response schemas are:
+
+- `schemas/observer-readonly-request.schema.json`
+- `schemas/observer-readonly-response.schema.json`
+
+Transport is HTTPS POST over TLS 1.3. The deployment chooses its broker origin; this repository does not define or claim an active service URL. Request bodies are at most 16 KiB. Responses are at most 8 MiB, regardless of the client-requested cap. State snapshots are at most 64 KiB after canonical serialization; framebuffer is PNG only, at most 8 MiB decoded. The server enforces byte limits while streaming, not after unbounded allocation. Request timeout is 100–10,000 ms; a session expires no later than 10 minutes after creation. Every response expires within 30 seconds of issuance. Clients reject clock/expiry violations and never extend expiry locally.
+
+Each request carries a fresh 256-bit CSPRNG nonce (unpadded base64url), UUID transaction ID, unique UUID request ID, monotonically increasing per-session sequence, fixed operation, timeout and maximum response size. `session.identify` starts a transaction with null session ID and sequence zero; the broker returns a new session UUID. All later operations require that session UUID and the same transaction ID. The broker stores nonce/request-ID consumption durably for the session lifetime, rejects duplicates, stale sequence, cross-session use and transaction changes, and binds every signed response to the exact request digest and nonce. Session state is not recovered by replaying a previous transaction.
+
+The only operations are:
+
+| Operation | Request | Successful result |
+|---|---|---|
+| `session.identify` | Create a new authorized observation session | Session UUID and expiry |
+| `state.read` | Read bounded, allowlisted state fields | Structured state snapshot |
+| `frame.read` | Capture one framebuffer | PNG bytes, media type and SHA-256 |
+| `session.close` | Close this exact session | Closed status; old session becomes unusable |
+
+No generic command, shell, arbitrary QMP method, raw RFB tunnel, keyboard, pointer, installer action, disk API, boot change or arbitrary file read exists in the protocol. Unknown fields and operations fail closed. Refusals are signed responses with a fixed refusal code; authentication failures before a trusted response may instead terminate the transport, which the client treats as failure rather than as an empty observation.
+
+### Guest identity and result semantics
+
+The signed envelope contains the controller ID/key ID, controller artifact and policy hashes, collector ID/hash, VM UUID, QEMU PID/start ticks/executable hash, guest identity assurance, attestation status, transaction/request/nonce binding, issue/expiry times, result digest and detached signature. The collector hash is measured by the controller against its independently pinned artifact, not accepted from the client.
+
+- `host-observed`: the controller's hypervisor/control plane observed a VM/process identity. This is not guest OS identity or measured-boot proof.
+- `guest-claimed`: identity came only from the guest or guest agent. Attestation status must be `not-provided`.
+- `cryptographically-attested`: allowed only when a configured verifier validated fresh attestation evidence and its trust anchor. The schema requires status `verified`, evidence digest, verifier ID and trust-anchor ID.
+
+A response `status=ok` means the requested read-only operation completed; it does not mean the guest was authenticated. Consumers must inspect guest attestation separately. An unverified guest may be displayed as unverified for diagnosis, but its data must not authorize an installation transition, destructive operation or click. Any `refused` response must contain only a refusal result and must never smuggle state/frame data.
+
+### Revocation, replay and audit
+
+The broker must atomically consume nonce/request ID/sequence before dispatch, enforce one in-flight request per session, bind session to authenticated client and transaction, and expire sessions server-side. Closing a session revokes its authorization and closes accepted broker channels. The broker must terminate the QEMU server process or otherwise prove that all QMP/RFB server-side sessions and pre-opened descriptors are destroyed, remove old endpoints, rotate session identity and demonstrate that old sessions/descriptors cannot communicate. Changing socket permissions alone is not revocation.
+
+Audit records are append-only in a domain independent from the runner and include authenticated principal, workload identity claims, controller/collector hashes, policy version, VM and media identities, nonce/request/transaction/session IDs, operation, response digest, refusal reason, signature key ID, attestation verifier/trust-anchor result, timestamps and revocation outcome. Secrets, private keys and raw QMP/RFB traffic are never logged. Retention and access policy must be reviewed before deployment.
+
+### Future Bazzite consumer boundary
+
+A future Bazzite backend may consume this protocol only through a dedicated read-only adapter. It may request session identity, bounded state and framebuffer, then verify the signed envelope and explicitly display the guest-attestation assurance. It must not receive broker credentials or direct QMP/RFB endpoints. No Anaconda collector, Bazzite backend change, WPF integration, installer automation or input path is included here. The existing `ReadOnlyVncTransport.click_if_current` continues to refuse unconditionally because framebuffer comparison and RFB input are not atomic.
+
+### Deployment gates and current result
+
+Before the protocol can be called an independent trust boundary, human-reviewed infrastructure evidence must show: (a) broker administration and signing keys are outside the runner's privileged domain; (b) runner/root cannot replace controller, collector, policy or guest; (c) client authentication and authorization are independently enforced; (d) guest attestation is validated against a separately provisioned trust root or explicitly marked unavailable; (e) signed response verification and nonce/replay rejection work against hostile clients; (f) real QMP/RFB sessions and old descriptors are revoked; and (g) audit evidence is independently retained.
+
+No broker endpoint, independent control VM, trust root, public key, certificate, KMS/HSM key, guest attestation verifier or remote execution infrastructure was available in this intervention. Therefore the protocol is **specified but not implemented**, and the trust classification remains **`NOT_INDEPENDENT` / criterion C**. The same-host runner experiment and its limitations remain unchanged.
