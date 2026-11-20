@@ -198,6 +198,8 @@ class SyntheticDistinstWriteContractTests(unittest.TestCase):
         device_args = re.findall(r'"-device",\s*f?"([^"]+)"', source)
         self.assertGreaterEqual(len(device_args), 5)
         self.assertTrue(all("readonly=" not in arg for arg in device_args))
+        self.assertIn('"-nodefaults"', source)
+        self.assertNotIn('"-no-shutdown"', source)
         self.assertIn('if=none,id=distcontrol,format=raw,readonly=on,file={control}',
                       source)
         self.assertIn('if=none,id=popiso,format=raw,readonly=on,file={iso}',
