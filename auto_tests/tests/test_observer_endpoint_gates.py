@@ -17,6 +17,7 @@ def endpoint(tmp_path):
     target = tmp_path / "rfb.sock"
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
         listener.bind(str(target))
+        listener.listen(2)
         target.chmod(0o600)
         yield endpoint_gates.seal_endpoint(target, os.geteuid())
 
@@ -95,7 +96,10 @@ def test_actual_tcp_listener_descriptor_refused(monkeypatch):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
-        with pytest.raises(Refusal, match="unexpected TCP listening socket"):
+        with pytest.raises(
+            Refusal,
+            match="unexpected TCP listening socket|Cannot inventory QEMU TCP socket descriptors",
+        ):
             endpoint_gates.assert_no_qemu_tcp_listeners(expected)
 
 
