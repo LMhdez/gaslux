@@ -234,6 +234,37 @@ def extract_smoke(child: Path, destination: Path) -> bytes:
     return data
 
 
+def verify_synthetic_gpt_unchanged(base: Path, child: Path,
+                                   scratch: Path) -> dict:
+    """Check actual PRIMARY+BACKUP GPT bytes via independent QCOW2 readback.
+
+    Do not parse GPT a second time. sgdisk already independently validates
+    baseline GPT CRC/geometry, and unchanged byte regions prove intact
+    primary+backup tables within this synthetic smoke only.
+    """
+    regions = (
+        ("protective-mbr-primary-gpt", 0, 34),
+        ("backup-gpt", DISK_SIZE // 512 - 33, 33),
+    )
+    out = {}
+    for name, start, count in regions:
+        length = count * 512
+        with base.open("rb") as source:
+            source.seek(start * 512)
+            original = source.read(length)
+        require(len(original) == length, "baseline synthetic GPT truncated")
+        path = scratch / (name + ".raw")
+        call("qemu-img", "dd", "-f", "qcow2", "-O", "raw",
+             "if=" + str(child), "of=" + str(path),
+             "bs=512", "skip=" + str(start), "count=" + str(count))
+        actual = path.read_bytes()
+        path.unlink()
+        require(actual == original,
+                "unexpected synthetic GPT primary/backup modification: " + name)
+        out[name] = hashlib.sha256(original).hexdigest()
+    return out
+
+
 def run(evidence: Path) -> dict:
     hosted()
     require(evidence.is_dir() and not evidence.is_symlink()
@@ -317,6 +348,7 @@ def run(evidence: Path) -> dict:
         require(ok and MARKER.search(normalized(stream)) is not None,
                 "synthetic actual guest write witness absent")
         actual_data = extract_smoke(child, work / "smoke-byte-diff.bin")
+        gpt_proof = verify_synthetic_gpt_unchanged(base, child, work)
         after = sha(base)
         nvram_after = sha(nvram)
         require(after == before, "immutable synthetic backing base modified")
@@ -345,6 +377,8 @@ def run(evidence: Path) -> dict:
             "qcow2ReadbackVerified": len(actual_data) == SMOKE_LENGTH,
             "noWindowsBlockDeviceAttached": True,
             "syntheticDiskGuid": SYNTH_GUID,
+            "syntheticGptPrimaryAndBackupUnchanged": True,
+            "syntheticGptBaselineRegionSha256": gpt_proof,
             "syntheticDiskSerial": SERIAL,
             "syntheticParentSha256": before,
             "ovmfVarsSha256Before": nvram_before,
