@@ -269,3 +269,30 @@ Before changing Result B to A:
 
 No installation, guest boot, partition write, EFI/NVRAM write, Safety or
 Observer change was made during this investigation.
+
+
+## Read-only inspection of the actual ISO storage layout — Actions #44757003672
+
+The dedicated readback downloaded the same official ISO and passed the ISO signature, ISO SLSA attestation, payload Cosign, payload SLSA attestation, upstream build-run checks, and the registry's immutable manifest digest check before the embedded storage inspection failed closed.
+
+The read-only SquashFS listing contained 913,308 entries. It identified exactly one Bazzite install image record:
+
+- `images.json`: `var/lib/containers/storage/overlay-images/images.json`
+- image name: `ghcr.io/ublue-os/bazzite:stable`
+- image ID: `938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb`, equal to the pinned OCI config digest
+- manifest path: `var/lib/containers/storage/overlay-images/938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb/manifest`, present in the ISO
+- no `config` or `config.json` was present at the conventional sibling path
+- the image record exposes `digest`, `layer`, `metadata`, `names`, and hyphenated `big-data-*` keys; the previous collector incorrectly assumed camelCase `bigDataNames` and required a separate config file
+
+The failing run and its bounded text-only evidence are [Actions #44757003672](https://github.com/LMhdez/gaslux/actions/runs/44757003672), artifact [#14640200532](https://github.com/LMhdez/gaslux/actions/runs/44757003672/artifacts/14640200532). It failed at the embedded manifest/config extraction step; it did not report an ISO signature or payload signature failure.
+
+The collector has now been corrected to:
+1. Read the actual embedded `manifest` file from the ISO's containers/storage tree.
+2. Hash the exact manifest bytes and compare them with the pinned OCI manifest digest.
+3. Verify that the manifest's `config.digest` and containers/storage image ID both equal the pinned config digest.
+4. Fetch the config blob by the immutable OCI digest from GHCR, hash the returned bytes, parse its version label, and require that digest to match the config digest in the embedded manifest.
+5. If a config blob is also present inside the ISO, verify it independently and require it to match the authenticated GHCR config blob.
+
+The raw config JSON is kept only in the runner's temporary work directory and is not uploaded as an artifact. Evidence artifacts contain digest/version verification summaries, not the ISO, layers, or config blob. The workflow remains read-only and does not boot the ISO, execute Anaconda, or write to disks, EFI, or NVRAM.
+
+**This revised manifest/config linkage has not yet passed a complete readback run. Result B remains in force; `installationAuthorized=false`.**
