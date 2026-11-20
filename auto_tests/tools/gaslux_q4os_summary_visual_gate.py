@@ -18,8 +18,14 @@ from PIL import Image
 
 SCREEN = (1280, 800)
 TITLE = ((128, 118, 1152, 180), "b565add1ff9d5061918278f5cd8871a26b136dfdb04df78e6bcf74c8341b41e5")
-USERS_SIDEBAR = ((128, 436, 318, 478), "afabb9afa668803a507dac9a4458cc51b54dbda969162f5f248034142c773693")
-DISABLED_NEXT = ((957, 622, 1051, 663), "0416af48c325376e056f6ef8707b2ebdaedca7f935f2ddf8fc37bc93684d9512")
+USERS_SIDEBAR = (
+    (128, 436, 318, 478),
+    "afabb9afa668803a507dac9a4458cc51b54dbda969162f5f248034142c773693",
+)
+DISABLED_NEXT = (
+    (957, 622, 1051, 663),
+    "0416af48c325376e056f6ef8707b2ebdaedca7f935f2ddf8fc37bc93684d9512",
+)
 FIELDS = (
     (324, 182, 524, 215),  # Full name, original Q4OS Users screenshot
     (324, 250, 524, 282),  # Login
