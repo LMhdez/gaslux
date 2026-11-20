@@ -18,7 +18,7 @@ from windows_x64_installed_gpt_ro_audit import require
 SECTOR = 512
 SERIAL = "GASLUX_POP_SYNTH_ONLY"
 DISK_SIZE = 8 * 1024**3
-SMOKE_OFFSET = 4 * 1024 * 1024
+SMOKE_OFFSET = 96 * 1024 * 1024
 SMOKE_LENGTH = 512
 SYNTH_GUID = "a6784e03-11a6-4544-b61c-87b66db8e117"
 # Source QEMU's hw/block/trace-events:
