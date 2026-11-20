@@ -43,6 +43,8 @@ on:
       - auto_tests/test_windows_mint_cow_boot_evidence.py
       - auto_tests/test_windows_x64_private_workspace.py
       - auto_tests/tools/windows_mint_ab_checkpoint.py
+      - auto_tests/tools/windows_mint_ab_capacity.py
+      - auto_tests/test_windows_mint_ab_capacity.py
       - auto_tests/test_windows_mint_ab_checkpoint.py
       - auto_tests/tools/windows_mint_ab_forensic.py
       - auto_tests/test_windows_mint_ab_forensic.py
@@ -76,7 +78,7 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_reboot.py auto_tests/test_windows_cachyos_overlay_reboot.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_ext4_only.py auto_tests/test_windows_cachyos_overlay_ext4_only.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_postext4_windows.py auto_tests/test_windows_cachyos_postext4_windows.py
-          python3 -m py_compile auto_tests/tools/windows_mint_ab_checkpoint.py auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_checkpoint.py auto_tests/test_windows_mint_ab_forensic.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_checkpoint.py auto_tests/tools/windows_mint_ab_capacity.py auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_checkpoint.py auto_tests/test_windows_mint_ab_capacity.py auto_tests/test_windows_mint_ab_forensic.py
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
@@ -98,6 +100,7 @@ jobs:
               test_windows_mint_cow_boot_evidence.py \
               test_windows_x64_private_workspace.py \
               test_windows_mint_ab_checkpoint.py \
+              test_windows_mint_ab_capacity.py \
               test_windows_mint_ab_forensic.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
@@ -194,6 +197,15 @@ jobs:
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
           mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Fail closed on independent A/B capacity BEFORE ISO, Windows Setup or Mint staging
+        if: github.ref == 'refs/heads/test/mint-cow-ab-checkpoint-20261120'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_mint_ab_capacity.py --early \
+            --root "$RUNNER_TEMP" \
+            --evidence "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          echo 'Capacity bound PASS; no guest boot or host disk modification from preflight.' >> "$GITHUB_STEP_SUMMARY"
       - name: Select complete private libguestfs appliance kernel (never replace host kernel)
         shell: bash
         run: |
