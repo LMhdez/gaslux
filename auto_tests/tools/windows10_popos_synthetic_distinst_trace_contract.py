@@ -197,7 +197,7 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
     partitions = plan.get("partitions")
     require(type(partitions) is list and len(partitions) == 2,
             "synthetic plan must contain exactly ESP and root")
-    qemu_events, outside, unsupported = [], [], []
+    qemu_events, qemu_intervals, outside, unsupported = [], [], [], []
     by_partition = {
         int(p["number"]): {"eventCount": 0, "bytes": 0}
         for p in partitions
@@ -239,6 +239,7 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
             "region": region, "withinAllowedPartition": allowed,
         }
         qemu_events.append(event)
+        qemu_intervals.append((sector, end))
         if not allowed:
             outside.append(event)
     require(qemu_events, "QEMU trace contains no independently observed virtio writes")
@@ -268,14 +269,21 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
     bio_write = [x for x in bio if type(x) is dict
                  and type(x.get("count")) is int and x["count"] > 0
                  and "W" in str(x.get("rwbs", ""))]
+    rq_write = [x for x in rq_issue if type(x) is dict
+                and type(x.get("count")) is int and x["count"] > 0
+                and "W" in str(x.get("rwbs", ""))]
     bio_flush = [x for x in bio if type(x) is dict
                  and type(x.get("count")) is int and x["count"] == 0
                  and "F" in str(x.get("rwbs", ""))]
     bio_bytes = sum(x["count"] * SECTOR for x in bio_write)
+    rq_bytes = sum(x["count"] * SECTOR for x in rq_write)
     bio_by_region = {}
     bio_devices = set()
+    rq_devices = set()
     bio_processes = set()
+    rq_processes = set()
     bio_outside = []
+    rq_outside = []
     for event in bio_write:
         bio_devices.add(f"{event.get('major')}:{event.get('minor')}")
         bio_processes.add((str(event.get("comm", "")), int(event.get("pid", -1))))
@@ -298,22 +306,68 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
             bio_outside.append({"sector": start, "sectorCount": end-start,
                                 "region": region, "comm": event.get("comm"),
                                 "pid": event.get("pid")})
+    for event in rq_write:
+        rq_devices.add(f"{event.get('major')}:{event.get('minor')}")
+        rq_processes.add((str(event.get("comm", "")), int(event.get("pid", -1))))
+        start, end = int(event["sector"]), int(event["sector"]) + int(event["count"])
+        part = next((x for x in partitions
+                     if x["startLba"] <= start
+                     and end <= x["startLba"] + x["sectorCount"]), None)
+        if part is None:
+            if start < 34:
+                region = "primary-mbr-gpt"
+            elif end > DISK_SECTORS - 33:
+                region = "backup-gpt"
+            else:
+                region = "unallocated-or-outside-partitions"
+            rq_outside.append({"sector": start, "sectorCount": end-start,
+                               "region": region, "comm": event.get("comm"),
+                               "pid": event.get("pid")})
     tracefs_available = (
         type(tracefs) is dict and tracefs.get("available") is True
         and len(bio) > 0 and bool(bio_write)
+    )
+    tracefs_rq_available = (
+        type(tracefs) is dict and type(rq_issue) is list and bool(rq_write)
     )
     tracefs_target_matched = (
         type(target_mm) is str and bool(bio_devices)
         and bio_devices == {target_mm}
         and not tracefs.get("otherWritableBlockDeviceEvents", [])
     ) if type(tracefs) is dict else False
-    tracefs_byte_match = bool(qemu_events) and bio_bytes == sum(
-        x["lengthBytes"] for x in qemu_events)
-    tracefs_crosscheck = (
-        tracefs_available and tracefs_target_matched and tracefs_byte_match
+    tracefs_rq_target_matched = (
+        type(target_mm) is str and bool(rq_devices)
+        and rq_devices == {target_mm}
+        and not tracefs.get("otherWritableBlockDeviceEvents", [])
+    ) if type(tracefs) is dict else False
+    qemu_write_bytes = sum(x["lengthBytes"] for x in qemu_events)
+    tracefs_byte_match = bool(qemu_events) and bio_bytes == qemu_write_bytes
+    tracefs_rq_byte_match = bool(qemu_events) and rq_bytes == qemu_write_bytes
+    tracefs_bio_coverage_match = (
+        bool(qemu_events) and bool(bio_write)
+        and _same_coverage(qemu_intervals, [
+            (int(x["sector"]), int(x["sector"]) + int(x["count"]))
+            for x in bio_write
+        ])
     )
+    tracefs_rq_coverage_match = (
+        bool(qemu_events) and bool(rq_write)
+        and _same_coverage(qemu_intervals, [
+            (int(x["sector"]), int(x["sector"]) + int(x["count"]))
+            for x in rq_write
+        ])
+    )
+    tracefs_bio_crosscheck = (
+        tracefs_available and tracefs_target_matched
+        and tracefs_byte_match and tracefs_bio_coverage_match
+    )
+    tracefs_rq_crosscheck = (
+        tracefs_rq_available and tracefs_rq_target_matched
+        and tracefs_rq_byte_match and tracefs_rq_coverage_match
+    )
+    tracefs_crosscheck = tracefs_bio_crosscheck and tracefs_rq_crosscheck
     gpt_changed = type(gpt_diff) is dict and gpt_diff.get("unchanged") is False
-    out_of_set = bool(outside or unsupported or gpt_changed or bio_outside)
+    out_of_set = bool(outside or unsupported or gpt_changed or bio_outside or rq_outside)
     observation_complete = bool(qemu_events) and tracefs_crosscheck
     write_set_match = not out_of_set and observation_complete
     if out_of_set:
@@ -345,17 +399,27 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
         "guestTracefsWritesByRegion": bio_by_region,
         "guestTracefsOutOfSetEventCount": len(bio_outside),
         "guestTracefsOutOfSetEvents": bio_outside[:128],
+        "guestTracefsRqIssueOutOfSetEventCount": len(rq_outside),
+        "guestTracefsRqIssueOutOfSetEvents": rq_outside[:128],
         "guestTracefsTargetMajorMinor": target_mm,
-        "guestTracefsObservedMajorMinor": sorted(bio_devices),
+        "guestTracefsObservedMajorMinor": sorted(bio_devices | rq_devices),
         "guestTracefsTargetIdentityMatched": tracefs_target_matched,
         "guestTracefsQemuByteCountMatch": tracefs_byte_match,
-        "guestTracefsCorroboratesQemu": tracefs_crosscheck,
+        "guestTracefsBioQueueCoverageMatch": tracefs_bio_coverage_match,
+        "guestTracefsBioQueueCorroboratesQemu": tracefs_bio_crosscheck,
         "guestTracefsBlockRqIssueEventCount": len(rq_issue),
+        "guestTracefsBlockRqIssueWriteEventCount": len(rq_write),
+        "guestTracefsBlockRqIssueWriteBytes": rq_bytes,
+        "guestTracefsBlockRqIssueTargetMatched": tracefs_rq_target_matched,
+        "guestTracefsBlockRqIssueQemuByteCountMatch": tracefs_rq_byte_match,
+        "guestTracefsBlockRqIssueCoverageMatch": tracefs_rq_coverage_match,
+        "guestTracefsRqIssueCorroboratesQemu": tracefs_rq_crosscheck,
+        "guestTracefsCorroboratesQemu": tracefs_crosscheck,
         "guestTracefsRawTraceBytes": tracefs.get("rawTraceBytes") if type(tracefs) is dict else None,
         "guestTracefsRawTraceSha256": tracefs.get("rawTraceSha256") if type(tracefs) is dict else None,
         "guestTracefsWriteProcesses": [
             {"comm": comm, "pid": pid}
-            for comm, pid in sorted(bio_processes)
+            for comm, pid in sorted(bio_processes | rq_processes)
         ],
         "guestTracefsExecs": [
             {"filename": x.get("filename"), "pid": x.get("pid")}
@@ -382,19 +446,35 @@ def diagnose_qemu_write_set(plan: dict, qemu_trace: str,
                 filesystems.get("2") == "ext4"
                 and bool(names & {"mke2fs", "mkfs.ext4"})
             ),
-            "mountSyscallsIndependentlyObserved": bool(
-                guest.get("mountObservations")
+            "mountSyscallsIndependentlyObserved": (
+                type(guest.get("mountObservations")) is dict
+                and guest["mountObservations"].get("distinstProcessEventCount", 0) > 0
             ) if type(guest) is dict else False,
-            "upstreamMountAllTargetsReached": (
-                process.get("exitCode") == 0
-                and process.get("argv") and "--test" in argv
-                and source_hint == "e395b7c"
+            "mountSyscallTargetsResolved": (
+                type(guest.get("mountObservations")) is dict
+                and guest["mountObservations"].get("targetArgumentsResolved") is True
+            ) if type(guest) is dict else False,
+            "upstreamMountAllTargetsReached": False,
+            "upstreamCandidateSequenceCallsMountAllTargetsBeforeTestReturn": (
+                source_hint == "e395b7c"
             ),
+            "upstreamCommitMatchProven": False,
             "installRootObserved": False,
             "systemdBootObserved": False,
         },
         "guestGptDiff": gpt_diff,
         "gptMetadataChanged": gpt_changed,
+        "guestMountSyscallEventCount": (
+            guest.get("mountObservations", {}).get("distinstProcessEventCount", 0)
+            if type(guest) is dict and type(guest.get("mountObservations")) is dict
+            else 0
+        ),
+        "guestMountSyscallSuccessfulExitCount": (
+            guest.get("mountObservations", {}).get("successfulMountExitCount", 0)
+            if type(guest) is dict and type(guest.get("mountObservations")) is dict
+            else 0
+        ),
+        "guestMountSyscallTargetsResolved": False,
         "distinstExitCode": process.get("exitCode") if type(process) is dict else None,
         "upstreamRevisionHint": source_hint,
         "observationComplete": observation_complete,
