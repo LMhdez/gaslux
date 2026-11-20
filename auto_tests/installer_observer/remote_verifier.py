@@ -568,7 +568,10 @@ class RemoteResponseVerifier:
         result_hash = _sha256(_canonical(result))
         if response_value["result_sha256"] != result_hash:
             _refuse("result-integrity-failed", "Canonical result digest does not match")
-        if result["kind"] == "state" and len(_canonical(result["snapshot"])) > _MAX_STATE_BYTES:
+        if (
+            result["kind"] == "state"
+            and len(_canonical(result["snapshot"])) > _MAX_STATE_BYTES
+        ):
             _refuse("limit-exceeded", "State snapshot exceeds 64 KiB")
         if result["kind"] == "frame":
             self._verify_frame(result)
