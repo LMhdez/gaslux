@@ -3,6 +3,7 @@
 LAB ONLY. Windows setup is a separate established Q4OS workflow stage.
 This module never invokes installation, partitioning, GRUB, mkfs, EFI or writers.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -51,9 +52,7 @@ def sha256_file(path: Path) -> str:
 
 
 def run(*args: str) -> str:
-    process = subprocess.run(
-        args, check=False, capture_output=True, text=True, timeout=900
-    )
+    process = subprocess.run(args, check=False, capture_output=True, text=True, timeout=900)
     require(process.returncode == 0, "read-only QEMU command failed: " + args[0])
     return process.stdout
 
@@ -61,7 +60,8 @@ def run(*args: str) -> str:
 def validate_qcow2_chain(info: dict) -> None:
     """Refuse foreign backing, external data files and unsupported geometry."""
     require(
-        type(info) is dict and info.get("format") == "qcow2"
+        type(info) is dict
+        and info.get("format") == "qcow2"
         and info.get("virtual-size") == SIZE
         and not info.get("backing-filename")
         and not info.get("full-backing-filename")
@@ -123,18 +123,31 @@ def _real_safety_denial(host: dict) -> dict:
     plan = {
         "planId": txid,
         "firmware": "uefi",
-        "disk": {name: host[name] for name in (
-            "partitionStyle", "partitionTableId", "sizeBytes", "logicalSectorSizeBytes"
-        )},
+        "disk": {
+            name: host[name]
+            for name in (
+                "partitionStyle",
+                "partitionTableId",
+                "sizeBytes",
+                "logicalSectorSizeBytes",
+            )
+        },
     }
     plan_bytes = canonical(plan)
     try:
         decide_no_writer(
-            plan=plan, plan_bytes=plan_bytes, transaction_id=txid,
+            plan=plan,
+            plan_bytes=plan_bytes,
+            transaction_id=txid,
             vm_id=secrets.token_hex(16),
-            host_evidence=None, guest_evidence=None, immediate_evidence=None,
-            host_key=None, guest_key=None, fresh_nonce=secrets.token_hex(32),
-            owned_regions=[], write_set=[],
+            host_evidence=None,
+            guest_evidence=None,
+            immediate_evidence=None,
+            host_key=None,
+            guest_key=None,
+            fresh_nonce=secrets.token_hex(32),
+            owned_regions=[],
+            write_set=[],
         )
     except PrewriteDenied as exc:
         return {
@@ -147,7 +160,8 @@ def _real_safety_denial(host: dict) -> dict:
 
 def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
     require(
-        workspace.is_absolute() and workspace.parent == Path(os.environ["RUNNER_TEMP"])
+        workspace.is_absolute()
+        and workspace.parent == Path(os.environ["RUNNER_TEMP"])
         and workspace.name == "gaslux-win10-" + os.environ["GITHUB_RUN_ID"],
         "only disposable GitHub Windows 10 workspace",
     )
@@ -158,13 +172,16 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
         "not an authorized hosted QEMU lab",
     )
     require(
-        workspace.is_dir() and not workspace.is_symlink()
+        workspace.is_dir()
+        and not workspace.is_symlink()
         and workspace.stat().st_uid == os.getuid()
         and workspace.stat().st_mode & 0o077 == 0,
         "Windows image workspace not private",
     )
-    require(evidence.is_absolute() and evidence.is_dir() and not evidence.is_symlink(),
-            "unsafe evidence directory")
+    require(
+        evidence.is_absolute() and evidence.is_dir() and not evidence.is_symlink(),
+        "unsafe evidence directory",
+    )
     require(
         os.environ.get("GASLUX_WIN10_ISO_SHA256") == OFFICIAL_WIN10_ISO_SHA256,
         "official Microsoft ISO SHA-256 missing or changed",
@@ -184,13 +201,35 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
     # No full 48-GiB raw clone and no exposure of real guest data as artifact.
     first_edge = scratch / "host-gpt-first.bin"
     last_edge = scratch / "host-gpt-last.bin"
-    run("qemu-img", "dd", "-f", "qcow2", "-O", "raw",
-        "bs=1M", "count=2", "if=" + str(image), "of=" + str(first_edge))
-    run("qemu-img", "dd", "-f", "qcow2", "-O", "raw",
-        "bs=1M", "count=2", "skip=" + str(SIZE // (1024**2) - 2),
-        "if=" + str(image), "of=" + str(last_edge))
-    require(first_edge.stat().st_size == EDGE and last_edge.stat().st_size == EDGE,
-            "incomplete host GPT edges")
+    run(
+        "qemu-img",
+        "dd",
+        "-f",
+        "qcow2",
+        "-O",
+        "raw",
+        "bs=1M",
+        "count=2",
+        "if=" + str(image),
+        "of=" + str(first_edge),
+    )
+    run(
+        "qemu-img",
+        "dd",
+        "-f",
+        "qcow2",
+        "-O",
+        "raw",
+        "bs=1M",
+        "count=2",
+        "skip=" + str(SIZE // (1024**2) - 2),
+        "if=" + str(image),
+        "of=" + str(last_edge),
+    )
+    require(
+        first_edge.stat().st_size == EDGE and last_edge.stat().st_size == EDGE,
+        "incomplete host GPT edges",
+    )
     with raw.open("xb") as destination:
         destination.truncate(SIZE)
         destination.seek(0)
@@ -201,9 +240,13 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
     host = inspect_gpt_image(raw, logical_sector_size=512)
     guest = _read_only_appliance(image, scratch, 512)
     guest_safety = {
-        key: guest[key] for key in (
-            "partitionStyle", "partitionTableId", "sizeBytes",
-            "logicalSectorSizeBytes", "partitions"
+        key: guest[key]
+        for key in (
+            "partitionStyle",
+            "partitionTableId",
+            "sizeBytes",
+            "logicalSectorSizeBytes",
+            "partitions",
         )
     }
     assert_snapshot_matches(host, guest_safety)
@@ -234,9 +277,15 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
         )
     q4os = None
     adapter = refuse_calamares(
-        q4os=q4os, expected=host, safety_observed=guest_safety,
-        safety_compare=assert_snapshot_matches, plan=None, transaction=None,
-        write_set=None, calamares=None, safety_attestation=None,
+        q4os=q4os,
+        expected=host,
+        safety_observed=guest_safety,
+        safety_compare=assert_snapshot_matches,
+        plan=None,
+        transaction=None,
+        write_set=None,
+        calamares=None,
+        safety_attestation=None,
     )
     safety = _real_safety_denial(host)
     after = sha256_file(image)
@@ -267,8 +316,10 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
         "diskWritesAuthorized": False,
         "rollbackVerified": False,
     }
-    require(adapter["decision"] == "refuse" and safety["decision"] == "DENY_UNAUTHENTICATED",
-            "expected safety refusals missing")
+    require(
+        adapter["decision"] == "refuse" and safety["decision"] == "DENY_UNAUTHENTICATED",
+        "expected safety refusals missing",
+    )
     require(report["installationAuthorized"] is False, "unexpected installation authority")
     result = evidence / "q4os-windows10-real-readonly-refusal.json"
     require(not result.exists(), "report destination exists")
@@ -280,17 +331,17 @@ def inspect_windows_readonly(workspace: Path, evidence: Path) -> dict:
 
 
 def main() -> int:
-    workspace = Path(os.environ["RUNNER_TEMP"]) / (
-        "gaslux-win10-" + os.environ["GITHUB_RUN_ID"]
-    )
+    workspace = Path(os.environ["RUNNER_TEMP"]) / ("gaslux-win10-" + os.environ["GITHUB_RUN_ID"])
     evidence = Path(os.environ["RUNNER_TEMP"]) / "q4os-win10-readonly-evidence"
     evidence.mkdir(mode=0o700, exist_ok=True)
     try:
         result = inspect_windows_readonly(workspace, evidence)
     except (OSError, ValueError, RuntimeError, DiskIdentityError) as exc:
         failure = {
-            "decision": "refuse", "reason": str(exc),
-            "installationAuthorized": False, "diskWritesAuthorized": False,
+            "decision": "refuse",
+            "reason": str(exc),
+            "installationAuthorized": False,
+            "diskWritesAuthorized": False,
             "provenanceAuthenticatedAcrossWindowsAndGuest": False,
         }
         (evidence / "q4os-readonly-failure.json").write_text(
@@ -298,12 +349,18 @@ def main() -> int:
         )
         print(json.dumps(failure))
         return 1
-    print(json.dumps({
-        "decision": "refuse", "winrePresent": result["winrePresent"],
-        "hostGuestGptMatches": result["hostGuestGptMatches"],
-        "sourceSha256": result["qcow2OriginalSha256Before"],
-        "backingPreserved": True, "installAuthorized": False,
-    }))
+    print(
+        json.dumps(
+            {
+                "decision": "refuse",
+                "winrePresent": result["winrePresent"],
+                "hostGuestGptMatches": result["hostGuestGptMatches"],
+                "sourceSha256": result["qcow2OriginalSha256Before"],
+                "backingPreserved": True,
+                "installAuthorized": False,
+            }
+        )
+    )
     return 0
 
 
