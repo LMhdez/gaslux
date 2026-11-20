@@ -160,7 +160,6 @@ jobs:
           gh attestation verify "$WORK/$ISO_NAME" \
             --repo ublue-os/bazzite \
             --predicate-type https://slsa.dev/provenance/v1 \
-            --signer-repo ublue-os/bazzite \
             --signer-workflow "$ISO_WORKFLOW" \
             --source-ref refs/heads/main \
             --source-digest "$SOURCE_COMMIT" \
@@ -204,7 +203,6 @@ jobs:
           gh attestation verify "oci://$PAYLOAD_REF" \
             --repo ublue-os/bazzite \
             --predicate-type https://slsa.dev/provenance/v1 \
-            --signer-repo ublue-os/bazzite \
             --signer-workflow "$PAYLOAD_WORKFLOW" \
             --source-ref refs/heads/main \
             --source-digest "$SOURCE_COMMIT" \
