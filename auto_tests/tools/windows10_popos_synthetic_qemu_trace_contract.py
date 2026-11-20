@@ -141,7 +141,8 @@ def classify_trace(trace: str, plan: dict, *, reported_serial: str,
             "no real synthetic block request observed / unbounded events")
     require(all(x["offsetBytes"] == SMOKE_OFFSET
                 and x["lengthBytes"] == SMOKE_LENGTH for x in events),
-            "synthetic QEMU event outside precise declared write-set, including GPT")
+            "synthetic QEMU event outside precise declared write-set: " +
+            repr(events[:8]))
     # The smoke is deliberately in UNALLOCATED synthetic space, not in Pop
     # partitions or the Windows six-GPT plan. It has zero authority elsewhere.
     return {
