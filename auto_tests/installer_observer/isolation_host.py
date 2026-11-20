@@ -285,6 +285,28 @@ def run(private_root: Path, service_user: str, public_evidence: Path) -> None:
                 }
             )
         )
+        print(
+            json.dumps(
+                {
+                    "trust_boundary": "NOT_INDEPENDENT",
+                    "runner_sudo_available": sudo_probe,
+                    "runner_can_connect_qmp": all(
+                        item["sudo_impersonated_qmp_connect"] for item in evidence
+                    ),
+                    "runner_can_connect_rfb": all(
+                        item["sudo_impersonated_rfb_connect"] for item in evidence
+                    ),
+                    "runner_can_modify_staged_controller_source": all(
+                        item["sudo_impersonated_uid_can_write_staged_source"]
+                        for item in evidence
+                    ),
+                    "staged_controller_source_sha256": staged_source_hash,
+                    "signature_verified": False,
+                    "input_events": 0,
+                }
+            ),
+            flush=True,
+        )
         public_evidence.joinpath("external_uid_probes.json").write_bytes(
             canonical(
                 {
