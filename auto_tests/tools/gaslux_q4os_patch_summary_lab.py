@@ -4,6 +4,7 @@
 The upstream script and production installer are never committed/changed.
 The exact original anchored line must be present ONCE, or patch is refused.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -14,13 +15,13 @@ OLD = (
     "            echo 'NOT PERFORMED: user creation, password entry, "
     "Summary, Install or any exec job.'"
 )
-NEW = '''            if [[ "${GASLUX_Q4OS_SUMMARY_READONLY:-}" == 1 ]]; then
+NEW = """            if [[ "${GASLUX_Q4OS_SUMMARY_READONLY:-}" == 1 ]]; then
               [[ -f "${GASLUX_Q4OS_SUMMARY_READONLY_HOOK:-}" ]] ||
                 die "Missing fail-closed Q4OS Summary experiment hook"
               . "$GASLUX_Q4OS_SUMMARY_READONLY_HOOK"
             else
               echo 'NOT PERFORMED: user creation, password entry, Summary, Install or any exec job.'
-            fi'''
+            fi"""
 
 
 def main() -> None:
@@ -38,12 +39,14 @@ def main() -> None:
     if replacement.count(NEW) != 1:
         raise SystemExit("Patched lab hook not unique")
     path.write_text(replacement, encoding="utf-8")
-    print("GASLUX_Q4OS_SUMMARY_EXPERIMENT_PATCH_BASE_SHA256="+hashlib.sha256(
-        original.encode("utf-8")
-    ).hexdigest())
-    print("GASLUX_Q4OS_SUMMARY_EXPERIMENT_PATCHED_SHA256="+hashlib.sha256(
-        replacement.encode("utf-8")
-    ).hexdigest())
+    print(
+        "GASLUX_Q4OS_SUMMARY_EXPERIMENT_PATCH_BASE_SHA256="
+        + hashlib.sha256(original.encode("utf-8")).hexdigest()
+    )
+    print(
+        "GASLUX_Q4OS_SUMMARY_EXPERIMENT_PATCHED_SHA256="
+        + hashlib.sha256(replacement.encode("utf-8")).hexdigest()
+    )
     print("GASLUX_Q4OS_PRODUCTION_INSTALLER_UNCHANGED=true")
 
 
