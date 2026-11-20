@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import copy
 import io
 import json
 import os
 import struct
 from dataclasses import replace
-from pathlib import Path
-
 import pytest
 from PIL import Image
 
