@@ -43,6 +43,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py auto_tests/tests/test_q4os_windows_boundary.py
+          # TEMPORARY: extract the formatter's exact output for a commit to this PR.
+          python -m ruff check --fix --unsafe-fixes --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py auto_tests/tests/test_q4os_windows_boundary.py
+          python -m ruff format --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py auto_tests/tests/test_q4os_windows_boundary.py
+          printf 'GASLUX_Q4OS_FORMATTED_MODULE_START\\n'
+          base64 -w0 assets/live/gaslux_q4os_windows_boundary.py
+          printf '\\nGASLUX_Q4OS_FORMATTED_MODULE_END\\n'
+          printf 'GASLUX_Q4OS_FORMATTED_TEST_START\\n'
+          base64 -w0 auto_tests/tests/test_q4os_windows_boundary.py
+          printf '\\nGASLUX_Q4OS_FORMATTED_TEST_END\\n'
           python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py auto_tests/tests/test_q4os_windows_boundary.py
           python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py auto_tests/tests/test_q4os_windows_boundary.py
       - name: Synthetic GPT, ESP/WinRE/OEM and QCOW2 snapshot/restore refusals
