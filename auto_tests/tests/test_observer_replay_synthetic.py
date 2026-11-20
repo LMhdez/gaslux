@@ -84,13 +84,16 @@ def example(tmp_path: Path, replica: int = 1):
         (17, 19),
         "synthetic-source",
     )
+
     def recognize(image: Screenshot):
         for row in rows:
             if image.sha256 == row.sha256:
                 return (row.id,)
         return ()
+
     def validate_edge(_edge: Transition, _before: Screenshot, _after: Screenshot):
         return None
+
     return mapping, recording, recognize, validate_edge
 
 
@@ -221,8 +224,10 @@ def test_unchanged_region_is_refused_even_if_full_png_differs(tmp_path):
     (r.directory / "second.png").write_bytes(changed)
     rows = list(r.states)
     rows[1] = replace(rows[1], sha256=digest(changed))
+
     def recognize_modified(img: Screenshot):
         return (next(row.id for row in rows if row.sha256 == img.sha256),)
+
     with pytest.raises(Refusal):
         run_case(m, replace(r, states=tuple(rows)), recognize_modified, check)
 
@@ -235,8 +240,10 @@ def test_unreviewed_visual_identity_is_refused(tmp_path):
 
 def test_edge_validator_refusal_propagates(tmp_path):
     m, r, recognize, _check = example(tmp_path)
+
     def refuse(_edge, _before, _after):
         raise Refusal("Synthetic visual gate failed")
+
     with pytest.raises(Refusal, match="Synthetic visual gate failed"):
         run_case(m, r, recognize, refuse)
 
@@ -252,8 +259,10 @@ def test_missing_or_extra_timing_is_refused(tmp_path):
 def test_no_network_or_input_transport_is_needed(tmp_path, monkeypatch):
     m, r, recognize, check = example(tmp_path)
     import socket
+
     def refuse_socket(*_args, **_kwargs):
         pytest.fail("Offline replay attempted network access")
+
     monkeypatch.setattr(socket, "socket", refuse_socket)
     result = run_case(m, r, recognize, check)
     assert len(result["steps"]) == 2
