@@ -257,7 +257,7 @@ jobs:
               expected_version="45.20261117.1",
           )
           (evidence / "payload-config-readback.json").write_text(
-              json.dumps(result, indent=2, sort_keys=True) + "\\n"
+              json.dumps(result, indent=2, sort_keys=True) + "\n"
           )
           PY
 
