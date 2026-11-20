@@ -305,11 +305,14 @@ def atomic_write_text(
 
 @contextmanager
 def readonly_volume(device: Path):
-    mounted = run("findmnt", "-J", "-S", str(device), "-o", "TARGET,FSTYPE", allow_no_match=True)
+    mounted = run("findmnt", "-J", "-S", str(device), "-o", "TARGET,FSTYPE,OPTIONS", allow_no_match=True)
     if mounted:
         filesystems = json.loads(mounted)["filesystems"]
         if len(filesystems) != 1 or filesystems[0]["fstype"] not in {"fuseblk", "ntfs3", "ntfs"}:
             raise RuntimeError("Existing Windows mount is ambiguous or unsupported")
+        options = filesystems[0].get("options")
+        if not isinstance(options, str) or "ro" not in options.split(",") or "rw" in options.split(","):
+            raise RuntimeError("Existing Windows mount is not provably read-only")
         yield Path(filesystems[0]["target"])
         return
     run("ntfs-3g.probe", "--readwrite", str(device))
