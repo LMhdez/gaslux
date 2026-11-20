@@ -143,7 +143,12 @@ def _one(evidence_root: Path) -> dict:
             if any(_outside_client(path, different_uid=False) != 0 for path in (qmp, vnc)):
                 raise Refusal("Same-UID interference experiment was not reproducible")
             seal = QemuRunSeal(
-                authority, process_seal(proc.pid), qmp, port, seal_file(iso), seal_file(cow),
+                authority,
+                process_seal(proc.pid),
+                qmp,
+                port,
+                seal_file(iso),
+                seal_file(cow),
                 vnc_socket=vnc,
             )
             attestor = LocalQemuAttestor(seal)
