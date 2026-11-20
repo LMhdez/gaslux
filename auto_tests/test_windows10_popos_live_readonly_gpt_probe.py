@@ -12,7 +12,7 @@ from subprocess import CompletedProcess
 import sys
 import unittest
 import uuid
-from unittest.mock import call, patch
+from unittest.mock import patch
 
 TOOLS = pathlib.Path(__file__).parent / "tools"
 sys.path.insert(0, str(TOOLS))
