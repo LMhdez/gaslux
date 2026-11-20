@@ -55,6 +55,16 @@ def _sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def require_unchanged_parent_checkpoints(
+    base: Path, stage: Path, original_hash: str, stage_hash: str,
+) -> None:
+    """Fail closed if either QCOW2 parent changes, even after guest failure."""
+    require(
+        _sha256(base) == original_hash and _sha256(stage) == stage_hash,
+        "native guest child modified Windows backing or checkpoint stage",
+    )
+
+
 def _info(path: Path) -> dict:
     return json.loads(subprocess.check_output(
         ["qemu-img", "info", "--output=json", str(path)], timeout=30,
@@ -140,5 +150,6 @@ def disposable_native_child(
         # ALWAYS verify the two read-only parents, including after a failed
         # guest, QEMU crash or exception inside the checkpoint context.
         # This does NOT validate any child-written data.
-        require(_sha256(base) == original_hash and _sha256(stage) == stage_hash,
-                "native guest child modified Windows backing or checkpoint stage")
+        require_unchanged_parent_checkpoints(
+            base, stage, original_hash, stage_hash,
+        )
