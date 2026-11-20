@@ -36,6 +36,10 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GASLUX_ARCHIVE_APPROVED: PRESERVE_HISTORY_LEASE_25
           GASLUX_ARCHIVE_EXACT: '{"test/popos-win10-native-child-distinst-20261119":"25e9e4e57d30586853f1f37444af38691273ba08","fix/cachyos-shared-cow-iso-ext4-ownership-issue3":"f021619207c2596d220d10a5d7cd56d74fd0c6cd","debug/q4os-win10-qemu-visual-evidence":"5fc0e111424eee05b64f108ae9235fd07abfae7e","fix/q4os-ovmf-hid-key-hold-20261119":"205a80b7b7dd9c04cd2710b2968bde20afe9b4e3","fix/q4os-ovmf-dvd-format-contracts-20261119":"4f481a03c0fc68891ed57b4a022a435687483730","fix/bazzite-official-iso-ovmf-gates-20261119":"98bdfb7e257f392b3aab7cf13932fc9c382e1105"}'
         run: |
