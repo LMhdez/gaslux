@@ -122,7 +122,8 @@ def observe_appliance(source: Path, folder: Path) -> dict:
     """Read raw sectors through libguestfs; no mounts and exactly one disk."""
     import guestfs
 
-    name = "gaslux" + secrets.token_hex(6)
+    # libguestfs labels must contain letters only (reuse audited Safety #267 rule).
+    name = "gaslux" + "".join(secrets.choice("abcdef") for _ in range(12))
     appliance = None
     launched = False
     failure: Exception | None = None
