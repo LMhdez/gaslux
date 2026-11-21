@@ -4,6 +4,7 @@ The fixture and pinned Safety #265 GPT reader are reused without modification.
 These tests reproduce the original race, then require fail-closed refusal
 in the mitigation commit. They do not authorize any installation.
 """
+
 from __future__ import annotations
 
 import os
@@ -21,7 +22,9 @@ import libertix_disk_identity_gate as safety
 
 class DescriptorPathToctouBeforeFix(unittest.TestCase):
     def setUp(self):
-        self.case = fixture.ZorinSyntheticWriteSetTests("test_no_change_cannot_claim_gpt_fd_binding")
+        self.case = fixture.ZorinSyntheticWriteSetTests(
+            "test_no_change_cannot_claim_gpt_fd_binding"
+        )
         self.case.setUp()
         self.addCleanup(self.case.doCleanups)
         self.root = self.case.root
@@ -35,10 +38,7 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
     def replace_regular(self, name, *, foreign_partuuid=False, protected_change=True):
         path = self.root / name
         replacement = self.root / ("foreign-" + name)
-        new_guid = (
-            "8a98e4fc-37fa-4b34-8017-52d7e4bff9d1"
-            if foreign_partuuid else fixture.ROOT_GUID
-        )
+        new_guid = "8a98e4fc-37fa-4b34-8017-52d7e4bff9d1" if foreign_partuuid else fixture.ROOT_GUID
         raw = bytearray(fixture.generated_valid_gpt(root_guid=new_guid))
         if protected_change:
             raw[fixture.PARTS[2][1] * fixture.SECTOR + 90] ^= 0xAF
@@ -249,6 +249,7 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
                 verifier.verify_private_synthetic(self.root, self.policy)
         self.assertTrue(did_change)
         self.assertEqual(caught.exception.code, "E_ESP_RACE")
+
 
 if __name__ == "__main__":
     unittest.main()
