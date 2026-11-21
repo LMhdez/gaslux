@@ -108,7 +108,7 @@ def validate_geometry() -> None:
         PARTS[0].start >= 2048 and PARTS[-1].end < COUNT - 33,
         "REFUSE_IDENTITY_MISMATCH: GPT reserved sectors overlapped",
     )
-    for previous, current in zip(PARTS, PARTS[1:], strict=True):
+    for previous, current in zip(PARTS, PARTS[1:], strict=False):
         need(
             previous.end < current.start and current.start % 2048 == 0,
             "REFUSE_IDENTITY_MISMATCH: partition overlap/misalignment",
