@@ -142,6 +142,37 @@ jobs:
             auto_tests/tools/windows_mint_ab_synthetic.py \
             auto_tests/test_windows_mint_ab_infrastructure.py \
             auto_tests/test_windows_mint_ab_synthetic.py
+      - name: Generate Ruff-only source formatting proposal for human review
+        if: failure()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [ ! -d "$RUNNER_TEMP/gaslux-ruff-0.15.20" ]; then
+            exit 0
+          fi
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
+          FILES=(
+            auto_tests/tools/windows_mint_ab_infrastructure.py
+            auto_tests/tools/windows_mint_ab_synthetic.py
+            auto_tests/test_windows_mint_ab_infrastructure.py
+            auto_tests/test_windows_mint_ab_synthetic.py
+          )
+          python3 -m ruff check --fix "${FILES[@]}" || true
+          python3 -m ruff format "${FILES[@]}"
+          mkdir -p ci-ruff-proposal/tools ci-ruff-proposal/tests
+          cp auto_tests/tools/windows_mint_ab_infrastructure.py ci-ruff-proposal/tools/
+          cp auto_tests/tools/windows_mint_ab_synthetic.py ci-ruff-proposal/tools/
+          cp auto_tests/test_windows_mint_ab_infrastructure.py ci-ruff-proposal/tests/
+          cp auto_tests/test_windows_mint_ab_synthetic.py ci-ruff-proposal/tests/
+      - name: Upload only autoformatted new Python source for human review
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mint-ab-ruff-source-proposal
+          path: ci-ruff-proposal/
+          retention-days: 1
+          if-no-files-found: warn
+          compression-level: 6
       - name: Upload only bounded synthetic/infra qualification JSON (NO Windows data)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
