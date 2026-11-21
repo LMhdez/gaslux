@@ -250,13 +250,13 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
                "E_SHARED_BACKING_OR_HARDLINK")
         for name in ("baseline.raw", "trial.raw", "checkpoint.raw"):
             insist(fds[name][1].st_size == policy.disk_bytes, "E_DISK_SIZE_CHANGED")
-        insist(digest_fd(*fds["baseline.raw"]) == policy.disk_sha256,
+        insist(digest_fd(fds["baseline.raw"][0], fds["baseline.raw"][1].st_size) == policy.disk_sha256,
                "E_BASELINE_CHANGED")
-        insist(digest_fd(*fds["checkpoint.raw"]) == record["checkpointSha256"]
+        insist(digest_fd(fds["checkpoint.raw"][0], fds["checkpoint.raw"][1].st_size) == record["checkpointSha256"]
                == policy.disk_sha256, "E_CHECKPOINT_CHANGED")
-        insist(digest_fd(*fds["ovmf-base.fd"]) == policy.vars_sha256,
+        insist(digest_fd(fds["ovmf-base.fd"][0], fds["ovmf-base.fd"][1].st_size) == policy.vars_sha256,
                "E_OVMF_BASE_CHANGED")
-        insist(digest_fd(*fds["ovmf-trial.fd"]) == policy.vars_sha256,
+        insist(digest_fd(fds["ovmf-trial.fd"][0], fds["ovmf-trial.fd"][1].st_size) == policy.vars_sha256,
                "E_OVMF_CHANGED")
         insist(tree_digest(root, "esp-base") == policy.esp_sha256,
                "E_ESP_BASE_CHANGED")
@@ -279,7 +279,7 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
         except DiskIdentityError as exc:
             raise WriteSetRefused("E_GPT_IDENTITY_CHANGED") from exc
         changed = compare_raw(fds["baseline.raw"][0], fds["trial.raw"][0], policy)
-        insist(digest_fd(*fds["checkpoint.raw"]) == policy.disk_sha256,
+        insist(digest_fd(fds["checkpoint.raw"][0], fds["checkpoint.raw"][1].st_size) == policy.disk_sha256,
                "E_CHECKPOINT_CHANGED")
         for fd, original in fds.values():
             close_guard(fd, original)
