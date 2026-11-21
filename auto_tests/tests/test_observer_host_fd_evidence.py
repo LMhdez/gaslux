@@ -65,9 +65,12 @@ def _process_fingerprint(pid: int) -> ProcessSeal:
     fields = raw[raw.rfind(")") + 2 :].split()
     exe = (proc / "exe").stat()
     return ProcessSeal(
-        pid, proc.stat().st_uid, int(fields[19]),
+        pid,
+        proc.stat().st_uid,
+        int(fields[19]),
         hashlib.sha256((proc / "cmdline").read_bytes()).hexdigest(),
-        exe.st_dev, exe.st_ino,
+        exe.st_dev,
+        exe.st_ino,
     )
 
 
@@ -77,14 +80,15 @@ def child_fd(tmp_path, synthetic_image_writer):
     synthetic_image_writer(image)
     # A child process opens a *real* read-only file descriptor. No QEMU.
     command = (
-        "import os,sys,time;"
-        "fd=os.open(sys.argv[1],os.O_RDONLY);"
-        "print(fd,flush=True);time.sleep(25)"
+        "import os,sys,time;fd=os.open(sys.argv[1],os.O_RDONLY);print(fd,flush=True);time.sleep(25)"
     )
     process = subprocess.Popen(
         [sys.executable, "-c", command, str(image)],
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, text=True, close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        close_fds=True,
     )
     try:
         assert process.stdout is not None
@@ -116,14 +120,16 @@ def child_fd(tmp_path, synthetic_image_writer):
 
 
 def _qmp(pins: HostPins) -> list[dict]:
-    return [{
-        "device": pins.device_name,
-        "inserted": {
-            "file": str(pins.media_path),
-            "ro": True,
-            "image": {"filename": str(pins.media_path), "format": "raw"},
-        },
-    }]
+    return [
+        {
+            "device": pins.device_name,
+            "inserted": {
+                "file": str(pins.media_path),
+                "ro": True,
+                "image": {"filename": str(pins.media_path), "format": "raw"},
+            },
+        }
+    ]
 
 
 def test_real_host_fd_and_canonical_gpt_286(child_fd, canonical_gate):
@@ -136,9 +142,7 @@ def test_real_host_fd_and_canonical_gpt_286(child_fd, canonical_gate):
     assert gpt["snapshot"]["partitionStyle"] == "GPT"
     assert gpt["snapshot"]["logicalSectorSizeBytes"] == 512
     assert len(gpt["snapshot"]["partitions"]) == 1
-    assert set(gpt["regions"]) == {
-        "primaryHeader", "primaryArray", "backupHeader", "backupArray"
-    }
+    assert set(gpt["regions"]) == {"primaryHeader", "primaryArray", "backupHeader", "backupArray"}
     with image.open("rb") as file:
         first = file.read(512)
     assert reading["firstSectorSha256"] == hashlib.sha256(first).hexdigest()
@@ -163,15 +167,15 @@ def test_wrong_identity_is_refused(child_fd, mutation):
     _, pins = child_fd
     if mutation == "start":
         with pytest.raises(HostEvidenceRefused, match="START_TICKS"):
-            require_process_identity(pins.process, replace(
-                pins.process, start_ticks=pins.process.start_ticks + 1
-            ))
+            require_process_identity(
+                pins.process, replace(pins.process, start_ticks=pins.process.start_ticks + 1)
+            )
         return
     if mutation == "executable":
         with pytest.raises(HostEvidenceRefused, match="START_TICKS"):
-            require_process_identity(pins.process, replace(
-                pins.process, executable_ino=pins.process.executable_ino + 1
-            ))
+            require_process_identity(
+                pins.process, replace(pins.process, executable_ino=pins.process.executable_ino + 1)
+            )
         return
     overrides = {
         "pid": {"process": replace(pins.process, pid=99999999)},
@@ -300,25 +304,25 @@ def test_unmeasured_source_is_never_locally_measured(child_fd):
 def test_qcow2_backing_refuses_nonowned_or_replaced_paths(child_fd, tmp_path):
     _, pins = child_fd
     workspace = tmp_path
+
     class ForbiddenVerifier:
         def verify_chain(self, *args):
             raise AssertionError("must not reach #267 verifier for unowned media")
+
     with pytest.raises(HostEvidenceRefused, match="UNOWNED_QCOW2_BACKING"):
-        observe_pinned_qcow2_chain(
-            pins, tmp_path / "foreign.raw", workspace, ForbiddenVerifier()
-        )
+        observe_pinned_qcow2_chain(pins, tmp_path / "foreign.raw", workspace, ForbiddenVerifier())
 
 
 def test_qcow2_backing_chain_failure_fails_closed(tmp_path, child_fd):
     # Real process FD is a RAW fixture, not a QCOW2; it is rejected by magic.
     _, pins = child_fd
+
     class StubVerifier:
         def verify_chain(self, *args):
             raise AssertionError("qemu-img should never be consulted on invalid qcow2")
+
     with pytest.raises(HostEvidenceRefused, match="UNOWNED_QCOW2_BACKING"):
-        observe_pinned_qcow2_chain(
-            pins, tmp_path / "base.raw", tmp_path, StubVerifier()
-        )
+        observe_pinned_qcow2_chain(pins, tmp_path / "base.raw", tmp_path, StubVerifier())
 
 
 def test_workflow_is_strictly_synthetic_no_qemu_launch():

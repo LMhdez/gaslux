@@ -86,8 +86,7 @@ class HostPins:
             "INVALID_EXTERNAL_PIN_IDENTITY",
         )
         require(
-            self.media_path.is_absolute()
-            and self.media_path.name not in (".", ".."),
+            self.media_path.is_absolute() and self.media_path.name not in (".", ".."),
             "INVALID_EXTERNAL_MEDIA_PATH",
         )
 
@@ -114,8 +113,7 @@ def borrowed_readonly_proc_fd(
     """
     require(os.name == "posix" and Path("/proc").is_dir(), "PROCFS_UNAVAILABLE")
     require(
-        type(pid) is int and pid > 1
-        and type(fd_number) is int and 0 <= fd_number < MAX_FDS,
+        type(pid) is int and pid > 1 and type(fd_number) is int and 0 <= fd_number < MAX_FDS,
         "INVALID_PID_OR_FD",
     )
     require(path.is_absolute() and not path.is_symlink(), "UNSAFE_MEDIA_PATH")
@@ -126,8 +124,9 @@ def borrowed_readonly_proc_fd(
         remote_before = fd_path.stat()
         actual_link = os.readlink(fd_path)
         info = (proc / "fdinfo" / str(fd_number)).read_text(encoding="ascii")
-        flags = [row.partition(":")[2].strip() for row in info.splitlines()
-                 if row.startswith("flags:")]
+        flags = [
+            row.partition(":")[2].strip() for row in info.splitlines() if row.startswith("flags:")
+        ]
         require(len(flags) == 1, "FD_FLAGS_UNAVAILABLE")
         qemu_flags = int(flags[0], 8)
         require((qemu_flags & os.O_ACCMODE) == os.O_RDONLY, "QEMU_FD_NOT_READONLY")
@@ -190,7 +189,9 @@ def observe_descriptor(pins: HostPins) -> dict[str, Any]:
     This function alone does NOT say the process is QEMU or FD is a VM disk.
     """
     with borrowed_readonly_proc_fd(
-        pins.process.pid, pins.fd_number, pins.media_path,
+        pins.process.pid,
+        pins.fd_number,
+        pins.media_path,
         expected_dev=pins.expected_dev,
         expected_inode=pins.expected_inode,
         expected_size=pins.expected_size,
@@ -227,16 +228,16 @@ def _raw_gpt_regions(fd: int, gate: Any, sector: int, size: int) -> dict[str, An
     ):
         offset = (header["current"] if header_region else header["array_lba"]) * sector
         length = sector if header_region else header["count"] * header["entry_size"]
-        require(0 < length <= MAX_SECTORS_BYTES and offset + length <= size,
-                "GPT_REGION_OUT_OF_BOUNDS")
+        require(
+            0 < length <= MAX_SECTORS_BYTES and offset + length <= size, "GPT_REGION_OUT_OF_BOUNDS"
+        )
         data = gate.exact_read(fd, offset, length)
         regions[name] = {
             "offsetBytes": offset,
             "lengthBytes": length,
             "sha256": hashlib.sha256(data).hexdigest(),
         }
-    require(_identity(before) == _identity(os.fstat(fd)),
-            "GPT_SOURCE_CHANGED_DURING_CAPTURE")
+    require(_identity(before) == _identity(os.fstat(fd)), "GPT_SOURCE_CHANGED_DURING_CAPTURE")
     return {"snapshot": snapshot, "regions": regions, "assurance": "LOCALLY_MEASURED"}
 
 
@@ -247,14 +248,15 @@ def measure_gpt_from_proc_fd(pins: HostPins, gate: Any) -> dict[str, Any]:
     source and cannot establish the guest's effective overlay GPT contents.
     """
     with borrowed_readonly_proc_fd(
-        pins.process.pid, pins.fd_number, pins.media_path,
-        expected_dev=pins.expected_dev, expected_inode=pins.expected_inode,
+        pins.process.pid,
+        pins.fd_number,
+        pins.media_path,
+        expected_dev=pins.expected_dev,
+        expected_inode=pins.expected_inode,
         expected_size=pins.expected_size,
     ) as fd:
         try:
-            return _raw_gpt_regions(
-                fd, gate, pins.logical_sector_size, pins.expected_size
-            )
+            return _raw_gpt_regions(fd, gate, pins.logical_sector_size, pins.expected_size)
         except (ValueError, OSError, IndexError) as exc:
             raise HostEvidenceRefused("GPT_FD_INVALID_OR_UNSTABLE") from exc
 
@@ -289,8 +291,7 @@ def query_qemu_block_readonly(pins: HostPins, socket_path: Path) -> list[dict[st
                 "QMP_PEER_PROCESS_MISMATCH",
             )
             with conn.makefile("rb") as stream:
-                require(isinstance(_read_response(stream).get("QMP"), dict),
-                        "QMP_GREETING_INVALID")
+                require(isinstance(_read_response(stream).get("QMP"), dict), "QMP_GREETING_INVALID")
                 _execute(conn, stream, "qmp_capabilities")
                 blocks = _execute(conn, stream, "query-block")
                 require(type(blocks) is list, "QMP_BLOCK_LIST_INVALID")
@@ -310,10 +311,7 @@ def correlate_qmp_fd(
 ) -> dict[str, Any]:
     """Local device-name/QMP-file/FD match; not VM UUID or serial attestation."""
     require(type(blocks) is list, "QMP_MISSING")
-    matches = [
-        b for b in blocks
-        if type(b) is dict and b.get("device") == pins.device_name
-    ]
+    matches = [b for b in blocks if type(b) is dict and b.get("device") == pins.device_name]
     require(len(matches) == 1, "QMP_DEVICE_MISSING_OR_AMBIGUOUS")
     inserted = matches[0].get("inserted")
     require(type(inserted) is dict, "QMP_INSERTED_MISSING")
@@ -378,9 +376,7 @@ def observe_host_qemu(
         blocks = None
         qmp_provenance = "CLAIMED"
     try:
-        mapping = correlate_qmp_fd(
-            pins, measured_fd, blocks, provenance=qmp_provenance
-        )
+        mapping = correlate_qmp_fd(pins, measured_fd, blocks, provenance=qmp_provenance)
     except (HostEvidenceRefused, KeyError, TypeError):
         mapping = {
             "localQmpFdConsistency": False,
@@ -392,9 +388,7 @@ def observe_host_qemu(
     # NEVER publish injected QMP as a locally measured observation.
     if qmp_provenance != "LOCALLY_MEASURED":
         mapping["localQmpFdConsistency"] = False
-        mapping["qmpDeviceName"] = {
-            "value": pins.device_name, "assurance": "CLAIMED"
-        }
+        mapping["qmpDeviceName"] = {"value": pins.device_name, "assurance": "CLAIMED"}
     return {
         "status": "HOST_MEASUREMENT_DIAGNOSTIC_ONLY",
         "classification": "NOT_INDEPENDENT",
@@ -404,7 +398,8 @@ def observe_host_qemu(
             "startTicks": {"value": initial.start_ticks, "assurance": "LOCALLY_MEASURED"},
             "uid": {"value": initial.uid, "assurance": "LOCALLY_MEASURED"},
             "executableSha256": {
-                "value": pins.qemu_executable_sha256, "assurance": "LOCALLY_MEASURED"
+                "value": pins.qemu_executable_sha256,
+                "assurance": "LOCALLY_MEASURED",
             },
         },
         "diskFd": measured_fd,
@@ -455,13 +450,15 @@ def observe_pinned_qcow2_chain(
         "UNOWNED_QCOW2_BACKING",
     )
     with borrowed_readonly_proc_fd(
-        pins.process.pid, pins.fd_number, pins.media_path,
-        expected_dev=pins.expected_dev, expected_inode=pins.expected_inode,
+        pins.process.pid,
+        pins.fd_number,
+        pins.media_path,
+        expected_dev=pins.expected_dev,
+        expected_inode=pins.expected_inode,
         expected_size=pins.expected_size,
     ) as fd:
         before = _identity(os.fstat(fd))
-        require(os.pread(fd, 4, 0) == bytes.fromhex("514649fb"),
-                "QCOW2_HEADER_INVALID")
+        require(os.pread(fd, 4, 0) == bytes.fromhex("514649fb"), "QCOW2_HEADER_INVALID")
         try:
             chain = safety_lab.verify_chain(pins.media_path, backing, workspace)
         except (ValueError, OSError, RuntimeError) as exc:
