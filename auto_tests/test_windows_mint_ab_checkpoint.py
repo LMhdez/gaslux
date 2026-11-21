@@ -155,7 +155,8 @@ class MintAbCheckpointContracts(unittest.TestCase):
                 raise AssertionError("unexpected command")
             with patch.object(ab, "choose_injection_offset",
                               return_value=127*1024**3), \
-                 patch.object(cap, "qemu_fully_allocated_bytes", return_value=1024), \
+                 patch.object(cap, "qemu_fully_allocated_bytes",
+                              return_value=ab.VIRTUAL_BYTES), \
                  patch.object(ab, "assert_detached_from_processes"), \
                  patch.object(ab, "image_info"), \
                  patch.object(ab, "command", side_effect=fake_command), \
