@@ -4,16 +4,19 @@ on:
   pull_request:
     paths:
       - 'schemas/observer-one-shot-grant-v1.schema.json'
+      - 'schemas/observer-one-shot-grant-v2.schema.json'
       - 'auto_tests/tools/observer_one_shot_ledger_offline.py'
       - 'auto_tests/tests/test_observer_one_shot_ledger_offline.py'
       - 'auto_tests/fixtures/observer-one-shot/**'
       - 'docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_OFFLINE.md'
+      - 'docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_V2_P01.md'
       - '.github/workflows/observer-one-shot-ledger-offline-static.yml'
   push:
     branches:
       - 'integration/observer-one-shot-ledger-offline-20261121'
     paths:
       - 'schemas/observer-one-shot-grant-v1.schema.json'
+      - 'schemas/observer-one-shot-grant-v2.schema.json'
       - 'auto_tests/tools/observer_one_shot_ledger_offline.py'
       - 'auto_tests/tests/test_observer_one_shot_ledger_offline.py'
       - 'auto_tests/fixtures/observer-one-shot/**'
@@ -36,15 +39,20 @@ jobs:
       - name: Validate schema and fixture (no network/guest)
         run: |
           python3 -m json.tool schemas/observer-one-shot-grant-v1.schema.json > /dev/null
+          python3 -m json.tool schemas/observer-one-shot-grant-v2.schema.json > /dev/null
           python3 -m json.tool auto_tests/fixtures/observer-one-shot/valid-grant.json > /dev/null
           python3 - <<'PY'
           import json
           from jsonschema import Draft202012Validator, FormatChecker
           from pathlib import Path
-          schema = json.loads(Path('schemas/observer-one-shot-grant-v1.schema.json').read_text())
+          schema = json.loads(Path('schemas/observer-one-shot-grant-v2.schema.json').read_text())
+          legacy = json.loads(Path('schemas/observer-one-shot-grant-v1.schema.json').read_text())
           fixture = json.loads(Path('auto_tests/fixtures/observer-one-shot/valid-grant.json').read_text())
           Draft202012Validator.check_schema(schema)
+          Draft202012Validator.check_schema(legacy)
           Draft202012Validator(schema, format_checker=FormatChecker()).validate(fixture)
+          assert schema["properties"]["contractVersion"]["const"] == 2
+          assert not Draft202012Validator(legacy).is_valid(fixture)
           PY
       - name: Ruff lint and format, offline code only
         run: |

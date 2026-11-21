@@ -1,5 +1,5 @@
 {
-  "contractVersion": 1,
+  "contractVersion": 2,
   "grantId": "6f34961d-dcfe-4f8c-9f8e-d13a6b1c1111",
   "repository": "LMhdez/gaslux",
   "experimentId": "observer-gpt-immediate-offline-model",
@@ -13,5 +13,6 @@
   "humanReviewId": "fixture-review-not-a-real-approval",
   "scope": "READ_ONLY_DIAGNOSTIC",
   "issuedAt": "2026-11-21T12:00:00Z",
-  "expiresAt": "2026-11-22T12:00:00Z"
+  "expiresAt": "2026-11-22T12:00:00Z",
+  "externalDecisionId": "2c7ffbb9-0409-4a12-95fb-f33a94027c77"
 }

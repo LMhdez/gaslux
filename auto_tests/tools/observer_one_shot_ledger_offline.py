@@ -21,7 +21,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-SCHEMA = Path(__file__).resolve().parents[2] / "schemas/observer-one-shot-grant-v1.schema.json"
+SCHEMA = Path(__file__).resolve().parents[2] / "schemas/observer-one-shot-grant-v2.schema.json"
 SCHEMA_VALIDATOR = Draft202012Validator(
     json.loads(SCHEMA.read_text(encoding="utf-8")), format_checker=FormatChecker()
 )
@@ -71,6 +71,7 @@ class TrustedDecisionFixture:
     requester_id: str
     approver_id: str
     human_review_id: str
+    external_decision_id: str
     review_verified: bool
     authority_available: bool
 
@@ -139,6 +140,7 @@ def _decision_reason(grant: dict[str, Any], trusted: TrustedDecisionFixture | No
         ("requesterId", trusted.requester_id),
         ("externalApproverId", trusted.approver_id),
         ("humanReviewId", trusted.human_review_id),
+        ("externalDecisionId", trusted.external_decision_id),
     )
     if any(grant[key] != value for key, value in expected):
         return "TRUSTED_DECISION_PIN_MISMATCH"
@@ -170,6 +172,34 @@ def _run_reason(grant: dict[str, Any], run: RunObservationFixture) -> str | None
     return None
 
 
+def _key(*values: str) -> str:
+    """Canonical, unambiguous non-rotating identity; not a credential."""
+    raw = json.dumps(values, ensure_ascii=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("ascii")).hexdigest()
+
+
+def _identities(grant: dict[str, Any]) -> tuple[str, str, str]:
+    # Exact grant identity is separately stored even though the stronger
+    # execution identity also blocks branch/ref rotations for one commit.
+    authorization_key = _key(
+        grant["repository"],
+        grant["experimentId"],
+        grant["requestRef"],
+        grant["authorizationSha"],
+        grant["scope"],
+    )
+    execution_key = _key(
+        grant["repository"],
+        grant["experimentId"],
+        grant["authorizationSha"],
+        grant["scope"],
+    )
+    # Changing grantId, an allegedly external decision ID or approver cannot
+    # turn the same human review into another reservation.
+    review_key = _key(grant["repository"], grant["humanReviewId"])
+    return authorization_key, execution_key, review_key
+
+
 class OfflineLedger:
     """Single-file test-only SQLite model with serialized durable state transitions."""
 
@@ -192,17 +222,73 @@ class OfflineLedger:
             fd = os.open(self.path, flags, 0o600)
             os.close(fd)
         with self._connect() as con:
-            con.execute(
-                "CREATE TABLE IF NOT EXISTS grants ("
-                "grant_id TEXT PRIMARY KEY, payload TEXT NOT NULL, digest TEXT NOT NULL, "
-                "state TEXT NOT NULL, created_at TEXT NOT NULL)"
-            )
-            con.execute(
-                "CREATE TABLE IF NOT EXISTS decisions ("
-                "sequence INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT NOT NULL, "
-                "at TEXT NOT NULL, before_state TEXT, after_state TEXT, "
-                "decision TEXT NOT NULL, reason TEXT NOT NULL, run_id TEXT)"
-            )
+            con.execute("BEGIN IMMEDIATE")
+            tables = {
+                row[0]
+                for row in con.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' "
+                    "AND name IN ('grants', 'decisions')"
+                ).fetchall()
+            }
+            if tables:
+                if tables != {"grants", "decisions"}:
+                    con.execute("ROLLBACK")
+                    raise Refused("LEGACY_OR_AMBIGUOUS_LEDGER")
+                names = {row[1] for row in con.execute("PRAGMA table_info(grants)").fetchall()}
+                required = {
+                    "grant_id",
+                    "authorization_key",
+                    "execution_key",
+                    "external_decision_id",
+                    "review_key",
+                    "payload",
+                    "digest",
+                    "state",
+                    "created_at",
+                }
+                unique_columns = {
+                    tuple(
+                        col[2]
+                        for col in con.execute(
+                            f"PRAGMA index_info({json.dumps(index[1])})"
+                        ).fetchall()
+                    )
+                    for index in con.execute("PRAGMA index_list(grants)").fetchall()
+                    if index[2]
+                }
+                required_unique = {
+                    ("grant_id",),
+                    ("authorization_key",),
+                    ("execution_key",),
+                    ("external_decision_id",),
+                    ("review_key",),
+                }
+                if (
+                    con.execute("PRAGMA user_version").fetchone()[0] != 2
+                    or names != required
+                    or not required_unique.issubset(unique_columns)
+                ):
+                    con.execute("ROLLBACK")
+                    raise Refused("LEGACY_OR_AMBIGUOUS_LEDGER")
+            else:
+                con.execute(
+                    "CREATE TABLE grants ("
+                    "grant_id TEXT PRIMARY KEY, "
+                    "authorization_key TEXT NOT NULL UNIQUE, "
+                    "execution_key TEXT NOT NULL UNIQUE, "
+                    "external_decision_id TEXT NOT NULL UNIQUE, "
+                    "review_key TEXT NOT NULL UNIQUE, "
+                    "payload TEXT NOT NULL, digest TEXT NOT NULL, "
+                    "state TEXT NOT NULL, created_at TEXT NOT NULL)"
+                )
+                con.execute(
+                    "CREATE TABLE decisions ("
+                    "sequence INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT NOT NULL, "
+                    "at TEXT NOT NULL, before_state TEXT, after_state TEXT, "
+                    "decision TEXT NOT NULL, reason TEXT NOT NULL, run_id TEXT)"
+                )
+                con.execute("PRAGMA user_version = 2")
+            con.execute("COMMIT")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -248,6 +334,7 @@ class OfflineLedger:
         if _utc(now) < _utc(grant["issuedAt"]) or _utc(now) >= _utc(grant["expiresAt"]):
             raise Refused("INVALID_REQUEST_TIME")
         gid = grant["grantId"]
+        authorization_key, execution_key, review_key = _identities(grant)
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
             existing = con.execute("SELECT state FROM grants WHERE grant_id = ?", (gid,)).fetchone()
@@ -255,10 +342,45 @@ class OfflineLedger:
                 self._record(con, gid, at, existing[0], existing[0], "DENIED", "GRANT_ID_REUSED")
                 con.execute("COMMIT")
                 raise Refused("GRANT_ID_REUSED")
-            con.execute(
-                "INSERT INTO grants VALUES (?, ?, ?, ?, ?)",
-                (gid, payload, digest, "REQUESTED", at),
-            )
+            try:
+                con.execute(
+                    "INSERT INTO grants ("
+                    "grant_id, authorization_key, execution_key, external_decision_id, "
+                    "review_key, payload, digest, state, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        gid,
+                        authorization_key,
+                        execution_key,
+                        grant["externalDecisionId"],
+                        review_key,
+                        payload,
+                        digest,
+                        "REQUESTED",
+                        at,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                # The unique SQLite indexes, not a prior SELECT, decide the winner.
+                # Preserve even the rejected candidate UUID as a durable audit event.
+                constraints = (
+                    ("authorization_key", authorization_key, "AUTHORIZATION_ALREADY_RESERVED"),
+                    ("execution_key", execution_key, "EXPERIMENT_COMMIT_ALREADY_RESERVED"),
+                    (
+                        "external_decision_id",
+                        grant["externalDecisionId"],
+                        "EXTERNAL_DECISION_ALREADY_RESERVED",
+                    ),
+                    ("review_key", review_key, "HUMAN_REVIEW_ALREADY_RESERVED"),
+                )
+                reason = "GRANT_UNIQUENESS_VIOLATION"
+                for column, value, rejection in constraints:
+                    if con.execute(f"SELECT 1 FROM grants WHERE {column} = ?", (value,)).fetchone():
+                        reason = rejection
+                        break
+                self._record(con, gid, at, None, None, "DENIED", reason)
+                con.execute("COMMIT")
+                raise Refused(reason) from exc
             self._record(con, gid, at, None, "REQUESTED", "ACCEPTED", "REQUEST_CREATED")
             con.execute("COMMIT")
         return digest

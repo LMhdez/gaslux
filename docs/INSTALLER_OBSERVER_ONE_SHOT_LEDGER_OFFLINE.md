@@ -1,4 +1,6 @@
-# Observer GPT — controlador protegido e ledger one-shot (contrato OFFLINE v1)
+# Observer GPT — controlador protegido e ledger one-shot (contrato OFFLINE, histórico v1)
+
+> **P-01 / PR #284:** o schema v1 abaixo é preservado apenas como referência histórica e **não pode ser carregado como concessão válida**. O modelo offline ativo nesta branch usa o schema v2, as identidades canónicas e restrições SQLite de [P-01](INSTALLER_OBSERVER_ONE_SHOT_LEDGER_V2_P01.md). A base de dados v1 é recusada sem migração automática. Todas as capacidades permanecem `false`.
 
 **Estado: NÃO OPERACIONAL.** Esta proposta não é um controlador de execução nem uma autoridade de evidência. Não ativa QEMU, guest input, instalação, escritor de disco ou workflows operacionais. A CI executa exclusivamente validação estática com ficheiros descartáveis.
 
