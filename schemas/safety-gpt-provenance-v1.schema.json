@@ -1,0 +1,484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/safety-gpt-provenance-v1.schema.json",
+  "title": "Safety GPT read-only origin statement v1 (NOT an attestation receipt)",
+  "description": "Separate experimental Safety diagnostic contract. Does not extend Observer remote v1 or TPM v2. The fields are claims; signatures and equality cannot attest independent collection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "kind",
+    "classification",
+    "purpose",
+    "transactionId",
+    "vmUuid",
+    "requestId",
+    "nonce",
+    "sequence",
+    "observerResultSha256",
+    "issuer",
+    "qemu",
+    "backingChain",
+    "measurements",
+    "writeAuthorized"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "safety-gpt-provenance"
+    },
+    "classification": {
+      "const": "NOT_INDEPENDENT"
+    },
+    "purpose": {
+      "const": "read-only-diagnostic"
+    },
+    "transactionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "vmUuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "requestId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096
+    },
+    "observerResultSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issuerId",
+        "observerId",
+        "collectorId",
+        "controllerId",
+        "policyId",
+        "policySha256",
+        "signingKeyId",
+        "administrativeDomain"
+      ],
+      "properties": {
+        "issuerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "observerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "collectorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "controllerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "policyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "signingKeyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "administrativeDomain": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "qemu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pid",
+        "startTicks",
+        "executableSha256",
+        "deviceId",
+        "virtualSerial",
+        "virtualSizeBytes",
+        "logicalSectorSizeBytes"
+      ],
+      "properties": {
+        "pid": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "startTicks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "executableSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "deviceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "virtualSerial": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "virtualSizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "logicalSectorSizeBytes": {
+          "enum": [
+            512,
+            4096
+          ]
+        }
+      }
+    },
+    "backingChain": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "path",
+          "format",
+          "sha256",
+          "virtualSizeBytes",
+          "backingFilename",
+          "backingFormat",
+          "deviceId",
+          "inode"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "overlay",
+              "parent"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "format": {
+            "enum": [
+              "qcow2",
+              "raw"
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "virtualSizeBytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "backingFilename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "backingFormat": {
+            "enum": [
+              "raw",
+              null
+            ]
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "inode": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "measurements": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "assurance",
+          "readMethod",
+          "observerId",
+          "collectorId",
+          "observedAt",
+          "qemuPid",
+          "qemuStartTicks",
+          "deviceId",
+          "virtualSerial",
+          "gpt",
+          "gptSectors",
+          "originProof"
+        ],
+        "properties": {
+          "source": {
+            "enum": [
+              "host",
+              "guest",
+              "immediate"
+            ]
+          },
+          "assurance": {
+            "enum": [
+              "DECLARED",
+              "SIGNED",
+              "LOCALLY_MEASURED",
+              "EXTERNALLY_ATTESTED"
+            ]
+          },
+          "readMethod": {
+            "enum": [
+              "host-readonly-pread",
+              "guest-virtio-readonly-sector",
+              "immediate-readonly-pread"
+            ]
+          },
+          "observerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "collectorId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "qemuPid": {
+            "type": "integer",
+            "minimum": 2
+          },
+          "qemuStartTicks": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "virtualSerial": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "gpt": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "partitionStyle",
+              "partitionTableId",
+              "sizeBytes",
+              "logicalSectorSizeBytes",
+              "partitions"
+            ],
+            "properties": {
+              "partitionStyle": {
+                "const": "GPT"
+              },
+              "partitionTableId": {
+                "type": "string",
+                "pattern": "^gpt:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "sizeBytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "logicalSectorSizeBytes": {
+                "enum": [
+                  512,
+                  4096
+                ]
+              },
+              "partitions": {
+                "type": "array",
+                "maxItems": 4096,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "number",
+                    "typeGuid",
+                    "partGuid",
+                    "offsetBytes",
+                    "sizeBytes",
+                    "attributes"
+                  ],
+                  "properties": {
+                    "number": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "typeGuid": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "partGuid": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "offsetBytes": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "sizeBytes": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "attributes": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "gptSectors": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "primaryHeaderLba",
+              "backupHeaderLba",
+              "primaryHeaderCrc32",
+              "backupHeaderCrc32",
+              "primaryArrayCrc32",
+              "backupArrayCrc32",
+              "primaryHeaderSha256",
+              "backupHeaderSha256",
+              "primaryArraySha256",
+              "backupArraySha256"
+            ],
+            "properties": {
+              "primaryHeaderLba": {
+                "const": 1
+              },
+              "backupHeaderLba": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "primaryHeaderCrc32": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "backupHeaderCrc32": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "primaryArrayCrc32": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "backupArrayCrc32": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "primaryHeaderSha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "backupHeaderSha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "primaryArraySha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "backupArraySha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          },
+          "originProof": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "evidenceSha256",
+              "issuerId"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "none",
+                  "local-read-trace",
+                  "external-attestation-claim"
+                ]
+              },
+              "evidenceSha256": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "issuerId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        }
+      }
+    },
+    "writeAuthorized": {
+      "const": false
+    }
+  }
+}
