@@ -15,7 +15,7 @@ import re
 import subprocess
 
 from zorin_native_installer_discovery import (
-    NativeDiscoveryError, read_member, require,
+    read_member, require,
 )
 from windows_zorin_synthetic_cow_root import verify_official_zorin
 
