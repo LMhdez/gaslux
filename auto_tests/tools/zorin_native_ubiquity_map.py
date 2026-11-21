@@ -183,7 +183,8 @@ def require_regular_member(rootfs: Path, name: str) -> bool:
                      r"(?:\s+->\s+.*)?$", line)
     ]
     require(len(entries) == 1 and entries[0].startswith("-"),
-            "source is not a uniquely attested regular file (possible symlink)")
+            "source not uniquely regular: " + name +
+            " metadata=" + repr(result.stdout.decode("utf-8", "replace")[-450:]))
     return True
 
 def extract_signals(data: bytes, path: str, package: str, owner_sha: str) -> list[dict]:
