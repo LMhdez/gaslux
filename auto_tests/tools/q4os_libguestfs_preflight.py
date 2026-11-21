@@ -45,7 +45,9 @@ def checksum(path: Path) -> str:
     return h.hexdigest()
 
 
-def inspect_kernel(env: dict[str, str]) -> dict:
+def inspect_kernel(
+    env: dict[str, str], module_root: Path = Path("/lib/modules")
+) -> dict:
     """Require a readable, owned private kernel matching packaged modules."""
     version = env.get("SUPERMIN_KERNEL_VERSION", "")
     require(bool(VERSION.fullmatch(version)), "KERNEL_VERSION_INVALID")
@@ -71,7 +73,7 @@ def inspect_kernel(env: dict[str, str]) -> dict:
         "KERNEL_NOT_PRIVATE",
     )
     require(
-        modules == Path("/lib/modules") / version
+        modules == module_root / version
         and modules.is_dir()
         and not modules.is_symlink()
         and (modules / "modules.dep").is_file()
@@ -199,7 +201,7 @@ def classify_diagnostic(cause: str) -> str:
     if "module" in lowered and ("missing" in lowered or "not found" in lowered):
         return "MODULE_DEPENDENCY_MISSING"
     if "supermin" in lowered:
-        return "SUPERMIn_EXIT_NONZERO_CAUSE_UNCLASSIFIED"
+        return "SUPERMIN_EXIT_NONZERO_CAUSE_UNCLASSIFIED"
     if "timeout" in lowered:
         return "APPLIANCE_BOOT_TIMEOUT"
     return "APPLIANCE_LAUNCH_FAILED_CAUSE_UNCLASSIFIED"
@@ -268,7 +270,7 @@ def main() -> int:
     try:
         report = lab_preflight(temp, os.environ)
         status = 0
-    except (Exception, subprocess.TimeoutExpired) as exc:
+    except Exception as exc:
         # Diagnostic never reveals paths or raw exception text; the kernel
         # version is public package metadata, not a runner-specific path.
         text = str(exc)
