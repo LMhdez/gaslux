@@ -8,9 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs" / "distro-backends"
 BACKENDS = ("MINT", "ZORIN", "CACHYOS", "POPOS", "BAZZITE", "Q4OS")
-FILES = ("README.md", "SHARED_CONTRACTS.md") + tuple(
-    f"{name}.md" for name in BACKENDS
-)
+FILES = ("README.md", "SHARED_CONTRACTS.md") + tuple(f"{name}.md" for name in BACKENDS)
 SOURCE_SHA = "9b434a6a2b96b7a02fded73eb2ef66753bddde5d"
 
 

@@ -25,6 +25,12 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      - name: Install isolated Python linter
+        run: python3 -m pip install 'ruff>=0.8,<1'
+      - name: Lint static integration test
+        run: |
+          python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tests/test_distro_docs_integration.py
+          python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_distro_docs_integration.py
       - name: Compile static test
         run: python3 -m compileall -q auto_tests/tests/test_distro_docs_integration.py
       - name: Validate documentation and links without VM, disk or network
