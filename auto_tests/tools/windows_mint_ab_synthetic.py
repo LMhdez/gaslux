@@ -8,7 +8,6 @@ the genuine Windows path. Does not install or boot any operating system.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -101,7 +100,7 @@ def generate_private_gpt(raw: Path, directory: Path) -> tuple[int, str]:
     ])
     _run(["sgdisk", "-v", str(raw)])
     item = _run(["sgdisk", "-i", "5", str(raw)])
-    match = re.search(r"Last sector:\\s*(\\d+)", item)
+    match = re.search(r"Last sector:\s*(\d+)", item)
     require(match is not None, "synthetic GPT sector inspection unavailable")
     last_lba = int(match.group(1))
     validate_scratch(last_lba, PROFILE)
@@ -115,7 +114,7 @@ def _ovmf_source() -> Path:
         try:
             actual = candidate.resolve(strict=True)
             if (actual.parent == base and actual.is_file()
-                    and actual.stat().st_size >= 1024 * 1024):
+                    and actual.stat().st_size >= 64 * 1024):
                 return actual
         except OSError:
             pass
@@ -225,6 +224,7 @@ def run_fixed_synthetic() -> dict:
         a, b = directory / "arm-a.qcow2", directory / "arm-b.qcow2"
         standalone(source, reference, directory, PROFILE.virtual_bytes)
         reference.chmod(0o400)
+        original_reference_hash = sha256_file(reference)
         for arm in (a, b):
             standalone(reference, arm, directory, PROFILE.virtual_bytes)
             image_info(arm, PROFILE.virtual_bytes)
@@ -258,14 +258,13 @@ def run_fixed_synthetic() -> dict:
             require(sha256_file(copy) != initial_vars_hash,
                     "synthetic OVMF changed-state witness absent")
             restore_ovmf(original_vars, copy, directory)
+        equivalent(reference, a)
+        equivalent(reference, b)
         all_ok = (
             all(sha256_file(x) == initial_vars_hash for x in (va, vb))
-            and all(
-                sha256_file(x) == sha256_file(reference)
-                for x in (a, b)
-            )
+            and sha256_file(reference) == original_reference_hash
         )
-        require(all_ok, "synthetic A/B recovery hashes did not match")
+        require(all_ok, "synthetic A/B recovery did not preserve reference")
         return {
             "schema": "gaslux-mint-fixed-synthetic-ab-recovery-v1",
             "transactionId": str(uuid.uuid4()),
@@ -292,6 +291,20 @@ def run_fixed_synthetic() -> dict:
 
 if __name__ == "__main__":
     result = run_fixed_synthetic()
+    evidence = Path(os.environ["GITHUB_WORKSPACE"]) / "windows-x64-tcg-evidence"
+    require(
+        evidence.parent == Path("/home/runner/work/gaslux/gaslux")
+        and evidence.is_dir() and not evidence.is_symlink()
+        and evidence.stat().st_uid == os.getuid(),
+        "foreign synthetic evidence destination",
+    )
+    output = evidence / "mint-ab-fixed-synthetic.json"
+    require(not output.exists() and not output.is_symlink(),
+            "refusing reused synthetic A/B evidence")
+    with output.open("xb") as out:
+        out.write((json.dumps(result, sort_keys=True, indent=2) + "\n").encode())
+        out.flush()
+        os.fsync(out.fileno())
     print("GASLUX_MINT_AB_FIXED_SYNTHETIC=" + json.dumps(
         result, sort_keys=True
     ))
