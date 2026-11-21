@@ -107,6 +107,24 @@ usb_packet_state
             ["bdrv_co_pwritev", "qcow2_cache_entry_write"],
         )
 
+    def test_swtpm_interrupted_and_healthy_session_are_host_only(self):
+        healthy = lab.tpm_session_observation(
+            exit_before_cleanup=None, exit_after_cleanup=0,
+            socket_present_before_cleanup=True)
+        failed = lab.tpm_session_observation(
+            exit_before_cleanup=127, exit_after_cleanup=127,
+            socket_present_before_cleanup=False)
+        self.assertTrue(healthy["emulatorRunningAtGuestSessionEnd"])
+        self.assertFalse(healthy["emulatorExitedUnexpectedly"])
+        self.assertFalse(failed["emulatorRunningAtGuestSessionEnd"])
+        self.assertTrue(failed["emulatorExitedUnexpectedly"])
+        self.assertEqual(failed["exitCodeBeforeCleanup"], 127)
+        self.assertEqual(healthy["controlChannel"], "swtpm-ctrl")
+        for snapshot in (healthy, failed):
+            self.assertFalse(snapshot["guestBootVerified"])
+            self.assertFalse(snapshot["productionStorageWritesAuthorized"])
+            self.assertFalse(snapshot["releaseEligible"])
+
     def test_swtpm_emulator_uses_qemu_control_not_command_server(self):
         root = Path("/tmp/lab-bcd-ab-fixture")
         for state_name, socket_name in (
