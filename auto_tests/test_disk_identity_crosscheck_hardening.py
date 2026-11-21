@@ -132,7 +132,10 @@ class CrosscheckHardeningTests(unittest.TestCase):
 
     def test_invalid_truncated_and_oversized_json_are_rejected(self):
         target = Path(self.paths["guest"])
-        invalid_contents = ("", "{", "not json", "{}", "\\xff", " " * (checker._MAX_EVIDENCE_BYTES + 1))
+        invalid_contents = (
+            "", "{", "not json", "{}", "\\xff",
+            " " * (checker._MAX_EVIDENCE_BYTES + 1),
+        )
         for content in invalid_contents:
             target.write_bytes(content.encode("utf-8"))
             with (
