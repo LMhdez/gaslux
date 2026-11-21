@@ -529,7 +529,7 @@ trusted = TrustedDecisionFixture(
     fixture['repository'], fixture['experimentId'], fixture['preparationSha'],
     fixture['authorizationSha'], fixture['protectedControllerSha'],
     fixture['auditedCodeSha'], fixture['requesterId'], fixture['externalApproverId'],
-    fixture['humanReviewId'], True, True)
+    fixture['humanReviewId'], fixture['externalDecisionId'], True, True)
 run = RunObservationFixture(
     fixture['repository'], fixture['experimentId'], fixture['requestRef'],
     fixture['preparationSha'], fixture['authorizationSha'],
