@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/installer-observer-engine
+      - fix/observer-gpt-immediate-freshness-20261121
     paths:
       - 'auto_tests/installer_observer/gpt_readonly_producer.py'
       - 'auto_tests/installer_observer/gpt_lab_provenance.py'
