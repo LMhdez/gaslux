@@ -252,12 +252,12 @@ def tree_digest(root: Path, folder: str) -> str:
                     os.close(child_fd)
             else:
                 insist(
-                    stat.S_ISREG(st.st_mode) and st.st_nlink == 1
-                    and st.st_size <= 1024 * 1024,
+                    stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and st.st_size <= 1024 * 1024,
                     "E_ESP_FOREIGN",
                 )
                 fd = os.open(
-                    name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    name,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                     dir_fd=directory_fd,
                 )
                 try:
