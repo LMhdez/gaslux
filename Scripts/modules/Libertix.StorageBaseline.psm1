@@ -22,6 +22,65 @@ function Get-LibertixPartitionRecord {
     }
 }
 
+# Read-only structural gate shared by installation baseline capture and rollback.
+# Windows partition numbers are not stable physical identifiers by themselves;
+# combining numbers, GUIDs, exact extents and disk identity rejects aliases.
+function Assert-LibertixStoragePartitionInventory {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][object]$Disk,
+        [Parameter(Mandatory = $true)][object[]]$Partitions
+    )
+
+    $sector = [long]$Disk.LogicalSectorSize
+    $diskSize = [long]$Disk.Size
+    $style = [string]$Disk.PartitionStyle
+    if ($style -notin @('GPT', 'MBR') -or
+        $sector -lt 512 -or $sector -gt 65536 -or
+        ($sector -band ($sector - 1)) -ne 0 -or
+        $diskSize -le $sector -or $diskSize % $sector -ne 0) {
+        throw 'The storage inventory has unsupported disk geometry.'
+    }
+
+    $numbers = @{}
+    $guids = @{}
+    $previousEnd = [long]0
+    foreach ($partition in @($Partitions | Sort-Object offsetBytes)) {
+        $number = [int]$partition.number
+        $offset = [long]$partition.offsetBytes
+        $length = [long]$partition.sizeBytes
+        if ($number -le 0 -or $numbers.ContainsKey($number)) {
+            throw 'The storage inventory contains a missing or duplicate partition number.'
+        }
+        $numbers[$number] = $true
+        # Subtraction avoids overflow in offset + length for untrusted recovery JSON.
+        if ($offset -lt $sector -or $length -le 0 -or
+            $offset % $sector -ne 0 -or $length % $sector -ne 0 -or
+            $offset -ge $diskSize -or $length -gt ($diskSize - $offset)) {
+            throw 'The storage inventory contains an invalid or out-of-bounds partition extent.'
+        }
+
+        if ($style -eq 'GPT') {
+            try { $partitionGuid = [guid]([string]$partition.guid) }
+            catch { throw 'The GPT inventory contains an invalid partition GUID.' }
+            if ($partitionGuid -eq [guid]::Empty) {
+                throw 'The GPT inventory contains an invalid partition GUID.'
+            }
+            $id = $partitionGuid.ToString('D')
+            if ($guids.ContainsKey($id)) {
+                throw 'The GPT inventory contains a duplicate partition GUID.'
+            }
+            $guids[$id] = $true
+            if ($offset -lt $previousEnd) {
+                throw 'The GPT inventory contains overlapping GPT partitions.'
+            }
+            $previousEnd = $offset + $length
+        }
+        # MBR extended containers intentionally enclose logical extents;
+        # do not infer an EBR chain from the Windows partition listing.
+    }
+}
+
 function Get-LibertixStorageBaselineTargets {
     param([Parameter(Mandatory = $true)][object]$Plan)
 
@@ -126,8 +185,10 @@ function Assert-LibertixStorageBaseline {
             [string]$saved.guid -ne [string]$disk.Guid -or [uint32]$saved.signature -ne [uint32]$disk.Signature) {
             throw "Disk $($target.number) no longer matches its initial identity."
         }
+        Assert-LibertixStoragePartitionInventory -Disk $disk -Partitions @($saved.partitions)
         $current = @(Get-Partition -DiskNumber $target.number -ErrorAction Stop |
             ForEach-Object { Get-LibertixPartitionRecord -Partition $_ })
+        Assert-LibertixStoragePartitionInventory -Disk $disk -Partitions $current
         $targetSource = if ([int]$target.number -eq [int]$Plan.disk.number) { $Plan.disk.windows } else { $target.sourcePartition }
         $offsets = @{}
         foreach ($original in @($saved.partitions)) {
@@ -137,7 +198,7 @@ function Assert-LibertixStorageBaseline {
             $match = @($current | Where-Object offsetBytes -EQ $offset)
             if ($match.Count -ne 1) { throw "An original partition on disk $($target.number) is missing or moved (offset $offset)." }
             $match = $match[0]
-            foreach ($field in @('guid', 'gptType', 'mbrType', 'isActive', 'isHidden', 'isReadOnly', 'noDefaultDriveLetter')) {
+            foreach ($field in @('number', 'guid', 'gptType', 'mbrType', 'isActive', 'isHidden', 'isReadOnly', 'noDefaultDriveLetter')) {
                 if ($original.$field -ne $match.$field) {
                     throw "Partition identity or attributes changed on disk $($target.number), offset ${offset}: $field."
                 }
