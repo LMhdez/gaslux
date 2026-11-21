@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/observer-readonly-request.schema.json",
+  "title": "Gaslux Observer remote read-only request",
+  "description": "Protocol contract only. Transport authentication and broker authorization are specified separately.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "operation",
+    "session_id",
+    "transaction_id",
+    "request_id",
+    "nonce",
+    "sequence",
+    "timeout_ms",
+    "max_response_bytes"
+  ],
+  "properties": {
+    "protocol": {
+      "const": 1
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "session.identify",
+        "state.read",
+        "frame.read",
+        "session.close"
+      ]
+    },
+    "session_id": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "format": "uuid"
+        }
+      ]
+    },
+    "transaction_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "request_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "nonce": {
+      "type": "string",
+      "description": "32 cryptographically random bytes encoded as unpadded base64url; unique per request.",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4096
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 10000
+    },
+    "max_response_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 8388608
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "session.identify"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "session_id": {
+            "type": "null"
+          },
+          "sequence": {
+            "const": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          }
+        }
+      }
+    }
+  ]
+}

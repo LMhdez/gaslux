@@ -1,0 +1,147 @@
+name: Installer Observer GPT producer (synthetic, no guest input)
+on:
+  push:
+    branches:
+      - feature/installer-observer-engine
+    paths:
+      - 'auto_tests/installer_observer/gpt_readonly_producer.py'
+      - 'auto_tests/installer_observer/gpt_lab_provenance.py'
+      - 'auto_tests/tests/test_observer_gpt_readonly_producer.py'
+      - '.github/workflows/installer-observer-gpt-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gpt-producer-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check out pinned Safety code as an independent *source dependency*
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: safety-pinned
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lint, schema, cryptographic and test dependencies
+        run: |
+          python -m pip install 'pytest>=9,<10' 'ruff>=0.8,<1' \
+            'jsonschema>=4,<5' 'cryptography>=50,<51' 'rfc8785>=0.1.4,<1'
+      - name: Verify pinned Safety HEAD and immutable schema availability
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test -s safety-pinned/schemas/safety-gpt-provenance-v1.schema.json
+          test -s safety-pinned/assets/live/libertix_disk_identity_gate.py
+      - name: Compile, lint and format check new producer (no QEMU)
+        run: |
+          python -m compileall -q auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
+      - name: Adversarial raw-sector and Safety-v1 schema unit tests (synthetic fixture)
+        run: python -m pytest -q auto_tests/tests/test_observer_gpt_readonly_producer.py
+      - name: Pinned Safety GPT parser/provenance and synthetic QEMU regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PYTHONPATH="$PWD/safety-pinned/auto_tests:$PWD/safety-pinned/assets/live:$PWD/safety-pinned/auto_tests/tools:$PWD"
+          export GASLUX_OBSERVER_ROOT="$PWD"
+          python -m pytest -q \
+            safety-pinned/auto_tests/tests/test_disk_identity_gate.py \
+            safety-pinned/auto_tests/tests/test_safety_gpt_provenance.py \
+            safety-pinned/auto_tests/tests/test_safety_qemu_gpt_host_guest.py
+
+  qemu-gpt-readonly-lab:
+    needs: gpt-producer-contracts
+    # An explicitly tagged push tests fresh post-guest IMMEDIATE export, not the old host.raw.
+    # Normal edits and PR replay jobs never launch it automatically.
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[gpt-lab]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: '1'
+      LIBGUESTFS_BACKEND: direct
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: safety-pinned
+          persist-credentials: false
+      - name: Existing pinned helper for libguestfs guest kernel
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
+          path: safety-pop-lab
+          persist-credentials: false
+      - name: Strict KVM/host and scratch evidence checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test -c /dev/kvm && test ! -L /dev/kvm
+          test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test "$(git -C safety-pop-lab rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -m 700 "$RUNNER_TEMP/gaslux-gpt-producer-evidence"
+      - name: Install approved Safety QEMU/libguestfs read-only appliance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils gdisk libguestfs-tools python3-guestfs \
+            libguestfs0 linux-image-generic python3-venv ca-certificates
+          source safety-pop-lab/auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          /usr/bin/python3 -m venv --system-site-packages "$RUNNER_TEMP/gaslux-guestfs-venv"
+          "$RUNNER_TEMP/gaslux-guestfs-venv/bin/python" -m pip install \
+            'cryptography>=50,<51' 'jsonschema>=4,<5' 'rfc8785>=0.1.4,<1' 'pillow>=11,<13'
+      - name: Verify guestfs and Observer imports before QEMU creation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/gaslux-guestfs-venv/bin/python" - <<'PY'
+          import guestfs
+          from PIL import Image
+          from auto_tests.installer_observer.gpt_lab_provenance import experiment
+          assert guestfs and Image and experiment
+          print("Pinned read-only guestfs and Observer modules import successfully")
+          PY
+      - name: Collect genuine QEMU GPT sectors via read-only guestfs, no input
+        shell: bash
+        env:
+          GASLUX_GPT_EVIDENCE: ${{ runner.temp }}/gaslux-gpt-producer-evidence
+          GASLUX_PINNED_SAFETY: ${{ github.workspace }}/safety-pinned
+        run: |
+          set -Eeuo pipefail
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP"
+          export LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
+          "$RUNNER_TEMP/gaslux-guestfs-venv/bin/python" -m \
+            auto_tests.installer_observer.gpt_lab_provenance \
+            | tee "$GASLUX_GPT_EVIDENCE/lab-result-summary.json"
+          sha256sum "$GASLUX_GPT_EVIDENCE/"*.json \
+            | tee "$GASLUX_GPT_EVIDENCE/sha256sums.txt"
+      - name: Preserve only synthetic GPT samples, immutable hashes and explicit limitations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observer-gpt-real-qemu-readonly-lab
+          if-no-files-found: warn
+          retention-days: 7
+          path: ${{ runner.temp }}/gaslux-gpt-producer-evidence/

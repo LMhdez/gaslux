@@ -1,0 +1,129 @@
+name: Installer Observer contracts (no guest input)
+on:
+  push:
+    branches:
+      - feature/installer-observer-engine
+    paths:
+      - 'auto_tests/installer_observer/**'
+      - 'auto_tests/tests/test_installer_observer.py'
+      - 'auto_tests/tests/test_observer_lab_identity.py'
+      - 'auto_tests/tests/test_observer_controller_lease.py'
+      - 'auto_tests/tests/test_observer_qemu_surface.py'
+      - 'auto_tests/tests/test_observer_endpoint_gates.py'
+      - 'auto_tests/tests/test_observer_isolation_host.py'
+      - 'auto_tests/tests/test_observer_fd_audit.py'
+      - 'auto_tests/tests/test_observer_boundary_model.py'
+      - 'auto_tests/tests/test_observer_remote_protocol_schema.py'
+      - 'auto_tests/tests/test_observer_remote_verifier.py'
+      - 'auto_tests/tests/test_observer_guest_attestation.py'
+      - 'auto_tests/tests/test_observer_durable_quote_replay.py'
+      - 'auto_tests/tests/test_observer_quote_binding.py'
+      - 'schemas/observer-tpm-quote-binding-v2.schema.json'
+      - 'schemas/observer-readonly-*.schema.json'
+      - 'docs/INSTALLER_OBSERVER.md'
+      - 'auto_tests/tests/test_q4os_*.py'
+      - 'auto_tests/fixtures/installer_observer/**'
+      - 'schemas/distro-ui-*.schema.json'
+      - 'docs/distro-backends/ui-maps/q4os.json'
+      - 'docs/distro-backends/evidence/q4os-manifest.json'
+      - '.github/workflows/installer-observer-contracts.yml'
+  pull_request:
+    paths:
+      - 'auto_tests/installer_observer/**'
+      - 'auto_tests/tests/test_installer_observer.py'
+      - 'auto_tests/tests/test_observer_lab_identity.py'
+      - 'auto_tests/tests/test_observer_controller_lease.py'
+      - 'auto_tests/tests/test_observer_qemu_surface.py'
+      - 'auto_tests/tests/test_observer_endpoint_gates.py'
+      - 'auto_tests/tests/test_observer_isolation_host.py'
+      - 'auto_tests/tests/test_observer_fd_audit.py'
+      - 'auto_tests/tests/test_observer_boundary_model.py'
+      - 'auto_tests/tests/test_observer_remote_protocol_schema.py'
+      - 'auto_tests/tests/test_observer_remote_verifier.py'
+      - 'auto_tests/tests/test_observer_guest_attestation.py'
+      - 'auto_tests/tests/test_observer_durable_quote_replay.py'
+      - 'auto_tests/tests/test_observer_quote_binding.py'
+      - 'schemas/observer-tpm-quote-binding-v2.schema.json'
+      - 'schemas/observer-readonly-*.schema.json'
+      - 'docs/INSTALLER_OBSERVER.md'
+      - 'auto_tests/fixtures/installer_observer/**'
+      - 'schemas/distro-ui-*.schema.json'
+      - 'docs/distro-backends/**'
+      - '.github/workflows/installer-observer-contracts.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  adversarial-and-q4os-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: auto_tests/requirements-dev.txt
+      - name: Install Tesseract for existing Summary evidence OCR gate
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tesseract-ocr
+      - name: Install observer validation dependencies
+        run: python -m pip install 'pytest>=9,<10' 'pillow>=11,<13' 'jsonschema>=4,<5' 'rfc8785>=0.1.4,<1' 'cryptography>=50,<51' 'ruff>=0.8,<1'
+      - name: Validate reviewed Q4OS map and manifest JSON Schemas
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+          for name, schema_name in (
+              ("docs/distro-backends/ui-maps/q4os.json", "schemas/distro-ui-map.schema.json"),
+              ("docs/distro-backends/evidence/q4os-manifest.json", "schemas/distro-ui-evidence.schema.json"),
+          ):
+              schema = json.loads(Path(schema_name).read_text())
+              document = json.loads(Path(name).read_text())
+              Draft202012Validator.check_schema(schema)
+              Draft202012Validator(schema).validate(document)
+              print("Validated", name)
+          schema = json.loads(Path("schemas/observer-tpm-quote-binding-v2.schema.json").read_text())
+          Draft202012Validator.check_schema(schema)
+          assert schema["properties"]["guest_input_authorized"] == {"const": False}
+          assert schema["properties"]["classification"] == {"const": "NOT_INDEPENDENT"}
+          print("Validated detached TPM quote binding proposal v2 (v1 unchanged)")
+          PY
+      - name: Compile Python observer and adversarial tests
+        run: python -m compileall -q auto_tests/installer_observer auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py auto_tests/installer_observer/remote_verifier.py auto_tests/tests/test_observer_remote_verifier.py auto_tests/installer_observer/guest_attestation.py auto_tests/tests/test_observer_guest_attestation.py auto_tests/installer_observer/durable_quote_replay.py auto_tests/installer_observer/quote_binding.py auto_tests/tests/test_observer_durable_quote_replay.py auto_tests/tests/test_observer_quote_binding.py
+      - name: Ruff lint new transport and hostile-input tests
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/installer_observer/fd_audit.py auto_tests/installer_observer/boundary_model.py auto_tests/installer_observer/remote_verifier.py auto_tests/tests/test_observer_remote_verifier.py auto_tests/installer_observer/guest_attestation.py auto_tests/tests/test_observer_guest_attestation.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py auto_tests/installer_observer/durable_quote_replay.py auto_tests/installer_observer/quote_binding.py auto_tests/tests/test_observer_durable_quote_replay.py auto_tests/tests/test_observer_quote_binding.py
+      - name: Ruff format check new transport and hostile-input tests
+        run: python -m ruff format --diff --check --config auto_tests/pyproject.toml auto_tests/installer_observer/transport_vnc.py auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/lab_probe.py auto_tests/installer_observer/controller_lease.py auto_tests/installer_observer/qemu_surface.py auto_tests/installer_observer/endpoint_gates.py auto_tests/installer_observer/isolation_host.py auto_tests/installer_observer/fd_audit.py auto_tests/installer_observer/boundary_model.py auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py auto_tests/installer_observer/remote_verifier.py auto_tests/tests/test_observer_remote_verifier.py auto_tests/installer_observer/guest_attestation.py auto_tests/tests/test_observer_guest_attestation.py auto_tests/installer_observer/durable_quote_replay.py auto_tests/installer_observer/quote_binding.py auto_tests/tests/test_observer_durable_quote_replay.py auto_tests/tests/test_observer_quote_binding.py
+      - name: Adversarial tests including Linux symlink and hardlink cases
+        run: python -m pytest -q auto_tests/tests/test_installer_observer.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_qemu_surface.py auto_tests/tests/test_observer_endpoint_gates.py auto_tests/tests/test_observer_isolation_host.py auto_tests/tests/test_observer_fd_audit.py auto_tests/tests/test_observer_boundary_model.py auto_tests/tests/test_observer_remote_protocol_schema.py auto_tests/tests/test_observer_remote_verifier.py auto_tests/tests/test_observer_guest_attestation.py auto_tests/installer_observer/durable_quote_replay.py auto_tests/installer_observer/quote_binding.py auto_tests/tests/test_observer_durable_quote_replay.py auto_tests/tests/test_observer_quote_binding.py
+      - name: Historical Q4OS contracts including Linux symlink cases
+        run: |
+          python -m pytest -q \
+            auto_tests/tests/test_q4os_ui_map_contract.py \
+            auto_tests/tests/test_q4os_summary_gate.py \
+            auto_tests/tests/test_q4os_pair_verify.py \
+            auto_tests/tests/test_q4os_native_preflight.py
+      - name: Verify original Q4OS PNG SHA-256 and replay all four immutable artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m auto_tests.installer_observer.cli inspect
+          python -m auto_tests.installer_observer.cli replay > "$RUNNER_TEMP/q4os-observer-replay.json"
+          python -m auto_tests.installer_observer.cli verify-report "$RUNNER_TEMP/q4os-observer-replay.json"
+          python - "$RUNNER_TEMP/q4os-observer-replay.json" <<'PY'
+          import json
+          import sys
+          report = json.load(open(sys.argv[1], encoding="utf-8"))["manifest"]
+          assert len(report["sessions"]) == 4
+          assert sum(len(s["frames"]) for s in report["sessions"]) == 40
+          assert sum(len(s["steps"]) for s in report["sessions"]) == 36
+          assert report["live_input_count"] == 0
+          print("Verified: 40 original screenshots, 36 historical transitions, zero live clicks")
+          PY
