@@ -35,7 +35,8 @@ jobs:
       - name: Install lint, schema, cryptographic and test dependencies
         run: |
           python -m pip install 'pytest>=9,<10' 'ruff>=0.8,<1' \
-            'jsonschema>=4,<5' 'cryptography>=50,<51' 'rfc8785>=0.1.4,<1'
+            'jsonschema>=4,<5' 'cryptography>=50,<51' 'rfc8785>=0.1.4,<1' \
+            'pillow>=11,<13'
       - name: Verify pinned Safety HEAD and immutable schema availability
         shell: bash
         run: |
