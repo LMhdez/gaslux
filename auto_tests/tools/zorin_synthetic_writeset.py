@@ -246,8 +246,28 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
             ("ovmf-trial.fd", 1024 * 1024),
         ):
             fds[name] = owned_fd(root, name, limit)
-        insist(len({s.st_ino for _, s in fds.values()}) == len(fds),
+        insist(len({(s.st_dev, s.st_ino) for _, s in fds.values()}) == len(fds),
                "E_SHARED_BACKING_OR_HARDLINK")
+        for name in ("baseline.raw", "checkpoint.raw"):
+            insist(stat.S_IMODE(fds[name][1].st_mode) & 0o222 == 0,
+                   "E_REFERENCE_WRITABLE")
+        receipt_fd, receipt_stat = owned_fd(root, "receipt.json", 4096)
+        try:
+            receipt = json.loads(os.read(receipt_fd, receipt_stat.st_size))
+            insist(type(receipt) is dict and set(receipt) ==
+                   {"transactionId", "checkpointId", "baselineSha256",
+                    "provenance"} and receipt["transactionId"] == policy.transaction
+                   and receipt["checkpointId"] == policy.checkpoint_id
+                   and receipt["baselineSha256"] == policy.disk_sha256
+                   and receipt["provenance"] == "SYNTHETIC_UNATTESTED",
+                   "E_FOREIGN_TRANSACTION")
+            close_guard(receipt_fd, receipt_stat)
+        except (ValueError, UnicodeDecodeError) as exc:
+            if isinstance(exc, WriteSetRefused):
+                raise
+            raise WriteSetRefused("E_EVIDENCE_JSON") from exc
+        finally:
+            os.close(receipt_fd)
         for name in ("baseline.raw", "trial.raw", "checkpoint.raw"):
             insist(fds[name][1].st_size == policy.disk_bytes, "E_DISK_SIZE_CHANGED")
         insist(digest_fd(fds["baseline.raw"][0], fds["baseline.raw"][1].st_size) == policy.disk_sha256,
@@ -279,8 +299,16 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
         except DiskIdentityError as exc:
             raise WriteSetRefused("E_GPT_IDENTITY_CHANGED") from exc
         changed = compare_raw(fds["baseline.raw"][0], fds["trial.raw"][0], policy)
+        insist(digest_fd(fds["baseline.raw"][0], fds["baseline.raw"][1].st_size) == policy.disk_sha256,
+               "E_BASELINE_CHANGED")
         insist(digest_fd(fds["checkpoint.raw"][0], fds["checkpoint.raw"][1].st_size) == policy.disk_sha256,
                "E_CHECKPOINT_CHANGED")
+        insist(digest_fd(fds["ovmf-base.fd"][0], fds["ovmf-base.fd"][1].st_size) == policy.vars_sha256
+               and digest_fd(fds["ovmf-trial.fd"][0], fds["ovmf-trial.fd"][1].st_size) == policy.vars_sha256,
+               "E_OVMF_CHANGED")
+        insist(tree_digest(root, "esp-base") == policy.esp_sha256
+               and tree_digest(root, "esp-trial") == policy.esp_sha256,
+               "E_ESP_FILES_CHANGED")
         for fd, original in fds.values():
             close_guard(fd, original)
         return {"result": "SYNTHETIC_ONLY_WITHIN_ROOT" if changed else "SYNTHETIC_NO_CHANGE",
