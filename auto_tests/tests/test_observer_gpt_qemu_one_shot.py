@@ -170,9 +170,8 @@ def test_evidence_verifier_fails_closed_when_not_a_completed_real_run(tmp_path):
 
 
 @pytest.fixture
-def authorization_git_repo(tmp_path, monkeypatch):
+def authorization_git_repo(tmp_path):
     """Create a disposable local git history, never a remote authorization branch."""
-    from auto_tests.tools import observer_gpt_qemu_one_shot as auth
 
     root = tmp_path / "repo"
     subprocess.run(["git", "init", "-q", str(root)], check=True)
@@ -189,7 +188,6 @@ def authorization_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "-C", str(root), "add", "README"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "synthetic base"], check=True)
     before = git("rev-parse", "HEAD")
-    monkeypatch.setattr(auth, "AUDITED", before)
     return root, before
 
 
