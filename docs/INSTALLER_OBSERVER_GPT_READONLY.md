@@ -62,12 +62,15 @@ trust anchor.
    ephemeral sparse RAW file for validation. The producer verifies
    the reconstructed content against the **original in-memory guest
    bytes** before marking the record `guest`.
-4. The `immediate` observation rereads the same host RAW export while
-   QEMU is still alive, after the guest read. QEMU PID/start ticks,
-   executable SHA-256 and source inode are checked in the interval.
-   The original parent and overlay are then rechecked for unchanged
-   identity, backing metadata and file SHA-256. The QEMU process must
-   exit before the lab reports success.
+4. After the guest read, QEMU PID/start ticks and executable SHA-256
+   are checked while the process is still alive. The appliance then closes
+   and the QEMU process must terminate. The parent and overlay are checked
+   for unchanged inode, backing metadata and SHA-256. Only then does
+   `immediate` create and read a **fresh, second QCOW2-to-RAW export** of
+   the child disk; the parent/overlay are rechecked again after this export.
+   The original `host.raw` copy is never re-labelled as `immediate`.
+   This is a post-guest host-side verification, **not** an immediate
+   guest read, nor an atomic snapshot of a running VM.
 5. For all three observation records, exact offsets, lengths, raw
    samples, SHA-256, calculated CRCs, normalized GUID/PARTUUID,
    partitions, acquisition method and UTC timestamp are retained.
@@ -198,3 +201,12 @@ No Windows, installation, dual boot, recovery, genuine guest hardware identity
 or safe production write was proved. Even a successful signed state constructed
 by this runner cannot establish the origin of the actual VM or the
 administrative independence of any collector.
+
+**Follow-up correction:** after the initial successful run #44895034912,
+the post-guest `immediate` method was strengthened to create a new raw
+export of the unchanged QCOW2 rather than reread the existing host export.
+The initial run remains genuine evidence for host and guest reads, but
+its immediate record used the previous host export. The revised source
+requires its own validation run before its stronger immediate claim
+can be accepted; never attribute this property retroactively to the
+earlier artifact.
