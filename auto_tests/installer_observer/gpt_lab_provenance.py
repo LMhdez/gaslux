@@ -29,6 +29,7 @@ from .gpt_readonly_producer import (
     GptProducerRefused,
     GuestSliceProof,
     build_safety_v1,
+    capture_fresh_immediate,
     capture_gpt,
     require,
 )
@@ -384,30 +385,22 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
             break
         time.sleep(0.1)
     require(not (Path("/proc") / str(qemu["pid"])).exists(), "QEMU_PROCESS_NOT_TERMINATED")
-    lab.same_file(base, workspace, base_stat)
-    lab.same_file(overlay, workspace, overlay_stat)
-    require(lab.verify_chain(overlay, base, workspace) == chain_before, "BACKING_CHANGED")
-    require(
-        sha_file(base) == chain_before["backingSha256"]
-        and sha_file(overlay) == chain_before["overlaySha256"],
-        "BACKING_HASH_CHANGED",
-    )
-    # A new, independently exported read of the unchanged QCOW2 is mandatory.
-    # Never re-label the earlier host.raw copy as an immediate live observation.
-    lab.host_snapshot(overlay, workspace / "immediate.raw", workspace)
-    immediate = capture_gpt(
-        workspace / "immediate.raw",
-        workspace,
-        source="immediate",
-        logical_sector_size=SECTOR,
+    # Preserve the existing fresh QCOW2 export; validate its provenance.
+    immediate = capture_fresh_immediate(
+        workspace=workspace,
+        overlay=overlay,
+        base=base,
+        host=host,
+        lab=lab,
         safety_disk=disk,
+        expected_overlay=overlay_stat,
+        expected_base=base_stat,
+        expected_chain=chain_before,
+        logical_sector_size=SECTOR,
     )
-    lab.same_file(base, workspace, base_stat)
-    lab.same_file(overlay, workspace, overlay_stat)
     require(
-        sha_file(base) == chain_before["backingSha256"]
-        and sha_file(overlay) == chain_before["overlaySha256"],
-        "BACKING_CHANGED_AFTER_IMMEDIATE",
+        host.observed_at <= guest.observed_at <= immediate.observed_at,
+        "OBSERVATION_INCOMPLETE",
     )
     captures = (host, guest, immediate)
     require(
@@ -495,6 +488,9 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         "safetyAssessment": assessment.result,
         "productionWriteAuthorized": False,
         "guestInputAuthorized": False,
+        "inputAuthorized": False,
+        "diskWritesAuthorized": False,
+        "productionInstallationAuthorized": False,
         "independentAttestationVerified": False,
         "remoteGuestAttestationVerifiedLocally": False,
         "remoteStateSignedWithEphemeralRunnerKey": True,

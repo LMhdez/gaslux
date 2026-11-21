@@ -250,6 +250,96 @@ def capture_gpt(
         os.close(fd)
 
 
+
+def capture_fresh_immediate(
+    *,
+    workspace: Path,
+    overlay: Path,
+    base: Path,
+    host: Capture,
+    lab: Any,
+    safety_disk: Any,
+    expected_overlay: os.stat_result,
+    expected_base: os.stat_result,
+    expected_chain: dict[str, Any],
+    logical_sector_size: int,
+) -> Capture:
+    """Validate a new post-QEMU, read-only QCOW2 export; no independent trust."""
+    output = workspace / "immediate.raw"
+    historical = workspace / "host.raw"
+
+    def same_owned(path: Path, original: os.stat_result) -> None:
+        lab.same_file(path, workspace, original)
+        current = own_file(path, workspace)
+        attrs = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        require(
+            tuple(getattr(current, key) for key in attrs)
+            == tuple(getattr(original, key) for key in attrs),
+            "OBSERVATION_INCOMPLETE",
+        )
+
+    try:
+        require(
+            workspace.is_absolute()
+            and workspace.resolve(strict=True) == workspace
+            and overlay == workspace / "overlay.qcow2"
+            and base == workspace / "base.raw"
+            and not output.exists()
+            and not output.is_symlink()
+            and host.source == "host"
+            and host.trace["imageFile"] == str(historical),
+            "OBSERVATION_INCOMPLETE",
+        )
+        historical_stat = own_file(historical, workspace)
+        require(
+            (historical_stat.st_dev, historical_stat.st_ino, historical_stat.st_size)
+            == (
+                host.trace["fileDev"],
+                host.trace["fileInode"],
+                host.trace["fileSizeBytes"],
+            ),
+            "OBSERVATION_INCOMPLETE",
+        )
+        require(
+            expected_chain["format"] == "qcow2"
+            and expected_chain["backingFormat"] == "raw"
+            and expected_chain["backingFilename"] == str(base),
+            "OBSERVATION_INCOMPLETE",
+        )
+        same_owned(overlay, expected_overlay)
+        same_owned(base, expected_base)
+        require(lab.verify_chain(overlay, base, workspace) == expected_chain, "OBSERVATION_INCOMPLETE")
+
+        # Existing pinned Safety host_snapshot does the actual qemu-img convert.
+        lab.host_snapshot(overlay, output, workspace)
+
+        same_owned(overlay, expected_overlay)
+        same_owned(base, expected_base)
+        require(lab.verify_chain(overlay, base, workspace) == expected_chain, "OBSERVATION_INCOMPLETE")
+        immediate = capture_gpt(
+            output,
+            workspace,
+            source="immediate",
+            logical_sector_size=logical_sector_size,
+            safety_disk=safety_disk,
+        )
+        require(
+            immediate.trace["imageFile"] == str(output)
+            and (immediate.trace["fileDev"], immediate.trace["fileInode"])
+            != (host.trace["fileDev"], host.trace["fileInode"])
+            and immediate.observed_at >= host.observed_at
+            and immediate.gpt == host.gpt
+            and immediate.sectors == host.sectors,
+            "OBSERVATION_INCOMPLETE",
+        )
+        same_owned(overlay, expected_overlay)
+        same_owned(base, expected_base)
+        require(lab.verify_chain(overlay, base, workspace) == expected_chain, "OBSERVATION_INCOMPLETE")
+        return immediate
+    except Exception as exc:
+        raise GptProducerRefused("OBSERVATION_INCOMPLETE") from exc
+
+
 def build_safety_v1(
     captures: tuple[Capture, Capture, Capture],
     *,
