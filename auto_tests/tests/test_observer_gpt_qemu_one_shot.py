@@ -265,3 +265,65 @@ def test_git_preflight_refuses_forged_previous_sha(authorization_git_repo):
     ).strip()
     with pytest.raises(Refused, match="UNEXPECTED_PARENT_COMMIT"):
         validate_git(root, {"before": "a" * 40, "after": after})
+
+
+def test_forged_event_before_cannot_hide_unreviewed_real_git_parent(
+    authorization_git_repo,
+):
+    root, _ = authorization_git_repo
+    reviewed = _commit_synthetic(root, "reviewed", {"README": "Reviewed\n"})
+    _commit_synthetic(root, "unreviewed", {"untrusted.txt": "modify workflow later\n"})
+    after = _commit_synthetic(root, "authorization", {FILE: json.dumps(expected_approval())})
+    # The event lies about the previous SHA; git HEAD^ exposes actual parent.
+    with pytest.raises(Refused, match="UNEXPECTED_PARENT_COMMIT"):
+        validate_git(
+            root,
+            {"before": reviewed, "after": after},
+            trusted_preparation_sha=reviewed,
+            trusted_authorization_sha=after,
+            unused_external_grant=True,
+        )
+
+
+def test_protected_main_controller_template_is_not_an_executable_workflow():
+    template = ROOT / "docs/INSTALLER_OBSERVER_GPT_PROTECTED_CONTROLLER.template.yml"
+    assert template.is_file()
+    assert not str(template.relative_to(ROOT)).startswith(".github/workflows/")
+    config = yaml.load(template.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    assert set(config["on"]) == {"workflow_dispatch"}
+    assert config["jobs"]["protected-gpt-readonly"]["if"] == "${{ false }}"
+    job = config["jobs"]["protected-gpt-readonly"]
+    assert job["environment"] == "gaslux-gpt-qemu-human-reviewed"
+    assert job["runs-on"] == "ubuntu-24.04"
+    assert all("qemu" not in step.get("run", "").lower() for step in job["steps"])
+
+
+def test_branch_cli_rejects_even_valid_untrusted_request_without_trusted_controller(
+    authorized, authorization_git_repo, tmp_path
+):
+    import sys
+
+    root, before = authorization_git_repo
+    after = _commit_synthetic(root, "approval", {FILE: json.dumps(expected_approval())})
+    event, _, env = copy.deepcopy(authorized)
+    event["before"] = before
+    event["after"] = after
+    event["head_commit"]["id"] = after
+    event["commits"][0]["id"] = after
+    request = tmp_path / "event.json"
+    request.write_text(json.dumps(event), encoding="utf-8")
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    process = subprocess.run(
+        [
+            sys.executable, "-m", "auto_tests.tools.observer_gpt_qemu_one_shot",
+            "preflight", "--checkout", str(root), "--evidence", str(evidence),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**__import__("os").environ, **env, "GITHUB_EVENT_PATH": str(request)},
+    )
+    assert process.returncode == 2
+    assert "TRUSTED_PREPARATION_MISSING" in process.stderr
+    assert not (evidence / "authorization-intent.json").exists()

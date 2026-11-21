@@ -1,117 +1,113 @@
-# Observer GPT IMMEDIATE — one-shot QEMU preparation (NOT authorization)
+# Observer GPT IMMEDIATE — BLOCKED pending protected external controller
 
-**Safety audit:** https://github.com/LMhdez/gaslux/pull/272#pullrequestreview-6004845263
+**Current security verdict:** [GASLUX-SAFETY #273 review](https://github.com/LMhdez/gaslux/pull/273#pullrequestreview-6005022413) = **BLOCKED_PENDING_FIX**. The earlier technical approval on [PR #272](https://github.com/LMhdez/gaslux/pull/272#pullrequestreview-6004845263) was LIMITED to a future one-time synthetic read-only QEMU exercise, subject to separate human approval. Neither review authorizes QEMU now.
 
-APPROVED_FOR_READONLY_QEMU authorizes technically ONE synthetic 64 MiB,
-GitHub-hosted, read-only QEMU/KVM laboratory experiment, **only after separate
-explicit human authorization**. This draft PR does not provide that approval.
+## Vulnerability and mandatory correction
 
-## Pinned code and immutable experimental scope
+The original branch-controlled authorization in #273 checked only that the
+final approval commit parent descended from the audited GPT source SHA. The
+last commit could add only the JSON while **unreviewed intervening commits**
+modified the workflow, Python preflight or both. Safety reproduced all three
+bypasses on real temporary Git histories (3/3 accepted by the old logic).
+The requesting branch also controlled the workflow and guard code. Checking
+the producer source SHA alone does not make its execution controller trusted.
 
-- Exact **executed** Observer commit: dd3e7bf26e36499f89701393773df464ce713e4f
-  (PR #272). It is checked out under audited/, not inherited from the trigger
-  branch. The workflow validates the FULL git SHA and publishes producer
-  Python file SHA-256 checksums.
-- Safety v1 pinned source: 0be04192acd542646a5b6cd952e01620379edf5d
-  (PR #267). Existing guestfs kernel helper: 3f44ae2068fabe875f160ca007393f9e3eb99367.
-- Only a 64 MiB GPT synthetic regular file, 512-byte logical sectors,
-  read-only guestfs, QCOW2 child on RAW backing under a temporary private
-  RUNNER_TEMP directory; NO selected Windows or physical user disk.
-- Guest opened readonly=1 using a generated guestfs label. The audited
-  experiment captures HOST; runs real libguestfs.pread_device under QEMU/KVM;
-  terminates QEMU; then calls capture_fresh_immediate(), exporting the ORIGINAL
-  overlay into a NEW immediate.raw, never reusing host.raw.
-- GitHub-hosted Ubuntu 24.04, KVM required, least workflow permissions
-  (contents: read), persist-credentials: false for every checkout,
-  concurrency cancel-in-progress: false, no installation or GUI input.
+The corrected `validate_git` no longer uses `git merge-base --is-ancestor`.
+It requires ALL of the following separately supplied by the trusted controller:
 
-## Why not workflow_dispatch?
+- **Exact** approved preparation commit SHA; `event.before` and `git HEAD^`
+  must both equal it, byte-for-byte.
+- **Exact** approved authorization commit SHA; `event.after` and `git HEAD`
+  must both equal it, byte-for-byte.
+- Actual final Git diff must be exclusively one addition of the permitted
+  approval JSON, even when the event claims otherwise.
+- A **verified and atomically consumed external one-shot grant**, reported
+  to the method only by the trusted controller after consumption. A Boolean
+  is a caller assertion, NOT itself a durable ledger. Missing or already-used
+  grant => refusal.
 
-The default branch is main. Its tree does not contain the pre-existing
-installer-observer-gpt-readonly.yml workflow, so that workflow cannot reliably
-receive workflow_dispatch until present on main. Main is deliberately untouched.
+These values must NOT be taken from the requester JSON, untrusted workflow
+inputs, mutable variables, or files controlled by the authorization branch.
+The current branch-level CLI **never accepts these inputs** and calls the
+validator without them; it always refuses before any QEMU launch.
 
-The distinct observer-gpt-qemu-one-shot.yml is triggered only by a push to
-qemu-approved/observer-gpt-dd3e7bf2-20261121 which ADDS exactly
-.github/gpt-qemu-approvals/observer-gpt-dd3e7bf2-20261121.json.
-It has no PR, workflow_dispatch, schedule, repository_dispatch or ordinary
-development-branch trigger, and does NOT modify the existing Observer gate.
-It does not use a commit-message marker.
+## Resolution of the trust boundary: protected default-branch controller
 
-The initial guarded preflight requires github.actor=LMhdez, repository
-LMhdez/gaslux, GitHub-hosted runner, first run attempt, pre-existing branch
-(created=false), non-forced push, EXACTLY one commit containing the EXACTLY
-one new file, no other changes, git parent/event identity match, audited
-SHA ancestry, exact expected JSON payload, and no write privileges.
-The job is guarded against accidental pushes and manual reruns (attempt 2+).
-The new authorization branch is deliberately **not created during preparation**.
+The chosen target is option A: a **reviewed and protected `main` workflow**
+triggered via `workflow_dispatch`, using a GitHub **Environment** with
+independent required reviewers and branch restrictions, plus an external
+durable once-ever authorization ledger. The workflow itself and the actual
+Python guard must come from the protected `main` code, not from any
+authorization-requesting branch or the JSON it contains.
 
-This is an audit trail within the SAME GitHub administrator domain; JSON and
-actor account identity are not a hardware-backed independent human signature.
-An administrator may modify CI or branch policy. A new attempt after recreation
-of the authorization branch must also be barred by human process; GitHub git
-history alone is not a global once-ever ledger.
+Current proof of feasibility stops at source-level tests. The repository's
+default branch is `main`, and the existing GPT producer workflow is NOT
+present there. Branch protection, Environment reviewers, deployment-branch
+restriction, independent preparation/authorization pins and durable atomic
+single-use ledger have NOT been confirmed configured or operational.
+Consequently there is **no currently deployable trusted controller**.
 
-## Separate authorization procedure (NOT performed)
+A non-executable design scaffold lives in
+`docs/INSTALLER_OBSERVER_GPT_PROTECTED_CONTROLLER.template.yml`. It is
+outside `.github/workflows/`, remains hard-disabled (`if: false`) and
+contains no QEMU command. GASLUX-INTEGRATOR must integrate and configure it,
+subject to human review, rather than moving branch-controlled QEMU code into
+the trusted workflow without verification.
 
-1. A human reviews this preparation PR, the Safety #272 differential audit,
-   the CI results and the code SHA, and separately authorizes ONE QEMU/KVM
-   experiment. This preparation request or technical Safety verdict alone is
-   NOT permission to run.
-2. After authorization, create the distinct authorization branch
-   qemu-approved/observer-gpt-dd3e7bf2-20261121 from the preparation
-   HEAD, with NO approval file. A branch-creation event is explicitly rejected.
-3. In that authorization branch, ADD ONLY the following new file in ONE
-   human-authorized commit, without changes elsewhere and without force push:
-   .github/gpt-qemu-approvals/observer-gpt-dd3e7bf2-20261121.json
+The old `.github/workflows/observer-gpt-qemu-one-shot.yml` is replaced on
+the correction branch by a deliberately inert `workflow_dispatch` job
+with `if: false` and no QEMU/libguestfs. Because it is absent from
+`main`, it also cannot be dispatched normally. There is **no trigger**
+on `qemu-approved/...` or file addition. The branch
+`qemu-approved/observer-gpt-dd3e7bf2-20261121` and its JSON must NOT
+be created. The original unmerged #273 still contains the old workflow:
+this fix only becomes protective operationally when the corrected branch
+replaces it under reviewed integration and/or an administrative rule
+disables that old route. A branch in a draft PR cannot revoke an older
+untrusted workflow elsewhere in the repository.
 
-   JSON object fields and values, with no additional fields:
-   - authorizationKind: ONE_SYNTHETIC_GPT_READONLY_QEMU
-   - repository: LMhdez/gaslux
-   - approvedCodeSha: dd3e7bf26e36499f89701393773df464ce713e4f
-   - safetySourceSha: 0be04192acd542646a5b6cd952e01620379edf5d
-   - authorizationRef: refs/heads/qemu-approved/observer-gpt-dd3e7bf2-20261121
-   - reviewUrl: https://github.com/LMhdez/gaslux/pull/272#pullrequestreview-6004845263
-   - humanApproved: true
-   - singleRun: true
-   - inputAuthorized: false
-   - diskWritesAuthorized: false
-   - productionInstallationAuthorized: false
-   - productionWriteAuthorized: false
+## Reproducible synthetic gates (NO QEMU)
 
-   The canonical exact fields are also returned by the Python
-   expected_approval() function. The JSON file is NOT committed here.
-4. Examine the single resulting GitHub Actions run. Do not click Re-run;
-   the script rejects attempts >1. No automatic QEMU retries exist.
-   On any error, record failure and STOP. Further retries require a new
-   independent human review and explicit authorization.
-5. Publish the run URL, HEAD, artifact hash and exact remaining limitations
-   in PR #272 and request another independent Safety review.
+The new tests import actual `validate_trigger` / `validate_git` and use
+real disposable local Git repositories. They reproduce the exact three
+attacks (intermediate workflow, preflight, both), plus modified final diff,
+forged `event.before`, unapproved authorization SHA, missing external
+preparation anchor, JSON-supplied fake anchor, missing/consumed grant and
+rerun. The positive case is purely synthetic and supplies independent
+**test-only** pins; it does not establish a working production trust root.
+Every rejected case must fail before a QEMU-capable step could run; the
+branch-local workflow has no such step at all.
 
-## Evidence (prepared, NOT yet collected)
+The production GPT producer is unchanged at audited commit
+`dd3e7bf26e36499f89701393773df464ce713e4f`, Safety unchanged at
+`0be04192acd542646a5b6cd952e01620379edf5d`. Historical laboratory
+scope remains 64 MiB disposable GPT, 512-byte sectors, read-only
+libguestfs/KVM, fresh post-QEMU IMMEDIATE export, no selected physical disks
+and no Windows image. No new QEMU execution is performed in this correction.
 
-The workflow first checks the gate and commits, then verifies the exact source
-SHA and pinned Safety. Only then can it install the already-qualified lab
-dependencies and open KVM. The audited Python producer remains unchanged.
+Future trusted runtime, once independently reviewed and enabled, must check
+original GPT primary/secondary headers, CRC32, SHA-256, GUID/PARTUUID, exact
+geometry, overlay and backing chain, distinct HOST/GUEST/IMMEDIATE acquisitions
+and Safety v1. It may publish only JSON/text evidence, no QCOW2, Windows
+images or keys. Even that evidence remains `NOT_INDEPENDENT` and
+`DIAGNOSTIC_ONLY`.
 
-A second local fail-closed validator checks source chronology, distinct
-host.raw/guest-reconstructed.raw/immediate.raw, raw GPT samples, sector SHA-256
-and primary/secondary GPT header/array CRC32, GUID/PARTUUID, offsets,
-three-way GPT equality, backing chain hashes and read-only/writer/input flags.
-This validates same-runner trace consistency, NOT independent provenance.
+Mandatory flags remain `inputAuthorized=false`,
+`diskWritesAuthorized=false`, `productionInstallationAuthorized=false`
+and `productionWriteAuthorized=false`. No hardware identity, independent
+administrative attestation, real Windows dual boot, rollback, recovery or
+production write authorization follows from these synthetic contracts.
 
-The seven-day artifact contains ONLY JSON/text:
-authorization-intent.json, executed-heads.txt,
-audited-source-sha256sums.txt, sha256sums.txt,
-host-read-trace.json, guest-read-trace.json, immediate-read-trace.json,
-safety-gpt-provenance-v1.json, manifest.json, evidence-verification.json,
-lab-result-summary.json. It contains NO QCOW2/RAW files, Windows images,
-passwords, sensitive user material, or ephemeral private signing keys.
+## External integration blockers
 
-MANDATORY classification remains NOT_INDEPENDENT / DIAGNOSTIC_ONLY.
-inputAuthorized=false, diskWritesAuthorized=false,
-productionInstallationAuthorized=false, productionWriteAuthorized=false.
-No independent QMP VM identity, trusted remote guest provenance, Windows
-installation, dual boot, recovery, rollback or production write authorization
-is proved or claimed. Historical QEMU runs on other source HEADs cannot
-validate this new audited function operationally.
+GASLUX-INTEGRATOR must obtain human review for the final preparation/approval
+SHAs, integrate an independently protected main-workflow/controller, confirm
+branch protection and required Environment reviewers with protection against
+reviewer self-approval, and supply a real external durable atomic one-use
+grant mechanism. A GitHub actor, JSON `humanApproved=true`,
+`run_attempt=1`, or `concurrency.cancel-in-progress=false` does **not**
+implement that grant; deleting and recreating a branch can otherwise reuse
+authorization. The controlled workflow must not execute checked-out code from
+the requesting branch. Until EVERY dependency is operational and independently
+reaudited by GASLUX-SAFETY, QEMU remains **BLOCKED**, including requests for
+human permission to run it.

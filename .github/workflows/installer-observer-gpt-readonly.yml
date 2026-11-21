@@ -5,6 +5,7 @@ on:
       - feature/installer-observer-engine
       - test/observer-gpt-immediate-regressions-20261121
       - prep/observer-gpt-qemu-immediate-dd3e7bf2-20261121
+      - fix/observer-qemu-oneshot-trust-boundary-20261121
     paths:
       - 'auto_tests/installer_observer/gpt_readonly_producer.py'
       - 'auto_tests/installer_observer/gpt_lab_provenance.py'
