@@ -23,7 +23,7 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parents[2]
 FILE = ROOT / "auto_tests/tools/observer_one_shot_ledger_offline.py"
 FIXTURE = ROOT / "auto_tests/fixtures/observer-one-shot/valid-grant.json"
-SCHEMA = ROOT / "schemas/observer-one-shot-grant-v1.schema.json"
+SCHEMA = ROOT / "schemas/observer-one-shot-grant-v2.schema.json"
 spec = importlib.util.spec_from_file_location("observer_one_shot_ledger_offline", FILE)
 assert spec is not None and spec.loader is not None
 
@@ -472,6 +472,9 @@ class LedgerTests(unittest.TestCase):
         self.attempt("INVALID_STATE_TRANSITION")
         self.assertEqual(self.ledger.state(self.g["grantId"]), "REVOKED")
         self.g["grantId"] = "8f34961d-dcfe-4f8c-9f8e-d13a6b1c1111"
+        self.g["authorizationSha"] = "e" * 40
+        self.g["externalDecisionId"] = str(uuid.uuid4())
+        self.g["humanReviewId"] = "separate-review-for-expiry"
         self.trusted = trusted_fixture(self.g)
         self.run = run_fixture(self.g)
         self.ready()
