@@ -257,10 +257,10 @@ def test_fail_closed_on_unchanged_review_roi(mapping, local_recording):
 
 
 def test_ocr_and_pixel_gate_failure_propagate(monkeypatch, mapping, originals):
-    def failed_ocr(_png):
-        raise ScreenRefusal("OCR unavailable")
+    def failed_ocr(*_args, **_kwargs):
+        raise OSError("Tesseract unavailable")
 
-    monkeypatch.setattr(q4os.summary, "ocr", failed_ocr)
+    monkeypatch.setattr(q4os.summary.subprocess, "run", failed_ocr)
     with pytest.raises((Refusal, ScreenRefusal)):
         run_record(mapping, originals[2])
 
