@@ -83,6 +83,23 @@ jobs:
           test -s "$evidence/q4os-guestfs-synthetic-preflight.json"
           echo 'Real QEMU appliance verified on synthetic disk; Windows media not yet touched' >> "$GITHUB_STEP_SUMMARY"
 
+      - name: BLOCKED_QEMU_OVMF_STARTUP unless full-size synthetic QMP smoke passes
+        shell: bash
+        env:
+          GASLUX_Q4OS_OVMF_EVIDENCE: ${{ runner.temp }}/q4os-win10-readonly-evidence
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GASLUX_WIN10_ACCEL" = kvm
+          test -d "$GASLUX_Q4OS_OVMF_EVIDENCE"
+          test ! -L "$GASLUX_Q4OS_OVMF_EVIDENCE"
+          timeout --signal=TERM --kill-after=15s 60s \
+            /usr/bin/python3 auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py
+          test -s "$GASLUX_Q4OS_OVMF_EVIDENCE/q4os-qemu-ovmf-startup.json"
+          echo 'Synthetic OVMF/QMP start passed at Windows machine size, no Windows ISO used' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Download Microsoft Windows 10 Enterprise Evaluation 22H2 and verify official SHA-256
         shell: bash
         run: |
