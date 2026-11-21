@@ -18,14 +18,36 @@ import uuid
 from pathlib import Path
 
 from gaslux_popos_reuse_snapshot_gate import (
-    Refusal, chain, command, make_child, need, new_file, region_hash, regular,
-    sha, system_ovmf_template,
+    Refusal,
+    chain,
+    command,
+    make_child,
+    need,
+    new_file,
+    region_hash,
+    regular,
+    sha,
+    system_ovmf_template,
 )
 from gaslux_popos_six_gpt_contract import (
-    BOOLEANS, CONSENT, COUNT, DISK_GUID, DISTINST_SHA256, ISO_SHA256, PARTS,
-    PROTECTED, PROTECTED_ESP_FILE, SCENARIO, SECTOR, SERIAL, SIZE,
-    SYSTEM76_GPG_FPR, UNALLOCATED_CANARIES, canonical_digest,
-    validate_geometry, validate_plan,
+    BOOLEANS,
+    CONSENT,
+    COUNT,
+    DISK_GUID,
+    DISTINST_SHA256,
+    ISO_SHA256,
+    PARTS,
+    PROTECTED,
+    PROTECTED_ESP_FILE,
+    SCENARIO,
+    SECTOR,
+    SERIAL,
+    SIZE,
+    SYSTEM76_GPG_FPR,
+    UNALLOCATED_CANARIES,
+    canonical_digest,
+    validate_geometry,
+    validate_plan,
 )
 
 BASE_NAME = "prepared-six.raw"

@@ -11,7 +11,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from gaslux_popos_reuse_snapshot_gate import Refusal, UNSAFE, WRITE, need
+from gaslux_popos_reuse_snapshot_gate import UNSAFE, WRITE, Refusal, need
 
 SECTOR = 512
 SIZE = 32 * 1024**3
