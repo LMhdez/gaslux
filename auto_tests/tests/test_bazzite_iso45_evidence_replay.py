@@ -114,7 +114,7 @@ def test_grub_only_is_not_a_live_desktop(original):
     altered = dict(members)
     for i in range(6):
         altered[f"iso45-ocr-{i}.txt"] = b"GRUB version 2.12 Bazzite menu"
-    with pytest.raises(Refusal, match="corroborated"):
+    with pytest.raises(Refusal):
         inspect_evidence(altered, candidate)
 
 

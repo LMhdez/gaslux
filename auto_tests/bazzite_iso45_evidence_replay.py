@@ -30,6 +30,14 @@ FRAME_SHA256 = (
     "49d9e011fc6d30b61694ab451ebfd81bdd4ad545d5ef10edf1edf71ed8914d9a",
     "49d9e011fc6d30b61694ab451ebfd81bdd4ad545d5ef10edf1edf71ed8914d9a",
 )
+OCR_SHA256 = (
+    "932394b245bab889daf8ee71df847a338c040b5bbd0c93c2a2d3102272ef885b",
+    "6fe511516e239c352d3333dc797073cfec07e0b4ca4d5fd60d9eb6ecafb0757f",
+    "3d13c07a0abb332c840a754cd1f596fa7695430fdf006e0948d3f11d42b67a2a",
+    "afa670bbf4f742b6cc51de3044074bc2de167f9a7cd411775259359cb900ee79",
+    "bc48aa8cb3b709480daeef1c627c410195fc37526b51f1765821ca46c68ab61f",
+    "bc48aa8cb3b709480daeef1c627c410195fc37526b51f1765821ca46c68ab61f",
+)
 FRAME_SIZE = (1280, 800)
 FRAME_COUNT = 6
 REQUIRED = frozenset(
@@ -190,6 +198,7 @@ def inspect_evidence(files: dict[str, bytes], candidate: dict) -> dict:
                 )
         except (UnidentifiedImageError, OSError, ValueError) as exc:
             raise Refusal(f"Invalid screenshot: frame {i}") from exc
+        require(sha(files[f"iso45-ocr-{i}.txt"]) == OCR_SHA256[i], "Unapproved OCR bytes")
         text = files[f"iso45-ocr-{i}.txt"].decode("utf-8", "replace")
         require(len(text) <= 8192, "Unbounded OCR text")
         monitor = files[f"iso45-monitor-{i}.txt"].decode("utf-8", "replace")
