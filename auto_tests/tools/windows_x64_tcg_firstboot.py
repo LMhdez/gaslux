@@ -931,6 +931,9 @@ def main(argv: list[str] | None = None) -> int:
                          "fourth Windows guest, BCD/WinRE and ext4 UUID audit")
     ap.add_argument("--install-mint-cow-root", action="store_true",
                     help="experimental hosted Windows 10 COW only: install pinned Mint root in partition 5 and boot via direct kernel handoff")
+    ap.add_argument("--mint-ab-forensic", action="store_true",
+                    help="ONE hosted disposable Win10 A/B: independent recovery gate,"
+                         " Windows-only control vs direct-kernel Mint treatment")
     ap.add_argument("--mint-iso", type=Path,
                     help="catalog-pinned Linux Mint 22.3 ISO for the disposable COW experiment")
     ap.add_argument("--boot-timeout", type=int, default=6300)
@@ -1022,6 +1025,18 @@ def main(argv: list[str] | None = None) -> int:
                 "the exact hosted Win10 KVM profile and separate Mint consent")
     elif args.mint_iso is not None:
         raise SystemExit("--mint-iso is accepted only with --install-mint-cow-root")
+    if args.mint_ab_forensic:
+        from windows_mint_ab_checkpoint import CONSENT as AB_CONSENT
+        if not (args.install_mint_cow_root
+                and args.verify_windows_reboot_after_ext4
+                and args.profile == "win10_22h2_en_us_x64"
+                and args.accel == "kvm"
+                and os.environ.get("GASLUX_MINT_AB_CHECKPOINT_CONSENT") == AB_CONSENT
+                and os.environ.get("GASLUX_MINT_AB_BOOT_CONSENT")
+                    == "I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE"):
+            raise SystemExit(
+                "A/B forensic experiment needs independent checkpoint/restore consent"
+                " and genuine hosted Windows 10 KVM prerequisites")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -1322,21 +1337,44 @@ def main(argv: list[str] | None = None) -> int:
                                             from windows_mint_overlay_root import (
                                                 install_mint_root_and_boot,
                                             )
-                                            mint_proof = install_mint_root_and_boot(
-                                                overlay=disk.parent / "windows-uefi-cow-checkpoint" /
-                                                        "cachyos-unwritten-trial-overlay.qcow2",
-                                                base=disk, nvram=nvram, workspace=disk.parent,
-                                                ext4_proof=ext4, iso=args.mint_iso,
-                                                evidence=evidence,
-                                            )
-                                            report["mintSquashfsRootCopiedIntoWindowsCow"] = True
-                                            report["mintFirstBootFromSameWindowsCowVerified"] = True
-                                            report["mintCowEvidenceSha256"] = hashlib.sha256(
-                                                (evidence / "mint-same-windows-cow.json").read_bytes()
-                                            ).hexdigest()
-                                            print("GASLUX_MINT_SAME_WINDOWS_COW_FIRSTBOOT=1",
-                                                  flush=True)
-                                        if args.verify_windows_reboot_after_ext4:
+                                            if args.mint_ab_forensic:
+                                                # The original COW root remains the PRE-Mint checkpoint.
+                                                # A and B are standalone clones, never the live base.
+                                                from windows_mint_ab_forensic import run_ab
+                                                def forensic_runner(**kwargs):
+                                                    return run_ab(original=base, **kwargs)
+                                                ab_result = install_mint_root_and_boot(
+                                                    overlay=disk.parent / "windows-uefi-cow-checkpoint" /
+                                                            "cachyos-unwritten-trial-overlay.qcow2",
+                                                    base=disk, nvram=nvram, workspace=disk.parent,
+                                                    ext4_proof=ext4, iso=args.mint_iso,
+                                                    evidence=evidence,
+                                                    ab_runner=forensic_runner,
+                                                )
+                                                report["mintAbForensicExperimentCompleted"] = True
+                                                report["mintAbForensicEvidenceSha256"] = hashlib.sha256(
+                                                    (evidence / "mint-ab-forensic.json").read_bytes()
+                                                ).hexdigest()
+                                                report["mintAbWindowsProtectedIntegrityAccepted"] = (
+                                                    ab_result["windowsProtectedIntegrityAccepted"])
+                                                print("GASLUX_MINT_AB_FORENSIC_COMPLETED=1",
+                                                      flush=True)
+                                            else:
+                                                mint_proof = install_mint_root_and_boot(
+                                                    overlay=disk.parent / "windows-uefi-cow-checkpoint" /
+                                                            "cachyos-unwritten-trial-overlay.qcow2",
+                                                    base=disk, nvram=nvram, workspace=disk.parent,
+                                                    ext4_proof=ext4, iso=args.mint_iso,
+                                                    evidence=evidence,
+                                                )
+                                                report["mintSquashfsRootCopiedIntoWindowsCow"] = True
+                                                report["mintFirstBootFromSameWindowsCowVerified"] = True
+                                                report["mintCowEvidenceSha256"] = hashlib.sha256(
+                                                    (evidence / "mint-same-windows-cow.json").read_bytes()
+                                                ).hexdigest()
+                                                print("GASLUX_MINT_SAME_WINDOWS_COW_FIRSTBOOT=1",
+                                                      flush=True)
+                                        if args.verify_windows_reboot_after_ext4 and not args.mint_ab_forensic:
                                             from windows_cachyos_postext4_windows import (
                                                 verify_windows_post_ext4,
                                             )

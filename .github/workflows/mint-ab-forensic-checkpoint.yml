@@ -1,0 +1,156 @@
+name: Mint A/B synthetic GPT and infrastructure qualification (NO Windows)
+
+on:
+  push:
+    branches:
+      - test/mint-cow-ab-checkpoint-20261120
+    paths:
+      - .github/workflows/mint-ab-forensic-checkpoint.yml
+      - auto_tests/tools/windows_mint_ab_checkpoint.py
+      - auto_tests/tools/windows_mint_ab_capacity.py
+      - auto_tests/test_windows_mint_ab_capacity.py
+      - auto_tests/test_windows_mint_ab_checkpoint.py
+      - auto_tests/tools/windows_mint_ab_forensic.py
+      - auto_tests/test_windows_mint_ab_forensic.py
+      - auto_tests/tools/windows_mint_ab_infrastructure.py
+      - auto_tests/test_windows_mint_ab_infrastructure.py
+      - auto_tests/tools/windows_mint_ab_synthetic.py
+      - auto_tests/test_windows_mint_ab_synthetic.py
+      - auto_tests/tools/windows_mint_overlay_root.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+  workflow_dispatch:
+
+concurrency:
+  group: mint-ab-forensic-checkpoint-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-contracts:
+    name: Independent QCOW2, OVMF and TPM contract regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile and exercise adversarial checkpoint contracts, no Windows or Mint boot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_capacity.py auto_tests/test_windows_mint_ab_capacity.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_checkpoint.py auto_tests/test_windows_mint_ab_checkpoint.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_infrastructure.py auto_tests/test_windows_mint_ab_infrastructure.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_synthetic.py auto_tests/test_windows_mint_ab_synthetic.py
+          python3 -m py_compile auto_tests/tools/windows_mint_overlay_root.py auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_capacity.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_checkpoint.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_forensic.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_infrastructure.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_synthetic.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_overlay_root.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_x64_two_stage_boot.py -v
+      - name: Real qemu-img standalone conversion and nonaliasing on sparse synthetic QCOW2
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-utils gdisk ovmf psmisc
+          # Capture current runner capacity without Windows ISO, WIM or guest images.
+          # This is a diagnostic measurement, NOT an A/B authorization.
+          python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, "auto_tests/tools")
+          from windows_mint_ab_capacity import (
+              measure_capacity, qemu_fully_allocated_bytes, evidence,
+          )
+          output = Path("windows-x64-tcg-evidence")
+          output.mkdir(mode=0o700, exist_ok=True)
+          report = measure_capacity(directory=Path(os.environ["RUNNER_TEMP"]),
+              phase="early", full_allocated_bytes=qemu_fully_allocated_bytes())
+          report["measurementContext"] = "fresh hosted runner, no Windows ISO or guest"
+          report["githubRunId"] = os.environ["GITHUB_RUN_ID"]
+          report["sourceCommit"] = os.environ["GITHUB_SHA"]
+          evidence(output/"mint-ab-capacity-early.json", report)
+          print("MINT_AB_CAPACITY_SAMPLE=" + json.dumps(report, sort_keys=True))
+          print("Capacity sample is not evidence of actual Windows A/B restoration")
+          PY
+          python3 - <<'PY'
+          import pathlib, subprocess, tempfile
+          with tempfile.TemporaryDirectory(prefix="gaslux-mint-ab-synthetic-") as tmp:
+              root = pathlib.Path(tmp)
+              source = root / "source.qcow2"
+              ref = root / "reference.qcow2"
+              a = root / "arm-a.qcow2"
+              b = root / "arm-b.qcow2"
+              run = lambda args: subprocess.run(args, check=True, capture_output=True)
+              run(["qemu-img", "create", "-f", "qcow2", str(source), "64M"])
+              for src, dst in ((source, ref), (ref, a), (ref, b)):
+                  run(["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2", "-c",
+                       str(src), str(dst)])
+                  run(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2",
+                       str(src), str(dst)])
+              from os import stat
+              assert len({stat(p).st_ino for p in (ref, a, b)}) == 3
+              run(["qemu-io", "-f", "qcow2", "-c", "write -P 0xa5 33554432 4096", str(a)])
+              mismatch = subprocess.run(
+                  ["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2", str(ref), str(a)],
+                  capture_output=True)
+              assert mismatch.returncode == 1
+              a.unlink()
+              run(["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2", "-c",
+                   str(ref), str(a)])
+              run(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2", str(ref), str(a)])
+              run(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2", str(ref), str(b)])
+          print("PASS: standalone QCOW2 cloning, isolated A corruption, recovery and B unaffected")
+          print("NO genuine Windows VM, Mint boot, disk writes or production recovery proven")
+          PY
+      - name: Fixed private synthetic GPT, independent A/B clones, OVMF and atomic restore (NO OS)
+        shell: bash
+        env:
+          GASLUX_MINT_AB_SYNTHETIC_CONSENT: I_ACCEPT_64M_PRIVATE_SYNTHETIC_GPT_AB_ONLY
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_mint_ab_synthetic.py
+      - name: Qualify standard hosted runner, no Windows ISO or guest boot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_mint_ab_infrastructure.py
+          echo 'INFRA AUDIT ONLY: PASS would not authorize paid resources or Windows Setup' >> "$GITHUB_STEP_SUMMARY"
+      - name: Ruff lint and formatting contract for newly introduced profiles
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-ruff-0.15.20" --no-deps "ruff==0.15.20"
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
+          python3 -m ruff check \
+            auto_tests/tools/windows_mint_ab_infrastructure.py \
+            auto_tests/tools/windows_mint_ab_synthetic.py \
+            auto_tests/test_windows_mint_ab_infrastructure.py \
+            auto_tests/test_windows_mint_ab_synthetic.py
+          python3 -m ruff format --check \
+            auto_tests/tools/windows_mint_ab_infrastructure.py \
+            auto_tests/tools/windows_mint_ab_synthetic.py \
+            auto_tests/test_windows_mint_ab_infrastructure.py \
+            auto_tests/test_windows_mint_ab_synthetic.py
+      - name: Upload only bounded synthetic/infra qualification JSON (NO Windows data)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mint-ab-synthetic-infra-qualification
+          path: |
+            windows-x64-tcg-evidence/mint-ab-capacity-early.json
+            windows-x64-tcg-evidence/mint-ab-infrastructure.json
+            windows-x64-tcg-evidence/mint-ab-fixed-synthetic.json
+          retention-days: 7
+          if-no-files-found: warn
+          compression-level: 6

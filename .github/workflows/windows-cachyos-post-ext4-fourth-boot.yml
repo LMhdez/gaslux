@@ -2,7 +2,7 @@ name: Windows 10 fourth boot after fifth ext4 (COW only)
 
 concurrency:
   group: windows-mint-cow-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 on:
   push:
@@ -13,6 +13,7 @@ on:
       - fix/mint-initramfs-virtio-modules-20261118
       - fix/mint-shutdown-witness-kernel-powerdown-20261119
       - fix/mint-cow-crlf-shutdown-proof-20261120
+      - test/mint-cow-ab-checkpoint-20261120
     paths:
       - .github/workflows/windows-cachyos-post-ext4-fourth-boot.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -41,6 +42,12 @@ on:
       - auto_tests/tools/validate_mint_cow_boot_evidence.py
       - auto_tests/test_windows_mint_cow_boot_evidence.py
       - auto_tests/test_windows_x64_private_workspace.py
+      - auto_tests/tools/windows_mint_ab_checkpoint.py
+      - auto_tests/tools/windows_mint_ab_capacity.py
+      - auto_tests/test_windows_mint_ab_capacity.py
+      - auto_tests/test_windows_mint_ab_checkpoint.py
+      - auto_tests/tools/windows_mint_ab_forensic.py
+      - auto_tests/test_windows_mint_ab_forensic.py
   workflow_dispatch:
 
 permissions:
@@ -71,6 +78,7 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_reboot.py auto_tests/test_windows_cachyos_overlay_reboot.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_overlay_ext4_only.py auto_tests/test_windows_cachyos_overlay_ext4_only.py
           python3 -m py_compile auto_tests/tools/windows_cachyos_postext4_windows.py auto_tests/test_windows_cachyos_postext4_windows.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_checkpoint.py auto_tests/tools/windows_mint_ab_capacity.py auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_checkpoint.py auto_tests/test_windows_mint_ab_capacity.py auto_tests/test_windows_mint_ab_forensic.py
           bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
           for name in \
               test_windows_x64_two_stage_boot.py \
@@ -90,7 +98,10 @@ jobs:
               test_windows_cachyos_postext4_windows.py \
               test_windows_mint_overlay_root.py \
               test_windows_mint_cow_boot_evidence.py \
-              test_windows_x64_private_workspace.py; do
+              test_windows_x64_private_workspace.py \
+              test_windows_mint_ab_checkpoint.py \
+              test_windows_mint_ab_capacity.py \
+              test_windows_mint_ab_forensic.py; do
             python3 -m unittest discover -s auto_tests -p "$name" -v
           done
       - name: Prove physical-host-safe swtpm listener restart with same private NV directory
@@ -134,6 +145,11 @@ jobs:
 
   genuine-client-two-stage-firstboot:
     name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
+    # This experimental personal-account A/B branch is unqualified for paid
+    # capacity and has a proven 776 GiB byte-budget shortfall. Neither push
+    # nor workflow_dispatch may launch Windows Setup from this branch.
+    # Re-enable only in a separately human-reviewed, authorized lab profile.
+    if: github.ref != 'refs/heads/test/mint-cow-ab-checkpoint-20261120'
     needs: [verify-host-and-proof-contracts, synthetic-guestfs-fifth-ext4]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -156,6 +172,8 @@ jobs:
       GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT: I_ACCEPT_EXT4_ONLY_FIFTH_PARTITION_ON_HOSTED_WIN10_COW
       GASLUX_WINDOWS_POST_EXT4_REBOOT_CONSENT: I_ACCEPT_WINDOWS_FOURTH_GUEST_ON_EXT4_ONLY_QCOW2_COW
       GASLUX_MINT_COW_CONSENT: I_ACCEPT_MINT_ROOT_ON_HOSTED_WINDOWS10_COW_FIFTH_PARTITION
+      GASLUX_MINT_AB_CHECKPOINT_CONSENT: I_ACCEPT_DISPOSABLE_MINT_AB_FORENSIC_CHECKPOINT_ONLY
+      GASLUX_MINT_AB_BOOT_CONSENT: I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -184,6 +202,15 @@ jobs:
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
           mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Fail closed on independent A/B capacity BEFORE ISO, Windows Setup or Mint staging
+        if: github.ref == 'refs/heads/test/mint-cow-ab-checkpoint-20261120'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_mint_ab_capacity.py --early \
+            --root "$RUNNER_TEMP" \
+            --evidence "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          echo 'Capacity bound PASS; no guest boot or host disk modification from preflight.' >> "$GITHUB_STEP_SUMMARY"
       - name: Select complete private libguestfs appliance kernel (never replace host kernel)
         shell: bash
         run: |
@@ -220,6 +247,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          AB_FLAG=()
+          if [ "$GITHUB_REF" = refs/heads/test/mint-cow-ab-checkpoint-20261120 ]; then
+            AB_FLAG=(--mint-ab-forensic)
+          fi
           python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
             --profile "${{ matrix.profile }}" --accel kvm \
             --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
@@ -228,10 +259,12 @@ jobs:
             --verify-windows-reboot-with-fifth-gpt \
             --format-owned-fifth-ext4-only \
             --verify-windows-reboot-after-ext4 \
-            --install-mint-cow-root --mint-iso "$RUNNER_TEMP/mint-upstream/mint.iso"
+            --install-mint-cow-root --mint-iso "$RUNNER_TEMP/mint-upstream/mint.iso" \
+            "${AB_FLAG[@]}"
           echo 'Mint SquashFS root copied to the fifth COW partition and direct-kernel booted; Windows boots are checked separately. Native GRUB dual boot, updates and rollback remain unproven.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Only if this step succeeded, both Windows DVD and disk-only stages ran and a REAL Windows client boot/WinRE/BCD and clean poweroff were verified. Linux native dualboot/rollback untested.' >> "$GITHUB_STEP_SUMMARY"
       - name: Independently validate Mint SquashFS direct-kernel boot evidence
+        if: github.ref != 'refs/heads/test/mint-cow-ab-checkpoint-20261120'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -436,6 +469,7 @@ jobs:
           PY
           echo 'Fifth Linux root ext4 staged ONLY in disposable COW after Windows boot; Linux install/dualboot/recovery UNTESTED' >> "$GITHUB_STEP_SUMMARY"
       - name: Check fourth independent Windows boot after ext4 with BCD WinRE and exact root UUID
+        if: github.ref != 'refs/heads/test/mint-cow-ab-checkpoint-20261120'
         shell: bash
         run: |
           set -Eeuo pipefail
