@@ -16,7 +16,10 @@ from auto_tests.installer_observer.quote_binding import (
     propose_quote_binding,
     verify_quote_binding,
 )
-from auto_tests.installer_observer.remote_verifier import InMemoryReplayGuard, RemoteResponseVerifier
+from auto_tests.installer_observer.remote_verifier import (
+    InMemoryReplayGuard,
+    RemoteResponseVerifier,
+)
 from auto_tests.tests.test_observer_guest_attestation import fixture, sign_quote
 from auto_tests.tests.test_observer_remote_verifier import (
     NOW,
@@ -167,8 +170,12 @@ def test_wrong_quote_policy_cannot_bind(tmp_path, field):
     data = setup(tmp_path)
     altered = replace(data["context"], **{field: "wrong" if field != "policy_sha256" else "f" * 64})
     signed = resign(data, altered)
-    refusal("BINDING_POLICY_MISMATCH" if field != "trust_anchor_id" else "BINDING_TRUST_ANCHOR_MISMATCH",
-            lambda: proposed(data, context=altered, evidence=signed))
+    reason = (
+        "BINDING_POLICY_MISMATCH"
+        if field != "trust_anchor_id"
+        else "BINDING_TRUST_ANCHOR_MISMATCH"
+    )
+    refusal(reason, lambda: proposed(data, context=altered, evidence=signed))
 
 
 @pytest.mark.parametrize(
@@ -199,7 +206,10 @@ def test_unsigned_altered_controller_response_cannot_match_quote(tmp_path):
     data = setup(tmp_path)
     forged = {**data["response"], "issued_at": "2026-11-20T12:59:59Z"}
     proposal = proposed(data, response=forged)
-    refusal("BINDING_REMOTE_RESPONSE_REFUSED", lambda: bind(data, response=forged, proposal=proposal))
+    refusal(
+        "BINDING_REMOTE_RESPONSE_REFUSED",
+        lambda: bind(data, response=forged, proposal=proposal),
+    )
 
 
 def test_replayed_remote_response_is_rejected(tmp_path):
