@@ -134,11 +134,14 @@ def owned_sources(package: str, raw: bytes) -> list[str]:
     for path in raw.decode("utf-8", "strict").splitlines():
         if not IN_SCOPE_PATH.search(path):
             continue
+        # dpkg file lists also contain directories and documentation. Validate
+        # only source/entrypoint candidates; never read arbitrary entries.
+        if not (SOURCE_EXT.search(path) or path == "/usr/bin/ubiquity"):
+            continue
         require(bool(SOURCE_PATH.fullmatch(path))
                 and ".." not in path.split("/")
                 and "//" not in path, "untrusted dpkg path traversal")
-        if (path in seen or not (SOURCE_EXT.search(path) or
-                                path == "/usr/bin/ubiquity")):
+        if path in seen:
             continue
         seen.add(path)
         result.append(path)
