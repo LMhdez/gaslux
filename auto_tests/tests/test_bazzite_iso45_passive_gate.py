@@ -154,13 +154,22 @@ def test_ambiguous_screen_never_proves_bazzite_live():
 
 
 def test_boot_screen_without_installer_yields_b():
-    result = classify(["Welcome to Bazzite live session"], guest_running=True, evidence_authenticated=True)
+    result = classify(
+        ["Welcome to Bazzite live session"],
+        guest_running=True,
+        evidence_authenticated=True,
+    )
     assert result["result"] == "B"
     assert result["getActionsObserved"] is False
 
 
 def test_observed_installation_page_without_control_yields_a():
-    result = classify(["Bazzite installation destination"], guest_running=True, evidence_authenticated=True, destination_screen_verified=True)
+    result = classify(
+        ["Bazzite installation destination"],
+        guest_running=True,
+        evidence_authenticated=True,
+        destination_screen_verified=True,
+    )
     assert result["result"] == "A"
     assert result["installationAuthorized"] is False
 

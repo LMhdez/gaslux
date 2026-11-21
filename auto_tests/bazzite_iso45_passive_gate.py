@@ -184,27 +184,38 @@ def classify(
             "search apps and actions",
         )
     )
-    live = portal or (bazzite and any(
-        mark in combined
-        for mark in (
-            "live session",
-            "welcome to bazzite",
-            "install bazzite",
-            "bazzite desktop",
-            "live desktop",
+    live = portal or (
+        bazzite
+        and any(
+            marker in combined
+            for marker in (
+                "live session",
+                "welcome to bazzite",
+                "install bazzite",
+                "bazzite desktop",
+                "live desktop",
+            )
         )
-    ))
-    if guest_running and evidence_authenticated and installer and destination_screen_verified and not portal:
+    )
+    installer_verified = bool(
+        guest_running
+        and evidence_authenticated
+        and installer
+        and destination_screen_verified
+        and not portal
+    )
+    desktop_verified = bool(guest_running and evidence_authenticated and live)
+    if installer_verified:
         result, reason = "A", "Bazzite installer destination screen observed passively"
-    elif guest_running and evidence_authenticated and live:
+    elif desktop_verified:
         result, reason = "B", "Bazzite live UI observed; installer not identified"
     else:
         result, reason = "C", "Bazzite live environment not proven by bounded OCR"
     return {
         "result": result,
         "reason": reason,
-        "liveEnvironmentRecognized": bool(guest_running and evidence_authenticated and (installer or live)),
-        "installerInterfaceIdentified": bool(guest_running and evidence_authenticated and installer and destination_screen_verified and not portal),
+        "liveEnvironmentRecognized": installer_verified or desktop_verified,
+        "installerInterfaceIdentified": installer_verified,
         "anacondaDbusServiceObserved": False,
         "getActionsObserved": False,
         "guestCommandChannelAuthorized": False,
