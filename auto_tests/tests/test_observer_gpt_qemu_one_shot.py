@@ -19,6 +19,7 @@ from auto_tests.tools.observer_gpt_qemu_one_shot import (
     SAFETY,
     Refused,
     expected_approval,
+    validate_git,
     validate_trigger,
     verify_evidence,
 )
@@ -194,3 +195,72 @@ def test_evidence_verifier_fails_closed_when_not_a_completed_real_run(tmp_path):
     )
     with pytest.raises(Refused, match="FORBIDDEN_AUTHORIZATION"):
         verify_evidence(tmp_path)
+
+
+@pytest.fixture
+def authorization_git_repo(tmp_path, monkeypatch):
+    """Create a disposable local git history, never a remote authorization branch."""
+    from auto_tests.tools import observer_gpt_qemu_one_shot as auth
+
+    root = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    for key, value in (
+        ("user.email", "synthetic-gpt@example.invalid"),
+        ("user.name", "Synthetic GPT Test"),
+    ):
+        subprocess.run(["git", "-C", str(root), "config", key, value], check=True)
+
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
+
+    (root / "README").write_text("Synthetic only\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "README"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "synthetic base"], check=True)
+    before = git("rev-parse", "HEAD")
+    monkeypatch.setattr(auth, "AUDITED", before)
+    return root, before
+
+
+def test_git_preflight_accepts_one_real_added_approval_file(authorization_git_repo):
+    root, before = authorization_git_repo
+    approval = root / FILE
+    approval.parent.mkdir(parents=True)
+    approval.write_text(json.dumps(expected_approval()), encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", FILE], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "synthetic authorization"], check=True)
+    after = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+    ).strip()
+    assert validate_git(root, {"before": before, "after": after}) is None
+
+
+@pytest.mark.parametrize("extra_file", ["README", "other.json"])
+def test_git_preflight_refuses_authorization_with_other_diff(
+    authorization_git_repo, extra_file,
+):
+    root, before = authorization_git_repo
+    approval = root / FILE
+    approval.parent.mkdir(parents=True)
+    approval.write_text(json.dumps(expected_approval()), encoding="utf-8")
+    (root / extra_file).write_text("Extra change\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "invalid multi-file push"], check=True)
+    after = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+    ).strip()
+    with pytest.raises(Refused, match="GIT_DIFF_NOT_EXCLUSIVE_APPROVAL"):
+        validate_git(root, {"before": before, "after": after})
+
+
+def test_git_preflight_refuses_forged_previous_sha(authorization_git_repo):
+    root, _ = authorization_git_repo
+    approval = root / FILE
+    approval.parent.mkdir(parents=True)
+    approval.write_text(json.dumps(expected_approval()), encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", FILE], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "synthetic authorization"], check=True)
+    after = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+    ).strip()
+    with pytest.raises(Refused, match="UNEXPECTED_PARENT_COMMIT"):
+        validate_git(root, {"before": "a" * 40, "after": after})
