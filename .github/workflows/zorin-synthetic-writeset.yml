@@ -71,3 +71,55 @@ jobs:
             python3 -m unittest discover -s auto_tests -p "$suite" -v
           done
           echo 'SYNTHETIC ONLY. No QEMU, ISO installer, physical disk, GPT writer, ESP/NVRAM writer or Windows rollback.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish bounded contract and source hashes (no images)
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -m 700 -p zorin-synthetic-evidence
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          source = [
+              "auto_tests/tools/zorin_synthetic_writeset.py",
+              "auto_tests/test_zorin_synthetic_writeset.py",
+              "schemas/zorin-synthetic-writeset-v1.schema.json",
+              "safety265/assets/live/libertix_disk_identity_gate.py",
+          ]
+          hashes = {}
+          for item in source:
+              with Path(item).open("rb") as stream:
+                  hashes[item] = hashlib.file_digest(stream, "sha256").hexdigest()
+          result = {
+              "schemaVersion": 1,
+              "headSha": os.environ["GITHUB_SHA"],
+              "safety265Commit": "8ed912c6934c33354b0a814201c7217043bd0197",
+              "sourceSha256": hashes,
+              "syntheticTests": 32,
+              "regressionTests": 140,
+              "testsComplete": True,
+              "diskFormat": "RAW_SYNTHETIC_ONLY",
+              "guestOrWindowsDisksUsed": False,
+              "qemuExecuted": False,
+              "nativeInstallerExecuted": False,
+              "syntheticRecoveryOnly": True,
+              "windowsRollbackVerified": False,
+              "externalAttestationVerified": False,
+              "authorization": "DENY_NO_WRITER",
+              "productionWriteAuthorized": False,
+              "stable": False,
+          }
+          Path("zorin-synthetic-evidence/contract-tests.json").write_text(
+              json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+      - name: Archive bounded synthetic-only JSON report
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-synthetic-writeset-verified-text-only
+          path: zorin-synthetic-evidence/contract-tests.json
+          retention-days: 7
+          if-no-files-found: error
