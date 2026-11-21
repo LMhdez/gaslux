@@ -1,11 +1,7 @@
 name: Q4OS Windows10 single-use real guestfs read-only 20261121
 
 on:
-  push:
-    branches:
-      - experiment/q4os-win10-readonly-once-20261121
-    paths:
-      - '.github/workflows/gaslux-q4os-windows10-once-20261121.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +12,7 @@ concurrency:
 
 jobs:
   windows10-uefi-gpt:
-    if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/experiment/q4os-win10-readonly-once-20261121' && github.event.head_commit.message == 'test(q4os): one-shot Windows10 guestfs lab on pinned Q4OS SHA' }}"
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
