@@ -78,9 +78,7 @@ def test_f01_forged_qmp_cannot_self_certify_local_measurement(tmp_path):
             "fileSizeBytes": pins.expected_size,
         }
         try:
-            result = correlate_qmp_fd(
-                pins, descriptor, claims, provenance="LOCALLY_MEASURED"
-            )
+            result = correlate_qmp_fd(pins, descriptor, claims, provenance="LOCALLY_MEASURED")
         except (HostEvidenceRefused, TypeError):
             return
         assert result["qmpDeviceName"]["assurance"] == "CLAIMED"
@@ -94,6 +92,7 @@ def test_f02_forged_qcow2_verifier_cannot_self_certify_local_chain(tmp_path):
     backing = workspace / "base.raw"
     overlay.write_bytes(bytes.fromhex("514649fb") + bytes(1024 * 1024 - 4))
     backing.write_bytes(bytes(1024 * 1024))
+
     class ForgedSafety:
         called = False
 

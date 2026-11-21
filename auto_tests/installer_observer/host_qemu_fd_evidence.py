@@ -110,9 +110,7 @@ def _process_start_ticks(pid: int) -> int:
 def _remote_fd_flags(proc: Path, fd_number: int) -> int:
     """Read actual flags of the *original remote descriptor*, not our reopen."""
     info = (proc / "fdinfo" / str(fd_number)).read_text(encoding="ascii")
-    flags = [
-        row.partition(":")[2].strip() for row in info.splitlines() if row.startswith("flags:")
-    ]
+    flags = [row.partition(":")[2].strip() for row in info.splitlines() if row.startswith("flags:")]
     require(len(flags) == 1, "REMOTE_FD_FLAGS_MISSING")
     return int(flags[0], 8)
 
