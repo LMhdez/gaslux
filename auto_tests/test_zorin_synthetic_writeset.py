@@ -11,11 +11,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import struct
 import tempfile
 import unittest
-from unittest.mock import patch
 import uuid
 import zlib
 import sys
