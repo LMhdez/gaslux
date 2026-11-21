@@ -279,7 +279,7 @@ class MintAbForensicContracts(unittest.TestCase):
             with self.subTest(resource=key), tempfile.TemporaryDirectory() as root:
                 lab = self._fake_lab(root)
 
-                def tamper(lab):
+                def tamper(lab, key=key):
                     path = lab[key]
                     if key == "reference":
                         path.chmod(0o600)
