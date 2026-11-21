@@ -150,6 +150,8 @@ def priority(path: str) -> tuple:
                  "ubi-usersetup", "ubi-language", "ubi-console-setup",
                  "ubi-timezone", "ubiquity", "preseed", "efi")
     name = path.lower()
+    if name == "/usr/bin/ubiquity":
+        return (-1, name)
     return (next((i for i, value in enumerate(preferred) if value in name),
                  len(preferred)), name)
 
