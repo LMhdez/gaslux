@@ -6,7 +6,6 @@ on:
       - feature/q4os-windows-native-boundary-20261120
     paths:
       - '.github/workflows/gaslux-q4os-windows-boundary.yml'
-      - '.github/workflows/gaslux-q4os-libguestfs-preflight.yml'
       - 'assets/live/gaslux_q4os_windows_boundary.py'
       - 'assets/live/gaslux_q4os_safety_adapter.py'
       - 'auto_tests/tests/test_q4os_windows_boundary.py'
@@ -26,7 +25,6 @@ on:
   pull_request:
     paths:
       - '.github/workflows/gaslux-q4os-windows-boundary.yml'
-      - '.github/workflows/gaslux-q4os-libguestfs-preflight.yml'
       - 'assets/live/gaslux_q4os_windows_boundary.py'
       - 'assets/live/gaslux_q4os_safety_adapter.py'
       - 'auto_tests/tests/test_q4os_windows_boundary.py'
@@ -153,7 +151,6 @@ jobs:
             auto_tests/tests/test_q4os_win10_qmp_boot.py \
             auto_tests/tools/q4os_libguestfs_preflight.py \
             auto_tests/tests/test_q4os_guestfs_appliance_contract.py \
-            .github/workflows/gaslux-q4os-libguestfs-preflight.yml \
             .github/workflows/gaslux-q4os-windows10-qcow2.yml \
             .github/workflows/gaslux-q4os-windows-boundary.yml
       - name: Checkout audited generic-kernel selector (pinned Safety dependency)
