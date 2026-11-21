@@ -3,6 +3,7 @@
 All writes occur exclusively in private tempfile raw files. The canonical
 Safety #265 GPT reader is imported unmodified from a PINNED sibling checkout.
 """
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -79,6 +80,7 @@ def generated_valid_gpt(*, root_guid: str = ROOT_GUID) -> bytes:
 def make_policy(root: Path) -> dict:
     snap = inspect_gpt_image(root / "baseline.raw", logical_sector_size=SECTOR)
     parts = {p["number"]: p for p in snap["partitions"]}
+
     def zone(number: int, role: str):
         p = parts[number]
         return {
@@ -88,6 +90,7 @@ def make_policy(root: Path) -> dict:
             "offsetBytes": p["offsetBytes"],
             "sizeBytes": p["sizeBytes"],
         }
+
     disk_hash = sha((root / "baseline.raw").read_bytes())
     return {
         "schemaVersion": 1,
@@ -281,6 +284,7 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
 
     def test_schema_draft202012_and_target_structure(self):
         from jsonschema import Draft202012Validator
+
         schema = json.loads(
             (
                 Path(__file__).resolve().parents[1]
