@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -54,9 +55,13 @@ def _read_from_genuine_shape(monkeypatch, synthetic_source, *, extra_disks=False
         def __init__(self, **kw):
             assert kw["python_return_dict"] is True
 
+        def set_backend(self, value):
+            assert value == "direct"
+
         def add_drive_opts(self, path, **kw):
             calls.append((str(path), kw))
-            assert kw == {"format": "qcow2", "readonly": 1}
+            assert kw["format"] == "qcow2" and kw["readonly"] == 1
+            assert re.fullmatch(r"gaslux[a-f]{12}", kw["label"])
 
         def launch(self):
             return None
@@ -95,6 +100,7 @@ def test_two_gpt_observations_reconcile_with_actual_safety_reader(tmp_path, monk
     assert_snapshot_matches(host, guest)
     assert len(calls) == 1
     assert calls[0][1]["readonly"] == 1
+    assert re.fullmatch(r"gaslux[a-f]{12}", calls[0][1]["label"])
     assert observation["transportAuthenticatedToWindowsHost"] is False
 
 
