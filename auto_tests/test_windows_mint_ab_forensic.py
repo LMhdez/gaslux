@@ -254,8 +254,13 @@ class MintAbForensicContracts(unittest.TestCase):
         }
 
     def _run_with_guest_stubs(
-        self, lab, *, mutate_after_a=None, change_gpt=None,
-        change_after_mint=None, inventory_changes=None,
+        self,
+        lab,
+        *,
+        mutate_after_a=None,
+        change_gpt=None,
+        change_after_mint=None,
+        inventory_changes=None,
     ):
         """Exercise REAL run_ab ordering with mocks only at guest boundaries."""
         from windows_mint_ab_checkpoint import CONSENT
@@ -428,16 +433,15 @@ class MintAbForensicContracts(unittest.TestCase):
 
     @staticmethod
     def _set_unavailable(record, resource):
-        record["fileInventories"][resource] = {
-            "available": False, "reason": "ReadOnlyMountError"
-        }
+        record["fileInventories"][resource] = {"available": False, "reason": "ReadOnlyMountError"}
 
     def test_f03_baseline_both_esp_unavailable_must_block_windows_a(self):
         """Red test on #274: identical unavailable baselines formerly passed."""
         with tempfile.TemporaryDirectory() as root:
             lab = self._fake_lab(root)
             windows, mint, status = self._run_with_guest_stubs(
-                lab, inventory_changes={
+                lab,
+                inventory_changes={
                     0: lambda item: self._set_unavailable(item, "esp"),
                     1: lambda item: self._set_unavailable(item, "esp"),
                 },
@@ -452,7 +456,8 @@ class MintAbForensicContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             lab = self._fake_lab(root)
             windows, mint, status = self._run_with_guest_stubs(
-                lab, inventory_changes={
+                lab,
+                inventory_changes={
                     2: lambda item: self._set_unavailable(item, "recovery"),
                 },
             )
@@ -466,7 +471,8 @@ class MintAbForensicContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             lab = self._fake_lab(root)
             windows, mint, status = self._run_with_guest_stubs(
-                lab, inventory_changes={
+                lab,
+                inventory_changes={
                     3: lambda item: self._set_unavailable(item, "esp"),
                 },
             )
@@ -478,23 +484,26 @@ class MintAbForensicContracts(unittest.TestCase):
     def test_f03_incomplete_and_missing_inventories_stop_without_guest_boot(self):
         cases = {
             "empty ESP": lambda m: m["fileInventories"]["esp"].update(
-                {"available": True, "fileSha256": {}}),
+                {"available": True, "fileSha256": {}}
+            ),
             "unhashed Recovery": lambda m: m["fileInventories"]["recovery"].update(
-                {"available": True, "fileSha256": {"/Winre.wim": "not-sha256"}}),
+                {"available": True, "fileSha256": {"/Winre.wim": "not-sha256"}}
+            ),
             "missing ESP": lambda m: m["fileInventories"].pop("esp"),
-            "missing Recovery list": lambda m: m["fileInventories"]["recovery"].pop(
-                "fileSha256"),
+            "missing Recovery list": lambda m: m["fileInventories"]["recovery"].pop("fileSha256"),
         }
         for case, change in cases.items():
             with self.subTest(case=case), tempfile.TemporaryDirectory() as root:
                 lab = self._fake_lab(root)
                 windows, mint, status = self._run_with_guest_stubs(
-                    lab, inventory_changes={0: change, 1: change})
+                    lab, inventory_changes={0: change, 1: change}
+                )
                 self.assertEqual(windows, [])
                 self.assertEqual(mint, [])
                 self.assertIn("F-03", status)
                 report = json.loads(
-                    (lab["evidence"] / "mint-ab-evidence-before-windows-a.json").read_text())
+                    (lab["evidence"] / "mint-ab-evidence-before-windows-a.json").read_text()
+                )
                 self.assertEqual(report["result"], "BLOCKED_EVIDENCE")
                 self.assertFalse(report["continuationAllowedByEvidenceGate"])
                 self.assertFalse(report["nextGuestBootAuthorizedByThisGate"])
@@ -504,41 +513,45 @@ class MintAbForensicContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             lab = self._fake_lab(root)
             windows, mint, status = self._run_with_guest_stubs(
-                lab, inventory_changes={
+                lab,
+                inventory_changes={
                     3: lambda m: m["fileInventories"]["recovery"].update(
-                        {"available": True, "fileSha256": {}}),
-                })
+                        {"available": True, "fileSha256": {}}
+                    ),
+                },
+            )
             self.assertEqual(windows, [1])
             self.assertEqual(mint, [1])
             self.assertIn("F-03", status)
             evidence = json.loads(
-                (lab["evidence"] / "mint-ab-evidence-after-mint-b.json").read_text())
+                (lab["evidence"] / "mint-ab-evidence-after-mint-b.json").read_text()
+            )
             self.assertEqual(evidence["phase"], "after_mint_b")
             self.assertEqual(evidence["result"], "BLOCKED_EVIDENCE")
             self.assertEqual(evidence["subsequentBootsBlocked"], ["windows_b"])
-            self.assertEqual(evidence["unavailableResources"][0]["evidenceState"],
-                             "incomplete")
+            self.assertEqual(evidence["unavailableResources"][0]["evidenceState"], "incomplete")
 
     def test_f03_refusals_preserve_reference_backing_unused_arm_and_ovmf(self):
         for stage, resource in ((0, "esp"), (2, "recovery"), (3, "esp")):
             with self.subTest(stage=stage), tempfile.TemporaryDirectory() as root:
                 lab = self._fake_lab(root)
                 all_paths = [
-                    lab["reference"], lab["base"], lab["arm_b"], lab["vars_b"],
+                    lab["reference"],
+                    lab["base"],
+                    lab["arm_b"],
+                    lab["vars_b"],
                 ]
                 original = [path.read_bytes() for path in all_paths]
-                changes = {
-                    stage: lambda m, resource=resource:
-                        self._set_unavailable(m, resource)
-                }
+                changes = {stage: lambda m, resource=resource: self._set_unavailable(m, resource)}
                 if stage == 0:
                     changes[1] = changes[0]
-                windows, mint, status = self._run_with_guest_stubs(
-                    lab, inventory_changes=changes)
+                windows, mint, status = self._run_with_guest_stubs(lab, inventory_changes=changes)
                 self.assertIn("F-03", status)
                 self.assertEqual(
-                    [path.read_bytes() for path in all_paths], original,
-                    "F-03 rejection must not alter reference/backing/unused arm or VARS")
+                    [path.read_bytes() for path in all_paths],
+                    original,
+                    "F-03 rejection must not alter reference/backing/unused arm or VARS",
+                )
                 expected_windows = [] if stage == 0 else [1]
                 self.assertEqual(windows, expected_windows)
                 self.assertEqual(mint, [1] if stage == 3 else [])
@@ -565,14 +578,17 @@ class MintAbForensicContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             lab = self._fake_lab(root)
             windows, mint, status = self._run_with_guest_stubs(
-                lab, inventory_changes={
+                lab,
+                inventory_changes={
                     0: lambda m: self._set_unavailable(m, "esp"),
                     1: lambda m: self._set_unavailable(m, "esp"),
-                })
+                },
+            )
             self.assertEqual((windows, mint), ([], []))
             self.assertIn("F-03", status)
             data = json.loads(
-                (lab["evidence"] / "mint-ab-evidence-before-windows-a.json").read_text())
+                (lab["evidence"] / "mint-ab-evidence-before-windows-a.json").read_text()
+            )
             resource = data["unavailableResources"][0]
             self.assertEqual(resource["resource"], "esp")
             self.assertEqual(resource["reportedReason"], "ReadOnlyMountError")
