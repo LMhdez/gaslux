@@ -140,9 +140,7 @@ def test_genuine_windows_workflow_requires_smoke_before_iso():
     import yaml
 
     workflow = yaml.safe_load(
-        (ROOT / ".github/workflows/gaslux-q4os-windows10-qcow2.yml").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / ".github/workflows/gaslux-q4os-windows10-qcow2.yml").read_text(encoding="utf-8")
     )
     names = [x.get("name", "") for x in workflow["jobs"]["windows10-uefi-gpt"]["steps"]]
     synthetic_index = names.index(
