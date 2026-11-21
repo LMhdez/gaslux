@@ -680,7 +680,7 @@ def run_ab(
     before = [guest_ro_inventory(arm, root_uuid) for arm in arms]
     # F-03: reject absent, empty or untrustworthy ESP/Recovery inventories
     # of BOTH standalone arms before the first Windows A guest can start.
-    baseline_gate = require_complete_forensic_inventories(
+    require_complete_forensic_inventories(
         phase="baseline",
         samples={"arm_a_pre": before[0], "arm_b_pre": before[1]},
         evidence=evidence,
@@ -743,7 +743,7 @@ def run_ab(
     )
     # F-03: a valid F-01 hash witness is not enough for forensic A/B.
     # Without the control's read-only per-file evidence, Mint B cannot start.
-    control_inventory_gate = require_complete_forensic_inventories(
+    require_complete_forensic_inventories(
         phase="after_control",
         samples={"arm_a_post": after_a},
         evidence=evidence,
@@ -787,7 +787,7 @@ def run_ab(
         observed_gpt=after_mint_gpt,
     )
     # F-03: require file-level evidence after Mint B, before Windows B.
-    post_mint_inventory_gate = require_complete_forensic_inventories(
+    require_complete_forensic_inventories(
         phase="after_mint",
         samples={"arm_b_post_mint": after_mint},
         evidence=evidence,
