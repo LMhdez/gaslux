@@ -217,6 +217,32 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
                 mapping.require_regular_member(Path("/sandbox.iso"), "../etc/shadow")
             command.assert_not_called()
 
+    def test_nonregular_optional_partman_is_never_treated_as_source(self):
+        def checked(_root, name):
+            if name.endswith("ubi-partman.py"):
+                raise NativeDiscoveryError("possibly a symlink")
+            return True
+        with patch.object(mapping, "STATUS_SHA", mapping.digest(self.status)), \
+             patch.object(mapping, "UBIQUITY_EXEC_SHA", mapping.digest(self.entry)):
+            report = mapping.build_map(
+                Path("/unmounted"), self.prior, self.manifest, self.read,
+                regular_checker=checked)
+            mapping.validate_consistency(report)
+        self.assertIn("usr/lib/ubiquity/components/ubi-partman.py",
+                      report["unreadablePaths"])
+        self.assertEqual(report["capabilities"]["gptModification"]["status"],
+                         "UNOBSERVED")
+        self.assertFalse(report["partitionLockdownVerified"])
+
+    def test_nonregular_pinned_entrypoint_still_rejected(self):
+        with patch.object(mapping, "STATUS_SHA", mapping.digest(self.status)), \
+             patch.object(mapping, "UBIQUITY_EXEC_SHA", mapping.digest(self.entry)):
+            with self.assertRaisesRegex(NativeDiscoveryError, "symlink"):
+                mapping.build_map(
+                    Path("/unmounted"), self.prior, self.manifest, self.read,
+                    regular_checker=lambda _root, _name:
+                        (_ for _ in ()).throw(NativeDiscoveryError("symlink")))
+
     def test_no_writers_executed_by_source_mapper(self):
         source = Path(mapping.__file__).read_text(encoding="utf-8")
         for forbidden in ("subprocess.run([\"grub-install\"",
