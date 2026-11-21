@@ -42,7 +42,12 @@ jobs:
           test "$(git -C safety265 rev-parse HEAD)" = 8ed912c6934c33354b0a814201c7217043bd0197
           test -f safety265/assets/live/libertix_disk_identity_gate.py
           python3 -m pip install --break-system-packages --no-input 'jsonschema>=4.20,<5' 'ruff>=0.10,<0.18'
-          python3 -m compileall -q auto_tests/test_zorin_fd_toctou_repro.py auto_tests/tools/zorin_synthetic_writeset.py
-          ruff check --select E4,E7,E9,F auto_tests/test_zorin_fd_toctou_repro.py auto_tests/tools/zorin_synthetic_writeset.py
+          python3 -m compileall -q auto_tests/test_zorin_fd_toctou_repro.py auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py
+          ruff check --select E4,E7,E9,F auto_tests/test_zorin_fd_toctou_repro.py auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py
+          ruff format --check --diff auto_tests/test_zorin_fd_toctou_repro.py auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py
           python3 -m unittest discover -s auto_tests -p test_zorin_fd_toctou_repro.py -v
-          echo 'RACE REPRODUCTION ONLY. An unsafe synthetic classification is evidence of a defect, NEVER write approval.' >> "$GITHUB_STEP_SUMMARY"
+          python3 -m unittest discover -s auto_tests -p test_zorin_synthetic_writeset.py -v
+          for suite in test_zorin_native_installer_discovery.py test_zorin_native_ubiquity_map.py test_zorin_native_live_observer.py test_zorin_official_iso_installer_inventory.py test_windows_mint_overlay_root.py test_windows_mint_cow_boot_evidence.py test_windows_zorin_cow_boot_evidence.py test_zorin_qmp_powerdown.py test_zorin_shutdown_witness.py test_windows_x64_two_stage_boot.py; do
+            python3 -m unittest discover -s auto_tests -p "$suite" -v
+          done
+          echo 'FAIL-CLOSED: synthetic-only Zorin diagnostic, no GPT-FD binding, no native installation, QEMU, Windows disks or writer authorization.' >> "$GITHUB_STEP_SUMMARY"
