@@ -63,3 +63,7 @@ Veredito independente anterior: [Safety CHANGES_REQUIRED](https://github.com/LMh
 **Gate de regressão:** ambas as CI devem executar as reproduções F-01–F-04 *contra as funções efetivamente importadas*, os testes Pop/Windows anteriores, lint e o preflight regular-file com injeção. Em caso de falha ou discrepância de proveniência, nada é autorizado.
 
 Permanecem: distinstExecutionAuthorized=false, productionInstallationAuthorized=false, windowsWriterAuthorized=false, sameDiskDualBootVerified=false, windowsInPlaceRollbackProven=false, releaseEligible=false, stable=false, observationComplete=false.
+
+### Ajuste causal de interoperabilidade com qemu-img 8.2
+
+No [preflight #44935500861](https://github.com/LMhdez/gaslux/actions/runs/44935500861), a recusa diagnóstica registou o primeiro extent do backing, de profundidade 1 e `data=true`, com `compressed=false` (campo emitido pelo utilitário QEMU). Esse campo adicional não representa escrita nem overlay. O contrato passa a reconhecer apenas o booleano explícito `compressed=false`; rejeita `true`, valores inválidos, chaves estranhas, lacunas, sobreposições, mapas incompletos e **qualquer `depth=0` no teste de child vazio**, inclusive zero. A recusa diagnóstica anterior não foi contornada por omissão da validação. A leitura do ficheiro-canário na ESP simulada passa a usar `mtype` diretamente em stdout, sem criar ficheiro de saída que possa ser substituído por concorrência mesma UID.

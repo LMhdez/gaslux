@@ -294,6 +294,37 @@ class QcowMapSafetyTests(unittest.TestCase):
             ):
                 lab.ensure_empty_child(Path("/tmp/c"), Path("/tmp/b"))
 
+    def test_f04_qemu_real_compressed_false_is_metadata_not_overlay(self):
+        case = [{
+            "start": 0, "length": lab.SIZE, "depth": 1,
+            "data": True, "zero": False, "present": True,
+            "compressed": False, "offset": 0,
+        }]
+        with patch.object(lab, "chain"), patch.object(lab, "command") as cmd:
+            cmd.side_effect = [json.dumps(case), ""]
+            lab.ensure_empty_child(Path("/tmp/c"), Path("/tmp/b"))
+            self.assertEqual(cmd.call_count, 2)
+        for wrong in (True, None, 0, "false"):
+            bad = [dict(case[0], compressed=wrong)]
+            with (
+                self.subTest(wrong=wrong),
+                patch.object(lab, "chain"),
+                patch.object(lab, "command", return_value=json.dumps(bad)),
+                self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
+            ):
+                lab.ensure_empty_child(Path("/tmp/c"), Path("/tmp/b"))
+
+    def test_f01_simulated_esp_canary_has_no_host_temp_resource(self):
+        import hashlib
+
+        contents = "GASLUX SYNTHETIC ESP CANARY\n"
+        digest = hashlib.sha256(contents.encode("utf-8")).hexdigest()
+        with patch.object(lab, "command", return_value=contents) as cmd:
+            lab.verify_esp_canary(Path("/tmp/synthetic/prepared-six.raw"), digest,
+                                  Path("/tmp/synthetic"))
+            self.assertEqual(cmd.call_args.args[0], "mtype")
+            self.assertNotIn("mcopy", cmd.call_args.args)
+
     def test_f04_valid_no_depth_zero_calls_effective_compare(self):
         with patch.object(lab, "chain"), patch.object(lab, "command") as cmd:
             cmd.side_effect = [json.dumps(self.backing_map()), ""]

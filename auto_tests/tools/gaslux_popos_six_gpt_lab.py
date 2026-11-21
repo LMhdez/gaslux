@@ -17,6 +17,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from typing import TypedDict
 
 from gaslux_popos_reuse_snapshot_gate import (
     Refusal,
@@ -48,7 +49,7 @@ from gaslux_popos_six_gpt_contract import (
     validate_geometry,
     validate_plan,
 )
-from gaslux_popos_six_gpt_ownership import make_child, new_file, owner, record_created, remove
+from gaslux_popos_six_gpt_ownership import make_child, new_file, owner, remove
 
 BASE_NAME = "prepared-six.raw"
 CHILD_NAME = "owned-six-child.qcow2"
@@ -166,29 +167,21 @@ def verify_sfdisk_gpt(path: Path) -> dict:
 
 
 def verify_esp_canary(base: Path, expected_hash: str, work: Path) -> None:
-    # Read protected simulated ESP via mtools without any write to disk image.
-    output = work / "readback-protected-esp-canary.tmp"
-    need(
-        not output.exists() and not output.is_symlink(),
-        "REFUSE_IDENTITY_MISMATCH: foreign ESP readback resource",
+    """Read simulated protected ESP via mtype stdout, no temporary file to own."""
+    need(base.parent == work, "REFUSE_OWNERSHIP: foreign ESP source directory")
+    # This canary is intentionally UTF-8/ASCII. mtype only reads from a
+    # regular-file FAT image; it cannot create or delete a host artifact.
+    contents = command(
+        "mtype",
+        "-i",
+        f"{base}@@{PARTS[0].start * SECTOR}",
+        PROTECTED_ESP_FILE,
+        timeout=60,
     )
-    try:
-        command(
-            "mcopy",
-            "-i",
-            f"{base}@@{PARTS[0].start * SECTOR}",
-            PROTECTED_ESP_FILE,
-            str(output),
-            timeout=60,
-        )
-        record_created(output)
-        need(
-            sha(regular(output)) == expected_hash,
-            "REFUSE_OUT_OF_WRITESET: protected ESP file changed",
-        )
-    finally:
-        if output.exists():
-            remove(output)
+    need(
+        hashlib.sha256(contents.encode("utf-8")).hexdigest() == expected_hash,
+        "REFUSE_OUT_OF_WRITESET: protected synthetic ESP file changed",
+    )
 
 
 def verify_fs_types(base: Path) -> dict:
@@ -247,13 +240,20 @@ def validated_overlay_map(child: Path, base: Path) -> list[dict]:
         need(
             type(row) is dict
             and {"start", "length", "depth", "data", "zero"} <= set(row)
-            and set(row) <= {"start", "length", "depth", "present", "data", "zero", "offset"}
+            and set(row) <= {
+                "start", "length", "depth", "present", "data", "zero",
+                "offset", "compressed",
+            }
             and type(row["start"]) is int
             and type(row["length"]) is int
             and type(row["depth"]) is int
             and type(row["data"]) is bool
             and type(row["zero"]) is bool
             and ("present" not in row or type(row["present"]) is bool)
+            and (
+                "compressed" not in row
+                or (type(row["compressed"]) is bool and row["compressed"] is False)
+            )
             and ("offset" not in row or (type(row["offset"]) is int and row["offset"] >= 0))
             and row["start"] == cursor
             and row["length"] > 0
@@ -291,9 +291,19 @@ def ensure_empty_child(child: Path, base: Path) -> None:
     )
 
 
+class InjectedFaultEvidence(TypedDict):
+    injectedSector: int
+    injectedLengthBytes: int
+    childDevice: int
+    childInode: int
+    ownedDepthZeroDataObserved: bool
+    readbackPatternVerified: bool
+    toolErrorsAcceptedAsCorruption: bool
+
+
 def prove_injected_fault(
     child: Path, base: Path, sector: int, prewrite_identity: tuple[int, int]
-) -> dict:
+) -> InjectedFaultEvidence:
     """Material injection evidence; operational errors are NEVER detections."""
     need(
         type(prewrite_identity) is tuple and len(prewrite_identity) == 2,
