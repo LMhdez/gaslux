@@ -431,7 +431,7 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
             assert_snapshot_matches(start, end)
         except DiskIdentityError as exc:
             raise WriteSetRefused("E_GPT_IDENTITY_CHANGED") from exc
-        changed = compare_raw(fds["baseline.raw"][0], fds["trial.raw"][0], policy)
+        compare_raw(fds["baseline.raw"][0], fds["trial.raw"][0], policy)
         insist(
             digest_fd(fds["baseline.raw"][0], fds["baseline.raw"][1].st_size) == policy.disk_sha256,
             "E_BASELINE_CHANGED",
