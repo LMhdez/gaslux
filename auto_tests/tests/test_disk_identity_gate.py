@@ -226,3 +226,53 @@ def test_fd_rejects_unrelated_content_mutation_during_read(snapshot, monkeypatch
             gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
     finally:
         os.close(fd)
+
+
+def test_fd_refuses_pathname_swap_during_gpt_read(snapshot, tmp_path, monkeypatch):
+    path, _ = snapshot
+    other = tmp_path / "replacement-during-read.img"
+    make_image(other, part_id=uuid.UUID("12341234-1111-2222-3333-444455556666"))
+    original = gate.read_header
+    swapped = False
+
+    def replace_after_primary(fd, sector, lba, sectors):
+        nonlocal swapped
+        result = original(fd, sector, lba, sectors)
+        if lba == 1 and not swapped:
+            swapped = True
+            os.replace(other, path)
+        return result
+
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        monkeypatch.setattr(gate, "read_header", replace_after_primary)
+        # The descriptor is pinned, but unlinking its original name changes ctime.
+        # Conservatively refuse instead of certifying an ambiguous snapshot.
+        with pytest.raises(gate.DiskIdentityError, match="changed during inspection"):
+            gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
+        assert swapped
+    finally:
+        os.close(fd)
+
+
+def test_fd_rejects_gpt_entries_mutated_after_initial_crc(snapshot, monkeypatch):
+    path, _ = snapshot
+    original = gate.read_header
+
+    def mutate_after_backup(fd, sector, lba, sectors):
+        result = original(fd, sector, lba, sectors)
+        if lba == sectors - 1:
+            with path.open("r+b") as writer:
+                writer.seek(2 * sector + 16)
+                writer.write(b"X")
+                writer.flush()
+                os.fsync(writer.fileno())
+        return result
+
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        monkeypatch.setattr(gate, "read_header", mutate_after_backup)
+        with pytest.raises(gate.DiskIdentityError, match="changed during inspection"):
+            gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
+    finally:
+        os.close(fd)
