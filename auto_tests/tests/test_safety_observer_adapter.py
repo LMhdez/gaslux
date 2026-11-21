@@ -12,7 +12,9 @@ from pathlib import Path
 import json
 import os
 import runpy
+import secrets
 import sys
+import uuid
 
 import pytest
 
@@ -20,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "assets" / "live"))
 from libertix_disk_identity_gate import DiskIdentityError  # noqa: E402
 from libertix_safety_observer_adapter import (  # noqa: E402
-    SafetyObserverPins, SafetyObserverRefused, consume_observer_state_no_writer,
+    SafetyGateEvidence, SafetyObserverPins, SafetyObserverRefused,
+    consume_observer_state_no_writer,
 )
 
 OBSERVER_ROOT = Path(os.environ["GASLUX_OBSERVER_ROOT"]).resolve(strict=True)
@@ -85,15 +88,48 @@ def example():
         disk_id=DISK["partitionTableId"],
         virtual_size_bytes=DISK["sizeBytes"],
     )
-    plan_bytes = b'{"synthetic":"pinned"}'
+    guard = GUARD["guard"]
+    safety_transaction = uuid.UUID(pins.transaction_id).hex
+    plan = {
+        "planId": safety_transaction,
+        "firmware": "uefi",
+        "disk": {key: DISK[key] for key in (
+            "partitionStyle", "partitionTableId",
+            "sizeBytes", "logicalSectorSizeBytes",
+        )},
+    }
+    plan_bytes = guard.canonical(plan)
     from hashlib import sha256
-    pins = replace(pins, plan_sha256=sha256(plan_bytes).hexdigest())
+    plan_sha256 = sha256(plan_bytes).hexdigest()
+    pins = replace(pins, plan_sha256=plan_sha256)
+    host_key, guest_key = secrets.token_bytes(32), secrets.token_bytes(32)
+    def signed_snapshot(source, key):
+        return guard.authenticated_record({
+            "source": source, "transactionId": safety_transaction,
+            "vmId": pins.vm_uuid, "planSha256": plan_sha256,
+            "nonce": pins.nonce, "snapshot": deepcopy(DISK),
+        }, key)
+    gate_evidence = SafetyGateEvidence(
+        host_record=signed_snapshot("host", host_key),
+        guest_record=signed_snapshot("guest", guest_key),
+        immediate_record=signed_snapshot("guest-immediate", guest_key),
+        host_key=host_key, guest_key=guest_key,
+        owned_regions=[{
+            "offsetBytes": 8388608, "sizeBytes": 1048576,
+            "ownerTransactionId": safety_transaction,
+        }],
+        write_set=[{
+            "offsetBytes": 8388608, "sizeBytes": 1048576,
+            "operation": "allocate-free-space",
+        }],
+    )
     args = {
         "verifier": verifier,
         "request": json.dumps(request).encode(),
         "response": json.dumps(response).encode(),
         "pins": pins,
         "plan_bytes": plan_bytes,
+        "gate_evidence": gate_evidence,
         "host_gpt": deepcopy(DISK),
         "guest_gpt": deepcopy(DISK),
         "immediate_gpt": deepcopy(DISK),
@@ -138,6 +174,7 @@ def test_signed_observer_state_is_only_a_lab_no_writer_decision():
     "host_guest_guid", "partuuid", "immediate_offset",
     "snapshot_absent", "false_independence", "write_mode",
     "writer_request", "missing_observer", "fake_verifier",
+    "gate_hmac", "gate_owner", "gate_write_set", "gate_disk",
 ])
 def test_untrusted_or_divergent_evidence_fails_closed(fault):
     args, _, _ = example()
@@ -210,6 +247,27 @@ def test_untrusted_or_divergent_evidence_fails_closed(fault):
         )
     elif fault == "missing_observer":
         args["response"] = b""
+    elif fault == "gate_hmac":
+        record = deepcopy(args["gate_evidence"].guest_record)
+        record["mac"] = "0" * 64
+        args["gate_evidence"] = replace(args["gate_evidence"], guest_record=record)
+    elif fault == "gate_owner":
+        owned = deepcopy(args["gate_evidence"].owned_regions)
+        owned[0]["ownerTransactionId"] = "f" * 32
+        args["gate_evidence"] = replace(args["gate_evidence"], owned_regions=owned)
+    elif fault == "gate_write_set":
+        write_set = deepcopy(args["gate_evidence"].write_set)
+        write_set[0]["offsetBytes"] = 10485760
+        args["gate_evidence"] = replace(args["gate_evidence"], write_set=write_set)
+    elif fault == "gate_disk":
+        record = deepcopy(args["gate_evidence"].guest_record)
+        record["payload"]["snapshot"]["partitionTableId"] = (
+            "gpt:00000000-0000-0000-0000-000000000001"
+        )
+        record = GUARD["guard"].authenticated_record(
+            record["payload"], args["gate_evidence"].guest_key
+        )
+        args["gate_evidence"] = replace(args["gate_evidence"], guest_record=record)
     elif fault == "fake_verifier":
         class Fake:
             trust_store = args["verifier"].trust_store
@@ -244,7 +302,6 @@ def test_verifier_rejects_signed_protocol_faults(fault):
     elif fault == "sequence_invalid":
         args = fresh_signed_case(lambda r: r.__setitem__("sequence", 8))
     else:
-        args = fresh_signed_case(lambda r: None)
         r = json.loads(args["response"])
         r["result_sha256"] = "f" * 64
         unsigned = dict(r)
