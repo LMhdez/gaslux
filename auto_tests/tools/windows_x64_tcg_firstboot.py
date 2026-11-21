@@ -1554,6 +1554,7 @@ def main(argv: list[str] | None = None) -> int:
                         ("third-overlay-qemu-stderr.log", "third-boot-qemu-stderr", 256_000),
                         ("fourth-post-ext4-windows-serial.log", "fourth-boot-serial", 512_000),
                         ("fourth-post-ext4-qemu-stderr.log", "fourth-boot-qemu-stderr", 256_000),
+                        ("fourth-post-ext4-boot-diagnostic.json", "fourth-boot-diagnostic", 8192),
                         ("cachyos-shared-root-pacstrap-serial.log", "cachyos-root-pacstrap-serial", 2_000_000),
                         ("cachyos-shared-root-pacstrap-qemu-stderr.log", "cachyos-root-pacstrap-qemu-stderr", 256_000),
                         ("cachyos-installed-readonly-serial.log", "cachyos-installed-readonly-serial", 512_000),
@@ -1564,10 +1565,12 @@ def main(argv: list[str] | None = None) -> int:
                         ("cachyos-installed-rw-child-second-stderr.log", "cachyos-installed-rw-child-second-stderr", 256_000),
                         ("bcd-control-windows-only-windows-serial.log", "bcd-control-windows-only-serial", 512_000),
                         ("bcd-control-windows-only-qemu-stderr.log", "bcd-control-windows-only-qemu-stderr", 256_000),
+                        ("bcd-control-windows-only-boot-diagnostic.json", "bcd-control-windows-only-boot-diagnostic", 8192),
                         ("bcd-control-windows-only-qemu-trace.bin", "bcd-control-windows-only-qemu-trace", 10_000_000),
                         ("bcd-ab-qemu-write-events.txt", "bcd-ab-qemu-write-events", 16_384),
                         ("sixth-post-pacstrap-windows-serial.log", "sixth-post-pacstrap-windows-serial", 512_000),
                         ("sixth-post-pacstrap-qemu-stderr.log", "sixth-post-pacstrap-qemu-stderr", 256_000),
+                        ("sixth-post-pacstrap-boot-diagnostic.json", "sixth-post-pacstrap-boot-diagnostic", 8192),
                         ("sixth-post-pacstrap-qemu-trace.bin", "sixth-post-pacstrap-qemu-trace", 10_000_000),
                         ("fifth-after-ext4-discard-windows-serial.log", "fifth-post-pacstrap-discard-serial", 512_000),
                         ("fifth-after-ext4-discard-qemu-stderr.log", "fifth-post-pacstrap-discard-qemu-stderr", 256_000),
@@ -1578,6 +1581,7 @@ def main(argv: list[str] | None = None) -> int:
                             extension = (
                                 ".bin" if source_name.endswith(".bin")
                                 else ".txt" if source_name.endswith(".txt")
+                                else ".json" if source_name.endswith(".json")
                                 else ".log"
                             )
                             dest = evidence / f"{args.profile}-{suffix}{extension}"
