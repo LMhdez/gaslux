@@ -49,6 +49,15 @@ jobs:
           python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
       - name: Adversarial raw-sector and Safety-v1 schema unit tests (synthetic fixture)
         run: python -m pytest -q auto_tests/tests/test_observer_gpt_readonly_producer.py
+      - name: Pinned Safety GPT parser/provenance and synthetic QEMU regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PYTHONPATH="$PWD/safety-pinned/auto_tests:$PWD/safety-pinned/assets/live:$PWD/safety-pinned/auto_tests/tools:$PWD"
+          python -m pytest -q \
+            safety-pinned/auto_tests/tests/test_disk_identity_gate.py \
+            safety-pinned/auto_tests/tests/test_safety_gpt_provenance.py \
+            safety-pinned/auto_tests/tests/test_safety_qemu_gpt_host_guest.py
 
   qemu-gpt-readonly-lab:
     needs: gpt-producer-contracts
