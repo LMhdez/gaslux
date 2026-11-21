@@ -578,9 +578,132 @@ def audit(work, phase, bio_transcript=None):
     return result
 
 
+
+def validate_postboot_audits(install, firstboot):
+    """Pure refusal gate: never destroy a child with unproven native boot."""
+    for phase, report in (("install", install), ("firstboot", firstboot)):
+        need(isinstance(report, dict) and report.get("phase") == phase
+             and type(report.get("qemuWriteEventCount")) is int
+             and report["qemuWriteEventCount"] > 0
+             and report.get("outOfSetWriteEvents") == 0
+             and report.get("primarySecondaryGptUnchanged") is True
+             and report.get("backingUnchanged") is True
+             and report.get("checkpointRestorable") is True
+             and report.get("windowsWriterAuthorized") is False
+             and report.get("productionInstallationAuthorized") is False
+             and SHA.fullmatch(report.get("qemuTraceSha256", "")),
+             "REFUSE_RECOVERY_UNPROVEN: incomplete "+phase+" audit")
+    need(install.get("guestBioCorrelated") is True
+         and firstboot.get("guestBioCorrelated") is False,
+         "REFUSE_RECOVERY_UNPROVEN: expected firstboot/QEMU witness mismatch")
+
+
+def postboot_recovery(work, template):
+    """Only after real native Pop boot and shutdown, discard owned QCOW2.
+
+    Restore an empty child from the exact pre-install checkpoint, validate the
+    effective disk identity/filesystems and a NEW keyless OVMF VARS copy.
+    Synthetic COW rollback only: no in-place rollback, no Windows disk.
+    """
+    x = get_plan(work)
+    need(x.get("syntheticRecoveryProven") is True
+         and x.get("windowsDiskAttached") is False
+         and x.get("recoveryMode") == "discard-exclusive-qcow2-recreate"
+         and x.get("espFat32BootGeometry") is not None,
+         "REFUSE_RECOVERY_UNPROVEN: incompatible synthetic transaction")
+    install = json.loads(regular(work/"install.audit.json").read_text())
+    firstboot = json.loads(regular(work/"firstboot.audit.json").read_text())
+    validate_postboot_audits(install, firstboot)
+    for phase in ("install", "installed"):
+        exit_file = regular(work/f"{phase}-qemu.exit")
+        need(exit_file.read_text().strip() == "0",
+             "REFUSE_RECOVERY_UNPROVEN: unclean "+phase+" QEMU shutdown")
+    witness = regular(work/"installed.normalized.log").read_text(errors="replace")
+    need("GASLUX_POP_NATIVE_FIRSTBOOT_VERIFIED=1\n" in witness
+         and "GASLUX_POP_NATIVE_FIRSTBOOT_OS_ID=pop\n" in witness
+         and "GASLUX_POP_NATIVE_FIRSTBOOT_CONTROLLED_SHUTDOWN_REQUESTED=1\n" in witness
+         and "GASLUX_POP_NATIVE_FIRSTBOOT_ROOT_PARTUUID="
+             +ROOT_GUID+"\n" in witness,
+         "REFUSE_RECOVERY_UNPROVEN: native firstboot witness absent")
+    base = regular(work/"pop-prepared.raw", length=SIZE)
+    child = regular(work/"pop-owned-child.qcow2", write=True)
+    need(stat.S_IMODE(base.stat().st_mode) == 0o400,
+         "REFUSE_RECOVERY_UNPROVEN: checkpoint not immutable")
+    chain(child, base)
+    need(sha(base) == x["backingSha256"] and gpt(base) == x["gpt"]
+         and fat32_boot_geometry(base) == x["espFat32BootGeometry"],
+         "REFUSE_RECOVERY_UNPROVEN: checkpoint identity changed")
+    template = system_ovmf_template(template)
+    need(sha(template) == x["ovmfTemplateSha256"],
+         "REFUSE_RECOVERY_UNPROVEN: OVMF reference changed")
+    original_vars = {}
+    for phase in ("install", "firstboot"):
+        var = regular(work/f"ovmf-{phase}.fd")
+        original_vars[phase] = sha(var)
+    allocated = json.loads(command("qemu-img", "map", "--output=json", str(child)))
+    need(any(a.get("depth") == 0 and a.get("data") for a in allocated),
+         "REFUSE_RECOVERY_UNPROVEN: completed installation left no owned writes")
+    # Both QEMU processes are already reaped; no other device is ever attached.
+    child.unlink()
+    need(not child.exists() and not child.is_symlink(),
+         "REFUSE_RECOVERY_UNPROVEN: owned child deletion failed")
+    make_child(child, base)
+    fresh = json.loads(command("qemu-img", "map", "--output=json", str(child)))
+    need(not any(a.get("depth") == 0 and a.get("data") for a in fresh),
+         "REFUSE_RECOVERY_UNPROVEN: restored child contains prior writes")
+    need(chain(child, base).get("backing-filename") == str(base)
+         and sha(base) == x["backingSha256"]
+         and gpt(base) == x["gpt"]
+         and fat32_boot_geometry(base) == x["espFat32BootGeometry"],
+         "REFUSE_RECOVERY_UNPROVEN: reconstructed disk identity mismatch")
+    after = verify_owned_filesystems(work, base, "postboot")
+    need(after == x["filesystemIntegrityBeforeAndAfterRecovery"],
+         "REFUSE_RECOVERY_UNPROVEN: postboot filesystem integrity changed")
+    # Preserve modified session VARS for forensics; recover *new* private VARS
+    # from the independently retained root-owned OVMF package template.
+    recovered = work / "ovmf-recovered-firstboot.fd"
+    need(not recovered.exists() and not recovered.is_symlink(),
+         "REFUSE_RECOVERY_UNPROVEN: recovered VARS file already exists")
+    with os.fdopen(os.open(recovered, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                           os.O_NOFOLLOW, 0o600), "wb") as dst:
+        with template.open("rb") as src:
+            shutil.copyfileobj(src, dst)
+        dst.flush()
+        os.fsync(dst.fileno())
+    regular(recovered, length=template.stat().st_size)
+    need(sha(recovered) == x["ovmfTemplateSha256"]
+         and sha(template) == x["ovmfTemplateSha256"],
+         "REFUSE_RECOVERY_UNPROVEN: OVMF reference not restored")
+    proof = {
+        "schemaVersion": 1, "phase": "postboot-recovery",
+        "transactionId": x["transactionId"],
+        "nativeFirstbootWitnessVerified": True,
+        "installAndFirstbootQemuCleanShutdown": True,
+        "originalOwnedChildDiscarded": True,
+        "overlayReconstructedFromImmutableBacking": True,
+        "reconstructedChildHasNoOwnedAllocations": True,
+        "backingSha256Unchanged": True, "gptIdentityPreserved": True,
+        "filesystemsReadOnlyFsckPassed": True,
+        "ovmfTemplateUnchanged": True,
+        "recoveredIndependentOvmfVarsMatchTemplate": True,
+        "priorSessionOvmfVarsSha256": original_vars,
+        "ovmfTransientWritesProvenAbsent": False,
+        "windowsInPlaceRollbackProven": False,
+        "windowsWriterAuthorized": False,
+        "productionInstallationAuthorized": False,
+    }
+    output = work/"postboot.recovery.json"
+    with os.fdopen(os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w") as f:
+        json.dump(proof, f, sort_keys=True, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    print("GASLUX_POP_POSTBOOT_SYNTHETIC_RECOVERY_PROVEN=1", flush=True)
+    return proof
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("action", choices=["prepare", "audit"])
+    p.add_argument("action", choices=["prepare", "audit", "postboot-recover"])
     p.add_argument("--work", type=Path, required=True)
     p.add_argument("--ovmf-template", type=Path)
     p.add_argument("--phase", choices=["install", "firstboot"])
@@ -591,9 +714,12 @@ def main():
         if a.action == "prepare":
             need(a.ovmf_template is not None, "OVMF template missing")
             prepare(a.work, a.ovmf_template)
-        else:
+        elif a.action == "audit":
             need(a.phase is not None, "audit phase missing")
             audit(a.work, a.phase, a.bio_transcript)
+        else:
+            need(a.ovmf_template is not None, "OVMF template missing")
+            postboot_recovery(a.work, a.ovmf_template)
     except (Refusal, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         print("GASLUX_POP_FULL_REUSE_REFUSED=" + str(exc), file=sys.stderr, flush=True)
         return 1

@@ -199,6 +199,55 @@ class FullReuseContractTests(unittest.TestCase):
         self.assertIn("nativeFirstBootProven", gate)
         self.assertIn("REFUSE_NATIVE_EFI_BOOT_UNPROVEN", gate)
 
+    def test_postboot_recovery_requires_clean_bounded_native_boot_evidence(self):
+        report = {
+            "phase": "install", "qemuWriteEventCount": 16175,
+            "outOfSetWriteEvents": 0, "primarySecondaryGptUnchanged": True,
+            "backingUnchanged": True, "checkpointRestorable": True,
+            "windowsWriterAuthorized": False,
+            "productionInstallationAuthorized": False,
+            "qemuTraceSha256": "f"*64,
+            "guestBioCorrelated": True,
+        }
+        boot = {**report, "phase": "firstboot", "qemuWriteEventCount": 268,
+                "guestBioCorrelated": False}
+        snapshot.validate_postboot_audits(report, boot)
+        for key, invalid in (
+            ("outOfSetWriteEvents", 1),
+            ("primarySecondaryGptUnchanged", False),
+            ("backingUnchanged", False),
+            ("checkpointRestorable", False),
+            ("windowsWriterAuthorized", True),
+            ("productionInstallationAuthorized", True),
+            ("qemuWriteEventCount", 0),
+            ("qemuWriteEventCount", True),
+            ("qemuTraceSha256", "bad"),
+            ("phase", "foreign"),
+        ):
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
+                    snapshot.validate_postboot_audits(report, {**boot, key: invalid})
+        with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
+            snapshot.validate_postboot_audits({**report, "guestBioCorrelated": False}, boot)
+        with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
+            snapshot.validate_postboot_audits(report, {**boot, "guestBioCorrelated": True})
+
+    def test_postboot_child_reconstruction_is_after_native_shutdown_and_audit(self):
+        runner = RUNNER.read_text()
+        gate = GATE.read_text()
+        self.assertIn("postboot-recover", runner)
+        self.assertIn("postboot.recovery.json", runner)
+        self.assertLess(runner.index('--phase firstboot ||'),
+                        runner.index('postboot-recover'))
+        self.assertIn('[[ "$qemu_rc" == 0 ]]', runner)
+        self.assertIn('GASLUX_POP_POSTBOOT_SYNTHETIC_RECOVERY_PROVEN=1', gate)
+        self.assertIn('originalOwnedChildDiscarded', gate)
+        self.assertIn('overlayReconstructedFromImmutableBacking', gate)
+        self.assertIn('reconstructedChildHasNoOwnedAllocations', gate)
+        self.assertIn('ovmfTemplateUnchanged', gate)
+        self.assertIn('windowsInPlaceRollbackProven": False', gate)
+        self.assertIn('productionInstallationAuthorized": False', gate)
+
     def test_native_firstboot_is_pop_with_installed_root_partuuid(self):
         s = BOOT.read_text()
         self.assertIn("GASLUX_POP_NATIVE_FIRSTBOOT_OS_ID=pop", s)

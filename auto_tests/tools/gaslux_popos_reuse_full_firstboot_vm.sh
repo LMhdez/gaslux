@@ -50,7 +50,7 @@ cleanup() {
     mkdir -p "$GASLUX_POP_FULL_VM_EVIDENCE_DIR"
     for name in grub.cfg live.serial.log live.console.trace installed.serial.log \
       installed.normalized.log target-before.txt target-after.txt kernel-path.txt install-qemu.exit \
-      installed-qemu.exit pop-reuse-transaction.json install.audit.json firstboot.audit.json install.esp-boot.json \
+      installed-qemu.exit pop-reuse-transaction.json install.audit.json firstboot.audit.json install.esp-boot.json postboot.recovery.json \
       checkpoint.proof install.vars-before.sha256 install.vars-after.sha256 \
       firstboot.vars-before.sha256 firstboot.vars-after.sha256; do
       [[ -f "$work/$name" ]] &&
@@ -343,5 +343,11 @@ python3 auto_tests/tools/gaslux_popos_reuse_snapshot_gate.py audit \
   --work "$work" --phase firstboot ||
   die 'REFUSE_OUT_OF_WRITESET: native firstboot trace'
 sha256sum "$work/ovmf-firstboot.fd" > "$work/firstboot.vars-after.sha256"
+# After the native Pop VM has cleanly shut down AND its firstboot write-set
+# audit passed, destroy only the exact transaction-owned COW overlay and
+# prove rehydration from the immutable synthetic checkpoint plus fresh VARS.
+python3 auto_tests/tools/gaslux_popos_reuse_snapshot_gate.py postboot-recover \
+  --work "$work" --ovmf-template "$vars" ||
+  die 'REFUSE_RECOVERY_UNPROVEN: postboot synthetic child/OVMF restore failed'
 printf 'GASLUX_POP_NATIVE_FIRSTBOOT_WITHOUT_LIVE_ISO=1\n'
 printf 'NOT TESTED: Windows 10/11 boot, BCD, WinRE, real dual boot, upgrades, rollback.\n'
