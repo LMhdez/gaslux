@@ -1,0 +1,79 @@
+name: GPT FD / crosscheck / Safety compatibility (OFFLINE, no QEMU)
+
+on:
+  push:
+    branches:
+      - integration/gpt-fd-crosscheck-nowriter-offline-20261121
+  pull_request:
+    paths:
+      - 'auto_tests/tools/gpt_fd_crosscheck_offline_compat.py'
+      - 'auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py'
+      - 'docs/SAFETY_GPT_FD_CROSSCHECK_COMPAT_OFFLINE.md'
+      - '.github/workflows/gpt-fd-crosscheck-compat-offline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-offline-composition:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GASLUX_COMPAT_PIN_ROOT: ${{ github.workspace }}/.compat-sources
+    steps:
+      - name: Checkout integration only as test data
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch exact GPT FD source and tests from PR 286
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 9aed36cfdb8c09a461dc38811c326c54180273de
+          path: .compat-sources/parser
+          persist-credentials: false
+      - name: Fetch exact Safety no-writer source and tests from PR 267
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: .compat-sources/safety
+          persist-credentials: false
+      - name: Fetch exact hardened crosscheck source and tests from PR 289
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: e1618388cc996eb83c17cafbb7b0869837ff1af3
+          path: .compat-sources/crosscheck
+          persist-credentials: false
+      - name: Confirm immutable commit pins and clean checkouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in \
+            parser:9aed36cfdb8c09a461dc38811c326c54180273de \
+            safety:0be04192acd542646a5b6cd952e01620379edf5d \
+            crosscheck:e1618388cc996eb83c17cafbb7b0869837ff1af3; do
+            dir="${spec%%:*}"
+            sha="${spec#*:}"
+            test "$(git -C "$GASLUX_COMPAT_PIN_ROOT/$dir" rev-parse HEAD)" = "$sha"
+            test -z "$(git -C "$GASLUX_COMPAT_PIN_ROOT/$dir" status --porcelain)"
+          done
+      - name: Install pinned Python-only test tools
+        run: python3 -m pip install 'pytest==9.0.2' 'ruff==0.13.3'
+      - name: Ruff and syntax (only integration code)
+        run: |
+          python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/gpt_fd_crosscheck_offline_compat.py auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py
+          python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/gpt_fd_crosscheck_offline_compat.py auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py
+          python3 -m compileall -q auto_tests/tools/gpt_fd_crosscheck_offline_compat.py auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py
+      - name: Actual PR 286 FD GPT regressions (synthetic files only)
+        run: python3 -m pytest -q "$GASLUX_COMPAT_PIN_ROOT/parser/auto_tests/tests/test_disk_identity_gate.py"
+      - name: Actual PR 289 comparator suites (no writers)
+        shell: bash
+        run: |
+          cd "$GASLUX_COMPAT_PIN_ROOT/crosscheck"
+          python3 -m unittest auto_tests.test_disk_identity_crosscheck auto_tests.test_disk_identity_crosscheck_hardening -v
+      - name: Applicable PR 267 no-writer regressions
+        run: python3 -m pytest -q "$GASLUX_COMPAT_PIN_ROOT/safety/auto_tests/tests/test_prewrite_no_writer.py"
+      - name: Integration negative provenance and structural composition
+        run: python3 -m pytest -q auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py
