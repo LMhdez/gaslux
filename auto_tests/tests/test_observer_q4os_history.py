@@ -311,9 +311,7 @@ def synthetic_q4os_archives(tmp_path, monkeypatch):
         zip_path = zip_dir / f"{aid}.zip"
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for index, screen in enumerate(run["screenshots"]):
-                image = Image.new(
-                    "RGB", (1280, 800), (index * 17 % 255, aid % 251, 67)
-                )
+                image = Image.new("RGB", (1280, 800), (index * 17 % 255, aid % 251, 67))
                 buffer = io.BytesIO()
                 image.save(buffer, format="PNG")
                 data = buffer.getvalue()
@@ -409,8 +407,7 @@ def test_n04_atomic_zip_path_swap_cannot_change_authenticated_bytes(
     assert len(inspected) == 4
     assert all(from_bytes for from_bytes, _names in inspected)
     assert all(
-        "calamares-inspect/substituted-marker.txt" not in names
-        for _from_bytes, names in inspected
+        "calamares-inspect/substituted-marker.txt" not in names for _from_bytes, names in inspected
     )
     assert result["screenshots"] == 40
 
@@ -425,9 +422,7 @@ def test_n04_invalid_initial_hash_still_refused(synthetic_q4os_archives):
         verifier.validate_archives(zip_dir, metadata_dir, originals_dir)
 
 
-def test_n04_truncated_zip_with_pinned_hash_is_refused(
-    synthetic_q4os_archives, monkeypatch
-):
+def test_n04_truncated_zip_with_pinned_hash_is_refused(synthetic_q4os_archives, monkeypatch):
     from auto_tests.installer_observer.evidence import canonical
     from auto_tests.tools import verify_q4os_action_archives as verifier
 
