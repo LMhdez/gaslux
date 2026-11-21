@@ -127,7 +127,7 @@ Describe 'Product storage inventory and uninstall boundary' {
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Not -Throw
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } | Should -Throw
             $script:partitions[0][0].Size = 41GB
-            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Throw '*overlaps*'
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Throw '*overlap*'
             $script:partitions[0][0].Size = 40GB
             $linux.GptType = '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Throw '*unexpected partition*'
