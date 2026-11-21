@@ -1,0 +1,183 @@
+{
+  "attempt": 1,
+  "installationAuthorized": false,
+  "isoSha256": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d",
+  "isoSizeBytes": 1851392000,
+  "kind": "q4os-genuine-visual-experiment",
+  "labSourceCommit": "6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb",
+  "nativeCalamaresInstallExecuted": false,
+  "nextScreen": "Install",
+  "replica": 1,
+  "runId": "44648406729",
+  "schemaVersion": 1,
+  "states": [
+    {
+      "png": "vnc-before-icon-click.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "9f5498603ade10d38c51c498d50ba383d82125a268fbf8e938320bbfadc0394d",
+      "state": "desktop-before-launch",
+      "visibleTextObserved": "Install Q40S\n\n12:55 AM\n5 Oo\n\n",
+      "visualGate": "verified_after_close",
+      "visualGateVerified": true
+    },
+    {
+      "png": "vnc-after-installer-icon.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "e3bc73397bdc9a759128d50beacddfca062475161e566548d5f9a9f539b2abcf",
+      "state": "calamares-welcome",
+      "visibleTextObserved": "ar\ne\n\nWelcome\nLocation\nKeyboard\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ405 operating system Installer\n\nWelcome to the Q40S Andromeda installer\n\nThis computer does not satisfy some of the recommended requirements for installing Q40S 6.\nInstallation can continue, but some features might be disabled.\n\nThe system is not connected to the Internet.\n\nnA} \u2018American English\n\n\u00a9 Cancel\n\n",
+      "visualGate": "verified_native_calamares_welcome",
+      "visualGateVerified": true
+    },
+    {
+      "png": "vnc-location-page.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "f1255b7551b524ffd49d84db132faa160d1c65d0e335dd2b44b0aab249958e67",
+      "state": "calamares-location",
+      "visibleTextObserved": "*\n\nWelcome\nLocation\nKeyboard\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ405 operating system Installer\n\n=\n=\n4\n\nRegion: America Zone:\n\nThe system language will be set to American English (United States).\n\nThe numbers and dates locale will be set to American English (United States).\n\nNew York\n\nChange.\n\nChange.\n\n\u00a9 Cancel\n\n",
+      "visualGate": "verified_native_calamares_location",
+      "visualGateVerified": true
+    },
+    {
+      "png": "vnc-keyboard-page.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "21a25eb4baeea033114ee0a04e401b6aab029c8860675fbd5db31962723880f5",
+      "state": "calamares-keyboard",
+      "visibleTextObserved": "ar\n\nWelcome\nLocation\nKeyboard\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ405 operating system Installer\n\nKeyboard model: Generic 105-key PC\n\nEnglish (Ghana)\nEnglish (New Zealand)\nEnglish (Nigeria)\nEnglish (South Africa)\nEnglish (UK)\n\nEnglish (US)\n\nCherokee\nDefault\n\nEnglish (Colemak)\n\nEnglish (Colemak-DH 1SO)\n\nEnglish (Colemak-DH Ortholinear)\nEnglish (Colemak-DH Wide ISO)\n\nSwitch Keyboard:\n\n\u00a9 Cancel\n\n",
+      "visualGate": "verified_native_calamares_keyboard",
+      "visualGateVerified": true
+    },
+    {
+      "png": "vnc-software-page.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "2019b052420d8911033697210c0a10e41f93b47765920b1a9f8413e501bfbbf4",
+      "state": "calamares-software-unselected",
+      "visibleTextObserved": "ar\ne\n\nWelcome\n\nLocation\n\nKeyboard\n\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ40S Desktop\n405 Basic\n405 Live\n408 Pure\n\nLoad custom profile ..\n\nQ405 operating system Installer\n\nPackage Selection\n\nPlease pick a product from the list. The selected product will be installed.\n\n< Back\n\n\u00a9 Cancel\n\n",
+      "visualGate": "verified_native_calamares_software_unselected",
+      "visualGateVerified": true
+    },
+    {
+      "png": "vnc-software-selected.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "59350e92c1ab4eb9fa5d97b9ce9cd10b4f4df6790e23b6f6202de6c5547eab35",
+      "state": "calamares-software-desktop-selected",
+      "visibleTextObserved": "ar\ne\n\nWelcome\nLocation\nKeyboard\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ40S Basic\nQ40S Live\nQ40Ss Pure\n\nLoad custom profile ..\n\nQ405 operating system Installer\n\nQ40S Desktop\n\nprofile: Q40S Desktop\n\nRecommended for regular users.\n\nFull featured Desktop with Web Browser, Office Suite and recommended\napplications set.\n\nNote:\nInstall process could take a while, as the installer needs to perform an extra configuration and cleanup.\n\n\u00a9 Cancel\n\n",
+      "visualGate": "verified_native_calamares_desktop_selected",
+      "visualGateVerified": true
+    },
+    {
+      "png": "vnc-partitions-page.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "f6642b6989746ac10ac9a6abc173a80e6593bf02582466e4e3ecdba4ec8e8665",
+      "state": "calamares-partitions",
+      "visibleTextObserved": "Q405 operating system Installer\n\na \u00ae) EFI selectstorage device: | \u00a9 vda-3200Gi8/devivday | \u00a9 cet\n\nWelcome\n\nReplace a partition\nReplaces a partition with Q40S 6.\n\nErase disk\nLocation This will all data currently present on the selected storage device.\n\nKeyboard Manual partitioning\nYou can create or resize partitions yourself.\nSoftware\nPartitions\nUsers\nSummary\n\nInstall\na\n\nFinish var G Free space\n\n\u00a9 Cancel\n\n7:59 PM\n117\n\n19)\n\n",
+      "visualGate": "verified_synthetic_calamares_partitions_view",
+      "visualGateVerified": true
+    },
+    {
+      "png": "vnc-partitions-radio-selected.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "43dae24d4a5ba2cc11b53a36cde2d478a8d761d5a0d97112c7fdbaff2706ecb9",
+      "state": "calamares-partitions-proposal-only",
+      "visibleTextObserved": "Q405 operating system Installer\n\na \u00ae) EFI selectstorage device: | \u00a9 vda-3200Gi8/devivday | \u00a9 cet\n\nx ag Replace a partition\n\nWelcome\n\n\u00a9 Erase disk\nLocation i. Thiswill all data currently present on the selected storage device.\n\nKeyboard swap (with Hibernate) Vv\n\nSoftware g Manual partitioning\n\n7 You can create or resize partitions yourself.\nPartitions\n\nUsers Encrypt system\n\na\nSummary\n\n@vdat Gi Free space\nInstall\n\nAfter: fi\nGB EFisystem B a4os_andromeda O swap\n\nFinish\n\n\u00a9 Cancel\n\n",
+      "visualGate": "verified_synthetic_calamares_partitions_selected",
+      "visualGateVerified": true
+    },
+    {
+      "png": "vnc-users-page.png",
+      "resolution": [
+        1280,
+        800
+      ],
+      "sha256": "201309226db419647d7c27c6b9b8fcc6751c40785bd5b55a6a02957d5cdd7b24",
+      "state": "calamares-users-unfilled",
+      "visibleTextObserved": "ar\ne\n\nWelcome\n\nLocation\n\nKeyboard\n\nSoftware\nPartitions\nUsers\nSummary\nInstall\n\nFinish\n\nQ40S operating system Installer\nWhat is your name?\nWhat name do you want to use to log in?\nlogin\nWhat is the name of this computer?\nComputer Name\nChoose a password to keep your account safe.\n\nPassword Repeat Password\n\nLog in automatically without asking for the password.\n\nUse the same password for the administrator account.\n\nPassword is too short\n\n\u00a9 Cancel\n\n",
+      "visualGate": "verified_native_calamares_users",
+      "visualGateVerified": true
+    }
+  ],
+  "summaryVisited": true,
+  "transitions": [
+    {
+      "afterSha256": "e3bc73397bdc9a759128d50beacddfca062475161e566548d5f9a9f539b2abcf",
+      "beforeSha256": "9f5498603ade10d38c51c498d50ba383d82125a268fbf8e938320bbfadc0394d",
+      "centralPixelTransition": true,
+      "from": "desktop-before-launch",
+      "to": "calamares-welcome"
+    },
+    {
+      "afterSha256": "f1255b7551b524ffd49d84db132faa160d1c65d0e335dd2b44b0aab249958e67",
+      "beforeSha256": "e3bc73397bdc9a759128d50beacddfca062475161e566548d5f9a9f539b2abcf",
+      "centralPixelTransition": true,
+      "from": "calamares-welcome",
+      "to": "calamares-location"
+    },
+    {
+      "afterSha256": "21a25eb4baeea033114ee0a04e401b6aab029c8860675fbd5db31962723880f5",
+      "beforeSha256": "f1255b7551b524ffd49d84db132faa160d1c65d0e335dd2b44b0aab249958e67",
+      "centralPixelTransition": true,
+      "from": "calamares-location",
+      "to": "calamares-keyboard"
+    },
+    {
+      "afterSha256": "2019b052420d8911033697210c0a10e41f93b47765920b1a9f8413e501bfbbf4",
+      "beforeSha256": "21a25eb4baeea033114ee0a04e401b6aab029c8860675fbd5db31962723880f5",
+      "centralPixelTransition": true,
+      "from": "calamares-keyboard",
+      "to": "calamares-software-unselected"
+    },
+    {
+      "afterSha256": "59350e92c1ab4eb9fa5d97b9ce9cd10b4f4df6790e23b6f6202de6c5547eab35",
+      "beforeSha256": "2019b052420d8911033697210c0a10e41f93b47765920b1a9f8413e501bfbbf4",
+      "centralPixelTransition": true,
+      "from": "calamares-software-unselected",
+      "to": "calamares-software-desktop-selected"
+    },
+    {
+      "afterSha256": "f6642b6989746ac10ac9a6abc173a80e6593bf02582466e4e3ecdba4ec8e8665",
+      "beforeSha256": "59350e92c1ab4eb9fa5d97b9ce9cd10b4f4df6790e23b6f6202de6c5547eab35",
+      "centralPixelTransition": true,
+      "from": "calamares-software-desktop-selected",
+      "to": "calamares-partitions"
+    },
+    {
+      "afterSha256": "43dae24d4a5ba2cc11b53a36cde2d478a8d761d5a0d97112c7fdbaff2706ecb9",
+      "beforeSha256": "f6642b6989746ac10ac9a6abc173a80e6593bf02582466e4e3ecdba4ec8e8665",
+      "centralPixelTransition": true,
+      "from": "calamares-partitions",
+      "to": "calamares-partitions-proposal-only"
+    },
+    {
+      "afterSha256": "201309226db419647d7c27c6b9b8fcc6751c40785bd5b55a6a02957d5cdd7b24",
+      "beforeSha256": "43dae24d4a5ba2cc11b53a36cde2d478a8d761d5a0d97112c7fdbaff2706ecb9",
+      "centralPixelTransition": true,
+      "from": "calamares-partitions-proposal-only",
+      "to": "calamares-users-unfilled"
+    }
+  ],
+  "windowsDiskAttached": false
+}

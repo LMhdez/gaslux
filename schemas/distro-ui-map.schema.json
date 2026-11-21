@@ -1,0 +1,534 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/dev/schemas/distro-ui-map.schema.json",
+  "title": "Gaslux evidence-gated no-write UI map v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "distribution",
+    "iso",
+    "lab",
+    "states",
+    "transitions",
+    "stopBoundary"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "distribution": {
+      "const": "q4os"
+    },
+    "iso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "url",
+        "sha256",
+        "sizeBytes",
+        "integrityGate"
+      ],
+      "properties": {
+        "version": {
+          "const": "6.10 r2"
+        },
+        "url": {
+          "const": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sizeBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "integrityGate": {
+          "const": "sha256-matches-pinned-lab-digest; upstream-signature-not-proven"
+        }
+      }
+    },
+    "lab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceCommit",
+        "workflow",
+        "vmReplicasRequired",
+        "resolution",
+        "displayScaleFactor",
+        "windowsDiskAttached",
+        "secureBootMeasured"
+      ],
+      "properties": {
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "workflow": {
+          "const": ".github/workflows/q4os-ui-repro-2vm.yml"
+        },
+        "vmReplicasRequired": {
+          "const": 2
+        },
+        "resolution": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": 1280
+            },
+            {
+              "const": 800
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "displayScaleFactor": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "windowsDiskAttached": {
+          "const": false
+        },
+        "secureBootMeasured": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "states": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "order",
+          "screenshot",
+          "visualGate",
+          "title",
+          "visibleTextObserved",
+          "qtAccessibilityId",
+          "controls",
+          "proofs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "screenshot": {
+            "type": "string",
+            "pattern": "^vnc-[a-z0-9-]+[.]png$"
+          },
+          "visualGate": {
+            "type": "string",
+            "pattern": "^verified_[a-z0-9_]+$"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "visibleTextObserved": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "qtAccessibilityId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "controls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "label",
+                "type",
+                "qtId",
+                "boundingBox",
+                "action"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "qtId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "boundingBox": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "minItems": 4,
+                      "maxItems": 4
+                    }
+                  ]
+                },
+                "action": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "proofs": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "replica",
+                "runId",
+                "artifactId",
+                "artifactUrl",
+                "screenshot",
+                "sha256",
+                "visualGatePassed",
+                "resolution"
+              ],
+              "properties": {
+                "replica": {
+                  "enum": [
+                    1,
+                    2
+                  ]
+                },
+                "runId": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                },
+                "artifactId": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "artifactUrl": {
+                  "type": "string",
+                  "pattern": "^https://github[.]com/LMhdez/gaslux/actions/runs/[0-9]+/artifacts/[0-9]+$"
+                },
+                "screenshot": {
+                  "type": "string",
+                  "pattern": "^vnc-[a-z0-9-]+[.]png$"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "visualGatePassed": {
+                  "const": true
+                },
+                "resolution": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "const": 1280
+                    },
+                    {
+                      "const": 800
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "from",
+          "to",
+          "action",
+          "locator",
+          "preconditions",
+          "postconditions",
+          "configuredCommandTimeoutSeconds",
+          "observedDurationMs",
+          "status",
+          "proofs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+          },
+          "action": {
+            "type": "string"
+          },
+          "locator": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "x",
+              "y",
+              "boundingBox",
+              "selectionRule"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "sha-gated-vnc-coordinate",
+                  "none"
+                ]
+              },
+              "x": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "y": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "boundingBox": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "minItems": 4,
+                    "maxItems": 4
+                  }
+                ]
+              },
+              "selectionRule": {
+                "type": "string"
+              }
+            }
+          },
+          "preconditions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "postconditions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "configuredCommandTimeoutSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "observedDurationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "verified",
+              "blocked"
+            ]
+          },
+          "proofs": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "replica",
+                "runId",
+                "artifactId",
+                "artifactUrl",
+                "beforeScreenshot",
+                "beforeSha256",
+                "afterScreenshot",
+                "afterSha256",
+                "visualGatesPassed",
+                "centralRegionChanged"
+              ],
+              "properties": {
+                "replica": {
+                  "enum": [
+                    1,
+                    2
+                  ]
+                },
+                "runId": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                },
+                "artifactId": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "artifactUrl": {
+                  "type": "string",
+                  "pattern": "^https://github[.]com/LMhdez/gaslux/actions/runs/[0-9]+/artifacts/[0-9]+$"
+                },
+                "beforeScreenshot": {
+                  "type": "string",
+                  "pattern": "^vnc-[a-z0-9-]+[.]png$"
+                },
+                "beforeSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "afterScreenshot": {
+                  "type": "string",
+                  "pattern": "^vnc-[a-z0-9-]+[.]png$"
+                },
+                "afterSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "visualGatesPassed": {
+                  "const": true
+                },
+                "centralRegionChanged": {
+                  "const": true
+                },
+                "observedDurationMs": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stopBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lastObservedState",
+        "nextStateUnobserved",
+        "nativeCalamaresInstallExecuted",
+        "windowsDiskModified",
+        "accountInputAttempted",
+        "reason"
+      ],
+      "properties": {
+        "lastObservedState": {
+          "type": "string"
+        },
+        "nextStateUnobserved": {
+          "enum": [
+            "calamares-summary",
+            "calamares-install"
+          ]
+        },
+        "nativeCalamaresInstallExecuted": {
+          "const": false
+        },
+        "windowsDiskModified": {
+          "const": false
+        },
+        "accountInputAttempted": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 12
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "lastObservedState": {
+              "const": "calamares-users-unfilled"
+            },
+            "nextStateUnobserved": {
+              "const": "calamares-summary"
+            },
+            "accountInputAttempted": {
+              "const": false
+            }
+          }
+        },
+        {
+          "properties": {
+            "lastObservedState": {
+              "const": "calamares-summary"
+            },
+            "nextStateUnobserved": {
+              "const": "calamares-install"
+            },
+            "accountInputAttempted": {
+              "const": true
+            }
+          }
+        }
+      ]
+    }
+  }
+}
