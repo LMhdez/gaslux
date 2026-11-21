@@ -176,7 +176,7 @@ def verify_evidence(folder: Path) -> dict:
         and [m.get("source") for m in records] == ["host", "guest", "immediate"],
         "THREE_WAY_MEASUREMENTS_MISSING",
     )
-    paths, times = [], []
+    paths, times, identities = [], [], []
     for i, kind in enumerate(("host", "guest", "immediate")):
         name = kind + "-read-trace.json"
         path = folder / name
@@ -221,10 +221,13 @@ def verify_evidence(folder: Path) -> dict:
             "SAMPLE_OFFSET_INVALID",
         )
         paths.append(Path(trace["imageFile"]))
+        identities.append((trace["fileDev"], trace["fileInode"]))
         times.append(datetime.fromisoformat(trace["observedAt"]))
     require(
         [p.name for p in paths] == ["host.raw", "guest-reconstructed.raw", "immediate.raw"]
         and len(set(map(str, paths))) == 3
+        and paths[0].parent == paths[1].parent == paths[2].parent
+        and len(set(identities)) == 3
         and times[0] <= times[1] <= times[2],
         "IMMEDIATE_NOT_FRESHLY_OBSERVED",
     )
@@ -252,6 +255,17 @@ def verify_evidence(folder: Path) -> dict:
         and manifest.get("fileSha256", {}).get("safety-gpt-provenance-v1.json")
         == sha(folder / "safety-gpt-provenance-v1.json"),
         "BACKING_OR_SAFETY_HASH_INVALID",
+    )
+    summary = json.loads((folder / "lab-result-summary.json").read_text(encoding="utf-8"))
+    require(
+        summary.get("status") == "LABORATORY_ONLY"
+        and summary.get("classification") == "NOT_INDEPENDENT"
+        and summary.get("diagnostic") == "DIAGNOSTIC_ONLY"
+        and summary.get("guestRealPread") is True
+        and summary.get("guestInputCount") == 0
+        and summary.get("writerCalled") is False
+        and summary.get("ephemeralDiskRemoved") is True,
+        "LAB_RESULT_SUMMARY_INVALID",
     )
     return {
         "status": "READONLY_DIAGNOSTIC_VALIDATED",
