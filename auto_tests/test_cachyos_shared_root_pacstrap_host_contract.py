@@ -118,10 +118,14 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         self.assertNotIn('libguestfs-tools linux-image-generic', workflow)
         self.assertIn("Kernel packaging unexpectedly requires firmware", workflow)
         self.assertIn("real-windows10-archiso-pacstrap-and-discard:", workflow)
-        # The expensive Windows/KVM guest may run on push and on PR #263
-        # only when repository, head ref and base ref match this experiment.
+        # PR #263 alone runs the expensive guest on this experimental
+        # branch; its push event still runs static contracts. Other historical
+        # push/dispatch cases remain unchanged and forks are never accepted.
         self.assertIn("if: >-", workflow)
-        self.assertIn("github.event_name != 'pull_request' ||", workflow)
+        self.assertIn("github.event_name != 'pull_request' &&", workflow)
+        self.assertIn("github.event_name == 'push' &&", workflow)
+        self.assertIn("github.ref == 'refs/heads/test/cachyos-postpacstrap-win10-same-cow-issue3'", workflow)
+        self.assertIn("github.event_name == 'pull_request' &&", workflow)
         self.assertIn("github.event.pull_request.number == 263", workflow)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", workflow)
         self.assertIn("github.event.pull_request.head.ref == 'test/cachyos-postpacstrap-win10-same-cow-issue3'", workflow)
