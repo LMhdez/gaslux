@@ -250,7 +250,6 @@ def capture_gpt(
         os.close(fd)
 
 
-
 def capture_fresh_immediate(
     *,
     workspace: Path,

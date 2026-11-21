@@ -284,9 +284,7 @@ def immediate_lab(sample):
     historical = folder / "host.raw"
     for destination in (base, overlay, historical):
         shutil.copyfile(original, destination)
-    host = capture_gpt(
-        historical, folder, source="host", logical_sector_size=512, safety_disk=disk
-    )
+    host = capture_gpt(historical, folder, source="host", logical_sector_size=512, safety_disk=disk)
 
     class Converter:
         mode = "normal"
@@ -381,9 +379,7 @@ def test_immediate_detects_valid_gpt_disk_guid_change_after_host(immediate_lab):
             "<I", zlib.crc32(contents[offset : offset + 92])
         )
     overlay.write_bytes(contents)
-    current = capture_gpt(
-        overlay, folder, source="host", logical_sector_size=512, safety_disk=disk
-    )
+    current = capture_gpt(overlay, folder, source="host", logical_sector_size=512, safety_disk=disk)
     assert current.gpt["partitionTableId"] != host.gpt["partitionTableId"]
     assert current.sectors["primaryHeaderCrc32"] != host.sectors["primaryHeaderCrc32"]
     refused("OBSERVATION_INCOMPLETE", lambda: take_immediate(immediate_lab))
