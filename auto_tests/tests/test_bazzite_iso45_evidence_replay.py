@@ -156,7 +156,7 @@ def test_generic_desktop_text_does_not_pass(original):
     altered = dict(members)
     for i in range(6):
         altered[f"iso45-ocr-{i}.txt"] = b"Welcome to Linux\nInstall to Hard Drive"
-    with pytest.raises(Refusal, match="corroborated"):
+    with pytest.raises(Refusal, match="Unapproved OCR bytes"):
         inspect_evidence(altered, candidate)
 
 
@@ -164,7 +164,7 @@ def test_fake_destination_in_ocr_does_not_upgrade_b_to_a(original):
     _, members, candidate = original
     altered = dict(members)
     altered["iso45-ocr-1.txt"] += b"\nBazzite installation destination\n"
-    with pytest.raises(Refusal, match="corroborated"):
+    with pytest.raises(Refusal, match="Unapproved OCR bytes"):
         inspect_evidence(altered, candidate)
 
 
