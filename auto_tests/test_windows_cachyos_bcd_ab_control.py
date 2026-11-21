@@ -107,6 +107,22 @@ usb_packet_state
             ["bdrv_co_pwritev", "qcow2_cache_entry_write"],
         )
 
+    def test_swtpm_emulator_uses_qemu_control_not_command_server(self):
+        root = Path("/tmp/lab-bcd-ab-fixture")
+        for state_name, socket_name in (
+            (lab.TPM_CONTROL, "bcd-ab-control-tpm.sock"),
+            (lab.TPM_TREATMENT, "bcd-ab-treatment-tpm.sock"),
+        ):
+            argv = lab.swtpm_emulator_command(
+                root / state_name, root / socket_name
+            )
+            self.assertIn("--ctrl", argv)
+            self.assertNotIn("--server", argv)
+            self.assertEqual(argv[argv.index("--ctrl") + 1],
+                             f"type=unixio,path={root / socket_name},mode=0600")
+        with self.assertRaisesRegex(lab.BcdAbControlError, "unowned"):
+            lab.swtpm_emulator_command(root / "unexpected", root / "foreign.sock")
+
     def test_tpm_state_digest_is_stable_for_independent_byte_copies(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "tpm"
