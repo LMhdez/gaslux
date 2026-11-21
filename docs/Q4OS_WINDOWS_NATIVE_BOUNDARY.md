@@ -107,3 +107,123 @@ GPT/root provisioning; a proven ownership-safe replacement for the Calamares
 EFI fallback and shell hooks; automatic Calamares navigation without generic
 VNC clicks; Linux **and** Windows boots, updates, uninstall and rollback.
 Until these are independently proven, keep Q4OS out of the stable catalogue.
+
+## 2026-11-21 — Genuine Windows evidence and real QEMU/libguestfs preflight
+
+This later evidence extends (but does **not** supersede) the original
+synthetic-only checkpoint contract above. All Windows experiments remain
+on a new disposable GitHub-hosted 48-GiB QCOW2. No Q4OS installation,
+GRUB, EFI fallback, ESP write, firmware change, or rollback was executed.
+
+### Windows failure provenance
+
+The SHA-256-pinned Windows 10 Enterprise Evaluation 22H2 ISO, QMP DVD
+one-shot input, Windows Setup, first-logon NTFS marker, QCOW2 structural
+check, GPT verify, Microsoft ESP loader and nonempty BCD passed in
+[Action #44822087949](https://github.com/LMhdez/gaslux/actions/runs/44822087949)
+on Q4OS code SHA `7c46439e97edaa1eba7282007f3d9ac1de780d57`.
+WinRE was **not** present or proven. The first failed step was
+`Real Windows 10 host GPT versus readonly QEMU guestfs and Safety`.
+The appliance failed with the generic libguestfs message
+`/usr/bin/supermin exited with error status 1`. No diagnostic from
+that run identified a kernel, module, permissions, or filesystem root
+cause. The [bounded JSON artifact #14672708757](https://github.com/LMhdez/gaslux/actions/runs/44822087949/artifacts/14672708757)
+has ZIP SHA-256
+`b0ad97f5b70d0611aa9c0a754a4ebbcdae695651359fb392c95968e2256c4c64`.
+It does **not** include a full host/guest GPT witness, Safety host/guest
+authentication, QCOW2 SHA before/after, or Windows recovery proof.
+
+### Reused working kernel-selection contract
+
+Q4OS now reuses the Safety #267 Ubuntu hosted-runner helper pinned at
+`3f44ae2068fabe875f160ca007393f9e3eb99367`
+(`auto_tests/tools/windows_x64_libguestfs_kernel.sh`).
+It installs a **matching** `linux-image-generic` and module tree,
+checks the selected kernel and `modules.dep`, copies the packaged
+root-owned kernel into a private readable runner temp location,
+and configures `SUPERMIN_KERNEL`, `SUPERMIN_MODULES`,
+`SUPERMIN_KERNEL_VERSION`, `LIBGUESTFS_BACKEND=direct` and
+`LIBGUESTFS_MEMSIZE=768`. The executing host kernel is not modified.
+Ubuntu 24.04 runners in the successful lab selected
+`6.8.0-151-generic`. The earlier genuine-Windows runner installed
+libguestfs 1.52.0-5ubuntu3 and supermin 5.2.2-4ubuntu4 but did not
+record a complete selected guest kernel/module match.
+
+The new `auto_tests/tools/q4os_libguestfs_preflight.py` boots an
+**actual QEMU/libguestfs appliance** against an entirely synthetic
+64-MiB GPT regular file. It opens exactly one drive `readonly=1`,
+requires the correct logical sectors and geometry, selects it by
+a libguestfs label, reads the first/last GPT sectors, uses the pinned
+Safety #265 GPT parser for both witnesses, compares GUIDs and PARTUUIDs,
+checks the same source file's SHA-256 before/after, proves guest
+shutdown/close and removes the private scratch disk.
+
+The first synthetic preflight was refused in
+[Action #44889870369](https://github.com/LMhdez/gaslux/actions/runs/44889870369).
+A subsequent bounded stage diagnostic in
+[Action #44890267890](https://github.com/LMhdez/gaslux/actions/runs/44890267890)
+localised the error to `GUESTFS_ATTACH_READONLY` **before** appliance
+launch. The Q4OS lab's former hexadecimal drive label included numeric
+characters. This conflicted with libguestfs's alphabetic drive-label
+contract, already fixed in the audited Safety #267 helper. Q4OS now
+uses exactly `gaslux` plus twelve randomly chosen characters from
+`abcdef`. The Windows read-only guestfs probe uses the same
+labelled-device selection; this avoids trusting device enumeration
+order. Unit tests refuse numeric labels and missing or mismatched
+kernel/modules, bad geometry, partial GPT, multiple disks,
+unexpected supermin failure, timeout, absent provenance and cleanup
+failure.
+
+### Real synthetic appliance PASS (not Windows)
+
+[Action #44890525345](https://github.com/LMhdez/gaslux/actions/runs/44890525345)
+on SHA `7a950d0b73e5de5a354329293ec258c4b525d778`
+returned **SUCCESS**. The downloaded [bounded JSON artifact
+#14700594881](https://github.com/LMhdez/gaslux/actions/runs/44890525345/artifacts/14700594881)
+has ZIP SHA-256
+`35a3741e17ffac6a3128c4db9346cfe7f33185e2da62a11d3a1459af0bb96e7f`.
+The JSON records:
+
+- `decision=SYNTHETIC_APPLIANCE_PASS_NO_WRITER`,
+  `applianceBooted=true`, `applianceShutdownVerified=true`;
+- `guestAttachedDrives=1`, `sourceReadOnly=true`,
+  `virtualSizeBytes=67108864`, `logicalSectorBytes=512`;
+- `hostGuestGptMatches=true` and the same SHA-256
+  `7fcf2df44173cfdc544e5aa37864230d8e8bd1089e615b16326df49fa0a9cd9d`
+  before and after the **synthetic** observation;
+- `syntheticSourceIntact=true`, `temporarySourceRemoved=true`;
+- `trustBoundary=NOT_INDEPENDENT`, `writerPresent=false`,
+  `diskWritesAuthorized=false`, `installationAuthorized=false`,
+  `rollbackVerified=false`, `guestDiskSerialAuthenticated=false`.
+
+This is a real **synthetic** Linux appliance booted by QEMU, not mocked
+hardware and not a Windows guest boot. The same runner controls both
+observations and the disk; therefore identity correspondence is NOT
+independent remote attestation. The test did **not** rerun Windows,
+capture Windows host/guest GPT, prove WinRE, validate BCD contents,
+prove Windows rollback, or execute Safety #267 over authenticated
+Windows host/guest records.
+
+### Mandatory early Windows gate
+
+The Windows-only workflow
+`.github/workflows/gaslux-q4os-windows10-qcow2.yml` still has
+**`workflow_dispatch` only**. Before downloading the Microsoft ISO
+or creating the Windows QCOW2, it now repeats the *real synthetic
+appliance* probe with the **same pinned kernel selector**, exact
+Safety #265 reader, no-writer labels, and bounded evidence. If the
+appliance fails, it returns `BLOCKED_GUESTFS_APPLIANCE` and
+**Windows Setup is not invoked**. The existing Windows read-only probe
+also sets the direct backend and uses an exclusively alphabetic
+libguestfs disk label, but this exact updated probe still requires
+a separate genuine Windows Action to prove the operational path.
+
+The core Safety gate remains pinned to
+`f55633c90973f633dda678f583f7730fc2cdc0ce`.
+`hostGuestGptMatches=true` in a synthetic experiment does **not**
+authenticate production provenance. If independent host/guest
+transaction evidence is absent, the only permissible Windows result
+remains `DENY_UNAUTHENTICATED`, never `ACCEPT_NO_WRITER` as
+installation permission. No production disk, ESP, WinRE or NVRAM writer
+has been enabled. The Q4OS PR stays draft and outside the stable
+catalogue.
