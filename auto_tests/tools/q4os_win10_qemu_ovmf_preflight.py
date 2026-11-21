@@ -173,9 +173,7 @@ def _run_qemu(scratch: Path) -> dict:
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 if proc.poll() is not None:
-                    raise QemuStartupDenied(
-                        classify_qemu_error(log.read_bytes())
-                    )
+                    raise QemuStartupDenied(classify_qemu_error(log.read_bytes()))
                 if qmp.exists():
                     channel = None
                     try:
@@ -255,9 +253,7 @@ def main() -> int:
         code = 0
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         reason = (
-            str(exc)
-            if isinstance(exc, QemuStartupDenied)
-            else "OVMF_PREFLIGHT_UNEXPECTED_FAILURE"
+            str(exc) if isinstance(exc, QemuStartupDenied) else "OVMF_PREFLIGHT_UNEXPECTED_FAILURE"
         )
         report = {
             "schemaVersion": 1,
