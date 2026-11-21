@@ -1,4 +1,4 @@
-name: Mint forensic independent A/B checkpoint (no guest)
+name: Mint A/B synthetic GPT and infrastructure qualification (NO Windows)
 
 on:
   push:
@@ -12,6 +12,10 @@ on:
       - auto_tests/test_windows_mint_ab_checkpoint.py
       - auto_tests/tools/windows_mint_ab_forensic.py
       - auto_tests/test_windows_mint_ab_forensic.py
+      - auto_tests/tools/windows_mint_ab_infrastructure.py
+      - auto_tests/test_windows_mint_ab_infrastructure.py
+      - auto_tests/tools/windows_mint_ab_synthetic.py
+      - auto_tests/test_windows_mint_ab_synthetic.py
       - auto_tests/tools/windows_mint_overlay_root.py
       - auto_tests/tools/windows_x64_tcg_firstboot.py
   workflow_dispatch:
@@ -42,10 +46,14 @@ jobs:
           python3 -m py_compile auto_tests/tools/windows_mint_ab_capacity.py auto_tests/test_windows_mint_ab_capacity.py
           python3 -m py_compile auto_tests/tools/windows_mint_ab_checkpoint.py auto_tests/test_windows_mint_ab_checkpoint.py
           python3 -m py_compile auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_infrastructure.py auto_tests/test_windows_mint_ab_infrastructure.py
+          python3 -m py_compile auto_tests/tools/windows_mint_ab_synthetic.py auto_tests/test_windows_mint_ab_synthetic.py
           python3 -m py_compile auto_tests/tools/windows_mint_overlay_root.py auto_tests/tools/windows_x64_tcg_firstboot.py
           python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_capacity.py -v
           python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_checkpoint.py -v
           python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_forensic.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_infrastructure.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_synthetic.py -v
           python3 -m unittest discover -s auto_tests -p test_windows_mint_overlay_root.py -v
           python3 -m unittest discover -s auto_tests -p test_windows_x64_two_stage_boot.py -v
       - name: Real qemu-img standalone conversion and nonaliasing on sparse synthetic QCOW2
@@ -53,7 +61,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-utils gdisk ovmf psmisc
           # Capture current runner capacity without Windows ISO, WIM or guest images.
           # This is a diagnostic measurement, NOT an A/B authorization.
           python3 - <<'PY'
@@ -104,12 +113,44 @@ jobs:
           print("PASS: standalone QCOW2 cloning, isolated A corruption, recovery and B unaffected")
           print("NO genuine Windows VM, Mint boot, disk writes or production recovery proven")
           PY
-      - name: Upload only bounded fresh-runner byte capacity evidence (no Windows media)
+      - name: Fixed private synthetic GPT, independent A/B clones, OVMF and atomic restore (NO OS)
+        shell: bash
+        env:
+          GASLUX_MINT_AB_SYNTHETIC_CONSENT: I_ACCEPT_64M_PRIVATE_SYNTHETIC_GPT_AB_ONLY
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_mint_ab_synthetic.py
+      - name: Qualify standard hosted runner, no Windows ISO or guest boot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/windows_mint_ab_infrastructure.py
+          echo 'INFRA AUDIT ONLY: PASS would not authorize paid resources or Windows Setup' >> "$GITHUB_STEP_SUMMARY"
+      - name: Ruff lint and formatting contract for newly introduced profiles
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-ruff-0.15.20" --no-deps "ruff==0.15.20"
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
+          python3 -m ruff check \
+            auto_tests/tools/windows_mint_ab_infrastructure.py \
+            auto_tests/tools/windows_mint_ab_synthetic.py \
+            auto_tests/test_windows_mint_ab_infrastructure.py \
+            auto_tests/test_windows_mint_ab_synthetic.py
+          python3 -m ruff format --check \
+            auto_tests/tools/windows_mint_ab_infrastructure.py \
+            auto_tests/tools/windows_mint_ab_synthetic.py \
+            auto_tests/test_windows_mint_ab_infrastructure.py \
+            auto_tests/test_windows_mint_ab_synthetic.py
+      - name: Upload only bounded synthetic/infra qualification JSON (NO Windows data)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: mint-ab-runner-capacity-sample
-          path: windows-x64-tcg-evidence/mint-ab-capacity-early.json
+          name: mint-ab-synthetic-infra-qualification
+          path: |
+            windows-x64-tcg-evidence/mint-ab-capacity-early.json
+            windows-x64-tcg-evidence/mint-ab-infrastructure.json
+            windows-x64-tcg-evidence/mint-ab-fixed-synthetic.json
           retention-days: 7
           if-no-files-found: warn
           compression-level: 6
