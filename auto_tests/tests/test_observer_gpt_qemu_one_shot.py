@@ -236,7 +236,8 @@ def test_git_preflight_accepts_one_real_added_approval_file(authorization_git_re
 
 @pytest.mark.parametrize("extra_file", ["README", "other.json"])
 def test_git_preflight_refuses_authorization_with_other_diff(
-    authorization_git_repo, extra_file,
+    authorization_git_repo,
+    extra_file,
 ):
     root, before = authorization_git_repo
     approval = root / FILE
