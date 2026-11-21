@@ -705,7 +705,6 @@ os._exit(23)
                         )
                     self.assertEqual(ledger.state(g["grantId"]), "APPROVED")
 
-
     def test_s01_reopen_rejects_garbage_decisions_schema(self):
         with sqlite3.connect(self.path) as con:
             con.execute("DROP TABLE decisions")
@@ -761,8 +760,7 @@ os._exit(23)
         with sqlite3.connect(self.path) as con:
             con.execute("PRAGMA user_version = 3")
             con.execute(
-                "CREATE TRIGGER synthetic_trigger AFTER INSERT ON grants "
-                "BEGIN SELECT 1; END"
+                "CREATE TRIGGER synthetic_trigger AFTER INSERT ON grants BEGIN SELECT 1; END"
             )
         with self.assertRaisesRegex(model.Refused, "LEGACY_OR_AMBIGUOUS_LEDGER"):
             model.OfflineLedger(self.path)
@@ -860,9 +858,7 @@ os._exit(23)
                 alternate["experimentId"] = "alternate-experiment-after-terminal"
                 alternate["externalDecisionId"] = str(uuid.uuid4())
                 alternate["humanReviewId"] = "alternate-human-review-after-terminal"
-                with self.assertRaisesRegex(
-                    model.Refused, "REPOSITORY_COMMIT_ALREADY_RESERVED"
-                ):
+                with self.assertRaisesRegex(model.Refused, "REPOSITORY_COMMIT_ALREADY_RESERVED"):
                     ledger.request(alternate, now=NOW)
 
 
