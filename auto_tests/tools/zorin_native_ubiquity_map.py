@@ -183,7 +183,7 @@ def require_regular_member(rootfs: Path, name: str) -> bool:
                      r"(?:\s+->\s+.*)?$", line)
     ]
     require(len(entries) == 1 and entries[0].startswith("-"),
-            "source not uniquely regular: " + name +
+            "source not uniquely regular (possible symlink): " + name +
             " metadata=" + repr(result.stdout.decode("utf-8", "replace")[-450:]))
     return True
 
