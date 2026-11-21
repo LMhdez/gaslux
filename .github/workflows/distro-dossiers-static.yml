@@ -1,0 +1,31 @@
+name: Distro dossiers static contracts (no runtime)
+
+on:
+  pull_request:
+    paths:
+      - 'docs/distro-backends/**'
+      - 'auto_tests/tests/test_distro_docs_integration.py'
+      - '.github/workflows/distro-dossiers-static.yml'
+  push:
+    branches:
+      - 'integration/distro-dossiers-readonly-20261121'
+    paths:
+      - 'docs/distro-backends/**'
+      - 'auto_tests/tests/test_distro_docs_integration.py'
+      - '.github/workflows/distro-dossiers-static.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs-static-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile static test
+        run: python3 -m compileall -q auto_tests/tests/test_distro_docs_integration.py
+      - name: Validate documentation and links without VM, disk or network
+        run: python3 -m unittest discover -s auto_tests/tests -p 'test_distro_docs_integration.py' -v
