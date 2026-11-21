@@ -386,6 +386,14 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
         )
         for fd, original in fds.values():
             close_guard(fd, original)
+        # The pinned Safety #265 GPT reader currently accepts only paths.
+        # It re-opens root/name instead of measuring the authenticated raw FD.
+        # A valid matching GPT on a swapped inode can therefore pass. Do NOT
+        # publish even a synthetic success classification without a shared
+        # Safety inspect_gpt_fd(fd, ...) API. Path-stat checks are not a fix:
+        # an attacker can replace-and-restore the name between observations.
+        # This refusal is intentionally unconditional until Safety review.
+        raise WriteSetRefused("E_GPT_FD_BINDING_REQUIRED")
         return {
             "result": "SYNTHETIC_ONLY_WITHIN_ROOT" if changed else "SYNTHETIC_NO_CHANGE",
             "changedLinuxBytes": changed,
