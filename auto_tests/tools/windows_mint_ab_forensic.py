@@ -392,13 +392,16 @@ def require_complete_forensic_inventories(
             files = item.get("fileSha256") if isinstance(item, dict) else None
             if not isinstance(item, dict) or item.get("available") is not True:
                 state = "unavailable"
-            elif not isinstance(files, dict) or not files or len(files) > 120000:
-                state = "incomplete"
-            elif not all(
-                isinstance(name, str) and name.startswith("/")
-                and len(name) <= 4096 and "\x00" not in name
-                and isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{64}", digest)
-                for name, digest in files.items()
+            elif (
+                not isinstance(files, dict)
+                or not files
+                or len(files) > 120000
+                or not all(
+                    isinstance(name, str) and name.startswith("/")
+                    and len(name) <= 4096 and "\x00" not in name
+                    and isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{64}", digest)
+                    for name, digest in files.items()
+                )
             ):
                 state = "incomplete"
             else:
