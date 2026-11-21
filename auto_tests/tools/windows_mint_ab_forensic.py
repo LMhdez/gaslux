@@ -417,7 +417,7 @@ def require_complete_forensic_inventories(
                     or not path.startswith("/")
                     or path == "/"
                     or len(path) > 4096
-                    or "\\x00" in path
+                    or "\x00" in path
                     or any(segment in ("", ".", "..") for segment in path[1:].split("/"))
                     or not isinstance(digest, str)
                     or re.fullmatch(r"[a-f0-9]{64}", digest) is None
