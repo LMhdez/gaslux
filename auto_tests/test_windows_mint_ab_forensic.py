@@ -477,7 +477,9 @@ class MintAbForensicContracts(unittest.TestCase):
                 self.assertEqual(report["nextGuest"], "windows_a")
                 self.assertFalse(report["nextBootAuthorized"])
                 self.assertIn("mint-ab-checkpoint.json", report["previousEvidenceSha256"])
-                self.assertTrue(any(x["resource"] == resource for x in report["unavailableResources"]))
+                self.assertTrue(
+                    any(x["resource"] == resource for x in report["unavailableResources"])
+                )
                 for name, value in original.items():
                     self.assertEqual(hashlib.sha256(lab[name].read_bytes()).hexdigest(), value)
                 self.assertFalse((lab["evidence"] / "mint-ab-control.json").exists())
@@ -505,7 +507,9 @@ class MintAbForensicContracts(unittest.TestCase):
                 self.assertEqual(report["nextGuest"], "mint_b")
                 self.assertFalse(report["nextBootAuthorized"])
                 self.assertIn("mint-ab-after-control-gate.json", report["previousEvidenceSha256"])
-                self.assertTrue(any(x["resource"] == resource for x in report["unavailableResources"]))
+                self.assertTrue(
+                    any(x["resource"] == resource for x in report["unavailableResources"])
+                )
 
     def test_f03_post_mint_missing_files_stops_before_windows_b(self):
         for resource in ("esp", "recovery"):
