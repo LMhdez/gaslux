@@ -47,24 +47,6 @@ jobs:
           python -m compileall -q auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
           python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
           python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
-      - name: Diagnostic exact Ruff formatted source on a formatting failure
-        if: failure()
-        run: |
-          python -m ruff format --config auto_tests/pyproject.toml \
-            auto_tests/installer_observer/gpt_readonly_producer.py \
-            auto_tests/installer_observer/gpt_lab_provenance.py \
-            auto_tests/tests/test_observer_gpt_readonly_producer.py
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          for path in (
-              "auto_tests/installer_observer/gpt_readonly_producer.py",
-              "auto_tests/installer_observer/gpt_lab_provenance.py",
-              "auto_tests/tests/test_observer_gpt_readonly_producer.py",
-          ):
-              print("GASLUX_FORMATTED_SOURCE|" + path + "|" +
-                    json.dumps(Path(path).read_text(), ensure_ascii=True))
-          PY
       - name: Adversarial raw-sector and Safety-v1 schema unit tests (synthetic fixture)
         run: python -m pytest -q auto_tests/tests/test_observer_gpt_readonly_producer.py
 
