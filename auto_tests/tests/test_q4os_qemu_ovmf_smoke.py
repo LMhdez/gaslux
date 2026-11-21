@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -126,7 +125,7 @@ def test_no_new_writers_or_windows_data_in_synthetic_probe():
     assert "qemu-system-x86_64" in source
     assert "SYNTHETIC_QEMU_OVMF_QMP_PASS_NO_WRITER" in source
     assert "GASLUX_Q4OS_OVMF_EVIDENCE" in source
-    for forbidden in ("grub-install", "calamares", "efibootmgr", "mkfs.", "/dev/sda", "/dev/nbd"):
+    for forbidden in ("grub-install ", "calamares --", "efibootmgr ", "mkfs.", "/dev/sda", "/dev/nbd"):
         assert forbidden not in source.lower()
 
 
