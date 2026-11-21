@@ -164,18 +164,24 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
         self.assertEqual(context.exception.code, code)
 
     def test_no_change_cannot_claim_gpt_fd_binding(self):
-        with (self.root / "baseline.raw").open("rb") as a, (
-            self.root / "trial.raw"
-        ).open("rb") as b:
-            self.assertEqual(compare_raw(a.fileno(), b.fileno(), SyntheticPolicy.parse(self.policy)), 0)
+        with (
+            (self.root / "baseline.raw").open("rb") as a,
+            (self.root / "trial.raw").open("rb") as b,
+        ):
+            self.assertEqual(
+                compare_raw(a.fileno(), b.fileno(), SyntheticPolicy.parse(self.policy)), 0
+            )
         self.refused("E_GPT_FD_BINDING_REQUIRED")
 
     def test_valid_root_bytes_still_require_gpt_fd_binding(self):
         self.mutate("trial.raw", PARTS[1][1] * SECTOR + 77)
-        with (self.root / "baseline.raw").open("rb") as a, (
-            self.root / "trial.raw"
-        ).open("rb") as b:
-            self.assertEqual(compare_raw(a.fileno(), b.fileno(), SyntheticPolicy.parse(self.policy)), 1)
+        with (
+            (self.root / "baseline.raw").open("rb") as a,
+            (self.root / "trial.raw").open("rb") as b,
+        ):
+            self.assertEqual(
+                compare_raw(a.fileno(), b.fileno(), SyntheticPolicy.parse(self.policy)), 1
+            )
         self.refused("E_GPT_FD_BINDING_REQUIRED")
 
     def test_primary_gpt_sector_refused(self):
