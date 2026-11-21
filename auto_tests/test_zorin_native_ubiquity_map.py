@@ -59,7 +59,8 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
         with patch.object(mapping, "STATUS_SHA", mapping.digest(self.status)), \
              patch.object(mapping, "UBIQUITY_EXEC_SHA", mapping.digest(self.entry)):
             report = mapping.build_map(Path("/unmounted"), self.prior,
-                                       self.manifest, self.read)
+                                       self.manifest, self.read,
+                                       regular_checker=lambda _root, _member: True)
             mapping.validate_consistency(report)
             return report
 
@@ -123,7 +124,8 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
         with patch.object(mapping, "UBIQUITY_EXEC_SHA", mapping.digest(self.entry)):
             with self.assertRaisesRegex(NativeDiscoveryError, "status changed"):
                 mapping.build_map(Path("/unmounted"), self.prior,
-                                  self.manifest, self.read)
+                                  self.manifest, self.read,
+                                  regular_checker=lambda _root, _member: True)
 
     def test_double_package_rejected(self):
         with self.assertRaisesRegex(NativeDiscoveryError, "duplicate"):
@@ -192,6 +194,28 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
             fake[key] = bad
             with self.subTest(key=key), self.assertRaises(jsonschema.ValidationError):
                 jsonschema.validate(fake, schema)
+
+    def test_symlinked_ubiquity_binary_is_rejected_from_squashfs_metadata(self):
+        from subprocess import CompletedProcess
+        listing = (b"lrwxrwxrwx root/root 12 2026-11-20 00:00 "
+                   b"squashfs-root/usr/bin/ubiquity -> /tmp/fake\n")
+        with patch.object(mapping.subprocess, "run",
+                          return_value=CompletedProcess([], 0, listing, b"")):
+            with self.assertRaisesRegex(NativeDiscoveryError, "symlink"):
+                mapping.require_regular_member(Path("/sandbox.iso"), "usr/bin/ubiquity")
+
+    def test_regular_source_metadata_is_required(self):
+        from subprocess import CompletedProcess
+        listing = (b"-rwxr-xr-x root/root 3227 2026-11-20 00:00 "
+                   b"squashfs-root/usr/bin/ubiquity\n")
+        with patch.object(mapping.subprocess, "run",
+                          return_value=CompletedProcess([], 0, listing, b"")):
+            self.assertTrue(mapping.require_regular_member(
+                Path("/sandbox.iso"), "usr/bin/ubiquity"))
+        with patch.object(mapping.subprocess, "run") as command:
+            with self.assertRaisesRegex(NativeDiscoveryError, "unsafe"):
+                mapping.require_regular_member(Path("/sandbox.iso"), "../etc/shadow")
+            command.assert_not_called()
 
     def test_no_writers_executed_by_source_mapper(self):
         source = Path(mapping.__file__).read_text(encoding="utf-8")
