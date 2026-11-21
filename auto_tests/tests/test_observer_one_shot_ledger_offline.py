@@ -278,6 +278,59 @@ class LedgerTests(unittest.TestCase):
             1,
         )
 
+    def test_direct_sql_insert_cannot_bypass_any_unique_reservation_key(self):
+        self.ledger.request(self.g, now=NOW)
+        columns = (
+            "grant_id",
+            "authorization_key",
+            "execution_key",
+            "external_decision_id",
+            "review_key",
+        )
+        with sqlite3.connect(self.path) as con:
+            existing = dict(
+                zip(
+                    columns,
+                    con.execute(
+                        "SELECT grant_id, authorization_key, execution_key, "
+                        "external_decision_id, review_key FROM grants"
+                    ).fetchone(),
+                    strict=True,
+                )
+            )
+            for collided in columns:
+                with self.subTest(index=collided):
+                    other = {key: str(uuid.uuid4()) for key in columns}
+                    other[collided] = existing[collided]
+                    with self.assertRaises(sqlite3.IntegrityError):
+                        con.execute(
+                            "INSERT INTO grants (grant_id, authorization_key, "
+                            "execution_key, external_decision_id, review_key, "
+                            "payload, digest, state, created_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (
+                                *(other[key] for key in columns),
+                                "{}", "0" * 64, "REQUESTED", NOW,
+                            ),
+                        )
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM grants").fetchone()[0], 1)
+
+    def test_expiry_preserves_reservation_and_refusal_events(self):
+        self.ledger.request(self.g, now=NOW)
+        self.ledger.transition(self.g["grantId"], "REVIEW_PENDING", now=NOW)
+        with self.assertRaisesRegex(model.Refused, "GRANT_EXPIRED"):
+            self.ledger.transition(
+                self.g["grantId"],
+                "APPROVED",
+                now="2026-11-22T12:00:00Z",
+                trusted=self.trusted,
+            )
+        self.assertEqual(self.ledger.state(self.g["grantId"]), "EXPIRED")
+        alt = copy.deepcopy(self.g)
+        alt["grantId"] = str(uuid.uuid4())
+        with self.assertRaisesRegex(model.Refused, "AUTHORIZATION_ALREADY_RESERVED"):
+            self.ledger.request(alt, now=NOW)
+
     def test_interrupted_before_commit_does_not_reserve(self):
         g = self.g
         keys = model._identities(g)
