@@ -308,14 +308,20 @@ def capture_fresh_immediate(
         )
         same_owned(overlay, expected_overlay)
         same_owned(base, expected_base)
-        require(lab.verify_chain(overlay, base, workspace) == expected_chain, "OBSERVATION_INCOMPLETE")
+        require(
+            lab.verify_chain(overlay, base, workspace) == expected_chain,
+            "OBSERVATION_INCOMPLETE",
+        )
 
         # Existing pinned Safety host_snapshot does the actual qemu-img convert.
         lab.host_snapshot(overlay, output, workspace)
 
         same_owned(overlay, expected_overlay)
         same_owned(base, expected_base)
-        require(lab.verify_chain(overlay, base, workspace) == expected_chain, "OBSERVATION_INCOMPLETE")
+        require(
+            lab.verify_chain(overlay, base, workspace) == expected_chain,
+            "OBSERVATION_INCOMPLETE",
+        )
         immediate = capture_gpt(
             output,
             workspace,
@@ -334,7 +340,10 @@ def capture_fresh_immediate(
         )
         same_owned(overlay, expected_overlay)
         same_owned(base, expected_base)
-        require(lab.verify_chain(overlay, base, workspace) == expected_chain, "OBSERVATION_INCOMPLETE")
+        require(
+            lab.verify_chain(overlay, base, workspace) == expected_chain,
+            "OBSERVATION_INCOMPLETE",
+        )
         return immediate
     except Exception as exc:
         raise GptProducerRefused("OBSERVATION_INCOMPLETE") from exc
