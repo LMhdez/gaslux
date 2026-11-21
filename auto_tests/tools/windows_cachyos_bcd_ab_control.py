@@ -250,6 +250,25 @@ def swtpm_emulator_command(state_dir: Path, socket: Path) -> list[str]:
             "--flags", "not-need-init"]
 
 
+def tpm_session_observation(
+    *, exit_before_cleanup: int | None, exit_after_cleanup: int | None,
+    socket_present_before_cleanup: bool,
+) -> dict[str, Any]:
+    """Host-only status; this cannot attest that guest TPM or Windows booted."""
+    return {
+        "source": "HOST_OBSERVATION_ONLY",
+        "controlChannel": "swtpm-ctrl",
+        "emulatorRunningAtGuestSessionEnd": exit_before_cleanup is None,
+        "emulatorExitedUnexpectedly": exit_before_cleanup is not None,
+        "exitCodeBeforeCleanup": exit_before_cleanup,
+        "exitCodeAfterCleanup": exit_after_cleanup,
+        "controlSocketPresentBeforeCleanup": socket_present_before_cleanup,
+        "guestBootVerified": False,
+        "productionStorageWritesAuthorized": False,
+        "releaseEligible": False,
+    }
+
+
 @contextmanager
 def running_swtpm(state_dir: Path, workspace: Path, label: str) -> Iterator[Path]:
     require(os.environ.get("GITHUB_ACTIONS") == "true"
@@ -263,8 +282,9 @@ def running_swtpm(state_dir: Path, workspace: Path, label: str) -> Iterator[Path
             and stat.S_IMODE(workspace.stat().st_mode) == 0o700,
             "TPM process refused outside private hosted Windows VM workspace")
     require(state_dir.parent == workspace and state_dir.name in
-            (TPM_CONTROL, TPM_TREATMENT),
-            "TPM process refused foreign state directory")
+            (TPM_CONTROL, TPM_TREATMENT)
+            and label in ("bcd-ab-control-tpm", "bcd-ab-treatment-tpm"),
+            "TPM process refused foreign state directory or session label")
     tpm_state_tree_sha256(state_dir)
     socket = workspace / (label + ".sock")
     log = workspace / (label + "-swtpm.log")
@@ -290,6 +310,8 @@ def running_swtpm(state_dir: Path, workspace: Path, label: str) -> Iterator[Path
                     "owned TPM 2.0 Unix socket did not become ready")
             yield socket
         finally:
+            exit_before = proc.poll() if proc is not None else None
+            socket_before = socket.is_socket() and not socket.is_symlink()
             if proc is not None and proc.poll() is None:
                 proc.terminate()
                 try:
@@ -302,6 +324,18 @@ def running_swtpm(state_dir: Path, workspace: Path, label: str) -> Iterator[Path
                 require(stat.S_ISSOCK(st.st_mode) and st.st_uid == os.getuid(),
                         "refusing to remove non-owned TPM socket")
                 socket.unlink()
+            if proc is not None:
+                report_path = workspace / (label + "-swtpm-status.json")
+                require(not report_path.exists() and not report_path.is_symlink(),
+                        "refusing reused TPM host status")
+                payload = tpm_session_observation(
+                    exit_before_cleanup=exit_before,
+                    exit_after_cleanup=proc.poll(),
+                    socket_present_before_cleanup=socket_before)
+                with report_path.open("xb") as report:
+                    report.write((json.dumps(payload, sort_keys=True) + "\n").encode())
+                    report.flush()
+                    os.fsync(report.fileno())
 
 
 def block_write_event_names(trace_help_text: str) -> list[str]:
