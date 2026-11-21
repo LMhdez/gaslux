@@ -310,7 +310,10 @@ class LedgerTests(unittest.TestCase):
                             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 *(other[key] for key in columns),
-                                "{}", "0" * 64, "REQUESTED", NOW,
+                                "{}",
+                                "0" * 64,
+                                "REQUESTED",
+                                NOW,
                             ),
                         )
             self.assertEqual(con.execute("SELECT COUNT(*) FROM grants").fetchone()[0], 1)
