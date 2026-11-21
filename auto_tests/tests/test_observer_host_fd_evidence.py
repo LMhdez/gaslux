@@ -293,7 +293,8 @@ def test_claimed_qmp_matching_fd_still_denies_operational_binding(child_fd):
     descriptor = observe_descriptor(pins)
     result = correlate_qmp_fd(pins, descriptor, _qmp(pins))
     assert result["qmpDeviceName"]["assurance"] == "CLAIMED"
-    assert result["localQmpFdConsistency"] is True
+    assert result["claimedQmpFdConsistency"] is True
+    assert result["localQmpFdConsistency"] is False
     assert result["deviceFdAssociationProven"] is False
     assert result["vmDiskBindingProven"] is False
 
