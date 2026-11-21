@@ -237,7 +237,9 @@ class LedgerTests(unittest.TestCase):
             self.ledger.transition(grant["grantId"], "REVIEW_PENDING", now=NOW)
             self.assertEqual(
                 self.ledger.transition(
-                    grant["grantId"], "APPROVED", now=NOW,
+                    grant["grantId"],
+                    "APPROVED",
+                    now=NOW,
                     trusted=trusted_fixture(grant),
                 ),
                 "APPROVED",
@@ -266,9 +268,7 @@ class LedgerTests(unittest.TestCase):
             observed = list(pool.map(reserve, records))
         self.assertEqual(observed.count("RESERVED"), 1)
         self.assertEqual(observed.count("AUTHORIZATION_ALREADY_RESERVED"), 7)
-        self.assertEqual(
-            sum(len(self.ledger.events(g["grantId"])) for g in records), 8
-        )
+        self.assertEqual(sum(len(self.ledger.events(g["grantId"])) for g in records), 8)
         self.assertEqual(
             sum(
                 self.ledger.state(g["grantId"]) == "REQUESTED"
@@ -289,8 +289,15 @@ class LedgerTests(unittest.TestCase):
                 "external_decision_id, review_key, payload, digest, state, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    g["grantId"], keys[0], keys[1], g["externalDecisionId"],
-                    keys[2], "{}", "0" * 64, "REQUESTED", NOW,
+                    g["grantId"],
+                    keys[0],
+                    keys[1],
+                    g["externalDecisionId"],
+                    keys[2],
+                    "{}",
+                    "0" * 64,
+                    "REQUESTED",
+                    NOW,
                 ),
             )
             con.execute("ROLLBACK")
@@ -302,8 +309,11 @@ class LedgerTests(unittest.TestCase):
     def test_reopen_after_consumption_still_denies_alternate_uuid(self):
         self.ready()
         self.ledger.transition(
-            self.g["grantId"], "CONSUMED", now=NOW,
-            trusted=self.trusted, run=self.run,
+            self.g["grantId"],
+            "CONSUMED",
+            now=NOW,
+            trusted=self.trusted,
+            run=self.run,
         )
         reopened = model.OfflineLedger(self.path)
         second = copy.deepcopy(self.g)
@@ -352,8 +362,11 @@ class LedgerTests(unittest.TestCase):
             )
         self.assertEqual(
             self.ledger.transition(
-                self.g["grantId"], "CONSUMED", now=NOW,
-                trusted=self.trusted, run=self.run,
+                self.g["grantId"],
+                "CONSUMED",
+                now=NOW,
+                trusted=self.trusted,
+                run=self.run,
             ),
             "CONSUMED",
         )
@@ -363,16 +376,22 @@ class LedgerTests(unittest.TestCase):
         snapshot = Path(self.temp.name) / "prior-snapshot.sqlite3"
         shutil.copy2(self.path, snapshot)
         self.ledger.transition(
-            self.g["grantId"], "CONSUMED", now=NOW,
-            trusted=self.trusted, run=self.run,
+            self.g["grantId"],
+            "CONSUMED",
+            now=NOW,
+            trusted=self.trusted,
+            run=self.run,
         )
         shutil.copy2(snapshot, self.path)
         reopened = model.OfflineLedger(self.path)
         self.assertEqual(reopened.state(self.g["grantId"]), "APPROVED")
         self.assertEqual(
             reopened.transition(
-                self.g["grantId"], "CONSUMED", now=NOW,
-                trusted=self.trusted, run=self.run,
+                self.g["grantId"],
+                "CONSUMED",
+                now=NOW,
+                trusted=self.trusted,
+                run=self.run,
             ),
             "CONSUMED",
         )
