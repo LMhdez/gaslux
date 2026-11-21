@@ -338,6 +338,134 @@ def write_manifest(directory: Path, name: str, data: dict) -> str:
     return sha256_file(p)
 
 
+F03_PHASES = {
+    "baseline": {
+        "arms": ("arm_a_pre", "arm_b_pre"),
+        "prior": ("mint-ab-checkpoint.json",),
+        "next_guest": "windows_a",
+        "filename": "mint-ab-inventory-baseline-gate.json",
+    },
+    "after_control": {
+        "arms": ("arm_a_post",),
+        "prior": ("mint-ab-inventory-baseline-gate.json", "mint-ab-after-control-gate.json"),
+        "next_guest": "mint_b",
+        "filename": "mint-ab-inventory-control-gate.json",
+    },
+    "after_mint": {
+        "arms": ("arm_b_post_mint",),
+        "prior": (
+            "mint-ab-inventory-control-gate.json",
+            "mint-ab-control.json",
+            "mint-ab-after-mint-gate.json",
+        ),
+        "next_guest": "windows_b",
+        "filename": "mint-ab-inventory-post-mint-gate.json",
+    },
+}
+
+
+def require_complete_forensic_inventories(
+    *, phase: str, samples: dict, evidence: Path, transaction_id: str
+) -> dict:
+    """F-03: no subsequent guest without BOTH ESP and Recovery file inventories.
+
+    This is an evidence-availability gate, not a content-integrity comparison.
+    An inventory failure is not evidence of a filesystem mutation or a
+    particular Windows writer; the independent protected hash gates remain.
+    """
+    require(phase in F03_PHASES, "F-03: unrecognized forensic inventory phase")
+    stage = F03_PHASES[phase]
+    require(
+        isinstance(samples, dict) and set(samples) == set(stage["arms"]),
+        "F-03: incomplete forensic arm acquisition set",
+    )
+    require(
+        isinstance(transaction_id, str) and bool(transaction_id),
+        "F-03: missing checkpoint transaction ID",
+    )
+    # Bind evidence to already emitted, owned, same-transaction proof files.
+    previous = {}
+    for name in stage["prior"]:
+        path = evidence / name
+        checked_file(path, evidence)
+        require(path.stat().st_uid == os.getuid(), "F-03: foreign prior evidence file")
+        proof = json.loads(path.read_bytes())
+        require(
+            isinstance(proof, dict) and proof.get("transactionId") == transaction_id,
+            "F-03: prior evidence transaction mismatch",
+        )
+        previous[name] = sha256_file(path)
+
+    unavailable = []
+    observed_counts = {}
+    for arm in stage["arms"]:
+        source = samples[arm]
+        inventories = source.get("fileInventories") if isinstance(source, dict) else None
+        for resource in ("esp", "recovery"):
+            item = inventories.get(resource) if isinstance(inventories, dict) else None
+            reason = None
+            if not isinstance(item, dict):
+                reason = "inventory_missing"
+            elif item.get("available") is not True:
+                reason = "inventory_not_available"
+            else:
+                files = item.get("fileSha256")
+                if not isinstance(files, dict) or not files:
+                    reason = "empty_or_missing_file_hashes"
+                elif any(
+                    not isinstance(path, str)
+                    or not path.startswith("/")
+                    or path == "/"
+                    or len(path) > 4096
+                    or "\\x00" in path
+                    or any(segment in ("", ".", "..") for segment in path[1:].split("/"))
+                    or not isinstance(digest, str)
+                    or re.fullmatch(r"[a-f0-9]{64}", digest) is None
+                    for path, digest in files.items()
+                ):
+                    reason = "invalid_file_inventory_entry"
+                else:
+                    observed_counts[arm + ":" + resource] = len(files)
+            if reason is not None:
+                issue = {"arm": arm, "resource": resource, "issue": reason}
+                # guestfs exports only the exception *class*; never interpret
+                # that name as proof of a write, mount cause or damaged bytes.
+                reported = item.get("reason") if isinstance(item, dict) else None
+                if (
+                    isinstance(reported, str)
+                    and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", reported)
+                ):
+                    issue["reportedFailureClass"] = reported
+                unavailable.append(issue)
+
+    complete = not unavailable
+    report = {
+        "schema": "gaslux-mint-ab-inventory-evidence-gate-v1",
+        "transactionId": transaction_id,
+        "phase": phase,
+        "result": "PASS" if complete else "BLOCKED_EVIDENCE",
+        "unavailableResources": unavailable,
+        "observedFileCounts": observed_counts,
+        "previousEvidenceSha256": previous,
+        "evidenceComplete": complete,
+        "nextGuest": stage["next_guest"],
+        # This evidence gate never independently authorizes any guest or
+        # production install. Passing also requires all OTHER safety gates.
+        "nextBootAuthorized": False,
+        "nextBootBlockedByEvidence": not complete,
+        "productionInstallAuthorized": False,
+        "releaseEligible": False,
+    }
+    write_manifest(evidence, stage["filename"], report)
+    require(
+        complete,
+        "F-03: " + phase + " BLOCKED_EVIDENCE: "
+        + ", ".join(item["arm"] + "/" + item["resource"] + ":"
+                    + item["issue"] for item in unavailable),
+    )
+    return report
+
+
 def require_untouched_after_control(
     *,
     directory: Path,
@@ -550,6 +678,14 @@ def run_ab(
     directory = workspace / AB_DIR
     arms = (directory / ARMS[0], directory / ARMS[1])
     before = [guest_ro_inventory(arm, root_uuid) for arm in arms]
+    # F-03: reject absent, empty or untrustworthy ESP/Recovery inventories
+    # of BOTH standalone arms before the first Windows A guest can start.
+    baseline_gate = require_complete_forensic_inventories(
+        phase="baseline",
+        samples={"arm_a_pre": before[0], "arm_b_pre": before[1]},
+        evidence=evidence,
+        transaction_id=checkpoint["transactionId"],
+    )
     gpts = [gpt_manifest(arm, workspace) for arm in arms]
     require(
         before[0] == before[1] and gpts[0] == gpts[1],
@@ -562,6 +698,9 @@ def run_ab(
         "sourceCommit": os.environ.get("GITHUB_SHA"),
         "checkpointManifestSha256": sha256_file(directory / "checkpoint.json"),
         "earlyCapacityManifestSha256": early_hash,
+        "baselineInventoryGateSha256": sha256_file(
+            evidence / "mint-ab-inventory-baseline-gate.json"
+        ),
         "sameWindowsOrdinalBeforeArms": True,
         "rootBefore": before[0]["mintRootFiles"],
         "partitionSha256Before": before[0]["partitionSha256"],
@@ -602,6 +741,14 @@ def run_ab(
         evidence=evidence,
         transaction_id=ab["transactionId"],
     )
+    # F-03: a valid F-01 hash witness is not enough for forensic A/B.
+    # Without the control's read-only per-file evidence, Mint B cannot start.
+    control_inventory_gate = require_complete_forensic_inventories(
+        phase="after_control",
+        samples={"arm_a_post": after_a},
+        evidence=evidence,
+        transaction_id=ab["transactionId"],
+    )
     write_manifest(
         evidence,
         "mint-ab-control.json",
@@ -612,6 +759,9 @@ def run_ab(
             "control": ab["control"],
             "referenceAndBStillUntouched": control_gate["referenceAndBStillUntouched"],
             "afterControlGateSha256": sha256_file(evidence / "mint-ab-after-control-gate.json"),
+            "inventoryControlGateSha256": sha256_file(
+                evidence / "mint-ab-inventory-control-gate.json"
+            ),
             "releaseEligible": False,
         },
     )
@@ -636,6 +786,13 @@ def run_ab(
         expected_gpt=gpts[1],
         observed_gpt=after_mint_gpt,
     )
+    # F-03: require file-level evidence after Mint B, before Windows B.
+    post_mint_inventory_gate = require_complete_forensic_inventories(
+        phase="after_mint",
+        samples={"arm_b_post_mint": after_mint},
+        evidence=evidence,
+        transaction_id=ab["transactionId"],
+    )
     require(
         archive_serial(evidence / "mint-ab-arm-b-mint-serial.log", directory, max_bytes=2_000_000)
         == ab["treatment"]["mintSerialSha256"],
@@ -644,6 +801,9 @@ def run_ab(
     ab["treatment"]["partitionSha256AfterMint"] = after_mint["partitionSha256"]
     ab["treatment"]["gptAfterMintUnchanged"] = post_mint_gate["checks"]["gptUnchanged"]
     ab["treatment"]["postMintGateSha256"] = sha256_file(evidence / "mint-ab-after-mint-gate.json")
+    ab["treatment"]["postMintInventoryGateSha256"] = sha256_file(
+        evidence / "mint-ab-inventory-post-mint-gate.json"
+    )
     ab["treatment"]["windows"] = run_windows_arm(
         original,
         base,
