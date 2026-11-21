@@ -1,0 +1,206 @@
+name: Zorin 18.1 root on genuine Windows 10 QCOW2 (experimental, hosted KVM)
+
+on:
+  push:
+    branches:
+      - test/zorin181-windows10-genuine-cow-firstboot-20261120
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zorin-genuine-windows-cow-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fail-closed-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile and test existing Mint plus new Zorin safety contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py \
+            auto_tests/tools/windows_mint_overlay_root.py \
+            auto_tests/tools/validate_mint_cow_boot_evidence.py \
+            auto_tests/test_windows_zorin_cow_boot_evidence.py \
+            auto_tests/tools/zorin_official_iso_installer_inventory.py \
+            auto_tests/tools/zorin_qmp_powerdown.py \
+            auto_tests/tools/zorin_shutdown_witness.py \
+            auto_tests/test_zorin_shutdown_witness.py \
+            auto_tests/test_zorin_qmp_powerdown.py \
+            auto_tests/test_zorin_official_iso_installer_inventory.py
+          for suite in \
+              test_windows_mint_overlay_root.py \
+              test_windows_mint_cow_boot_evidence.py \
+              test_windows_zorin_cow_boot_evidence.py \
+              test_zorin_official_iso_installer_inventory.py \
+              test_zorin_qmp_powerdown.py \
+              test_zorin_shutdown_witness.py \
+              test_windows_x64_two_stage_boot.py \
+              test_windows_cachyos_overlay_ext4_only.py \
+              test_windows_cachyos_postext4_windows.py; do
+            python3 -m unittest discover -s auto_tests -p "$suite" -v
+          done
+          echo 'PASS: offline fail-closed contracts. No Windows or Zorin guest boot inferred.' >> "$GITHUB_STEP_SUMMARY"
+
+  genuine-windows10-zorin-fifth-root:
+    needs: fail-closed-contracts
+    if: ${{ !contains(github.event.head_commit.message, '[zorin-discovery-only]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      ZORIN_SHA: '44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5'
+      ZORIN_BYTES: '3909091328'
+      ZORIN_URL: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WINDOWS_COW_CHECKPOINT_CONSENT: I_ACCEPT_GITHUB_HOSTED_POSTBOOT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_GPT_CONSENT: I_ACCEPT_DISPOSABLE_QCOW2_OVERLAY_GPT_ONLY
+      GASLUX_WINDOWS_OVERLAY_REBOOT_CONSENT: I_ACCEPT_WINDOWS_GUEST_REBOOT_ON_PRIVATE_GPT_OVERLAY_ONLY
+      GASLUX_CACHYOS_OVERLAY_EXT4_CONSENT: I_ACCEPT_EXT4_ONLY_FIFTH_PARTITION_ON_HOSTED_WIN10_COW
+      GASLUX_WINDOWS_POST_EXT4_REBOOT_CONSENT: I_ACCEPT_WINDOWS_FOURTH_GUEST_ON_EXT4_ONLY_QCOW2_COW
+      GASLUX_ZORIN_WINDOWS_COW_CONSENT: I_ACCEPT_ZORIN_ROOT_ON_VERIFIED_HOSTED_WINDOWS10_COW
+      GASLUX_ZORIN_ISO_INVENTORY_CONSENT: I_ACCEPT_ZORIN_OFFICIAL_ISO_READONLY_INVENTORY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require private hosted x64 runner; install signed QEMU, KVM, libguestfs tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo timeout --signal=TERM --kill-after=15s 600s \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 update -qq
+          sudo timeout --signal=TERM --kill-after=15s 900s \
+            env DEBIAN_FRONTEND=noninteractive \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
+            install -y --no-install-recommends \
+              qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
+              p7zip-full genisoimage gdisk e2fsprogs \
+              python3-guestfs libguestfs-tools linux-image-virtual \
+              aria2 squashfs-tools fuse3
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          sudo modprobe fuse
+          test -c /dev/fuse && test ! -L /dev/fuse
+          if ! sudo grep -Eq '^[[:space:]]*user_allow_other([[:space:]]|$)' /etc/fuse.conf; then
+            printf 'user_allow_other\n' | sudo tee -a /etc/fuse.conf >/dev/null
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          mkdir -p "$RUNNER_TEMP/zorin-windows-source"
+      - name: Download pinned official Zorin 18.1 Core; verify immutable bytes and catalog
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=5 --retry-wait=10 --timeout=90 --connect-timeout=30 \
+            --check-integrity=true --checksum="sha-256=$ZORIN_SHA" \
+            --dir="$RUNNER_TEMP/zorin-windows-source" --out=zorin.iso "$ZORIN_URL"
+          iso="$RUNNER_TEMP/zorin-windows-source/zorin.iso"
+          test -f "$iso" && test ! -L "$iso"
+          test "$(stat -c %s "$iso")" = "$ZORIN_BYTES"
+          printf '%s  %s\n' "$ZORIN_SHA" "$iso" | sha256sum -c
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          c = json.loads(Path("release-config.json").read_text())
+          z, = (e for e in c["distributions"] if e["id"] == "zorin")
+          assert z["name"] == "Zorin OS 18.1 Core"
+          assert z["osReleaseId"] == "zorin"
+          assert z["isoInstallerSha256"] == "44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5"
+          assert z["isoInstallerSizeBytes"] == 3909091328
+          assert z["isoInstaller"] == "https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso"
+          print("PASS: pinned official Zorin ISO and catalog identity")
+          PY
+      - name: Inventory installer files from pinned Zorin ISO (read-only; no boot writes)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          target="$RUNNER_TEMP/zorin-installer-inventory-iso"
+          test ! -e "$target" && test ! -L "$target"
+          mkdir -m 700 -- "$target"
+          mounted=0
+          cleanup() {
+            if [ "$mounted" = 1 ]; then
+              sudo umount -- "$target" || echo "::error::Refusing to treat uncleared ISO mount as success"
+            fi
+          }
+          trap cleanup EXIT
+          sudo mount -t iso9660 -o ro,loop,nosuid,nodev,noexec \
+            "$RUNNER_TEMP/zorin-windows-source/zorin.iso" "$target"
+          mounted=1
+          python3 auto_tests/tools/zorin_official_iso_installer_inventory.py \
+            --iso "$RUNNER_TEMP/zorin-windows-source/zorin.iso" \
+            --mounted "$target" \
+            --out "$GITHUB_WORKSPACE/windows-x64-tcg-evidence/zorin-official-installer-inventory.json"
+          sudo umount -- "$target"
+          mounted=0
+          echo 'ISO installer launchers/packages inventoried read-only. Native installer and EFI write behavior NOT verified.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Run independent synthetic libguestfs fifth-ext4 importer preflight
+        shell: bash
+        env:
+          GASLUX_SYNTHETIC_EXT4_CONSENT: I_ACCEPT_SYNTHETIC_RAW_FILE_FIFTH_EXT4_ONLY
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 auto_tests/tools/windows_mint_synthetic_tar_guestfs.py
+          echo 'PASS: isolated shared importer. Synthetic evidence is not Windows.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Install real Microsoft Windows 10 Evaluation and stage Zorin in its private COW
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile win10_22h2_en_us_x64 --accel kvm \
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
+            --prepare-owned-cow-checkpoint \
+            --stage-cachyos-overlay-root-gpt-only \
+            --verify-windows-reboot-with-fifth-gpt \
+            --format-owned-fifth-ext4-only \
+            --verify-windows-reboot-after-ext4 \
+            --install-zorin-cow-root \
+            --zorin-iso "$RUNNER_TEMP/zorin-windows-source/zorin.iso"
+          echo 'Candidate: genuine Windows client, Zorin root on fifth COW partition, Zorin direct-kernel boot and independent Windows reboot.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT native installer/GRUB dual boot, kernel upgrade, tested rollback, Secure Boot or physical hardware.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Independent Zorin boot evidence plus first Windows DVD and WinRE/BCD audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          root="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          profile=win10_22h2_en_us_x64
+          python3 auto_tests/tools/validate_mint_cow_boot_evidence.py \
+            --distribution zorin --evidence-dir "$root" --profile "$profile"
+          python3 auto_tests/tools/windows_cachyos_readonly_baseline_gate.py \
+            --profile "$profile" \
+            --result "$root/$profile-result.json" \
+            --serial "$root/$profile-serial.log" \
+            --serial-sha256 "$root/$profile-serial.sha256" \
+            --initial-dvd-serial "$root/$profile-initial-dvd-serial.log" \
+            --initial-dvd-serial-sha256 "$root/$profile-initial-dvd-serial.sha256"
+          echo 'Independent evidence review PASS (if job green). Windows was not repaired manually.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish bounded textual evidence only (never ISO, Windows disk, rootfs or NVRAM)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-181-genuine-windows10-cow-lab-text-only
+          path: |
+            windows-x64-tcg-evidence/*.json
+            windows-x64-tcg-evidence/*.sha256
+            windows-x64-tcg-evidence/*.log
+          retention-days: 7
+          if-no-files-found: warn

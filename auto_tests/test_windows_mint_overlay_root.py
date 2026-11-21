@@ -219,7 +219,7 @@ class MintOverlayContracts(unittest.TestCase):
 
     def test_mint_tar_stage_prepares_initramfs_before_guest_write(self):
         source = Path(mint.__file__).read_text(encoding="utf-8")
-        self.assertLess(source.index('write_target_configuration(unpacked, root_uuid)'),
+        self.assertLess(source.index('write_target_configuration(unpacked, root_uuid, hostname)'),
                         source.index('_import_tar_into_exact_owned_root(overlay, archive'))
         self.assertNotIn('run(["sudo", "cp", "-a", str(unpacked)', source)
         self.assertIn('refusing rootfs import with host chroot filesystem still mounted',
@@ -286,7 +286,9 @@ class MintOverlayContracts(unittest.TestCase):
 
     def test_native_grub_and_release_claims_are_never_enabled_by_harness(self):
         source = (Path(mint.__file__)).read_text(encoding="utf-8")
-        self.assertIn('"mintSquashfsRootCopiedToWindowsCOWPartition5": True', source)
+        self.assertIn('f"{distribution}SquashfsRootCopiedToWindowsCOWPartition5": True', source)
+        self.assertIn('distribution: str = "mint"', source)
+        self.assertIn('require(distribution in ("mint", "zorin")', source)
         self.assertNotIn('"mintInstalledIntoWindowsCOWPartition5": True', source)
         self.assertIn('"nativeGrubDualBootVerified": False', source)
         self.assertIn('"sameDiskDualBootVerified": False', source)

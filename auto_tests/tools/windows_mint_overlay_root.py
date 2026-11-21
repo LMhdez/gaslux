@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import socket
@@ -44,7 +45,36 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def write_target_configuration(target: Path, root_uuid: str) -> None:
+def read_target_os_release(root: Path) -> str:
+    """Resolve Ubuntu's /etc/os-release inside extracted root, never the host."""
+    root = root.resolve(strict=True)
+    path = root / "etc/os-release"
+    for _ in range(8):
+        # A relative os-release link may traverse an intermediate symlink
+        # (e.g. usr -> another directory). Lexical containment is insufficient.
+        # Resolve each parent BEFORE following the final component, and refuse
+        # all host paths outside the owned extracted root.
+        require(path.parent.resolve(strict=False).is_relative_to(root),
+                "target OS release symlink parent escapes extracted root")
+        if not path.is_symlink():
+            require(path.resolve(strict=False).is_relative_to(root),
+                    "target OS release symlink escapes extracted root")
+            require(path.is_file() and path.is_relative_to(root),
+                    "target OS release file is missing or escapes extracted root")
+            return path.read_text(encoding="utf-8")
+        link = Path(os.readlink(path))
+        path = (root / link.relative_to("/") if link.is_absolute()
+                else path.parent / link)
+        path = Path(os.path.normpath(str(path)))
+        require(path.is_relative_to(root),
+                "target OS release symlink escapes extracted root")
+    raise MintOverlayError("target OS release symlink chain is too long")
+
+
+def write_target_configuration(target: Path, root_uuid: str,
+                               hostname: str = "GASLUXMINT") -> None:
+    require(hostname in ("GASLUXMINT", "GASLUXZORIN"),
+            "unrecognized disposable Ubuntu guest hostname")
     import uuid
 
     try:
@@ -63,7 +93,7 @@ def write_target_configuration(target: Path, root_uuid: str) -> None:
     )
     subprocess.run(
         ["sudo", "tee", str(etc / "hostname")],
-        input="GASLUXMINT\n", check=True, text=True,
+        input=hostname + "\n", check=True, text=True,
         stdout=subprocess.DEVNULL,
     )
 
@@ -238,13 +268,40 @@ def verify_mint_storage_initramfs(listing: str, builtins: set[str]) -> None:
 def install_mint_root_and_boot(
     *, overlay: Path, base: Path, nvram: Path, workspace: Path,
     ext4_proof: dict, iso: Path, evidence: Path,
+    distribution: str = "mint",
 ) -> dict:
-    """Copy Mint SquashFS to exact #5, build initramfs and direct-kernel boot it."""
+    """Stage verified Ubuntu-family root on owned fifth COW; direct-kernel boot.
+
+    Lab-only proof, not native GRUB, production installation or kernel update.
+    The Mint default and shared fifth-partition importer are preserved.
+    """
+    require(distribution in ("mint", "zorin"),
+            "unsupported Ubuntu-family disposable COW distribution")
+    iso_sha = (MINT_SHA256 if distribution == "mint" else
+               "44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5")
+    iso_bytes = MINT_BYTES if distribution == "mint" else 3909091328
+    os_id = "linuxmint" if distribution == "mint" else "zorin"
+    hostname = "GASLUXMINT" if distribution == "mint" else "GASLUXZORIN"
+    login_witness = (hostname + " login:").encode("ascii")
+    iso_url = (MINT_URL if distribution == "mint" else
+               "https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso")
+    consent_key = ("GASLUX_MINT_COW_CONSENT" if distribution == "mint" else
+                   "GASLUX_ZORIN_WINDOWS_COW_CONSENT")
+    consent_value = (CONSENT if distribution == "mint" else
+                     "I_ACCEPT_ZORIN_ROOT_ON_VERIFIED_HOSTED_WINDOWS10_COW")
+    catalog = json.loads(Path("release-config.json").read_text(encoding="utf-8"))
+    matches = [entry for entry in catalog["distributions"]
+               if entry.get("id") == distribution]
+    require(len(matches) == 1 and matches[0].get("osReleaseId") == os_id
+            and matches[0].get("isoInstallerSha256") == iso_sha
+            and matches[0].get("isoInstallerSizeBytes") == iso_bytes
+            and matches[0].get("isoInstaller") == iso_url,
+            "Ubuntu-family ISO metadata differs from pinned catalog")
     require(os.environ.get("GITHUB_ACTIONS") == "true"
             and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
             and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
             and os.environ.get("RUNNER_TEMP") == "/home/runner/work/_temp"
-            and os.environ.get("GASLUX_MINT_COW_CONSENT") == CONSENT,
+            and os.environ.get(consent_key) == consent_value,
             "Mint-on-Windows-COW requires dedicated hosted-runner consent")
     require(workspace.is_dir() and not workspace.is_symlink()
             and workspace.resolve() == workspace
@@ -278,8 +335,9 @@ def install_mint_root_and_boot(
             and stat.S_IMODE(base.stat().st_mode) == 0o400,
             "Windows QCOW2 backing must remain immutable")
     require(iso.is_file() and not iso.is_symlink()
-            and iso.stat().st_size == MINT_BYTES
-            and sha256(iso) == MINT_SHA256,
+            and iso.stat().st_nlink == 1
+            and iso.stat().st_size == iso_bytes
+            and sha256(iso) == iso_sha,
             "Mint ISO size or SHA-256 mismatch")
     require(type(ext4_proof) is dict
             and ext4_proof.get("onlyOwnedOverlayFifthPartitionFormatted") is True
@@ -305,7 +363,7 @@ def install_mint_root_and_boot(
     trial_vars_hash = sha256_file(vars_trial)
     require(base_hash and nvram_hash, "missing Windows baseline hashes")
 
-    temp = Path(tempfile.mkdtemp(prefix="gaslux-mint-cow-", dir=workspace))
+    temp = Path(tempfile.mkdtemp(prefix=f"gaslux-{distribution}-cow-", dir=workspace))
     iso_mount = temp / "iso"
     target = temp / "target"
     iso_mount.mkdir(mode=0o700)
@@ -324,15 +382,16 @@ def install_mint_root_and_boot(
         validator = (
             "source assets/live/libertix-distribution-common.sh; "
             "source assets/live/libertix-install-runtime-common.sh; "
-            "assert_distribution_rootfs_compatible_or_die \"$1\" linuxmint"
+            f"assert_distribution_rootfs_compatible_or_die \"$1\" {os_id}"
         )
         run(["bash", "-c", validator, "gaslux-mint-identity", str(rootfs)])
         unpacked = temp / "unpacked"
         unpacked.mkdir(mode=0o700)
         run(["sudo", "unsquashfs", "-f", "-processors", "2", "-d", str(unpacked), str(rootfs)],
             timeout=900, capture=False)
-        os_release = unpacked / "etc/os-release"
-        require(os_release.is_file() and "ID=linuxmint" in os_release.read_text(),
+        os_release_text = read_target_os_release(unpacked)
+        require(re.search(rf"(?m)^ID={re.escape(os_id)}$",
+                          os_release_text) is not None,
                 "extracted target is not Linux Mint")
         kernels = sorted((unpacked / "boot").glob("vmlinuz-*"))
         require(len(kernels) == 1, "Mint target must contain one unambiguous kernel")
@@ -343,7 +402,7 @@ def install_mint_root_and_boot(
         # Prepare the installed initramfs on the SHA-verified extracted root
         # before making any guest disk write. This is the proven Mint/Zorin
         # installed-root approach from PR #181, without slow host FUSE copies.
-        write_target_configuration(unpacked, root_uuid)
+        write_target_configuration(unpacked, root_uuid, hostname)
         kernel_builtins = prepare_mint_storage_initramfs_modules(unpacked, version)
         chroot_mounts = [
             (["sudo", "mount", "-t", "proc", "proc", str(unpacked / "proc")],
@@ -392,7 +451,7 @@ def install_mint_root_and_boot(
         # Compress once on the local filesystem; libguestfs unpacks inside
         # its isolated appliance directly to the validated fifth ext4 root.
         # Preserve numeric ownership, extended attributes, and POSIX ACLs.
-        archive = temp / "mint-root.tar.gz"
+        archive = temp / f"{distribution}-root.tar.gz"
         require(not archive.exists() and not archive.is_symlink(),
                 "refusing reused Mint root archive")
         run(["sudo", "tar", "--numeric-owner", "--xattrs", "--acls",
@@ -408,16 +467,25 @@ def install_mint_root_and_boot(
         require(root_uuid_after_copy == root_uuid and windows_after_copy == windows_before,
                 "Mint extraction changed Windows partitions or ext4 identity")
 
-        serial = evidence / "mint-same-windows-cow-serial.log"
+        serial = evidence / f"{distribution}-same-windows-cow-serial.log"
         require(not serial.exists() and not serial.is_symlink(),
                 "refusing reused Mint boot evidence")
-        monitor = temp / "mint-qemu-monitor.sock"
+        monitor = temp / f"{distribution}-qemu-monitor.sock"
+        qmp_monitor = temp / f"{distribution}-qmp-monitor.sock"
         require(not monitor.exists() and not monitor.is_symlink(),
                 "refusing reused Mint QEMU monitor socket")
+        require(not qmp_monitor.exists() and not qmp_monitor.is_symlink(),
+                "refusing reused Zorin QMP monitor socket")
         qemu = subprocess.Popen([
             "qemu-system-x86_64", "-machine", "q35,accel=kvm", "-cpu", "host",
             "-smp", "2", "-m", "4096", "-display", "none",
             "-monitor", f"unix:{monitor},server,nowait",
+            # QMP command acknowledgements and ACPI POWERDOWN events are
+            # required for Zorin. The original HMP Mint path is unchanged.
+            *(
+                ["-qmp", f"unix:{qmp_monitor},server=on,wait=off"]
+                if distribution == "zorin" else []
+            ),
             "-net", "none", "-no-reboot", "-drive",
             f"if=none,id=windows-cow,format=qcow2,file={overlay}",
             "-device", "virtio-blk-pci,drive=windows-cow,bootindex=1",
@@ -432,35 +500,98 @@ def install_mint_root_and_boot(
             while time.monotonic() < deadline:
                 if serial.is_file():
                     raw = serial.read_bytes()
-                    if b"GASLUXMINT login:" in raw and b"Linux version" in raw:
+                    if login_witness in raw and b"Linux version" in raw:
                         break
                 if qemu.poll() is not None:
                     raise MintOverlayError("QEMU stopped before Mint installed-root login")
                 time.sleep(3)
             else:
                 raise MintOverlayError("Mint same-COW firstboot timed out")
-            monitor_deadline = time.monotonic() + 30
-            channel = None
-            while time.monotonic() < monitor_deadline:
-                if monitor.exists() and monitor.is_socket():
-                    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    channel.connect(str(monitor))
-                    break
-                time.sleep(0.5)
-            require(channel is not None, "Mint QEMU monitor did not become available")
-            try:
-                channel.recv(4096)
-                channel.sendall(b"system_powerdown\n")
-            finally:
-                channel.close()
+            if distribution == "zorin":
+                from zorin_shutdown_witness import (
+                    ZorinShutdownWitnessError, verify_zorin_shutdown_serial,
+                    save_zorin_shutdown_diagnostic,
+                )
+                # Capture the ephemeral socket inode while this QEMU is alive.
+                # PID/fd binding is NOT independently authenticated here.
+                qmp_socket_inode = qmp_monitor.lstat().st_ino
+                # Historical HMP fire-and-forget had no command ACK or
+                # POWERDOWN event witness. Do not diagnose guest ACPI until
+                # the hypervisor confirms it actually delivered the request.
+                from zorin_qmp_powerdown import request_guest_acpi_powerdown
+                qmp_proof = request_guest_acpi_powerdown(
+                    qmp_monitor, timeout_seconds=20)
+                qmp_evidence = evidence / "zorin-qmp-powerdown-request.json"
+                require(not qmp_evidence.exists() and not qmp_evidence.is_symlink(),
+                        "refusing reused Zorin QMP powerdown evidence")
+                with qmp_evidence.open("x", encoding="utf-8") as stream:
+                    json.dump({
+                        "qmpCommandAcknowledged":
+                            qmp_proof["qmpCommandAcknowledged"],
+                        "qmpPowerdownEventObserved":
+                            qmp_proof["qmpPowerdownEventObserved"],
+                        "orderlyGuestShutdownProven": False,
+                        "requestType": "ACPI-system_powerdown",
+                        "nativeBootloaderProven": False,
+                    }, stream, sort_keys=True, indent=2)
+                    stream.write("\n")
+            else:
+                monitor_deadline = time.monotonic() + 30
+                channel = None
+                while time.monotonic() < monitor_deadline:
+                    if monitor.exists() and monitor.is_socket():
+                        channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                        channel.connect(str(monitor))
+                        break
+                    time.sleep(0.5)
+                require(channel is not None, "Mint QEMU monitor did not become available")
+                try:
+                    channel.recv(4096)
+                    channel.sendall(b"system_powerdown\n")
+                finally:
+                    channel.close()
             try:
                 qemu.wait(timeout=90)
             except subprocess.TimeoutExpired as exc:
-                raise MintOverlayError("Mint guest did not complete ACPI poweroff") from exc
-            require(qemu.returncode == 0, "Mint QEMU did not exit cleanly after guest poweroff")
+                if distribution == "zorin":
+                    save_zorin_shutdown_diagnostic(
+                        evidence / "zorin-shutdown-diagnostics.json",
+                        raw=serial.read_bytes(), qmp_proof=qmp_proof,
+                        qemu_pid=qemu.pid, qmp_socket_inode=qmp_socket_inode,
+                        cow_path=overlay, root_uuid=root_uuid,
+                        return_code=None, failure="QEMU_ACPI_TIMEOUT_90S",
+                        witness=None)
+                raise MintOverlayError(
+                    f"{distribution} guest did not complete ACPI poweroff"
+                ) from exc
             shutdown_log = serial.read_bytes()
-            require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
-                    "Mint guest did not emit a shutdown witness")
+            if distribution == "zorin":
+                witness = None
+                failure = None
+                try:
+                    witness = verify_zorin_shutdown_serial(shutdown_log)
+                except ZorinShutdownWitnessError as exc:
+                    failure = "SERIAL_SHUTDOWN_WITNESS_REJECTED: " + str(exc)
+                if qemu.returncode != 0:
+                    failure = "QEMU_NONZERO_EXIT" + (
+                        " AND " + failure if failure else "")
+                save_zorin_shutdown_diagnostic(
+                    evidence / "zorin-shutdown-diagnostics.json",
+                    raw=shutdown_log, qmp_proof=qmp_proof,
+                    qemu_pid=qemu.pid, qmp_socket_inode=qmp_socket_inode,
+                    cow_path=overlay, root_uuid=root_uuid,
+                    return_code=qemu.returncode, failure=failure,
+                    witness=witness)
+                require(qemu.returncode == 0,
+                        "Zorin QEMU did not exit cleanly after guest poweroff")
+                require(witness is not None,
+                        failure or "Zorin guest has no verified shutdown witness")
+            else:
+                # Keep the proven Mint backend and its legacy witnesses unchanged.
+                require(qemu.returncode == 0,
+                        "Mint QEMU did not exit cleanly after guest poweroff")
+                require(b"systemd-shutdown" in shutdown_log or b"Powering off" in shutdown_log,
+                        "Mint guest did not emit a shutdown witness")
         finally:
             if qemu.poll() is None:
                 qemu.terminate()
@@ -469,7 +600,7 @@ def install_mint_root_and_boot(
             except subprocess.TimeoutExpired:
                 qemu.kill()
                 qemu.wait(timeout=10)
-        require(serial.is_file() and b"GASLUXMINT login:" in serial.read_bytes(),
+        require(serial.is_file() and login_witness in serial.read_bytes(),
                 "missing genuine Mint serial login witness")
         root_uuid_after, windows_after_boot = _guest_disk_audit(overlay, expected_uuid)
         require(root_uuid_after == root_uuid and windows_after_boot == windows_before,
@@ -481,12 +612,12 @@ def install_mint_root_and_boot(
                 "Windows backing QCOW2 or OVMF baseline/trial VARS changed")
         serial_hash = sha256(serial)
         proof = {
-            "mintIsoSha256": MINT_SHA256,
-            "mintIsoBytes": MINT_BYTES,
-            "mintRootUuid": root_uuid,
-            "mintKernel": kernel.name,
-            "mintSquashfsRootCopiedToWindowsCOWPartition5": True,
-            "mintFirstBootFromSameWindowsCOWVerified": True,
+            f"{distribution}IsoSha256": iso_sha,
+            f"{distribution}IsoBytes": iso_bytes,
+            f"{distribution}RootUuid": root_uuid,
+            f"{distribution}Kernel": kernel.name,
+            f"{distribution}SquashfsRootCopiedToWindowsCOWPartition5": True,
+            f"{distribution}FirstBootFromSameWindowsCOWVerified": True,
             "windowsFourPartitionSha256Unchanged": True,
             "windowsPartitionSha256": windows_before,
             "windowsBackingQcow2Unchanged": True,
@@ -494,18 +625,18 @@ def install_mint_root_and_boot(
             "windowsOriginalNvramUnchanged": True,
             "windowsOriginalNvramSha256": nvram_hash,
             "windowsOvmfTrialVarsSha256": trial_vars_hash,
-            "mintSerialSha256": serial_hash,
+            f"{distribution}SerialSha256": serial_hash,
             "nativeGrubDualBootVerified": False,
             "sameDiskDualBootVerified": False,
             "updatesVerified": False,
             "rollbackVerified": False,
             "releaseEligible": False,
         }
-        proof_path = evidence / "mint-same-windows-cow.json"
+        proof_path = evidence / f"{distribution}-same-windows-cow.json"
         require(not proof_path.exists() and not proof_path.is_symlink(),
                 "refusing reused Mint COW proof")
         proof_path.write_text(json.dumps(proof, sort_keys=True, indent=2) + "\n")
-        (evidence / "mint-same-windows-cow-serial.sha256").write_text(
+        (evidence / f"{distribution}-same-windows-cow-serial.sha256").write_text(
             f"{serial_hash}  {serial.name}\n", encoding="ascii")
         return proof
     finally:

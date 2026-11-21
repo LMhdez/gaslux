@@ -1,0 +1,1757 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Zorin 18.1 Ubiquity code map; evidence not authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "distribution",
+    "installer",
+    "isoSha256",
+    "casperManifestSha256",
+    "dpkgStatusSha256",
+    "modules",
+    "unreadablePaths",
+    "unverifiedPackageOwners",
+    "sourceEnumerationTruncated",
+    "selectedSourceCount",
+    "totalSelectedSourceCount",
+    "capabilities",
+    "potentialWriteSurfaces",
+    "outsideLinuxTargetWriteSetAuthenticated",
+    "partitionLockdownVerified",
+    "efiAndNvramPreservationVerified",
+    "automationSafeForUnattendedInstall",
+    "nativeInstallerExecuted",
+    "hostGuestIndependentObserver",
+    "authorization",
+    "stable"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "distribution": {
+      "const": "zorin"
+    },
+    "installer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "executable",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "const": "ubiquity"
+        },
+        "version": {
+          "const": "24.04.5+zorin2"
+        },
+        "executable": {
+          "const": "usr/bin/ubiquity"
+        },
+        "sha256": {
+          "const": "5819ac97c623085d08e55c08afc12e7d70be98795e603b27807bea165fad0b1b"
+        }
+      }
+    },
+    "isoSha256": {
+      "const": "44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5"
+    },
+    "casperManifestSha256": {
+      "const": "cc206a10d7de5cd8d373634f1b91ac35e030f5d4075acda7edcbb2b0318ee948"
+    },
+    "dpkgStatusSha256": {
+      "const": "cccc80c9d5875e8d82f07edafbc8731135fdc7190f84d8a0594e8264fdeac86f"
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 112,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "package",
+          "packageVersion",
+          "sha256",
+          "sizeBytes",
+          "ownerVerified"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "package": {
+            "type": "string",
+            "minLength": 1
+          },
+          "packageVersion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 524288
+          },
+          "ownerVerified": {
+            "const": true
+          }
+        }
+      }
+    },
+    "unreadablePaths": {
+      "type": "array",
+      "maxItems": 112,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unverifiedPackageOwners": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "sourceEnumerationTruncated": {
+      "type": "boolean"
+    },
+    "selectedSourceCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 112
+    },
+    "totalSelectedSourceCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "diskSelection",
+        "existingPartitions",
+        "gptModification",
+        "rootFilesystem",
+        "espSelection",
+        "nvram",
+        "grub",
+        "account",
+        "language",
+        "keyboard",
+        "timezone",
+        "preseedAutomation",
+        "postInstall",
+        "windowsBoot"
+      ],
+      "properties": {
+        "diskSelection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "existingPartitions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "gptModification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "rootFilesystem": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "espSelection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "nvram": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "grub": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "account": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "language": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "keyboard": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "timezone": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "preseedAutomation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "postInstall": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        },
+        "windowsBoot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "evidence",
+            "runtimeBehaviorVerified"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "SUPPORTED_STATICALLY",
+                "UNOBSERVED",
+                "UNSUPPORTED"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 15,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            },
+            "runtimeBehaviorVerified": {
+              "const": false
+            }
+          }
+        }
+      }
+    },
+    "potentialWriteSurfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gptAndPartitionMetadata",
+        "filesystemFormatting",
+        "linuxTargetRoot",
+        "espFiles",
+        "nvramEntries",
+        "grubConfiguration",
+        "postInstallChanges"
+      ],
+      "properties": {
+        "gptAndPartitionMetadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "writeSetLimitedToOwnedLinuxRoot",
+            "observedWrites",
+            "evidence"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "CONDITIONAL_CODE_REFERENCE",
+                "UNKNOWN"
+              ]
+            },
+            "writeSetLimitedToOwnedLinuxRoot": {
+              "const": false
+            },
+            "observedWrites": {
+              "const": false
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "filesystemFormatting": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "writeSetLimitedToOwnedLinuxRoot",
+            "observedWrites",
+            "evidence"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "CONDITIONAL_CODE_REFERENCE",
+                "UNKNOWN"
+              ]
+            },
+            "writeSetLimitedToOwnedLinuxRoot": {
+              "const": false
+            },
+            "observedWrites": {
+              "const": false
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "linuxTargetRoot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "writeSetLimitedToOwnedLinuxRoot",
+            "observedWrites",
+            "evidence"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "CONDITIONAL_CODE_REFERENCE",
+                "UNKNOWN"
+              ]
+            },
+            "writeSetLimitedToOwnedLinuxRoot": {
+              "const": false
+            },
+            "observedWrites": {
+              "const": false
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "espFiles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "writeSetLimitedToOwnedLinuxRoot",
+            "observedWrites",
+            "evidence"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "CONDITIONAL_CODE_REFERENCE",
+                "UNKNOWN"
+              ]
+            },
+            "writeSetLimitedToOwnedLinuxRoot": {
+              "const": false
+            },
+            "observedWrites": {
+              "const": false
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "nvramEntries": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "writeSetLimitedToOwnedLinuxRoot",
+            "observedWrites",
+            "evidence"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "CONDITIONAL_CODE_REFERENCE",
+                "UNKNOWN"
+              ]
+            },
+            "writeSetLimitedToOwnedLinuxRoot": {
+              "const": false
+            },
+            "observedWrites": {
+              "const": false
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "grubConfiguration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "writeSetLimitedToOwnedLinuxRoot",
+            "observedWrites",
+            "evidence"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "CONDITIONAL_CODE_REFERENCE",
+                "UNKNOWN"
+              ]
+            },
+            "writeSetLimitedToOwnedLinuxRoot": {
+              "const": false
+            },
+            "observedWrites": {
+              "const": false
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "postInstallChanges": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "writeSetLimitedToOwnedLinuxRoot",
+            "observedWrites",
+            "evidence"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "CONDITIONAL_CODE_REFERENCE",
+                "UNKNOWN"
+              ]
+            },
+            "writeSetLimitedToOwnedLinuxRoot": {
+              "const": false
+            },
+            "observedWrites": {
+              "const": false
+            },
+            "evidence": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "path",
+                  "package",
+                  "function",
+                  "line",
+                  "token",
+                  "sourceSha256",
+                  "basis"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./+@-]+$"
+                  },
+                  "package": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "function": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 48
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "basis": {
+                    "const": "STATIC_CODE_REFERENCE_ONLY"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "outsideLinuxTargetWriteSetAuthenticated": {
+      "const": false
+    },
+    "partitionLockdownVerified": {
+      "const": false
+    },
+    "efiAndNvramPreservationVerified": {
+      "const": false
+    },
+    "automationSafeForUnattendedInstall": {
+      "const": false
+    },
+    "nativeInstallerExecuted": {
+      "const": false
+    },
+    "hostGuestIndependentObserver": {
+      "const": false
+    },
+    "authorization": {
+      "const": "DENY_NO_WRITER"
+    },
+    "stable": {
+      "const": false
+    }
+  }
+}

@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pinned Zorin installer discovery: readonly, no writer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "distribution",
+    "iso",
+    "discoveryStatus",
+    "staticInstallerCandidate",
+    "packages",
+    "partitionAndBootPackages",
+    "launchers",
+    "snapCandidates",
+    "executables",
+    "sourceFiles",
+    "capabilities",
+    "nativeInstallerInvoked",
+    "writeSetAuthenticated",
+    "nativeGrubBootVerified",
+    "windowsBootManagerSafe",
+    "authorization",
+    "stable"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "distribution": {
+      "const": "zorin"
+    },
+    "iso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "sizeBytes",
+        "rootfsPath"
+      ],
+      "properties": {
+        "sha256": {
+          "const": "44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5"
+        },
+        "sizeBytes": {
+          "const": 3909091328
+        },
+        "rootfsPath": {
+          "const": "casper/filesystem.squashfs"
+        }
+      }
+    },
+    "discoveryStatus": {
+      "enum": [
+        "IDENTIFIED_STATICALLY",
+        "INCONCLUSIVE"
+      ]
+    },
+    "staticInstallerCandidate": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        null,
+        "ubiquity",
+        "calamares",
+        "subiquity",
+        "ubuntu-desktop-bootstrap",
+        "curtin"
+      ]
+    },
+    "packages": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "version",
+          "architecture"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "architecture": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "partitionAndBootPackages": {
+      "type": "object"
+    },
+    "launchers": {
+      "type": "array",
+      "maxItems": 32
+    },
+    "snapCandidates": {
+      "type": "array",
+      "maxItems": 32
+    },
+    "executables": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "package",
+          "path",
+          "sha256",
+          "sizeBytes",
+          "ownerVerified"
+        ],
+        "properties": {
+          "package": {
+            "enum": [
+              "ubiquity",
+              "calamares",
+              "subiquity",
+              "ubuntu-desktop-bootstrap",
+              "curtin"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.+@/-]+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4194304
+          },
+          "ownerVerified": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "sourceFiles": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "scope": {
+            "enum": [
+              "iso9660",
+              "squashfs"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "const": "UNOBSERVED"
+      },
+      "required": [
+        "existingPartition",
+        "account",
+        "language",
+        "keyboard",
+        "timezone",
+        "partitionLibrary",
+        "gptWrites",
+        "formatting",
+        "efiTargetSelection",
+        "grubInstall",
+        "windowsBootManager",
+        "unattendedInstall",
+        "updates",
+        "rollback"
+      ]
+    },
+    "nativeInstallerInvoked": {
+      "const": false
+    },
+    "writeSetAuthenticated": {
+      "const": false
+    },
+    "nativeGrubBootVerified": {
+      "const": false
+    },
+    "windowsBootManagerSafe": {
+      "const": false
+    },
+    "authorization": {
+      "const": "DENY_NO_WRITER"
+    },
+    "stable": {
+      "const": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "discoveryStatus": {
+            "const": "INCONCLUSIVE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "staticInstallerCandidate": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "discoveryStatus": {
+            "const": "IDENTIFIED_STATICALLY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "staticInstallerCandidate": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}

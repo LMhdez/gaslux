@@ -1,0 +1,11 @@
+{
+  "disk_guid_sha256": "154c4cb5880b403f46877f178cf8cee987e3379428ae32fd59318d3efaa2c324",
+  "disk_bytes": 137438953472,
+  "logical_sector_bytes": 512,
+  "partition_index": 5,
+  "first_lba": 154707968,
+  "last_lba": 205039615,
+  "partuuid": "99a1212c-0662-450f-a082-291f4ba71a15",
+  "ext4_uuid": "6ffb16ae-6802-47a6-a766-0c49d2468581",
+  "gpt_label": "GASLUX-CACHYOS-ROOT"
+}

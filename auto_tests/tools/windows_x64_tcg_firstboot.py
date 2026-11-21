@@ -933,6 +933,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="experimental hosted Windows 10 COW only: install pinned Mint root in partition 5 and boot via direct kernel handoff")
     ap.add_argument("--mint-iso", type=Path,
                     help="catalog-pinned Linux Mint 22.3 ISO for the disposable COW experiment")
+    ap.add_argument("--install-zorin-cow-root", action="store_true",
+                    help="experimental hosted Win10 COW only: stage pinned Zorin 18.1 root "
+                         "into owned #5, direct-kernel boot, then re-test Windows")
+    ap.add_argument("--zorin-iso", type=Path,
+                    help="catalog-pinned Zorin 18.1 ISO for the disposable COW experiment")
     ap.add_argument("--boot-timeout", type=int, default=6300)
     ap.add_argument("--accel", choices=("tcg", "kvm"), default="tcg",
                     help="KVM only after isolated GitHub-hosted kernel VM gate")
@@ -1022,6 +1027,26 @@ def main(argv: list[str] | None = None) -> int:
                 "the exact hosted Win10 KVM profile and separate Mint consent")
     elif args.mint_iso is not None:
         raise SystemExit("--mint-iso is accepted only with --install-mint-cow-root")
+    if args.install_zorin_cow_root:
+        if not (args.verify_windows_reboot_after_ext4
+                and args.format_owned_fifth_ext4_only
+                and args.verify_windows_reboot_with_fifth_gpt
+                and args.stage_cachyos_overlay_root_gpt_only
+                and args.prepare_owned_cow_checkpoint
+                and args.two_stage_install_only and args.derived_no_prompt
+                and args.profile == "win10_22h2_en_us_x64"
+                and args.accel == "kvm" and not args.fixture_only
+                and not args.install_mint_cow_root and args.mint_iso is None
+                and args.zorin_iso is not None
+                and os.environ.get("GITHUB_ACTIONS") == "true"
+                and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+                and os.environ.get("GASLUX_ZORIN_WINDOWS_COW_CONSENT")
+                    == "I_ACCEPT_ZORIN_ROOT_ON_VERIFIED_HOSTED_WINDOWS10_COW"):
+            raise SystemExit(
+                "Zorin Windows COW root needs exact hosted Win10 KVM, "
+                "verified GPT/WinRE checkpoints and separate Zorin consent")
+    elif args.zorin_iso is not None:
+        raise SystemExit("--zorin-iso requires --install-zorin-cow-root")
     if args.boot_probe_only and not args.derived_no_prompt:
         raise SystemExit("DVD probe requires explicit lab-derived no-prompt boot mode")
     if args.two_stage_install_only:
@@ -1318,24 +1343,38 @@ def main(argv: list[str] | None = None) -> int:
                                             hashlib.sha256(ext4_blob).hexdigest())
                                         print("GASLUX_CACHYOS_EXT4_ONLY_FIFTH_GPT_VERIFIED=1",
                                               flush=True)
-                                        if args.install_mint_cow_root:
+                                        if (args.install_mint_cow_root or
+                                                args.install_zorin_cow_root):
                                             from windows_mint_overlay_root import (
                                                 install_mint_root_and_boot,
                                             )
-                                            mint_proof = install_mint_root_and_boot(
+                                            distro = ("mint" if args.install_mint_cow_root
+                                                      else "zorin")
+                                            distro_iso = (args.mint_iso if distro == "mint"
+                                                          else args.zorin_iso)
+                                            ubuntu_proof = install_mint_root_and_boot(
                                                 overlay=disk.parent / "windows-uefi-cow-checkpoint" /
                                                         "cachyos-unwritten-trial-overlay.qcow2",
                                                 base=disk, nvram=nvram, workspace=disk.parent,
-                                                ext4_proof=ext4, iso=args.mint_iso,
-                                                evidence=evidence,
+                                                ext4_proof=ext4, iso=distro_iso,
+                                                evidence=evidence, distribution=distro,
                                             )
-                                            report["mintSquashfsRootCopiedIntoWindowsCow"] = True
-                                            report["mintFirstBootFromSameWindowsCowVerified"] = True
-                                            report["mintCowEvidenceSha256"] = hashlib.sha256(
-                                                (evidence / "mint-same-windows-cow.json").read_bytes()
+                                            require(
+                                                ubuntu_proof.get(
+                                                    f"{distro}FirstBootFromSameWindowsCOWVerified"
+                                                ) is True and
+                                                ubuntu_proof.get("sameDiskDualBootVerified") is False,
+                                                "Ubuntu-family fifth-root witness is inconsistent",
+                                            )
+                                            report[f"{distro}SquashfsRootCopiedIntoWindowsCow"] = True
+                                            report[f"{distro}FirstBootFromSameWindowsCowVerified"] = True
+                                            report[f"{distro}CowEvidenceSha256"] = hashlib.sha256(
+                                                (evidence / f"{distro}-same-windows-cow.json").read_bytes()
                                             ).hexdigest()
-                                            print("GASLUX_MINT_SAME_WINDOWS_COW_FIRSTBOOT=1",
-                                                  flush=True)
+                                            print(
+                                                f"GASLUX_{distro.upper()}_SAME_WINDOWS_COW_FIRSTBOOT=1",
+                                                flush=True,
+                                            )
                                         if args.verify_windows_reboot_after_ext4:
                                             from windows_cachyos_postext4_windows import (
                                                 verify_windows_post_ext4,
@@ -1355,8 +1394,11 @@ def main(argv: list[str] | None = None) -> int:
                                             with fourth_path.open("xb") as out:
                                                 out.write(fourth_bytes)
                                             report["windowsBootAfterExt4Verified"] = True
-                                            if args.install_mint_cow_root:
-                                                report["windowsBootAfterMintRootVerified"] = True
+                                            if (args.install_mint_cow_root or
+                                                    args.install_zorin_cow_root):
+                                                distro = ("mint" if args.install_mint_cow_root
+                                                          else "zorin")
+                                                report[f"windowsBootAfter{distro.capitalize()}RootVerified"] = True
                                                 report["sameDiskBothOperatingSystemsBootVerified"] = True
                                                 report["nativeGrubDualBootVerified"] = False
                                                 report["sameDiskDualBootVerified"] = False

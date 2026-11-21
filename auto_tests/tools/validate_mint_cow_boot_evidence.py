@@ -17,6 +17,8 @@ from pathlib import Path
 
 MINT_SHA256 = "a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4"
 MINT_BYTES = 3091660800
+ZORIN_SHA256 = "44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5"
+ZORIN_BYTES = 3909091328
 MAX_PROOF_BYTES = 16 * 1024
 MAX_SERIAL_BYTES = 1024 * 1024
 MAX_REPORT_BYTES = 128 * 1024
@@ -46,16 +48,21 @@ def read_regular(directory: Path, name: str, maximum: int) -> tuple[Path, bytes]
     return path, path.read_bytes()
 
 
-def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
+def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str,
+                                    distribution: str = "mint") -> dict:
+    require(distribution in ("mint", "zorin"), "unsupported Ubuntu-family evidence ID")
+    pinned_sha = MINT_SHA256 if distribution == "mint" else ZORIN_SHA256
+    pinned_bytes = MINT_BYTES if distribution == "mint" else ZORIN_BYTES
+    hostname = "GASLUXMINT" if distribution == "mint" else "GASLUXZORIN"
     require(re.fullmatch(r"[a-z0-9_]{1,64}", profile) is not None,
             "invalid Windows evidence profile")
 
     proof_path, proof_bytes = read_regular(
-        evidence_dir, "mint-same-windows-cow.json", MAX_PROOF_BYTES)
+        evidence_dir, f"{distribution}-same-windows-cow.json", MAX_PROOF_BYTES)
     serial_path, serial_bytes = read_regular(
-        evidence_dir, "mint-same-windows-cow-serial.log", MAX_SERIAL_BYTES)
+        evidence_dir, f"{distribution}-same-windows-cow-serial.log", MAX_SERIAL_BYTES)
     sidecar_path, sidecar_bytes = read_regular(
-        evidence_dir, "mint-same-windows-cow-serial.sha256", 256)
+        evidence_dir, f"{distribution}-same-windows-cow-serial.sha256", 256)
     report_path, report_bytes = read_regular(
         evidence_dir, f"{profile}-result.json", MAX_REPORT_BYTES)
 
@@ -67,23 +74,23 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
     require(type(proof) is dict and type(report) is dict,
             "Mint proof and Windows report must be JSON objects")
 
-    require(proof.get("mintIsoSha256") == MINT_SHA256
-            and proof.get("mintIsoBytes") == MINT_BYTES,
+    require(proof.get(f"{distribution}IsoSha256") == pinned_sha
+            and proof.get(f"{distribution}IsoBytes") == pinned_bytes,
             "Mint proof does not identify the pinned ISO")
-    root_uuid = proof.get("mintRootUuid")
+    root_uuid = proof.get(f"{distribution}RootUuid")
     try:
         canonical_uuid = str(uuid.UUID(root_uuid))
     except (ValueError, TypeError, AttributeError) as exc:
         raise MintBootEvidenceError("Mint proof has an invalid root UUID") from exc
     require(root_uuid == canonical_uuid, "Mint root UUID is not canonical")
-    kernel = proof.get("mintKernel")
+    kernel = proof.get(f"{distribution}Kernel")
     require(type(kernel) is str
             and re.fullmatch(r"vmlinuz-[A-Za-z0-9.+_-]{1,128}", kernel) is not None,
             "Mint kernel identity is missing or malformed")
 
     true_fields = (
-        "mintSquashfsRootCopiedToWindowsCOWPartition5",
-        "mintFirstBootFromSameWindowsCOWVerified",
+        f"{distribution}SquashfsRootCopiedToWindowsCOWPartition5",
+        f"{distribution}FirstBootFromSameWindowsCOWVerified",
         "windowsFourPartitionSha256Unchanged",
         "windowsBackingQcow2Unchanged",
         "windowsOriginalNvramUnchanged",
@@ -114,12 +121,12 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
 
     # Reject the old misleading name rather than silently accepting evidence
     # that calls a copied live SquashFS root a complete Mint installation.
-    require("mintInstalledIntoWindowsCOWPartition5" not in proof,
+    require(f"{distribution}InstalledIntoWindowsCOWPartition5" not in proof,
             "legacy installation claim is not accepted; use the SquashFS staging field")
 
     serial_hash = hashlib.sha256(serial_bytes).hexdigest()
-    require(re.fullmatch(r"[0-9a-f]{64}", str(proof.get("mintSerialSha256", ""))) is not None
-            and proof["mintSerialSha256"] == serial_hash,
+    require(re.fullmatch(r"[0-9a-f]{64}", str(proof.get(f"{distribution}SerialSha256", ""))) is not None
+            and proof[f"{distribution}SerialSha256"] == serial_hash,
             "Mint serial log SHA-256 does not match the proof")
     expected_sidecar = f"{serial_hash}  {serial_path.name}\n".encode("ascii")
     require(sidecar_bytes == expected_sidecar,
@@ -133,20 +140,71 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str) -> dict:
     )
     require(command_line.search(serial_bytes) is not None,
             "Mint serial evidence does not show the authenticated root UUID")
-    require(b"GASLUXMINT login:" in serial_bytes,
+    require((hostname + " login:").encode("ascii") in serial_bytes,
             "Mint did not reach the installed-root serial login prompt")
-    require(b"systemd-shutdown" in serial_bytes or b"Powering off" in serial_bytes,
-            "Mint guest has no orderly shutdown witness")
+    if distribution == "zorin":
+        from zorin_shutdown_witness import (
+            ZorinShutdownWitnessError, verify_zorin_shutdown_serial,
+        )
+        try:
+            witness = verify_zorin_shutdown_serial(serial_bytes)
+        except ZorinShutdownWitnessError as exc:
+            raise MintBootEvidenceError(
+                "Zorin has no independently verified orderly shutdown: " + str(exc)
+            ) from exc
+        _, qmp_bytes = read_regular(
+            evidence_dir, "zorin-qmp-powerdown-request.json", MAX_PROOF_BYTES)
+        _, diagnostic_bytes = read_regular(
+            evidence_dir, "zorin-shutdown-diagnostics.json", MAX_PROOF_BYTES)
+        try:
+            qmp = json.loads(qmp_bytes)
+            diagnostic = json.loads(diagnostic_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise MintBootEvidenceError("Zorin QMP or shutdown diagnostic is invalid") from exc
+        require(type(qmp) is dict and type(diagnostic) is dict,
+                "Zorin QMP and shutdown diagnostic must be objects")
+        require(qmp.get("qmpCommandAcknowledged") is True
+                and qmp.get("qmpPowerdownEventObserved") is True
+                and qmp.get("requestType") == "ACPI-system_powerdown"
+                and qmp.get("orderlyGuestShutdownProven") is False
+                and qmp.get("nativeBootloaderProven") is False,
+                "Zorin QMP ACK/event evidence missing, invalid or overstated")
+        require(diagnostic.get("qmpCommandAcknowledged") is True
+                and diagnostic.get("qmpPowerdownEventObserved") is True
+                and type(diagnostic.get("qemuExitCode")) is int
+                and diagnostic["qemuExitCode"] == 0
+                and diagnostic.get("linuxOrderlyShutdownWitness") is True
+                and diagnostic.get("failure") is None
+                and diagnostic.get("serialSha256") == serial_hash
+                and diagnostic.get("vmSessionRootUuid") == root_uuid
+                and diagnostic.get("shutdownWitnessLines")
+                    == witness["witnessLineIndices"],
+                "Zorin QEMU/serial shutdown diagnostic does not bind this boot")
+        require(type(diagnostic.get("vmSessionQemuPid")) is int
+                and diagnostic["vmSessionQemuPid"] > 0
+                and type(diagnostic.get("vmSessionQmpSocketInode")) is int
+                and diagnostic["vmSessionQmpSocketInode"] > 0
+                and type(diagnostic.get("vmSessionCowPathSha256")) is str
+                and re.fullmatch(
+                    r"[0-9a-f]{64}", diagnostic["vmSessionCowPathSha256"]
+                ) is not None
+                and diagnostic.get("qmpPidFdBindingIndependentlyAuthenticated") is False
+                and diagnostic.get("nativeBootloaderVerified") is False
+                and diagnostic.get("sameDiskDualBootVerified") is False,
+                "Zorin diagnostic session metadata missing or overclaims identity")
+    else:
+        require(b"systemd-shutdown" in serial_bytes or b"Powering off" in serial_bytes,
+                "Mint guest has no orderly shutdown witness")
 
     proof_hash = hashlib.sha256(proof_bytes).hexdigest()
-    require(report.get("mintSquashfsRootCopiedIntoWindowsCow") is True,
+    require(report.get(f"{distribution}SquashfsRootCopiedIntoWindowsCow") is True,
             "Windows report lacks the truthful Mint SquashFS staging flag")
-    require(report.get("mintFirstBootFromSameWindowsCowVerified") is True,
+    require(report.get(f"{distribution}FirstBootFromSameWindowsCowVerified") is True,
             "Windows report lacks the Mint firstboot flag")
-    require(report.get("windowsBootAfterMintRootVerified") is True
+    require(report.get(f"windowsBootAfter{distribution.capitalize()}RootVerified") is True
             and report.get("sameDiskBothOperatingSystemsBootVerified") is True,
             "Windows report lacks the independent Windows reboot after Mint root boot")
-    require(report.get("mintCowEvidenceSha256") == proof_hash,
+    require(report.get(f"{distribution}CowEvidenceSha256") == proof_hash,
             "Windows report does not bind the exact Mint proof JSON")
     require(report.get("nativeGrubDualBootVerified") is False
             and report.get("sameDiskDualBootVerified") is False
@@ -169,13 +227,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-dir", required=True, type=Path)
     parser.add_argument("--profile", required=True)
+    parser.add_argument("--distribution", choices=("mint", "zorin"), default="mint")
     args = parser.parse_args(argv)
     try:
-        result = validate_mint_cow_boot_evidence(args.evidence_dir, args.profile)
+        result = validate_mint_cow_boot_evidence(args.evidence_dir, args.profile,
+                                                distribution=args.distribution)
     except (MintBootEvidenceError, OSError) as exc:
         print(f"FAIL: Mint COW boot evidence rejected: {exc}")
         return 1
-    print("PASS: independent Mint SquashFS direct-kernel boot evidence validated")
+    print(f"PASS: independent {args.distribution} SquashFS direct-kernel boot evidence validated")
     print(json.dumps(result, sort_keys=True))
     print("LIMIT: native GRUB dual boot, updates and rollback remain unproven")
     return 0

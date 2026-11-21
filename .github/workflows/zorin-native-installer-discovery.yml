@@ -1,0 +1,180 @@
+name: Zorin pinned native installer discovery and diskless ISO observation (read-only)
+on:
+  push:
+    branches:
+      - test/zorin181-windows10-genuine-cow-firstboot-20261120
+    paths:
+      - .github/workflows/zorin-native-installer-discovery.yml
+      - auto_tests/tools/zorin_native_installer_discovery.py
+      - auto_tests/tools/zorin_native_target_guard.py
+      - auto_tests/tools/zorin_native_live_observer.py
+      - auto_tests/tools/zorin_native_ubiquity_map.py
+      - auto_tests/test_zorin_native_installer_discovery.py
+      - auto_tests/test_zorin_native_live_observer.py
+      - auto_tests/test_zorin_native_ubiquity_map.py
+      - schemas/zorin-native-installer-discovery.schema.json
+      - schemas/zorin-native-target-plan.schema.json
+      - schemas/zorin-native-ubiquity-capabilities.schema.json
+      - auto_tests/fixtures/zorin-native-observed-linux-target.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: zorin-native-discovery-20261120
+  cancel-in-progress: false
+
+jobs:
+  fail-closed-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile, lint and test Zorin, Mint and Windows contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --break-system-packages --no-input 'jsonschema>=4.20,<5' ruff
+          python3 -m py_compile \
+            auto_tests/tools/zorin_native_installer_discovery.py \
+            auto_tests/tools/zorin_native_target_guard.py \
+            auto_tests/tools/zorin_native_live_observer.py \
+            auto_tests/tools/zorin_native_ubiquity_map.py \
+            auto_tests/test_zorin_native_installer_discovery.py \
+            auto_tests/test_zorin_native_live_observer.py \
+            auto_tests/test_zorin_native_ubiquity_map.py
+          ruff check --select E4,E7,E9,F \
+            auto_tests/tools/zorin_native_installer_discovery.py \
+            auto_tests/tools/zorin_native_target_guard.py \
+            auto_tests/tools/zorin_native_live_observer.py \
+            auto_tests/tools/zorin_native_ubiquity_map.py \
+            auto_tests/test_zorin_native_installer_discovery.py \
+            auto_tests/test_zorin_native_live_observer.py \
+            auto_tests/test_zorin_native_ubiquity_map.py
+          for suite in \
+              test_zorin_native_installer_discovery.py \
+              test_zorin_native_live_observer.py \
+              test_zorin_native_ubiquity_map.py \
+              test_zorin_official_iso_installer_inventory.py \
+              test_windows_mint_overlay_root.py \
+              test_windows_mint_cow_boot_evidence.py \
+              test_windows_zorin_cow_boot_evidence.py \
+              test_zorin_qmp_powerdown.py \
+              test_zorin_shutdown_witness.py \
+              test_windows_x64_two_stage_boot.py; do
+            python3 -m unittest discover -s auto_tests -p "$suite" -v
+          done
+          echo 'Static contracts only; no native install/GRUB/rollback proven.' >> "$GITHUB_STEP_SUMMARY"
+
+  pinned-iso-diskless-ovmf:
+    needs: fail-closed-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      PYTHONUNBUFFERED: '1'
+      ZORIN_SHA: '44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5'
+      ZORIN_BYTES: '3909091328'
+      ZORIN_URL: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+      GASLUX_ZORIN_ISO_INVENTORY_CONSENT: I_ACCEPT_ZORIN_OFFICIAL_ISO_READONLY_INVENTORY
+      GASLUX_ZORIN_LIVE_CONSENT: I_ACCEPT_ZORIN_PINNED_ISO_DISKLESS_OVMF_OBSERVATION
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require private hosted KVM; install readonly inspection tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo timeout --signal=TERM --kill-after=15s 600s \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 update -qq
+          sudo timeout --signal=TERM --kill-after=15s 900s \
+            env DEBIAN_FRONTEND=noninteractive \
+            apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
+            install -y --no-install-recommends aria2 squashfs-tools qemu-system-x86 ovmf python3-pil python3-jsonschema
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          mkdir -m 700 -p "$RUNNER_TEMP/zorin-native-source"
+          mkdir -m 700 -p "$GITHUB_WORKSPACE/zorin-native-evidence"
+      - name: Download immutable Zorin 18.1 ISO and verify size/hash
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=5 --retry-wait=10 --timeout=90 --connect-timeout=30 \
+            --check-integrity=true --checksum="sha-256=$ZORIN_SHA" \
+            --dir="$RUNNER_TEMP/zorin-native-source" --out=zorin.iso "$ZORIN_URL"
+          iso="$RUNNER_TEMP/zorin-native-source/zorin.iso"
+          test -f "$iso" && test ! -L "$iso"
+          test "$(stat -c %s "$iso")" = "$ZORIN_BYTES"
+          printf '%s  %s\n' "$ZORIN_SHA" "$iso" | sha256sum -c
+      - name: Inventory pinned ISO + SquashFS without invoking installer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mounted="$RUNNER_TEMP/zorin-native-iso9660"
+          test ! -e "$mounted"
+          mkdir -m 700 "$mounted"
+          active=0
+          cleanup() {
+            if [ "$active" = 1 ]; then
+              sudo umount "$mounted" || echo "::error::Read-only ISO mount cleanup failed"
+            fi
+          }
+          trap cleanup EXIT
+          sudo mount -t iso9660 -o ro,loop,nosuid,nodev,noexec \
+            "$RUNNER_TEMP/zorin-native-source/zorin.iso" "$mounted"
+          active=1
+          python3 auto_tests/tools/zorin_native_installer_discovery.py \
+            --iso "$RUNNER_TEMP/zorin-native-source/zorin.iso" \
+            --mounted "$mounted" \
+            --out "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-installer-discovery.json"
+          python3 auto_tests/tools/zorin_native_ubiquity_map.py \
+            --iso "$RUNNER_TEMP/zorin-native-source/zorin.iso" \
+            --mounted "$mounted" \
+            --previous "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-installer-discovery.json" \
+            --out "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-ubiquity-code-map.json"
+          python3 - "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-ubiquity-code-map.json" "$GITHUB_WORKSPACE/schemas/zorin-native-ubiquity-capabilities.schema.json" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          import jsonschema
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          schema = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          jsonschema.Draft202012Validator.check_schema(schema)
+          jsonschema.validate(report, schema)
+          assert report["authorization"] == "DENY_NO_WRITER"
+          print("PASS: complete real ISO write-surface evidence schema, no writer")
+          PY
+          sudo umount "$mounted"
+          active=0
+          python3 auto_tests/tools/zorin_native_target_guard.py \
+            --fixture auto_tests/fixtures/zorin-native-observed-linux-target.json \
+            --out "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-target-denied.json"
+      - name: Observe optical-only genuine ISO on private OVMF/KVM VM
+        if: ${{ !contains(github.event.head_commit.message, '[zorin-static-only]') }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 auto_tests/tools/zorin_native_live_observer.py \
+            --iso "$RUNNER_TEMP/zorin-native-source/zorin.iso" \
+            --evidence "$GITHUB_WORKSPACE/zorin-native-evidence" \
+            --seconds 180
+          echo 'No Windows disk, no Linux disk, no installer invocation or native installation.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish bounded text and guest framebuffer only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-181-native-readonly-discovery
+          path: |
+            zorin-native-evidence/*.json
+            zorin-native-evidence/*.png
+          retention-days: 7
+          if-no-files-found: warn
