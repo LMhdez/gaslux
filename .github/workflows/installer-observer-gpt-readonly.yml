@@ -4,10 +4,14 @@ on:
     branches:
       - feature/installer-observer-engine
       - test/observer-gpt-immediate-regressions-20261121
+      - prep/observer-gpt-qemu-immediate-dd3e7bf2-20261121
     paths:
       - 'auto_tests/installer_observer/gpt_readonly_producer.py'
       - 'auto_tests/installer_observer/gpt_lab_provenance.py'
       - 'auto_tests/tests/test_observer_gpt_readonly_producer.py'
+      - 'auto_tests/tests/test_observer_gpt_qemu_one_shot.py'
+      - 'auto_tests/tools/observer_gpt_qemu_one_shot.py'
+      - '.github/workflows/observer-gpt-qemu-one-shot.yml'
       - '.github/workflows/installer-observer-gpt-readonly.yml'
   workflow_dispatch:
 
@@ -35,7 +39,7 @@ jobs:
       - name: Install lint, schema, cryptographic and test dependencies
         run: |
           python -m pip install 'pytest>=9,<10' 'ruff>=0.8,<1' \
-            'jsonschema>=4,<5' 'cryptography>=50,<51' 'rfc8785>=0.1.4,<1'
+            'jsonschema>=4,<5' 'cryptography>=50,<51' 'rfc8785>=0.1.4,<1' 'pyyaml>=6,<7'
       - name: Verify pinned Safety HEAD and immutable schema availability
         shell: bash
         run: |
@@ -45,11 +49,13 @@ jobs:
           test -s safety-pinned/assets/live/libertix_disk_identity_gate.py
       - name: Compile, lint and format check new producer (no QEMU)
         run: |
-          python -m compileall -q auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py
+          python -m compileall -q auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py auto_tests/tools/observer_gpt_qemu_one_shot.py auto_tests/tests/test_observer_gpt_qemu_one_shot.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py auto_tests/tools/observer_gpt_qemu_one_shot.py auto_tests/tests/test_observer_gpt_qemu_one_shot.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/gpt_readonly_producer.py auto_tests/installer_observer/gpt_lab_provenance.py auto_tests/tests/test_observer_gpt_readonly_producer.py auto_tests/tools/observer_gpt_qemu_one_shot.py auto_tests/tests/test_observer_gpt_qemu_one_shot.py
       - name: Adversarial raw-sector and Safety-v1 schema unit tests (synthetic fixture)
         run: python -m pytest -q auto_tests/tests/test_observer_gpt_readonly_producer.py
+      - name: Authorization gates and workflow syntax tests (NO QEMU)
+        run: python -m pytest -q auto_tests/tests/test_observer_gpt_qemu_one_shot.py
       - name: Pinned Safety GPT parser/provenance and synthetic QEMU regressions
         shell: bash
         run: |
