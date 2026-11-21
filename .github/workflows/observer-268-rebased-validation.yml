@@ -32,13 +32,13 @@ jobs:
       - name: Install requirements
         run: python -m pip install 'pytest>=8,<10' 'pillow>=11,<13' 'ruff>=0.8,<1' 'jsonschema>=4,<5'
       - name: Compile every incorporated Observer module
-        run: python -m compileall -q auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
+        run: python -m compileall -q auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py auto_tests/tests/test_observer_q4os_visual_snapshot.py
       - name: Ruff lint ALL incorporated Observer modules and tests
-        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py auto_tests/tests/test_observer_q4os_visual_snapshot.py
       - name: Ruff formatting ALL incorporated Observer modules and tests
-        run: python -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
+        run: python -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/installer_observer auto_tests/tools/gaslux_q4os_summary_visual_gate.py auto_tests/tools/verify_q4os_action_archives.py auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py auto_tests/tests/test_observer_q4os_visual_snapshot.py
       - name: Adversarial controller and QEMU identity contracts
-        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py
+        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py auto_tests/tests/test_observer_lab_identity.py auto_tests/tests/test_observer_rebased_primitives.py auto_tests/tests/test_observer_replay_synthetic.py auto_tests/tests/test_observer_q4os_history.py auto_tests/tests/test_observer_q4os_visual_snapshot.py
       - name: Q4OS native preflight and related read-only contract regression
         run: python -m pytest -q auto_tests/tests/test_q4os_native_preflight.py
       - name: Validate pinned original Q4OS map and manifest against their schemas
@@ -154,6 +154,7 @@ jobs:
               "auto_tests/tools/gaslux_q4os_summary_visual_gate.py",
               "auto_tests/tools/verify_q4os_action_archives.py",
               "auto_tests/tests/test_observer_q4os_history.py",
+              "auto_tests/tests/test_observer_q4os_visual_snapshot.py",
               "docs/distro-backends/ui-maps/q4os.json",
               "docs/distro-backends/evidence/q4os-manifest.json",
               "schemas/distro-ui-map.schema.json",
