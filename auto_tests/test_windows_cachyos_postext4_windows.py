@@ -130,6 +130,81 @@ class FourthBootContracts(unittest.TestCase):
                     forced_termination=False, trace_file=None,
                     reason="QEMU_EXIT_NONZERO")
 
+    def test_qemu_active_until_deadline_is_timeout_not_boot(self):
+        with tempfile.TemporaryDirectory() as td:
+            serial = Path(td) / "missing-com1.log"
+            process = type("Alive", (), {"poll": lambda self: None})()
+            with patch.object(lab.time, "monotonic", side_effect=[0, 0, 1201]):
+                with patch.object(lab.time, "sleep"):
+                    with self.assertRaisesRegex(
+                        lab.FourthBootError,
+                        "BCD_AB_CONTROL_WINDOWS_ONLY_TIMEOUT"):
+                        lab.observe_windows_qemu(
+                            process, serial, "bcd-control-windows-only", 1200)
+
+    def test_qemu_complete_marker_does_not_pass_without_process_shutdown(self):
+        with tempfile.TemporaryDirectory() as td:
+            serial = Path(td) / "partial-com1.log"
+            serial.write_bytes(b"\\n".join(lab.COM1_WITNESSES) + b"\\n")
+            process = type("Alive", (), {"poll": lambda self: None})()
+            with patch.object(lab.time, "monotonic", side_effect=[0, 0, 1201]):
+                with patch.object(lab.time, "sleep"):
+                    with self.assertRaisesRegex(
+                        lab.FourthBootError,
+                        "BCD_AB_CONTROL_WINDOWS_ONLY_TIMEOUT"):
+                        lab.observe_windows_qemu(
+                            process, serial, "bcd-control-windows-only", 1200)
+
+    def test_qemu_exit_error_and_missing_com1_are_distinct(self):
+        with tempfile.TemporaryDirectory() as td:
+            serial = Path(td) / "missing.log"
+            for status, expected in (
+                (1, "BCD_AB_CONTROL_WINDOWS_ONLY_QEMU_EXIT_NONZERO"),
+                (0, "BCD_AB_CONTROL_WINDOWS_ONLY_COM1_INCOMPLETE"),
+            ):
+                with self.subTest(status=status):
+                    proc = type("Done", (), {"poll": lambda self: status})()
+                    with patch.object(lab.time, "monotonic",
+                                      side_effect=[0, 0]):
+                        with self.assertRaisesRegex(lab.FourthBootError, expected):
+                            lab.observe_windows_qemu(
+                                proc, serial, "bcd-control-windows-only", 1200)
+
+    def test_qemu_partial_com1_after_clean_shutdown_is_not_boot(self):
+        with tempfile.TemporaryDirectory() as td:
+            serial = Path(td) / "partial.log"
+            serial.write_bytes(lab.COM1_WITNESSES[0] + b"\\n")
+            proc = type("Done", (), {"poll": lambda self: 0})()
+            with patch.object(lab.time, "monotonic", side_effect=[0, 0]):
+                with self.assertRaisesRegex(
+                    lab.FourthBootError, "BCD_AB_CONTROL_WINDOWS_ONLY_COM1_INCOMPLETE"):
+                    lab.observe_windows_qemu(
+                        proc, serial, "bcd-control-windows-only", 1200)
+
+    def test_qemu_complete_guest_audit_requires_shutdown_and_own_com1(self):
+        with tempfile.TemporaryDirectory() as td:
+            serial = Path(td) / "complete.log"
+            serial.write_bytes(b"guest COM1 fixture")
+            proc = type("Done", (), {"poll": lambda self: 0})()
+            with patch.object(lab.time, "monotonic", side_effect=[0, 0]):
+                with patch.object(lab, "audit_complete_third_serial",
+                                  return_value="a" * 64) as audit:
+                    self.assertEqual(lab.observe_windows_qemu(
+                        proc, serial, "bcd-control-windows-only", 1200),
+                        "a" * 64)
+            audit.assert_called_once_with(serial)
+
+    def test_qemu_guest_failure_marker_blocks_early(self):
+        with tempfile.TemporaryDirectory() as td:
+            serial = Path(td) / "error.log"
+            serial.write_bytes(b"GASLUX_COW_WIN10_REBOOT_FAIL=1\\n")
+            proc = type("Alive", (), {"poll": lambda self: None})()
+            with patch.object(lab.time, "monotonic", side_effect=[0, 0]):
+                with self.assertRaisesRegex(
+                    lab.FourthBootError, "BCD_AB_CONTROL_WINDOWS_ONLY_COM1_REJECTED"):
+                    lab.observe_windows_qemu(
+                        proc, serial, "bcd-control-windows-only", 1200)
+
     def test_host_diagnostic_detects_modified_ovmf_and_unexpected_disk(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
