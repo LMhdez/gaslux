@@ -57,6 +57,17 @@ def own_file(path: Path, parent: Path) -> os.stat_result:
 
 
 @dataclass(frozen=True)
+class GuestSliceProof:
+    """Original in-memory libguestfs pread bytes; still same-runner trust."""
+
+    first: bytes
+    last: bytes
+    device_label: str
+    qemu_pid: int
+    qemu_start_ticks: int
+
+
+@dataclass(frozen=True)
 class Capture:
     source: str
     method: str
@@ -74,7 +85,7 @@ def capture_gpt(
     source: str,
     logical_sector_size: int,
     safety_disk: Any,
-    guest_sample_origin: bool = False,
+    guest_sample_origin: GuestSliceProof | None = None,
 ) -> Capture:
     """Read bytes with pread and validate the SAME disk via existing Safety parser.
 
@@ -82,7 +93,11 @@ def capture_gpt(
     libguestfs.pread_device bytes; never relabel a host image as a guest.
     """
     require(source in SOURCE_METHODS, "GPT_SOURCE_INVALID")
-    require(source != "guest" or guest_sample_origin, "GUEST_ORIGIN_MISSING")
+    require(
+        (source == "guest" and isinstance(guest_sample_origin, GuestSliceProof))
+        or (source != "guest" and guest_sample_origin is None),
+        "GUEST_ORIGIN_MISSING",
+    )
     require(
         logical_sector_size in (512, 4096) and type(logical_sector_size) is int,
         "SECTOR_SIZE_INVALID",
@@ -101,6 +116,27 @@ def capture_gpt(
             "DISK_REPLACED",
         )
         sectors = first_stat.st_size // logical_sector_size
+        if source == "guest":
+            proof = guest_sample_origin
+            require(
+                path.name == "guest-reconstructed.raw"
+                and isinstance(proof.first, bytes)
+                and isinstance(proof.last, bytes)
+                and len(proof.first) == 34 * logical_sector_size
+                and len(proof.last) == 34 * logical_sector_size
+                and isinstance(proof.device_label, str)
+                and proof.device_label.startswith("gaslux")
+                and len(proof.device_label) == 18
+                and proof.qemu_pid > 1
+                and proof.qemu_start_ticks > 0,
+                "GUEST_ORIGIN_INVALID",
+            )
+            require(
+                os.pread(fd, len(proof.first), 0) == proof.first
+                and os.pread(fd, len(proof.last),
+                             first_stat.st_size - len(proof.last)) == proof.last,
+                "GUEST_SLICE_BYTES_MISMATCH",
+            )
         # Existing Safety implementation validates protective MBR, both GPT
         # headers, CRCs, entries and exact GPT partition inventory.
         try:
@@ -180,7 +216,16 @@ def capture_gpt(
             "readMethod": SOURCE_METHODS[source],
             "readOnly": True,
             "labOnly": True,
-            "guestSampleDerivedFromLibguestfs": guest_sample_origin,
+            "guestSampleDerivedFromLibguestfs": source == "guest",
+            "guestDeviceLabel": (
+                guest_sample_origin.device_label if source == "guest" else None
+            ),
+            "guestProcessPid": (
+                guest_sample_origin.qemu_pid if source == "guest" else None
+            ),
+            "guestProcessStartTicks": (
+                guest_sample_origin.qemu_start_ticks if source == "guest" else None
+            ),
             "imageFile": str(path),
             "fileDev": end.st_dev,
             "fileInode": end.st_ino,
