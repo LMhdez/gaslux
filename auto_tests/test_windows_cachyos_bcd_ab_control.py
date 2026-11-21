@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import copy
+import hashlib
 import os
+import subprocess
 import stat
 import sys
 import tempfile
@@ -16,11 +19,72 @@ from windows_cachyos_cow_checkpoint import CheckpointError
 
 
 def forensic(before: str, after: str, changed: int, spans: list[dict]) -> dict:
+    """Synthetic complete nontruncated evidence with producer-compatible digests."""
+    span_bytes = b"".join(
+        span["offset"].to_bytes(8, "big") + span["length"].to_bytes(8, "big")
+        for span in spans
+    )
+    offset_bytes = b"".join(
+        offset.to_bytes(8, "big")
+        for span in spans
+        for offset in range(span["offset"], span["offset"] + span["length"])
+    )
     return {
         "prebootBcdSha256": before,
         "postbootBcdSha256": after,
+        "prebootBcdBytes": 28672,
+        "postbootBcdBytes": 28672,
         "changedByteCount": changed,
+        "changedRunCount": len(spans),
         "firstChangedByteSpans": spans,
+        "truncatedToFirst64Spans": False,
+        "changedOffsetSetSha256": hashlib.sha256(offset_bytes).hexdigest(),
+        "changedSpansSha256": hashlib.sha256(span_bytes).hexdigest(),
+        "approvedMutation": False,
+        "productionStorageWritesAuthorized": False,
+    }
+
+
+# Redacted BCD forensic *metadata only* from Actions #44900941635.
+# No Windows BCD hive, QCOW2, TPM data, ISO or private signing material.
+REAL_44900941635_FIRST64_SPANS = (
+    (4,1),(8,1),(4136,5),(4232,5),(4348,2),(4360,5),
+    (4444,2),(4592,5),(4960,5),(5080,5),(5216,5),
+    (5472,5),(5664,5),(5700,2),(5768,2),(5800,1),
+    (5804,1),(5806,1),(5808,9),(5820,1),(5824,4),
+    (5832,9),(5844,6),(5852,2),(5856,7),(5864,5),
+    (5870,1),(5872,1),(5874,1),(5876,1),(5878,1),
+    (5880,15),(5896,9),(5906,1),(5908,3),(5912,1),
+    (5914,1),(5916,1),(5918,1),(5920,9),(5930,1),
+    (5932,3),(5936,3),(5940,4),(5946,1),(5948,1),
+    (5950,1),(5952,1),(5954,1),(5956,1),(5958,1),
+    (5960,1),(5962,1),(5964,1),(5966,1),(5968,15),
+    (5984,1),(5986,1),(5988,3),(5992,1),(5994,1),
+    (5996,1),(6000,7),(6008,7),
+)
+
+
+def real_bcd_evidence(after_sha: str) -> dict:
+    """Exact retained non-sensitive JSON fields for one A/B arm."""
+    return {
+        "prebootBcdSha256":
+            "7017e17de91070a7c91b1e725a7b7437bb0df74676437e11862362388d1d172f",
+        "postbootBcdSha256": after_sha,
+        "prebootBcdBytes": 28672,
+        "postbootBcdBytes": 28672,
+        "changedByteCount": 682,
+        "changedRunCount": 189,
+        "firstChangedByteSpans": [
+            {"offset": offset, "length": length}
+            for offset, length in REAL_44900941635_FIRST64_SPANS
+        ],
+        "truncatedToFirst64Spans": True,
+        "changedOffsetSetSha256":
+            "c499a5a15454a30afceda835609464a9d8e050dde2fb3643f83f1581250cd2b2",
+        "changedSpansSha256":
+            "0a63394bfcc033ab14369531ebf821ee48cfa111883117bbefb1537495a77111",
+        "approvedMutation": False,
+        "productionStorageWritesAuthorized": False,
     }
 
 
@@ -68,8 +132,8 @@ class BcdAbControlContracts(unittest.TestCase):
 
     def test_initial_bcd_mismatch_invalidates_experiment(self):
         result = lab.compare_bcd_ab(
-            forensic("a" * 64, "b" * 64, 1, []),
-            forensic("c" * 64, "d" * 64, 1, []),
+            forensic("a" * 64, "b" * 64, 1, [{"offset": 4, "length": 1}]),
+            forensic("c" * 64, "d" * 64, 1, [{"offset": 4, "length": 1}]),
         )
         self.assertEqual(result["classification"], "INVALID_INITIAL_BCD_MISMATCH")
         self.assertFalse(result["initialBcdEqual"])
@@ -93,6 +157,142 @@ class BcdAbControlContracts(unittest.TestCase):
         self.assertTrue(result["truncatedToFirst64Spans"])
         self.assertEqual(len(result["changedOffsetSetSha256"]), 64)
         self.assertEqual(len(result["changedSpansSha256"]), 64)
+
+    def test_real_44900941635_bcd_ab_metadata_classification_fail_closed(self):
+        control = real_bcd_evidence(
+            "ed11faf6d3f76e55b9e3db49dab7194d203f940262a28ca87ed7362f332be30d"
+        )
+        treatment = real_bcd_evidence(
+            "be917b89b38c8cf23f9d6a7524921fd7de1f0449cfa7aaf5f6d07d2106d08ed2"
+        )
+        self.assertEqual(len(control["firstChangedByteSpans"]), 64)
+        self.assertEqual(len(treatment["firstChangedByteSpans"]), 64)
+        self.assertGreater(len(control["firstChangedByteSpans"]), 24)
+        self.assertEqual(control["changedRunCount"], 189)
+        self.assertEqual(control["changedByteCount"], 682)
+        lab.validate_bcd_forensic(control)
+        lab.validate_bcd_forensic(treatment)
+        result = lab.compare_bcd_ab(control, treatment)
+        self.assertEqual(
+            result["classification"],
+            "POSTBOOT_BCD_STATES_DIFFER;"
+            " TREATMENT_ASSOCIATION_OR_WINDOWS_NONDETERMINISM",
+        )
+        for key in (
+            "initialBcdEqual", "controlBcdChanged", "treatmentBcdChanged",
+            "changedOffsetManifestEqual", "changedSpanManifestEqual",
+            "first64ChangedSpansEqual",
+        ):
+            self.assertTrue(result[key], key)
+        for key in (
+            "controlAndTreatmentPostBootBcdEqual", "approvedMutation",
+            "processAttributionProven", "releaseEligible",
+            "productionStorageWritesAuthorized",
+        ):
+            self.assertFalse(result[key], key)
+
+    def test_bounded_0_24_64_spans_are_valid(self):
+        for n in (0, 24, 64):
+            with self.subTest(spans=n):
+                spans = [
+                    {"offset": 4 + 2*i, "length": 1} for i in range(n)
+                ]
+                doc = forensic("a" * 64, ("b" if n else "a") * 64, n, spans)
+                lab.validate_bcd_forensic(doc)
+                self.assertEqual(len(doc["firstChangedByteSpans"]), n)
+                self.assertFalse(doc["truncatedToFirst64Spans"])
+                self.assertFalse(
+                    lab.compare_bcd_ab(doc, doc)["approvedMutation"]
+                )
+
+    def test_reject_supplied_65_spans_or_incoherent_truncation(self):
+        base = real_bcd_evidence("b" * 64)
+        oversized = copy.deepcopy(base)
+        oversized["firstChangedByteSpans"].append(
+            {"offset": 6100, "length": 1}
+        )
+        with self.assertRaisesRegex(lab.BcdAbControlError, "span count"):
+            lab.validate_bcd_forensic(oversized)
+        for edit in (
+            {"truncatedToFirst64Spans": False},
+            {"changedRunCount": 64},
+            {"changedRunCount": 190, "changedByteCount": 1},
+        ):
+            with self.subTest(edit=edit):
+                forged = {**base, **edit}
+                with self.assertRaises(lab.BcdAbControlError):
+                    lab.validate_bcd_forensic(forged)
+
+    def test_reject_malformed_spans_bounds_hashes_counts_and_missing_proof(self):
+        base = real_bcd_evidence("b" * 64)
+        bad_cases = (
+            ("firstChangedByteSpans", [{"offset": 0, "length": 0}]),
+            ("firstChangedByteSpans", [
+                {"offset": 4, "length": 1},
+                {"offset": 4, "length": 1},
+                *base["firstChangedByteSpans"][2:],
+            ]),
+            ("firstChangedByteSpans", [
+                {"offset": 28670, "length": 4},
+                *base["firstChangedByteSpans"][1:],
+            ]),
+            ("changedByteCount", -1),
+            ("changedRunCount", True),
+            ("changedOffsetSetSha256", "not-sha256"),
+            ("changedSpansSha256", "0" * 63),
+            ("postbootBcdBytes", 3),
+            ("approvedMutation", True),
+            ("productionStorageWritesAuthorized", True),
+        )
+        for key, value in bad_cases:
+            with self.subTest(key=key,value=str(value)[:28]):
+                bad = copy.deepcopy(base)
+                bad[key] = value
+                with self.assertRaises(lab.BcdAbControlError):
+                    lab.validate_bcd_forensic(bad)
+        for missing in ("changedRunCount", "changedSpansSha256",
+                        "truncatedToFirst64Spans", "approvedMutation"):
+            with self.subTest(missing=missing):
+                bad = copy.deepcopy(base)
+                del bad[missing]
+                with self.assertRaisesRegex(lab.BcdAbControlError, "incomplete"):
+                    lab.validate_bcd_forensic(bad)
+
+    def test_reject_inconsistent_nontruncated_span_manifest(self):
+        doc = forensic(
+            "a" * 64, "b" * 64, 1, [{"offset": 4, "length": 1}]
+        )
+        doc["changedOffsetSetSha256"] = "0" * 64
+        with self.assertRaisesRegex(lab.BcdAbControlError, "manifest"):
+            lab.validate_bcd_forensic(doc)
+
+    def test_embedded_ci_python_import_is_explicit_and_reproducible(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github/workflows/cachyos-windows10-shared-root-pacstrap.yml"
+        ).read_text(encoding="utf-8")
+        gate = workflow.split(
+            "- name: Independently gate pacstrap, Windows integrity and "
+            "disposable COW recovery", 1
+        )[1]
+        self.assertIn("PYTHONPATH=auto_tests/tools python3 - <<'PY'", gate)
+        code = (
+            "from windows_cachyos_overlay_reboot "
+            "import audit_complete_third_serial"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            env = os.environ.copy()
+            env.pop("PYTHONPATH", None)
+            command = [sys.executable, "-c", code]
+            denied = subprocess.run(
+                command, cwd=td, env=env, capture_output=True, text=True
+            )
+            self.assertNotEqual(denied.returncode, 0)
+            env["PYTHONPATH"] = str(TOOLS)
+            allowed = subprocess.run(
+                command, cwd=td, env=env, capture_output=True, text=True
+            )
+            self.assertEqual(allowed.returncode, 0, allowed.stderr)
 
     def test_qemu_write_event_discovery_filters_read_only_and_unrelated_events(self):
         sample = """Available trace events:
@@ -196,7 +396,7 @@ usb_packet_state
         with self.assertRaisesRegex(lab.BcdAbControlError,
                                     "invalid hash, byte count or spans"):
             lab.compare_bcd_ab(
-                forensic(None, "b" * 64, 1, []),
+                forensic(None, "b" * 64, 1, [{"offset": 4, "length": 1}]),
                 forensic("a" * 64, "b" * 64, 1, []),
             )
 
