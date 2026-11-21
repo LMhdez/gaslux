@@ -4,6 +4,8 @@ No QEMU, ISO, host devices, partition writers or Windows are invoked by tests.
 """
 import json
 import os
+import struct
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import tempfile
@@ -17,6 +19,7 @@ from gaslux_popos_reuse_snapshot_gate import (  # noqa: E402
     SERIAL,
 )
 
+import gaslux_popos_reuse_snapshot_gate as snapshot
 from gaslux_popos_reuse_guest_bio_monitor import classify_bio_operation  # noqa: E402
 
 INSTALL = TOOLS / "gaslux_popos_reuse_full_install_guest.sh"
@@ -77,6 +80,66 @@ class FullReuseContractTests(unittest.TestCase):
         self.assertNotIn("drive=labefi", second)
         self.assertNotIn("drive=verifiediso", second)
         self.assertIn("drive=popinstalled", second)
+
+    def test_offline_native_efi_probe_refuses_missing_or_invalid_boot_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            work = Path(folder)
+            raw = new_file(work / "installed-view.raw", SIZE)
+            with raw.open("r+b") as f:
+                f.seek(ESP[0] * 512)
+                boot = bytearray(512)
+                boot[82:90] = b"FAT32   "
+                boot[510:512] = b"\x55\xaa"
+                f.write(boot)
+
+            def fake_command(*args, **kwargs):
+                if args[0] == "mdir":
+                    return "pop-current.conf" if args[-1] == "::/loader/entries" else "EFI files"
+                if args[0] == "mcopy":
+                    data = bytearray(512)
+                    data[:2] = b"MZ"
+                    struct.pack_into("<I", data, 0x3c, 0x80)
+                    data[0x80:0x84] = b"PE\x00\x00"
+                    struct.pack_into("<H", data, 0x84, 0x8664)
+                    struct.pack_into("<H", data, 0x80+24+68, 10)
+                    Path(args[-1]).write_bytes(data)
+                    return ""
+                raise AssertionError("unexpected tool")
+
+            with patch.object(snapshot, "command", side_effect=fake_command):
+                proof = snapshot.probe_installed_esp_boot(raw, work)
+                self.assertEqual(proof["status"], "PASS_OFFLINE_EFI_ARTIFACTS_ONLY")
+                self.assertFalse(proof["firmwareDiscoveryProven"])
+                self.assertFalse(proof["nativeFirstBootProven"])
+                self.assertFalse((work / "probe-fallback.efi").exists())
+
+            with raw.open("r+b") as f:
+                f.seek(ESP[0] * 512 + 82)
+                f.write(b"NOTFAT32")
+            with patch.object(snapshot, "command", side_effect=fake_command):
+                with self.assertRaises(Refusal):
+                    snapshot.probe_installed_esp_boot(raw, work)
+
+            with raw.open("r+b") as f:
+                f.seek(ESP[0] * 512 + 82)
+                f.write(b"FAT32   ")
+            def no_entry(*args, **kwargs):
+                if args[0] == "mdir":
+                    return "no entries"
+                raise AssertionError("unexpected tool")
+            with patch.object(snapshot, "command", side_effect=no_entry):
+                with self.assertRaises(Refusal):
+                    snapshot.probe_installed_esp_boot(raw, work)
+
+    def test_native_efi_probe_and_firmware_read_trace_are_required(self):
+        runner = RUNNER.read_text()
+        gate = GATE.read_text()
+        self.assertIn("virtio_blk_handle_read", runner)
+        self.assertIn("install.esp-boot.json", runner)
+        self.assertIn("probe_installed_esp_boot(exported, work)", gate)
+        self.assertIn("firmwareDiscoveryProven", gate)
+        self.assertIn("nativeFirstBootProven", gate)
+        self.assertIn("REFUSE_NATIVE_EFI_BOOT_UNPROVEN", gate)
 
     def test_native_firstboot_is_pop_with_installed_root_partuuid(self):
         s = BOOT.read_text()

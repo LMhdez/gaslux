@@ -371,6 +371,64 @@ def classify_owned_write(start, count):
     raise Refusal("REFUSE_OUT_OF_WRITESET: GPT/unallocated/foreign sector write")
 
 
+
+def probe_installed_esp_boot(raw, work):
+    """Read-only EFI artifact inspection on a verified synthetic RAW export.
+
+    Files copied from the ESP are private disposable evidence, never written
+    back to the QCOW2 or checkpoint. This does not prove firmware discovery.
+    """
+    regular(raw, length=SIZE)
+    offset = ESP[0] * SECTOR
+    with raw.open("rb", buffering=0) as disk:
+        disk.seek(offset)
+        sector = disk.read(SECTOR)
+    need(len(sector) == SECTOR and sector[510:512] == b"\x55\xaa"
+         and sector[82:90] == b"FAT32   ",
+         "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: ESP boot sector not FAT32")
+    image = f"{raw}@@{offset}"
+    result = {"status": "REFUSE_NATIVE_EFI_BOOT_UNPROVEN",
+              "readOnly": True, "espOffsetBytes": offset,
+              "firmwareDiscoveryProven": False, "nativeFirstBootProven": False}
+    try:
+        command("mdir", "-i", image, "::/EFI/BOOT", timeout=60)
+        command("mdir", "-i", image, "::/EFI/systemd", timeout=60)
+        entries = command("mdir", "-i", image, "::/loader/entries", timeout=60)
+        need(".conf" in entries.lower(),
+             "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: loader entry missing")
+        for label, efi in (
+            ("fallback", "::/EFI/BOOT/BOOTX64.EFI"),
+            ("systemdBoot", "::/EFI/systemd/systemd-bootx64.efi"),
+        ):
+            local = work / f"probe-{label}.efi"
+            need(not local.exists() and not local.is_symlink(),
+                 "REFUSE_IDENTITY_MISMATCH: EFI probe output exists")
+            try:
+                command("mcopy", "-i", image, efi, str(local), timeout=60)
+                regular(local)
+                data = local.read_bytes()
+                need(len(data) >= 256 and data[:2] == b"MZ",
+                     "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: EFI DOS header invalid")
+                pe = struct.unpack_from("<I", data, 0x3c)[0]
+                need(0 < pe < len(data) - 96
+                     and data[pe:pe+4] == b"PE\x00\x00"
+                     and struct.unpack_from("<H", data, pe+4)[0] == 0x8664
+                     and struct.unpack_from("<H", data, pe+24+68)[0] == 10,
+                     "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: not x86_64 EFI application")
+                result[label+"Sha256"] = hashlib.sha256(data).hexdigest()
+                result[label+"SizeBytes"] = len(data)
+            finally:
+                if local.exists():
+                    regular(local).unlink()
+        result["status"] = "PASS_OFFLINE_EFI_ARTIFACTS_ONLY"
+    finally:
+        (work/"install.esp-boot.json").write_text(
+            json.dumps(result, indent=2) + "\n")
+    need(result["status"] == "PASS_OFFLINE_EFI_ARTIFACTS_ONLY",
+         "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: offline ESP proof missing")
+    return result
+
+
 def audit(work, phase, bio_transcript=None):
     x = get_plan(work)
     base = regular(work/"pop-prepared.raw", length=SIZE)
@@ -448,6 +506,8 @@ def audit(work, phase, bio_transcript=None):
     try:
         need(gpt(exported) == x["gpt"],
              "REFUSE_OUT_OF_WRITESET: final child GPT differs from checkpoint")
+        if phase == "install":
+            probe_installed_esp_boot(exported, work)
     finally:
         regular(exported, length=SIZE).unlink()
     result = {

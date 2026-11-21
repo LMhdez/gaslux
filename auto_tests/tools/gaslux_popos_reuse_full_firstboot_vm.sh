@@ -19,7 +19,7 @@ printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
   die 'Actual ISO bytes differ from pinned signed manifest'
 [[ -d "${RUNNER_TEMP:-}" && ! -L "$RUNNER_TEMP" ]] ||
   die 'Expected GitHub disposable runner temporary directory missing'
-for binary in qemu-system-x86_64 qemu-img qemu-io grub-mkstandalone mkfs.vfat mkfs.fat mkfs.ext4 mcopy mmd \
+for binary in qemu-system-x86_64 qemu-img qemu-io grub-mkstandalone mkfs.vfat mkfs.fat mkfs.ext4 mcopy mmd mdir \
   sgdisk dd blkid timeout sudo sha256sum python3 setfacl; do
   command -v "$binary" >/dev/null || die "Missing disposable VM tool: $binary"
 done
@@ -50,7 +50,7 @@ cleanup() {
     mkdir -p "$GASLUX_POP_FULL_VM_EVIDENCE_DIR"
     for name in grub.cfg live.serial.log live.console.trace installed.serial.log \
       installed.normalized.log target-before.txt target-after.txt kernel-path.txt install-qemu.exit \
-      installed-qemu.exit pop-reuse-transaction.json install.audit.json firstboot.audit.json \
+      installed-qemu.exit pop-reuse-transaction.json install.audit.json firstboot.audit.json install.esp-boot.json \
       checkpoint.proof install.vars-before.sha256 install.vars-after.sha256 \
       firstboot.vars-before.sha256 firstboot.vars-after.sha256; do
       [[ -f "$work/$name" ]] &&
@@ -209,11 +209,15 @@ pflash_erase_timeout
 pflash_unlock0_failed
 pflash_unlock1_failed
 EVENTS
+# Firmware discovery reads are needed only on the independent first boot.
+# Do not inflate the bounded installation write trace with ISO extraction reads.
+cp "$work/trace.events" "$work/firstboot-trace.events"
+printf '%s\n' virtio_blk_handle_read >> "$work/firstboot-trace.events"
 available="$(qemu-system-x86_64 -trace help)"
 while read -r event; do
   grep -qx "$event" <<< "$available" ||
     die "OBSERVATION_INCOMPLETE: QEMU event unavailable $event"
-done < "$work/trace.events"
+done < "$work/firstboot-trace.events"
 sha256sum "$work/ovmf-install.fd" > "$work/install.vars-before.sha256"
 sha256sum "$work/ovmf-firstboot.fd" > "$work/firstboot.vars-before.sha256"
 printf 'GASLUX_POP_NATIVE_INSTALL_LAB_DISK=isolated-linux-only\n'
@@ -266,6 +270,8 @@ python3 auto_tests/tools/gaslux_popos_reuse_snapshot_gate.py audit \
 sha256sum "$work/ovmf-install.fd" > "$work/install.vars-after.sha256"
 sgdisk --print "$base" > "$work/target-after.txt"
 test -s "$work/target-after.txt" || die 'Installed target GPT cannot be inspected'
+[[ -s "$work/install.esp-boot.json" ]] ||
+  die 'REFUSE_NATIVE_EFI_BOOT_UNPROVEN: no offline native EFI probe'
 printf 'GASLUX_POP_NATIVE_DISTINST_FULL_INSTALL_ON_QEMU=1\n'
 
 # The SECOND QEMU has NO lab EFI disk and NO live ISO. Only the native Pop disk
@@ -281,7 +287,7 @@ timeout --kill-after=10s 360s qemu-system-x86_64 \
   -drive "if=none,id=popinstalled,format=qcow2,file=$target" \
   -device virtio-blk-pci,drive=popinstalled,serial=GASLUXPOPFULLVM,bootindex=1 \
   -boot order=c,menu=off \
-  -trace "events=$work/trace.events,file=$work/firstboot.qemu.trace" \
+  -trace "events=$work/firstboot-trace.events,file=$work/firstboot.qemu.trace" \
   -serial "file:$work/installed.serial.log" &
 guest="$!"
 verified=0
