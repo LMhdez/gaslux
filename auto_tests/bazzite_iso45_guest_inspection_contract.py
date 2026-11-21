@@ -142,7 +142,8 @@ def validate_contract(record: object, *, seen_transactions: frozenset[str] = fro
          "installer", "dbus", "provenance", "permissions"},
         "ISO45 proposal",
     )
-    require(type(data["schemaVersion"]) is int and data["schemaVersion"] == 1\n            and data["origin"] == "synthetic-untrusted-proposal",
+    require(type(data["schemaVersion"]) is int and data["schemaVersion"] == 1
+            and data["origin"] == "synthetic-untrusted-proposal",
             "Unknown contract version/origin")
     media = exact(data["media"], {"isoSha256", "isoSizeBytes", "version", "payloadDigest",
                                     "sourceRunId", "sourceArtifactId", "sourceArchiveSha256"},
