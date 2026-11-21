@@ -233,6 +233,23 @@ def prepare_independent_tpm_clones(workspace: Path) -> tuple[Path, Path, str]:
     return control, treatment, template_hash
 
 
+def swtpm_emulator_command(state_dir: Path, socket: Path) -> list[str]:
+    """QEMU -tpmdev emulator speaks the swtpm *control* channel.
+
+    See https://www.qemu.org/docs/master/specs/tpm.html (TPM emulator).
+    --server is a different protocol and must never back chrtpm here.
+    """
+    require(state_dir.name in (TPM_CONTROL, TPM_TREATMENT)
+            and socket.is_absolute() and socket.parent == state_dir.parent
+            and socket.name in ("bcd-ab-control-tpm.sock",
+                                "bcd-ab-treatment-tpm.sock"),
+            "refusing an unowned swtpm control socket")
+    return ["swtpm", "socket", "--tpm2", "--tpmstate",
+            f"dir={state_dir}", "--ctrl",
+            f"type=unixio,path={socket},mode=0600",
+            "--flags", "not-need-init"]
+
+
 @contextmanager
 def running_swtpm(state_dir: Path, workspace: Path, label: str) -> Iterator[Path]:
     require(os.environ.get("GITHUB_ACTIONS") == "true"
@@ -258,9 +275,7 @@ def running_swtpm(state_dir: Path, workspace: Path, label: str) -> Iterator[Path
     with log.open("xb") as stderr:
         try:
             proc = subprocess.Popen(
-                ["swtpm", "socket", "--tpm2", "--tpmstate", f"dir={state_dir}",
-                 "--server", f"type=unixio,path={socket},mode=0600",
-                 "--flags", "not-need-init"],
+                swtpm_emulator_command(state_dir, socket),
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=stderr,
             )
