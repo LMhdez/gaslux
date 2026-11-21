@@ -1,0 +1,210 @@
+name: Pop EFI FAT32 firmware recognition isolation (no installer)
+
+on:
+  push:
+    branches:
+      - test/popos-genuine-windows-native-live-20261119
+    paths:
+      - .github/workflows/popos-efi-fat-only-qemu.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: popos-efi-fat-only-qemu
+  cancel-in-progress: false
+
+jobs:
+  fat-only-qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require isolated hosted KVM and EFI-only tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 ovmf dosfstools mtools gdisk e2fsprogs \
+            grub-common grub-efi-amd64-bin acl
+          test -c /dev/kvm
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Compare synthetic FAT32 fallback with offset, hidden sector and partition image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test -c /dev/kvm && test -r /dev/kvm && test -w /dev/kvm
+          code=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd
+          vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          test -f "$code" && test -f "$vars"
+          test ! -L "$code" && test ! -L "$vars"
+          work="$(mktemp -d "$RUNNER_TEMP/gaslux-pop-efi-fat-XXXXXXXX")"
+          evidence="$GITHUB_WORKSPACE/pop-fat-efi-evidence"
+          mkdir -m 700 "$evidence"
+          cleanup() {
+            for f in "$work"/*.json "$work"/*.serial "$work"/*.trace "$work"/grub.cfg; do
+              if test -f "$f" && test ! -L "$f"; then
+                cp -- "$f" "$evidence/"
+              fi
+            done
+            ( cd "$evidence" &&
+              find . -maxdepth 1 -type f ! -name evidence.sha256 -print0 |
+                sort -z | xargs -0 -r sha256sum > evidence.sha256 ) || true
+            case "$work" in "$RUNNER_TEMP"/gaslux-pop-efi-fat-*) rm -rf -- "$work" ;; *) return 1 ;; esac
+          }
+          trap cleanup EXIT
+          cat > "$work/grub.cfg" <<'GRUB'
+          serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
+          terminal_input serial
+          terminal_output serial
+          echo GASLUX_POP_FAT_PROBE_LOADED=1
+          reboot
+          GRUB
+          grub-mkstandalone --format=x86_64-efi --output="$work/BOOTX64.EFI" \
+            "boot/grub/grub.cfg=$work/grub.cfg" >/dev/null
+          test -s "$work/BOOTX64.EFI"
+          printf 'virtio_blk_handle_read\nvirtio_blk_handle_write\n' > "$work/events"
+          for event in virtio_blk_handle_read virtio_blk_handle_write; do
+            qemu-system-x86_64 -trace help | grep -Fxq "$event"
+          done
+          for variant in offset offset-hidden partition-image; do
+            disk="$work/$variant.raw"
+            python3 - "$disk" <<'PY'
+          import os,sys
+          fd=os.open(sys.argv[1],os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          try:
+              os.ftruncate(fd,32*1024**3)
+              os.fsync(fd)
+          finally:
+              os.close(fd)
+          PY
+            sgdisk --zap-all --clear --disk-guid=6c8e012e-6c29-457e-a119-0cde4fa54dd6 \
+              --new=1:2048:+1024M --typecode=1:EF00 \
+              --partition-guid=1:b65d9228-97af-4b13-b5fa-59f1d8d9653e \
+              --new=2:2099200:+28G --typecode=2:8300 \
+              --partition-guid=2:6a8555cd-6dc0-45fa-8e66-9de78e41557b "$disk" >/dev/null
+            sgdisk --verify "$disk" >/dev/null
+            python3 - "$disk" "$work/$variant.gpt.json" <<'PY'
+          import hashlib,json,sys
+          with open(sys.argv[1],"rb") as f:
+              primary=f.read(34*512)
+              f.seek(32*1024**3-33*512)
+              backup=f.read(33*512)
+          with open(sys.argv[2],"w") as f:
+              json.dump({"primary":hashlib.sha256(primary).hexdigest(),
+                         "backup":hashlib.sha256(backup).hexdigest()},f)
+          PY
+            if test "$variant" = offset; then
+              mkfs.fat -F 32 -n GXPROBE --offset=2048 "$disk" 1048576 >/dev/null
+            elif test "$variant" = offset-hidden; then
+              mkfs.fat -F 32 -n GXPROBE -h 2048 --offset=2048 "$disk" 1048576 >/dev/null
+            else
+              test ! -e "$work/esp.img"
+              truncate -s 1G "$work/esp.img"
+              mkfs.fat -F 32 -n GXPROBE -h 2048 "$work/esp.img" >/dev/null
+              dd if="$work/esp.img" of="$disk" bs=1M seek=1 conv=notrunc,sparse status=none
+              rm -- "$work/esp.img"
+            fi
+            mkfs.ext4 -F -q -b 4096 -L GXPROOT -E offset=$((2099200*512)) \
+              "$disk" 7340032
+            image="$disk@@1048576"
+            mmd -i "$image" ::/EFI
+            mmd -i "$image" ::/EFI/BOOT
+            mcopy -i "$image" "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+            mdir -i "$image" ::/EFI/BOOT >/dev/null
+            python3 - "$disk" "$work/$variant.gpt.json" "$work/$variant.bpb.json" "$variant" <<'PY'
+          import hashlib,json,struct,sys
+          path,old,out,variant=sys.argv[1:]
+          with open(path,"rb") as f:
+              primary=f.read(34*512)
+              f.seek(32*1024**3-33*512)
+              backup=f.read(33*512)
+              f.seek(2048*512)
+              b=f.read(512)
+          actual={"primary":hashlib.sha256(primary).hexdigest(),
+                  "backup":hashlib.sha256(backup).hexdigest()}
+          assert actual==json.load(open(old)), "REFUSE_OUT_OF_WRITESET: GPT mutated"
+          assert b[510:512]==b"\x55\xaa" and b[82:90]==b"FAT32   "
+          u16=lambda x:struct.unpack_from("<H",b,x)[0]
+          u32=lambda x:struct.unpack_from("<I",b,x)[0]
+          r={"variant":variant,"bytesPerSector":u16(11),"sectorsPerCluster":b[13],
+             "reservedSectors":u16(14),"fatCount":b[16],
+             "hiddenSectors":u32(28),"totalSectors":u32(32),
+             "fatSectors":u32(36),"rootCluster":u32(44),
+             "rootDataStartLba":2048+u16(14)+b[16]*u32(36),
+             "gptUnchanged":True,"espBootSectorSha256":hashlib.sha256(b).hexdigest(),
+             "windowsAttached":False,"productionAuthorized":False}
+          assert r["bytesPerSector"]==512 and r["totalSectors"]==2097152
+          with open(out,"w") as f:json.dump(r,f,indent=2)
+          PY
+            sgdisk --verify "$disk" >/dev/null
+            cp -- "$vars" "$work/$variant.vars.fd"
+            test "$(sha256sum "$vars" | cut -d' ' -f1)" = \
+                 "$(sha256sum "$work/$variant.vars.fd" | cut -d' ' -f1)"
+            set +e
+            timeout --kill-after=5s 90s qemu-system-x86_64 \
+              -machine q35,accel=kvm -cpu host -smp 2 -m 1024 \
+              -display none -monitor none -no-reboot -net none \
+              -drive "if=pflash,format=raw,readonly=on,file=$code" \
+              -drive "if=pflash,format=raw,file=$work/$variant.vars.fd" \
+              -drive "if=none,id=ownedfat,format=raw,file=$disk,readonly=on" \
+              -device virtio-blk-pci,drive=ownedfat,bootindex=1 \
+              -boot order=c,menu=off \
+              -trace "events=$work/events,file=$work/$variant.trace" \
+              -serial "file:$work/$variant.serial"
+            rc=$?
+            set -e
+            test -s "$work/$variant.trace"
+            if grep -q virtio_blk_handle_write "$work/$variant.trace"; then
+              echo "REFUSE_OUT_OF_WRITESET: firmware attempted disk write" >&2
+              exit 1
+            fi
+            reads="$(grep -c virtio_blk_handle_read "$work/$variant.trace" || true)"
+            test "$reads" -gt 0
+            boot=0
+            if grep -Fq GASLUX_POP_FAT_PROBE_LOADED=1 "$work/$variant.serial"; then
+              boot=1
+            fi
+            python3 - "$work/$variant.bpb.json" "$work/$variant.result.json" "$rc" "$boot" "$reads" <<'PY'
+          import json,sys
+          src,out,rc,boot,reads=sys.argv[1:]
+          r=json.load(open(src))
+          r.update({"qemuExit":int(rc),"efiExecuted":boot=="1",
+                    "readRequests":int(reads),"nativePopFirstBootProven":False})
+          with open(out,"w") as f:json.dump(r,f,indent=2)
+          PY
+            printf 'GASLUX_POP_FAT_VARIANT=%s BOOT=%s QEMU=%s READS=%s\n' \
+              "$variant" "$boot" "$rc" "$reads"
+          done
+          python3 - "$work" <<'PY'
+          import json,sys
+          from pathlib import Path
+          folder=Path(sys.argv[1])
+          variants=("offset","offset-hidden","partition-image")
+          results={k:json.loads((folder/(k+".result.json")).read_text()) for k in variants}
+          booted={k:x["efiExecuted"] and x["qemuExit"]==0 for k,x in results.items()}
+          print("GASLUX_POP_FAT_FORMAT_BOOT_MATRIX="+json.dumps(booted,sort_keys=True))
+          if len(set(booted.values())) == 1:
+              raise SystemExit("OBSERVATION_INCOMPLETE: format variants have identical boot result")
+          print("GASLUX_POP_FAT_FORMAT_DEPENDENCE_PROVEN=1")
+          PY
+      - name: Upload synthetic EFI-only traces, never disk images or VARS
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pop-efi-fat-format-isolation
+          path: pop-fat-efi-evidence/
+          retention-days: 7
+          if-no-files-found: warn
