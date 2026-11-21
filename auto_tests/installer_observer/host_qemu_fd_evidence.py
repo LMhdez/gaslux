@@ -95,6 +95,28 @@ def _identity(st: os.stat_result) -> tuple[int, ...]:
     return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
 
+def _process_start_ticks(pid: int) -> int:
+    """Read Linux process creation ticks; used with an independently pinned PID."""
+    raw = (Path("/proc") / str(pid) / "stat").read_text(encoding="ascii")
+    marker = raw.rfind(") ")
+    require(raw.startswith(f"{pid} (") and marker >= 0, "PROCESS_STAT_INVALID")
+    fields = raw[marker + 2 :].split()
+    require(len(fields) > 19, "PROCESS_STAT_INVALID")
+    ticks = int(fields[19])
+    require(ticks > 0, "PROCESS_STAT_INVALID")
+    return ticks
+
+
+def _remote_fd_flags(proc: Path, fd_number: int) -> int:
+    """Read actual flags of the *original remote descriptor*, not our reopen."""
+    info = (proc / "fdinfo" / str(fd_number)).read_text(encoding="ascii")
+    flags = [
+        row.partition(":")[2].strip() for row in info.splitlines() if row.startswith("flags:")
+    ]
+    require(len(flags) == 1, "REMOTE_FD_FLAGS_MISSING")
+    return int(flags[0], 8)
+
+
 @contextmanager
 def borrowed_readonly_proc_fd(
     pid: int,
@@ -104,12 +126,13 @@ def borrowed_readonly_proc_fd(
     expected_dev: int,
     expected_inode: int,
     expected_size: int,
+    expected_start_ticks: int | None = None,
 ) -> Iterator[int]:
-    """Reopen /proc/PID/fd/N read-only; pin inode and reject renamed/hardlinked media.
+    """Reopen /proc/PID/fd/N read-only; check remote PID/start/FD *before and after*.
 
-    This is a NEW read-only handle to the same inode, not a clone of the
-    original QEMU open-file description. FD numbers, paths and proc data are
-    not independent proof of a QEMU virtual-device mapping.
+    The reopened handle is a NEW local open-file description, NOT the QEMU
+    original. Two samples cannot exclude transient FD swaps or ABA; the
+    externally pinned run identity and host isolation are separate controls.
     """
     require(os.name == "posix" and Path("/proc").is_dir(), "PROCFS_UNAVAILABLE")
     require(
@@ -120,15 +143,16 @@ def borrowed_readonly_proc_fd(
     proc = Path("/proc") / str(pid)
     fd_path = proc / "fd" / str(fd_number)
     try:
+        before_ticks = _process_start_ticks(pid)
+        if expected_start_ticks is not None:
+            require(
+                type(expected_start_ticks) is int and expected_start_ticks == before_ticks,
+                "PROCESS_START_TICKS_MISMATCH",
+            )
         before = path.lstat()
         remote_before = fd_path.stat()
         actual_link = os.readlink(fd_path)
-        info = (proc / "fdinfo" / str(fd_number)).read_text(encoding="ascii")
-        flags = [
-            row.partition(":")[2].strip() for row in info.splitlines() if row.startswith("flags:")
-        ]
-        require(len(flags) == 1, "FD_FLAGS_UNAVAILABLE")
-        qemu_flags = int(flags[0], 8)
+        qemu_flags = _remote_fd_flags(proc, fd_number)
         require((qemu_flags & os.O_ACCMODE) == os.O_RDONLY, "QEMU_FD_NOT_READONLY")
         require(
             stat.S_ISREG(before.st_mode)
@@ -154,9 +178,23 @@ def borrowed_readonly_proc_fd(
             )
             yield opened
             require(
-                _identity(os.fstat(opened))
+                _process_start_ticks(pid) == before_ticks,
+                "PROCESS_START_TICKS_CHANGED_DURING_CAPTURE",
+            )
+            # The originally numbered process FD can be dup2() replaced with
+            # O_RDWR on the SAME inode while this reopened local FD stays
+            # read-only. Re-read remote fdinfo and reject that substitution.
+            final_flags = _remote_fd_flags(proc, fd_number)
+            require(
+                (final_flags & os.O_ACCMODE) == os.O_RDONLY,
+                "REMOTE_FD_NOT_READONLY_AT_COMPLETION",
+            )
+            require(
+                os.readlink(fd_path) == actual_link
+                and _identity(os.fstat(opened))
                 == _identity(path.lstat())
                 == _identity(fd_path.stat())
+                == _identity(remote_before)
                 == _identity(before),
                 "PROC_FD_CHANGED_DURING_CAPTURE",
             )
@@ -195,6 +233,7 @@ def observe_descriptor(pins: HostPins) -> dict[str, Any]:
         expected_dev=pins.expected_dev,
         expected_inode=pins.expected_inode,
         expected_size=pins.expected_size,
+        expected_start_ticks=pins.process.start_ticks,
     ) as fd:
         st = os.fstat(fd)
         first = os.pread(fd, min(512, st.st_size), 0)
@@ -254,6 +293,7 @@ def measure_gpt_from_proc_fd(pins: HostPins, gate: Any) -> dict[str, Any]:
         expected_dev=pins.expected_dev,
         expected_inode=pins.expected_inode,
         expected_size=pins.expected_size,
+        expected_start_ticks=pins.process.start_ticks,
     ) as fd:
         try:
             return _raw_gpt_regions(fd, gate, pins.logical_sector_size, pins.expected_size)
@@ -306,16 +346,18 @@ def correlate_qmp_fd(
     pins: HostPins,
     descriptor: dict[str, Any],
     blocks: Any,
-    *,
-    provenance: str = "CLAIMED",
 ) -> dict[str, Any]:
-    """Local device-name/QMP-file/FD match; not VM UUID or serial attestation."""
+    """Compare caller-provided QMP *claims*; never certify their provenance.
+
+    Only observe_host_qemu's peer-checked socket acquisition may classify
+    the act of receiving a QMP reply as LOCALLY_MEASURED. Values inside
+    that reply remain QEMU claims, not verified FD/VM identity.
+    """
     require(type(blocks) is list, "QMP_MISSING")
     matches = [b for b in blocks if type(b) is dict and b.get("device") == pins.device_name]
     require(len(matches) == 1, "QMP_DEVICE_MISSING_OR_AMBIGUOUS")
     inserted = matches[0].get("inserted")
     require(type(inserted) is dict, "QMP_INSERTED_MISSING")
-    require(provenance in ("CLAIMED", "LOCALLY_MEASURED"), "INVALID_QMP_PROVENANCE")
     if "vmUuid" in matches[0]:
         require(matches[0]["vmUuid"] == pins.vm_uuid, "QMP_VM_UUID_MISMATCH")
     if "serial" in inserted:
@@ -334,8 +376,9 @@ def correlate_qmp_fd(
     # A name and image pathname reported by QMP are insufficient to prove
     # serial/UUID or the QEMU backend maps that specific FD. No promotion.
     return {
-        "qmpDeviceName": {"value": matches[0]["device"], "assurance": provenance},
-        "localQmpFdConsistency": True,
+        "qmpDeviceName": {"value": matches[0]["device"], "assurance": "CLAIMED"},
+        "claimedQmpFdConsistency": True,
+        "localQmpFdConsistency": False,
         "deviceFdAssociationProven": False,
         "vmDiskBindingProven": False,
         "reason": "QMP_BACKEND_TO_FD_NOT_INDEPENDENTLY_BOUND",
@@ -376,7 +419,9 @@ def observe_host_qemu(
         blocks = None
         qmp_provenance = "CLAIMED"
     try:
-        mapping = correlate_qmp_fd(pins, measured_fd, blocks, provenance=qmp_provenance)
+        mapping = correlate_qmp_fd(pins, measured_fd, blocks)
+        if qmp_provenance == "LOCALLY_MEASURED":
+            mapping["localQmpFdConsistency"] = mapping["claimedQmpFdConsistency"]
     except (HostEvidenceRefused, KeyError, TypeError):
         mapping = {
             "localQmpFdConsistency": False,
@@ -406,7 +451,12 @@ def observe_host_qemu(
         "gptFd": gpt,
         "declared": declared_context(pins),
         "qmp": mapping,
-        "qmpOrigin": qmp_provenance,
+        "qmpOrigin": "CLAIMED",
+        "qmpReplyAcquisition": {
+            "assurance": qmp_provenance,
+            "transportVerified": qmp_socket is not None,
+            "payloadDeviceClaimsAuthenticated": False,
+        },
         "associationDecision": "DENY_UNVERIFIED_VM_FD_BINDING",
         "originAuthenticated": False,
         "freshnessAuthenticated": False,
@@ -432,11 +482,12 @@ def observe_pinned_qcow2_chain(
     workspace: Path,
     safety_lab: Any,
 ) -> dict[str, Any]:
-    """Delegate QCOW2/raw backing identity to pinned #267 read-only verifier.
+    """Measure only QCOW2 magic locally, NEVER trust a caller-injected verifier.
 
-    #267 uses qemu-img info and whole-file hashes, but neither this probe nor
-    its output proves that the VM uses a particular device/FD. A QCOW2 overlay
-    cannot be fed to the raw GPT parser; raw backing GPT may differ.
+    The supplied safety_lab object is deliberately NOT invoked. Until a
+    protected controller loads and pins the genuine #267 implementation,
+    the backing chain, effective overlay bytes and guest GPT remain unproven.
+    In particular, arbitrary verify_chain() methods cannot self-certify.
     """
     require(
         pins.media_path == workspace / "overlay.qcow2"
@@ -456,27 +507,26 @@ def observe_pinned_qcow2_chain(
         expected_dev=pins.expected_dev,
         expected_inode=pins.expected_inode,
         expected_size=pins.expected_size,
+        expected_start_ticks=pins.process.start_ticks,
     ) as fd:
         before = _identity(os.fstat(fd))
-        require(os.pread(fd, 4, 0) == bytes.fromhex("514649fb"), "QCOW2_HEADER_INVALID")
-        try:
-            chain = safety_lab.verify_chain(pins.media_path, backing, workspace)
-        except (ValueError, OSError, RuntimeError) as exc:
-            raise HostEvidenceRefused("QCOW2_BACKING_VERIFICATION_FAILED") from exc
-        require(
-            chain.get("format") == "qcow2"
-            and chain.get("backingFormat") == "raw"
-            and chain.get("backingFilename") == str(backing)
-            and chain.get("virtualSizeBytes") == 64 * 1024 * 1024,
-            "QCOW2_BACKING_GEOMETRY_MISMATCH",
-        )
+        magic = os.pread(fd, 4, 0)
+        require(magic == bytes.fromhex("514649fb"), "QCOW2_HEADER_INVALID")
         require(_identity(os.fstat(fd)) == before, "QCOW2_FD_CHANGED")
-        # Only valid when safety_lab actually is pinned #267 in reviewed CI.
         return {
-            "chain": chain,
-            "assurance": "LOCALLY_MEASURED",
+            "qcow2HeaderMagic": {
+                "valueHex": magic.hex(),
+                "assurance": "LOCALLY_MEASURED",
+                "scope": "FOUR_MAGIC_BYTES_ONLY",
+            },
+            "chain": None,
+            "assurance": "CLAIMED",
+            "backingChainVerified": False,
+            "verifierAuthenticated": False,
+            "overlayEffectiveContentVerified": False,
             "diskReadFromOverlayAsRaw": False,
             "guestEffectiveGptProven": False,
             "vmDiskBindingProven": False,
             "originAuthenticated": False,
+            "reason": "QCOW2_VERIFIER_ORIGIN_NOT_PROVEN",
         }

@@ -20,9 +20,12 @@ References pinned on 2026-11-21:
   GPT FD parser and CRC/geometry authority. Its inspect_gpt_fd,
   read_header and exact_read are used directly. No duplicate GPT parser.
 - Safety no-writer [PR #267](https://github.com/LMhdez/gaslux/pull/267),
-  HEAD 0be04192acd542646a5b6cd952e01620379edf5d; optional
-  verify_chain from its existing QEMU lab validates QCOW2/backing at a
-  caller-owned private workspace. No new cryptographic verifier.
+  HEAD 0be04192acd542646a5b6cd952e01620379edf5d.
+  Its verify_chain remains available as a separately pinned Safety contract,
+  but **not accepted from an arbitrary object supplied to this Observer**.
+  Until protected module provenance is independently bound, this producer
+  refuses to classify a QCOW2 backing chain as locally verified.
+  No new cryptographic verifier.
 - Crosscheck [PR #290](https://github.com/LMhdez/gaslux/pull/290),
   HEAD 0cfdeab547643ed9f57e51a3b77e38251b6b896b, independent
   Safety audit [#7065611081](https://github.com/LMhdez/gaslux/pull/290#issuecomment-7065611081)
@@ -42,11 +45,14 @@ Use module auto_tests/installer_observer/host_qemu_fd_evidence.py.
    disk geometry. **Caller declarations are not authenticated** by
    constructing a dataclass.
 2. borrowed_readonly_proc_fd: observes /proc/PID/fd/N and fdinfo read-only,
-   checks the descriptor's original flags, regular-file kind, owner,
-   link count, path, device/inode/size/mtime/ctime; reopens the procfd only
-   O_RDONLY and rechecks the pinned identity across the capture. The reopened
-   handle is a new local file description, **not** a duplicated QEMU handle.
-   No block device, symlinked media or hardlinked media is accepted.
+   checks the remote PID/start ticks, descriptor flags, regular-file kind,
+   owner, link count, path, dev/inode/size/mtime/ctime; reopens procfd only
+   O_RDONLY and **re-reads the original remote fdinfo flags and process
+   start ticks after the observation**. O_RDWR replacement with dup2 even
+   on the same inode is refused in a genuine Linux subprocess test.
+   The reopened handle is a *different* local open-file description, **not**
+   QEMU's FD; this is a two-sample detection, not continuous FD immutability
+   or an ABA-proof fence. No block, symlink or hardlinked media is accepted.
 3. observe_descriptor: returns first-sector SHA-256 plus actual FD identity
    and means of observation as LOCALLY_MEASURED. This does **not** prove
    that the process is QEMU or a disk is linked to any VM.
@@ -62,18 +68,26 @@ Use module auto_tests/installer_observer/host_qemu_fd_evidence.py.
    and a private Unix socket. The module does **not** spawn QEMU. A QMP
    query is *not* a guest command. The requesting controller must separately
    be authorized to observe the existing VM.
-6. correlate_qmp_fd: cross-check QMP inserted block path/format/read-only
-   and declared device against measured FD device/inode/size. It refuses
-   missing, ambiguous, swapped device/file, inconsistent declared VM UUID
-   or serial. **QMP query-block alone does not cryptographically bind its
-   virtual device to the exact kernel FD or independently attest VM UUID /
-   serial**, even if the claims are identical. Thus it NEVER sets
-   deviceFdAssociationProven or vmDiskBindingProven to true.
-7. observe_pinned_qcow2_chain: optional, same-runner read-only QCOW2 header
-   plus pinned #267 verify_chain, with explicit workspace/backing. It
-   validates QCOW2/path/inode/hash/geometry locally but **does not** prove
-   the overlay's effective GPT from the backing RAW image. It is NOT called
-   automatically by RAW GPT capture.
+6. correlate_qmp_fd: accepts **only untrusted caller-supplied block claims**;
+   it has NO caller-selectable provenance or assurance parameter. All
+   device/path/serial/VM UUID values remain `CLAIMED` even when structurally
+   consistent. Direct calls may report `claimedQmpFdConsistency=true`
+   but always `localQmpFdConsistency=false`; missing, duplicate, swapped
+   device/path and serial/VM UUID mismatches are refused.
+   Inside observe_host_qemu ONLY, a response actually acquired through
+   #259's peer-credential-verified Unix QMP socket can label the *transport*
+   `LOCALLY_MEASURED` (`qmpReplyAcquisition`) and set locally observed
+   consistency; the QEMU-supplied device values **remain CLAIMED**.
+   Neither case binds a QEMU backend to the FD or proves VM ownership.
+7. observe_pinned_qcow2_chain: optional read-only **four-byte QCOW2 magic
+   probe**, on a pinned host FD with exact workspace/backing ownership checks.
+   It deliberately does **not call** a supplied safety_lab.verify_chain:
+   no arbitrary verifier can self-certify. Only `qcow2HeaderMagic` is
+   `LOCALLY_MEASURED`; backing-chain provenance remains `CLAIMED`,
+   `backingChainVerified=false`, `overlayEffectiveContentVerified=false`
+   and `guestEffectiveGptProven=false`. The real pinned #267 check must
+   be integrated later by an independently protected controller. GPT from
+   RAW backing cannot stand in for the effective guest-visible QCOW2 GPT.
 8. observe_host_qemu: available ONLY to a separately authorized observer of
    a pre-existing process. It repeats #259 process_seal, checks exact
    process identity and #272 executable hash, measures real FD/GPT and
@@ -95,8 +109,10 @@ data into correlate_qmp_fd; this is never a measurement.
 | Executable inode and full SHA-256 | #259 process_seal and #272 executable reader | LOCALLY_MEASURED, when process available; only same-host identity |
 | FD number + dev/inode/size/timestamps | procfs FD and pinned local reopen | LOCALLY_MEASURED, not a VM device proof |
 | GPT headers/arrays, CRC, GUID/PARTUUID, geometry | #286 inspect_gpt_fd/read_header/exact_read on pinned **RAW FD** | LOCALLY_MEASURED, whole partition content NOT hashed |
-| Backing chain and QCOW2 metadata | #267 verify_chain when invoked in controlled private workspace | LOCALLY_MEASURED, same-host; no immutable external checkpoint |
-| Virtual device label from genuine query-block | #259 QMP socket peer credential + query-block | LOCALLY_MEASURED, still no independently authenticated disk-to-FD binding |
+| QCOW2 four-byte magic header | Read-only /proc FD reopen | LOCALLY_MEASURED (magic only), **not** backing or effective overlay |
+| Backing chain and QCOW2 metadata | #267 not securely bound inside this producer | NOT VERIFIED, no positive assurance |
+| QMP reply transport | #259 private socket + peer PID/UID | LOCALLY_MEASURED only if actually queried, not attestation |
+| Virtual device/serial from query-block | Values claimed by the QEMU process | CLAIMED, even after peer-checked local acquisition |
 | Serial/VM UUID/transaction/challenge | external HostPins or QMP claims | CLAIMED; comparison != attestation |
 | QMP test-injected device/path | controlled JSON fixture | CLAIMED only, NEVER measured |
 | Controller authority, issuance and consumption | None in module | NOT PROVED; no EXTERNALLY_ATTESTED |
@@ -160,3 +176,37 @@ backing+overlay binding backed by a protected run contract. Re-audit scope,
 permissions and actual resource use. #275 remains fail-closed.
 Do not merge, declare stable, launch QEMU or touch Windows storage on the
 basis of this diagnostic evidence.
+
+
+## Safety hardening F-01/F-02/F-03, 21 November 2026
+
+Independent Safety finding:
+[review #7067457513](https://github.com/LMhdez/gaslux/pull/292#issuecomment-7067457513)
+rated #292 PARTIAL and identified false local assurance on caller claims and
+a remote FD replacement missed by the original exit check.
+
+**RED before correction:** [Action #44942887250](https://github.com/LMhdez/gaslux/actions/runs/44942887250)
+on commit \`0a075387fd3953442effb8dc0574af5ee8dfa58f\` executed actual
+\`auto_tests/installer_observer/host_qemu_fd_evidence.py\` with Git blob
+\`570b5cf114da7c07234ba524c7c01e1536342770\` **identical to #292**.
+All three new tests failed for the precise security reasons:
+F-01 fabricated dict labelled \`LOCALLY_MEASURED\`, F-02 forged verifier
+labelled \`LOCALLY_MEASURED\`, F-03 real subprocess dup2(O_RDWR) of same
+inode accepted. Prior 25+22+31 tests had passed in that RED run.
+**This is a deliberate failing regression run, not a successful security CI.**
+
+**Corrections:** remove caller-selectable QMP provenance and distinguish
+structural claim comparison from locally acquired QMP transport; refuse
+arbitrary QCOW2 verifier results (record local four-byte header magic ONLY);
+re-observe original remote FD flags/existence/inode/path and pinned process
+start ticks at scope exit as well as entry. Additional real Linux subprocess
+cases close the original FD, reuse its number on another inode or terminate
+the process; all must refuse. A remote O_RDWR FD swapped back to O_RDONLY
+between both checks (ABA) remains unprovable without external isolation
+and continuous kernel/virtualization observability. A local signature, SHA,
+mtime, QMP peercred and two snapshots do not establish immutable checkpoints,
+authenticated freshness or authority to run QEMU.
+
+**GREEN-after proof:** exact corrected HEAD and Actions are recorded in the
+new corrective Draft PR and must be checked on GitHub. No QEMU, guest inputs,
+installer writes or merge are permitted by these source-level changes.

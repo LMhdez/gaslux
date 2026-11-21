@@ -117,6 +117,9 @@ def test_f02_forged_qcow2_verifier_cannot_self_certify_local_chain(tmp_path):
         assert report.get("assurance") != "LOCALLY_MEASURED"
         assert report.get("backingChainVerified") is not True
         assert report.get("guestEffectiveGptProven") is False
+        assert report.get("qcow2HeaderMagic", {}).get("assurance") == "LOCALLY_MEASURED"
+        assert report.get("backingChainVerified") is False
+    assert fake.called is False
 
 
 CHILD = """
@@ -194,3 +197,97 @@ def test_f03_remote_original_fd_reopened_readwrite_same_inode_refused(disposable
         ) as observed:
             assert os.fstat(observed).st_ino == pins.expected_inode
             _command(child, "rw")
+
+
+@pytest.mark.parametrize("operation", ["close", "other", "exit"])
+def test_f03_remote_fd_closed_reused_or_process_gone(disposable_child, operation):
+    """Real child changes the original remote FD while local reopen stays pinned."""
+    child, pins = disposable_child
+    with pytest.raises(HostEvidenceRefused):
+        with borrowed_readonly_proc_fd(
+            pins.process.pid,
+            pins.fd_number,
+            pins.media_path,
+            expected_dev=pins.expected_dev,
+            expected_inode=pins.expected_inode,
+            expected_size=pins.expected_size,
+            expected_start_ticks=pins.process.start_ticks,
+        ) as opened:
+            assert os.fstat(opened).st_ino == pins.expected_inode
+            _command(child, operation)
+            if operation == "exit":
+                child.wait(timeout=3)
+
+
+def test_f03_externally_wrong_start_ticks_refused(disposable_child):
+    child, pins = disposable_child
+    with pytest.raises(HostEvidenceRefused, match="PROCESS_START_TICKS_MISMATCH"):
+        with borrowed_readonly_proc_fd(
+            child.pid,
+            pins.fd_number,
+            pins.media_path,
+            expected_dev=pins.expected_dev,
+            expected_inode=pins.expected_inode,
+            expected_size=pins.expected_size,
+            expected_start_ticks=pins.process.start_ticks + 1,
+        ):
+            pass
+
+
+@pytest.mark.parametrize("mutation", ["wrong-device", "wrong-serial", "duplicate"])
+def test_f01_forged_qmp_mismatch_or_duplicate_denied(tmp_path, mutation):
+    image = tmp_path / "test.raw"
+    image.write_bytes(bytes(1024 * 1024))
+    with image.open("rb") as opened:
+        pins = _pins(image, opened.fileno(), os.getpid())
+        descriptor = {
+            "fileDev": pins.expected_dev,
+            "fileInode": pins.expected_inode,
+            "fileSizeBytes": pins.expected_size,
+        }
+        block = {
+            "device": pins.device_name,
+            "inserted": {
+                "file": str(image),
+                "ro": True,
+                "image": {"filename": str(image), "format": "raw"},
+            },
+        }
+        if mutation == "wrong-device":
+            block["device"] = "other-device"
+        elif mutation == "wrong-serial":
+            block["inserted"]["serial"] = "different-serial"
+        else:
+            with pytest.raises(HostEvidenceRefused):
+                correlate_qmp_fd(pins, descriptor, [block, block])
+            return
+        with pytest.raises(HostEvidenceRefused):
+            correlate_qmp_fd(pins, descriptor, [block])
+
+
+def test_f01_matching_claims_remain_claims(tmp_path):
+    image = tmp_path / "test.raw"
+    image.write_bytes(bytes(1024 * 1024))
+    with image.open("rb") as opened:
+        pins = _pins(image, opened.fileno(), os.getpid())
+        descriptor = {
+            "fileDev": pins.expected_dev,
+            "fileInode": pins.expected_inode,
+            "fileSizeBytes": pins.expected_size,
+        }
+        blocks = [
+            {
+                "device": pins.device_name,
+                "inserted": {
+                    "file": str(image),
+                    "ro": True,
+                    "image": {"filename": str(image), "format": "raw"},
+                },
+            }
+        ]
+        report = correlate_qmp_fd(pins, descriptor, blocks)
+        assert report["qmpDeviceName"]["assurance"] == "CLAIMED"
+        assert report["claimedQmpFdConsistency"] is True
+        assert report["localQmpFdConsistency"] is False
+        assert report["deviceFdAssociationProven"] is False
+        assert report["vmDiskBindingProven"] is False
