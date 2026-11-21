@@ -135,3 +135,66 @@ third-party measurement receipts and effective session revocation.
 Safety PR #267 and Integrator PR #270 must review the evidence and
 any future versioned contract extension before integration. Neither
 branch or any writer/boot/install code is modified by this work.
+
+
+## Confirmed genuine QEMU GPT collection — 21 November 2026
+
+The one successful execution is
+[workflow #44895034912](https://github.com/LMhdez/gaslux/actions/runs/44895034912),
+at commit `690f7a2f30917b32b9a1fa1a890871d9f9f13cac`.
+The **producer contracts** and **real QEMU/libguestfs read-only** jobs both
+completed SUCCESS. The signed state was produced using a runner-generated
+ephemeral Ed25519 key with `host-observed` guest identity and
+`attestation.status=not-provided`. It is not production Guest attestation.
+
+The QEMU result explicitly recorded:
+
+```json
+{
+  "classification": "NOT_INDEPENDENT",
+  "diagnostic": "DIAGNOSTIC_ONLY",
+  "ephemeralDiskRemoved": true,
+  "guestInputCount": 0,
+  "guestRealPread": true,
+  "status": "LABORATORY_ONLY",
+  "writerCalled": false
+}
+```
+
+The local Safety v1 assessor accepted **read-only diagnostic
+consistency**, not independent origin and never writing authorization. The
+process and attached QCOW2 were inspected; the isolated backing/overlay
+hashes and identities were checked after collection; the guest process
+must have exited before the tool succeeds. This supports only the
+bounded synthetic-laboratory read evidence described above.
+
+Original per-sector byte samples, trace SHA-256s, computed GPT CRCs,
+normalized GUID/PARTUUID inventory, host/guest/immediate acquisition
+times, backing-chain metadata, signed-state consistency digest and
+manifest are in
+[artifact #14702754509](https://github.com/LMhdez/gaslux/actions/runs/44895034912/artifacts/14702754509).
+The GitHub Actions artifact ZIP SHA-256 is
+`4fd02180627944c3ffb7c56ecb95edd2108e8bdaaefaee734aedb09eaaf3b325`.
+
+The log independently reports these **file SHA-256 values**:
+
+| Evidence file | SHA-256 |
+|---|---|
+| `host-read-trace.json` | `56b368e01f4051fa1589a4fb969e557556cfbfe06b2b984c0a81013147bbd01d` |
+| `guest-read-trace.json` | `1c88b7605aa476cbff5adeb34fc6db77912b48926b6084de617bac6edbd33561` |
+| `immediate-read-trace.json` | `5469f5df3c6baea53de44d99d6b20600665045c86c415e9adcfac43d3202ab9a` |
+| `safety-gpt-provenance-v1.json` | `5b3c0361ab1b1ea8b7562b42abe4153f3ada2cfe293d5b917ecda2934afd6eb0` |
+| `manifest.json` | `f8a0a9374f02a19445c0fe697a735f639bddd46acc8e20993fdd09447a95e036` |
+
+A previous run
+[#44894833833](https://github.com/LMhdez/gaslux/actions/runs/44894833833)
+failed **before QEMU boot** because the venv lacked `Pillow`, which is an
+existing transitive Observer dependency. The next commit added Pillow and
+a preboot import test; the successful experiment was then conducted once.
+The failed run's 162-byte artifact is **not measurement evidence**.
+
+**Acceptance level: RESULT A — synthetic QEMU laboratory only, NOT_INDEPENDENT.**
+No Windows, installation, dual boot, recovery, genuine guest hardware identity
+or safe production write was proved. Even a successful signed state constructed
+by this runner cannot establish the origin of the actual VM or the
+administrative independence of any collector.
