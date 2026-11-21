@@ -141,22 +141,29 @@ def _read_only_appliance(qcow: Path, scratch: Path, sector: int) -> dict:
     guest_image = scratch / "guest-gpt-only.raw"
     require(not guest_image.exists(), "guest metadata destination reused")
     g = guestfs.GuestFS(python_return_dict=True)
+    # Match the verified Safety #267 alphabetic drive label, never /dev/sdX order.
+    label = "gaslux" + "".join(secrets.choice("abcdef") for _ in range(12))
     try:
-        g.add_drive_opts(str(qcow), format="qcow2", readonly=1)
+        g.set_backend("direct")
+        g.add_drive_opts(str(qcow), format="qcow2", readonly=1, label=label)
         g.launch()
         devices = g.list_devices()
         require(len(devices) == 1, "guestfs did not attach exactly one read-only disk")
-        device = devices[0]  # diagnostic only; sole attached drive is source identity
-        size = g.blockdev_getsize64(device)
-        logical = g.blockdev_getss(device)
+        named = "/dev/disk/guestfs/" + label
+        require(
+            g.blockdev_getsize64(devices[0]) == SIZE,
+            "unexpected diagnostic guest device geometry",
+        )
+        size = g.blockdev_getsize64(named)
+        logical = g.blockdev_getss(named)
         require(size == SIZE and logical == sector, "guest geometry mismatch")
         with guest_image.open("xb") as dest:
             dest.truncate(size)
             dest.seek(0)
-            first = g.pread_device(device, EDGE, 0)
+            first = g.pread_device(named, EDGE, 0)
             dest.write(first)
             dest.seek(size - EDGE)
-            last = g.pread_device(device, EDGE, size - EDGE)
+            last = g.pread_device(named, EDGE, size - EDGE)
             dest.write(last)
             require(len(first) == EDGE and len(last) == EDGE, "incomplete guest GPT")
         observed = inspect_gpt_image(guest_image, logical_sector_size=sector)
