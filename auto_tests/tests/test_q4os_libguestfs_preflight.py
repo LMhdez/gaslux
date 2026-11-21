@@ -179,7 +179,10 @@ def test_mock_observer_reconciles_gpt_but_not_trust_boundary(tmp_path, monkeypat
         ({"drives": 2}, "GUESTFS_MULTIPLE_OR_MISSING_DISKS"),
         ({"sector": 4096}, "GUESTFS_GEOMETRY_OR_LABEL_MISMATCH"),
         ({"missing_tail": True}, "GUESTFS_GPT_WITNESS_INCOMPLETE"),
-        ({"launch_error": "supermin exited with error status 1"}, "GUESTFS_LAUNCH_RuntimeError_SUPERMIN_EXIT"),
+        (
+            {"launch_error": "supermin exited with error status 1"},
+            "GUESTFS_LAUNCH_RuntimeError_SUPERMIN_EXIT",
+        ),
         ({"shutdown_error": "shutdown failure"}, "GUESTFS_SHUTDOWN_FAILED"),
     ],
 )
