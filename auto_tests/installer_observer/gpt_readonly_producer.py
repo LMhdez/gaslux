@@ -133,8 +133,8 @@ def capture_gpt(
             )
             require(
                 os.pread(fd, len(proof.first), 0) == proof.first
-                and os.pread(fd, len(proof.last),
-                             first_stat.st_size - len(proof.last)) == proof.last,
+                and os.pread(fd, len(proof.last), first_stat.st_size - len(proof.last))
+                == proof.last,
                 "GUEST_SLICE_BYTES_MISMATCH",
             )
         # Existing Safety implementation validates protective MBR, both GPT
@@ -217,12 +217,8 @@ def capture_gpt(
             "readOnly": True,
             "labOnly": True,
             "guestSampleDerivedFromLibguestfs": source == "guest",
-            "guestDeviceLabel": (
-                guest_sample_origin.device_label if source == "guest" else None
-            ),
-            "guestProcessPid": (
-                guest_sample_origin.qemu_pid if source == "guest" else None
-            ),
+            "guestDeviceLabel": (guest_sample_origin.device_label if source == "guest" else None),
+            "guestProcessPid": (guest_sample_origin.qemu_pid if source == "guest" else None),
             "guestProcessStartTicks": (
                 guest_sample_origin.qemu_start_ticks if source == "guest" else None
             ),
