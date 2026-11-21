@@ -79,7 +79,7 @@ jobs:
           for event in virtio_blk_handle_read virtio_blk_handle_write; do
             qemu-system-x86_64 -trace help | grep -Fxq "$event"
           done
-          for variant in offset offset-hidden partition-image; do
+          for variant in offset offset-hidden offset-cluster8 partition-image; do
             disk="$work/$variant.raw"
             python3 - "$disk" <<'PY'
           import os,sys
@@ -110,6 +110,8 @@ jobs:
               mkfs.fat -F 32 -n GXPROBE --offset=2048 "$disk" 1048576 >/dev/null
             elif test "$variant" = offset-hidden; then
               mkfs.fat -F 32 -n GXPROBE -h 2048 --offset=2048 "$disk" 1048576 >/dev/null
+            elif test "$variant" = offset-cluster8; then
+              mkfs.fat -F 32 -n GXPROBE -s 8 --offset=2048 "$disk" 1048576 >/dev/null
             else
               test ! -e "$work/esp.img"
               truncate -s 1G "$work/esp.img"
@@ -146,8 +148,13 @@ jobs:
              "rootDataStartLba":2048+u16(14)+b[16]*u32(36),
              "gptUnchanged":True,"espBootSectorSha256":hashlib.sha256(b).hexdigest(),
              "windowsAttached":False,"productionAuthorized":False}
-          assert r["bytesPerSector"]==512 and r["totalSectors"]==2097152
+          assert r["bytesPerSector"]==512 and 0<r["totalSectors"]<=2097152
+          assert r["sectorsPerCluster"] in (1,2,4,8,16,32,64,128)
+          count=(r["totalSectors"]-r["reservedSectors"]-r["fatCount"]*r["fatSectors"])//r["sectorsPerCluster"]
+          r["fat32ClusterCount"]=count
+          r["fat32MinimumClusterCountCompliant"]=65525<=count<=268435445
           with open(out,"w") as f:json.dump(r,f,indent=2)
+          print("GASLUX_POP_FAT_BPB="+json.dumps(r,sort_keys=True))
           PY
             sgdisk --verify "$disk" >/dev/null
             cp -- "$vars" "$work/$variant.vars.fd"
@@ -192,7 +199,7 @@ jobs:
           import json,sys
           from pathlib import Path
           folder=Path(sys.argv[1])
-          variants=("offset","offset-hidden","partition-image")
+          variants=("offset","offset-hidden","offset-cluster8","partition-image")
           results={k:json.loads((folder/(k+".result.json")).read_text()) for k in variants}
           booted={k:x["efiExecuted"] and x["qemuExit"]==0 for k,x in results.items()}
           print("GASLUX_POP_FAT_FORMAT_BOOT_MATRIX="+json.dumps(booted,sort_keys=True))
