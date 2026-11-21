@@ -48,6 +48,10 @@ jobs:
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
+          ruff check --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/test_popos_six_gpt_contract.py || true
           ruff check \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
