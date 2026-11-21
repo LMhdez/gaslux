@@ -130,6 +130,7 @@ class MintAbCheckpointContracts(unittest.TestCase):
                               return_value=127 * 1024**3), \
                  patch.object(cap, "qemu_fully_allocated_bytes",
                               return_value=1024), \
+                 patch.object(ab, "assert_detached_from_processes"), \
                  patch.object(ab, "command", side_effect=responses):
                 with self.assertRaisesRegex(ab.AbCheckpointError, "not independently detected"):
                     ab.reproduce_restore(reference, arm, root)
@@ -155,6 +156,8 @@ class MintAbCheckpointContracts(unittest.TestCase):
             with patch.object(ab, "choose_injection_offset",
                               return_value=127*1024**3), \
                  patch.object(cap, "qemu_fully_allocated_bytes", return_value=1024), \
+                 patch.object(ab, "assert_detached_from_processes"), \
+                 patch.object(ab, "image_info"), \
                  patch.object(ab, "command", side_effect=fake_command), \
                  patch.object(ab, "standalone",
                               side_effect=OSError(errno.ENOSPC, "disk full")):
@@ -207,6 +210,36 @@ class MintAbCheckpointContracts(unittest.TestCase):
                 offset = ab.choose_injection_offset(path)
             self.assertGreater(offset, spans[-1][1]*512)
             self.assertLess(offset+ab.WRITE_SIZE, ab.VIRTUAL_BYTES-34*512)
+
+    def test_atomic_restore_requires_detached_QEMU_file_handles(self):
+        with patch.object(ab.shutil, "which", return_value="/usr/bin/fuser"), \
+             patch.object(ab, "command",
+                          return_value=subprocess.CompletedProcess([], 0, "", "")):
+            with self.assertRaisesRegex(ab.AbCheckpointError, "still open"):
+                ab.assert_detached_from_processes(Path("/tmp/owned-arm.qcow2"))
+
+    def test_atomic_restore_rejects_missing_fuser(self):
+        with patch.object(ab.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(ab.AbCheckpointError, "fuser is required"):
+                ab.assert_detached_from_processes(Path("/tmp/owned-arm.qcow2"))
+
+    def test_restore_rejects_underestimated_storage_bound_before_clone(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d)
+            ref = folder/"reference.qcow2"
+            arm = folder/"arm-a.qcow2"
+            ref.write_bytes(b"reference")
+            ref.chmod(0o400)
+            arm.write_bytes(b"arm")
+            arm.chmod(0o600)
+            with patch.object(ab, "standalone") as convert:
+                with self.assertRaisesRegex(ab.AbCheckpointError, "underestimated"):
+                    ab.atomic_restore_owned_arm(
+                        ref, arm, folder,
+                        expected_virtual_bytes=64*1024**2,
+                        fully_allocated_bound=1,
+                    )
+                convert.assert_not_called()
 
     def test_source_never_uses_production_disk_utilities_or_merge_semantics(self):
         code = (Path(__file__).parent / "tools" /
