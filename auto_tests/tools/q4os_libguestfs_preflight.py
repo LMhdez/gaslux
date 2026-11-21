@@ -179,7 +179,7 @@ def observe_appliance(source: Path, folder: Path) -> dict:
         if launched:
             try:
                 appliance.shutdown()
-            except Exception as exc:
+            except Exception:
                 failure = failure or ApplianceDenied("GUESTFS_SHUTDOWN_FAILED")
         try:
             appliance.close()
@@ -274,10 +274,7 @@ def main() -> int:
         # Diagnostic never reveals paths or raw exception text; the kernel
         # version is public package metadata, not a runner-specific path.
         text = str(exc)
-        if isinstance(exc, ApplianceDenied):
-            reason = text
-        else:
-            reason = classify_diagnostic(text)
+        reason = text if isinstance(exc, ApplianceDenied) else classify_diagnostic(text)
         report = {
             "schemaVersion": 1,
             "decision": "BLOCKED_GUESTFS_APPLIANCE",
