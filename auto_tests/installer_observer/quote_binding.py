@@ -31,7 +31,9 @@ from .guest_attestation import (
 )
 from .remote_verifier import RemoteResponseVerifier, VerificationRefused
 
-_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas/observer-tpm-quote-binding-v2.schema.json"
+_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[2] / "schemas/observer-tpm-quote-binding-v2.schema.json"
+)
 _BINDING_SCHEMA = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
 Draft202012Validator.check_schema(_BINDING_SCHEMA)
 _BINDING_VALIDATOR = Draft202012Validator(_BINDING_SCHEMA, format_checker=FormatChecker())
@@ -80,7 +82,10 @@ def propose_quote_binding(
     independent attestation. Use verify_quote_binding for cryptographic checks.
     """
     require(isinstance(request, Mapping) and isinstance(response, Mapping), "BINDING_INVALID")
-    require(isinstance(evidence, QuoteEvidence) and isinstance(context, QuoteContext), "BINDING_INVALID")
+    require(
+        isinstance(evidence, QuoteEvidence) and isinstance(context, QuoteContext),
+        "BINDING_INVALID",
+    )
     require(evidence.context == context, "BINDING_CONTEXT_MISMATCH")
     try:
         guest = response["guest"]
@@ -89,11 +94,20 @@ def propose_quote_binding(
         session = response["session_id"]
         op = request["operation"]
         require(op in ("state.read", "frame.read"), "BINDING_OPERATION_UNSUPPORTED")
-        require(response["operation"] == op and response["status"] == "ok", "BINDING_RESPONSE_INVALID")
+        require(
+            response["operation"] == op and response["status"] == "ok",
+            "BINDING_RESPONSE_INVALID",
+        )
         require(request["session_id"] == session, "BINDING_SESSION_MISMATCH")
         require(context.session_id == session, "BINDING_SESSION_MISMATCH")
-        require(context.transaction_id == request["transaction_id"] == response["transaction_id"], "BINDING_TRANSACTION_MISMATCH")
-        require(context.request_id == request["request_id"] == response["request_id"], "BINDING_REQUEST_MISMATCH")
+        require(
+            context.transaction_id == request["transaction_id"] == response["transaction_id"],
+            "BINDING_TRANSACTION_MISMATCH",
+        )
+        require(
+            context.request_id == request["request_id"] == response["request_id"],
+            "BINDING_REQUEST_MISMATCH",
+        )
         nonce = base64.urlsafe_b64encode(context.nonce).decode("ascii").rstrip("=")
         require(nonce == request["nonce"] == response["nonce"], "BINDING_NONCE_MISMATCH")
         require(context.vm_uuid == guest["vm_uuid"], "BINDING_VM_MISMATCH")
@@ -163,7 +177,10 @@ def verify_quote_binding(
     two replay ledgers commit independently; a partial failure is terminal.
     """
     require(isinstance(proposal, Mapping), "BINDING_INVALID")
-    require(isinstance(quote_verifier.replay_guard, DurableQuoteReplayGuard), "BINDING_DURABLE_REPLAY_REQUIRED")
+    require(
+        isinstance(quote_verifier.replay_guard, DurableQuoteReplayGuard),
+        "BINDING_DURABLE_REPLAY_REQUIRED",
+    )
     policy = quote_verifier.policy
     require(policy is not None, "TRUST_STORE_MISSING")
     expected = propose_quote_binding(
