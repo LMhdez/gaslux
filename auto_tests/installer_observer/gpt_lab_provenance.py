@@ -25,7 +25,13 @@ import rfc8785
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from .gpt_readonly_producer import GptProducerRefused, build_safety_v1, capture_gpt, require
+from .gpt_readonly_producer import (
+    GptProducerRefused,
+    GuestSliceProof,
+    build_safety_v1,
+    capture_gpt,
+    require,
+)
 from .lab_identity import process_seal
 from .remote_verifier import (
     InMemoryReplayGuard,
@@ -364,7 +370,9 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
             source="guest",
             logical_sector_size=SECTOR,
             safety_disk=disk,
-            guest_sample_origin=True,
+            guest_sample_origin=GuestSliceProof(
+                first, last, label, pid, before_process.start_ticks
+            ),
         )
         immediate = capture_gpt(
             workspace / "host.raw",
