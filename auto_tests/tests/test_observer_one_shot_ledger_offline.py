@@ -158,9 +158,7 @@ class LedgerTests(unittest.TestCase):
         assert first["grantId"] != second["grantId"]
         self.ledger.request(first, now=NOW)
         self.ledger.transition(first["grantId"], "REVIEW_PENDING", now=NOW)
-        self.ledger.transition(
-            first["grantId"], "APPROVED", now=NOW, trusted=self.trusted
-        )
+        self.ledger.transition(first["grantId"], "APPROVED", now=NOW, trusted=self.trusted)
         self.assertEqual(
             self.ledger.transition(
                 first["grantId"], "CONSUMED", now=NOW, trusted=self.trusted, run=self.run
