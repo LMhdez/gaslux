@@ -17,7 +17,6 @@ import subprocess
 
 from windows_mint_ab_capacity import (
     CapacityError,
-    evidence as write_capacity_evidence,
     measure_capacity,
     qemu_fully_allocated_bytes,
 )
@@ -133,12 +132,41 @@ def kvm_accessible() -> bool:
         return False
 
 
+def _capacity_is_proven(capacity: dict | None) -> bool:
+    from windows_mint_ab_capacity import EARLY_IMAGES, EARLY_RESERVE
+    from windows_cachyos_qcow2_gpt_readonly import VIRTUAL_BYTES
+    if not isinstance(capacity, dict):
+        return False
+    values = (
+        "qemuFullyAllocatedImageBytes", "minimumFreeBytesRequired",
+        "effectiveAvailableBytes", "processAvailableBytes",
+        "capacityShortfallBytes",
+    )
+    if any(type(capacity.get(key)) is not int for key in values):
+        return False
+    full = capacity["qemuFullyAllocatedImageBytes"]
+    required = EARLY_IMAGES * full + EARLY_RESERVE
+    return (
+        capacity.get("schema") == "gaslux-mint-ab-capacity-v1"
+        and capacity.get("phase") == "early"
+        and capacity.get("compressionAssumedForCapacity") is False
+        and capacity.get("worstCaseRemainingStandaloneImagesAndRestores")
+        == EARLY_IMAGES
+        and full >= VIRTUAL_BYTES
+        and capacity["minimumFreeBytesRequired"] == required
+        and capacity["effectiveAvailableBytes"] >= required
+        and capacity["processAvailableBytes"] >= required
+        and capacity["capacityShortfallBytes"] == 0
+        and capacity.get("result") == "PASS"
+    )
+
+
 def classify(*, identity: dict, capacity: dict | None,
              tools: dict[str, bool], kvm: bool, ovmf: bool,
              private_files: bool, quota_observed: bool) -> dict:
     """One bounded public report. Unknown quota is never a proof of PASS."""
     failed = []
-    if capacity is None or capacity.get("result") != "PASS":
+    if not _capacity_is_proven(capacity):
         failed.append("capacity_not_demonstrated")
     if not quota_observed:
         failed.append("effective_quota_not_demonstrated")
@@ -217,10 +245,8 @@ def main() -> None:
     require(destination.is_dir() and not destination.is_symlink()
             and destination.stat().st_uid == os.getuid(),
             "unknown qualification evidence directory")
-    # Reuse existing exclusive/fsync-capable writer, then preserve a
-    # dedicated JSON name for qualification rather than reusing capacity.
+    # Publish one exclusive, small read-only diagnostic JSON.
     # No Windows media, full disk paths, environmental secrets or GUIDs.
-    from windows_mint_ab_capacity import evidence as evidence_writer
     record = destination / REPORT_NAME
     require(not record.exists() and not record.is_symlink(), "reused report")
     # Restrict output to one owned directory; no generic configurable path.
