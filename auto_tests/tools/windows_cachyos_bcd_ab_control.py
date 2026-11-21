@@ -653,29 +653,98 @@ def run_windows_only_bcd_control(
     return report, tpm_b, trace_events_file, trace_b
 
 
+MAX_BCD_FORENSIC_SPANS = 64
+MAX_BCD_HIVE_BYTES = 2 * 1024 * 1024
+
+
+def validate_bcd_forensic(evidence: dict[str, Any]) -> None:
+    """Validate the bounded evidence produced by summarize_bcd_difference.
+
+    Full offset/span manifests are SHA-256 digests. For truncated evidence,
+    the original bytes and omitted spans are intentionally unavailable,
+    so this gate cannot independently reconstruct the complete digests.
+    """
+    require(type(evidence) is dict, "A/B BCD evidence must be a JSON object")
+    required = (
+        "prebootBcdSha256", "postbootBcdSha256",
+        "prebootBcdBytes", "postbootBcdBytes",
+        "changedByteCount", "changedRunCount", "firstChangedByteSpans",
+        "truncatedToFirst64Spans", "changedOffsetSetSha256",
+        "changedSpansSha256", "approvedMutation",
+        "productionStorageWritesAuthorized",
+    )
+    require(all(key in evidence for key in required), "A/B BCD evidence is incomplete")
+    sha_keys = (
+        "prebootBcdSha256", "postbootBcdSha256",
+        "changedOffsetSetSha256", "changedSpansSha256",
+    )
+    require(all(type(evidence[key]) is str
+                and re.fullmatch(r"[0-9a-f]{64}", evidence[key]) is not None
+                for key in sha_keys),
+            "A/B BCD evidence has invalid SHA-256 digest")
+    require(all(type(evidence[key]) is int
+                and 4096 <= evidence[key] <= MAX_BCD_HIVE_BYTES
+                for key in ("prebootBcdBytes", "postbootBcdBytes")),
+            "A/B BCD evidence has invalid hive length")
+    changed = evidence["changedByteCount"]
+    runs = evidence["changedRunCount"]
+    spans = evidence["firstChangedByteSpans"]
+    truncated = evidence["truncatedToFirst64Spans"]
+    require(type(changed) is int and 0 <= changed
+            <= max(evidence["prebootBcdBytes"], evidence["postbootBcdBytes"])
+            and type(runs) is int and 0 <= runs <= changed
+            and type(spans) is list and len(spans) <= MAX_BCD_FORENSIC_SPANS
+            and len(spans) == min(runs, MAX_BCD_FORENSIC_SPANS)
+            and type(truncated) is bool
+            and truncated is (runs > MAX_BCD_FORENSIC_SPANS),
+            "A/B BCD evidence has inconsistent span count or truncation")
+    require(evidence["approvedMutation"] is False
+            and evidence["productionStorageWritesAuthorized"] is False,
+            "A/B BCD evidence attempts to authorize a protected mutation")
+    unchanged = evidence["prebootBcdSha256"] == evidence["postbootBcdSha256"]
+    require((changed == 0) == unchanged
+            and (runs == 0) == (changed == 0)
+            and (changed > 0 or
+                 evidence["prebootBcdBytes"] == evidence["postbootBcdBytes"]),
+            "A/B BCD evidence has inconsistent mutation hashes or byte counts")
+
+    last_end = -1
+    known_changed = 0
+    span_hasher = hashlib.sha256()
+    offset_hasher = hashlib.sha256()
+    for span in spans:
+        require(type(span) is dict
+                and set(span) == {"offset", "length"}
+                and type(span["offset"]) is int and span["offset"] >= 0
+                and type(span["length"]) is int and span["length"] > 0,
+                "A/B BCD evidence contains an invalid byte span")
+        start, length = span["offset"], span["length"]
+        require(start > last_end
+                and start + length <= max(evidence["prebootBcdBytes"],
+                                          evidence["postbootBcdBytes"]),
+                "A/B BCD spans overlap, are unsorted or exceed hive bounds")
+        last_end = start + length
+        known_changed += length
+        span_hasher.update(start.to_bytes(8, "big")
+                           + length.to_bytes(8, "big"))
+        if not truncated:
+            for position in range(start, start + length):
+                offset_hasher.update(position.to_bytes(8, "big"))
+
+    require(known_changed <= changed and
+            (truncated or known_changed == changed),
+            "A/B BCD changed-byte count contradicts bounded spans")
+    if not truncated:
+        require(span_hasher.hexdigest() == evidence["changedSpansSha256"]
+                and offset_hasher.hexdigest()
+                == evidence["changedOffsetSetSha256"],
+                "A/B BCD full nontruncated manifest digests do not match")
+
+
 def compare_bcd_ab(control: dict[str, Any], treatment: dict[str, Any]) -> dict[str, Any]:
-    """Classify A/B outcomes without claiming process-level attribution."""
-    require(type(control) is dict and type(treatment) is dict,
-            "A/B BCD evidence must be JSON objects")
-    required = ("prebootBcdSha256", "postbootBcdSha256", "changedByteCount",
-                "firstChangedByteSpans")
-    require(all(key in control for key in required)
-            and all(key in treatment for key in required),
-            "A/B BCD evidence is incomplete")
-    for evidence in (control, treatment):
-        require(type(evidence["prebootBcdSha256"]) is str
-                and type(evidence["postbootBcdSha256"]) is str
-                and re.fullmatch(r"[0-9a-f]{64}", evidence["prebootBcdSha256"]) is not None
-                and re.fullmatch(r"[0-9a-f]{64}", evidence["postbootBcdSha256"]) is not None
-                and type(evidence["changedByteCount"]) is int
-                and evidence["changedByteCount"] >= 0
-                and type(evidence["firstChangedByteSpans"]) is list
-                and len(evidence["firstChangedByteSpans"]) <= 24
-                and all(type(span) is dict
-                        and type(span.get("offset")) is int and span["offset"] >= 0
-                        and type(span.get("length")) is int and span["length"] > 0
-                        for span in evidence["firstChangedByteSpans"]),
-                "A/B BCD evidence has invalid hash, byte count or spans")
+    """Classify two independently witnessed boots without authorizing any BCD write."""
+    validate_bcd_forensic(control)
+    validate_bcd_forensic(treatment)
     initial_equal = control["prebootBcdSha256"] == treatment["prebootBcdSha256"]
     control_changed = control["changedByteCount"] > 0
     treatment_changed = treatment["changedByteCount"] > 0
@@ -690,28 +759,25 @@ def compare_bcd_ab(control: dict[str, Any], treatment: dict[str, Any]) -> dict[s
             " NO_ADDITIONAL_CACHYOS_BCD_DELTA"
         )
     elif not control_changed and treatment_changed:
-        classification = "TREATMENT_ONLY_BCD_MUTATION; TREATMENT_ASSOCIATION_OR_WINDOWS_NONDETERMINISM"
+        classification = (
+            "TREATMENT_ONLY_BCD_MUTATION;"
+            " TREATMENT_ASSOCIATION_OR_WINDOWS_NONDETERMINISM"
+        )
     elif control_changed and not treatment_changed:
-        classification = "CONTROL_ONLY_BCD_MUTATION; WINDOWS_NONDETERMINISM_OR_TREATMENT_SUPPRESSION"
+        classification = (
+            "CONTROL_ONLY_BCD_MUTATION;"
+            " WINDOWS_NONDETERMINISM_OR_TREATMENT_SUPPRESSION"
+        )
     else:
         classification = (
             "POSTBOOT_BCD_STATES_DIFFER;"
             " TREATMENT_ASSOCIATION_OR_WINDOWS_NONDETERMINISM"
         )
-    control_spans = {(x["offset"], x["length"])
-                     for x in control["firstChangedByteSpans"]}
-    treatment_spans = {(x["offset"], x["length"])
-                       for x in treatment["firstChangedByteSpans"]}
-    offset_manifest_equal = (
-        control.get("changedOffsetSetSha256") == treatment.get("changedOffsetSetSha256")
-        if control.get("changedOffsetSetSha256") and treatment.get("changedOffsetSetSha256")
-        else None
-    )
-    span_manifest_equal = (
-        control.get("changedSpansSha256") == treatment.get("changedSpansSha256")
-        if control.get("changedSpansSha256") and treatment.get("changedSpansSha256")
-        else None
-    )
+
+    control_spans = [(s["offset"], s["length"])
+                     for s in control["firstChangedByteSpans"]]
+    treatment_spans = [(s["offset"], s["length"])
+                       for s in treatment["firstChangedByteSpans"]]
     return {
         "initialBcdEqual": initial_equal,
         "controlBcdChanged": control_changed,
@@ -720,8 +786,14 @@ def compare_bcd_ab(control: dict[str, Any], treatment: dict[str, Any]) -> dict[s
         "controlChangedByteCount": control["changedByteCount"],
         "treatmentChangedByteCount": treatment["changedByteCount"],
         "first64ChangedSpansEqual": control_spans == treatment_spans,
-        "changedOffsetManifestEqual": offset_manifest_equal,
-        "changedSpanManifestEqual": span_manifest_equal,
+        "changedOffsetManifestEqual": (
+            control["changedOffsetSetSha256"]
+            == treatment["changedOffsetSetSha256"]
+        ),
+        "changedSpanManifestEqual": (
+            control["changedSpansSha256"]
+            == treatment["changedSpansSha256"]
+        ),
         "classification": classification,
         "processAttributionProven": False,
         "approvedMutation": False,
