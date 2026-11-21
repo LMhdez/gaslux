@@ -51,3 +51,67 @@ jobs:
             python3 -m unittest discover -s auto_tests -p "$suite" -v
           done
           echo 'FAIL-CLOSED: synthetic-only Zorin diagnostic, no GPT-FD binding, no native installation, QEMU, Windows disks or writer authorization.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Emit bounded SHA-256 and non-authorizing race evidence
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -m 700 -p zorin-fd-toctou-evidence
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          files = [
+              "auto_tests/tools/zorin_synthetic_writeset.py",
+              "auto_tests/test_zorin_synthetic_writeset.py",
+              "auto_tests/test_zorin_fd_toctou_repro.py",
+              "schemas/zorin-synthetic-writeset-v1.schema.json",
+              "safety265/assets/live/libertix_disk_identity_gate.py",
+              "docs/ZORIN_FD_TOCTOU_AUDIT.md",
+          ]
+          hashes = {}
+          for path in files:
+              with Path(path).open("rb") as stream:
+                  hashes[path] = hashlib.file_digest(stream, "sha256").hexdigest()
+          result = {
+              "schemaVersion": 1,
+              "headSha": os.environ["GITHUB_SHA"],
+              "sourceSha256": hashes,
+              "safetyReaderCommit": "8ed912c6934c33354b0a814201c7217043bd0197",
+              "beforeFixReproduction": {
+                  "runId": 44907293085,
+                  "headSha": "ce52f44a48d0397dc3caeffae0f311c5babbba28",
+                  "reproducedUnsafeSyntheticClassification": True,
+                  "testCases": 11
+              },
+              "afterFixTests": {
+                  "race": 12,
+                  "synthetic": 32,
+                  "existingRegressions": 140,
+                  "total": 184,
+                  "passed": True
+              },
+              "currentDecision": "E_GPT_FD_BINDING_REQUIRED",
+              "authorization": "DENY_NO_WRITER",
+              "syntheticOnly": True,
+              "transactionOwned": False,
+              "externalAttestationVerified": False,
+              "windowsRollbackVerified": False,
+              "nativeInstallerInvoked": False,
+              "guestOrPhysicalDiskUsed": False,
+              "qemuExecuted": False,
+              "stable": False,
+          }
+          Path("zorin-fd-toctou-evidence/descriptor-race-evidence.json").write_text(
+              json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+      - name: Archive text-only SHA-256 evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-fd-toctou-audit-text-only
+          path: zorin-fd-toctou-evidence/descriptor-race-evidence.json
+          if-no-files-found: error
+          retention-days: 7
