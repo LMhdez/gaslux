@@ -123,17 +123,24 @@ def observe_appliance(source: Path, folder: Path) -> dict:
     import guestfs
 
     name = "gaslux" + secrets.token_hex(6)
-    appliance = guestfs.GuestFS(python_return_dict=True)
+    appliance = None
     launched = False
     failure: Exception | None = None
     report: dict = {}
+    stage = "GUESTFS_CREATE"
     try:
+        appliance = guestfs.GuestFS(python_return_dict=True)
+        stage = "GUESTFS_SET_BACKEND"
         appliance.set_backend("direct")
+        stage = "GUESTFS_ATTACH_READONLY"
         appliance.add_drive_opts(str(source), format="raw", readonly=1, label=name)
+        stage = "GUESTFS_LAUNCH"
         appliance.launch()
         launched = True
+        stage = "GUESTFS_ENUMERATE"
         devices = appliance.list_devices()
         require(len(devices) == 1, "GUESTFS_MULTIPLE_OR_MISSING_DISKS")
+        stage = "GUESTFS_GEOMETRY"
         labelled = "/dev/disk/guestfs/" + name
         require(
             appliance.blockdev_getsize64(labelled) == SIZE
@@ -141,12 +148,14 @@ def observe_appliance(source: Path, folder: Path) -> dict:
             and appliance.blockdev_getss(labelled) == SECTOR,
             "GUESTFS_GEOMETRY_OR_LABEL_MISMATCH",
         )
+        stage = "GUESTFS_READ_GPT"
         first = appliance.pread_device(labelled, SAMPLE, 0)
         last = appliance.pread_device(labelled, SAMPLE, SIZE - SAMPLE)
         require(
             len(first) == SAMPLE and len(last) == SAMPLE,
             "GUESTFS_GPT_WITNESS_INCOMPLETE",
         )
+        stage = "GUESTFS_WITNESS_CREATE"
         sparse = folder / "guest-gpt-witness.raw"
         with sparse.open("xb") as out:
             out.truncate(SIZE)
@@ -154,8 +163,11 @@ def observe_appliance(source: Path, folder: Path) -> dict:
             out.write(first)
             out.seek(SIZE - SAMPLE)
             out.write(last)
+        stage = "SAFETY_HOST_GPT"
         host = inspect_gpt_image(source, logical_sector_size=SECTOR)
+        stage = "SAFETY_GUEST_GPT"
         guest = inspect_gpt_image(sparse, logical_sector_size=SECTOR)
+        stage = "SAFETY_GPT_COMPARE"
         assert_snapshot_matches(host, guest)
         report = {
             "applianceBooted": True,
@@ -170,17 +182,23 @@ def observe_appliance(source: Path, folder: Path) -> dict:
             "virtualSizeBytes": SIZE,
         }
     except Exception as exc:
-        failure = exc
+        if isinstance(exc, ApplianceDenied):
+            failure = exc
+        else:
+            failure = ApplianceDenied(
+                stage + "_" + type(exc).__name__ + "_" + classify_diagnostic(str(exc))
+            )
     finally:
         if launched:
             try:
                 appliance.shutdown()
             except Exception:
                 failure = failure or ApplianceDenied("GUESTFS_SHUTDOWN_FAILED")
-        try:
-            appliance.close()
-        except Exception:
-            failure = failure or ApplianceDenied("GUESTFS_CLOSE_FAILED")
+        if appliance is not None:
+            try:
+                appliance.close()
+            except Exception:
+                failure = failure or ApplianceDenied("GUESTFS_CLOSE_FAILED")
     if failure is not None:
         raise failure
     report["applianceShutdownVerified"] = True
