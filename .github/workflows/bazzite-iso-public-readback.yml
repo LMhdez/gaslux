@@ -6,13 +6,9 @@ on:
     branches:
       - test/bazzite-atomic-write-set-readonly-20261120
     paths:
-      - '.github/workflows/bazzite-iso-public-readback.yml'
       - 'assets/live/bazzite_cosign_20261120.pub'
       - 'auto_tests/bazzite_iso_public_readback.py'
       - 'auto_tests/tests/test_bazzite_iso_public_readback.py'
-      - 'auto_tests/bazzite_iso45_passive_gate.py'
-      - 'auto_tests/tests/test_bazzite_iso45_passive_gate.py'
-      - 'auto_tests/bazzite_iso45_passive_boot.sh'
 
 permissions:
   contents: read

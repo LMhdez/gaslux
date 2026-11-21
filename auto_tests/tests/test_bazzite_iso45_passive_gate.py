@@ -179,3 +179,20 @@ def test_qemu_serial_file_backend_uses_qemu_chardev_syntax():
     assert "-S -no-reboot" in source
     assert "readonly=on,id=owned" in source
     assert "readonly=on,id=optical" in source
+
+def test_actual_portal_ocr_recognized_without_destination_authority():
+    ocr = (
+        "Drive! Bazzite Portal\\nSearch Apps and Actions\\n"
+        "Welcome! Install Applications Get Media Apps Manage Bazzite\\n"
+        "Read the Bazzite Docs\\n"
+    )
+    result = classify([ocr], guest_running=True)
+    assert result["result"] == "B"
+    assert result["liveEnvironmentRecognized"] is True
+    assert result["installerInterfaceIdentified"] is False
+    assert result["installationAuthorized"] is False
+
+
+def test_partial_portal_or_generic_desktop_is_not_sufficient():
+    for text in ("Bazzite Portal", "Manage Bazzite", "Install to Hard Drive", "Desktop"):
+        assert classify([text], guest_running=True)["result"] == "C"

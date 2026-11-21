@@ -169,7 +169,16 @@ def classify(ocr_records: list[str], guest_running: bool) -> dict:
             "select a destination",
         )
     )
-    live = bazzite and any(
+    portal = bazzite and all(
+        marker in combined
+        for marker in (
+            "bazzite portal",
+            "manage bazzite",
+            "read the bazzite docs",
+            "search apps and actions",
+        )
+    )
+    live = portal or (bazzite and any(
         mark in combined
         for mark in (
             "live session",
@@ -178,8 +187,8 @@ def classify(ocr_records: list[str], guest_running: bool) -> dict:
             "bazzite desktop",
             "live desktop",
         )
-    )
-    if guest_running and installer:
+    ))
+    if guest_running and installer and not portal:
         result, reason = "A", "Bazzite installer destination screen observed passively"
     elif guest_running and live:
         result, reason = "B", "Bazzite live UI observed; installer not identified"
