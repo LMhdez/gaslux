@@ -1,12 +1,7 @@
 name: Q4OS real synthetic libguestfs appliance preflight (NO WINDOWS)
 
 on:
-  pull_request:
-    paths:
-      - 'auto_tests/tools/q4os_libguestfs_preflight.py'
-      - 'auto_tests/tests/test_q4os_libguestfs_preflight.py'
-      - '.github/workflows/gaslux-q4os-libguestfs-preflight.yml'
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
