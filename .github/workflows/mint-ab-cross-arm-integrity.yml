@@ -1,0 +1,88 @@
+name: Mint A/B cross-arm integrity gates (NO GUESTS)
+
+on:
+  push:
+    branches:
+      - fix/mint-ab-cross-arm-integrity-20261121
+    paths:
+      - .github/workflows/mint-ab-cross-arm-integrity.yml
+      - auto_tests/tools/windows_mint_ab_forensic.py
+      - auto_tests/test_windows_mint_ab_forensic.py
+  workflow_dispatch:
+
+concurrency:
+  group: mint-ab-cross-arm-integrity-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  contract-gates:
+    name: F-01 F-02 fail-closed tests and synthetic QCOW2 (no Windows/Mint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate hosted-only, no real VM or physical disk
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GITHUB_REF" = refs/heads/fix/mint-ab-cross-arm-integrity-20261121
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          python3 -m compileall -q auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+      - name: Run F-01 F-02, capacity, checkpoint and Mint/Windows regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for name in \
+            test_windows_mint_ab_forensic.py \
+            test_windows_mint_ab_checkpoint.py \
+            test_windows_mint_ab_capacity.py \
+            test_windows_mint_ab_synthetic.py \
+            test_windows_mint_ab_infrastructure.py \
+            test_windows_mint_overlay_root.py \
+            test_windows_x64_two_stage_boot.py; do
+            python3 -m unittest discover -s auto_tests -p "$name" -v
+          done
+      - name: Ruff lint and format checks (changed files only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-ruff-0.15.20" --no-deps "ruff==0.15.20"
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
+          python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+          python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+      - name: Synthetic QCOW2 arm isolation (no Windows, no guest boot)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          python3 - <<'PY'
+          import pathlib, subprocess, tempfile
+          def run(args):
+              return subprocess.run(args, check=True, capture_output=True)
+          with tempfile.TemporaryDirectory(prefix="gaslux-f01-f02-test-", dir="/home/runner/work/_temp") as tmp:
+              root = pathlib.Path(tmp)
+              source, ref, a, b = (root/name for name in
+                  ("source.qcow2", "reference.qcow2", "arm-a.qcow2", "arm-b.qcow2"))
+              run(["qemu-img", "create", "-f", "qcow2", str(source), "32M"])
+              for src, dst in ((source, ref), (ref, a), (ref, b)):
+                  run(["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2", "-c", str(src), str(dst)])
+                  run(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2", str(ref if src==ref else src), str(dst)])
+              assert len({p.stat().st_ino for p in (ref,a,b)}) == 3
+              run(["qemu-io", "-f", "qcow2", "-c", "write -P 0x77 16777216 4096", str(a)])
+              mismatch = subprocess.run(["qemu-img","compare","-f","qcow2","-F","qcow2",str(ref),str(a)],capture_output=True)
+              assert mismatch.returncode == 1, "A alteration was not independently detected"
+              run(["qemu-img","compare","-f","qcow2","-F","qcow2",str(ref),str(b)])
+              run(["qemu-img","convert","-f","qcow2","-O","qcow2","-c",str(ref),str(root/"arm-a-restored.qcow2")])
+              run(["qemu-img","compare","-f","qcow2","-F","qcow2",str(ref),str(root/"arm-a-restored.qcow2")])
+          print("PASS: small isolated QCOW2 A modification, B/reference preserved, A recovered")
+          print("NO real Windows, Mint, BIOS/UEFI guest boot or production rollback")
+          PY
