@@ -5,6 +5,7 @@ Never grants a write permission. The GPT parser is imported, unchanged, from
 Safety #265. Missing that pinned external dependency is a hard failure.
 This is not an independent attestation, an installer fence, or Windows rollback.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -213,6 +214,7 @@ def tree_digest(root: Path, folder: str) -> str:
         not base.is_symlink() and base.is_dir() and base.lstat().st_uid == os.getuid(), "E_ESP_TREE"
     )
     inventory = []
+
     def descend(directory: Path, prefix: str) -> None:
         insist(len(inventory) <= 128, "E_ESP_TREE_OVERSIZE")
         for entry in sorted(os.scandir(directory), key=lambda x: x.name):
@@ -242,6 +244,7 @@ def tree_digest(root: Path, folder: str) -> str:
                 close_guard(fd, st)
             finally:
                 os.close(fd)
+
     descend(base, "")
     insist(len(inventory) <= 128, "E_ESP_TREE_OVERSIZE")
     return hashlib.sha256(
@@ -411,6 +414,7 @@ def load_policy(root: Path) -> dict:
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--private-synthetic-root", required=True, type=Path)
     args = parser.parse_args()
