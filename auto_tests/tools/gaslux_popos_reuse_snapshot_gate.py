@@ -273,9 +273,13 @@ def prepare(work, template):
     command("sgdisk", "--verify", str(base))
     before = gpt(base)
     # Explicit, bounded native formatters on a newly created regular file.
-    command("mkfs.fat", "-F", "32", "-n", "GXPOPFULL",
+    # Independent EFI-only OVMF A/B proved mkfs.fat auto-cluster sizing on a
+    # 32-GiB containing RAW creates an invalid 1-GiB FAT32 (65,502 clusters).
+    # Explicit 4-KiB clusters (-s 8) give 261,627 and a working EFI fallback.
+    command("mkfs.fat", "-F", "32", "-s", "8", "-n", "GXPOPFULL",
             "--offset="+str(ESP[0]), str(base), str(ESP[1]//2), timeout=360)
     need(gpt(base) == before, "FAT32 formatter touched GPT")
+    esp_fat32 = fat32_boot_geometry(base)
     command("mkfs.ext4", "-F", "-q", "-b", "4096", "-L", "GXPOPROOT",
             "-E", "offset="+str(ROOT[0]*SECTOR),
             str(base), str(ROOT[1]//8), timeout=600)
@@ -346,7 +350,8 @@ def prepare(work, template):
              "type": ESP_TYPE, "filesystem": "vfat", "mount": "/boot/efi"},
             {"number": 2, "startLba": ROOT[0], "endLba": ROOT[0]+ROOT[1]-1,
              "type": ROOT_TYPE, "filesystem": "ext4", "mount": "/"}],
-        "gpt": before, "backingSha256": digest, "ovmfTemplateSha256": master_hash,
+        "gpt": before, "espFat32BootGeometry": esp_fat32,
+        "backingSha256": digest, "ovmfTemplateSha256": master_hash,
         "checkpointProven": True, "syntheticRecoveryProven": True,
         "filesystemIntegrityBeforeAndAfterRecovery": fs_proof_before,
         "recoveryMode": "discard-exclusive-qcow2-recreate",
@@ -372,23 +377,62 @@ def classify_owned_write(start, count):
 
 
 
+
+def fat32_boot_geometry(raw):
+    """Prove FAT32 cluster and BPB conformance on our disposable ESP only.
+
+    Four-way OVMF boot control: 65,502 FAT32 clusters failed before loading
+    EFI; explicit 8 sectors/cluster yielded 261,627 and executed EFI.
+    This read-only parser does not itself prove native firmware execution.
+    """
+    regular(raw, length=SIZE)
+    offset = ESP[0] * SECTOR
+    with raw.open("rb", buffering=0) as disk:
+        disk.seek(offset)
+        boot = disk.read(SECTOR)
+    need(len(boot) == SECTOR and boot[510:512] == b"\x55\xaa"
+         and boot[82:90] == b"FAT32   ",
+         "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: ESP is not FAT32")
+    u16 = lambda pos: struct.unpack_from("<H", boot, pos)[0]
+    u32 = lambda pos: struct.unpack_from("<I", boot, pos)[0]
+    bytes_per_sector, spc, reserved = u16(11), boot[13], u16(14)
+    fats, hidden, total, fat_sectors, root = (
+        boot[16], u32(28), u32(32), u32(36), u32(44))
+    need(bytes_per_sector == SECTOR and spc == 8 and reserved >= 2
+         and fats == 2 and fat_sectors > 0 and root >= 2
+         and hidden in (0, ESP[0])
+         and ESP[1] - 63 <= total <= ESP[1],
+         "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: unsupported ESP FAT32 BPB geometry")
+    data_sectors = total - reserved - fats * fat_sectors
+    need(data_sectors > 0, "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: FAT32 data area invalid")
+    cluster_count = data_sectors // spc
+    need(65525 <= cluster_count <= 268435445
+         and fat_sectors * SECTOR // 4 >= cluster_count + 2
+         and root <= cluster_count + 1,
+         "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: FAT32 cluster count invalid")
+    return {
+        "bytesPerSector": bytes_per_sector, "sectorsPerCluster": spc,
+        "hiddenSectors": hidden, "reservedSectors": reserved,
+        "totalSectors": total, "fatSectors": fat_sectors,
+        "fatCount": fats, "rootCluster": root,
+        "clusterCount": cluster_count,
+        "rootDataStartLba": ESP[0] + reserved + fats * fat_sectors,
+        "firmwareExecutableProven": False,
+    }
+
+
 def probe_installed_esp_boot(raw, work):
     """Read-only EFI artifact inspection on a verified synthetic RAW export.
 
     Files copied from the ESP are private disposable evidence, never written
     back to the QCOW2 or checkpoint. This does not prove firmware discovery.
     """
-    regular(raw, length=SIZE)
+    fat32 = fat32_boot_geometry(raw)
     offset = ESP[0] * SECTOR
-    with raw.open("rb", buffering=0) as disk:
-        disk.seek(offset)
-        sector = disk.read(SECTOR)
-    need(len(sector) == SECTOR and sector[510:512] == b"\x55\xaa"
-         and sector[82:90] == b"FAT32   ",
-         "REFUSE_NATIVE_EFI_BOOT_UNPROVEN: ESP boot sector not FAT32")
     image = f"{raw}@@{offset}"
     result = {"status": "REFUSE_NATIVE_EFI_BOOT_UNPROVEN",
               "readOnly": True, "espOffsetBytes": offset,
+              "fat32BootGeometry": fat32,
               "firmwareDiscoveryProven": False, "nativeFirstBootProven": False}
     try:
         command("mdir", "-i", image, "::/EFI/BOOT", timeout=60)

@@ -90,6 +90,14 @@ class FullReuseContractTests(unittest.TestCase):
                 boot = bytearray(512)
                 boot[82:90] = b"FAT32   "
                 boot[510:512] = b"\x55\xaa"
+                struct.pack_into("<H", boot, 11, 512)
+                boot[13] = 8
+                struct.pack_into("<H", boot, 14, 32)
+                boot[16] = 2
+                struct.pack_into("<I", boot, 28, 0)
+                struct.pack_into("<I", boot, 32, 2097144)
+                struct.pack_into("<I", boot, 36, 2048)
+                struct.pack_into("<I", boot, 44, 2)
                 f.write(boot)
 
             def fake_command(*args, **kwargs):
@@ -130,6 +138,56 @@ class FullReuseContractTests(unittest.TestCase):
             with patch.object(snapshot, "command", side_effect=no_entry):
                 with self.assertRaises(Refusal):
                     snapshot.probe_installed_esp_boot(raw, work)
+
+    def test_bad_fat32_auto_clusters_are_refused_before_install_or_boot(self):
+        gate = GATE.read_text()
+        self.assertIn('"-s", "8"', gate)
+        self.assertIn("esp_fat32 = fat32_boot_geometry(base)", gate)
+        self.assertIn("fat32 = fat32_boot_geometry(raw)", gate)
+        with tempfile.TemporaryDirectory() as folder:
+            raw = new_file(Path(folder) / "synthetic-owned.raw", SIZE)
+            boot = bytearray(512)
+            boot[82:90] = b"FAT32   "
+            boot[510:512] = b"\x55\xaa"
+            struct.pack_into("<H", boot, 11, 512)
+            boot[13] = 32
+            struct.pack_into("<H", boot, 14, 32)
+            boot[16] = 2
+            struct.pack_into("<I", boot, 32, 2097144)
+            struct.pack_into("<I", boot, 36, 512)
+            struct.pack_into("<I", boot, 44, 2)
+
+            def write_bpb():
+                with raw.open("r+b") as f:
+                    f.seek(ESP[0] * 512)
+                    f.write(boot)
+
+            write_bpb()
+            with self.assertRaisesRegex(Refusal, "ESP FAT32 BPB geometry"):
+                snapshot.fat32_boot_geometry(raw)
+            # Actual 4-way OVMF diagnostic: 65502 clusters cannot mount;
+            # -s 8 with 261627 clusters loads an EFI test payload.
+            boot[13] = 8
+            struct.pack_into("<I", boot, 36, 2048)
+            write_bpb()
+            info = snapshot.fat32_boot_geometry(raw)
+            self.assertEqual(info["clusterCount"], 261627)
+            self.assertEqual(info["rootDataStartLba"], 6176)
+            self.assertFalse(info["firmwareExecutableProven"])
+            for offset, bad, message in (
+                (13, b"\x20", "BPB geometry"),
+                (16, b"\x03", "BPB geometry"),
+                (28, (4096).to_bytes(4, "little"), "BPB geometry"),
+                (32, (2097153).to_bytes(4, "little"), "BPB geometry"),
+                (36, (1).to_bytes(4, "little"), "cluster count"),
+            ):
+                original = boot[offset:offset + len(bad)]
+                boot[offset:offset + len(bad)] = bad
+                write_bpb()
+                with self.subTest(offset=offset):
+                    with self.assertRaisesRegex(Refusal, message):
+                        snapshot.fat32_boot_geometry(raw)
+                boot[offset:offset + len(bad)] = original
 
     def test_native_efi_probe_and_firmware_read_trace_are_required(self):
         runner = RUNNER.read_text()
