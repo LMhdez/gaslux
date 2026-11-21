@@ -3,6 +3,7 @@
 Runs ONLY on regular files and mocked text interfaces; never starts QEMU guest,
 loads an ISO, accesses Windows, or invokes System76 distinst.
 """
+
 from __future__ import annotations
 
 import errno
@@ -116,10 +117,14 @@ class OwnedFileSafetyTests(unittest.TestCase):
             work = p / "gaslux-pop-six-gpt-owned"
             work.mkdir(mode=0o700)
             with ownership.OwnedDirectory(work) as owned:
-                with patch.object(
-                    ownership.os, "ftruncate",
-                    side_effect=OSError(errno.ENOSPC, "injected ENOSPC")
-                ), self.assertRaises(OSError):
+                with (
+                    patch.object(
+                        ownership.os,
+                        "ftruncate",
+                        side_effect=OSError(errno.ENOSPC, "injected ENOSPC"),
+                    ),
+                    self.assertRaises(OSError),
+                ):
                     owned.create_file(work / "partial.raw", 4096)
                 self.assertEqual((work / "partial.raw").stat().st_size, 0)
                 self.assertIn("partial.raw", owned.entries)
@@ -148,8 +153,7 @@ class OwnedFileSafetyTests(unittest.TestCase):
                 with self.assertRaisesRegex(Refusal, "REFUSE_OWNERSHIP"):
                     owned.cleanup()
                 self.assertTrue((work / "one").exists())
-                self.assertEqual((work / "unregistered").read_text(),
-                                 "foreign transaction")
+                self.assertEqual((work / "unregistered").read_text(), "foreign transaction")
 
 
 class TraceProvenanceTests(unittest.TestCase):
@@ -176,10 +180,14 @@ class TraceProvenanceTests(unittest.TestCase):
         self.assertTrue(parsed["parsedWriteLocationsWithinDeclaredRanges"])
         self.assertFalse(parsed["observedWritesConfinedToOwnedPopPartitions"])
         for field in (
-            "traceOriginAuthenticated", "traceBoundToQemuProcess",
-            "traceBoundToVirtioSerial", "traceBoundToOwnedChildAndBacking",
-            "traceBoundToTransaction", "traceCollectionComplete",
-            "observationComplete", "windowsWriterAuthorized",
+            "traceOriginAuthenticated",
+            "traceBoundToQemuProcess",
+            "traceBoundToVirtioSerial",
+            "traceBoundToOwnedChildAndBacking",
+            "traceBoundToTransaction",
+            "traceCollectionComplete",
+            "observationComplete",
+            "windowsWriterAuthorized",
             "productionInstallationAuthorized",
         ):
             with self.subTest(field=field):
@@ -205,24 +213,34 @@ class TraceProvenanceTests(unittest.TestCase):
 class QcowMapSafetyTests(unittest.TestCase):
     @staticmethod
     def backing_map() -> list[dict]:
-        return [{"start": 0, "length": lab.SIZE, "depth": 1,
-                 "data": False, "zero": True, "present": True}]
+        return [
+            {
+                "start": 0,
+                "length": lab.SIZE,
+                "depth": 1,
+                "data": False,
+                "zero": True,
+                "present": True,
+            }
+        ]
 
     @staticmethod
     def injected_map(sector: int) -> list[dict]:
         offset = sector * lab.SECTOR
         return [
-            {"start": 0, "length": offset, "depth": 1,
-             "data": False, "zero": True},
-            {"start": offset, "length": 4096, "depth": 0,
-             "data": True, "zero": False},
-            {"start": offset + 4096, "length": lab.SIZE - offset - 4096,
-             "depth": 1, "data": False, "zero": True},
+            {"start": 0, "length": offset, "depth": 1, "data": False, "zero": True},
+            {"start": offset, "length": 4096, "depth": 0, "data": True, "zero": False},
+            {
+                "start": offset + 4096,
+                "length": lab.SIZE - offset - 4096,
+                "depth": 1,
+                "data": False,
+                "zero": True,
+            },
         ]
 
     def test_f04_exact_safety_zero_extent_refused(self):
-        case = [{"depth": 0, "data": False, "zero": True,
-                 "start": 0, "length": 4096}]
+        case = [{"depth": 0, "data": False, "zero": True, "start": 0, "length": 4096}]
         with (
             patch.object(lab, "chain"),
             patch.object(lab, "command", return_value=json.dumps(case)),
@@ -231,25 +249,40 @@ class QcowMapSafetyTests(unittest.TestCase):
             lab.ensure_empty_child(Path("/tmp/child"), Path("/tmp/backing"))
 
     def test_f04_zero_child_full_length_also_refused(self):
-        case = [{"depth": 0, "data": False, "zero": True,
-                 "start": 0, "length": lab.SIZE}]
-        with patch.object(lab, "chain"), patch.object(
-            lab, "command", return_value=json.dumps(case)
-        ), self.assertRaisesRegex(Refusal, "depth-0 child"):
+        case = [{"depth": 0, "data": False, "zero": True, "start": 0, "length": lab.SIZE}]
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=json.dumps(case)),
+            self.assertRaisesRegex(Refusal, "depth-0 child"),
+        ):
             lab.ensure_empty_child(Path("/tmp/child"), Path("/tmp/backing"))
 
     def test_f04_false_empty_map_missing_keys_gaps_and_unknown_fields(self):
         cases = [
             [],
             [{"start": 0, "length": lab.SIZE, "depth": 1, "data": False}],
-            [{"start": 0, "length": lab.SIZE, "depth": True,
-              "data": False, "zero": True}],
-            [{"start": 0, "length": lab.SIZE, "depth": 1,
-              "data": False, "zero": True, "foreign": True}],
-            [{"start": 0, "length": lab.SIZE - 4096, "depth": 1,
-              "data": False, "zero": True}],
-            [{"start": 0, "length": lab.SIZE, "depth": 0,
-              "data": False, "zero": True, "present": False}],
+            [{"start": 0, "length": lab.SIZE, "depth": True, "data": False, "zero": True}],
+            [
+                {
+                    "start": 0,
+                    "length": lab.SIZE,
+                    "depth": 1,
+                    "data": False,
+                    "zero": True,
+                    "foreign": True,
+                }
+            ],
+            [{"start": 0, "length": lab.SIZE - 4096, "depth": 1, "data": False, "zero": True}],
+            [
+                {
+                    "start": 0,
+                    "length": lab.SIZE,
+                    "depth": 0,
+                    "data": False,
+                    "zero": True,
+                    "present": False,
+                }
+            ],
             "not an array",
         ]
         for item in cases:
@@ -266,8 +299,7 @@ class QcowMapSafetyTests(unittest.TestCase):
             cmd.side_effect = [json.dumps(self.backing_map()), ""]
             lab.ensure_empty_child(Path("/tmp/c"), Path("/tmp/b"))
             self.assertEqual(cmd.call_count, 2)
-            self.assertEqual(cmd.call_args.args[:3],
-                             ("qemu-img", "compare", "-f"))
+            self.assertEqual(cmd.call_args.args[:3], ("qemu-img", "compare", "-f"))
 
     def test_f03_material_injection_detected_only_with_map_and_readback(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -279,9 +311,7 @@ class QcowMapSafetyTests(unittest.TestCase):
             sector = lab.PARTS[2].start + 4096
             with patch.object(lab, "chain"), patch.object(lab, "command") as cmd:
                 cmd.side_effect = [json.dumps(self.injected_map(sector)), ""]
-                proof = lab.prove_injected_fault(
-                    child, base, sector, (st.st_dev, st.st_ino)
-                )
+                proof = lab.prove_injected_fault(child, base, sector, (st.st_dev, st.st_ino))
             self.assertTrue(proof["ownedDepthZeroDataObserved"])
             self.assertTrue(proof["readbackPatternVerified"])
             self.assertFalse(proof["toolErrorsAcceptedAsCorruption"])
@@ -304,29 +334,28 @@ class QcowMapSafetyTests(unittest.TestCase):
                     patch.object(lab, "command", side_effect=failure),
                     self.assertRaises((Refusal, subprocess.TimeoutExpired)),
                 ):
-                    lab.prove_injected_fault(
-                        child, base, sector, (st.st_dev, st.st_ino)
-                    )
-            with patch.object(lab, "chain", side_effect=Refusal(
-                "foreign backing"
-            )), self.assertRaisesRegex(Refusal, "foreign backing"):
-                lab.prove_injected_fault(child, base, sector,
-                                         (st.st_dev, st.st_ino))
-            with patch.object(lab, "chain"), patch.object(
-                lab, "command", return_value="[INVALID"
-            ), self.assertRaisesRegex(Refusal, "malformed"):
-                lab.prove_injected_fault(child, base, sector,
-                                         (st.st_dev, st.st_ino))
-            with patch.object(lab, "chain"), patch.object(
-                lab, "command", return_value=json.dumps(self.backing_map())
-            ), self.assertRaisesRegex(Refusal, "not materially observed"):
-                lab.prove_injected_fault(child, base, sector,
-                                         (st.st_dev, st.st_ino))
+                    lab.prove_injected_fault(child, base, sector, (st.st_dev, st.st_ino))
+            with (
+                patch.object(lab, "chain", side_effect=Refusal("foreign backing")),
+                self.assertRaisesRegex(Refusal, "foreign backing"),
+            ):
+                lab.prove_injected_fault(child, base, sector, (st.st_dev, st.st_ino))
+            with (
+                patch.object(lab, "chain"),
+                patch.object(lab, "command", return_value="[INVALID"),
+                self.assertRaisesRegex(Refusal, "malformed"),
+            ):
+                lab.prove_injected_fault(child, base, sector, (st.st_dev, st.st_ino))
+            with (
+                patch.object(lab, "chain"),
+                patch.object(lab, "command", return_value=json.dumps(self.backing_map())),
+                self.assertRaisesRegex(Refusal, "not materially observed"),
+            ):
+                lab.prove_injected_fault(child, base, sector, (st.st_dev, st.st_ino))
             child.unlink()
             child.write_bytes(b"foreign-inode")
             with self.assertRaisesRegex(Refusal, "inode substituted"):
-                lab.prove_injected_fault(child, base, sector,
-                                         (st.st_dev, st.st_ino))
+                lab.prove_injected_fault(child, base, sector, (st.st_dev, st.st_ino))
 
     def test_f04_real_qcow2_zero_cluster_when_qemu_tools_available(self):
         if shutil.which("qemu-img") is None or shutil.which("qemu-io") is None:
@@ -337,16 +366,18 @@ class QcowMapSafetyTests(unittest.TestCase):
             with base.open("xb") as f:
                 f.truncate(8 * 1024**2)
             subprocess.run(
-                ["qemu-img", "create", "-f", "qcow2", "-F", "raw",
-                 "-b", str(base), str(child)], check=True, capture_output=True
+                ["qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(base), str(child)],
+                check=True,
+                capture_output=True,
             )
             subprocess.run(
                 ["qemu-io", "-f", "qcow2", "-c", "write -z 0 65536", str(child)],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
-            info = json.loads(subprocess.check_output(
-                ["qemu-img", "map", "--output=json", str(child)]
-            ))
+            info = json.loads(
+                subprocess.check_output(["qemu-img", "map", "--output=json", str(child)])
+            )
             if not any(row.get("depth") == 0 for row in info):
                 self.skipTest("QEMU optimized zero write into backing-equivalent hole")
             with (

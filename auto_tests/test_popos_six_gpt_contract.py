@@ -275,14 +275,15 @@ class SixGptNegativeTests(unittest.TestCase):
         self.assertIn("verify_canaries(base, plan, work)", runner_source)
 
     def test_readonly_fsck_partition_copy_and_untrusted_bounds(self):
-
         with tempfile.TemporaryDirectory(prefix="gaslux-pop-six-gpt-") as folder:
             from gaslux_popos_six_gpt_ownership import OwnedDirectory
+
             with OwnedDirectory(Path(folder)):
                 self._run_fsck_copy_contract(Path(folder))
 
     def _run_fsck_copy_contract(self, work: Path) -> None:
         import gaslux_popos_six_gpt_fsck as fsc
+
         base = new_file(work / "fsck-fixture.raw", c.SIZE)
         sentinel = b"GASLUX-SYNTHETIC-ONLY-BYTE-EXACT"
         with base.open("r+b") as out:

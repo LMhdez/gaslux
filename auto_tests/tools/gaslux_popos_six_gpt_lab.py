@@ -82,8 +82,7 @@ def hosted(work: Path) -> None:
         and stat.S_IMODE(work.stat().st_mode) == 0o700,
         "REFUSE_IDENTITY_MISMATCH: untrusted private runner directory",
     )
-    need(owner().path == work,
-         "REFUSE_OWNERSHIP: hosted workdir has no pinned transaction FD")
+    need(owner().path == work, "REFUSE_OWNERSHIP: hosted workdir has no pinned transaction FD")
 
 
 def sha_region(path: Path, sector: int, count: int) -> str:
@@ -239,24 +238,23 @@ def validated_overlay_map(child: Path, base: Path) -> list[dict]:
         extents = json.loads(command("qemu-img", "map", "--output=json", str(child), timeout=120))
     except (ValueError, TypeError) as exc:
         raise Refusal("REFUSE_RECOVERY_UNPROVEN: malformed qemu-img map JSON") from exc
-    need(type(extents) is list and len(extents) > 0,
-         "REFUSE_RECOVERY_UNPROVEN: missing qemu-img map extents")
+    need(
+        type(extents) is list and len(extents) > 0,
+        "REFUSE_RECOVERY_UNPROVEN: missing qemu-img map extents",
+    )
     cursor = 0
     for row in extents:
         need(
             type(row) is dict
             and {"start", "length", "depth", "data", "zero"} <= set(row)
-            and set(row) <= {
-                "start", "length", "depth", "present", "data", "zero", "offset"
-            }
+            and set(row) <= {"start", "length", "depth", "present", "data", "zero", "offset"}
             and type(row["start"]) is int
             and type(row["length"]) is int
             and type(row["depth"]) is int
             and type(row["data"]) is bool
             and type(row["zero"]) is bool
             and ("present" not in row or type(row["present"]) is bool)
-            and ("offset" not in row or
-                 (type(row["offset"]) is int and row["offset"] >= 0))
+            and ("offset" not in row or (type(row["offset"]) is int and row["offset"] >= 0))
             and row["start"] == cursor
             and row["length"] > 0
             and row["depth"] >= 0
@@ -281,42 +279,65 @@ def ensure_empty_child(child: Path, base: Path) -> None:
     # cluster may compare equal to a zero-filled backing), so require BOTH
     # absence of child extents and full effective equivalence.
     command(
-        "qemu-img", "compare", "-f", "qcow2", "-F", "raw",
-        str(child), str(base), timeout=300,
+        "qemu-img",
+        "compare",
+        "-f",
+        "qcow2",
+        "-F",
+        "raw",
+        str(child),
+        str(base),
+        timeout=300,
     )
 
 
-def prove_injected_fault(child: Path, base: Path, sector: int,
-                         prewrite_identity: tuple[int, int]) -> dict:
+def prove_injected_fault(
+    child: Path, base: Path, sector: int, prewrite_identity: tuple[int, int]
+) -> dict:
     """Material injection evidence; operational errors are NEVER detections."""
-    need(type(prewrite_identity) is tuple and len(prewrite_identity) == 2,
-         "REFUSE_RECOVERY_UNPROVEN: missing child ownership snapshot")
+    need(
+        type(prewrite_identity) is tuple and len(prewrite_identity) == 2,
+        "REFUSE_RECOVERY_UNPROVEN: missing child ownership snapshot",
+    )
     stat_now = regular(child, write=True).stat()
-    need((stat_now.st_dev, stat_now.st_ino) == prewrite_identity,
-         "REFUSE_RECOVERY_UNPROVEN: injected child inode substituted")
-    need(type(sector) is int and PARTS[2].start <= sector
-         and sector + 8 <= PARTS[2].end,
-         "REFUSE_RECOVERY_UNPROVEN: injection outside protected fixture")
+    need(
+        (stat_now.st_dev, stat_now.st_ino) == prewrite_identity,
+        "REFUSE_RECOVERY_UNPROVEN: injected child inode substituted",
+    )
+    need(
+        type(sector) is int and PARTS[2].start <= sector and sector + 8 <= PARTS[2].end,
+        "REFUSE_RECOVERY_UNPROVEN: injection outside protected fixture",
+    )
     start, length = sector * SECTOR, 4096
     extents = validated_overlay_map(child, base)
     matches = [
-        row for row in extents
-        if row["depth"] == 0 and row["data"] is True
+        row
+        for row in extents
+        if row["depth"] == 0
+        and row["data"] is True
         and row["zero"] is False
         and row["start"] <= start
         and start + length <= row["start"] + row["length"]
     ]
-    need(len(matches) == 1,
-         "REFUSE_RECOVERY_UNPROVEN: injected child extent not materially observed")
+    need(
+        len(matches) == 1, "REFUSE_RECOVERY_UNPROVEN: injected child extent not materially observed"
+    )
     # QEMU image-map allocation is only one witness. The readback from the
     # *exact child* must also match the injected 4KiB pattern.
     command(
-        "qemu-io", "-f", "qcow2", "-c",
-        f"read -P 0x5a {start} {length}", str(child), timeout=120,
+        "qemu-io",
+        "-f",
+        "qcow2",
+        "-c",
+        f"read -P 0x5a {start} {length}",
+        str(child),
+        timeout=120,
     )
     stat_after = regular(child, write=True).stat()
-    need((stat_after.st_dev, stat_after.st_ino) == prewrite_identity,
-         "REFUSE_RECOVERY_UNPROVEN: child changed during injection proof")
+    need(
+        (stat_after.st_dev, stat_after.st_ino) == prewrite_identity,
+        "REFUSE_RECOVERY_UNPROVEN: child changed during injection proof",
+    )
     return {
         "injectedSector": sector,
         "injectedLengthBytes": length,
@@ -547,12 +568,12 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
     child_stat = regular(fault, write=True).stat()
     prewrite_identity = (child_stat.st_dev, child_stat.st_ino)
     sector = PARTS[2].start + 4096  # protected SIMULATED data partition
-    command("qemu-io", "-f", "qcow2", "-c",
-            f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
+    command("qemu-io", "-f", "qcow2", "-c", f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
     injection = prove_injected_fault(fault, base, sector, prewrite_identity)
-    need(injection["ownedDepthZeroDataObserved"]
-         and injection["readbackPatternVerified"],
-         "REFUSE_RECOVERY_UNPROVEN: incomplete material fault evidence")
+    need(
+        injection["ownedDepthZeroDataObserved"] and injection["readbackPatternVerified"],
+        "REFUSE_RECOVERY_UNPROVEN: incomplete material fault evidence",
+    )
     remove(fault)
     need(not fault.exists(), "REFUSE_RECOVERY_UNPROVEN: foreign overlay retained")
     make_child(fault, base)

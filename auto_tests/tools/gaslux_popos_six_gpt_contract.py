@@ -266,8 +266,10 @@ def audit_qemu_trace(trace: str) -> dict:
     those bindings can be established by this function or caller-supplied text.
     """
     need(
-        type(trace) is str and 0 < len(trace) < 8_000_000
-        and "\r" not in trace and "\x00" not in trace,
+        type(trace) is str
+        and 0 < len(trace) < 8_000_000
+        and "\r" not in trace
+        and "\x00" not in trace,
         "OBSERVATION_INCOMPLETE: absent/ambiguous trace",
     )
     lines = trace.removesuffix("\n").split("\n")
