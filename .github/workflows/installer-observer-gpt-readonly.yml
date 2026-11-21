@@ -54,6 +54,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           export PYTHONPATH="$PWD/safety-pinned/auto_tests:$PWD/safety-pinned/assets/live:$PWD/safety-pinned/auto_tests/tools:$PWD"
+          export GASLUX_OBSERVER_ROOT="$PWD"
           python -m pytest -q \
             safety-pinned/auto_tests/tests/test_disk_identity_gate.py \
             safety-pinned/auto_tests/tests/test_safety_gpt_provenance.py \
