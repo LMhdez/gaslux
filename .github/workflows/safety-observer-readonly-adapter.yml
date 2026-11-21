@@ -5,6 +5,9 @@ on:
     paths:
       - 'assets/live/libertix_safety_observer_adapter.py'
       - 'auto_tests/tests/test_safety_observer_adapter.py'
+      - 'assets/live/libertix_gpt_provenance.py'
+      - 'auto_tests/tests/test_safety_gpt_provenance.py'
+      - 'schemas/safety-gpt-provenance-v1.schema.json'
       - '.github/workflows/safety-observer-readonly-adapter.yml'
   workflow_dispatch:
 
@@ -24,7 +27,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: LMhdez/gaslux
-          ref: 31d6e014aff9d5c073841907191d2b1afb8bfe9a
+          ref: 244070463382931d57a066bcd050a91a8df104b0
           path: observer-pinned
           persist-credentials: false
       - name: Check source pin and no-write test boundary
@@ -33,7 +36,7 @@ jobs:
           set -Eeuo pipefail
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           test "$RUNNER_ENVIRONMENT" = github-hosted
-          test "$(git -C observer-pinned rev-parse HEAD)" = 31d6e014aff9d5c073841907191d2b1afb8bfe9a
+          test "$(git -C observer-pinned rev-parse HEAD)" = 244070463382931d57a066bcd050a91a8df104b0
           test -f observer-pinned/auto_tests/installer_observer/remote_verifier.py
           test -f observer-pinned/schemas/observer-readonly-request.schema.json
           test -f observer-pinned/schemas/observer-readonly-response.schema.json
@@ -50,12 +53,23 @@ jobs:
         run: |
           set -Eeuo pipefail
           export PYTHONPATH="$GASLUX_OBSERVER_ROOT:$GITHUB_WORKSPACE/assets/live"
-          python -m compileall -q "$GITHUB_WORKSPACE/assets/live/libertix_safety_observer_adapter.py" "$GITHUB_WORKSPACE/auto_tests/tests/test_safety_observer_adapter.py"
+          python -m py_compile "$GITHUB_WORKSPACE/assets/live/libertix_safety_observer_adapter.py" "$GITHUB_WORKSPACE/assets/live/libertix_gpt_provenance.py" "$GITHUB_WORKSPACE/auto_tests/tests/test_safety_observer_adapter.py" "$GITHUB_WORKSPACE/auto_tests/tests/test_safety_gpt_provenance.py"
+          python - <<'PY'
+          import json
+          from jsonschema import Draft202012Validator
+          with open("schemas/safety-gpt-provenance-v1.schema.json", encoding="utf-8") as source:
+              Draft202012Validator.check_schema(json.load(source))
+          PY
           cd "$GITHUB_WORKSPACE"
           python -m pytest -q --import-mode=importlib \
             "$GITHUB_WORKSPACE/auto_tests/tests/test_safety_observer_adapter.py" \
+            "$GITHUB_WORKSPACE/auto_tests/tests/test_safety_gpt_provenance.py" \
             "$GITHUB_WORKSPACE/auto_tests/tests/test_disk_identity_gate.py" \
             "$GITHUB_WORKSPACE/auto_tests/tests/test_prewrite_no_writer.py"
           cd "$GASLUX_OBSERVER_ROOT"
           python -m pytest -q --import-mode=importlib auto_tests/tests/test_observer_remote_verifier.py
-          python -m ruff check --select F,E4,E7,E9             "$GITHUB_WORKSPACE/assets/live/libertix_safety_observer_adapter.py"             "$GITHUB_WORKSPACE/auto_tests/tests/test_safety_observer_adapter.py"
+          python -m ruff check --select F,E4,E7,E9 \
+            "$GITHUB_WORKSPACE/assets/live/libertix_safety_observer_adapter.py" \
+            "$GITHUB_WORKSPACE/assets/live/libertix_gpt_provenance.py" \
+            "$GITHUB_WORKSPACE/auto_tests/tests/test_safety_observer_adapter.py" \
+            "$GITHUB_WORKSPACE/auto_tests/tests/test_safety_gpt_provenance.py"
