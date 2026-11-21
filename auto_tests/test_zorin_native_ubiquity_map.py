@@ -120,9 +120,10 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
             self.build()
 
     def test_status_hash_mismatch_rejected(self):
-        with self.assertRaisesRegex(NativeDiscoveryError, "status changed"):
-            mapping.build_map(Path("/unmounted"), self.prior,
-                              self.manifest, self.read)
+        with patch.object(mapping, "UBIQUITY_EXEC_SHA", mapping.digest(self.entry)):
+            with self.assertRaisesRegex(NativeDiscoveryError, "status changed"):
+                mapping.build_map(Path("/unmounted"), self.prior,
+                                  self.manifest, self.read)
 
     def test_double_package_rejected(self):
         with self.assertRaisesRegex(NativeDiscoveryError, "duplicate"):
