@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 
 import pytest
 from cryptography.hazmat.primitives import hashes, serialization
@@ -131,6 +133,57 @@ def test_replay_refused():
     guard = LaboratoryReplayGuard()
     run(policy, evidence, guard=guard)
     refused("CHALLENGE_REPLAY", policy, evidence, guard=guard)
+
+
+def test_reused_nonce_across_distinct_signed_requests_is_refused():
+    key, policy, evidence = fixture()
+    guard = LaboratoryReplayGuard()
+    run(policy, evidence, guard=guard)
+    changed = replace(evidence.context, request_id="request-2")
+    second = sign_quote(
+        key, evidence.ak_spki_der, changed, evidence.pcrs, policy.qualified_signer_hex
+    )
+    refused("NONCE_REPLAY", policy, second, guard=guard)
+
+
+def test_reused_request_id_with_fresh_nonce_is_refused():
+    key, policy, evidence = fixture()
+    guard = LaboratoryReplayGuard()
+    run(policy, evidence, guard=guard)
+    changed = replace(evidence.context, nonce=b"\x44" * 32)
+    second = sign_quote(
+        key, evidence.ak_spki_der, changed, evidence.pcrs, policy.qualified_signer_hex
+    )
+    refused("REQUEST_REPLAY", policy, second, guard=guard)
+
+
+def test_concurrent_quote_consumption_has_exactly_one_winner():
+    _, policy, evidence = fixture()
+    guard = LaboratoryReplayGuard()
+    barrier = Barrier(8)
+
+    def attempt(_):
+        barrier.wait(timeout=10)
+        try:
+            run(policy, evidence, guard=guard)
+        except AttestationRefused as exc:
+            return exc.code
+        return "ACCEPT"
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        outcomes = list(executor.map(attempt, range(8)))
+    assert outcomes.count("ACCEPT") == 1
+    assert outcomes.count("CHALLENGE_REPLAY") == 7
+
+
+def test_legacy_replay_guard_cannot_silently_ignore_nonce_identity():
+    _, policy, evidence = fixture()
+
+    class LegacyGuard:
+        def consume_challenge(self, challenge):
+            pass
+
+    refused("REPLAY_GUARD_UNAVAILABLE", policy, evidence, guard=LegacyGuard())
 
 
 def test_invalid_quote_signature():
