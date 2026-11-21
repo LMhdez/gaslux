@@ -210,3 +210,30 @@ def test_no_real_disk_or_writer_in_preflight_source():
     assert "guestfs.GuestFS" in content
     for forbidden in ["grub-install", "mkfs.", "mount -o rw", "sudo fsck", "efibootmgr"]:
         assert forbidden not in content
+
+
+def test_windows_workflow_requires_actual_guestfs_gate_before_iso_and_no_auto_run():
+    import yaml
+
+    workflow_path = (
+        ROOT / ".github/workflows/gaslux-q4os-windows10-qcow2.yml"
+    )
+    document = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    on = document.get("on", document.get(True, {}))
+    assert "workflow_dispatch" in on
+    assert "pull_request" not in on and "push" not in on
+    names = [step.get("name", "") for step in document["jobs"]["windows10-uefi-gpt"]["steps"]]
+    assert names.index(
+        "BLOCKED_GUESTFS_APPLIANCE unless real synthetic QEMU GPT observer passes"
+    ) < names.index(
+        "Download Microsoft Windows 10 Enterprise Evaluation 22H2 and verify official SHA-256"
+    )
+    preflight = document["jobs"]["windows10-uefi-gpt"]["steps"][names.index(
+        "BLOCKED_GUESTFS_APPLIANCE unless real synthetic QEMU GPT observer passes"
+    )]["run"]
+    assert "windows_x64_libguestfs_kernel.sh" in preflight
+    assert "q4os_libguestfs_preflight.py" in preflight
+    assert "f55633c90973f633dda678f583f7730fc2cdc0ce" in preflight
+    assert "test -s" in preflight
+    assert "LIBGUESTFS_TMPDIR" in preflight
+    assert "GASLUX_WIN10_LAB_PASSWORD" not in workflow_path.read_text(encoding="utf-8")
