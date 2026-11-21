@@ -249,3 +249,22 @@ acquired; this is **not an atomic live-VM snapshot** and still does not
 prove a QMP-authenticated VM UUID, a genuine hardware serial, or
 independent guest measurement provenance. All identity and storage
 claims remain local to the GitHub-hosted laboratory.
+
+
+## Consolidated synthetic IMMEDIATE regressions
+
+The existing post-guest QCOW2 export is reused by experiment() through the
+new capture_fresh_immediate() validation boundary. The pinned Safety helper
+still exports original overlay.qcow2 to newly owned immediate.raw after QEMU
+exits; this is never a reread of host.raw. Overlay/base inode, geometry,
+mtime, ctime, backing-chain metadata, SHA-256, and GPT snapshots are checked
+before and after capture. Unknown or inconsistent evidence is refused as
+OBSERVATION_INCOMPLETE. Synthetic tests invoke this same production function
+with an injected converter. They do not prove an independent source or replace
+previous genuine QEMU evidence.
+
+Only synthetic contract runs are permitted on the regression branch. The QEMU
+job remains available solely through an explicitly marked commit on the
+original Observer branch. The manifest explicitly keeps inputAuthorized,
+diskWritesAuthorized and productionInstallationAuthorized false. No writer,
+Observer protocol v1 change, Windows install, or rollback claim is introduced.

@@ -10,7 +10,11 @@ import base64
 import hashlib
 import importlib
 import os
+import shutil
+import struct
 import sys
+import uuid
+import zlib
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +25,7 @@ from auto_tests.installer_observer.gpt_readonly_producer import (
     GptProducerRefused,
     GuestSliceProof,
     build_safety_v1,
+    capture_fresh_immediate,
     capture_gpt,
 )
 
@@ -268,3 +273,164 @@ def test_host_guest_immediate_comparison_refuses_changed_identity(sample):
             **{**args, "pins": SimpleNamespace(**{**vars(pins), "disk_id": "gpt:" + "0" * 36})},
         ),
     )
+
+
+@pytest.fixture
+def immediate_lab(sample):
+    """Inject synthetic conversion into the actual post-QEMU capture function."""
+    original, folder = sample
+    base = folder / "base.raw"
+    overlay = folder / "overlay.qcow2"
+    historical = folder / "host.raw"
+    for destination in (base, overlay, historical):
+        shutil.copyfile(original, destination)
+    host = capture_gpt(historical, folder, source="host", logical_sector_size=512, safety_disk=disk)
+
+    class Converter:
+        mode = "normal"
+        exported_from = None
+        chain_mutated = False
+
+        @staticmethod
+        def same_file(path, parent, original_stat):
+            st = path.stat()
+            if (st.st_dev, st.st_ino, st.st_size) != (
+                original_stat.st_dev,
+                original_stat.st_ino,
+                original_stat.st_size,
+            ):
+                raise ValueError("IMAGE_IDENTITY_CHANGED")
+
+        def verify_chain(self, selected, backing, workspace):
+            chain = {
+                "format": "qcow2",
+                "backingFormat": "raw",
+                "backingFilename": str(backing),
+                "overlaySha256": hashlib.sha256(selected.read_bytes()).hexdigest(),
+                "backingSha256": hashlib.sha256(backing.read_bytes()).hexdigest(),
+            }
+            if self.chain_mutated:
+                chain["backingFilename"] = str(workspace / "foreign.raw")
+            return chain
+
+        def host_snapshot(self, selected, output, workspace):
+            self.exported_from = selected
+            if self.mode == "missing":
+                return
+            if self.mode == "truncated":
+                output.write_bytes(b"truncated")
+                return
+            # The actual laboratory uses pinned Safety qemu-img conversion.
+            shutil.copyfile(selected, output)
+            if self.mode == "source-changed":
+                with selected.open("r+b") as handle:
+                    handle.seek(1000000)
+                    handle.write(b"\x01")
+            elif self.mode == "overlay-replaced":
+                replacement = workspace / "same-bytes.qcow2"
+                shutil.copyfile(selected, replacement)
+                os.replace(replacement, selected)
+            elif self.mode == "backing-chain-changed":
+                self.chain_mutated = True
+
+    return folder, base, overlay, historical, host, Converter()
+
+
+def take_immediate(immediate_lab, *, expected_overlay=None):
+    folder, base, overlay, _, host, converter = immediate_lab
+    return capture_fresh_immediate(
+        workspace=folder,
+        overlay=overlay,
+        base=base,
+        host=host,
+        lab=converter,
+        safety_disk=disk,
+        expected_overlay=expected_overlay or overlay.stat(),
+        expected_base=base.stat(),
+        expected_chain=converter.verify_chain(overlay, base, folder),
+        logical_sector_size=512,
+    )
+
+
+def test_immediate_captures_overlay_to_distinct_new_raw_file(immediate_lab):
+    folder, _, overlay, historical, host, converter = immediate_lab
+    immediate = take_immediate(immediate_lab)
+    assert converter.exported_from == overlay
+    assert immediate.source == "immediate"
+    assert immediate.trace["imageFile"] == str(folder / "immediate.raw")
+    assert immediate.trace["fileInode"] != host.trace["fileInode"]
+    assert immediate.trace["fileSizeBytes"] == host.trace["fileSizeBytes"]
+    assert immediate.gpt == host.gpt
+    assert immediate.sectors == host.sectors
+    assert historical.read_bytes() == overlay.read_bytes()
+    assert immediate.trace["classification"] == "NOT_INDEPENDENT"
+    assert immediate.trace["productionWriteAuthorized"] is False
+
+
+def test_immediate_detects_valid_gpt_disk_guid_change_after_host(immediate_lab):
+    folder, _, overlay, _, host, converter = immediate_lab
+    contents = bytearray(overlay.read_bytes())
+    guid = uuid.UUID("95f0bbed-1014-4356-8b2b-9511498a0345")
+    for sector in (1, len(contents) // 512 - 1):
+        offset = sector * 512
+        contents[offset + 56 : offset + 72] = guid.bytes_le
+        contents[offset + 16 : offset + 20] = b"\x00" * 4
+        contents[offset + 16 : offset + 20] = struct.pack(
+            "<I", zlib.crc32(contents[offset : offset + 92])
+        )
+    overlay.write_bytes(contents)
+    current = capture_gpt(overlay, folder, source="host", logical_sector_size=512, safety_disk=disk)
+    assert current.gpt["partitionTableId"] != host.gpt["partitionTableId"]
+    assert current.sectors["primaryHeaderCrc32"] != host.sectors["primaryHeaderCrc32"]
+    refused("OBSERVATION_INCOMPLETE", lambda: take_immediate(immediate_lab))
+    assert converter.exported_from == overlay
+    exported = capture_gpt(
+        folder / "immediate.raw",
+        folder,
+        source="immediate",
+        logical_sector_size=512,
+        safety_disk=disk,
+    )
+    assert exported.gpt == current.gpt
+    assert exported.gpt != host.gpt
+
+
+@pytest.mark.parametrize(
+    "mode",
+    (
+        "missing",
+        "truncated",
+        "source-changed",
+        "overlay-replaced",
+        "backing-chain-changed",
+    ),
+)
+def test_immediate_export_negative_provenance_refused(immediate_lab, mode):
+    folder, _, overlay, _, _, converter = immediate_lab
+    converter.mode = mode
+    refused("OBSERVATION_INCOMPLETE", lambda: take_immediate(immediate_lab))
+    assert converter.exported_from == overlay
+    if mode == "missing":
+        assert not (folder / "immediate.raw").exists()
+    elif mode == "truncated":
+        assert (folder / "immediate.raw").stat().st_size < 68 * 512
+
+
+def test_immediate_rejects_overlay_inode_change_before_export(immediate_lab):
+    folder, _, overlay, _, _, converter = immediate_lab
+    previous_stat = overlay.stat()
+    replacement = folder / "replacement.qcow2"
+    shutil.copyfile(overlay, replacement)
+    os.replace(replacement, overlay)
+    refused(
+        "OBSERVATION_INCOMPLETE",
+        lambda: take_immediate(immediate_lab, expected_overlay=previous_stat),
+    )
+    assert converter.exported_from is None
+
+
+def test_immediate_refuses_preexisting_stale_host_export(immediate_lab):
+    folder, _, _, _, _, converter = immediate_lab
+    shutil.copyfile(folder / "host.raw", folder / "immediate.raw")
+    refused("OBSERVATION_INCOMPLETE", lambda: take_immediate(immediate_lab))
+    assert converter.exported_from is None
