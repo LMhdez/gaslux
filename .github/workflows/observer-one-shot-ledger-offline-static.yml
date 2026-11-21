@@ -57,7 +57,7 @@ jobs:
       - name: Ruff lint and format, offline code only
         run: |
           python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
-          python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
+          python3 -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
       - name: Python compileall and adversarial disposable-ledger tests
         run: |
           python3 -m compileall -q auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
