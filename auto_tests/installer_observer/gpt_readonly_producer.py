@@ -171,7 +171,8 @@ def capture_gpt(
         }
         end = os.fstat(fd)
         after = own_file(path, workspace)
-        identity = lambda info: (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+        def identity(info):
+            return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
         require(
             identity(before) == identity(first_stat) == identity(end) == identity(after),
             "DISK_CHANGED_DURING_READ",
