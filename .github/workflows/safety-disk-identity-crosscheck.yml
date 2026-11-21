@@ -1,0 +1,38 @@
+name: Safety disk identity crosscheck (offline deny-only)
+
+on:
+  push:
+    branches:
+      - fix/safety-crosscheck-fd-toctou-provenance-20261121
+  pull_request:
+    branches:
+      - safety/disk-identity-crosscheck-20261121
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-crosscheck:
+    name: Python syntax, Ruff and 8 original + adversarial tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned Ruff
+        run: python -m pip install ruff==0.13.3
+      - name: Compile the exact Python files
+        run: |
+          python -m compileall -q auto_tests/tools/disk_identity_crosscheck.py auto_tests/test_disk_identity_crosscheck.py auto_tests/test_disk_identity_crosscheck_hardening.py
+      - name: Ruff
+        run: |
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/disk_identity_crosscheck.py auto_tests/test_disk_identity_crosscheck.py auto_tests/test_disk_identity_crosscheck_hardening.py
+      - name: Explicit original eight regressions
+        run: python -m unittest auto_tests.test_disk_identity_crosscheck -v
+      - name: Adversarial TOCTOU, provenance and MBR regressions
+        run: python -m unittest auto_tests.test_disk_identity_crosscheck_hardening -v
