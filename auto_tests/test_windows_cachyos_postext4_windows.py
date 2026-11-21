@@ -62,13 +62,13 @@ class FourthBootContracts(unittest.TestCase):
             serial = Path(td) / "serial.log"
             self.assertEqual(
                 lab.read_bounded_com1_witness(serial)["exists"], False)
-            serial.write_bytes(lab.COM1_WITNESSES[0] + b"\\n")
+            serial.write_bytes(lab.COM1_WITNESSES[0] + b"\n")
             partial = lab.read_bounded_com1_witness(serial)
             self.assertTrue(partial["exists"])
             self.assertFalse(partial["completeBootWitness"])
             self.assertEqual(partial["markerNames"],
                              [lab.COM1_WITNESSES[0].decode()])
-            serial.write_bytes(b"\\n".join(lab.COM1_WITNESSES) + b"\\n")
+            serial.write_bytes(b"\n".join(lab.COM1_WITNESSES) + b"\n")
             complete = lab.read_bounded_com1_witness(serial)
             self.assertTrue(complete["completeBootWitness"])
             self.assertEqual(complete["sizeBytes"], serial.stat().st_size)
@@ -89,7 +89,7 @@ class FourthBootContracts(unittest.TestCase):
             var = folder / "bcd-ab-control-ovmf-variables.fd"
             var.write_bytes(b"synthetic OVMF")
             serial = root / "bcd-control-windows-only-windows-serial.log"
-            serial.write_bytes(lab.COM1_WITNESSES[0] + b"\\n")
+            serial.write_bytes(lab.COM1_WITNESSES[0] + b"\n")
             with patch.object(lab, "qcow2_file_identity", return_value={"digest":"lab"}):
                 path = lab.record_windows_boot_failure(
                     base=base, evidence_stem="bcd-control-windows-only",
@@ -145,7 +145,7 @@ class FourthBootContracts(unittest.TestCase):
     def test_qemu_complete_marker_does_not_pass_without_process_shutdown(self):
         with tempfile.TemporaryDirectory() as td:
             serial = Path(td) / "partial-com1.log"
-            serial.write_bytes(b"\\n".join(lab.COM1_WITNESSES) + b"\\n")
+            serial.write_bytes(b"\n".join(lab.COM1_WITNESSES) + b"\n")
             process = type("Alive", (), {"poll": lambda self: None})()
             with patch.object(lab.time, "monotonic", side_effect=[0, 0, 1201]):
                 with patch.object(lab.time, "sleep"):
@@ -173,7 +173,7 @@ class FourthBootContracts(unittest.TestCase):
     def test_qemu_partial_com1_after_clean_shutdown_is_not_boot(self):
         with tempfile.TemporaryDirectory() as td:
             serial = Path(td) / "partial.log"
-            serial.write_bytes(lab.COM1_WITNESSES[0] + b"\\n")
+            serial.write_bytes(lab.COM1_WITNESSES[0] + b"\n")
             proc = type("Done", (), {"poll": lambda self: 0})()
             with patch.object(lab.time, "monotonic", side_effect=[0, 0]):
                 with self.assertRaisesRegex(
