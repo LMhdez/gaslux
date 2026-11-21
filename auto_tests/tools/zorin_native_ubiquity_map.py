@@ -294,6 +294,49 @@ def build_map(rootfs: Path, prior: dict, manifest: bytes,
     }
 
 
+
+def validate_consistency(report: dict) -> None:
+    """Cross-check every code signal against its source identity; never grant writes."""
+    require(report.get("authorization") == "DENY_NO_WRITER"
+            and report.get("stable") is False
+            and report.get("nativeInstallerExecuted") is False
+            and report.get("partitionLockdownVerified") is False
+            and report.get("outsideLinuxTargetWriteSetAuthenticated") is False
+            and report.get("efiAndNvramPreservationVerified") is False,
+            "read-only policy must remain denied")
+    modules = {module["path"]: module for module in report["modules"]}
+    require(len(modules) == len(report["modules"]),
+            "duplicate evidence source")
+    require(modules.get("usr/bin/ubiquity", {}).get("sha256") == UBIQUITY_EXEC_SHA,
+            "pinned Ubiquity executable lost")
+    for name, item in report["capabilities"].items():
+        evidence = item["evidence"]
+        require(item["runtimeBehaviorVerified"] is False
+                and item["status"] ==
+                ("SUPPORTED_STATICALLY" if evidence else "UNOBSERVED"),
+                "capability classification contradicts source evidence")
+        for witness in evidence:
+            source = modules.get(witness["path"])
+            require(source is not None
+                    and source["sha256"] == witness["sourceSha256"]
+                    and source["package"] == witness["package"]
+                    and witness["capability"] == name
+                    and type(witness["line"]) is int and witness["line"] > 0
+                    and witness["basis"] == "STATIC_CODE_REFERENCE_ONLY",
+                    "capability evidence not bound to authenticated source")
+    for surface in report["potentialWriteSurfaces"].values():
+        require(surface["writeSetLimitedToOwnedLinuxRoot"] is False
+                and surface["observedWrites"] is False
+                and surface["classification"] ==
+                ("CONDITIONAL_CODE_REFERENCE" if surface["evidence"] else "UNKNOWN"),
+                "write surface overclaims safe or observed writes")
+        for witness in surface["evidence"]:
+            source = modules.get(witness["path"])
+            require(source is not None
+                    and source["sha256"] == witness["sourceSha256"]
+                    and source["package"] == witness["package"],
+                    "write surface witness not bound to source")
+
 def map_authenticated_iso(iso: Path, mounted: Path, prior: dict) -> dict:
     verify_official_zorin(iso)
     require(mounted.is_dir() and not mounted.is_symlink()
@@ -314,7 +357,9 @@ def map_authenticated_iso(iso: Path, mounted: Path, prior: dict) -> dict:
     require(digest(manifest) ==
             "cc206a10d7de5cd8d373634f1b91ac35e030f5d4075acda7edcbb2b0318ee948",
             "Casper manifest fingerprint mismatch")
-    return build_map(mounted / "casper/filesystem.squashfs", prior, manifest)
+    report = build_map(mounted / "casper/filesystem.squashfs", prior, manifest)
+    validate_consistency(report)
+    return report
 
 
 def main() -> None:
