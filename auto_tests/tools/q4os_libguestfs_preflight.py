@@ -198,7 +198,7 @@ def classify_diagnostic(cause: str) -> str:
         return "MODULE_DEPENDENCY_MISSING"
     if "supermin" in lowered:
         return "SUPERMIN_EXIT_NONZERO_CAUSE_UNCLASSIFIED"
-    if "timeout" in lowered:
+    if "timeout" in lowered or "timed out" in lowered:
         return "APPLIANCE_BOOT_TIMEOUT"
     return "APPLIANCE_LAUNCH_FAILED_CAUSE_UNCLASSIFIED"
 
