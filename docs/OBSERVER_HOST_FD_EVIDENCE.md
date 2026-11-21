@@ -186,12 +186,12 @@ rated #292 PARTIAL and identified false local assurance on caller claims and
 a remote FD replacement missed by the original exit check.
 
 **RED before correction:** [Action #44942887250](https://github.com/LMhdez/gaslux/actions/runs/44942887250)
-on commit \`0a075387fd3953442effb8dc0574af5ee8dfa58f\` executed actual
-\`auto_tests/installer_observer/host_qemu_fd_evidence.py\` with Git blob
-\`570b5cf114da7c07234ba524c7c01e1536342770\` **identical to #292**.
+on commit `0a075387fd3953442effb8dc0574af5ee8dfa58f` executed actual
+`auto_tests/installer_observer/host_qemu_fd_evidence.py` with Git blob
+`570b5cf114da7c07234ba524c7c01e1536342770` **identical to #292**.
 All three new tests failed for the precise security reasons:
-F-01 fabricated dict labelled \`LOCALLY_MEASURED\`, F-02 forged verifier
-labelled \`LOCALLY_MEASURED\`, F-03 real subprocess dup2(O_RDWR) of same
+F-01 fabricated dict labelled `LOCALLY_MEASURED`, F-02 forged verifier
+labelled `LOCALLY_MEASURED`, F-03 real subprocess dup2(O_RDWR) of same
 inode accepted. Prior 25+22+31 tests had passed in that RED run.
 **This is a deliberate failing regression run, not a successful security CI.**
 
