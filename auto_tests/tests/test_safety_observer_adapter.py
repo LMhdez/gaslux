@@ -167,7 +167,7 @@ def test_signed_observer_state_is_only_a_lab_no_writer_decision():
 
 
 @pytest.mark.parametrize("fault", [
-    "invalid_signature", "key_unknown", "vm_pin", "transaction_pin",
+    "invalid_signature", "key_unknown", "key_replaced", "vm_pin", "transaction_pin",
     "request_id_pin", "sequence_pin", "nonce_pin", "controller_pin",
     "collector_pin", "qemu_pid_pin", "qemu_start_pin", "plan_sha",
     "backing_sha", "overlay_sha", "virtual_serial", "disk_pin",
@@ -187,6 +187,18 @@ def test_untrusted_or_divergent_evidence_fails_closed(fault):
         response = json.loads(args["response"])
         response["signature"]["key_id"] = "untrusted"
         args["response"] = json.dumps(response).encode()
+    elif fault == "key_replaced":
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from auto_tests.installer_observer.remote_verifier import TrustStore
+        new_key = Ed25519PrivateKey.generate().public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        old_pin = args["verifier"].trust_store.controllers[pins.observer_key_id]
+        args["verifier"].trust_store = TrustStore({
+            pins.observer_key_id: replace(old_pin, public_key_raw=new_key),
+        })
     elif fault == "vm_pin":
         args["pins"] = replace(pins, vm_uuid="77777777-7777-4777-8777-777777777777")
     elif fault == "transaction_pin":
