@@ -13,13 +13,11 @@ import importlib
 import json
 import os
 import secrets
-import stat
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -425,7 +423,6 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         expected_observer_result_sha256=signed["verified_result_sha256"],
         schema_path=safety_root / "schemas/safety-gpt-provenance-v1.schema.json",
     )
-    from dataclasses import replace as dc_replace
     # The Safety evaluator must not infer independent origin from this record.
     assessment = provenance.assess_gpt_provenance_v1(
         statement,
