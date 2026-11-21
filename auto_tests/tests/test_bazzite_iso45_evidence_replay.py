@@ -1,7 +1,6 @@
 """Adversarial offline replay of the exact, SHA-pinned ISO45 Actions artifact."""
 
 import copy
-import io
 import json
 import os
 import sys

@@ -15,10 +15,9 @@ import re
 import zipfile
 from pathlib import Path
 
-from PIL import Image, UnidentifiedImageError
-
 from bazzite_iso45_passive_gate import Refusal, classify, validate_record
 from bazzite_iso_public_readback import CONFIG_DIGEST, ISO_SHA256, PAYLOAD_DIGEST
+from PIL import Image, UnidentifiedImageError
 
 RUN_ID = 44822100590
 ARTIFACT_ID = 14672623998
@@ -199,7 +198,7 @@ def inspect_evidence(files: dict[str, bytes], candidate: dict) -> dict:
 
     # These PNG hashes identify the SIX frames examined directly by a reviewer.
     # OCR is a corroborating signal, not independent authenticity or a write grant.
-    original = classify(ocr_records, guest_running=True)
+    original = classify(ocr_records, guest_running=True, evidence_authenticated=True)
     require(
         original["result"] == "B"
         and original["liveEnvironmentRecognized"] is True

@@ -154,13 +154,13 @@ def test_ambiguous_screen_never_proves_bazzite_live():
 
 
 def test_boot_screen_without_installer_yields_b():
-    result = classify(["Welcome to Bazzite live session"], guest_running=True)
+    result = classify(["Welcome to Bazzite live session"], guest_running=True, evidence_authenticated=True)
     assert result["result"] == "B"
     assert result["getActionsObserved"] is False
 
 
 def test_observed_installation_page_without_control_yields_a():
-    result = classify(["Bazzite installation destination"], guest_running=True)
+    result = classify(["Bazzite installation destination"], guest_running=True, evidence_authenticated=True, destination_screen_verified=True)
     assert result["result"] == "A"
     assert result["installationAuthorized"] is False
 
@@ -186,7 +186,7 @@ def test_actual_portal_ocr_recognized_without_destination_authority():
         "Welcome! Install Applications Get Media Apps Manage Bazzite\\n"
         "Read the Bazzite Docs\\n"
     )
-    result = classify([ocr], guest_running=True)
+    result = classify([ocr], guest_running=True, evidence_authenticated=True)
     assert result["result"] == "B"
     assert result["liveEnvironmentRecognized"] is True
     assert result["installerInterfaceIdentified"] is False
@@ -196,3 +196,23 @@ def test_actual_portal_ocr_recognized_without_destination_authority():
 def test_partial_portal_or_generic_desktop_is_not_sufficient():
     for text in ("Bazzite Portal", "Manage Bazzite", "Install to Hard Drive", "Desktop"):
         assert classify([text], guest_running=True)["result"] == "C"
+
+def test_any_unbound_ocr_cannot_claim_live_or_installer():
+    for content in (
+        "Bazzite Portal\nManage Bazzite\nRead the Bazzite Docs\nSearch Apps and Actions",
+        "Bazzite installation destination",
+    ):
+        outcome = classify([content], guest_running=True)
+        assert outcome["result"] == "C"
+        assert outcome["installationAuthorized"] is False
+
+
+def test_installer_destination_requires_independently_reviewed_frame():
+    result = classify(
+        ["Bazzite installation destination"],
+        guest_running=True,
+        evidence_authenticated=True,
+        destination_screen_verified=False,
+    )
+    assert result["result"] == "C"
+    assert result["installerInterfaceIdentified"] is False

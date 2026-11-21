@@ -156,7 +156,13 @@ def verify_iso_file(path: Path, runner_temp: Path) -> dict:
     return {"sha256": digest.hexdigest(), "sizeBytes": info.st_size, "isoReadOnly": True}
 
 
-def classify(ocr_records: list[str], guest_running: bool) -> dict:
+def classify(
+    ocr_records: list[str],
+    guest_running: bool,
+    *,
+    evidence_authenticated: bool = False,
+    destination_screen_verified: bool = False,
+) -> dict:
     """OCR is passive evidence only; neither OCR nor graphics authorize clicks."""
     combined = "\n".join(ocr_records).casefold()
     bazzite = "bazzite" in combined
@@ -188,17 +194,17 @@ def classify(ocr_records: list[str], guest_running: bool) -> dict:
             "live desktop",
         )
     ))
-    if guest_running and installer and not portal:
+    if guest_running and evidence_authenticated and installer and destination_screen_verified and not portal:
         result, reason = "A", "Bazzite installer destination screen observed passively"
-    elif guest_running and live:
+    elif guest_running and evidence_authenticated and live:
         result, reason = "B", "Bazzite live UI observed; installer not identified"
     else:
         result, reason = "C", "Bazzite live environment not proven by bounded OCR"
     return {
         "result": result,
         "reason": reason,
-        "liveEnvironmentRecognized": bool(guest_running and (installer or live)),
-        "installerInterfaceIdentified": bool(guest_running and installer),
+        "liveEnvironmentRecognized": bool(guest_running and evidence_authenticated and (installer or live)),
+        "installerInterfaceIdentified": bool(guest_running and evidence_authenticated and installer and destination_screen_verified and not portal),
         "anacondaDbusServiceObserved": False,
         "getActionsObserved": False,
         "guestCommandChannelAuthorized": False,
