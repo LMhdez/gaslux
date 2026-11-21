@@ -172,7 +172,6 @@ def _run_reason(grant: dict[str, Any], run: RunObservationFixture) -> str | None
     return None
 
 
-
 def _key(*values: str) -> str:
     """Canonical, unambiguous non-rotating identity; not a credential."""
     raw = json.dumps(values, ensure_ascii=True, separators=(",", ":"))
@@ -199,8 +198,6 @@ def _identities(grant: dict[str, Any]) -> tuple[str, str, str]:
     # turn the same human review into another reservation.
     review_key = _key(grant["repository"], grant["humanReviewId"])
     return authorization_key, execution_key, review_key
-
-
 
 
 class OfflineLedger:
@@ -237,9 +234,7 @@ class OfflineLedger:
                 if tables != {"grants", "decisions"}:
                     con.execute("ROLLBACK")
                     raise Refused("LEGACY_OR_AMBIGUOUS_LEDGER")
-                names = {
-                    row[1] for row in con.execute("PRAGMA table_info(grants)").fetchall()
-                }
+                names = {row[1] for row in con.execute("PRAGMA table_info(grants)").fetchall()}
                 required = {
                     "grant_id",
                     "authorization_key",
@@ -380,9 +375,7 @@ class OfflineLedger:
                 )
                 reason = "GRANT_UNIQUENESS_VIOLATION"
                 for column, value, rejection in constraints:
-                    if con.execute(
-                        f"SELECT 1 FROM grants WHERE {column} = ?", (value,)
-                    ).fetchone():
+                    if con.execute(f"SELECT 1 FROM grants WHERE {column} = ?", (value,)).fetchone():
                         reason = rejection
                         break
                 self._record(con, gid, at, None, None, "DENIED", reason)
