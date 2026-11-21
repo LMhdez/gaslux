@@ -1,0 +1,17 @@
+{
+  "contractVersion": 1,
+  "grantId": "6f34961d-dcfe-4f8c-9f8e-d13a6b1c1111",
+  "repository": "LMhdez/gaslux",
+  "experimentId": "observer-gpt-immediate-offline-model",
+  "requestRef": "refs/heads/qemu-approved/observer-gpt-offline-model",
+  "preparationSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "authorizationSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "protectedControllerSha": "cccccccccccccccccccccccccccccccccccccccc",
+  "auditedCodeSha": "dddddddddddddddddddddddddddddddddddddddd",
+  "requesterId": "LMhdez",
+  "externalApproverId": "independent-reviewer",
+  "humanReviewId": "fixture-review-not-a-real-approval",
+  "scope": "READ_ONLY_DIAGNOSTIC",
+  "issuedAt": "2026-11-21T12:00:00Z",
+  "expiresAt": "2026-11-22T12:00:00Z"
+}
