@@ -23,8 +23,8 @@ function Get-LibertixPartitionRecord {
 }
 
 # Read-only structural gate shared by installation baseline capture and rollback.
-# Windows partition numbers are not stable physical identifiers by themselves;
-# combining numbers, GUIDs, exact extents and disk identity rejects aliases.
+# Partition numbering may legitimately change; require unique numbers within
+# each observation, while durable identity remains GUID + extent + disk.
 function Assert-LibertixStoragePartitionInventory {
     [CmdletBinding()]
     param(
@@ -198,7 +198,7 @@ function Assert-LibertixStorageBaseline {
             $match = @($current | Where-Object offsetBytes -EQ $offset)
             if ($match.Count -ne 1) { throw "An original partition on disk $($target.number) is missing or moved (offset $offset)." }
             $match = $match[0]
-            foreach ($field in @('number', 'guid', 'gptType', 'mbrType', 'isActive', 'isHidden', 'isReadOnly', 'noDefaultDriveLetter')) {
+            foreach ($field in @('guid', 'gptType', 'mbrType', 'isActive', 'isHidden', 'isReadOnly', 'noDefaultDriveLetter')) {
                 if ($original.$field -ne $match.$field) {
                     throw "Partition identity or attributes changed on disk $($target.number), offset ${offset}: $field."
                 }
