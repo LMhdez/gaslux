@@ -11,7 +11,16 @@ revision separately. No Observer code is copied into the Safety branch.
 Adapter:
 `assets/live/libertix_safety_observer_adapter.py`:
 `consume_observer_state_no_writer(verifier, request, response, pins,
-plan_bytes, host_gpt, guest_gpt, immediate_gpt, now, deadline)`.
+plan_bytes, host_gpt, guest_gpt, immediate_gpt, gate_evidence, now, deadline)`.
+`gate_evidence` contains three separately HMAC-authenticated Safety GPT
+snapshots, ephemeral host/guest keys and an explicitly limited synthetic
+owned free-space write-set. The adapter invokes the existing
+`decide_no_writer()` before returning `ACCEPT_NO_WRITER`, then verifies
+that its authenticated snapshots equal the independently supplied GPT
+inventories. Observer's UUID transaction is converted to the same 128-bit
+32-character hexadecimal Safety plan identifier; no unrelated transaction
+may be generated. Neither HMAC nor a caller-supplied ownership declaration
+is proof of provenance or production authority.
 
 Only immutable raw request/response bytes are accepted. The actual Observer
 verifier must check RFC 8785, Ed25519, schemas, externally pinned controller,
@@ -54,7 +63,8 @@ emits this reviewed Safety GPT envelope. These tests therefore prove the
 - The backing/overlay digests prove equality to declared external pins, not
   that an immutable file descriptor or running QEMU process was inspected
   independently or fenced against substitution.
-- Only `ACCEPT_NO_WRITER` can be returned, and only with
+- Only `ACCEPT_NO_WRITER` can be returned after the *existing Safety gate*
+  succeeds, and only with
   `production_write_authorized = false`, `writer_called = false`.
   **It MUST NOT be connected to parted, mkfs, an installer or bootloader.**
 - No physical disks, real Windows partitions or VMs are modified by the
