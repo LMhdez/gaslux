@@ -101,7 +101,18 @@ jobs:
           source safety-pop-lab/auto_tests/tools/windows_x64_libguestfs_kernel.sh
           /usr/bin/python3 -m venv --system-site-packages "$RUNNER_TEMP/gaslux-guestfs-venv"
           "$RUNNER_TEMP/gaslux-guestfs-venv/bin/python" -m pip install \
-            'cryptography>=50,<51' 'jsonschema>=4,<5' 'rfc8785>=0.1.4,<1'
+            'cryptography>=50,<51' 'jsonschema>=4,<5' 'rfc8785>=0.1.4,<1' 'pillow>=11,<13'
+      - name: Verify guestfs and Observer imports before QEMU creation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/gaslux-guestfs-venv/bin/python" - <<'PY'
+          import guestfs
+          from PIL import Image
+          from auto_tests.installer_observer.gpt_lab_provenance import experiment
+          assert guestfs and Image and experiment
+          print("Pinned read-only guestfs and Observer modules import successfully")
+          PY
       - name: Collect genuine QEMU GPT sectors via read-only guestfs, no input
         shell: bash
         env:
