@@ -272,8 +272,16 @@ def build_map(rootfs: Path, prior: dict, manifest: bytes,
     unreadable = []
     total = 0
     for path, package in chosen:
-        require(regular_checker(rootfs, path.lstrip("/")),
-                "source member is not a regular file")
+        try:
+            require(regular_checker(rootfs, path.lstrip("/")),
+                    "source member is not a regular file")
+        except NativeDiscoveryError:
+            # Package ownership alone is insufficient: missing files and
+            # symlinks are not evidence. Never skip the pinned entrypoint.
+            if path == "/usr/bin/ubiquity":
+                raise
+            unreadable.append(path.lstrip("/"))
+            continue
         data = reader(rootfs, path.lstrip("/"), SOURCE_LIMIT, optional=True)
         if data is None:
             unreadable.append(path.lstrip("/"))
