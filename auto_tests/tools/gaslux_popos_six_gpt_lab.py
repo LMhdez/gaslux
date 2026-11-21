@@ -262,7 +262,7 @@ def validated_overlay_map(child: Path, base: Path) -> list[dict]:
             and row["length"] % SECTOR == 0
             and cursor + row["length"] <= SIZE
             and not (row["data"] and row["zero"]),
-            "REFUSE_RECOVERY_UNPROVEN: incomplete/contradictory QCOW2 extent",
+            f"REFUSE_RECOVERY_UNPROVEN: invalid QCOW2 extent at {cursor}: {repr(row)[:400]}",
         )
         cursor += row["length"]
     need(cursor == SIZE, "REFUSE_RECOVERY_UNPROVEN: incomplete QCOW2 coverage")
