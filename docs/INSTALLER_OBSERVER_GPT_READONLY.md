@@ -210,3 +210,42 @@ its immediate record used the previous host export. The revised source
 requires its own validation run before its stronger immediate claim
 can be accepted; never attribute this property retroactively to the
 earlier artifact.
+
+## Fresh IMMEDIATE revalidation — confirmed 21 November 2026
+
+A follow-up engineering review identified a nontrivial source limitation:
+the original `immediate` read in run #44895034912 read the *same*
+`host.raw` export used by HOST. The code was corrected in commit
+`418ad582a7ceb8e54c203467b8d35dd12c4f1026` to require a new
+`qemu-img convert` read-only export of the **same checked QCOW2** only
+after `guestfs.close()` and QEMU process termination. A second SHA-256
+and inode/chain validation follows this fresh capture.
+
+This specific changed hypothesis was tested in
+[Actions #44895500728](https://github.com/LMhdez/gaslux/actions/runs/44895500728),
+commit `8d66312a8a972cdc86b860de03f9410ac85107bf`:
+the synthetic producer contracts, pinned Safety regressions and genuine
+QEMU/libguestfs laboratory all completed **SUCCESS**. The final QEMU
+result recorded `guestRealPread=true`, `ephemeralDiskRemoved=true`,
+`diagnostic=DIAGNOSTIC_ONLY`, `guestInputCount=0`,
+`writerCalled=false`, and `classification=NOT_INDEPENDENT`.
+
+[Original refreshed artifact #14704100481](https://github.com/LMhdez/gaslux/actions/runs/44895500728/artifacts/14704100481)
+contains the three distinct read traces, raw GPT samples, strict Safety
+v1 document, hashes and lab manifest. GitHub Actions ZIP SHA-256:
+`24be270491e356ee6db9cd83787a6c5d03c26262cf7b3f3bf8f1e0eddc4d5391`.
+
+| Original evidence file | SHA-256 |
+|---|---|
+| `host-read-trace.json` | `96642f07f13618d1a40f165f4dadd5a78e809767b4d2089f1f1513551a466c55` |
+| `guest-read-trace.json` | `48596d9b8c4b9e058639bee3051048787b94fdddce77bc97e96d48bd3855b3dc` |
+| `immediate-read-trace.json` | `9055c0c69466d6ff0efde9e1ca5c632d35930cd42d2b940e20373b9e7f7d9a31` |
+| `safety-gpt-provenance-v1.json` | `9e58077e22c939e4d52c8e2b54d3dcf5806f73f76aa2530d8012357830c7043d` |
+| `manifest.json` | `4c9fc606fc30fa1c9001cb34f798c0c5b6ab986356afb3ff0f56664ba5a01e59` |
+
+**What this adds:** post-guest QCOW2 state revalidation from a
+new read path. The appliance is already shut down when IMMEDIATE is
+acquired; this is **not an atomic live-VM snapshot** and still does not
+prove a QMP-authenticated VM UUID, a genuine hardware serial, or
+independent guest measurement provenance. All identity and storage
+claims remain local to the GitHub-hosted laboratory.
