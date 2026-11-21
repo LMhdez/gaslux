@@ -243,3 +243,62 @@ def test_ocr_bytes_and_path_are_equivalent(monkeypatch, screenshots):
     inputs = _mock_ocr(monkeypatch, "what is your name repeat password summary")
     assert gate.ocr(path) == gate.ocr(data)
     assert inputs == [data, data]
+
+
+@pytest.mark.parametrize(
+    ("stdout", "expected"),
+    [
+        (
+            b"This is an\noverview\tpartitions\r\nerase disk",
+            "this is an overview partitions erase disk",
+        ),
+        (
+            b"This    is   an overview   partitions   erase disk",
+            "this is an overview partitions erase disk",
+        ),
+        (
+            b"This\tis\tan\toverview\tpartitions\terase disk",
+            "this is an overview partitions erase disk",
+        ),
+        (
+            b"This is an\r\noverview\r\npartitions\r\nerase disk",
+            "this is an overview partitions erase disk",
+        ),
+        (
+            b"This is an\noverview\npartitions\nerase disk",
+            "this is an overview partitions erase disk",
+        ),
+        (
+            "This\u00a0is\u2003an overview\u2028partitions erase disk".encode("utf-8"),
+            "this is an overview partitions erase disk",
+        ),
+    ],
+)
+def test_ocr_snapshot_normalizes_real_whitespace(monkeypatch, stdout, expected):
+    snapshot = b"original-image-snapshot"
+    captured = []
+
+    def tesseract(command, *, input, capture_output, timeout, check):
+        assert command == ["tesseract", "stdin", "stdout"]
+        assert capture_output is True
+        assert timeout == 40
+        assert check is True
+        captured.append(input)
+        return SimpleNamespace(stdout=stdout)
+
+    monkeypatch.setattr(gate.subprocess, "run", tesseract)
+    assert gate._ocr_snapshot(snapshot) == expected
+    assert captured == [snapshot]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [subprocess.CalledProcessError(1, "tesseract"), subprocess.TimeoutExpired("tesseract", 40)],
+)
+def test_ocr_snapshot_subprocess_failures_remain_terminal(monkeypatch, error):
+    def tesseract(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(gate.subprocess, "run", tesseract)
+    with pytest.raises(gate.ScreenRefusal, match="OCR did not complete"):
+        gate._ocr_snapshot(b"original-image-snapshot")

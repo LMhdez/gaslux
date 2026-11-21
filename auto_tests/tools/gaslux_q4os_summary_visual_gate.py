@@ -107,7 +107,7 @@ def _ocr_snapshot(snapshot: bytes) -> str:
             timeout=40,
             check=True,
         )
-        return re.sub(r"\\s+", " ", result.stdout.decode("utf-8")).lower()
+        return re.sub(r"\s+", " ", result.stdout.decode("utf-8")).lower()
     except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         raise ScreenRefusal("OCR did not complete") from exc
 
