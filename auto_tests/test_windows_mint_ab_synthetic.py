@@ -1,12 +1,13 @@
 """Fixed synthetic GPT identity and atomic restore contract tests."""
+
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
 from dataclasses import replace
+from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent / "tools"))
@@ -24,19 +25,15 @@ class SyntheticProfileTests(unittest.TestCase):
             {"scratch_bytes": 0},
             {"name": "production-windows"},
         ):
-            with self.subTest(delta=delta):
-                with self.assertRaisesRegex(
-                    AbCheckpointError, "unsupported or forged"
-                ):
-                    synthetic.validate_profile(replace(synthetic.PROFILE, **delta))
+            with (
+                self.subTest(delta=delta),
+                self.assertRaisesRegex(AbCheckpointError, "unsupported or forged"),
+            ):
+                synthetic.validate_profile(replace(synthetic.PROFILE, **delta))
 
     def test_scratch_is_gpt_derived_and_outside_fifth_partition(self) -> None:
-        offset = synthetic.validate_scratch(
-            synthetic.PROFILE.fifth_last_lba, synthetic.PROFILE
-        )
-        self.assertGreater(
-            offset, synthetic.PROFILE.fifth_last_lba * synthetic.SECTOR
-        )
+        offset = synthetic.validate_scratch(synthetic.PROFILE.fifth_last_lba, synthetic.PROFILE)
+        self.assertGreater(offset, synthetic.PROFILE.fifth_last_lba * synthetic.SECTOR)
         self.assertLess(
             offset + synthetic.PROFILE.scratch_bytes,
             synthetic.PROFILE.virtual_bytes - 34 * synthetic.SECTOR,
@@ -44,18 +41,16 @@ class SyntheticProfileTests(unittest.TestCase):
 
     def test_wrong_partition_geometry_rejected(self) -> None:
         for end in (0, 77824, 999999, -1):
-            with self.subTest(end=end):
-                with self.assertRaisesRegex(
-                    AbCheckpointError, "fifth partition end changed"
-                ):
-                    synthetic.validate_scratch(end, synthetic.PROFILE)
+            with (
+                self.subTest(end=end),
+                self.assertRaisesRegex(AbCheckpointError, "fifth partition end changed"),
+            ):
+                synthetic.validate_scratch(end, synthetic.PROFILE)
 
     def test_guest_boot_and_arbitrary_workspace_not_authorized(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             with patch.object(synthetic, "generate_private_gpt") as disk:
-                with self.assertRaisesRegex(
-                    AbCheckpointError, "consent"
-                ):
+                with self.assertRaisesRegex(AbCheckpointError, "consent"):
                     synthetic.run_fixed_synthetic()
                 disk.assert_not_called()
 
@@ -65,9 +60,7 @@ class SyntheticProfileTests(unittest.TestCase):
             raw = folder / "synthetic-gpt.raw"
             raw.write_bytes(b"foreign")
             with patch.object(synthetic, "_run") as process:
-                with self.assertRaisesRegex(
-                    AbCheckpointError, "foreign synthetic"
-                ):
+                with self.assertRaisesRegex(AbCheckpointError, "foreign synthetic"):
                     synthetic.generate_private_gpt(raw, folder)
                 process.assert_not_called()
             self.assertEqual(raw.read_bytes(), b"foreign")
@@ -83,10 +76,15 @@ class SyntheticProfileTests(unittest.TestCase):
             b.write_bytes(b"arm-b")
             with patch.object(synthetic, "command") as cmd:
                 cmd.return_value.returncode = 1
-                with patch.object(synthetic, "atomic_restore_owned_arm") as restore, \
-                     patch.object(synthetic, "equivalent"):
+                with (
+                    patch.object(synthetic, "atomic_restore_owned_arm") as restore,
+                    patch.object(synthetic, "equivalent"),
+                ):
                     synthetic.arm_fault_and_restore(
-                        ref, a, b, folder,
+                        ref,
+                        a,
+                        b,
+                        folder,
                         offset=40 * synthetic.MiB,
                         full_bound=64 * synthetic.MiB,
                     )
@@ -106,12 +104,16 @@ class SyntheticProfileTests(unittest.TestCase):
             with patch.object(synthetic, "command") as cmd:
                 cmd.return_value.returncode = 1
                 with patch.object(
-                    synthetic, "atomic_restore_owned_arm",
+                    synthetic,
+                    "atomic_restore_owned_arm",
                     side_effect=OSError(28, "ENOSPC"),
                 ):
                     with self.assertRaises(OSError):
                         synthetic.arm_fault_and_restore(
-                            ref, a, b, folder,
+                            ref,
+                            a,
+                            b,
+                            folder,
                             offset=40 * synthetic.MiB,
                             full_bound=64 * synthetic.MiB,
                         )
