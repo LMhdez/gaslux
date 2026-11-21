@@ -114,8 +114,9 @@ def ovmf_available() -> bool:
         p, q = prefix / code, prefix / vars_file
         try:
             if all(x.is_file() and not x.is_symlink()
-                   and x.stat().st_size > 1048576
-                   and os.access(x, os.R_OK) for x in (p, q)):
+                   and os.access(x, os.R_OK) for x in (p, q))
+                   and p.stat().st_size > 1048576
+                   and q.stat().st_size >= 65536:
                 return True
         except OSError:
             continue
