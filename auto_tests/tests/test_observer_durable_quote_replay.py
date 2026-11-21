@@ -190,17 +190,20 @@ def test_post_open_path_substitution_revokes_guard(tmp_path):
     alias.symlink_to(tmp_path / "old.sqlite3")
     alias.rename(path)
     _, _, evidence = fixture()
-    assert code_of(
-        lambda: guard.consume_challenge(
-            make_challenge(evidence.context),
-            nonce=evidence.context.nonce,
-            request_id=evidence.context.request_id,
-            transaction_id=evidence.context.transaction_id,
-            session_id=evidence.context.session_id,
-            now=NOW,
-            valid_until=NOW + timedelta(days=1),
+    assert (
+        code_of(
+            lambda: guard.consume_challenge(
+                make_challenge(evidence.context),
+                nonce=evidence.context.nonce,
+                request_id=evidence.context.request_id,
+                transaction_id=evidence.context.transaction_id,
+                session_id=evidence.context.session_id,
+                now=NOW,
+                valid_until=NOW + timedelta(days=1),
+            )
         )
-    ) == "REPLAY_STORAGE_UNAVAILABLE"
+        == "REPLAY_STORAGE_UNAVAILABLE"
+    )
 
 
 def test_expired_reference_policy_never_licenses_replay(tmp_path):
@@ -208,9 +211,12 @@ def test_expired_reference_policy_never_licenses_replay(tmp_path):
     guard = DurableQuoteReplayGuard.provision(path)
     _, policy, evidence = fixture()
     run(policy, evidence, guard=guard)
-    assert code_of(
-        lambda: verify_with(
-            DurableQuoteReplayGuard(path), replace(policy, valid_until=NOW), evidence
+    assert (
+        code_of(
+            lambda: verify_with(
+                DurableQuoteReplayGuard(path), replace(policy, valid_until=NOW), evidence
+            )
         )
-    ) == "POLICY_EXPIRED"
+        == "POLICY_EXPIRED"
+    )
     assert subprocess_consume(path, evidence) == "CHALLENGE_REPLAY"
