@@ -1,0 +1,238 @@
+name: Q4OS native Windows/GPT preservation and checkpoint (READ ONLY)
+
+on:
+  push:
+    branches:
+      - feature/q4os-windows-native-boundary-20261120
+    paths:
+      - '.github/workflows/gaslux-q4os-windows-boundary.yml'
+      - 'assets/live/gaslux_q4os_windows_boundary.py'
+      - 'assets/live/gaslux_q4os_safety_adapter.py'
+      - 'auto_tests/tests/test_q4os_windows_boundary.py'
+      - 'auto_tests/tests/test_q4os_safety_adapter.py'
+      - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
+      - 'auto_tests/tests/test_q4os_ci_no_mutating_formatter.py'
+      - 'auto_tests/tests/test_q4os_win10_readonly_probe.py'
+      - 'auto_tests/tools/q4os_win10_qmp_boot.py'
+      - 'auto_tests/tests/test_q4os_win10_qmp_boot.py'
+      - 'auto_tests/tests/test_q4os_guestfs_appliance_contract.py'
+      - 'auto_tests/tools/q4os_libguestfs_preflight.py'
+      - 'auto_tests/tests/test_q4os_qemu_ovmf_smoke.py'
+      - 'auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py'
+      - 'assets/live/gaslux_q4os_win10_readonly_probe.py'
+      - 'schemas/gaslux-q4os-windows-boundary.schema.json'
+      - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
+      - 'docs/Q4OS_CALAMARES_EFI_REFUSAL.md'
+      - 'docs/Q4OS_SAFETY_265_RECONCILIATION.md'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-windows-boundary.yml'
+      - 'assets/live/gaslux_q4os_windows_boundary.py'
+      - 'assets/live/gaslux_q4os_safety_adapter.py'
+      - 'auto_tests/tests/test_q4os_windows_boundary.py'
+      - 'auto_tests/tests/test_q4os_safety_adapter.py'
+      - 'auto_tests/tests/test_q4os_safety_actual_contract.py'
+      - 'auto_tests/tests/test_q4os_ci_no_mutating_formatter.py'
+      - 'auto_tests/tests/test_q4os_win10_readonly_probe.py'
+      - 'auto_tests/tools/q4os_win10_qmp_boot.py'
+      - 'auto_tests/tests/test_q4os_win10_qmp_boot.py'
+      - 'auto_tests/tests/test_q4os_guestfs_appliance_contract.py'
+      - 'auto_tests/tools/q4os_libguestfs_preflight.py'
+      - 'auto_tests/tests/test_q4os_qemu_ovmf_smoke.py'
+      - 'auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py'
+      - 'assets/live/gaslux_q4os_win10_readonly_probe.py'
+      - 'schemas/gaslux-q4os-windows-boundary.schema.json'
+      - 'docs/Q4OS_WINDOWS_NATIVE_BOUNDARY.md'
+      - 'docs/Q4OS_CALAMARES_EFI_REFUSAL.md'
+      - 'docs/Q4OS_SAFETY_265_RECONCILIATION.md'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-native-synthetic-gpt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Confirm exact published PR head was checked out
+        shell: bash
+        env:
+          GASLUX_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GASLUX_EXPECTED_HEAD"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install read-only test dependencies (synthetic images, no Windows host)
+        run: |
+          set -Eeuo pipefail
+          python -m pip install 'pytest>=9,<10' 'jsonschema>=4,<5' 'ruff>=0.8,<1' 'cryptography>=46,<51' 'PyYAML>=6,<7'
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+      - name: Compile and lint isolated non-authorizing backend
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py auto_tests/tools/q4os_win10_qmp_boot.py auto_tests/tests/test_q4os_win10_qmp_boot.py auto_tests/tools/q4os_libguestfs_preflight.py auto_tests/tests/test_q4os_guestfs_appliance_contract.py auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py auto_tests/tests/test_q4os_qemu_ovmf_smoke.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py auto_tests/tools/q4os_win10_qmp_boot.py auto_tests/tests/test_q4os_win10_qmp_boot.py auto_tests/tools/q4os_libguestfs_preflight.py auto_tests/tests/test_q4os_guestfs_appliance_contract.py auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py auto_tests/tests/test_q4os_qemu_ovmf_smoke.py
+          python -m ruff format --check --config auto_tests/pyproject.toml assets/live/gaslux_q4os_windows_boundary.py assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py assets/live/gaslux_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_readonly_probe.py auto_tests/tools/q4os_win10_qmp_boot.py auto_tests/tests/test_q4os_win10_qmp_boot.py auto_tests/tools/q4os_libguestfs_preflight.py auto_tests/tests/test_q4os_guestfs_appliance_contract.py auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py auto_tests/tests/test_q4os_qemu_ovmf_smoke.py
+      - name: Fetch pinned upstream Safety #267 (never into working tree)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git f55633c90973f633dda678f583f7730fc2cdc0ce
+          test "$(git rev-parse FETCH_HEAD)" = "f55633c90973f633dda678f583f7730fc2cdc0ce"
+          mkdir -p "$RUNNER_TEMP/q4os-safety-src"
+          git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
+          git show FETCH_HEAD:assets/live/libertix_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+          mkdir -p "$RUNNER_TEMP/q4os-safety-regression/assets/live" "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests"
+          cp "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py" "$RUNNER_TEMP/q4os-safety-regression/assets/live/"
+          cp "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py" "$RUNNER_TEMP/q4os-safety-regression/assets/live/"
+          git show FETCH_HEAD:auto_tests/tests/test_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests/test_disk_identity_gate.py"
+          git show FETCH_HEAD:auto_tests/tests/test_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests/test_prewrite_no_writer.py"
+          git diff --exit-code -- assets/live/gaslux_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py
+      - name: Synthetic GPT, ESP/WinRE/OEM and QCOW2 snapshot/restore refusals
+        env:
+          GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE: ${{ runner.temp }}/q4os-native-windows-boundary
+          GASLUX_Q4OS_PINNED_SAFETY_SOURCE_DIR: ${{ runner.temp }}/q4os-safety-src
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE"
+          python -m pytest -q auto_tests/tests/test_q4os_windows_boundary.py auto_tests/tests/test_q4os_safety_adapter.py auto_tests/tests/test_q4os_safety_actual_contract.py auto_tests/tests/test_q4os_ci_no_mutating_formatter.py auto_tests/tests/test_q4os_win10_readonly_probe.py auto_tests/tests/test_q4os_win10_qmp_boot.py auto_tests/tools/q4os_libguestfs_preflight.py auto_tests/tests/test_q4os_guestfs_appliance_contract.py auto_tests/tests/test_q4os_qemu_ovmf_smoke.py \
+            --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/pytest.xml"
+          test -s "$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/checkpoint-verified.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          proof = json.loads((Path(os.environ['GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE']) / 'checkpoint-verified.json').read_text())
+          assert proof['fixtureOnly'] and proof['restoredWholeRawByteMatch']
+          assert proof['readOnlyVerification']['checkpointComparedToFullDisk'] is True
+          assert proof['readOnlyVerification']['rollbackVerified'] is False
+          assert proof['windowsBootVerified'] is False
+          assert proof['calamaresExecuted'] is False
+          PY
+      - name: Regression contracts for Mint/Zorin metadata and existing Q4OS identity/recovery
+        env:
+          GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE: ${{ runner.temp }}/q4os-native-windows-boundary
+        run: |
+          set -Eeuo pipefail
+          PYTHONPATH="$RUNNER_TEMP/q4os-safety-regression/assets/live" python -m pytest -q \
+            "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests/test_disk_identity_gate.py" \
+            "$RUNNER_TEMP/q4os-safety-regression/auto_tests/tests/test_prewrite_no_writer.py" \
+            --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/safety-pinned-pytest.xml"
+          python -m pytest -q \
+            auto_tests/tests/test_lab_media_probe.py \
+            auto_tests/tests/test_filepool_checksums.py \
+            auto_tests/tests/test_release_metadata.py \
+            auto_tests/tests/test_q4os_native_preflight.py \
+            auto_tests/tests/test_q4os_calamares_policy.py \
+            auto_tests/tests/test_q4os_evidence_manifest.py \
+            auto_tests/tests/test_q4os_snapshot_recovery.py \
+            auto_tests/tests/test_q4os_vm_target_plan.py \
+            --junitxml="$GASLUX_Q4OS_WINDOWS_BOUNDARY_EVIDENCE/regression-pytest.xml"
+      - name: Confirm exact committed source remained untouched throughout tests
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code -- \
+            assets/live/gaslux_q4os_windows_boundary.py \
+            assets/live/gaslux_q4os_safety_adapter.py \
+            auto_tests/tests/test_q4os_windows_boundary.py \
+            auto_tests/tests/test_q4os_safety_adapter.py \
+            auto_tests/tests/test_q4os_safety_actual_contract.py \
+            auto_tests/tests/test_q4os_ci_no_mutating_formatter.py \
+            assets/live/gaslux_q4os_win10_readonly_probe.py \
+            auto_tests/tests/test_q4os_win10_readonly_probe.py \
+            auto_tests/tools/q4os_win10_qmp_boot.py \
+            auto_tests/tests/test_q4os_win10_qmp_boot.py \
+            auto_tests/tools/q4os_libguestfs_preflight.py \
+            auto_tests/tests/test_q4os_guestfs_appliance_contract.py \
+            auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py \
+            auto_tests/tests/test_q4os_qemu_ovmf_smoke.py \
+            .github/workflows/gaslux-q4os-windows10-qcow2.yml \
+            .github/workflows/gaslux-q4os-windows-boundary.yml
+      - name: Checkout audited generic-kernel selector (pinned Safety dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
+          path: q4os-kernel-selector
+          persist-credentials: false
+      - name: Hosted synthetic QEMU/libguestfs preflight — require KVM, no Windows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          evidence="$RUNNER_TEMP/q4os-guestfs-preflight-evidence"
+          test ! -e "$evidence"
+          mkdir -m 0700 "$evidence"
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils gdisk libguestfs-tools python3-guestfs \
+            libguestfs0 linux-image-generic supermin ovmf ca-certificates
+      - name: Select complete Ubuntu generic kernel and prove real guestfs GPT read-only
+        shell: bash
+        env:
+          GASLUX_Q4OS_GUESTFS_EVIDENCE: ${{ runner.temp }}/q4os-guestfs-preflight-evidence
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C q4os-kernel-selector rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
+          source q4os-kernel-selector/auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP" LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
+          timeout --signal=TERM --kill-after=20s 300s \
+            env PYTHONPATH="$RUNNER_TEMP/q4os-safety-src" \
+            /usr/bin/python3 auto_tests/tools/q4os_libguestfs_preflight.py
+      - name: Real synthetic OVMF/QMP startup at Windows machine size (no Windows)
+        shell: bash
+        env:
+          GASLUX_Q4OS_OVMF_EVIDENCE: ${{ runner.temp }}/q4os-ovmf-smoke-evidence
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test -c /dev/kvm && test ! -L /dev/kvm
+          test ! -e "$GASLUX_Q4OS_OVMF_EVIDENCE"
+          mkdir -m 0700 "$GASLUX_Q4OS_OVMF_EVIDENCE"
+          timeout --signal=TERM --kill-after=15s 60s \
+            /usr/bin/python3 auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py
+          test -s "$GASLUX_Q4OS_OVMF_EVIDENCE/q4os-qemu-ovmf-startup.json"
+          echo 'QEMU/OVMF full-size startup on blank synthetic media only; no Windows ISO' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish only bounded synthetic OVMF/QMP metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-synthetic-ovmf-qmp-startup-no-writer
+          path: ${{ runner.temp }}/q4os-ovmf-smoke-evidence/*.json
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Publish only bounded synthetic appliance JSON (no disk, keys or Windows)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-synthetic-libguestfs-appliance-preflight-no-writer
+          path: ${{ runner.temp }}/q4os-guestfs-preflight-evidence/*.json
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Preserve synthetic-only evidence (no disk or ISO artifacts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-windows-gpt-readonly-checkpoint-proof
+          path: ${{ runner.temp }}/q4os-native-windows-boundary/
+          if-no-files-found: warn
+          retention-days: 7
+

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/gaslux-q4os-windows-boundary.schema.json",
+  "title": "Q4OS native Windows GPT preservation proposal (read-only, no installation authority)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "backend": {
+      "const": "q4os-native"
+    },
+    "sourceKind": {
+      "const": "native-live-calamares"
+    },
+    "isoSha256": {
+      "const": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
+    },
+    "firmwareLayout": {
+      "const": "uefi/gpt"
+    },
+    "diskGuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "diskSizeBytes": {
+      "type": "integer",
+      "minimum": 8388608
+    },
+    "logicalSectorBytes": {
+      "enum": [
+        512,
+        4096
+      ]
+    },
+    "vmFileDeviceId": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "vmFileInode": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "observedStateSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "proposedRootStartLba": {
+      "type": "integer",
+      "minimum": 34
+    },
+    "proposedRootEndLba": {
+      "type": "integer",
+      "minimum": 35
+    },
+    "proposedRootFilesystem": {
+      "const": "ext4"
+    },
+    "checkpointMatchesFullDisk": {
+      "const": true
+    },
+    "checkpointSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gptMetadataWriteRequiresSeparateAuthority": {
+      "const": true
+    },
+    "windowsEspFallbackWriteBlocked": {
+      "const": true
+    },
+    "efiDebianHookWriteBlocked": {
+      "const": true
+    },
+    "windowsBootAndWinreRecoveryUnverified": {
+      "const": true
+    },
+    "installationAuthorized": {
+      "const": false
+    },
+    "calamaresJobsAuthorized": {
+      "const": false
+    },
+    "diskWritesAuthorized": {
+      "const": false
+    },
+    "windowsEspWritesAuthorized": {
+      "const": false
+    },
+    "rollbackVerified": {
+      "const": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "backend",
+    "sourceKind",
+    "isoSha256",
+    "firmwareLayout",
+    "diskGuid",
+    "diskSizeBytes",
+    "logicalSectorBytes",
+    "vmFileDeviceId",
+    "vmFileInode",
+    "observedStateSha256",
+    "proposedRootStartLba",
+    "proposedRootEndLba",
+    "proposedRootFilesystem",
+    "checkpointMatchesFullDisk",
+    "checkpointSha256",
+    "gptMetadataWriteRequiresSeparateAuthority",
+    "windowsEspFallbackWriteBlocked",
+    "efiDebianHookWriteBlocked",
+    "windowsBootAndWinreRecoveryUnverified",
+    "installationAuthorized",
+    "calamaresJobsAuthorized",
+    "diskWritesAuthorized",
+    "windowsEspWritesAuthorized",
+    "rollbackVerified"
+  ]
+}

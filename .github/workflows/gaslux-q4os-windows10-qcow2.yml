@@ -1,16 +1,6 @@
-name: Q4OS Windows 10 installed QCOW2 UEFI/GPT lab
+name: Q4OS genuine Windows10 read-only QEMU Safety refusal
 
 on:
-  push:
-    branches:
-      - feature/q4os-windows10-qcow2-lab
-    paths:
-      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
-      - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
-  pull_request:
-    paths:
-      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
-      - 'docs/Q4OS_WINDOWS10_QCOW2_LAB.md'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +18,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove published Q4OS HEAD checked out
+        shell: bash
+        env:
+          GASLUX_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GASLUX_EXPECTED_HEAD"
+
+      - name: Checkout pinned existing generic-kernel helper (no OS installer)
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
+          path: q4os-kernel-selector
+          persist-credentials: false
 
       - name: Install QEMU, OVMF and offline NTFS inspection tools
         shell: bash
@@ -35,7 +41,8 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl
+            qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl \
+            python3-guestfs libguestfs-tools libguestfs0 linux-image-generic supermin
           sudo modprobe nbd max_part=8
           if [[ -c /dev/kvm ]]; then
             sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
@@ -48,6 +55,51 @@ jobs:
             echo 'Windows lab accelerator: TCG (extended timeout)'
           fi
 
+      - name: BLOCKED_GUESTFS_APPLIANCE unless real synthetic QEMU GPT observer passes
+        shell: bash
+        env:
+          GASLUX_Q4OS_GUESTFS_EVIDENCE: ${{ runner.temp }}/q4os-win10-readonly-evidence
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          test "$(git -C q4os-kernel-selector rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
+          evidence="$GASLUX_Q4OS_GUESTFS_EVIDENCE"
+          test ! -e "$evidence"
+          mkdir -m 0700 "$evidence"
+          source q4os-kernel-selector/auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          mkdir -m 0700 "$RUNNER_TEMP/q4os-safety-src"
+          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git f55633c90973f633dda678f583f7730fc2cdc0ce
+          test "$(git rev-parse FETCH_HEAD)" = f55633c90973f633dda678f583f7730fc2cdc0ce
+          git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
+          git show FETCH_HEAD:assets/live/libertix_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP" LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
+          timeout --signal=TERM --kill-after=20s 300s \
+            env PYTHONPATH="$RUNNER_TEMP/q4os-safety-src" \
+            /usr/bin/python3 auto_tests/tools/q4os_libguestfs_preflight.py
+          test -s "$evidence/q4os-guestfs-synthetic-preflight.json"
+          echo 'Real QEMU appliance verified on synthetic disk; Windows media not yet touched' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: BLOCKED_QEMU_OVMF_STARTUP unless full-size synthetic QMP smoke passes
+        shell: bash
+        env:
+          GASLUX_Q4OS_OVMF_EVIDENCE: ${{ runner.temp }}/q4os-win10-readonly-evidence
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GASLUX_WIN10_ACCEL" = kvm
+          test -d "$GASLUX_Q4OS_OVMF_EVIDENCE"
+          test ! -L "$GASLUX_Q4OS_OVMF_EVIDENCE"
+          timeout --signal=TERM --kill-after=15s 60s \
+            /usr/bin/python3 auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py
+          test -s "$GASLUX_Q4OS_OVMF_EVIDENCE/q4os-qemu-ovmf-startup.json"
+          echo 'Synthetic OVMF/QMP start passed at Windows machine size, no Windows ISO used' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Download Microsoft Windows 10 Enterprise Evaluation 22H2 and verify official SHA-256
         shell: bash
         run: |
@@ -56,8 +108,9 @@ jobs:
           mkdir -m 0700 "$work"
           printf 'GASLUX_WIN10_WORK=%s\n' "$work" >> "$GITHUB_ENV"
           iso="$work/Windows10_Enterprise_22H2_Eval_EN-US_x64.iso"
-          url='https://software-static.download.prss.microsoft.com/dbazure/988969d5-f34g-4e03-ac9d-1f9786c66750/19045.2006.220908-0225.22h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso'
-          curl --fail --location --retry 4 --retry-delay 5 --connect-timeout 30 \
+          url='https://go.microsoft.com/fwlink/p/?LinkID=2208844&clcid=0x409&country=US&culture=en-us'
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-redirs 5 \
+            --retry 4 --retry-delay 5 --connect-timeout 30 \
             --output "$iso" "$url"
           expected='ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668'
           actual="$(sha256sum "$iso" | awk '{print $1}')"
@@ -81,7 +134,6 @@ jobs:
           chmod 0600 "$vars"
           qemu-img create -f qcow2 -o compat=1.1 "$image" 48G
           password="Gaslux-$(openssl rand -hex 16)!"
-          printf 'GASLUX_WIN10_LAB_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
           cat > "$unattend" <<XML
           <?xml version="1.0" encoding="utf-8"?>
           <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
@@ -160,11 +212,23 @@ jobs:
             accelerator='tcg,thread=multi'
             cpu='max'
           fi
-          set +e
-          timeout --signal=TERM --kill-after=60s 18000s qemu-system-x86_64 \
+          # This folder contains only bounded status JSON, never the ISO, QCOW2,
+          # OVMF state, unattended XML, serial data, passwords or other secrets.
+          evidence_dir="$RUNNER_TEMP/q4os-win10-readonly-evidence"
+          test -d "$evidence_dir" && test ! -L "$evidence_dir"
+          qmp="$work/q4os-win10-qmp.sock"
+          boot_report="$work/q4os-win10-uefi-dvd-boot.json"
+          test ! -e "$qmp" && test ! -e "$serial" && test ! -e "$boot_report"
+          if [[ "$GASLUX_WIN10_ACCEL" == kvm ]]; then
+            qemu_timeout=7200
+          else
+            qemu_timeout=14400
+          fi
+          timeout --signal=TERM --kill-after=60s "${qemu_timeout}s" qemu-system-x86_64 \
             -no-user-config -machine "$machine" -accel "$accelerator" -cpu "$cpu" -smp 4 -m 6144 \
             -rtc base=utc -display none -vga std \
             -serial "file:$serial" -monitor none -net none \
+            -qmp "unix:$qmp,server=on,wait=off" \
             -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
             -drive "if=pflash,format=raw,unit=1,file=$vars" \
             -device ich9-ahci,id=sata \
@@ -174,13 +238,42 @@ jobs:
             -device ide-cd,drive=install,bus=sata.1,bootindex=1 \
             -drive "if=none,id=answer,file=$answer,format=raw,media=cdrom,readonly=on" \
             -device ide-cd,drive=answer,bus=sata.2,bootindex=3 \
-            > "$qemu_log" 2>&1
+            > "$qemu_log" 2>&1 &
+          qemu_pid=$!
+          cleanup_qemu() {
+            if kill -0 "$qemu_pid" 2>/dev/null; then
+              kill -TERM "$qemu_pid" 2>/dev/null || true
+              wait "$qemu_pid" || true
+            fi
+          }
+          trap cleanup_qemu EXIT
+          # Only a single, explicitly observed initial UEFI DVD prompt is
+          # acknowledged. The controller exits permanently before reboots.
+          set +e
+          python3 auto_tests/tools/q4os_win10_qmp_boot.py \
+            --qmp "$qmp" --serial "$serial" --disk "$image" \
+            --report "$boot_report" --prompt-seconds 90 --progress-seconds 600
+          boot_status=$?
+          set -e
+          if [[ -f "$boot_report" ]]; then
+            cp -- "$boot_report" "$evidence_dir/boot-controller.json"
+          fi
+          if [[ "$boot_status" -ne 0 ]]; then
+            echo "GASLUX_WIN10_UEFI_BOOT=REFUSE; see bounded boot-controller.json" >&2
+            exit 1
+          fi
+          echo 'GASLUX_WIN10_UEFI_DVD_KEY_ACKNOWLEDGED=PASS'
+          echo 'GASLUX_WIN10_QCOW2_EARLY_ACTIVITY=PASS'
+          echo 'GASLUX_WIN10_SETUP_VERIFIED=NO (await first-logon witness)'
+          set +e
+          wait "$qemu_pid"
           status=$?
           set -e
-          if [[ $status -ne 0 ]]; then
-            tail -n 120 "$qemu_log" || true
-            tail -n 120 "$serial" || true
-            echo "Windows install/first-logon QEMU exit status: $status" >&2
+          trap - EXIT
+          if [[ "$status" -ne 0 ]]; then
+            # Do not print arbitrary guest serial/QEMU logs or unattended
+            # credentials. Fail closed with a bounded status diagnostic.
+            echo "GASLUX_WIN10_QEMU_EXIT_STATUS=$status" >&2
             exit 1
           fi
           [[ -s "$image" ]] || { echo 'Windows QCOW2 is empty' >&2; exit 1; }
@@ -222,59 +315,30 @@ jobs:
           sudo qemu-nbd --disconnect /dev/nbd0
           trap - EXIT
 
-      - name: Produce self-contained compressed Windows 10 QCOW2 and SHA-256 evidence
+      - name: Require same pinned Safety #267 from the successful synthetic preflight
         shell: bash
         run: |
           set -Eeuo pipefail
-          work="$GASLUX_WIN10_WORK"
-          source="$work/windows10-enterprise-eval-22h2-uefi-gpt.qcow2"
-          output="$work/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2"
-          qemu-img convert -p -f qcow2 -O qcow2 -c "$source" "$output"
-          qemu-img check "$output"
-          info="$(qemu-img info --output=json "$output")"
-          python - "$info" <<'PY'
-          import json, sys
-          x=json.loads(sys.argv[1])
-          assert x["format"]=="qcow2"
-          assert x["virtual-size"]==48*1024**3
-          assert not x.get("backing-filename")
-          print("GASLUX_WIN10_SELF_CONTAINED_QCOW2=PASS")
-          PY
-          sha="$(sha256sum "$output" | awk '{print $1}')"
-          printf '%s  %s\n' "$sha" "$(basename "$output")" > "$work/windows10-qcow2.sha256"
-          cat > "$work/windows10-install-manifest.json" <<JSON
-          {
-            "schemaVersion": 1,
-            "distribution": "Windows 10 Enterprise Evaluation 22H2",
-            "architecture": "x86_64",
-            "firmware": "UEFI",
-            "partitionTable": "GPT",
-            "isoSha256": "$GASLUX_WIN10_ISO_SHA256",
-            "qcow2Filename": "$(basename "$output")",
-            "qcow2Sha256": "$sha",
-            "virtualSizeBytes": 51539607552,
-            "selfContained": true,
-            "windowsRootVerified": true,
-            "efiBootManagerVerified": true,
-            "bcdVerified": true,
-            "firstLogonVerified": true,
-            "networkAttached": false,
-            "qemuAccelerator": "$GASLUX_WIN10_ACCEL",
-            "evaluationLicense": true
-          }
-          JSON
-          printf 'GASLUX_WIN10_QCOW2_SHA256=%s\n' "$sha" >> "$GITHUB_ENV"
-          printf 'GASLUX_WIN10_INSTALLED=PASS\n'
-          printf 'GASLUX_WIN10_QCOW2_SHA256=%s\n' "$sha"
-
-      - name: Upload verified Windows 10 installed QCOW2 and manifest
+          test -s "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
+          test -s "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+          git diff --exit-code -- .github/workflows/gaslux-q4os-windows10-qcow2.yml assets/live/gaslux_q4os_win10_readonly_probe.py
+      - name: Real Windows 10 host GPT versus readonly QEMU guestfs and Safety #267 refusal
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -d "$RUNNER_TEMP/q4os-win10-readonly-evidence"
+          test ! -L "$RUNNER_TEMP/q4os-win10-readonly-evidence"
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP" LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
+          PYTHONPATH="assets/live:$RUNNER_TEMP/q4os-safety-src" /usr/bin/python3 \
+            assets/live/gaslux_q4os_win10_readonly_probe.py
+          git diff --exit-code -- .github/workflows/gaslux-q4os-windows10-qcow2.yml assets/live/gaslux_q4os_win10_readonly_probe.py
+          echo 'READ-ONLY Windows source: GPT host + QEMU guestfs, Q4OS refuse, Safety no-writer denial' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No Q4OS installation, partitioning, GRUB, EFI, NVRAM or Windows restoration' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload bounded metadata only (NEVER ISO, QCOW2, NVRAM or passwords)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gaslux-windows10-enterprise-eval-22h2-uefi-gpt-installed
-          path: |
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-enterprise-eval-22h2-uefi-gpt-installed.qcow2
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-qcow2.sha256
-            ${{ runner.temp }}/gaslux-win10-${{ github.run_id }}/windows10-install-manifest.json
-          if-no-files-found: error
+          name: q4os-windows10-genuine-readonly-safety-refusal-text
+          path: ${{ runner.temp }}/q4os-win10-readonly-evidence/
+          if-no-files-found: warn
           retention-days: 7
