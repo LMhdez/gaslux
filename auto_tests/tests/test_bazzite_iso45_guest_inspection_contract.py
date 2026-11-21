@@ -124,8 +124,13 @@ def test_structurally_valid_record_still_refuses_all_authority():
     result = validate_contract(sample())
     assert result["status"] == "REFUSED_NO_AUTHENTICATED_GUEST_COLLECTOR_CHANNEL"
     assert result["structuralChecksPassed"] is True
-    for key in (*NO_WRITE, "safetyApproved", "observerApproved", "externallyAuthenticated",
-                "anacondaProcessVerified"):
+    for key in (
+        *NO_WRITE,
+        "safetyApproved",
+        "observerApproved",
+        "externallyAuthenticated",
+        "anacondaProcessVerified",
+    ):
         assert result[key] is False
 
 
@@ -149,11 +154,13 @@ def test_structurally_valid_record_still_refuses_all_authority():
         (("storage", "additionalDisks"), ["vdb"], "disk"),
         (("storage", "windowsAttached"), True, "Windows"),
         (("storage", "guestDisk", "serial"), "FOREIGN", "serial"),
-        (("storage", "guestDisk", "guid"), "22222222-2222-4333-8444-555555555555",
-         "identity"),
+        (("storage", "guestDisk", "guid"), "22222222-2222-4333-8444-555555555555", "identity"),
         (("storage", "guestDisk", "partitions", 0, "firstSector"), 4096, "offset"),
-        (("storage", "guestDisk", "partitions", 1, "partuuid"),
-         "00000001-2222-4333-8444-555555555555", "Duplicate"),
+        (
+            ("storage", "guestDisk", "partitions", 1, "partuuid"),
+            "00000001-2222-4333-8444-555555555555",
+            "Duplicate",
+        ),
         (("collector", "guestSha256"), "1" * 64, "substituted"),
         (("collector", "transport"), "ssh", "channel"),
         (("collector", "invoked"), True, "invocation"),
@@ -163,10 +170,16 @@ def test_structurally_valid_record_still_refuses_all_authority():
         (("installer", "executableSha256"), "1" * 63, "Anaconda"),
         (("installer", "version"), "", "version"),
         (("dbus", "allowlistedMethods"), ["GetDevices"], "GetActions"),
-        (("dbus", "allowlistedMethods"), ["GetActions", "GetDevices", "ApplyPartitioning"],
-         "read-only"),
-        (("dbus", "allowlistedMethods"), ["GetActions", "GetDevices", "InstallWithTasks"],
-         "read-only"),
+        (
+            ("dbus", "allowlistedMethods"),
+            ["GetActions", "GetDevices", "ApplyPartitioning"],
+            "read-only",
+        ),
+        (
+            ("dbus", "allowlistedMethods"),
+            ["GetActions", "GetDevices", "InstallWithTasks"],
+            "read-only",
+        ),
         (("dbus", "replies", 0, "text"), "aa{sv} 1", "Changed"),
         (("dbus", "replies", 0, "truncated"), True, "Truncated"),
         (("dbus", "replies", 0, "timedOut"), True, "timed out"),
@@ -233,7 +246,10 @@ def test_offline_cli_valid_structure_is_exit_2_not_authorization(tmp_path):
     tool = ROOT / "auto_tests" / "bazzite_iso45_guest_inspection_contract.py"
     result = subprocess.run(
         [sys.executable, str(tool), "--proposal", str(path)],
-        capture_output=True, text=True, check=False, timeout=10,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
     )
     assert result.returncode == 2
     report = json.loads(result.stdout)
@@ -249,7 +265,10 @@ def test_offline_cli_rejects_symlink_and_untrusted_claim(tmp_path):
     tool = ROOT / "auto_tests" / "bazzite_iso45_guest_inspection_contract.py"
     result = subprocess.run(
         [sys.executable, str(tool), "--proposal", str(link)],
-        capture_output=True, text=True, check=False, timeout=10,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
     )
     assert result.returncode == 3
     assert "REFUSED_CONTRACT" in result.stderr
@@ -258,8 +277,9 @@ def test_offline_cli_rejects_symlink_and_untrusted_claim(tmp_path):
 def test_json_schema_fixture_if_library_present():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.loads(
-        (ROOT / "schemas" / "bazzite_iso45_guest_inspection_contract_v1.schema.json")
-        .read_text(encoding="utf-8")
+        (ROOT / "schemas" / "bazzite_iso45_guest_inspection_contract_v1.schema.json").read_text(
+            encoding="utf-8"
+        )
     )
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(sample(), schema)

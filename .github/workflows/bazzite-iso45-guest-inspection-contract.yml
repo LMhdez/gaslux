@@ -34,21 +34,6 @@ jobs:
           python-version: '3.11'
       - name: Install static contract tools only
         run: python -m pip install --disable-pip-version-check pytest ruff jsonschema
-      - name: Produce Ruff canonical files for human-reviewed commit
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          python -m ruff format --config auto_tests/pyproject.toml auto_tests/bazzite_iso45_guest_inspection_contract.py auto_tests/tests/test_bazzite_iso45_guest_inspection_contract.py
-          python - <<'PY'
-          import base64
-          from pathlib import Path
-          for path in (
-              'auto_tests/bazzite_iso45_guest_inspection_contract.py',
-              'auto_tests/tests/test_bazzite_iso45_guest_inspection_contract.py',
-          ):
-              payload = base64.b64encode(Path(path).read_bytes()).decode('ascii')
-              print('FORMATTED_SOURCE::' + path + '::' + payload)
-          PY
       - name: Run offline Safety/Observer boundary regressions
         run: |
           set -Eeuo pipefail
