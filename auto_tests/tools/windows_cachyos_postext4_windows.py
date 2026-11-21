@@ -60,6 +60,36 @@ def read_bounded_com1_witness(serial: Path) -> dict:
             "completeBootWitness": len(observed) == len(COM1_WITNESSES)}
 
 
+def observe_windows_qemu(
+    proc: subprocess.Popen, serial: Path,
+    evidence_stem: str, timeout: int,
+) -> str:
+    """Require both independent COM1 witness and real QEMU process shutdown."""
+    require(evidence_stem in BOOT_PHASES and type(timeout) is int
+            and 120 <= timeout <= 1800,
+            "unrecognized Windows QEMU observation phase")
+    start = time.monotonic()
+    while time.monotonic() - start < timeout:
+        if serial.is_file():
+            require(not serial.is_symlink() and serial.stat().st_size <= 512_000,
+                    "untrusted or oversized Windows COM1")
+            if b"GASLUX_COW_WIN10_REBOOT_FAIL=1" in serial.read_bytes():
+                raise FourthBootError(boot_failure_code(
+                    evidence_stem, "COM1_REJECTED"))
+        rc = proc.poll()
+        if rc is not None:
+            if rc != 0:
+                raise FourthBootError(boot_failure_code(
+                    evidence_stem, "QEMU_EXIT_NONZERO"))
+            try:
+                return audit_complete_third_serial(serial)
+            except (OSError, ValueError) as error:
+                raise FourthBootError(boot_failure_code(
+                    evidence_stem, "COM1_INCOMPLETE")) from error
+        time.sleep(3)
+    raise FourthBootError(boot_failure_code(evidence_stem, "TIMEOUT"))
+
+
 def record_windows_boot_failure(
     *, base: Path, evidence_stem: str, serial: Path,
     overlay: Path, trial_vars: Path, original_vars_sha256: str,
@@ -267,34 +297,14 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
         observed_exit: int | None = None
         forced = False
         try:
-            while time.monotonic()-start<timeout:
-                if serial.is_file():
-                    require(not serial.is_symlink()
-                            and serial.stat().st_size<=512_000,
-                            "untrusted or oversized Windows COM1")
-                    if b"GASLUX_COW_WIN10_REBOOT_FAIL=1" in serial.read_bytes():
-                        failure_reason = "COM1_REJECTED"
-                        raise FourthBootError(boot_failure_code(
-                            evidence_stem, failure_reason))
-                rc=proc.poll()
-                if rc is not None:
-                    if rc!=0:
-                        failure_reason = "QEMU_EXIT_NONZERO"
-                        raise FourthBootError(boot_failure_code(
-                            evidence_stem, failure_reason))
-                    # Read guest-generated COM1 only after the QEMU process exits.
-                    try:
-                        digest=audit_complete_third_serial(serial)
-                    except (OSError, ValueError) as error:
-                        failure_reason = "COM1_INCOMPLETE"
-                        raise FourthBootError(boot_failure_code(
-                            evidence_stem, failure_reason)) from error
+            digest=observe_windows_qemu(proc, serial, evidence_stem, timeout)
+        except FourthBootError as error:
+            for candidate in ("TIMEOUT", "QEMU_EXIT_NONZERO",
+                              "COM1_REJECTED", "COM1_INCOMPLETE"):
+                if str(error) == boot_failure_code(evidence_stem, candidate):
+                    failure_reason = candidate
                     break
-                time.sleep(3)
-            else:
-                failure_reason = "TIMEOUT"
-                raise FourthBootError(boot_failure_code(
-                    evidence_stem, failure_reason))
+            raise
         finally:
             observed_exit = proc.poll()
             if observed_exit is None:
