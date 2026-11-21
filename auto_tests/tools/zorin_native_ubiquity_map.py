@@ -15,7 +15,7 @@ import re
 import subprocess
 
 from zorin_native_installer_discovery import (
-    read_member, require,
+    NativeDiscoveryError, read_member, require,
 )
 from windows_zorin_synthetic_cow_root import verify_official_zorin
 
@@ -156,6 +156,33 @@ def priority(path: str) -> tuple:
                  len(preferred)), name)
 
 
+
+def require_regular_member(rootfs: Path, name: str) -> bool:
+    """Reject symlink, directory and malformed metadata before reading code."""
+    require(bool(re.fullmatch(r"[A-Za-z0-9_.+@/-]{1,240}", name))
+            and not name.startswith("/")
+            and all(p not in ("", ".", "..") for p in name.split("/")),
+            "unsafe SquashFS member path")
+    try:
+        result = subprocess.run(
+            ["unsquashfs", "-ll", "-processors", "2", str(rootfs), name],
+            capture_output=True, timeout=45, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise NativeDiscoveryError("SquashFS metadata read failed") from error
+    require(result.returncode == 0 and len(result.stdout) <= 128 * 1024
+            and len(result.stderr) <= 64 * 1024,
+            "unbounded or missing SquashFS metadata")
+    target = "squashfs-root/" + name
+    entries = [
+        line for line in result.stdout.decode("utf-8", "replace").splitlines()
+        if re.search(r"(?:^|\s)" + re.escape(target) +
+                     r"(?:\s+->\s+.*)?$", line)
+    ]
+    require(len(entries) == 1 and entries[0].startswith("-"),
+            "source is not a uniquely attested regular file (possible symlink)")
+    return True
+
 def extract_signals(data: bytes, path: str, package: str, owner_sha: str) -> list[dict]:
     try:
         lines = data.decode("utf-8", "strict").splitlines()
@@ -186,7 +213,7 @@ def extract_signals(data: bytes, path: str, package: str, owner_sha: str) -> lis
 
 
 def build_map(rootfs: Path, prior: dict, manifest: bytes,
-              reader=read_member) -> dict:
+              reader=read_member, regular_checker=None) -> dict:
     require(prior.get("authorization") == "DENY_NO_WRITER"
             and prior.get("staticInstallerCandidate") == "ubiquity"
             and prior.get("iso", {}).get("sha256") == ISO_SHA
@@ -205,6 +232,8 @@ def build_map(rootfs: Path, prior: dict, manifest: bytes,
     require(packages.get("ubiquity", {}).get("version") == UBIQUITY_VERSION
             and versions.get("ubiquity") == UBIQUITY_VERSION,
             "Ubiquity version not identical in dpkg status and Casper")
+    if regular_checker is None:
+        regular_checker = require_regular_member
     sources = []
     owner_lists = []
     unverified_owners = []
@@ -239,6 +268,8 @@ def build_map(rootfs: Path, prior: dict, manifest: bytes,
     unreadable = []
     total = 0
     for path, package in chosen:
+        require(regular_checker(rootfs, path.lstrip("/")),
+                "source member is not a regular file")
         data = reader(rootfs, path.lstrip("/"), SOURCE_LIMIT, optional=True)
         if data is None:
             unreadable.append(path.lstrip("/"))
