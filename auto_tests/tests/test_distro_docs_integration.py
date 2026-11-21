@@ -1,8 +1,8 @@
 """Static regression checks for extracted documentation; no installer execution."""
 
-from pathlib import Path
 import re
 import unittest
+from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,17 +14,25 @@ FILES = ("README.md", "SHARED_CONTRACTS.md") + tuple(
 SOURCE_SHA = "9b434a6a2b96b7a02fded73eb2ef66753bddde5d"
 
 
+def markdown_targets(content: str) -> list[str]:
+    return re.findall(r"\]\(([^)]+)\)", content)
+
+
 class DistroDossiersIntegrationTests(unittest.TestCase):
     def test_dossiers_and_provenance_exist(self):
         for name in FILES + ("INTEGRATION_PROVENANCE.md",):
             with self.subTest(name=name):
                 self.assertTrue((DOCS / name).is_file())
 
+    def test_markdown_parser_detects_broken_target(self):
+        self.assertEqual(markdown_targets("[missing](nonexistent.md)"), ["nonexistent.md"])
+
     def test_relative_markdown_links_resolve(self):
         for name in FILES:
             document = DOCS / name
             content = document.read_text(encoding="utf-8")
-            links = re.findall(r"\\]\\(([^)]+)\\)", content)
+            links = markdown_targets(content)
+            self.assertTrue(links, f"Link coverage missing: {name}")
             for link in links:
                 path = link.split("#", 1)[0]
                 if not path or path.startswith(("https://", "http://", "mailto:")):
