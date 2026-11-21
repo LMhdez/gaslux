@@ -117,14 +117,14 @@ class LedgerTests(unittest.TestCase):
     def ready(self):
         self.ledger.request(self.g, now=NOW)
         self.ledger.transition(self.g["grantId"], "REVIEW_PENDING", now=NOW)
-        self.ledger.transition(
-            self.g["grantId"], "APPROVED", now=NOW, trusted=self.trusted
-        )
+        self.ledger.transition(self.g["grantId"], "APPROVED", now=NOW, trusted=self.trusted)
 
     def attempt(self, reason, *, trusted=None, run=None, now=NOW):
         with self.assertRaises(model.Refused) as error:
             self.ledger.transition(
-                self.g["grantId"], "CONSUMED", now=now,
+                self.g["grantId"],
+                "CONSUMED",
+                now=now,
                 trusted=self.trusted if trusted is None else trusted,
                 run=self.run if run is None else run,
             )
@@ -132,13 +132,17 @@ class LedgerTests(unittest.TestCase):
 
     def test_full_fsm_durable_one_shot_and_replay(self):
         self.ready()
-        self.assertEqual(self.ledger.transition(
-            self.g["grantId"], "CONSUMED", now=NOW, trusted=self.trusted, run=self.run
-        ), "CONSUMED")
+        self.assertEqual(
+            self.ledger.transition(
+                self.g["grantId"], "CONSUMED", now=NOW, trusted=self.trusted, run=self.run
+            ),
+            "CONSUMED",
+        )
         self.assertEqual(model.OfflineLedger(self.path).state(self.g["grantId"]), "CONSUMED")
         self.attempt("INVALID_STATE_TRANSITION")
-        self.assertEqual(self.ledger.events(self.g["grantId"])[-1][2:4],
-                         ("DENIED", "INVALID_STATE_TRANSITION"))
+        self.assertEqual(
+            self.ledger.events(self.g["grantId"])[-1][2:4], ("DENIED", "INVALID_STATE_TRANSITION")
+        )
 
     def test_duplicate_grant_refused_and_recorded(self):
         self.ledger.request(self.g, now=NOW)
@@ -168,18 +172,21 @@ class LedgerTests(unittest.TestCase):
             self.ledger.transition(self.g["grantId"], "APPROVED", now=NOW)
         with self.assertRaisesRegex(model.Refused, "HUMAN_REVIEW_NOT_VERIFIED"):
             self.ledger.transition(
-                self.g["grantId"], "APPROVED", now=NOW,
+                self.g["grantId"],
+                "APPROVED",
+                now=NOW,
                 trusted=replace(self.trusted, review_verified=False),
             )
 
     def test_consume_requires_current_external_authority_and_review(self):
         self.ready()
-        self.attempt("EXTERNAL_AUTHORITY_UNAVAILABLE", trusted=replace(
-            self.trusted, authority_available=False
-        ))
-        self.attempt("HUMAN_REVIEW_NOT_VERIFIED", trusted=replace(
-            self.trusted, review_verified=False
-        ))
+        self.attempt(
+            "EXTERNAL_AUTHORITY_UNAVAILABLE",
+            trusted=replace(self.trusted, authority_available=False),
+        )
+        self.attempt(
+            "HUMAN_REVIEW_NOT_VERIFIED", trusted=replace(self.trusted, review_verified=False)
+        )
         self.assertEqual(self.ledger.state(self.g["grantId"]), "APPROVED")
 
     def test_run_refuses_creation_recreation_force_rerun_and_writes(self):
@@ -232,7 +239,10 @@ class LedgerTests(unittest.TestCase):
             barrier.wait(timeout=10)
             try:
                 local.transition(
-                    self.g["grantId"], "CONSUMED", now=NOW, trusted=self.trusted,
+                    self.g["grantId"],
+                    "CONSUMED",
+                    now=NOW,
+                    trusted=self.trusted,
                     run=replace(self.run, run_id=f"concurrent-{index}"),
                 )
                 return "CONSUMED"
@@ -244,8 +254,13 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(out.count("CONSUMED"), 1, out)
         self.assertEqual(out.count("INVALID_STATE_TRANSITION"), 7, out)
         self.assertEqual(self.ledger.state(self.g["grantId"]), "CONSUMED")
-        self.assertEqual(sum(x[2] == "TRANSITION" and x[3] == "CONSUMED"
-                             for x in self.ledger.events(self.g["grantId"])), 1)
+        self.assertEqual(
+            sum(
+                x[2] == "TRANSITION" and x[3] == "CONSUMED"
+                for x in self.ledger.events(self.g["grantId"])
+            ),
+            1,
+        )
 
     def test_abrupt_process_exit_after_commit_is_not_reusable(self):
         self.ready()
@@ -272,7 +287,9 @@ os._exit(23)
 """
         proc = subprocess.run(
             [sys.executable, "-c", command, str(self.path), str(FILE.parent), str(FIXTURE)],
-            check=False, capture_output=True, text=True,
+            check=False,
+            capture_output=True,
+            text=True,
         )
         self.assertEqual(proc.returncode, 23, proc.stderr)
         self.assertEqual(model.OfflineLedger(self.path).state(self.g["grantId"]), "CONSUMED")
@@ -302,13 +319,18 @@ os._exit(23)
             self.g["grantId"], "CONSUMED", now=NOW, trusted=self.trusted, run=self.run
         )
         self.assertTrue(all(value is False for value in model.CAPABILITIES.values()))
-        self.assertEqual(set(model.CAPABILITIES), {
-            "protectedControllerOperational",
-            "externalLedgerOperational",
-            "guestAttestationVerified",
-            "qemuExecutionAuthorized", "guestCommandChannelAuthorized", "diskWritesAuthorized",
-            "productionInstallationAuthorized",
-        })
+        self.assertEqual(
+            set(model.CAPABILITIES),
+            {
+                "protectedControllerOperational",
+                "externalLedgerOperational",
+                "guestAttestationVerified",
+                "qemuExecutionAuthorized",
+                "guestCommandChannelAuthorized",
+                "diskWritesAuthorized",
+                "productionInstallationAuthorized",
+            },
+        )
 
     def test_symlink_file_refused(self):
         alias = Path(self.temp.name) / "alias.sqlite3"
@@ -317,8 +339,10 @@ os._exit(23)
             model.OfflineLedger(alias)
 
     def test_real_git_intermediate_workflow_and_preflight_commits_refused(self):
-        for target in (".github/workflows/observer-gpt-qemu-one-shot.yml",
-                       "auto_tests/tools/observer_gpt_qemu_one_shot.py"):
+        for target in (
+            ".github/workflows/observer-gpt-qemu-one-shot.yml",
+            "auto_tests/tools/observer_gpt_qemu_one_shot.py",
+        ):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 subprocess.run(["git", "init", "-q", str(root)], check=True)
@@ -361,8 +385,9 @@ os._exit(23)
                     with self.assertRaisesRegex(
                         model.Refused, "UNAPPROVED_EXACT_COMMIT_OR_CONTEXT"
                     ):
-                        ledger.transition(g["grantId"], "CONSUMED", now=NOW,
-                                          trusted=trusted, run=run)
+                        ledger.transition(
+                            g["grantId"], "CONSUMED", now=NOW, trusted=trusted, run=run
+                        )
                     self.assertEqual(ledger.state(g["grantId"]), "APPROVED")
 
 

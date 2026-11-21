@@ -252,9 +252,7 @@ class OfflineLedger:
             con.execute("BEGIN IMMEDIATE")
             existing = con.execute("SELECT state FROM grants WHERE grant_id = ?", (gid,)).fetchone()
             if existing:
-                self._record(
-                    con, gid, at, existing[0], existing[0], "DENIED", "GRANT_ID_REUSED"
-                )
+                self._record(con, gid, at, existing[0], existing[0], "DENIED", "GRANT_ID_REUSED")
                 con.execute("COMMIT")
                 raise Refused("GRANT_ID_REUSED")
             con.execute(
@@ -282,7 +280,9 @@ class OfflineLedger:
             con.execute("BEGIN IMMEDIATE")
             grant, before = self._row(con, grant_id)
             if _utc(now) >= _utc(grant["expiresAt"]) and before in {
-                "REQUESTED", "REVIEW_PENDING", "APPROVED"
+                "REQUESTED",
+                "REVIEW_PENDING",
+                "APPROVED",
             }:
                 refused_reason = "GRANT_EXPIRED"
                 actual = "EXPIRED"
@@ -313,8 +313,13 @@ class OfflineLedger:
             if actual != before:
                 con.execute("UPDATE grants SET state = ? WHERE grant_id = ?", (actual, grant_id))
             self._record(
-                con, grant_id, at, before, actual,
-                "DENIED" if refused_reason else "TRANSITION", refused_reason or to_state,
+                con,
+                grant_id,
+                at,
+                before,
+                actual,
+                "DENIED" if refused_reason else "TRANSITION",
+                refused_reason or to_state,
                 run.run_id if run is not None else None,
             )
             con.execute("COMMIT")
@@ -330,5 +335,6 @@ class OfflineLedger:
         with self._connect() as con:
             return con.execute(
                 "SELECT before_state, after_state, decision, reason, run_id "
-                "FROM decisions WHERE grant_id = ? ORDER BY sequence", (grant_id,)
+                "FROM decisions WHERE grant_id = ? ORDER BY sequence",
+                (grant_id,),
             ).fetchall()
