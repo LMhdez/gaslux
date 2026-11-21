@@ -1,0 +1,190 @@
+name: Pop synthetic six-GPT preflight and recovery ONLY (no QEMU)
+
+on:
+  push:
+    branches:
+      - test/popos-six-gpt-synthetic-contracts-20261121
+    paths:
+      - .github/workflows/popos-six-gpt-preflight-only.yml
+      - auto_tests/tools/gaslux_popos_six_gpt_*
+      - auto_tests/test_popos_six_gpt_contract.py
+      - schemas/popos-six-gpt-lab.schema.json
+      - docs/POP_OS_SIX_GPT_SYNTHETIC_LAB.md
+  pull_request:
+    paths:
+      - .github/workflows/popos-six-gpt-preflight-only.yml
+      - auto_tests/tools/gaslux_popos_six_gpt_*
+      - auto_tests/test_popos_six_gpt_contract.py
+      - schemas/popos-six-gpt-lab.schema.json
+      - docs/POP_OS_SIX_GPT_SYNTHETIC_LAB.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pop-six-gpt-preflight-no-guest
+  cancel-in-progress: false
+
+jobs:
+  contracts-no-media:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compileall, Ruff, schema, regressions, Bash and ShellCheck
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m venv "$RUNNER_TEMP/pop-six-contract-venv"
+          "$RUNNER_TEMP/pop-six-contract-venv/bin/pip" install --disable-pip-version-check \
+            'ruff==0.14.4' 'jsonschema==4.25.1'
+          export PATH="$RUNNER_TEMP/pop-six-contract-venv/bin:$PATH"
+          python3 -m compileall -q \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            auto_tests/tools/gaslux_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/test_popos_six_gpt_contract.py
+          ruff check --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            auto_tests/tools/gaslux_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/test_popos_six_gpt_contract.py || true
+          ruff check \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            auto_tests/tools/gaslux_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/test_popos_six_gpt_contract.py
+          ruff format --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            auto_tests/tools/gaslux_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/test_popos_six_gpt_contract.py
+          ruff format --check \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            auto_tests/tools/gaslux_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/test_popos_six_gpt_contract.py
+          # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
+          export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
+          python3 -m unittest auto_tests.test_popos_six_gpt_contract -v
+          python3 -m unittest auto_tests.test_popos_reuse_full_contract -v
+          python3 -m unittest auto_tests.test_windows10_popos_native_write_set -v
+          python3 -m unittest auto_tests.test_windows10_popos_safety_attestation_adapter -v
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+          schema=json.loads(Path("schemas/popos-six-gpt-lab.schema.json").read_text())
+          Draft202012Validator.check_schema(schema)
+          for key in ("productionInstallationAuthorized", "windowsWriterAuthorized",
+                      "sameDiskDualBootVerified", "windowsInPlaceRollbackProven",
+                      "releaseEligible", "stable"):
+              assert schema["properties"][key]["const"] is False
+          print("GASLUX_POP_SIX_GPT_SCHEMA_FAIL_CLOSED=1")
+          PY
+          bash -n auto_tests/tools/gaslux_popos_reuse_full_install_guest.sh
+          bash -n auto_tests/tools/gaslux_popos_reuse_full_firstboot_vm.sh
+          echo 'No modified Bash; historical Bash syntax checked. No QEMU or Windows.' >> "$GITHUB_STEP_SUMMARY"
+
+  disposable-six-gpt-checkpoint-only:
+    needs: contracts-no-media
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      GASLUX_POP_SIX_GPT_CONSENT: I_ACCEPT_DISPOSABLE_SIX_GPT_PREFLIGHT_ONLY
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install only offline synthetic file and GPT tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gdisk util-linux dosfstools mtools e2fsprogs qemu-utils ovmf
+          test -x "$(command -v sgdisk)"
+          test -x "$(command -v sfdisk)"
+          test -x "$(command -v qemu-img)"
+          test -x "$(command -v qemu-io)"
+          test -f /usr/share/OVMF/OVMF_VARS_4M.fd
+      - name: Build synthetic six-GPT RAW, audit protected canaries, rehearse COW recovery
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          work="$(mktemp -d "$RUNNER_TEMP/gaslux-pop-six-gpt-XXXXXXXX")"
+          evidence="$GITHUB_WORKSPACE/pop-six-gpt-evidence"
+          mkdir -m 700 "$evidence"
+          cleanup() {
+            if test -d "$work" && test ! -L "$work"; then
+              case "$work" in
+                "$RUNNER_TEMP"/gaslux-pop-six-gpt-*)
+                  for file in pop-six-transaction.json recovery-proof.json filesystem-fsck-before.json filesystem-fsck-after.json; do
+                    if test -f "$work/$file" && test ! -L "$work/$file"; then
+                      cp -- "$work/$file" "$evidence/"
+                    fi
+                  done
+                  rm -rf -- "$work"
+                  ;;
+                *) echo "REFUSE: foreign lab cleanup location" >&2; return 1 ;;
+              esac
+            fi
+            (
+              cd "$evidence"
+              find . -maxdepth 1 -type f ! -name evidence.sha256 -print0 |
+                sort -z | xargs -0 -r sha256sum > evidence.sha256
+            )
+          }
+          trap cleanup EXIT
+          template=/usr/share/OVMF/OVMF_VARS_4M.fd
+          python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py prepare \
+            --work "$work" --ovmf-template "$template"
+          python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py preflight \
+            --work "$work" --ovmf-template "$template"
+          python3 auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            --work "$work" --phase before
+          python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py recover \
+            --work "$work" --ovmf-template "$template"
+          python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py preflight \
+            --work "$work" --ovmf-template "$template"
+          python3 auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            --work "$work" --phase after
+          python3 - "$work" <<'PY'
+          import json,sys
+          from pathlib import Path
+          w=Path(sys.argv[1])
+          p=json.loads((w/"pop-six-transaction.json").read_text())
+          r=json.loads((w/"recovery-proof.json").read_text())
+          assert p["transactionId"]==r["transactionId"]
+          assert p["manifestSha256"]==r["manifestSha256"]
+          assert len(p["partitions"])==6 and len(p["canaries"])==7
+          assert r["ownedFaultChildReconstructedEmpty"] is True
+          checks=[json.loads((w/f"filesystem-fsck-{phase}.json").read_text()) for phase in ("before","after")]
+          assert all(x["readOnlyFsckAllPassed"] is True and len(x["filesystems"])==3 for x in checks)
+          assert all(x["transactionId"]==p["transactionId"] and x["manifestSha256"]==p["manifestSha256"] for x in checks)
+          for name in ("windowsWriterAuthorized","productionInstallationAuthorized",
+                       "releaseEligible","stable","sameDiskDualBootVerified",
+                       "windowsInPlaceRollbackProven"):
+              assert p[name] is r[name] is False
+          print("GASLUX_POP_SIX_GPT_NO_QEMU_PROOF=1")
+          PY
+          echo 'Preflight-only. No QEMU guest; Safety must authorize any later six-GPT installation.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload ONLY bounded JSON evidence; never RAW/QCOW2/OVMF
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pop-six-gpt-preflight-evidence
+          path: pop-six-gpt-evidence/
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,647 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/schemas/popos-six-gpt-lab.schema.json",
+  "title": "Gaslux Pop!_OS synthetic six-GPT preflight-only plan",
+  "description": "Linux-only disposable file laboratory. This is a deny-only schema, never a Windows or production install authorization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "scenario",
+    "transactionId",
+    "disk",
+    "partitions",
+    "media",
+    "distinstReuseArgv",
+    "gpt",
+    "backingSha256",
+    "protectedPartitionHashes",
+    "protectedEspFileSha256",
+    "canaries",
+    "ovmfTemplateSha256",
+    "filesystems",
+    "onlyWritableGuestDisk",
+    "recoveryMode",
+    "manifestSha256",
+    "distinstExecutionAuthorized",
+    "productionInstallationAuthorized",
+    "windowsWriterAuthorized",
+    "sameDiskDualBootVerified",
+    "windowsInPlaceRollbackProven",
+    "releaseEligible",
+    "stable",
+    "windowsAttached",
+    "physicalDisksAttached"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "scenario": {
+      "const": "pop-synthetic-six-gpt-preflight-only-v1"
+    },
+    "transactionId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+    },
+    "disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sizeBytes",
+        "logicalSectorBytes",
+        "guid",
+        "virtioSerial"
+      ],
+      "properties": {
+        "sizeBytes": {
+          "const": 34359738368
+        },
+        "logicalSectorBytes": {
+          "const": 512
+        },
+        "guid": {
+          "const": "81ab6d0e-0f88-4923-a24b-8748f15890e1"
+        },
+        "virtioSerial": {
+          "const": "GASLUXPOPSIXGPT"
+        }
+      }
+    },
+    "partitions": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "number",
+            "role",
+            "startLba",
+            "endLba",
+            "offsetBytes",
+            "lengthBytes",
+            "typeGuid",
+            "partuuid",
+            "ownedByPopTransaction"
+          ],
+          "properties": {
+            "number": {
+              "const": 1
+            },
+            "role": {
+              "const": "simulated-protected-esp"
+            },
+            "startLba": {
+              "const": 2048
+            },
+            "endLba": {
+              "const": 534527
+            },
+            "offsetBytes": {
+              "const": 1048576
+            },
+            "lengthBytes": {
+              "const": 272629760
+            },
+            "typeGuid": {
+              "const": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+            },
+            "partuuid": {
+              "const": "c900f2a6-6f9b-4aa9-9af0-bd5d82441701"
+            },
+            "ownedByPopTransaction": {
+              "const": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "number",
+            "role",
+            "startLba",
+            "endLba",
+            "offsetBytes",
+            "lengthBytes",
+            "typeGuid",
+            "partuuid",
+            "ownedByPopTransaction"
+          ],
+          "properties": {
+            "number": {
+              "const": 2
+            },
+            "role": {
+              "const": "simulated-protected-msr"
+            },
+            "startLba": {
+              "const": 534528
+            },
+            "endLba": {
+              "const": 567295
+            },
+            "offsetBytes": {
+              "const": 273678336
+            },
+            "lengthBytes": {
+              "const": 16777216
+            },
+            "typeGuid": {
+              "const": "e3c9e316-0b5c-4db8-817d-f92df00215ae"
+            },
+            "partuuid": {
+              "const": "c900f2a6-6f9b-4aa9-9af0-bd5d82441702"
+            },
+            "ownedByPopTransaction": {
+              "const": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "number",
+            "role",
+            "startLba",
+            "endLba",
+            "offsetBytes",
+            "lengthBytes",
+            "typeGuid",
+            "partuuid",
+            "ownedByPopTransaction"
+          ],
+          "properties": {
+            "number": {
+              "const": 3
+            },
+            "role": {
+              "const": "simulated-protected-data"
+            },
+            "startLba": {
+              "const": 567296
+            },
+            "endLba": {
+              "const": 1615871
+            },
+            "offsetBytes": {
+              "const": 290455552
+            },
+            "lengthBytes": {
+              "const": 536870912
+            },
+            "typeGuid": {
+              "const": "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+            },
+            "partuuid": {
+              "const": "c900f2a6-6f9b-4aa9-9af0-bd5d82441703"
+            },
+            "ownedByPopTransaction": {
+              "const": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "number",
+            "role",
+            "startLba",
+            "endLba",
+            "offsetBytes",
+            "lengthBytes",
+            "typeGuid",
+            "partuuid",
+            "ownedByPopTransaction"
+          ],
+          "properties": {
+            "number": {
+              "const": 4
+            },
+            "role": {
+              "const": "simulated-protected-recovery"
+            },
+            "startLba": {
+              "const": 1615872
+            },
+            "endLba": {
+              "const": 3188735
+            },
+            "offsetBytes": {
+              "const": 827326464
+            },
+            "lengthBytes": {
+              "const": 805306368
+            },
+            "typeGuid": {
+              "const": "de94bba4-06d1-4d40-a16a-bfd50179d6ac"
+            },
+            "partuuid": {
+              "const": "c900f2a6-6f9b-4aa9-9af0-bd5d82441704"
+            },
+            "ownedByPopTransaction": {
+              "const": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "number",
+            "role",
+            "startLba",
+            "endLba",
+            "offsetBytes",
+            "lengthBytes",
+            "typeGuid",
+            "partuuid",
+            "ownedByPopTransaction"
+          ],
+          "properties": {
+            "number": {
+              "const": 5
+            },
+            "role": {
+              "const": "owned-pop-esp"
+            },
+            "startLba": {
+              "const": 3188736
+            },
+            "endLba": {
+              "const": 5285887
+            },
+            "offsetBytes": {
+              "const": 1632632832
+            },
+            "lengthBytes": {
+              "const": 1073741824
+            },
+            "typeGuid": {
+              "const": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+            },
+            "partuuid": {
+              "const": "c900f2a6-6f9b-4aa9-9af0-bd5d82441705"
+            },
+            "ownedByPopTransaction": {
+              "const": true
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "number",
+            "role",
+            "startLba",
+            "endLba",
+            "offsetBytes",
+            "lengthBytes",
+            "typeGuid",
+            "partuuid",
+            "ownedByPopTransaction"
+          ],
+          "properties": {
+            "number": {
+              "const": 6
+            },
+            "role": {
+              "const": "owned-pop-ext4-root"
+            },
+            "startLba": {
+              "const": 5285888
+            },
+            "endLba": {
+              "const": 64006143
+            },
+            "offsetBytes": {
+              "const": 2706374656
+            },
+            "lengthBytes": {
+              "const": 30064771072
+            },
+            "typeGuid": {
+              "const": "0fc63daf-8483-4772-8e79-3d69d8477de4"
+            },
+            "partuuid": {
+              "const": "c900f2a6-6f9b-4aa9-9af0-bd5d82441706"
+            },
+            "ownedByPopTransaction": {
+              "const": true
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "isoSha256",
+        "distinstSha256",
+        "system76GpgFingerprint",
+        "isoIndependentlyAuthenticatedHere"
+      ],
+      "properties": {
+        "isoSha256": {
+          "const": "a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c"
+        },
+        "distinstSha256": {
+          "const": "8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5"
+        },
+        "system76GpgFingerprint": {
+          "const": "63C46DF0140D738961429F4E204DD8AEC33A7AFF"
+        },
+        "isoIndependentlyAuthenticatedHere": {
+          "const": false
+        }
+      }
+    },
+    "distinstReuseArgv": {
+      "const": [
+        "--no-efi-vars",
+        "--use",
+        ":5:reuse:mount=/boot/efi",
+        "--use",
+        ":6:reuse:mount=/"
+      ]
+    },
+    "gpt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pmbrAndPrimary",
+        "secondary"
+      ],
+      "properties": {
+        "pmbrAndPrimary": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "secondary": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "backingSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "protectedPartitionHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "properties": {
+        "1": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "2": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "4": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "protectedEspFileSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "canaries": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lba",
+            "role",
+            "sectorSha256"
+          ],
+          "properties": {
+            "lba": {
+              "const": 534536
+            },
+            "role": {
+              "const": "protected-msr"
+            },
+            "sectorSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lba",
+            "role",
+            "sectorSha256"
+          ],
+          "properties": {
+            "lba": {
+              "const": 567304
+            },
+            "role": {
+              "const": "protected-data"
+            },
+            "sectorSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lba",
+            "role",
+            "sectorSha256"
+          ],
+          "properties": {
+            "lba": {
+              "const": 1615880
+            },
+            "role": {
+              "const": "protected-recovery"
+            },
+            "sectorSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lba",
+            "role",
+            "sectorSha256"
+          ],
+          "properties": {
+            "lba": {
+              "const": 64
+            },
+            "role": {
+              "const": "unallocated"
+            },
+            "sectorSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lba",
+            "role",
+            "sectorSha256"
+          ],
+          "properties": {
+            "lba": {
+              "const": 1024
+            },
+            "role": {
+              "const": "unallocated"
+            },
+            "sectorSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lba",
+            "role",
+            "sectorSha256"
+          ],
+          "properties": {
+            "lba": {
+              "const": 64006144
+            },
+            "role": {
+              "const": "unallocated"
+            },
+            "sectorSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lba",
+            "role",
+            "sectorSha256"
+          ],
+          "properties": {
+            "lba": {
+              "const": 67108800
+            },
+            "role": {
+              "const": "unallocated"
+            },
+            "sectorSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "ovmfTemplateSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "filesystems": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "1",
+        "5",
+        "6"
+      ],
+      "properties": {
+        "1": {
+          "const": "vfat"
+        },
+        "5": {
+          "const": "vfat"
+        },
+        "6": {
+          "const": "ext4"
+        }
+      }
+    },
+    "onlyWritableGuestDisk": {
+      "const": "owned-qcow2-child"
+    },
+    "recoveryMode": {
+      "const": "discard-private-child-recreate"
+    },
+    "manifestSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "distinstExecutionAuthorized": {
+      "const": false
+    },
+    "productionInstallationAuthorized": {
+      "const": false
+    },
+    "windowsWriterAuthorized": {
+      "const": false
+    },
+    "sameDiskDualBootVerified": {
+      "const": false
+    },
+    "windowsInPlaceRollbackProven": {
+      "const": false
+    },
+    "releaseEligible": {
+      "const": false
+    },
+    "stable": {
+      "const": false
+    },
+    "windowsAttached": {
+      "const": false
+    },
+    "physicalDisksAttached": {
+      "const": false
+    }
+  }
+}
