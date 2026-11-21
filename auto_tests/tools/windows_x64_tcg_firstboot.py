@@ -1566,6 +1566,8 @@ def main(argv: list[str] | None = None) -> int:
                         ("bcd-control-windows-only-windows-serial.log", "bcd-control-windows-only-serial", 512_000),
                         ("bcd-control-windows-only-qemu-stderr.log", "bcd-control-windows-only-qemu-stderr", 256_000),
                         ("bcd-control-windows-only-boot-diagnostic.json", "bcd-control-windows-only-boot-diagnostic", 8192),
+                        ("bcd-ab-control-tpm-swtpm-status.json", "bcd-control-tpm-status", 4096),
+                        ("bcd-ab-treatment-tpm-swtpm-status.json", "bcd-treatment-tpm-status", 4096),
                         ("bcd-control-windows-only-qemu-trace.bin", "bcd-control-windows-only-qemu-trace", 10_000_000),
                         ("bcd-ab-qemu-write-events.txt", "bcd-ab-qemu-write-events", 16_384),
                         ("sixth-post-pacstrap-windows-serial.log", "sixth-post-pacstrap-windows-serial", 512_000),
