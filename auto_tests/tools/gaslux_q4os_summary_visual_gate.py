@@ -84,6 +84,8 @@ def _decode(snapshot: bytes) -> Image.Image:
             if image.size != SCREEN or image.format != "PNG":
                 raise ScreenRefusal("Unexpected Q4OS screenshot size/type")
             return image.convert("RGB")
+    except ScreenRefusal:
+        raise
     except (OSError, ValueError) as exc:
         raise ScreenRefusal("Invalid or truncated PNG screenshot") from exc
 
