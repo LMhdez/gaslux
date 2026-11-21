@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -356,7 +357,11 @@ class OfflineQuoteVerifier:
         guard = self.replay_guard
         require(callable(getattr(guard, "consume_challenge", None)), "REPLAY_GUARD_INVALID")
         try:
-            guard.consume_challenge(challenge)
+            guard.consume_challenge(
+                challenge,
+                nonce=expected_context.nonce,
+                request_id=expected_context.request_id,
+            )
         except AttestationRefused:
             raise
         except Exception as exc:
@@ -368,9 +373,28 @@ class LaboratoryReplayGuard:
     """For disposable tests only: no process-restart or external replay protection."""
 
     def __init__(self):
+        self._lock = threading.Lock()
         self.seen: set[bytes] = set()
+        self.seen_nonces: set[bytes] = set()
+        self.seen_request_ids: set[str] = set()
 
-    def consume_challenge(self, challenge: bytes):
-        if challenge in self.seen:
-            raise AttestationRefused("CHALLENGE_REPLAY")
-        self.seen.add(challenge)
+    def consume_challenge(self, challenge: bytes, *, nonce: bytes, request_id: str):
+        """Atomically consume all replay identities; never sufficient for production."""
+        require(
+            isinstance(challenge, bytes)
+            and len(challenge) == 32
+            and isinstance(nonce, bytes)
+            and len(nonce) == 32
+            and ident(request_id),
+            "REPLAY_IDENTITY_INVALID",
+        )
+        with self._lock:
+            if challenge in self.seen:
+                raise AttestationRefused("CHALLENGE_REPLAY")
+            if nonce in self.seen_nonces:
+                raise AttestationRefused("NONCE_REPLAY")
+            if request_id in self.seen_request_ids:
+                raise AttestationRefused("REQUEST_REPLAY")
+            self.seen.add(challenge)
+            self.seen_nonces.add(nonce)
+            self.seen_request_ids.add(request_id)
