@@ -6,7 +6,6 @@ No QEMU, network transport, guest click, or disk mutation is invoked.
 
 from __future__ import annotations
 
-import io
 import os
 import shutil
 import subprocess
