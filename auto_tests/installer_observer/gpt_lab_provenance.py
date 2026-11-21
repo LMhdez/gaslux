@@ -177,6 +177,7 @@ def lab_only_state_result(gpt: dict, chain: dict, qemu: dict, label: str) -> tup
         require_guest_attestation=False,
     )
     now = datetime.now(UTC)
+
     def request(op: str, sequence: int, nonce: str) -> dict:
         return {
             "protocol": 1,
@@ -189,6 +190,7 @@ def lab_only_state_result(gpt: dict, chain: dict, qemu: dict, label: str) -> tup
             "timeout_ms": 5000,
             "max_response_bytes": 1048576,
         }
+
     initial = request("session.identify", 0, _nonce())
     initial_result = {
         "kind": "session",
@@ -196,14 +198,17 @@ def lab_only_state_result(gpt: dict, chain: dict, qemu: dict, label: str) -> tup
         "session_expires_at": (now + timedelta(minutes=5)).isoformat(),
     }
     signed_initial = _signed_response(
-        signer, trusted, initial,
+        signer,
+        trusted,
+        initial,
         session_id=session_id,
         qemu=qemu,
         observed_at=now,
         result=initial_result,
     )
     verifier.verify(
-        initial, signed_initial,
+        initial,
+        signed_initial,
         deadline=now + timedelta(seconds=4),
         now=now,
     )
@@ -229,14 +234,17 @@ def lab_only_state_result(gpt: dict, chain: dict, qemu: dict, label: str) -> tup
         },
     }
     signed_observed = _signed_response(
-        signer, trusted, observed,
+        signer,
+        trusted,
+        observed,
         session_id=session_id,
         qemu=qemu,
         observed_at=now,
         result=state_result,
     )
     verified = verifier.verify(
-        observed, signed_observed,
+        observed,
+        signed_observed,
         deadline=now + timedelta(seconds=4),
         now=now,
     )
@@ -339,8 +347,11 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
             "qmpSessionObserved": False,
         }
         host = capture_gpt(
-            workspace / "host.raw", workspace, source="host",
-            logical_sector_size=SECTOR, safety_disk=disk,
+            workspace / "host.raw",
+            workspace,
+            source="host",
+            logical_sector_size=SECTOR,
+            safety_disk=disk,
         )
         first = appliance.pread_device(guest_dev, lab.GUEST_SLICE, 0)
         last = appliance.pread_device(guest_dev, lab.GUEST_SLICE, SIZE - lab.GUEST_SLICE)
@@ -348,12 +359,19 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
             first, last, SIZE, workspace / "guest-reconstructed.raw", workspace
         )
         guest = capture_gpt(
-            workspace / "guest-reconstructed.raw", workspace, source="guest",
-            logical_sector_size=SECTOR, safety_disk=disk, guest_sample_origin=True,
+            workspace / "guest-reconstructed.raw",
+            workspace,
+            source="guest",
+            logical_sector_size=SECTOR,
+            safety_disk=disk,
+            guest_sample_origin=True,
         )
         immediate = capture_gpt(
-            workspace / "host.raw", workspace, source="immediate",
-            logical_sector_size=SECTOR, safety_disk=disk,
+            workspace / "host.raw",
+            workspace,
+            source="immediate",
+            logical_sector_size=SECTOR,
+            safety_disk=disk,
         )
         require(process_seal(pid) == before_process, "QEMU_PROCESS_CHANGED")
         require(_qemu_executable_hash(pid) == executable_sha, "QEMU_EXECUTABLE_CHANGED")
@@ -419,7 +437,9 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
     )
     statement = build_safety_v1(
         captures,
-        pins=pins, authority=authority, logical_sector_size=SECTOR,
+        pins=pins,
+        authority=authority,
+        logical_sector_size=SECTOR,
         expected_observer_result_sha256=signed["verified_result_sha256"],
         schema_path=safety_root / "schemas/safety-gpt-provenance-v1.schema.json",
     )
@@ -429,7 +449,9 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         pins=pins,
         authority=authority,
         expected_observer_result_sha256=signed["verified_result_sha256"],
-        host_gpt=host.gpt, guest_gpt=guest.gpt, immediate_gpt=immediate.gpt,
+        host_gpt=host.gpt,
+        guest_gpt=guest.gpt,
+        immediate_gpt=immediate.gpt,
         now=datetime.now(UTC),
     )
     require(
@@ -471,9 +493,7 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         "snapshotCaptureSource": "real-qemu-libguestfs",
         "sourceCommitSafety": SAFETY_COMMIT,
         "backingChain": chain_before,
-        "backingChainSha256": hashlib.sha256(
-            rfc8785.dumps(chain_before)
-        ).hexdigest(),
+        "backingChainSha256": hashlib.sha256(rfc8785.dumps(chain_before)).hexdigest(),
         "qemu": qemu,
         "gpt": host.gpt,
         "measurements": [
@@ -506,15 +526,20 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="gaslux-gpt-observer-", dir=workspace_root) as work:
         result = experiment(Path(work), evidence, safety_root)
     result["ephemeralDiskRemoved"] = True
-    print(json.dumps({
-        "status": result["status"],
-        "classification": result["classification"],
-        "diagnostic": result["safetyAssessment"],
-        "guestRealPread": result["guestCapturedWithLibguestfsPreadDevice"],
-        "guestInputCount": result["guestInputs"],
-        "writerCalled": result["diskWriterCalled"],
-        "ephemeralDiskRemoved": True,
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "status": result["status"],
+                "classification": result["classification"],
+                "diagnostic": result["safetyAssessment"],
+                "guestRealPread": result["guestCapturedWithLibguestfsPreadDevice"],
+                "guestInputCount": result["guestInputs"],
+                "writerCalled": result["diskWriterCalled"],
+                "ephemeralDiskRemoved": True,
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -522,12 +547,18 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as exc:
-        print(json.dumps({
-            "status": "BLOCKED_FAIL_CLOSED",
-            "error": type(exc).__name__,
-            "reason": str(exc)[:250],
-            "productionWriteAuthorized": False,
-            "guestInputAuthorized": False,
-            "classification": "NOT_INDEPENDENT",
-        }, sort_keys=True), file=sys.stderr)
+        print(
+            json.dumps(
+                {
+                    "status": "BLOCKED_FAIL_CLOSED",
+                    "error": type(exc).__name__,
+                    "reason": str(exc)[:250],
+                    "productionWriteAuthorized": False,
+                    "guestInputAuthorized": False,
+                    "classification": "NOT_INDEPENDENT",
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
         raise SystemExit(2) from exc
