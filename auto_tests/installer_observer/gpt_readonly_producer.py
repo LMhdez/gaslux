@@ -89,8 +89,7 @@ def capture_gpt(
     )
     before = own_file(path, workspace)
     require(
-        before.st_size % logical_sector_size == 0
-        and before.st_size >= 68 * logical_sector_size,
+        before.st_size % logical_sector_size == 0 and before.st_size >= 68 * logical_sector_size,
         "DISK_GEOMETRY_INVALID",
     )
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
@@ -105,9 +104,7 @@ def capture_gpt(
         # Existing Safety implementation validates protective MBR, both GPT
         # headers, CRCs, entries and exact GPT partition inventory.
         try:
-            snapshot = safety_disk.inspect_gpt_image(
-                path, logical_sector_size=logical_sector_size
-            )
+            snapshot = safety_disk.inspect_gpt_image(path, logical_sector_size=logical_sector_size)
             primary = safety_disk.read_header(fd, logical_sector_size, 1, sectors)
             secondary = safety_disk.read_header(fd, logical_sector_size, sectors - 1, sectors)
         except (OSError, ValueError, IndexError, struct.error) as exc:
@@ -131,9 +128,7 @@ def capture_gpt(
                 if is_header
                 else header["array_lba"] * logical_sector_size
             )
-            length = (
-                logical_sector_size if is_header else header["count"] * header["entry_size"]
-            )
+            length = logical_sector_size if is_header else header["count"] * header["entry_size"]
             raw = safety_disk.exact_read(fd, offset, length)
             if is_header:
                 header_length = struct.unpack_from("<I", raw, 12)[0]
@@ -171,8 +166,10 @@ def capture_gpt(
         }
         end = os.fstat(fd)
         after = own_file(path, workspace)
+
         def identity(info):
             return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+
         require(
             identity(before) == identity(first_stat) == identity(end) == identity(after),
             "DISK_CHANGED_DURING_READ",
@@ -200,8 +197,13 @@ def capture_gpt(
             trace, sort_keys=True, separators=(",", ":"), ensure_ascii=True
         ).encode("ascii")
         return Capture(
-            source, SOURCE_METHODS[source], observed, snapshot,
-            sector_claims, trace, hashlib.sha256(encoded).hexdigest(),
+            source,
+            SOURCE_METHODS[source],
+            observed,
+            snapshot,
+            sector_claims,
+            trace,
+            hashlib.sha256(encoded).hexdigest(),
         )
     finally:
         os.close(fd)
@@ -221,8 +223,10 @@ def build_safety_v1(
     Caller must independently verify the Observer state result; this function
     does not sign it or infer authenticity from the source of 'pins'.
     """
-    require(tuple(c.source for c in captures) == ("host", "guest", "immediate"),
-            "GUEST_MEASUREMENT_MISSING")
+    require(
+        tuple(c.source for c in captures) == ("host", "guest", "immediate"),
+        "GUEST_MEASUREMENT_MISSING",
+    )
     first = captures[0]
     require(
         all(c.gpt == first.gpt and c.sectors == first.sectors for c in captures),
