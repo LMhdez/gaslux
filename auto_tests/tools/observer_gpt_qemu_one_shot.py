@@ -101,24 +101,53 @@ def validate_trigger(event: dict, approval: dict, env: dict) -> None:
     require(approval == expected_approval(), "APPROVAL_CONTENT_INVALID")
 
 
-def validate_git(root: Path, event: dict) -> None:
+def validate_git(
+    root: Path,
+    event: dict,
+    *,
+    trusted_preparation_sha: str | None = None,
+    trusted_authorization_sha: str | None = None,
+    unused_external_grant: bool = False,
+) -> None:
+    """Require exact pins supplied by a separately protected controller.
+
+    A GitHub event or untrusted approval JSON MUST NEVER be used as the source
+    of these pins. The current feature-branch workflow is permanently disabled;
+    until the protected controller and its durable single-use grant exist,
+    preflight cannot pass. This method cannot authenticate its own caller.
+    """
+    require(
+        isinstance(trusted_preparation_sha, str)
+        and bool(re.fullmatch("[a-f0-9]{40}", trusted_preparation_sha)),
+        "TRUSTED_PREPARATION_MISSING",
+    )
+    require(
+        isinstance(trusted_authorization_sha, str)
+        and bool(re.fullmatch("[a-f0-9]{40}", trusted_authorization_sha)),
+        "TRUSTED_AUTHORIZATION_COMMIT_MISSING",
+    )
+    require(unused_external_grant is True, "EXTERNAL_SINGLE_USE_GRANT_MISSING_OR_CONSUMED")
+
     def git(*args: str) -> str:
         return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
-    require(git("rev-parse", "HEAD") == event["after"], "UNEXPECTED_TRIGGER_CHECKOUT")
-    require(git("rev-parse", "HEAD^") == event["before"], "UNEXPECTED_PARENT_COMMIT")
+    require(
+        event.get("before") == trusted_preparation_sha,
+        "UNAPPROVED_PREPARATION_PARENT",
+    )
+    require(
+        event.get("after") == trusted_authorization_sha,
+        "UNAPPROVED_AUTHORIZATION_COMMIT",
+    )
+    require(git("rev-parse", "HEAD") == trusted_authorization_sha, "UNEXPECTED_TRIGGER_CHECKOUT")
+    require(git("rev-parse", "HEAD^") == trusted_preparation_sha, "UNEXPECTED_PARENT_COMMIT")
     require(
         git("diff-tree", "--no-commit-id", "--name-status", "-r", "HEAD") == "A\t" + FILE,
         "GIT_DIFF_NOT_EXCLUSIVE_APPROVAL",
     )
-    require(
-        subprocess.run(
-            ["git", "-C", str(root), "merge-base", "--is-ancestor", AUDITED, "HEAD^"],
-            check=False,
-        ).returncode
-        == 0,
-        "AUDITED_SHA_NOT_ANCESTOR",
-    )
+    # Equality to the externally pinned preparation commit is mandatory.
+    # Mere descendant checks accepted unreviewed workflow/preflight ancestors.
+    require(git("rev-parse", "HEAD^") == trusted_preparation_sha, "UNAPPROVED_PARENT")
     require(
         not (root / FILE).is_symlink() and (root / FILE).is_file(),
         "APPROVAL_NOT_REGULAR_FILE",
@@ -297,6 +326,11 @@ def main() -> int:
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
         approval = json.loads((root / FILE).read_text(encoding="utf-8"))
         validate_trigger(event, approval, dict(os.environ))
+        # Deliberately no trusted preparation/authorization SHA nor durable
+        # single-use grant is accepted from the branch, JSON or process env.
+        # A separately protected default-branch controller must eventually
+        # call validate_git with independently reviewed pins and an atomic
+        # external grant before enabling any QEMU run. This entrypoint FAILS.
         validate_git(root, event)
         result = {
             "status": "AUTHORIZED_TRIGGER_ONLY",
