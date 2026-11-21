@@ -292,11 +292,13 @@ class SixGptNegativeTests(unittest.TestCase):
                 (c.PARTS[0].start, -1),
                 (c.PARTS[0].start, True),
             ):
-                with self.subTest(first=first, sectors=sectors):
-                    with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
-                        fsc.copy_owned_partition(
-                            base, work / "fsck-after-1.img", first, sectors,
-                        )
+                with (
+                    self.subTest(first=first, sectors=sectors),
+                    self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
+                ):
+                    fsc.copy_owned_partition(
+                        base, work / "fsck-after-1.img", first, sectors,
+                    )
             with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
                 fsc.copy_owned_partition(
                     base, work / "foreign.img", c.PARTS[0].start, 16,
