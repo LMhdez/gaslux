@@ -1,0 +1,168 @@
+name: Observer GPT IMMEDIATE audited one-shot (explicit approval commit only)
+
+# No workflow_dispatch: this file is intentionally NOT on default/main.
+# A future, separately human-authorized, single-file ADD commit is mandatory.
+on:
+  push:
+    branches:
+      - qemu-approved/observer-gpt-dd3e7bf2-20261121
+    paths:
+      - '.github/gpt-qemu-approvals/observer-gpt-dd3e7bf2-20261121.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observer-gpt-immediate-dd3e7bf2-one-shot
+  cancel-in-progress: false
+
+jobs:
+  one-readonly-qemu:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/qemu-approved/observer-gpt-dd3e7bf2-20261121' &&
+      github.actor == 'LMhdez' &&
+      github.run_attempt == 1 &&
+      github.event.created == false &&
+      github.event.deleted == false &&
+      github.event.forced == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      LIBGUESTFS_BACKEND: direct
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Check out authorization-only branch (no credentials)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse non-explicit, repeat or non-audited authorization before KVM
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test "$GITHUB_ACTIONS" = true
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(id -u)" -ne 0
+          test -d "$RUNNER_TEMP"
+          test ! -L "$RUNNER_TEMP"
+          install -d -m 700 "$RUNNER_TEMP/gaslux-gpt-proof-evidence"
+          python3 auto_tests/tools/observer_gpt_qemu_one_shot.py preflight \
+            --checkout "$GITHUB_WORKSPACE" \
+            --evidence "$RUNNER_TEMP/gaslux-gpt-proof-evidence"
+
+      - name: Check out EXACT Safety-reviewed Observer source
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: dd3e7bf26e36499f89701393773df464ce713e4f
+          path: audited
+          persist-credentials: false
+
+      - name: Check out EXACT Safety v1 pinned source
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: audited/safety-pinned
+          persist-credentials: false
+
+      - name: Use previously qualified read-only guest kernel helper
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
+          path: safety-pop-lab
+          persist-credentials: false
+
+      - name: Pin exact code and synthetic/KVM scope before any disk creation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C audited rev-parse HEAD)" = dd3e7bf26e36499f89701393773df464ce713e4f
+          test "$(git -C audited/safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test "$(git -C safety-pop-lab rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
+          test -c /dev/kvm
+          test ! -L /dev/kvm
+          test -f audited/safety-pinned/schemas/safety-gpt-provenance-v1.schema.json
+          test -f audited/auto_tests/installer_observer/gpt_lab_provenance.py
+          test -f audited/auto_tests/installer_observer/gpt_readonly_producer.py
+          git -C audited diff --exit-code
+          sha256sum \
+            audited/auto_tests/installer_observer/gpt_lab_provenance.py \
+            audited/auto_tests/installer_observer/gpt_readonly_producer.py \
+            audited/safety-pinned/schemas/safety-gpt-provenance-v1.schema.json \
+            > "$RUNNER_TEMP/gaslux-gpt-proof-evidence/audited-source-sha256sums.txt"
+          printf 'auditedHead=dd3e7bf26e36499f89701393773df464ce713e4f\nsafetyHead=0be04192acd542646a5b6cd952e01620379edf5d\n' \
+            > "$RUNNER_TEMP/gaslux-gpt-proof-evidence/executed-heads.txt"
+
+      - name: Install approved guestfs/QEMU lab dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils gdisk libguestfs-tools python3-guestfs \
+            libguestfs0 linux-image-generic python3-venv ca-certificates
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          source safety-pop-lab/auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          /usr/bin/python3 -m venv --system-site-packages "$RUNNER_TEMP/gaslux-guestfs-venv"
+          "$RUNNER_TEMP/gaslux-guestfs-venv/bin/python" -m pip install \
+            'cryptography>=50,<51' 'jsonschema>=4,<5' \
+            'rfc8785>=0.1.4,<1' 'pillow>=11,<13'
+
+      - name: Verify real guestfs and audited geometry BEFORE QEMU
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd audited
+          "$RUNNER_TEMP/gaslux-guestfs-venv/bin/python" - <<'PY'
+          import guestfs
+          from PIL import Image
+          from auto_tests.installer_observer.gpt_lab_provenance import (
+              SIZE, SECTOR, SAFETY_COMMIT, experiment,
+          )
+          assert guestfs and Image and experiment
+          assert SIZE == 64 * 1024 * 1024 and SECTOR == 512
+          assert SAFETY_COMMIT == "0be04192acd542646a5b6cd952e01620379edf5d"
+          print("Verified: approved code, 64 MiB, 512-byte sectors, guestfs direct")
+          PY
+
+      - name: ONE genuine read-only libguestfs/QEMU GPT observation
+        shell: bash
+        env:
+          GASLUX_GPT_EVIDENCE: ${{ runner.temp }}/gaslux-gpt-proof-evidence
+          GASLUX_PINNED_SAFETY: ${{ github.workspace }}/audited/safety-pinned
+        run: |
+          set -Eeuo pipefail
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP"
+          export LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
+          cd audited
+          "$RUNNER_TEMP/gaslux-guestfs-venv/bin/python" \
+            -m auto_tests.installer_observer.gpt_lab_provenance \
+            | tee "$GASLUX_GPT_EVIDENCE/lab-result-summary.json"
+
+      - name: Verify three traces, SHA/CRCs, Safety v1 and no-writer flags
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          evidence="$RUNNER_TEMP/gaslux-gpt-proof-evidence"
+          python3 auto_tests/tools/observer_gpt_qemu_one_shot.py verify \
+            --evidence "$evidence"
+          (cd "$evidence" && sha256sum -- *.json *.txt > sha256sums.txt)
+          test "$(git -C audited rev-parse HEAD)" = dd3e7bf26e36499f89701393773df464ce713e4f
+
+      - name: Upload ONLY laboratory JSON/text evidence, never disk images or keys
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observer-gpt-immediate-audited-one-shot
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/gaslux-gpt-proof-evidence/*.json
+            ${{ runner.temp }}/gaslux-gpt-proof-evidence/*.txt
