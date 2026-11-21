@@ -128,6 +128,10 @@ jobs:
           test -x "$(command -v qemu-img)"
           test -x "$(command -v qemu-io)"
           test -f /usr/share/OVMF/OVMF_VARS_4M.fd
+          # F-04: exercise real, disposable qemu-img/qemu-io zero clusters;
+          # no QEMU-system process and no physical/block device.
+          export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
+          python3 -m unittest auto_tests.test_popos_six_gpt_safety_f01_f04 -v
       - name: Build synthetic six-GPT RAW, audit protected canaries, rehearse COW recovery
         shell: bash
         run: |

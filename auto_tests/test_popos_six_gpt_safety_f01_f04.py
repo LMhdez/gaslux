@@ -352,7 +352,9 @@ class QcowMapSafetyTests(unittest.TestCase):
                 self.assertRaisesRegex(Refusal, "not materially observed"),
             ):
                 lab.prove_injected_fault(child, base, sector, (st.st_dev, st.st_ino))
-            child.unlink()
+            # Preserve the original inode so the filesystem cannot recycle
+            # its number and accidentally mask a real identity substitution.
+            child.rename(p / "kept-original-child")
             child.write_bytes(b"foreign-inode")
             with self.assertRaisesRegex(Refusal, "inode substituted"):
                 lab.prove_injected_fault(child, base, sector, (st.st_dev, st.st_ino))
