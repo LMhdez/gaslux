@@ -12,7 +12,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from gaslux_popos_reuse_snapshot_gate import UNSAFE, WRITE, Refusal, need
+from gaslux_popos_reuse_snapshot_gate import Refusal, need
 
 SECTOR = 512
 SIZE = 32 * 1024**3
@@ -245,39 +245,62 @@ def classify_sector_write(start: int, count: int) -> int:
     raise Refusal("REFUSE_OUT_OF_WRITESET: GPT/protected/unallocated write")
 
 
-def audit_qemu_trace(trace: str) -> dict:
-    """External request locations only; never claim individual I/O completion.
+# This parser is intentionally NOT an authenticated witness. An arbitrary string
+# can be supplied by anyone, even if it passes the exact event grammar.
+TRACE_EVENT = re.compile(
+    r"virtio_blk_handle_write sector (0|[1-9][0-9]{0,15}) "
+    r"nsectors ([1-9][0-9]{0,15})\Z"
+)
+FORBIDDEN_EVENTS = re.compile(
+    r"\bvirtio_blk_handle_(discard|write_zeroes|flush|write|unknown)\b"
+    r"|\bblk_co_pwritev\b|\bpflash_(?:data_)?write\b"
+)
 
-    When a six-GPT QEMU is eventually approved, it must have exactly one
-    writable virtio device bound to this transaction's private child.
+
+def audit_qemu_trace(trace: str) -> dict:
+    """Parse-only, fail-closed write requests: never independent confinement proof.
+
+    Future externally verified evidence MUST bind this exact trace SHA256 to
+    a measured QEMU process/host FD, single virtio serial, owned QCOW2 inode,
+    backing SHA256, signed transaction and a no-loss trace collection. None of
+    those bindings can be established by this function or caller-supplied text.
     """
     need(
-        type(trace) is str and 0 < len(trace) < 128_000_000,
-        "OBSERVATION_INCOMPLETE: QEMU trace absent/oversized",
+        type(trace) is str
+        and 0 < len(trace) < 8_000_000
+        and "\r" not in trace
+        and "\x00" not in trace,
+        "OBSERVATION_INCOMPLETE: absent/ambiguous trace",
     )
+    lines = trace.removesuffix("\n").split("\n")
+    need(all(lines), "OBSERVATION_INCOMPLETE: truncated/blank trace")
     writes = {5: 0, 6: 0}
     bytes_written = 0
-    vars_events = 0
-    for line in trace.splitlines():
-        need(UNSAFE.search(line) is None, "REFUSE_OUT_OF_WRITESET: discard/zero/unmapped write")
-        if "pflash_" in line and "system.flash" in line:
-            vars_events += 1
-        if "virtio_blk_handle_" in line and ("discard" in line or "write_zeroes" in line):
-            raise Refusal("REFUSE_OUT_OF_WRITESET: unapproved block command")
-        if "virtio_blk_handle_write" not in line:
-            continue
-        match = WRITE.search(line)
-        need(match is not None, "OBSERVATION_INCOMPLETE: malformed write request")
+    for line in lines:
+        # fullmatch rejects concatenated events, vda/vdb prefixes, fake
+        # timestamps, unknown devices and unrecognised QEMU operations.
+        match = TRACE_EVENT.fullmatch(line)
+        need(match is not None, "OBSERVATION_INCOMPLETE: foreign/partial QEMU event")
         sector, count = int(match[1]), int(match[2])
         writes[classify_sector_write(sector, count)] += 1
         bytes_written += count * SECTOR
-    need(sum(writes.values()) > 0, "OBSERVATION_INCOMPLETE: no QEMU write witness")
+    need(sum(writes.values()) > 0, "OBSERVATION_INCOMPLETE: no QEMU requests")
     return {
-        "observedWritesConfinedToOwnedPopPartitions": True,
+        "parseStatus": "PARSED_UNTRUSTED",
+        "parsedWriteLocationsWithinDeclaredRanges": True,
+        # Do NOT misrepresent supplied text as observation of a real device.
+        "observedWritesConfinedToOwnedPopPartitions": False,
+        "traceOriginAuthenticated": False,
+        "traceBoundToQemuProcess": False,
+        "traceBoundToVirtioSerial": False,
+        "traceBoundToOwnedChildAndBacking": False,
+        "traceBoundToTransaction": False,
+        "traceCollectionComplete": False,
         "writesByPartition": {"5": writes[5], "6": writes[6]},
-        "observedBytes": bytes_written,
-        "outOfWriteSetRequests": 0,
-        "pflashEventsSeen": vars_events,
+        "parsedBytes": bytes_written,
+        "observedBytes": 0,
+        "outOfWriteSetRequests": None,
+        "pflashEventsSeen": None,
         "observationComplete": False,
         "guestBioCompletionVerified": False,
         "ovmfTransientWritesProvenAbsent": False,

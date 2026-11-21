@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from gaslux_popos_reuse_snapshot_gate import Refusal, command, need, new_file, regular, sha
+from gaslux_popos_reuse_snapshot_gate import Refusal, command, need, regular, sha
 from gaslux_popos_six_gpt_contract import BOOLEANS, PARTS, SECTOR, SIZE
 from gaslux_popos_six_gpt_lab import (
     BASE_NAME,
@@ -23,6 +23,7 @@ from gaslux_popos_six_gpt_lab import (
     verify_sfdisk_gpt,
     write_json_exclusive,
 )
+from gaslux_popos_six_gpt_ownership import new_file, remove
 
 
 def copy_owned_partition(base: Path, dest: Path, start: int, sectors: int) -> None:
@@ -91,7 +92,8 @@ def verify_read_only_fsck(work: Path, phase: str) -> dict:
             }
         finally:
             if image.exists():
-                regular(image, length=p.count * SECTOR).unlink()
+                regular(image, length=p.count * SECTOR)
+                remove(image)
     need(
         verify_fs_types(base) == plan["filesystems"],
         "REFUSE_RECOVERY_UNPROVEN: filesystem type identity changed",
