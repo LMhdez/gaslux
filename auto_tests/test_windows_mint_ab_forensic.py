@@ -254,7 +254,8 @@ class MintAbForensicContracts(unittest.TestCase):
         }
 
     def _run_with_guest_stubs(
-        self, lab, *, mutate_after_a=None, change_gpt=None, change_after_mint=None
+        self, lab, *, mutate_after_a=None, change_gpt=None,
+        change_after_mint=None, inventory_changes=None,
     ):
         """Exercise REAL run_ab ordering with mocks only at guest boundaries."""
         from windows_mint_ab_checkpoint import CONSENT
@@ -266,6 +267,11 @@ class MintAbForensicContracts(unittest.TestCase):
         gpt_after = copy.deepcopy(lab["gpt"])
         if change_gpt:
             change_gpt(gpt_after)
+        inventory_states = [copy.deepcopy(pre), copy.deepcopy(pre), copy.deepcopy(pre), after]
+        for stage, mutate in (inventory_changes or {}).items():
+            if stage not in range(4):
+                raise AssertionError("unsafe fake inventory stage")
+            mutate(inventory_states[stage])
 
         win_calls = []
         mint_calls = []
@@ -309,7 +315,7 @@ class MintAbForensicContracts(unittest.TestCase):
                 patch.object(
                     forensic,
                     "guest_ro_inventory",
-                    side_effect=[copy.deepcopy(pre), copy.deepcopy(pre), copy.deepcopy(pre), after],
+                    side_effect=inventory_states,
                 )
             )
             stack.enter_context(
@@ -419,6 +425,55 @@ class MintAbForensicContracts(unittest.TestCase):
                 self.assertIn(flag, reason)
                 report = json.loads((lab["evidence"] / "mint-ab-after-mint-gate.json").read_text())
                 self.assertFalse(report["checks"][flag])
+
+    @staticmethod
+    def _set_unavailable(record, resource):
+        record["fileInventories"][resource] = {
+            "available": False, "reason": "ReadOnlyMountError"
+        }
+
+    def test_f03_baseline_both_esp_unavailable_must_block_windows_a(self):
+        """Red test on #274: identical unavailable baselines formerly passed."""
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(
+                lab, inventory_changes={
+                    0: lambda item: self._set_unavailable(item, "esp"),
+                    1: lambda item: self._set_unavailable(item, "esp"),
+                },
+            )
+            self.assertEqual(windows, [], "No Windows A with missing ESP baseline")
+            self.assertEqual(mint, [])
+            self.assertIn("F-03", status)
+            self.assertTrue((lab["evidence"] / "mint-ab-evidence-before-windows-a.json").is_file())
+
+    def test_f03_recovery_unavailable_after_control_must_block_mint_b(self):
+        """Red test on #274: changed_files() only observed unavailable."""
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(
+                lab, inventory_changes={
+                    2: lambda item: self._set_unavailable(item, "recovery"),
+                },
+            )
+            self.assertEqual(windows, [1])
+            self.assertEqual(mint, [], "No Mint B with missing Recovery control inventory")
+            self.assertIn("F-03", status)
+            self.assertTrue((lab["evidence"] / "mint-ab-evidence-after-windows-a.json").is_file())
+
+    def test_f03_esp_unavailable_after_mint_must_block_windows_b(self):
+        """Red test on #274: F-02 only looked at GPT and partition digests."""
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(
+                lab, inventory_changes={
+                    3: lambda item: self._set_unavailable(item, "esp"),
+                },
+            )
+            self.assertEqual(windows, [1], "No Windows B with missing ESP after Mint")
+            self.assertEqual(mint, [1])
+            self.assertIn("F-03", status)
+            self.assertTrue((lab["evidence"] / "mint-ab-evidence-after-mint-b.json").is_file())
 
     def test_valid_two_gates_allow_only_the_next_mock_windows_boundary(self):
         with tempfile.TemporaryDirectory() as root:
