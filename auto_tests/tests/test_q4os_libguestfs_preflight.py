@@ -99,8 +99,16 @@ def test_kernel_symlink_denied(kernel_fixture):
         inspect_kernel(env, root)
 
 
-def _fake_guest(monkeypatch, synthetic: Path, *, drives=1, sector=512,
-                launch_error=None, shutdown_error=None, missing_tail=False):
+def _fake_guest(
+    monkeypatch,
+    synthetic: Path,
+    *,
+    drives=1,
+    sector=512,
+    launch_error=None,
+    shutdown_error=None,
+    missing_tail=False,
+):
     calls: list[dict] = []
     status = {"shutdown": False, "close": False}
     size = synthetic.stat().st_size
@@ -202,11 +210,9 @@ def test_only_bounded_supermin_error_categories(detail, expected):
 
 
 def test_no_real_disk_or_writer_in_preflight_source():
-    content = (ROOT / "auto_tests/tools/q4os_libguestfs_preflight.py").read_text(
-        encoding="utf-8"
-    )
-    assert 'readonly=1' in content
-    assert 'label=name' in content
+    content = (ROOT / "auto_tests/tools/q4os_libguestfs_preflight.py").read_text(encoding="utf-8")
+    assert "readonly=1" in content
+    assert "label=name" in content
     assert "guestfs.GuestFS" in content
     for forbidden in ["grub-install", "mkfs.", "mount -o rw", "sudo fsck", "efibootmgr"]:
         assert forbidden not in content
