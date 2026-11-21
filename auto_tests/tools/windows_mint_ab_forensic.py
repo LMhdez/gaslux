@@ -362,8 +362,12 @@ F03_EVIDENCE_PHASES = {
 
 
 def require_complete_forensic_inventories(
-    *, phase: str, sources: dict, transaction_id: str,
-    evidence: Path, preceding_sha256: dict,
+    *,
+    phase: str,
+    sources: dict,
+    transaction_id: str,
+    evidence: Path,
+    preceding_sha256: dict,
 ) -> dict:
     """F-03: durable, fail-closed evidence gate; never repairs guest media.
 
@@ -372,15 +376,25 @@ def require_complete_forensic_inventories(
     """
     require(phase in F03_EVIDENCE_PHASES, "F-03: unsupported evidence phase")
     filename, expected_sources = F03_EVIDENCE_PHASES[phase]
-    require(isinstance(sources, dict) and set(sources) == set(expected_sources),
-            "F-03: ambiguous A/B evidence sources")
-    require(isinstance(transaction_id, str) and bool(transaction_id)
-            and isinstance(preceding_sha256, dict) and bool(preceding_sha256)
-            and len(preceding_sha256) <= 8
-            and all(isinstance(k, str) and re.fullmatch(r"[A-Za-z0-9_]{1,64}", k)
-                    and isinstance(v, str) and re.fullmatch(r"[a-f0-9]{64}", v)
-                    for k, v in preceding_sha256.items()),
-            "F-03: missing or invalid prior manifest identity")
+    require(
+        isinstance(sources, dict) and set(sources) == set(expected_sources),
+        "F-03: ambiguous A/B evidence sources",
+    )
+    require(
+        isinstance(transaction_id, str)
+        and bool(transaction_id)
+        and isinstance(preceding_sha256, dict)
+        and bool(preceding_sha256)
+        and len(preceding_sha256) <= 8
+        and all(
+            isinstance(k, str)
+            and re.fullmatch(r"[A-Za-z0-9_]{1,64}", k)
+            and isinstance(v, str)
+            and re.fullmatch(r"[a-f0-9]{64}", v)
+            for k, v in preceding_sha256.items()
+        ),
+        "F-03: missing or invalid prior manifest identity",
+    )
 
     resource_status = {}
     unavailable = []
@@ -397,9 +411,12 @@ def require_complete_forensic_inventories(
                 or not files
                 or len(files) > 120000
                 or not all(
-                    isinstance(name, str) and name.startswith("/")
-                    and len(name) <= 4096 and "\x00" not in name
-                    and isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{64}", digest)
+                    isinstance(name, str)
+                    and name.startswith("/")
+                    and len(name) <= 4096
+                    and "\x00" not in name
+                    and isinstance(digest, str)
+                    and re.fullmatch(r"[a-f0-9]{64}", digest)
                     for name, digest in files.items()
                 )
             ):
@@ -412,13 +429,16 @@ def require_complete_forensic_inventories(
             }
             if state != "complete":
                 reason = item.get("reason") if isinstance(item, dict) else None
-                unavailable.append({
-                    "source": label,
-                    "resource": resource,
-                    "evidenceState": state,
-                    "reportedReason": (reason if isinstance(reason, str)
-                                       and len(reason) <= 128 else None),
-                })
+                unavailable.append(
+                    {
+                        "source": label,
+                        "resource": resource,
+                        "evidenceState": state,
+                        "reportedReason": (
+                            reason if isinstance(reason, str) and len(reason) <= 128 else None
+                        ),
+                    }
+                )
     passed = not unavailable
     report = {
         "schema": "gaslux-mint-ab-required-inventory-evidence-v1",
@@ -432,21 +452,30 @@ def require_complete_forensic_inventories(
         # No evidence-only PASS grants permission independently of F-01/F-02,
         # preflight, firmware and checkpoint protections.
         "nextGuestBootAuthorizedByThisGate": False,
-        "subsequentBootsBlocked": list({
-            "before_windows_a": ("windows_a", "mint_b", "windows_b"),
-            "after_windows_a": ("mint_b", "windows_b"),
-            "after_mint_b": ("windows_b",),
-            "after_windows_b": (),
-        }[phase]) if not passed else [],
+        "subsequentBootsBlocked": list(
+            {
+                "before_windows_a": ("windows_a", "mint_b", "windows_b"),
+                "after_windows_a": ("mint_b", "windows_b"),
+                "after_mint_b": ("windows_b",),
+                "after_windows_b": (),
+            }[phase]
+        )
+        if not passed
+        else [],
         "productionInstallAuthorized": False,
         "releaseEligible": False,
     }
     write_manifest(evidence, filename, report)
-    require(passed,
-            "F-03: required ESP/Recovery inventory evidence incomplete at "
-            + phase + ": "
-            + ", ".join(item["source"] + ":" + item["resource"] + " ("
-                        + item["evidenceState"] + ")" for item in unavailable))
+    require(
+        passed,
+        "F-03: required ESP/Recovery inventory evidence incomplete at "
+        + phase
+        + ": "
+        + ", ".join(
+            item["source"] + ":" + item["resource"] + " (" + item["evidenceState"] + ")"
+            for item in unavailable
+        ),
+    )
     return report
 
 
@@ -687,7 +716,8 @@ def run_ab(
         "checkpointManifestSha256": sha256_file(directory / "checkpoint.json"),
         "earlyCapacityManifestSha256": early_hash,
         "baselineInventoryEvidenceSha256": sha256_file(
-            evidence / F03_EVIDENCE_PHASES["before_windows_a"][0]),
+            evidence / F03_EVIDENCE_PHASES["before_windows_a"][0]
+        ),
         "sameWindowsOrdinalBeforeArms": True,
         "rootBefore": before[0]["mintRootFiles"],
         "partitionSha256Before": before[0]["partitionSha256"],
@@ -737,8 +767,7 @@ def run_ab(
         evidence=evidence,
         preceding_sha256={
             "baselineEvidence": ab["baselineInventoryEvidenceSha256"],
-            "afterControlIntegrity": sha256_file(
-                evidence / "mint-ab-after-control-gate.json"),
+            "afterControlIntegrity": sha256_file(evidence / "mint-ab-after-control-gate.json"),
         },
     )
     write_manifest(
@@ -752,7 +781,8 @@ def run_ab(
             "referenceAndBStillUntouched": control_gate["referenceAndBStillUntouched"],
             "afterControlGateSha256": sha256_file(evidence / "mint-ab-after-control-gate.json"),
             "afterControlEvidenceSha256": sha256_file(
-                evidence / F03_EVIDENCE_PHASES["after_windows_a"][0]),
+                evidence / F03_EVIDENCE_PHASES["after_windows_a"][0]
+            ),
             "releaseEligible": False,
         },
     )
@@ -787,7 +817,8 @@ def run_ab(
         preceding_sha256={
             "baselineEvidence": ab["baselineInventoryEvidenceSha256"],
             "afterControlEvidence": sha256_file(
-                evidence / F03_EVIDENCE_PHASES["after_windows_a"][0]),
+                evidence / F03_EVIDENCE_PHASES["after_windows_a"][0]
+            ),
             "control": sha256_file(evidence / "mint-ab-control.json"),
             "postMintIntegrity": sha256_file(evidence / "mint-ab-after-mint-gate.json"),
         },
@@ -801,7 +832,8 @@ def run_ab(
     ab["treatment"]["gptAfterMintUnchanged"] = post_mint_gate["checks"]["gptUnchanged"]
     ab["treatment"]["postMintGateSha256"] = sha256_file(evidence / "mint-ab-after-mint-gate.json")
     ab["treatment"]["postMintEvidenceSha256"] = sha256_file(
-        evidence / F03_EVIDENCE_PHASES["after_mint_b"][0])
+        evidence / F03_EVIDENCE_PHASES["after_mint_b"][0]
+    )
     ab["treatment"]["windows"] = run_windows_arm(
         original,
         base,
@@ -830,7 +862,8 @@ def run_ab(
         },
     )
     ab["treatment"]["afterWindowsEvidenceSha256"] = sha256_file(
-        evidence / F03_EVIDENCE_PHASES["after_windows_b"][0])
+        evidence / F03_EVIDENCE_PHASES["after_windows_b"][0]
+    )
     ab["treatment"]["partitionSha256AfterWindows"] = after_b["partitionSha256"]
     ab["treatment"]["fileDiff"] = changed_files(before[1], after_b)
     ab["treatment"]["mintRootContentsPreserved"] = (
