@@ -54,7 +54,7 @@ def take(sample, source="host", *, guest=False, size=512):
         path = folder / "guest-reconstructed.raw"
         path.write_bytes(data)
         proof = GuestSliceProof(
-            data[:34 * 512], data[-34 * 512:], "gasluxabcdefabcdef", 1234, 5678
+            data[: 34 * 512], data[-34 * 512 :], "gasluxabcdefabcdef", 1234, 5678
         )
     return capture_gpt(
         path,
@@ -118,14 +118,16 @@ def test_false_guest_read_bytes_are_rejected(sample):
     data = path.read_bytes()
     target = folder / "guest-reconstructed.raw"
     target.write_bytes(data)
-    invalid = GuestSliceProof(
-        bytes(34 * 512), data[-34 * 512:], "gasluxabcdefabcdef", 1234, 5678
-    )
+    invalid = GuestSliceProof(bytes(34 * 512), data[-34 * 512 :], "gasluxabcdefabcdef", 1234, 5678)
     refused(
         "GUEST_SLICE_BYTES_MISMATCH",
         lambda: capture_gpt(
-            target, folder, source="guest", logical_sector_size=512,
-            safety_disk=disk, guest_sample_origin=invalid,
+            target,
+            folder,
+            source="guest",
+            logical_sector_size=512,
+            safety_disk=disk,
+            guest_sample_origin=invalid,
         ),
     )
 
