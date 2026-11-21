@@ -462,16 +462,7 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
         # an attacker can replace-and-restore the name between observations.
         # This refusal is intentionally unconditional until Safety review.
         raise WriteSetRefused("E_GPT_FD_BINDING_REQUIRED")
-        return {
-            "result": "SYNTHETIC_ONLY_WITHIN_ROOT" if changed else "SYNTHETIC_NO_CHANGE",
-            "changedLinuxBytes": changed,
-            "transactionId": policy.transaction,
-            "checkpointId": policy.checkpoint_id,
-            "authorization": "DENY_NO_WRITER",
-            "independentRecoveryAttested": False,
-            "windowsRollbackVerified": False,
-            "productionWriteAuthorized": False,
-        }
+
     finally:
         for fd, _ in fds.values():
             os.close(fd)
