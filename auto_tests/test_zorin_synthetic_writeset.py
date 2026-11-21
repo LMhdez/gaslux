@@ -21,7 +21,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
 from libertix_disk_identity_gate import inspect_gpt_image
 from zorin_synthetic_writeset import (
-    SyntheticPolicy, WriteSetRefused, tree_digest, verify_private_synthetic,
+    SyntheticPolicy,
+    WriteSetRefused,
+    tree_digest,
+    verify_private_synthetic,
 )
 
 SECTOR = 512
@@ -36,9 +39,7 @@ GPT_TYPES = (
     "0fc63daf-8483-4772-8e79-3d69d8477de4",
     "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7",
 )
-PARTS = ((ESP_GUID, 2048, 4095),
-         (ROOT_GUID, 4096, 8191),
-         (PROTECTED_GUID, 8192, 10239))
+PARTS = ((ESP_GUID, 2048, 4095), (ROOT_GUID, 4096, 8191), (PROTECTED_GUID, 8192, 10239))
 
 
 def sha(data: bytes) -> str:
@@ -48,21 +49,21 @@ def sha(data: bytes) -> str:
 def generated_valid_gpt(*, root_guid: str = ROOT_GUID) -> bytes:
     """Fixture creator, NOT a GPT inspector or production partitioning engine."""
     image = bytearray(BYTES)
-    image[446 + 4] = 0xee
+    image[446 + 4] = 0xEE
     struct.pack_into("<II", image, 446 + 8, 1, N - 1)
     image[510:512] = b"\x55\xaa"
-    image[2048 * SECTOR:2048 * SECTOR + len(b"EFI-SYNTHETIC")] = b"EFI-SYNTHETIC"
-    image[8192 * SECTOR:8192 * SECTOR + 9] = b"PROTECTED"
+    image[2048 * SECTOR : 2048 * SECTOR + len(b"EFI-SYNTHETIC")] = b"EFI-SYNTHETIC"
+    image[8192 * SECTOR : 8192 * SECTOR + 9] = b"PROTECTED"
     array = bytearray(128 * 128)
     for i, ((guid_str, start, end), type_guid) in enumerate(zip(PARTS, GPT_TYPES)):
         chosen = root_guid if i == 1 else guid_str
         begin = i * 128
-        array[begin:begin + 16] = uuid.UUID(type_guid).bytes_le
-        array[begin + 16:begin + 32] = uuid.UUID(chosen).bytes_le
+        array[begin : begin + 16] = uuid.UUID(type_guid).bytes_le
+        array[begin + 16 : begin + 32] = uuid.UUID(chosen).bytes_le
         struct.pack_into("<QQQ", array, begin + 32, start, end, 0)
     crc_array = zlib.crc32(array)
-    image[2 * SECTOR:2 * SECTOR + len(array)] = array
-    image[(N - 33) * SECTOR:(N - 33) * SECTOR + len(array)] = array
+    image[2 * SECTOR : 2 * SECTOR + len(array)] = array
+    image[(N - 33) * SECTOR : (N - 33) * SECTOR + len(array)] = array
     for current, alternate, array_lba in ((1, N - 1, 2), (N - 1, 1, N - 33)):
         header = bytearray(SECTOR)
         header[:8] = b"EFI PART"
@@ -71,7 +72,7 @@ def generated_valid_gpt(*, root_guid: str = ROOT_GUID) -> bytes:
         header[56:72] = uuid.UUID(DISK_GUID).bytes_le
         struct.pack_into("<QIII", header, 72, array_lba, 128, 128, crc_array)
         struct.pack_into("<I", header, 16, zlib.crc32(header[:92]))
-        image[current * SECTOR:(current + 1) * SECTOR] = header
+        image[current * SECTOR : (current + 1) * SECTOR] = header
     return bytes(image)
 
 
@@ -80,22 +81,37 @@ def make_policy(root: Path) -> dict:
     parts = {p["number"]: p for p in snap["partitions"]}
     def zone(number: int, role: str):
         p = parts[number]
-        return {"role": role, "number": number, "partGuid": p["partGuid"],
-                "offsetBytes": p["offsetBytes"], "sizeBytes": p["sizeBytes"]}
+        return {
+            "role": role,
+            "number": number,
+            "partGuid": p["partGuid"],
+            "offsetBytes": p["offsetBytes"],
+            "sizeBytes": p["sizeBytes"],
+        }
     disk_hash = sha((root / "baseline.raw").read_bytes())
     return {
-        "schemaVersion": 1, "kind": "ZORIN_SYNTHETIC_WRITESET_V1",
-        "transactionId": "f" * 32, "checkpointId": "zorin-cp-" + "a" * 16,
+        "schemaVersion": 1,
+        "kind": "ZORIN_SYNTHETIC_WRITESET_V1",
+        "transactionId": "f" * 32,
+        "checkpointId": "zorin-cp-" + "a" * 16,
         "ownerLabel": "GASLUX-ZORIN-SYNTHETIC",
-        "diskBytes": BYTES, "logicalSectorBytes": SECTOR,
-        "diskSha256": disk_hash, "checkpointSha256": disk_hash,
+        "diskBytes": BYTES,
+        "logicalSectorBytes": SECTOR,
+        "diskSha256": disk_hash,
+        "checkpointSha256": disk_hash,
         "espTreeSha256": tree_digest(root, "esp-base"),
         "ovmfVarsSha256": sha((root / "ovmf-base.fd").read_bytes()),
-        "diskIdentity": snap, "esp": zone(1, "ESP"), "linux": zone(2, "LINUX_ROOT"),
-        "writeSet": ["LINUX_ROOT_BYTES_ONLY"], "writeOperations": [],
-        "authorization": "DENY_NO_WRITER", "syntheticOnly": True,
-        "transactionOwned": False, "externalAttestationVerified": False,
-        "windowsRollbackVerified": False, "nativeInstallerInvoked": False,
+        "diskIdentity": snap,
+        "esp": zone(1, "ESP"),
+        "linux": zone(2, "LINUX_ROOT"),
+        "writeSet": ["LINUX_ROOT_BYTES_ONLY"],
+        "writeOperations": [],
+        "authorization": "DENY_NO_WRITER",
+        "syntheticOnly": True,
+        "transactionOwned": False,
+        "externalAttestationVerified": False,
+        "windowsRollbackVerified": False,
+        "nativeInstallerInvoked": False,
     }
 
 
@@ -114,7 +130,9 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
         for folder in ("esp-base", "esp-trial"):
             (self.root / folder / "EFI/Microsoft/Boot").mkdir(parents=True)
             (self.root / folder / "EFI/Foreign").mkdir(parents=True)
-            (self.root / folder / "EFI/Microsoft/Boot/bootmgfw.efi").write_bytes(b"synthetic-windows")
+            (self.root / folder / "EFI/Microsoft/Boot/bootmgfw.efi").write_bytes(
+                b"synthetic-windows"
+            )
             (self.root / folder / "EFI/Foreign/loader.efi").write_bytes(b"synthetic-foreign")
         self.policy = make_policy(self.root)
         self.receipt = {
@@ -134,7 +152,7 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
             fd.seek(offset)
             old = fd.read(1)
             fd.seek(offset)
-            fd.write(bytes([old[0] ^ 0xff]))
+            fd.write(bytes([old[0] ^ 0xFF]))
 
     def refused(self, code: str):
         with self.assertRaises(WriteSetRefused) as context:
@@ -164,7 +182,8 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
 
     def test_valid_recalculated_partuuid_change_refused(self):
         (self.root / "trial.raw").write_bytes(
-            generated_valid_gpt(root_guid="8a98e4fc-37fa-4b34-8017-52d7e4bff9d1"))
+            generated_valid_gpt(root_guid="8a98e4fc-37fa-4b34-8017-52d7e4bff9d1")
+        )
         self.refused("E_PARTUUID_CHANGED")
 
     def test_unallocated_free_sector_refused(self):
@@ -228,14 +247,15 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
         self.assertIn(cm.exception.code, ("E_POLICY_SCHEMA", "E_FOREIGN_OWNER"))
 
     def test_permission_escalation_schema_refused(self):
-        for key, value in (("authorization", "ACCEPT_NO_WRITER"),
-                           ("transactionOwned", True),
-                           ("externalAttestationVerified", True),
-                           ("writeOperations", ["mkfs.ext4"])):
+        for key, value in (
+            ("authorization", "ACCEPT_NO_WRITER"),
+            ("transactionOwned", True),
+            ("externalAttestationVerified", True),
+            ("writeOperations", ["mkfs.ext4"]),
+        ):
             bad = deepcopy(self.policy)
             bad[key] = value
-            with self.subTest(key=key), self.assertRaisesRegex(
-                    WriteSetRefused, "E_POLICY_SCHEMA"):
+            with self.subTest(key=key), self.assertRaisesRegex(WriteSetRefused, "E_POLICY_SCHEMA"):
                 verify_private_synthetic(self.root, bad)
 
     def test_symlink_disk_source_refused(self):
@@ -261,8 +281,12 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
 
     def test_schema_draft202012_and_target_structure(self):
         from jsonschema import Draft202012Validator
-        schema = json.loads((Path(__file__).resolve().parents[1] /
-                             "schemas/zorin-synthetic-writeset-v1.schema.json").read_text())
+        schema = json.loads(
+            (
+                Path(__file__).resolve().parents[1]
+                / "schemas/zorin-synthetic-writeset-v1.schema.json"
+            ).read_text()
+        )
         Draft202012Validator.check_schema(schema)
         Draft202012Validator(schema).validate(self.policy)
         self.assertEqual(SyntheticPolicy.parse(self.policy).linux.part_guid, ROOT_GUID)
@@ -335,8 +359,15 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
 
     def test_no_unapproved_writer_exists_in_verifier(self):
         code = (Path(__file__).parent / "tools/zorin_synthetic_writeset.py").read_text()
-        for token in ("mkfs.ext4", "grub-install", "efibootmgr --create",
-                      "qemu-system", "wipefs", "os.O_WRONLY", "os.O_RDWR"):
+        for token in (
+            "mkfs.ext4",
+            "grub-install",
+            "efibootmgr --create",
+            "qemu-system",
+            "wipefs",
+            "os.O_WRONLY",
+            "os.O_RDWR",
+        ):
             self.assertNotIn(token, code)
 
 
