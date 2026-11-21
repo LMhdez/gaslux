@@ -64,6 +64,7 @@ jobs:
       - name: Ruff and syntax (only integration code)
         run: |
           python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/gpt_fd_crosscheck_offline_compat.py auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tools/gpt_fd_crosscheck_offline_compat.py auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py || true
           python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/gpt_fd_crosscheck_offline_compat.py auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py
           python3 -m compileall -q auto_tests/tools/gpt_fd_crosscheck_offline_compat.py auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py
       - name: Actual PR 286 FD GPT regressions (synthetic files only)

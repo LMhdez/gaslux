@@ -28,17 +28,28 @@ def load(name: str, path: Path):
 
 # These are actual upstream sources checked out at exact commits by CI;
 # no validator/parsing logic is copied into the experimental integration tree.
-parser = load("libertix_disk_identity_gate", PIN_ROOT / "parser/assets/live/libertix_disk_identity_gate.py")
-crosscheck = load("disk_identity_crosscheck_pinned", PIN_ROOT / "crosscheck/auto_tests/tools/disk_identity_crosscheck.py")
-prewrite = load("libertix_prewrite_no_writer", PIN_ROOT / "safety/assets/live/libertix_prewrite_no_writer.py")
+parser = load(
+    "libertix_disk_identity_gate",
+    PIN_ROOT / "parser/assets/live/libertix_disk_identity_gate.py",
+)
+crosscheck = load(
+    "disk_identity_crosscheck_pinned",
+    PIN_ROOT / "crosscheck/auto_tests/tools/disk_identity_crosscheck.py",
+)
+prewrite = load(
+    "libertix_prewrite_no_writer",
+    PIN_ROOT / "safety/assets/live/libertix_prewrite_no_writer.py",
+)
 observer = load(
-    "libertix_safety_observer_adapter", PIN_ROOT / "safety/assets/live/libertix_safety_observer_adapter.py"
+    "libertix_safety_observer_adapter",
+    PIN_ROOT / "safety/assets/live/libertix_safety_observer_adapter.py",
 )
 upstream_gpt_test = load(
     "upstream_gpt_test_image", PIN_ROOT / "parser/auto_tests/tests/test_disk_identity_gate.py"
 )
 compat = load(
-    "gpt_fd_crosscheck_offline_compat", ROOT / "auto_tests/tools/gpt_fd_crosscheck_offline_compat.py"
+    "gpt_fd_crosscheck_offline_compat",
+    ROOT / "auto_tests/tools/gpt_fd_crosscheck_offline_compat.py",
 )
 
 TX = "a" * 32
