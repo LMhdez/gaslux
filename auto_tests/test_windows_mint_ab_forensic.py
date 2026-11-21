@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import copy
-from contextlib import ExitStack
 import hashlib
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent / "tools"))
@@ -18,19 +18,20 @@ import windows_mint_ab_forensic as forensic
 
 class MintAbForensicContracts(unittest.TestCase):
     def test_missing_ab_boot_consent_blocks_all_clones_or_guests(self):
-        with patch.dict(os.environ, {}, clear=True):
-            with patch.object(forensic, "prepare_checkpoint") as checkpoint:
-                with self.assertRaisesRegex(forensic.ForensicError, "consent"):
-                    forensic.run_ab(
-                        original=[], base=Path("/dev/sda"), nvram=Path("/dev/sdb"),
-                        overlay=Path("/dev/sdc"), workspace=Path("/tmp"),
-                        root_uuid="00000000-0000-4000-8000-000000000001",
-                        kernel=Path("/tmp/kernel"), initramfs=Path("/tmp/initramfs"),
-                        evidence=Path("/tmp"))
-                checkpoint.assert_not_called()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(forensic, "prepare_checkpoint") as checkpoint,
+        ):
+            with self.assertRaisesRegex(forensic.ForensicError, "consent"):
+                forensic.run_ab(
+                    original=[], base=Path("/dev/sda"), nvram=Path("/dev/sdb"),
+                    overlay=Path("/dev/sdc"), workspace=Path("/tmp"),
+                    root_uuid="00000000-0000-4000-8000-000000000001",
+                    kernel=Path("/tmp/kernel"), initramfs=Path("/tmp/initramfs"),
+                    evidence=Path("/tmp"))
+            checkpoint.assert_not_called()
 
     def test_same_run_capacity_evidence_must_precede_checkpoint_or_qemu(self):
-        import json
         from windows_mint_ab_checkpoint import CONSENT
         with tempfile.TemporaryDirectory() as root:
             d = Path(root)
@@ -63,7 +64,7 @@ class MintAbForensicContracts(unittest.TestCase):
     def test_all_partitions_tracked_individually(self):
         initial = ["1"*64, "2"*64, "3"*64, "4"*64]
         changed = ["5"*64, "2"*64, "6"*64, "7"*64]
-        delta = [a != b for a, b in zip(initial, changed)]
+        delta = [a != b for a, b in zip(initial, changed, strict=True)]
         self.assertEqual(delta, [True, False, True, True])
         self.assertTrue(any(delta[i] for i in (0, 1, 3)))
 
