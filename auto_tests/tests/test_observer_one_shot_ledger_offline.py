@@ -6,6 +6,9 @@ import copy
 import importlib.util
 import json
 import os
+import shutil
+import sqlite3
+import uuid
 import subprocess
 import sys
 import tempfile
@@ -46,6 +49,7 @@ def trusted_fixture(g: dict):
         requester_id=g["requesterId"],
         approver_id=g["externalApproverId"],
         human_review_id=g["humanReviewId"],
+        external_decision_id=g["externalDecisionId"],
         review_verified=True,
         authority_available=True,
     )
@@ -78,7 +82,7 @@ class GrantSchemaTests(unittest.TestCase):
     def test_invalid_grants_fail_closed(self):
         for field, value in (
             ("scope", "INSTALL"),
-            ("contractVersion", 2),
+            ("contractVersion", 3),
             ("preparationSha", "short"),
             ("externalApproverId", ""),
             ("repository", "other/repository"),
@@ -170,6 +174,216 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(self.ledger.state(first["grantId"]), "CONSUMED")
         with self.assertRaisesRegex(model.Refused, "UNKNOWN_GRANT"):
             self.ledger.state(second["grantId"])
+
+    def test_second_uuid_same_external_decision_after_revocation_is_denied(self):
+        self.ledger.request(self.g, now=NOW)
+        self.ledger.transition(self.g["grantId"], "REVOKED", now=NOW)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        with self.assertRaisesRegex(model.Refused, "AUTHORIZATION_ALREADY_RESERVED"):
+            self.ledger.request(second, now=NOW)
+        self.assertEqual(self.ledger.state(self.g["grantId"]), "REVOKED")
+        self.assertIn(
+            ("DENIED", "AUTHORIZATION_ALREADY_RESERVED"),
+            [event[2:4] for event in self.ledger.events(second["grantId"])],
+        )
+
+    def test_authorization_cannot_reuse_commit_with_different_review(self):
+        self.ledger.request(self.g, now=NOW)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        second["externalDecisionId"] = str(uuid.uuid4())
+        second["humanReviewId"] = "new-review-synthetic-20261121"
+        with self.assertRaisesRegex(model.Refused, "AUTHORIZATION_ALREADY_RESERVED"):
+            self.ledger.request(second, now=NOW)
+
+    def test_experiment_commit_cannot_rotate_branch_name(self):
+        self.ledger.request(self.g, now=NOW)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        second["requestRef"] = "refs/heads/qemu-approved/another-ref"
+        second["externalDecisionId"] = str(uuid.uuid4())
+        second["humanReviewId"] = "different-review-synthetic"
+        with self.assertRaisesRegex(model.Refused, "EXPERIMENT_COMMIT_ALREADY_RESERVED"):
+            self.ledger.request(second, now=NOW)
+
+    def test_external_decision_cannot_reapprove_another_commit(self):
+        self.ledger.request(self.g, now=NOW)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        second["authorizationSha"] = "e" * 40
+        second["humanReviewId"] = "different-review-for-other-commit"
+        with self.assertRaisesRegex(model.Refused, "EXTERNAL_DECISION_ALREADY_RESERVED"):
+            self.ledger.request(second, now=NOW)
+
+    def test_one_human_review_cannot_rotate_external_decision_id(self):
+        self.ledger.request(self.g, now=NOW)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        second["authorizationSha"] = "e" * 40
+        second["externalDecisionId"] = str(uuid.uuid4())
+        with self.assertRaisesRegex(model.Refused, "HUMAN_REVIEW_ALREADY_RESERVED"):
+            self.ledger.request(second, now=NOW)
+
+    def test_two_genuinely_distinct_simulated_decisions_do_not_collide(self):
+        self.ledger.request(self.g, now=NOW)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        second["authorizationSha"] = "e" * 40
+        second["externalDecisionId"] = str(uuid.uuid4())
+        second["humanReviewId"] = "separate-human-review"
+        self.ledger.request(second, now=NOW)
+        for grant in (self.g, second):
+            self.ledger.transition(grant["grantId"], "REVIEW_PENDING", now=NOW)
+            self.assertEqual(
+                self.ledger.transition(
+                    grant["grantId"], "APPROVED", now=NOW,
+                    trusted=trusted_fixture(grant),
+                ),
+                "APPROVED",
+            )
+        self.assertEqual(self.ledger.state(second["grantId"]), "APPROVED")
+
+    def test_eight_parallel_equivalent_reservations_only_one_wins(self):
+        barrier = threading.Barrier(8)
+        records = []
+        for index in range(8):
+            g = copy.deepcopy(self.g)
+            g["grantId"] = str(uuid.uuid4())
+            g["externalDecisionId"] = str(uuid.uuid4())
+            g["humanReviewId"] = f"parallel-review-{index}"
+            records.append(g)
+
+        def reserve(grant):
+            barrier.wait()
+            try:
+                self.ledger.request(grant, now=NOW)
+                return "RESERVED"
+            except model.Refused as exc:
+                return exc.reason
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            observed = list(pool.map(reserve, records))
+        self.assertEqual(observed.count("RESERVED"), 1)
+        self.assertEqual(observed.count("AUTHORIZATION_ALREADY_RESERVED"), 7)
+        self.assertEqual(
+            sum(len(self.ledger.events(g["grantId"])) for g in records), 8
+        )
+        self.assertEqual(
+            sum(
+                self.ledger.state(g["grantId"]) == "REQUESTED"
+                for g, status in zip(records, observed, strict=True)
+                if status == "RESERVED"
+            ),
+            1,
+        )
+
+    def test_interrupted_before_commit_does_not_reserve(self):
+        g = self.g
+        keys = model._identities(g)
+        con = sqlite3.connect(self.path, isolation_level=None)
+        try:
+            con.execute("BEGIN IMMEDIATE")
+            con.execute(
+                "INSERT INTO grants (grant_id, authorization_key, execution_key, "
+                "external_decision_id, review_key, payload, digest, state, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    g["grantId"], keys[0], keys[1], g["externalDecisionId"],
+                    keys[2], "{}", "0" * 64, "REQUESTED", NOW,
+                ),
+            )
+            con.execute("ROLLBACK")
+        finally:
+            con.close()
+        self.ledger.request(g, now=NOW)
+        self.assertEqual(self.ledger.state(g["grantId"]), "REQUESTED")
+
+    def test_reopen_after_consumption_still_denies_alternate_uuid(self):
+        self.ready()
+        self.ledger.transition(
+            self.g["grantId"], "CONSUMED", now=NOW,
+            trusted=self.trusted, run=self.run,
+        )
+        reopened = model.OfflineLedger(self.path)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        with self.assertRaisesRegex(model.Refused, "AUTHORIZATION_ALREADY_RESERVED"):
+            reopened.request(second, now=NOW)
+
+    def test_legacy_v1_database_refused_without_migration(self):
+        old_file = Path(self.temp.name) / "legacy-v1.sqlite3"
+        con = sqlite3.connect(old_file)
+        try:
+            con.execute(
+                "CREATE TABLE grants (grant_id TEXT PRIMARY KEY, payload TEXT NOT NULL, "
+                "digest TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL)"
+            )
+            con.execute(
+                "CREATE TABLE decisions (sequence INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "grant_id TEXT NOT NULL, at TEXT NOT NULL, before_state TEXT, "
+                "after_state TEXT, decision TEXT NOT NULL, reason TEXT NOT NULL, "
+                "run_id TEXT)"
+            )
+            con.commit()
+        finally:
+            con.close()
+        with self.assertRaisesRegex(model.Refused, "LEGACY_OR_AMBIGUOUS_LEDGER"):
+            model.OfflineLedger(old_file)
+        con = sqlite3.connect(old_file)
+        try:
+            self.assertEqual(len(con.execute("PRAGMA table_info(grants)").fetchall()), 5)
+        finally:
+            con.close()
+
+    def test_external_database_tamper_is_not_prevented(self):
+        self.ready()
+        with sqlite3.connect(self.path) as con:
+            con.execute(
+                "UPDATE grants SET state = 'CONSUMED' WHERE grant_id = ?",
+                (self.g["grantId"],),
+            )
+        self.assertEqual(self.ledger.state(self.g["grantId"]), "CONSUMED")
+        # SQL constraints cannot prevent a privileged offline DB rewrite.
+        with sqlite3.connect(self.path) as con:
+            con.execute(
+                "UPDATE grants SET state = 'APPROVED' WHERE grant_id = ?",
+                (self.g["grantId"],),
+            )
+        self.assertEqual(
+            self.ledger.transition(
+                self.g["grantId"], "CONSUMED", now=NOW,
+                trusted=self.trusted, run=self.run,
+            ),
+            "CONSUMED",
+        )
+
+    def test_restoring_old_db_snapshot_defeats_local_consumption(self):
+        self.ready()
+        snapshot = Path(self.temp.name) / "prior-snapshot.sqlite3"
+        shutil.copy2(self.path, snapshot)
+        self.ledger.transition(
+            self.g["grantId"], "CONSUMED", now=NOW,
+            trusted=self.trusted, run=self.run,
+        )
+        shutil.copy2(snapshot, self.path)
+        reopened = model.OfflineLedger(self.path)
+        self.assertEqual(reopened.state(self.g["grantId"]), "APPROVED")
+        self.assertEqual(
+            reopened.transition(
+                self.g["grantId"], "CONSUMED", now=NOW,
+                trusted=self.trusted, run=self.run,
+            ),
+            "CONSUMED",
+        )
+
+    def test_caller_controlled_clock_is_not_an_external_time_authority(self):
+        # A backwards caller-supplied clock can still request a new grant.
+        g = copy.deepcopy(self.g)
+        g["issuedAt"] = "2026-01-01T00:00:00Z"
+        g["expiresAt"] = "2026-01-02T00:00:00Z"
+        self.ledger.request(g, now="2026-01-01T12:00:00Z")
+        self.assertEqual(self.ledger.state(g["grantId"]), "REQUESTED")
 
     def test_forged_approval_or_mismatched_pins(self):
         self.ledger.request(self.g, now=NOW)
