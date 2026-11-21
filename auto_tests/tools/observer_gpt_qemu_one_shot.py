@@ -127,6 +127,7 @@ def validate_git(
         "TRUSTED_AUTHORIZATION_COMMIT_MISSING",
     )
     require(unused_external_grant is True, "EXTERNAL_SINGLE_USE_GRANT_MISSING_OR_CONSUMED")
+
     def git(*args: str) -> str:
         return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 

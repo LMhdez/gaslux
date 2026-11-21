@@ -203,13 +203,16 @@ def test_git_preflight_accepts_one_real_added_approval_file(authorization_git_re
     after = subprocess.check_output(
         ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
     ).strip()
-    assert validate_git(
-        root,
-        {"before": before, "after": after},
-        trusted_preparation_sha=before,
-        trusted_authorization_sha=after,
-        unused_external_grant=True,
-    ) is None
+    assert (
+        validate_git(
+            root,
+            {"before": before, "after": after},
+            trusted_preparation_sha=before,
+            trusted_authorization_sha=after,
+            unused_external_grant=True,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("extra_file", ["README", "other.json"])
@@ -258,9 +261,7 @@ def test_git_preflight_refuses_forged_previous_sha(authorization_git_repo):
 
 
 def _git(root: Path, *arguments: str) -> str:
-    return subprocess.check_output(
-        ["git", "-C", str(root), *arguments], text=True
-    ).strip()
+    return subprocess.check_output(["git", "-C", str(root), *arguments], text=True).strip()
 
 
 def _commit_synthetic(root: Path, message: str, changes: dict[str, str]) -> str:
@@ -274,9 +275,7 @@ def _commit_synthetic(root: Path, message: str, changes: dict[str, str]) -> str:
 
 
 @pytest.mark.parametrize("tamper", ("workflow", "preflight", "both"))
-def test_unreviewed_intermediate_ancestor_is_denied(
-    authorization_git_repo, authorized, tamper
-):
+def test_unreviewed_intermediate_ancestor_is_denied(authorization_git_repo, authorized, tamper):
     """Same three real-Git histories reproduced by Safety (NO QEMU)."""
     root, _ = authorization_git_repo
     approved = _commit_synthetic(root, "reviewed preparation", {"README": "Reviewed\n"})
@@ -288,9 +287,7 @@ def test_unreviewed_intermediate_ancestor_is_denied(
     if tamper in ("preflight", "both"):
         files[gate] = "print('unreviewed gate')\n"
     attacker_parent = _commit_synthetic(root, "unreviewed insertion", files)
-    after = _commit_synthetic(
-        root, "approval file only", {FILE: json.dumps(expected_approval())}
-    )
+    after = _commit_synthetic(root, "approval file only", {FILE: json.dumps(expected_approval())})
     event, approval, env = copy.deepcopy(authorized)
     event["before"] = attacker_parent
     event["after"] = after
@@ -298,9 +295,7 @@ def test_unreviewed_intermediate_ancestor_is_denied(
     event["commits"][0]["id"] = after
     assert validate_trigger(event, approval, env) is None
     # The final commit changes ONLY the JSON, just like Safety's 3/3 bypass.
-    assert _git(root, "diff-tree", "--no-commit-id", "--name-status", "-r", after) == (
-        "A\t" + FILE
-    )
+    assert _git(root, "diff-tree", "--no-commit-id", "--name-status", "-r", after) == ("A\t" + FILE)
     with pytest.raises(Refused, match="UNAPPROVED_PREPARATION_PARENT"):
         validate_git(
             root,
@@ -321,7 +316,9 @@ def test_absent_external_parent_and_lease_fail_closed(authorization_git_repo):
         validate_git(root, event, trusted_preparation_sha=parent)
     with pytest.raises(Refused, match="EXTERNAL_SINGLE_USE_GRANT_MISSING_OR_CONSUMED"):
         validate_git(
-            root, event, trusted_preparation_sha=parent,
+            root,
+            event,
+            trusted_preparation_sha=parent,
             trusted_authorization_sha=after,
         )
 
@@ -342,7 +339,8 @@ def test_reused_authorization_is_denied_without_external_grant(authorization_git
     after = _commit_synthetic(root, "approval", {FILE: json.dumps(expected_approval())})
     with pytest.raises(Refused, match="EXTERNAL_SINGLE_USE_GRANT_MISSING_OR_CONSUMED"):
         validate_git(
-            root, {"before": parent, "after": after},
+            root,
+            {"before": parent, "after": after},
             trusted_preparation_sha=parent,
             trusted_authorization_sha=after,
             unused_external_grant=False,
@@ -354,11 +352,13 @@ def test_authorization_commit_must_match_protected_pin(authorization_git_repo):
     after = _commit_synthetic(root, "approval", {FILE: json.dumps(expected_approval())})
     with pytest.raises(Refused, match="UNAPPROVED_AUTHORIZATION_COMMIT"):
         validate_git(
-            root, {"before": parent, "after": after},
+            root,
+            {"before": parent, "after": after},
             trusted_preparation_sha=parent,
             trusted_authorization_sha="f" * 40,
             unused_external_grant=True,
         )
+
 
 def test_forged_event_before_cannot_hide_unreviewed_real_git_parent(
     authorization_git_repo,
@@ -409,8 +409,14 @@ def test_branch_cli_rejects_even_valid_untrusted_request_without_trusted_control
     evidence.mkdir()
     process = subprocess.run(
         [
-            sys.executable, "-m", "auto_tests.tools.observer_gpt_qemu_one_shot",
-            "preflight", "--checkout", str(root), "--evidence", str(evidence),
+            sys.executable,
+            "-m",
+            "auto_tests.tools.observer_gpt_qemu_one_shot",
+            "preflight",
+            "--checkout",
+            str(root),
+            "--evidence",
+            str(evidence),
         ],
         text=True,
         capture_output=True,
