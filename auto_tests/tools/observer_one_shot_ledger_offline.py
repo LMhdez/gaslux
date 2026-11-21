@@ -237,15 +237,13 @@ def _verify_storage(con: sqlite3.Connection) -> None:
     if con.execute("PRAGMA user_version").fetchone()[0] != STORAGE_VERSION:
         raise Refused(refused)
     objects = con.execute(
-        "SELECT type, name, sql FROM sqlite_master "
-        "WHERE name NOT LIKE 'sqlite_%' ORDER BY name"
+        "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name"
     ).fetchall()
-    if {(kind, name) for kind, name, _ in objects} != {
-        ("table", "grants"), ("table", "decisions")
-    }:
+    if {(kind, name) for kind, name, _ in objects} != {("table", "grants"), ("table", "decisions")}:
         raise Refused(refused)
     if {name: ddl for _, name, ddl in objects} != {
-        "grants": GRANTS_DDL, "decisions": DECISIONS_DDL
+        "grants": GRANTS_DDL,
+        "decisions": DECISIONS_DDL,
     }:
         raise Refused(refused)
 
@@ -276,18 +274,25 @@ def _verify_storage(con: sqlite3.Connection) -> None:
     for table, expected in layouts.items():
         columns = con.execute(f"PRAGMA table_xinfo({table})").fetchall()
         observed = tuple((row[1], row[2], row[3], row[5]) for row in columns)
-        if observed != expected or any(row[0] != index or row[4] is not None or row[6] != 0
-                                    for index, row in enumerate(columns)):
+        if observed != expected or any(
+            row[0] != index or row[4] is not None or row[6] != 0
+            for index, row in enumerate(columns)
+        ):
             raise Refused(refused)
 
     expected_unique = {
-        "grant_id", "authorization_key", "execution_key", "commit_key",
-        "external_decision_id", "review_key",
+        "grant_id",
+        "authorization_key",
+        "execution_key",
+        "commit_key",
+        "external_decision_id",
+        "review_key",
     }
     indexes = con.execute("PRAGMA index_list(grants)").fetchall()
-    if len(indexes) != len(expected_unique) or con.execute(
-        "PRAGMA index_list(decisions)"
-    ).fetchall():
+    if (
+        len(indexes) != len(expected_unique)
+        or con.execute("PRAGMA index_list(decisions)").fetchall()
+    ):
         raise Refused(refused)
     observed_unique: set[str] = set()
     for index in indexes:
@@ -297,10 +302,15 @@ def _verify_storage(con: sqlite3.Connection) -> None:
         details = con.execute(f"PRAGMA index_xinfo({json.dumps(index[1])})").fetchall()
         # Exactly one BINARY ascending key column plus the implicit rowid.
         keys = [entry for entry in details if entry[5] == 1]
-        if (len(keys) != 1 or len(details) != 2 or keys[0][0] != 0
-                or keys[0][1] < 0 or keys[0][3] != 0 or keys[0][4] != "BINARY"
-                or any(entry[5] != 1 and (entry[1] != -1 or entry[5] != 0)
-                       for entry in details)):
+        if (
+            len(keys) != 1
+            or len(details) != 2
+            or keys[0][0] != 0
+            or keys[0][1] < 0
+            or keys[0][3] != 0
+            or keys[0][4] != "BINARY"
+            or any(entry[5] != 1 and (entry[1] != -1 or entry[5] != 0) for entry in details)
+        ):
             raise Refused(refused)
         column = keys[0][2]
         if column in observed_unique or column not in expected_unique:
