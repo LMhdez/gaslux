@@ -361,6 +361,10 @@ class OfflineQuoteVerifier:
                 challenge,
                 nonce=expected_context.nonce,
                 request_id=expected_context.request_id,
+                transaction_id=expected_context.transaction_id,
+                session_id=expected_context.session_id,
+                now=time,
+                valid_until=policy.valid_until,
             )
         except AttestationRefused:
             raise
@@ -378,14 +382,26 @@ class LaboratoryReplayGuard:
         self.seen_nonces: set[bytes] = set()
         self.seen_request_ids: set[str] = set()
 
-    def consume_challenge(self, challenge: bytes, *, nonce: bytes, request_id: str):
-        """Atomically consume all replay identities; never sufficient for production."""
+    def consume_challenge(
+        self,
+        challenge: bytes,
+        *,
+        nonce: bytes,
+        request_id: str,
+        transaction_id: str,
+        session_id: str,
+        now: datetime,
+        valid_until: datetime,
+    ):
+        """Atomically consume identities in one process only; no restart guarantee."""
         require(
             isinstance(challenge, bytes)
             and len(challenge) == 32
             and isinstance(nonce, bytes)
             and len(nonce) == 32
-            and ident(request_id),
+            and ident(request_id)
+            and ident(transaction_id)
+            and ident(session_id),
             "REPLAY_IDENTITY_INVALID",
         )
         with self._lock:
