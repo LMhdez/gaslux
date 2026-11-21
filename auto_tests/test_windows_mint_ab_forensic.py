@@ -254,8 +254,13 @@ class MintAbForensicContracts(unittest.TestCase):
         }
 
     def _run_with_guest_stubs(
-        self, lab, *, mutate_after_a=None, change_gpt=None, change_after_mint=None,
-        inventory_mutations=None
+        self,
+        lab,
+        *,
+        mutate_after_a=None,
+        change_gpt=None,
+        change_after_mint=None,
+        inventory_mutations=None,
     ):
         """Exercise REAL run_ab ordering with mocks only at guest boundaries."""
         from windows_mint_ab_checkpoint import CONSENT
@@ -454,7 +459,8 @@ class MintAbForensicContracts(unittest.TestCase):
 
                 def unavailable(sample, resource=resource):
                     sample["fileInventories"][resource] = {
-                        "available": False, "reason": "LibguestfsMountError"
+                        "available": False,
+                        "reason": "LibguestfsMountError",
                     }
 
                 before = {0: unavailable, 1: unavailable}
@@ -462,9 +468,7 @@ class MintAbForensicContracts(unittest.TestCase):
                     name: hashlib.sha256(lab[name].read_bytes()).hexdigest()
                     for name in ("reference", "arm_b", "base", "vars_b")
                 }
-                windows, mint, reason = self._run_with_guest_stubs(
-                    lab, inventory_mutations=before
-                )
+                windows, mint, reason = self._run_with_guest_stubs(lab, inventory_mutations=before)
                 self.assertEqual(windows, [], "Windows A must not start without baseline")
                 self.assertEqual(mint, [])
                 self.assertIn("F-03", reason)
@@ -491,7 +495,8 @@ class MintAbForensicContracts(unittest.TestCase):
 
                 def unavailable(sample, resource=resource):
                     sample["fileInventories"][resource] = {
-                        "available": False, "reason": "GuestfsEnumerationError"
+                        "available": False,
+                        "reason": "GuestfsEnumerationError",
                     }
 
                 windows, mint, reason = self._run_with_guest_stubs(
@@ -518,7 +523,8 @@ class MintAbForensicContracts(unittest.TestCase):
 
                 def unavailable(sample, resource=resource):
                     sample["fileInventories"][resource] = {
-                        "available": False, "reason": "ReadOnlyMountError"
+                        "available": False,
+                        "reason": "ReadOnlyMountError",
                     }
 
                 windows, mint, reason = self._run_with_guest_stubs(
@@ -537,9 +543,7 @@ class MintAbForensicContracts(unittest.TestCase):
 
     def test_f03_incomplete_evidence_rejected_even_when_available_true(self):
         mutations = {
-            "empty_inventory": lambda d: d["fileInventories"]["esp"].__setitem__(
-                "fileSha256", {}
-            ),
+            "empty_inventory": lambda d: d["fileInventories"]["esp"].__setitem__("fileSha256", {}),
             "invalid_hash": lambda d: d["fileInventories"]["recovery"].__setitem__(
                 "fileSha256", {"/winre.wim": "not-a-sha256"}
             ),
