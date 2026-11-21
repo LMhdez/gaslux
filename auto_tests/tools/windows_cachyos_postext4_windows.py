@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """VM-only fourth Windows guest boot on fifth-ext4 COW. NO Linux install."""
 from __future__ import annotations
-import json, os, stat, subprocess, tempfile, time
+import hashlib, json, os, stat, subprocess, tempfile, time
 from pathlib import Path
 from uuid import UUID
 from windows_cachyos_cow_checkpoint import (
@@ -14,9 +14,122 @@ from windows_cachyos_overlay_reboot import (
 from windows_cachyos_overlay_ext4_only import CONSENT as EXT4_CONSENT
 
 CONSENT="I_ACCEPT_WINDOWS_FOURTH_GUEST_ON_EXT4_ONLY_QCOW2_COW"
+BOOT_PHASES = {
+    "fourth-post-ext4": "WINDOWS_FOURTH_POST_EXT4",
+    "bcd-control-windows-only": "BCD_AB_CONTROL_WINDOWS_ONLY",
+    "sixth-post-pacstrap": "POST_PACSTRAP_WINDOWS",
+}
+COM1_WITNESSES = (
+    b"GASLUX_COW_WIN10_REBOOT_LIVE=1",
+    b"GASLUX_COW_WIN10_REBOOT_BUILD=19045",
+    b"GASLUX_COW_WIN10_REBOOT_ESP=1",
+    b"GASLUX_COW_WIN10_REBOOT_BCD=1",
+    b"GASLUX_COW_WIN10_REBOOT_WINRE=1",
+    b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1",
+)
 class FourthBootError(ValueError): pass
 def require(ok, why):
     if not ok: raise FourthBootError(why)
+
+
+def boot_failure_code(evidence_stem: str, reason: str) -> str:
+    require(evidence_stem in BOOT_PHASES
+            and reason in ("TIMEOUT", "QEMU_EXIT_NONZERO",
+                           "COM1_REJECTED", "COM1_INCOMPLETE"),
+            "invalid Windows QEMU failure phase")
+    return BOOT_PHASES[evidence_stem] + "_" + reason
+
+
+def read_bounded_com1_witness(serial: Path) -> dict:
+    """Only hashed COM1 metadata and a fixed allowlist of marker names."""
+    if not serial.exists() and not serial.is_symlink():
+        return {"exists": False, "sizeBytes": 0, "markerNames": [],
+                "completeBootWitness": False}
+    require(not serial.is_symlink() and serial.is_file()
+            and serial.lstat().st_uid == os.getuid()
+            and serial.stat().st_nlink == 1
+            and serial.stat().st_size <= 512_000,
+            "untrusted Windows COM1 observation")
+    data = serial.read_bytes()
+    observed = [tag.decode("ascii")
+                for tag in COM1_WITNESSES
+                if data.splitlines().count(tag) == 1]
+    return {"exists": True, "sizeBytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "markerNames": observed,
+            "completeBootWitness": len(observed) == len(COM1_WITNESSES)}
+
+
+def record_windows_boot_failure(
+    *, base: Path, evidence_stem: str, serial: Path,
+    overlay: Path, trial_vars: Path, original_vars_sha256: str,
+    original_overlay_sha256: str | None, base_identity: dict,
+    qemu_args: list[str], elapsed_seconds: float, timeout_seconds: int,
+    observed_exit_code: int | None, forced_termination: bool,
+    trace_file: Path | None, reason: str,
+) -> Path:
+    """Persist bounded host diagnostics: never claim guest boot from host output."""
+    require(evidence_stem in BOOT_PHASES
+            and serial == base.parent / (evidence_stem + "-windows-serial.log")
+            and overlay.parent == trial_vars.parent
+            and trial_vars.parent == base.parent / CHECKPOINT_DIR,
+            "refusing non-owned Windows QEMU diagnostic paths")
+    path = base.parent / (evidence_stem + "-boot-diagnostic.json")
+    require(not path.exists() and not path.is_symlink(),
+            "refusing reused Windows QEMU diagnostic")
+    marker_snapshot = read_bounded_com1_witness(serial)
+    current_vars_hash = sha256_file(trial_vars)
+    trace_status = "not-configured" if trace_file is None else "not-created"
+    trace_bytes = None
+    trace_digest = None
+    if trace_file is not None:
+        require(trace_file.parent == base.parent
+                and not trace_file.is_symlink(),
+                "foreign Windows QEMU trace")
+        if trace_file.is_file():
+            trace_bytes = trace_file.stat().st_size
+            trace_status = "present-bounded" if trace_bytes <= 10_000_000 else "oversized"
+            if trace_bytes <= 10_000_000:
+                trace_digest = sha256_file(trace_file)
+    disk_after_sha = sha256_file(overlay) if original_overlay_sha256 else None
+    payload = {
+        "phase": BOOT_PHASES[evidence_stem],
+        "failureCode": boot_failure_code(evidence_stem, reason),
+        "source": "HOST_OBSERVATION_ONLY",
+        "guestWindowsBootVerified": False,
+        "productionStorageWritesAuthorized": False,
+        "sameDiskDualBootVerified": False,
+        "rollbackProven": False,
+        "releaseEligible": False,
+        "qemuLaunchAttempted": True,
+        "qemuProfileSha256": hashlib.sha256(json.dumps(
+            qemu_args, separators=(",", ":")).encode("utf-8")).hexdigest(),
+        "elapsedSeconds": max(0, round(elapsed_seconds, 3)),
+        "configuredTimeoutSeconds": timeout_seconds,
+        "observedProcessExitCodeBeforeTermination": observed_exit_code,
+        "forcedTermination": forced_termination,
+        "com1": marker_snapshot,
+        "initialOvmfVarsSha256": original_vars_sha256,
+        "finalOvmfVarsSha256": current_vars_hash,
+        "ovmfVarsChanged": current_vars_hash != original_vars_sha256,
+        "initialControlCloneSha256": original_overlay_sha256,
+        "finalControlCloneSha256": disk_after_sha,
+        "controlCloneChanged": (
+            disk_after_sha != original_overlay_sha256
+            if original_overlay_sha256 is not None else None
+        ),
+        "immutableBackingIdentityUnchanged": qcow2_file_identity(base) == base_identity,
+        "qemuTraceStatus": trace_status,
+        "qemuTraceBytes": trace_bytes,
+        "qemuTraceSha256": trace_digest,
+    }
+    data = (json.dumps(payload, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    require(len(data) <= 8192, "Windows QEMU diagnostic exceeded size cap")
+    with path.open("xb") as file:
+        file.write(data)
+        file.flush()
+        os.fsync(file.fileno())
+    return path
 
 
 def add_tpm_device(args: list[str], tpm_socket: Path) -> list[str]:
@@ -143,30 +256,65 @@ def verify_windows_post_ext4(original: list[str], base: Path, nvram: Path,
             and args.count("-boot")==1 and args[args.index("-boot")+1]=="order=c",
             "fourth boot could access base Windows, original EFI or ISO")
     digest=None
-    with (base.parent/(evidence_stem+"-qemu-stderr.log")).open("xb") as stderr:
+    initial_vars_sha = sha256_file(trial_vars)
+    initial_overlay_sha = (sha256_file(overlay)
+                           if evidence_stem=="bcd-control-windows-only" else None)
+    start=time.monotonic()
+    stderr_path = base.parent/(evidence_stem+"-qemu-stderr.log")
+    with stderr_path.open("xb") as stderr:
         proc=subprocess.Popen(args,stdout=subprocess.DEVNULL,stderr=stderr)
+        failure_reason: str | None = None
+        observed_exit: int | None = None
+        forced = False
         try:
-            start=time.monotonic()
             while time.monotonic()-start<timeout:
                 if serial.is_file():
                     require(not serial.is_symlink()
                             and serial.stat().st_size<=512_000,
-                            "untrusted or oversized fourth Windows COM1")
+                            "untrusted or oversized Windows COM1")
                     if b"GASLUX_COW_WIN10_REBOOT_FAIL=1" in serial.read_bytes():
-                        raise FourthBootError("fourth guest rejected Windows BCD/WinRE")
+                        failure_reason = "COM1_REJECTED"
+                        raise FourthBootError(boot_failure_code(
+                            evidence_stem, failure_reason))
                 rc=proc.poll()
                 if rc is not None:
-                    require(rc==0,"fourth Windows guest did not power off cleanly")
-                    # Always re-read all COM1 bytes AFTER QEMU has terminated.
-                    digest=audit_complete_third_serial(serial)
+                    if rc!=0:
+                        failure_reason = "QEMU_EXIT_NONZERO"
+                        raise FourthBootError(boot_failure_code(
+                            evidence_stem, failure_reason))
+                    # Read guest-generated COM1 only after the QEMU process exits.
+                    try:
+                        digest=audit_complete_third_serial(serial)
+                    except (OSError, ValueError) as error:
+                        failure_reason = "COM1_INCOMPLETE"
+                        raise FourthBootError(boot_failure_code(
+                            evidence_stem, failure_reason)) from error
                     break
                 time.sleep(3)
             else:
-                raise FourthBootError("fourth Windows guest timeout")
+                failure_reason = "TIMEOUT"
+                raise FourthBootError(boot_failure_code(
+                    evidence_stem, failure_reason))
         finally:
-            if proc.poll() is None:
-                proc.kill();proc.wait(timeout=30)
-    require(digest is not None,"missing fourth Windows boot evidence")
+            observed_exit = proc.poll()
+            if observed_exit is None:
+                forced = True
+                proc.kill()
+                proc.wait(timeout=30)
+            if failure_reason is not None:
+                record_windows_boot_failure(
+                    base=base, evidence_stem=evidence_stem,
+                    serial=serial, overlay=overlay, trial_vars=trial_vars,
+                    original_vars_sha256=initial_vars_sha,
+                    original_overlay_sha256=initial_overlay_sha,
+                    base_identity=identity, qemu_args=args,
+                    elapsed_seconds=time.monotonic()-start,
+                    timeout_seconds=timeout,
+                    observed_exit_code=observed_exit,
+                    forced_termination=forced,
+                    trace_file=trace_file, reason=failure_reason)
+    require(digest is not None,
+            boot_failure_code(evidence_stem, "COM1_INCOMPLETE"))
     with tempfile.TemporaryDirectory(prefix="gaslux-fourth-after-",dir=base.parent) as tmp:
         require(gpt_windows(overlay,Path(tmp))==before,
                 "Windows fourth boot modified GPT geometry")
