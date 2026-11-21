@@ -299,7 +299,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
+          PYTHONPATH=auto_tests/tools python3 - <<'PY'
           import hashlib, json
           from pathlib import Path
           root = Path("windows-x64-tcg-evidence")
