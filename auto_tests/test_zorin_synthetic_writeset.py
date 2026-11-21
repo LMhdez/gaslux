@@ -357,6 +357,23 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
             handle.truncate(1024 * 1024)
         self.refused("E_DISK_SIZE_CHANGED")
 
+    def test_missing_receipt_is_rejected(self):
+        (self.root / "receipt.json").unlink()
+        self.refused("E_FOREIGN_FILE")
+
+    def test_hardlinked_esp_file_is_rejected(self):
+        original = self.root / "esp-trial/EFI/Microsoft/Boot/bootmgfw.efi"
+        original.unlink()
+        os.link(self.root / "esp-base/EFI/Microsoft/Boot/bootmgfw.efi", original)
+        self.refused("E_ESP_FOREIGN")
+
+    def test_explicit_unallocated_canary_is_protected(self):
+        canary = self.root / "trial.raw"
+        with canary.open("r+b") as output:
+            output.seek(25000 * SECTOR)
+            output.write(b"CANARY")
+        self.refused("E_OUTSIDE_LINUX_CHANGED")
+
     def test_no_unapproved_writer_exists_in_verifier(self):
         code = (Path(__file__).parent / "tools/zorin_synthetic_writeset.py").read_text()
         for token in (
