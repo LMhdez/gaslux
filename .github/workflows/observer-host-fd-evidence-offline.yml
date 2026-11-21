@@ -78,6 +78,9 @@ jobs:
           python3 -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/installer_observer/host_qemu_fd_evidence.py \
             auto_tests/tests/test_observer_host_fd_evidence.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml \
+            auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_evidence.py
           python3 -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/installer_observer/host_qemu_fd_evidence.py \
             auto_tests/tests/test_observer_host_fd_evidence.py

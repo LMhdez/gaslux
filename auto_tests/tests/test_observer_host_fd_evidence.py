@@ -21,7 +21,6 @@ import yaml
 from auto_tests.installer_observer.host_qemu_fd_evidence import (
     HostEvidenceRefused,
     HostPins,
-    borrowed_readonly_proc_fd,
     correlate_qmp_fd,
     declared_context,
     measure_gpt_from_proc_fd,
@@ -214,7 +213,9 @@ def test_inaccessible_process_refuses_with_no_local_evidence(child_fd):
         observe_descriptor(replace(pins, process=replace(pins.process, pid=99999999)))
 
 
-@pytest.mark.parametrize("change", ["path", "device", "format", "ro", "vm", "serial", "ambiguous", "missing"])
+@pytest.mark.parametrize(
+    "change", ["path", "device", "format", "ro", "vm", "serial", "ambiguous", "missing"]
+)
 def test_claimed_qmp_or_fd_device_mismatch_refuses(child_fd, change):
     _, pins = child_fd
     descriptor = observe_descriptor(pins)
@@ -338,8 +339,10 @@ def test_workflow_is_strictly_synthetic_no_qemu_launch():
             )
             assert "qemu-system" not in step["run"]
             assert "libguestfs" not in step["run"]
-    assert any("9aed36cfdb8c09a461dc38811c326c54180273de" ==
-               step.get("with", {}).get("ref") for step in steps)
+    assert any(
+        step.get("with", {}).get("ref") == "9aed36cfdb8c09a461dc38811c326c54180273de"
+        for step in steps
+    )
 
 
 def test_synthetic_example_is_explicitly_not_authentic():

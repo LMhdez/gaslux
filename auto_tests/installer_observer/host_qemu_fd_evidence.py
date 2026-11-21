@@ -13,11 +13,12 @@ import os
 import socket
 import stat
 import struct
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from .lab_identity import ProcessSeal, _execute, _read_response, process_seal
 
