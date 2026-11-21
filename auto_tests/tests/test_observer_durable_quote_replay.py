@@ -149,7 +149,7 @@ def test_nonce_and_request_uniqueness_across_quote_contexts(tmp_path, variant):
         changed = replace(evidence.context, request_id="new-request-id")
         expected = "NONCE_REPLAY"
     else:
-        changed = replace(evidence.context, nonce=b"\\xa5" * 32)
+        changed = replace(evidence.context, nonce=bytes([0xA5]) * 32)
         expected = "REQUEST_REPLAY"
     new_quote = sign_quote(
         key, evidence.ak_spki_der, changed, evidence.pcrs, policy.qualified_signer_hex
