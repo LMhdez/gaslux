@@ -172,7 +172,12 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
 
         def intercept(path, flags, *args, **kwargs):
             nonlocal switched
-            if str(path) == "bootmgfw.efi" and "dir_fd" in kwargs and not switched:
+            if (
+                str(path) == "bootmgfw.efi"
+                and "dir_fd" in kwargs
+                and Path(os.readlink("/proc/self/fd/" + str(kwargs["dir_fd"]))) == original.parent
+                and not switched
+            ):
                 switched = True
                 foreign = self.root / "foreign-efi"
                 foreign.write_bytes(b"altered")
@@ -194,7 +199,12 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
 
         def intercept(path, flags, *args, **kwargs):
             nonlocal did_change
-            if str(path) == "Boot" and "dir_fd" in kwargs and not did_change:
+            if (
+                str(path) == "Boot"
+                and "dir_fd" in kwargs
+                and Path(os.readlink("/proc/self/fd/" + str(kwargs["dir_fd"]))) == target.parent
+                and not did_change
+            ):
                 did_change = True
                 replacement = self.root / "replacement-boot-dir"
                 replacement.mkdir()
