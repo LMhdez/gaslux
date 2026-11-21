@@ -53,7 +53,7 @@ def generated_valid_gpt(*, root_guid: str = ROOT_GUID) -> bytes:
     image[446 + 4] = 0xee
     struct.pack_into("<II", image, 446 + 8, 1, N - 1)
     image[510:512] = b"\x55\xaa"
-    image[2048 * SECTOR:2048 * SECTOR + 12] = b"EFI-SYNTHETIC"
+    image[2048 * SECTOR:2048 * SECTOR + len(b"EFI-SYNTHETIC")] = b"EFI-SYNTHETIC"
     image[8192 * SECTOR:8192 * SECTOR + 9] = b"PROTECTED"
     array = bytearray(128 * 128)
     for i, ((guid_str, start, end), type_guid) in enumerate(zip(PARTS, GPT_TYPES)):
