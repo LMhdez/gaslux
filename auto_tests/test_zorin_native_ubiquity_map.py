@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
 import zorin_native_ubiquity_map as mapping
+from zorin_native_installer_discovery import NativeDiscoveryError
 
 
 class ZorinNativeUbiquityMapTests(unittest.TestCase):
@@ -82,7 +83,7 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
         report["potentialWriteSurfaces"]["gptAndPartitionMetadata"][
             "writeSetLimitedToOwnedLinuxRoot"] = True
         with patch.object(mapping, "UBIQUITY_EXEC_SHA", mapping.digest(self.entry)):
-            with self.assertRaisesRegex(mapping.NativeDiscoveryError, "overclaims"):
+            with self.assertRaisesRegex(NativeDiscoveryError, "overclaims"):
                 mapping.validate_consistency(report)
 
     def test_hash_mismatch_in_capability_witness_rejected(self):
@@ -90,7 +91,7 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
         report["capabilities"]["gptModification"]["evidence"][0][
             "sourceSha256"] = "0" * 64
         with patch.object(mapping, "UBIQUITY_EXEC_SHA", mapping.digest(self.entry)):
-            with self.assertRaisesRegex(mapping.NativeDiscoveryError, "not bound"):
+            with self.assertRaisesRegex(NativeDiscoveryError, "not bound"):
                 mapping.validate_consistency(report)
 
     def test_missing_module_keeps_capability_unobserved(self):
@@ -105,35 +106,35 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
 
     def test_missing_pinned_entrypoint_rejected(self):
         del self.members["usr/bin/ubiquity"]
-        with self.assertRaisesRegex(mapping.NativeDiscoveryError, "missing"):
+        with self.assertRaisesRegex(NativeDiscoveryError, "missing"):
             self.build()
 
     def test_untrusted_version_rejected(self):
         self.prior["packages"]["ubiquity"]["version"] = "24.04.5+zorin3"
-        with self.assertRaisesRegex(mapping.NativeDiscoveryError, "mismatch"):
+        with self.assertRaisesRegex(NativeDiscoveryError, "mismatch"):
             self.build()
 
     def test_untrusted_installer_executable_sha_rejected(self):
         self.prior["executables"][0]["sha256"] = "1" * 64
-        with self.assertRaisesRegex(mapping.NativeDiscoveryError, "mismatch"):
+        with self.assertRaisesRegex(NativeDiscoveryError, "mismatch"):
             self.build()
 
     def test_status_hash_mismatch_rejected(self):
-        with self.assertRaisesRegex(mapping.NativeDiscoveryError, "status changed"):
+        with self.assertRaisesRegex(NativeDiscoveryError, "status changed"):
             mapping.build_map(Path("/unmounted"), self.prior,
                               self.manifest, self.read)
 
     def test_double_package_rejected(self):
-        with self.assertRaisesRegex(mapping.NativeDiscoveryError, "duplicate"):
+        with self.assertRaisesRegex(NativeDiscoveryError, "duplicate"):
             mapping.package_status(self.status + self.status)
 
     def test_missing_package_version_rejected(self):
         broken = self.status.replace(b"Version: 24.04.5+zorin2\n", b"")
-        with self.assertRaisesRegex(mapping.NativeDiscoveryError, "missing"):
+        with self.assertRaisesRegex(NativeDiscoveryError, "missing"):
             mapping.package_status(broken)
 
     def test_duplicate_casper_identity_rejected(self):
-        with self.assertRaisesRegex(mapping.NativeDiscoveryError, "duplicate"):
+        with self.assertRaisesRegex(NativeDiscoveryError, "duplicate"):
             mapping.casper_versions(self.manifest + b"ubiquity 2.0\n")
 
     def test_path_traversal_in_owned_file_list_rejected(self):
@@ -141,13 +142,13 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
                      b"/usr/lib/ubiquity//hidden.py\n",
                      b"/usr/lib/ubiquity/../../dev/sda.py\n"):
             with self.subTest(path=path), self.assertRaisesRegex(
-                    mapping.NativeDiscoveryError, "traversal"):
+                    NativeDiscoveryError, "traversal"):
                 mapping.owned_sources("ubiquity", path)
 
     def test_reused_owner_for_same_source_rejected(self):
         self.members["var/lib/dpkg/info/partman-base.list"] = (
             b"/usr/lib/ubiquity/components/ubi-partman.py\n")
-        with self.assertRaisesRegex(mapping.NativeDiscoveryError, "multiple"):
+        with self.assertRaisesRegex(NativeDiscoveryError, "multiple"):
             self.build()
 
     def test_truncation_must_remain_visible(self):
@@ -163,7 +164,7 @@ class ZorinNativeUbiquityMapTests(unittest.TestCase):
         report = self.build()
         report["capabilities"]["nvram"]["status"] = "SUPPORTED_STATICALLY"
         with patch.object(mapping, "UBIQUITY_EXEC_SHA", mapping.digest(self.entry)):
-            with self.assertRaisesRegex(mapping.NativeDiscoveryError, "classification"):
+            with self.assertRaisesRegex(NativeDiscoveryError, "classification"):
                 mapping.validate_consistency(report)
 
     def test_readonly_schema_refuses_accept_and_overstated_risks(self):
