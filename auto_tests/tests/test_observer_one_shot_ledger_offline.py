@@ -150,6 +150,29 @@ class LedgerTests(unittest.TestCase):
             self.ledger.request(copy.deepcopy(self.g), now=NOW)
         self.assertEqual(self.ledger.events(self.g["grantId"])[-1][3], "GRANT_ID_REUSED")
 
+    def test_p01_distinct_uuids_cannot_reserve_or_consume_same_authorization(self):
+        """P-01: grantId is NOT the authorization identity; terminal reuse prohibited."""
+        first = copy.deepcopy(self.g)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = "8c123456-1bb1-4bab-9abc-111111111111"
+        assert first["grantId"] != second["grantId"]
+        self.ledger.request(first, now=NOW)
+        self.ledger.transition(first["grantId"], "REVIEW_PENDING", now=NOW)
+        self.ledger.transition(
+            first["grantId"], "APPROVED", now=NOW, trusted=self.trusted
+        )
+        self.assertEqual(
+            self.ledger.transition(
+                first["grantId"], "CONSUMED", now=NOW, trusted=self.trusted, run=self.run
+            ),
+            "CONSUMED",
+        )
+        with self.assertRaisesRegex(model.Refused, "AUTHORIZATION_ALREADY_RESERVED"):
+            self.ledger.request(second, now=NOW)
+        self.assertEqual(self.ledger.state(first["grantId"]), "CONSUMED")
+        with self.assertRaisesRegex(model.Refused, "UNKNOWN_GRANT"):
+            self.ledger.state(second["grantId"])
+
     def test_forged_approval_or_mismatched_pins(self):
         self.ledger.request(self.g, now=NOW)
         self.ledger.transition(self.g["grantId"], "REVIEW_PENDING", now=NOW)
