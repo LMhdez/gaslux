@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import secrets
 import subprocess
 import sys
 from dataclasses import replace
@@ -24,7 +25,7 @@ from auto_tests.installer_observer.guest_attestation import (
     parse_quote,
 )
 
-_PCR_PATTERN = re.compile(r"\\s*(0|7)\\s*:\\s*0x([0-9a-fA-F]{64})\\s*")
+_PCR_PATTERN = re.compile(r"\s*(0|7)\s*:\s*0x([0-9a-fA-F]{64})\s*")
 
 
 def load_pcrs(path: Path) -> dict[int, bytes]:
@@ -50,7 +51,7 @@ def main(work: Path) -> None:
     """Use an ephemeral AK; all policies and credentials remain lab-controlled."""
     now = datetime.now(UTC)
     context = QuoteContext(
-        nonce=__import__("secrets").token_bytes(32),
+        nonce=secrets.token_bytes(32),
         transaction_id="swtpm-transaction",
         session_id="swtpm-session",
         request_id="swtpm-request",
