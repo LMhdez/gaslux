@@ -83,7 +83,8 @@ class SyntheticProfileTests(unittest.TestCase):
             b.write_bytes(b"arm-b")
             with patch.object(synthetic, "command") as cmd:
                 cmd.return_value.returncode = 1
-                with patch.object(synthetic, "atomic_restore_owned_arm") as restore:
+                with patch.object(synthetic, "atomic_restore_owned_arm") as restore, \
+                     patch.object(synthetic, "equivalent"):
                     synthetic.arm_fault_and_restore(
                         ref, a, b, folder,
                         offset=40 * synthetic.MiB,
