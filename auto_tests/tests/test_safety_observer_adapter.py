@@ -18,6 +18,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "assets" / "live"))
+from libertix_disk_identity_gate import DiskIdentityError  # noqa: E402
 from libertix_safety_observer_adapter import (  # noqa: E402
     SafetyObserverPins, SafetyObserverRefused, consume_observer_state_no_writer,
 )
@@ -217,7 +218,7 @@ def test_untrusted_or_divergent_evidence_fails_closed(fault):
             def verify(self, *a, **kw):
                 raise AssertionError("untrusted fake verifier must not be called")
         args["verifier"] = Fake()
-    with pytest.raises((SafetyObserverRefused, VerificationRefused)):
+    with pytest.raises((DiskIdentityError, VerificationRefused)):
         consume_observer_state_no_writer(**args)
 
 
