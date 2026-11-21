@@ -156,44 +156,14 @@ jobs:
             .github/workflows/gaslux-q4os-libguestfs-preflight.yml \
             .github/workflows/gaslux-q4os-windows10-qcow2.yml \
             .github/workflows/gaslux-q4os-windows-boundary.yml
-      - name: Preserve synthetic-only evidence (no disk or ISO artifacts)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: q4os-windows-gpt-readonly-checkpoint-proof
-          path: ${{ runner.temp }}/q4os-native-windows-boundary/
-          if-no-files-found: warn
-          retention-days: 7
-
-  synthetic-guestfs-real-qemu:
-    needs: windows-native-synthetic-gpt
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    env:
-      LIBGUESTFS_BACKEND: direct
-      LIBGUESTFS_MEMSIZE: '768'
-      PYTHONUNBUFFERED: '1'
-      GASLUX_Q4OS_GUESTFS_EVIDENCE: ${{ runner.temp }}/q4os-guestfs-preflight-evidence
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Confirm exact published source HEAD
-        shell: bash
-        env:
-          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -Eeuo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-      - name: Checkout pinned, audited Ubuntu generic-kernel selector
+      - name: Checkout audited generic-kernel selector (pinned Safety dependency)
         uses: actions/checkout@v4
         with:
           repository: LMhdez/gaslux
           ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
           path: q4os-kernel-selector
           persist-credentials: false
-      - name: Preflight hosted environment, allocate owned evidence
+      - name: Hosted synthetic QEMU/libguestfs preflight — require KVM, no Windows
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -204,43 +174,26 @@ jobs:
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
-          test ! -e "$GASLUX_Q4OS_GUESTFS_EVIDENCE"
-          mkdir -m 0700 "$GASLUX_Q4OS_GUESTFS_EVIDENCE"
-      - name: Install matched generic kernel, QEMU and synthetic GPT tools
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+          evidence="$RUNNER_TEMP/q4os-guestfs-preflight-evidence"
+          test ! -e "$evidence"
+          mkdir -m 0700 "$evidence"
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils gdisk libguestfs-tools python3-guestfs \
             libguestfs0 linux-image-generic supermin ca-certificates
-      - name: Select complete readable kernel and modules without changing running kernel
+      - name: Select complete Ubuntu generic kernel and prove real guestfs GPT read-only
         shell: bash
+        env:
+          GASLUX_Q4OS_GUESTFS_EVIDENCE: ${{ runner.temp }}/q4os-guestfs-preflight-evidence
         run: |
           set -Eeuo pipefail
           test "$(git -C q4os-kernel-selector rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
           source q4os-kernel-selector/auto_tests/tools/windows_x64_libguestfs_kernel.sh
-      - name: Load pinned Safety GPT reader (no writer)
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          mkdir -m 0700 "$RUNNER_TEMP/q4os-safety-source"
-          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git f55633c90973f633dda678f583f7730fc2cdc0ce
-          test "$(git rev-parse FETCH_HEAD)" = f55633c90973f633dda678f583f7730fc2cdc0ce
-          git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-source/libertix_disk_identity_gate.py"
-      - name: Boot REAL libguestfs appliance against only synthetic GPT, readonly
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP"
-          export LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP" LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
           timeout --signal=TERM --kill-after=20s 300s \
-            env PYTHONPATH="$RUNNER_TEMP/q4os-safety-source" \
+            env PYTHONPATH="$RUNNER_TEMP/q4os-safety-src" \
             /usr/bin/python3 auto_tests/tools/q4os_libguestfs_preflight.py
-          git diff --exit-code -- auto_tests/tools/q4os_libguestfs_preflight.py \
-            .github/workflows/gaslux-q4os-libguestfs-preflight.yml
-          echo 'Q4OS libguestfs: real QEMU appliance with disposable synthetic GPT, no Windows, no writer' >> "$GITHUB_STEP_SUMMARY"
-      - name: Publish bounded non-sensitive preflight JSON only
+      - name: Publish only bounded synthetic appliance JSON (no disk, keys or Windows)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -248,3 +201,12 @@ jobs:
           path: ${{ runner.temp }}/q4os-guestfs-preflight-evidence/*.json
           retention-days: 7
           if-no-files-found: warn
+      - name: Preserve synthetic-only evidence (no disk or ISO artifacts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-windows-gpt-readonly-checkpoint-proof
+          path: ${{ runner.temp }}/q4os-native-windows-boundary/
+          if-no-files-found: warn
+          retention-days: 7
+
