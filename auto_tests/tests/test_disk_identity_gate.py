@@ -1,5 +1,6 @@
 """Adversarial tests for the isolated, read-only GPT image identity gate."""
 import importlib.util
+import os
 import struct
 import uuid
 import zlib
@@ -19,7 +20,7 @@ TYPE_ID = uuid.UUID("ebd0a0a2-b9e5-4433-87c0-68b6b72699c7")
 PART_ID = uuid.UUID("87654321-4321-4321-4321-cba987654321")
 
 
-def make_image(path, *, corrupt_backup=False, corrupt_entries=False):
+def make_image(path, *, corrupt_backup=False, corrupt_entries=False, part_id=PART_ID):
     sectors = 4096
     data = bytearray(sectors * SECTOR)
     data[446 + 4] = 0xee
@@ -27,7 +28,7 @@ def make_image(path, *, corrupt_backup=False, corrupt_entries=False):
     data[510:512] = b"\x55\xaa"
     entries = bytearray(128 * 128)
     entries[:16] = TYPE_ID.bytes_le
-    entries[16:32] = PART_ID.bytes_le
+    entries[16:32] = part_id.bytes_le
     struct.pack_into("<QQQ", entries, 32, 64, 1023, 0)
     array_crc = zlib.crc32(entries)
     data[2 * SECTOR:2 * SECTOR + len(entries)] = entries
@@ -106,3 +107,122 @@ def test_mbr_rejected_without_validated_ebr_chain(snapshot):
     _, expected = snapshot
     with pytest.raises(gate.DiskIdentityError):
         gate.assert_snapshot_matches(expected, {**expected, "partitionStyle": "MBR"})
+
+
+def test_fd_pins_inode_despite_pathname_replacement(snapshot, tmp_path):
+    path, expected = snapshot
+    replacement = tmp_path / "replacement.img"
+    make_image(replacement, part_id=uuid.UUID("12341234-1111-2222-3333-444455556666"))
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        os.replace(replacement, path)
+        observed = gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
+        gate.assert_snapshot_matches(expected, observed)
+        with pytest.raises(gate.DiskIdentityError):
+            gate.assert_snapshot_matches(
+                expected, gate.inspect_gpt_image(path, logical_sector_size=SECTOR)
+            )
+    finally:
+        os.close(fd)
+
+
+def test_fd_reader_never_reopens_a_path(snapshot, monkeypatch):
+    path, expected = snapshot
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        def forbidden(*args, **kwargs):
+            raise AssertionError("path opened after the caller pinned fd")
+        with monkeypatch.context() as patch:
+            patch.setattr(gate.os, "open", forbidden)
+            actual = gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
+        gate.assert_snapshot_matches(expected, actual)
+    finally:
+        os.close(fd)
+
+
+def test_fd_preserves_caller_offset_and_ownership(snapshot):
+    path, expected = snapshot
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.lseek(fd, 17, os.SEEK_SET)
+        gate.assert_snapshot_matches(expected, gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR))
+        assert os.lseek(fd, 0, os.SEEK_CUR) == 17
+        assert os.fstat(fd).st_size == expected["sizeBytes"]
+    finally:
+        os.close(fd)
+
+
+@pytest.mark.parametrize("fd_kind", ["write", "readwrite", "directory", "character", "closed", "bool"])
+def test_fd_rejects_untrusted_descriptors(snapshot, tmp_path, fd_kind):
+    path, _ = snapshot
+    if fd_kind == "bool":
+        with pytest.raises(gate.DiskIdentityError):
+            gate.inspect_gpt_fd(True, logical_sector_size=SECTOR)
+        return
+    if fd_kind == "closed":
+        fd = os.open(path, os.O_RDONLY)
+        os.close(fd)
+        with pytest.raises(gate.DiskIdentityError):
+            gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
+        return
+    target, mode = {
+        "write": (path, os.O_WRONLY),
+        "readwrite": (path, os.O_RDWR),
+        "directory": (tmp_path, os.O_RDONLY),
+        "character": ("/dev/null", os.O_RDONLY),
+    }[fd_kind]
+    fd = os.open(target, mode)
+    try:
+        with pytest.raises(gate.DiskIdentityError):
+            gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
+    finally:
+        os.close(fd)
+
+
+def test_fd_rejects_in_place_mbr_mutation_during_read(snapshot, monkeypatch):
+    path, _ = snapshot
+    original = gate.read_header
+    mutated = False
+
+    def concurrent_change(fd, sector, lba, sectors):
+        nonlocal mutated
+        result = original(fd, sector, lba, sectors)
+        if lba == sectors - 1 and not mutated:
+            mutated = True
+            with path.open("r+b") as writer:
+                writer.seek(0)
+                writer.write(b"X")
+                writer.flush()
+                os.fsync(writer.fileno())
+        return result
+
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        monkeypatch.setattr(gate, "read_header", concurrent_change)
+        with pytest.raises(gate.DiskIdentityError, match="changed during inspection"):
+            gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
+    finally:
+        os.close(fd)
+
+
+def test_fd_rejects_unrelated_content_mutation_during_read(snapshot, monkeypatch):
+    path, _ = snapshot
+    original = gate.read_header
+
+    def concurrent_change(fd, sector, lba, sectors):
+        result = original(fd, sector, lba, sectors)
+        if lba == sectors - 1:
+            with path.open("r+b") as writer:
+                writer.seek(700 * sector)
+                writer.write(b"X")
+                writer.flush()
+                os.fsync(writer.fileno())
+        return result
+
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        monkeypatch.setattr(gate, "read_header", concurrent_change)
+        with pytest.raises(gate.DiskIdentityError, match="changed during inspection"):
+            gate.inspect_gpt_fd(fd, logical_sector_size=SECTOR)
+    finally:
+        os.close(fd)

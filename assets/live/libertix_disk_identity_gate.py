@@ -7,6 +7,7 @@ Only immutable regular-file images are accepted, never block devices.
 """
 from __future__ import annotations
 
+import fcntl
 import os
 import stat
 import struct
@@ -56,30 +57,43 @@ def read_header(fd: int, sector: int, lba: int, sectors: int) -> dict:
     require(zlib.crc32(entries) == array_crc, "invalid GPT entries CRC")
     return dict(current=current, alternate=alternate, first=first, last=last,
                 disk_guid=guid(value[56:72]), array_lba=array_lba,
-                count=count, entry_size=entry_size, entries=entries)
+                count=count, entry_size=entry_size, entries=entries,
+                header_bytes=value)
 
 
-def inspect_gpt_image(path: str | Path, *, logical_sector_size: int) -> dict:
-    """Recalculate primary and backup GPT CRCs from read-only regular disk image."""
+def inspect_gpt_fd(fd: int, *, logical_sector_size: int) -> dict:
+    """Inspect a caller-pinned, read-only regular-file FD; never resolve its path.
+
+    The caller owns fd and must authenticate its provenance separately.
+    A private dup pins the open file description and is closed on all paths;
+    pread does not change the caller's file offset. GPT regions are checked
+    twice and file metadata must remain stable through this inspection. Neither
+    check freezes future writes: this function NEVER authorizes disk mutation.
+    """
     sector = logical_sector_size
     require(type(sector) is int and sector in (512, 4096), "invalid sector size")
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | os.O_NONBLOCK
-    fd = os.open(path, flags)
+    require(type(fd) is int and fd >= 0, "invalid disk descriptor")
     try:
-        size = os.fstat(fd)
-        require(stat.S_ISREG(size.st_mode), "block devices are unsupported")
-        require(size.st_size >= 68 * sector and size.st_size % sector == 0,
+        pinned_fd = os.dup(fd)
+    except OSError as error:
+        raise DiskIdentityError("invalid disk descriptor") from error
+    try:
+        require((fcntl.fcntl(pinned_fd, fcntl.F_GETFL) & os.O_ACCMODE) == os.O_RDONLY,
+                "disk descriptor must be read-only")
+        initial = os.fstat(pinned_fd)
+        require(stat.S_ISREG(initial.st_mode), "block devices are unsupported")
+        require(initial.st_size >= 68 * sector and initial.st_size % sector == 0,
                 "invalid disk size")
-        sectors = size.st_size // sector
-        mbr = exact_read(fd, 0, 512)
+        sectors = initial.st_size // sector
+        mbr = exact_read(pinned_fd, 0, 512)
         require(mbr[510:] == b"\x55\xaa", "invalid protective MBR")
         slots = [mbr[446 + i * 16:462 + i * 16] for i in range(4)]
         require(slots[0][4] == 0xee and all(not any(s) for s in slots[1:]),
                 "hybrid or missing protective MBR")
         require(struct.unpack_from("<I", slots[0], 8)[0] == 1,
                 "invalid protective partition start")
-        primary = read_header(fd, sector, 1, sectors)
-        backup = read_header(fd, sector, sectors - 1, sectors)
+        primary = read_header(pinned_fd, sector, 1, sectors)
+        backup = read_header(pinned_fd, sector, sectors - 1, sectors)
         require(primary["alternate"] == sectors - 1 and backup["alternate"] == 1,
                 "GPT header locations disagree")
         for key in ("disk_guid", "first", "last", "count", "entry_size", "entries"):
@@ -111,9 +125,37 @@ def inspect_gpt_image(path: str | Path, *, logical_sector_size: int) -> dict:
                 "overlapping partitions")
         require(len({p["partGuid"] for p in partitions}) == len(partitions),
                 "duplicate partition GUID")
-        return dict(partitionStyle="GPT", partitionTableId="gpt:" + primary["disk_guid"],
-                    sizeBytes=size.st_size, logicalSectorSizeBytes=sector,
-                    partitions=partitions)
+        observed = dict(partitionStyle="GPT",
+                        partitionTableId="gpt:" + primary["disk_guid"],
+                        sizeBytes=initial.st_size, logicalSectorSizeBytes=sector,
+                        partitions=partitions)
+        # A path can be renamed/replaced while the descriptor remains pinned.
+        # Reject in-place changes to the GPT/PMBR regions during this read.
+        require(exact_read(pinned_fd, 0, 512) == mbr,
+                "protective MBR changed during inspection")
+        for header in (primary, backup):
+            require(exact_read(pinned_fd, header["current"] * sector, sector)
+                    == header["header_bytes"], "GPT header changed during inspection")
+            require(exact_read(pinned_fd, header["array_lba"] * sector,
+                               len(header["entries"])) == header["entries"],
+                    "GPT entries changed during inspection")
+        final = os.fstat(pinned_fd)
+        immutable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        require(all(getattr(initial, key) == getattr(final, key)
+                    for key in immutable_fields), "disk image changed during inspection")
+        return observed
+    except OSError as error:
+        raise DiskIdentityError("disk evidence could not be read") from error
+    finally:
+        os.close(pinned_fd)
+
+
+def inspect_gpt_image(path: str | Path, *, logical_sector_size: int) -> dict:
+    """Compatibility wrapper: open once, then use the canonical FD-based reader."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | os.O_NONBLOCK
+    fd = os.open(path, flags)
+    try:
+        return inspect_gpt_fd(fd, logical_sector_size=logical_sector_size)
     finally:
         os.close(fd)
 
