@@ -12,12 +12,13 @@ from __future__ import annotations
 import hashlib
 import io
 import re
-import stat
 import subprocess
 import sys
 from pathlib import Path
 
 from PIL import Image
+
+from auto_tests.installer_observer.evidence import Refusal, read
 
 SCREEN = (1280, 800)
 # Summary switches Calamares to a taller window whose top edge is at y=35
@@ -56,60 +57,83 @@ class ScreenRefusal(ValueError):
     """Prevent a click unless all visual/identity gates passed."""
 
 
-def load(path: Path | bytes) -> Image.Image:
-    if isinstance(path, bytes):
-        if not 1024 <= len(path) <= 2 * 1024 * 1024:
-            raise ScreenRefusal("Screenshot size invalid")
-        with Image.open(io.BytesIO(path), formats=["PNG"]) as file:
-            if file.size != SCREEN:
-                raise ScreenRefusal("Unexpected Q4OS screenshot size")
-            return file.convert("RGB")
-    if not path.is_absolute() or path.is_symlink():
-        raise ScreenRefusal("Screenshot path not absolute or symlinked")
+MAX_SCREENSHOT = 2 * 1024 * 1024
+
+
+def _snapshot(source: Path | bytes) -> bytes:
+    """One bounded, non-following acquisition; never give an OCR process a path."""
+    if isinstance(source, bytes):
+        data = source
+    elif isinstance(source, Path):
+        if not source.is_absolute():
+            raise ScreenRefusal("Screenshot path must be absolute")
+        try:
+            data = read(source, MAX_SCREENSHOT)
+        except (Refusal, OSError, ValueError) as exc:
+            raise ScreenRefusal("Unsafe or unreadable screenshot path") from exc
+    else:
+        raise ScreenRefusal("Screenshot must be bytes or an absolute Path")
+    if not 1024 <= len(data) <= MAX_SCREENSHOT:
+        raise ScreenRefusal("Screenshot size invalid")
+    return data
+
+
+def _decode(snapshot: bytes) -> Image.Image:
     try:
-        meta = path.lstat()
-        if not stat.S_ISREG(meta.st_mode) or not 1024 <= meta.st_size <= 2 * 1024 * 1024:
-            raise ScreenRefusal("Screenshot file type/size invalid")
-        with Image.open(path) as file:
-            if file.size != SCREEN or file.format != "PNG":
+        with Image.open(io.BytesIO(snapshot), formats=["PNG"]) as image:
+            if image.size != SCREEN or image.format != "PNG":
                 raise ScreenRefusal("Unexpected Q4OS screenshot size/type")
-            return file.convert("RGB")
+            return image.convert("RGB")
     except (OSError, ValueError) as exc:
-        raise ScreenRefusal("Unreadable original screenshot") from exc
+        raise ScreenRefusal("Invalid or truncated PNG screenshot") from exc
+
+
+def load(path: Path | bytes) -> Image.Image:
+    return _decode(_snapshot(path))
 
 
 def crop_sha(image: Image.Image, bbox: tuple[int, ...]) -> str:
     return hashlib.sha256(image.crop(bbox).tobytes()).hexdigest()
 
 
-def ocr(path: Path | bytes) -> str:
+def _ocr_snapshot(snapshot: bytes) -> str:
     try:
         result = subprocess.run(
-            ["tesseract", "stdin" if isinstance(path, bytes) else str(path), "stdout"],
-            input=path if isinstance(path, bytes) else None,
+            ["tesseract", "stdin", "stdout"],
+            input=snapshot,
             capture_output=True,
             timeout=40,
             check=True,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
+        return re.sub(r"\\s+", " ", result.stdout.decode("utf-8")).lower()
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         raise ScreenRefusal("OCR did not complete") from exc
-    return re.sub(r"\s+", " ", result.stdout.decode("utf-8")).lower()
 
 
-def users_original(path: Path | bytes) -> None:
-    image = load(path)
+def ocr(path: Path | bytes) -> str:
+    return _ocr_snapshot(_snapshot(path))
+
+
+def _users_original_snapshot(snapshot: bytes) -> None:
+    image = _decode(snapshot)
     for bbox, expected in (TITLE, USERS_SIDEBAR, DISABLED_NEXT):
         if crop_sha(image, bbox) != expected:
             raise ScreenRefusal("Original pinned Users screenshot ROI identity mismatch")
-    text = ocr(path)
+    text = _ocr_snapshot(snapshot)
     if any(t not in text for t in ("what is your name", "repeat password", "summary")):
         raise ScreenRefusal("Original Calamares Users fields not identified")
 
 
+def users_original(path: Path | bytes) -> None:
+    _users_original_snapshot(_snapshot(path))
+
+
 def users_with_dummy_data(before: Path | bytes, after: Path | bytes) -> None:
-    users_original(before)
-    baseline = load(before)
-    filled = load(after)
+    before_bytes = _snapshot(before)
+    after_bytes = _snapshot(after)
+    _users_original_snapshot(before_bytes)
+    baseline = _decode(before_bytes)
+    filled = _decode(after_bytes)
     for bbox, expected in (TITLE, USERS_SIDEBAR):
         if crop_sha(filled, bbox) != expected:
             raise ScreenRefusal("Calamares changed identity before Next")
@@ -118,7 +142,7 @@ def users_with_dummy_data(before: Path | bytes, after: Path | bytes) -> None:
             raise ScreenRefusal("One of five dummy-only input fields did not visibly change")
     if crop_sha(filled, DISABLED_NEXT[0]) == DISABLED_NEXT[1]:
         raise ScreenRefusal("Calamares Next still disabled")
-    text = ocr(after)
+    text = _ocr_snapshot(after_bytes)
     if "gaslux lab" not in text or "gasluxlab" not in text:
         raise ScreenRefusal("Synthetic guest-only identity not visibly confirmed")
     if any(t in text for t in ("too short", "do not match", "invalid password")):
@@ -126,8 +150,10 @@ def users_with_dummy_data(before: Path | bytes, after: Path | bytes) -> None:
 
 
 def summary_only(before: Path | bytes, after: Path | bytes) -> None:
-    users = load(before)
-    summary = load(after)
+    before_bytes = _snapshot(before)
+    after_bytes = _snapshot(after)
+    users = _decode(before_bytes)
+    summary = _decode(after_bytes)
     for bbox, expected in (
         SUMMARY_TOP_BAR,
         SUMMARY_SELECTED_SIDEBAR,
@@ -142,7 +168,7 @@ def summary_only(before: Path | bytes, after: Path | bytes) -> None:
     region = (128, 150, 1152, 610)
     if crop_sha(summary, region) == crop_sha(users, region):
         raise ScreenRefusal("No central content transition after Users Next")
-    text = ocr(after)
+    text = _ocr_snapshot(after_bytes)
     # Real Tesseract on both source PNGs misses the highlighted Summary word.
     # Enforce exact independently matching Summary sidebar ROI above instead.
     required_text = ("this is an overview", "partitions", "erase disk")
