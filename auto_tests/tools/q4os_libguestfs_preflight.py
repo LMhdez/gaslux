@@ -45,9 +45,7 @@ def checksum(path: Path) -> str:
     return h.hexdigest()
 
 
-def inspect_kernel(
-    env: dict[str, str], module_root: Path = Path("/lib/modules")
-) -> dict:
+def inspect_kernel(env: dict[str, str], module_root: Path = Path("/lib/modules")) -> dict:
     """Require a readable, owned private kernel matching packaged modules."""
     version = env.get("SUPERMIN_KERNEL_VERSION", "")
     require(bool(VERSION.fullmatch(version)), "KERNEL_VERSION_INVALID")
@@ -94,9 +92,7 @@ def inspect_kernel(
 
 
 def run(*command: str, timeout: int = 90) -> str:
-    result = subprocess.run(
-        command, capture_output=True, text=True, check=False, timeout=timeout
-    )
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout)
     require(result.returncode == 0, "SYNTHETIC_DISK_PREPARE_FAILED")
     return result.stdout
 
