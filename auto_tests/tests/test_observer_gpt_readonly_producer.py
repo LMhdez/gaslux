@@ -12,9 +12,9 @@ import importlib
 import os
 import shutil
 import struct
+import sys
 import uuid
 import zlib
-import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace

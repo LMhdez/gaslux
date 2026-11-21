@@ -455,7 +455,10 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         safety_disk=disk,
         host=host,
     )
-    require(host.observed_at <= guest.observed_at <= immediate.observed_at, "OBSERVATION_INCOMPLETE")
+    require(
+        host.observed_at <= guest.observed_at <= immediate.observed_at,
+        "OBSERVATION_INCOMPLETE",
+    )
     captures = (host, guest, immediate)
     require(
         all(c.gpt == host.gpt and c.sectors == host.sectors for c in captures),
