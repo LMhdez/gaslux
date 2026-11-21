@@ -21,7 +21,7 @@ import libertix_disk_identity_gate as safety
 
 class DescriptorPathToctouBeforeFix(unittest.TestCase):
     def setUp(self):
-        self.case = fixture.ZorinSyntheticWriteSetTests("test_positive_no_change")
+        self.case = fixture.ZorinSyntheticWriteSetTests("test_no_change_cannot_claim_gpt_fd_binding")
         self.case.setUp()
         self.addCleanup(self.case.doCleanups)
         self.root = self.case.root
