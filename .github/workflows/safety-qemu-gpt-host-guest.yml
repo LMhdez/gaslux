@@ -1,0 +1,102 @@
+name: Safety QEMU synthetic host guest GPT no-writer proof
+
+on:
+  pull_request:
+    paths:
+      - 'auto_tests/tools/safety_qemu_gpt_host_guest.py'
+      - 'auto_tests/tests/test_safety_qemu_gpt_host_guest.py'
+      - 'assets/live/libertix_disk_identity_gate.py'
+      - 'assets/live/libertix_prewrite_no_writer.py'
+      - '.github/workflows/safety-qemu-gpt-host-guest.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install test and lint tools
+        run: python -m pip install 'pytest>=9,<10' 'ruff>=0.14,<0.16'
+      - name: Compile and run QEMU lab contracts plus GPT gate regressions
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q assets/live/libertix_disk_identity_gate.py assets/live/libertix_prewrite_no_writer.py auto_tests/tools/safety_qemu_gpt_host_guest.py
+          python -m pytest -q auto_tests/tests/test_disk_identity_gate.py auto_tests/tests/test_prewrite_no_writer.py auto_tests/tests/test_safety_qemu_gpt_host_guest.py
+          python -m ruff check --select F,E4,E7,E9 auto_tests/tools/safety_qemu_gpt_host_guest.py auto_tests/tests/test_safety_qemu_gpt_host_guest.py
+
+  qemu-kvm-linux-guest-readonly:
+    needs: preflight-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: '1'
+      LIBGUESTFS_BACKEND: direct
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Checkout pinned existing libguestfs kernel selector
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
+          path: safety-pop-lab
+          persist-credentials: false
+      - name: Check hosted-runner scope and KVM before any disk creation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_OS" = Linux
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -p "$RUNNER_TEMP/gaslux-safety-evidence"
+          chmod 700 "$RUNNER_TEMP/gaslux-safety-evidence"
+      - name: Install QEMU, GPT and read-only Linux guest appliance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils gdisk libguestfs-tools python3-guestfs \
+            libguestfs0 linux-image-generic ca-certificates
+      - name: Select a complete, readable guestfs generic kernel using the existing lab helper
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C safety-pop-lab rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
+          source safety-pop-lab/auto_tests/tools/windows_x64_libguestfs_kernel.sh
+      - name: Observe real QEMU Linux appliance and enforce no-writer
+        shell: bash
+        env:
+          GASLUX_SAFETY_EVIDENCE: ${{ runner.temp }}/gaslux-safety-evidence
+        run: |
+          set -Eeuo pipefail
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP"
+          export LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
+          /usr/bin/python3 auto_tests/tools/safety_qemu_gpt_host_guest.py \
+            | tee "$RUNNER_TEMP/gaslux-safety-evidence/qemu-result-summary.json"
+          echo 'Synthetic QEMU/Linux appliance only. Controller and keys share runner: NOT_INDEPENDENT.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish only bounded synthetic metadata, no image or secret
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-safety-qemu-gpt-host-guest-no-writer
+          path: |
+            ${{ runner.temp }}/gaslux-safety-evidence/*.json
+            ${{ runner.temp }}/gaslux-safety-evidence/*.sha256
+          retention-days: 7
+          if-no-files-found: warn
