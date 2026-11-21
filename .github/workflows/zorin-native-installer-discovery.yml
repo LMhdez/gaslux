@@ -97,7 +97,7 @@ jobs:
           sudo timeout --signal=TERM --kill-after=15s 900s \
             env DEBIAN_FRONTEND=noninteractive \
             apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 \
-            install -y --no-install-recommends aria2 squashfs-tools qemu-system-x86 ovmf python3-pil
+            install -y --no-install-recommends aria2 squashfs-tools qemu-system-x86 ovmf python3-pil python3-jsonschema
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
@@ -141,7 +141,18 @@ jobs:
             --mounted "$mounted" \
             --previous "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-installer-discovery.json" \
             --out "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-ubiquity-code-map.json"
-          python3 -m json.tool "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-ubiquity-code-map.json" >/dev/null
+          python3 - "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-ubiquity-code-map.json" "$GITHUB_WORKSPACE/schemas/zorin-native-ubiquity-capabilities.schema.json" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          import jsonschema
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          schema = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          jsonschema.Draft202012Validator.check_schema(schema)
+          jsonschema.validate(report, schema)
+          assert report["authorization"] == "DENY_NO_WRITER"
+          print("PASS: complete real ISO write-surface evidence schema, no writer")
+          PY
           sudo umount "$mounted"
           active=0
           python3 auto_tests/tools/zorin_native_target_guard.py \
