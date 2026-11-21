@@ -39,12 +39,14 @@ def authorized():
         "forced": False,
         "before": before,
         "after": after,
-        "commits": [{
-            "id": after,
-            "added": [FILE],
-            "modified": [],
-            "removed": [],
-        }],
+        "commits": [
+            {
+                "id": after,
+                "added": [FILE],
+                "modified": [],
+                "removed": [],
+            }
+        ],
         "head_commit": {"id": after},
     }
     env = {
@@ -97,8 +99,15 @@ def test_denies_unsafe_explicit_authorization(authorized, where, field, value):
 
 @pytest.mark.parametrize(
     "change",
-    ["missing-commit", "extra-commit", "modified-file", "wrong-added-file",
-     "removed-file", "wrong-event-repository", "mismatching-head"],
+    [
+        "missing-commit",
+        "extra-commit",
+        "modified-file",
+        "wrong-added-file",
+        "removed-file",
+        "wrong-event-repository",
+        "mismatching-head",
+    ],
 )
 def test_denies_nonexclusive_authorization_commit(authorized, change):
     event, approval, env = copy.deepcopy(authorized)
@@ -146,7 +155,10 @@ def test_single_run_workflow_has_no_automatic_branch_or_pr_path():
             assert step["with"]["persist-credentials"] == "false"
         if "run" in step:
             subprocess.run(
-                ["bash", "-n"], input=step["run"], text=True, check=True,
+                ["bash", "-n"],
+                input=step["run"],
+                text=True,
+                check=True,
                 capture_output=True,
             )
     assert any("observer_gpt_qemu_one_shot.py preflight" in x.get("run", "") for x in steps)
@@ -163,19 +175,22 @@ def test_single_run_workflow_has_no_automatic_branch_or_pr_path():
 
 def test_evidence_verifier_fails_closed_when_not_a_completed_real_run(tmp_path):
     (tmp_path / "manifest.json").write_text(
-        json.dumps({
-            "status": "LABORATORY_ONLY",
-            "classification": "NOT_INDEPENDENT",
-            "safetyAssessment": "DIAGNOSTIC_ONLY",
-            "sourceCommitSafety": SAFETY,
-            "diskSynthetic": True,
-            "windowsGenuine": False,
-            "diskWritesAuthorized": True,
-        }),
+        json.dumps(
+            {
+                "status": "LABORATORY_ONLY",
+                "classification": "NOT_INDEPENDENT",
+                "safetyAssessment": "DIAGNOSTIC_ONLY",
+                "sourceCommitSafety": SAFETY,
+                "diskSynthetic": True,
+                "windowsGenuine": False,
+                "diskWritesAuthorized": True,
+            }
+        ),
         encoding="utf-8",
     )
     (tmp_path / "safety-gpt-provenance-v1.json").write_text(
-        json.dumps({"writeAuthorized": False}), encoding="utf-8",
+        json.dumps({"writeAuthorized": False}),
+        encoding="utf-8",
     )
     with pytest.raises(Refused, match="FORBIDDEN_AUTHORIZATION"):
         verify_evidence(tmp_path)

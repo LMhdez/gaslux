@@ -108,15 +108,15 @@ def validate_git(root: Path, event: dict) -> None:
     require(git("rev-parse", "HEAD") == event["after"], "UNEXPECTED_TRIGGER_CHECKOUT")
     require(git("rev-parse", "HEAD^") == event["before"], "UNEXPECTED_PARENT_COMMIT")
     require(
-        git("diff-tree", "--no-commit-id", "--name-status", "-r", "HEAD")
-        == "A\t" + FILE,
+        git("diff-tree", "--no-commit-id", "--name-status", "-r", "HEAD") == "A\t" + FILE,
         "GIT_DIFF_NOT_EXCLUSIVE_APPROVAL",
     )
     require(
         subprocess.run(
             ["git", "-C", str(root), "merge-base", "--is-ancestor", AUDITED, "HEAD^"],
             check=False,
-        ).returncode == 0,
+        ).returncode
+        == 0,
         "AUDITED_SHA_NOT_ANCESTOR",
     )
     require(
@@ -139,14 +139,21 @@ def verify_evidence(folder: Path) -> dict:
         "LAB_CLASSIFICATION_INVALID",
     )
     for name in (
-        "productionWriteAuthorized", "inputAuthorized", "diskWritesAuthorized",
-        "productionInstallationAuthorized", "guestInputAuthorized", "diskWriterCalled",
+        "productionWriteAuthorized",
+        "inputAuthorized",
+        "diskWritesAuthorized",
+        "productionInstallationAuthorized",
+        "guestInputAuthorized",
+        "diskWriterCalled",
     ):
         require(manifest.get(name) is False, "FORBIDDEN_AUTHORIZATION_" + name)
     for name in (
-        "guestCapturedWithLibguestfsPreadDevice", "immediateCapturedFromFreshQcow2Export",
-        "immediateQemuProcessAlreadyTerminated", "qemuProcessTerminated",
-        "backingPreserved", "overlayPreserved",
+        "guestCapturedWithLibguestfsPreadDevice",
+        "immediateCapturedFromFreshQcow2Export",
+        "immediateQemuProcessAlreadyTerminated",
+        "qemuProcessTerminated",
+        "backingPreserved",
+        "overlayPreserved",
     ):
         require(manifest.get(name) is True, "EVIDENCE_MISSING_" + name)
     require(
@@ -175,8 +182,9 @@ def verify_evidence(folder: Path) -> dict:
         path = folder / name
         trace = json.loads(path.read_text(encoding="utf-8"))
         digest = hashlib.sha256(
-            json.dumps(trace, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-            .encode("ascii")
+            json.dumps(trace, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+                "ascii"
+            )
         ).hexdigest()
         require(
             trace.get("source") == kind
@@ -215,8 +223,7 @@ def verify_evidence(folder: Path) -> dict:
         paths.append(Path(trace["imageFile"]))
         times.append(datetime.fromisoformat(trace["observedAt"]))
     require(
-        [p.name for p in paths]
-        == ["host.raw", "guest-reconstructed.raw", "immediate.raw"]
+        [p.name for p in paths] == ["host.raw", "guest-reconstructed.raw", "immediate.raw"]
         and len(set(map(str, paths))) == 3
         and times[0] <= times[1] <= times[2],
         "IMMEDIATE_NOT_FRESHLY_OBSERVED",
@@ -228,7 +235,8 @@ def verify_evidence(folder: Path) -> dict:
     )
     gpt = records[0]["gpt"]
     require(
-        gpt["partitionStyle"] == "GPT" and gpt["sizeBytes"] == SIZE
+        gpt["partitionStyle"] == "GPT"
+        and gpt["sizeBytes"] == SIZE
         and gpt["logicalSectorSizeBytes"] == SECTOR
         and gpt["partitionTableId"].startswith("gpt:")
         and all(p.get("partGuid") for p in gpt["partitions"]),
@@ -236,7 +244,8 @@ def verify_evidence(folder: Path) -> dict:
     )
     chain = manifest["backingChain"]
     require(
-        chain["format"] == "qcow2" and chain["backingFormat"] == "raw"
+        chain["format"] == "qcow2"
+        and chain["backingFormat"] == "raw"
         and chain["virtualSizeBytes"] == SIZE
         and chain["overlaySha256"] == safety["backingChain"][0]["sha256"]
         and chain["backingSha256"] == safety["backingChain"][1]["sha256"]
