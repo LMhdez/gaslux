@@ -9,6 +9,7 @@ on:
       - 'auto_tests/tests/test_observer_one_shot_ledger_offline.py'
       - 'auto_tests/fixtures/observer-one-shot/**'
       - 'docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_OFFLINE.md'
+      - 'docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_V2_P01.md'
       - '.github/workflows/observer-one-shot-ledger-offline-static.yml'
   push:
     branches:
@@ -55,6 +56,7 @@ jobs:
           PY
       - name: Ruff lint and format, offline code only
         run: |
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py || true
           python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
           python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
       - name: Python compileall and adversarial disposable-ledger tests
