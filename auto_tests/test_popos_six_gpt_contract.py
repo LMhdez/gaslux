@@ -159,7 +159,10 @@ class SixGptNegativeTests(unittest.TestCase):
             f"virtio_blk_handle_write sector {c.PARTS[4].start} nsectors 8\n"
             f"virtio_blk_handle_write sector {c.PARTS[5].start} nsectors 16\n"
         )
-        self.assertEqual(valid["observedBytes"], 12288)
+        self.assertEqual(valid["parsedBytes"], 12288)
+        self.assertEqual(valid["observedBytes"], 0)
+        self.assertEqual(valid["parseStatus"], "PARSED_UNTRUSTED")
+        self.assertFalse(valid["observedWritesConfinedToOwnedPopPartitions"])
         self.assertFalse(valid["observationComplete"])
         self.assertFalse(valid["productionInstallationAuthorized"])
 
@@ -267,56 +270,61 @@ class SixGptNegativeTests(unittest.TestCase):
                 lab.ensure_empty_child(Path("/tmp/foreign"), Path("/tmp/base"))
         runner_source = (TOOLS / "gaslux_popos_six_gpt_lab.py").read_text()
         self.assertIn("ensure_empty_child(fault, base)", runner_source)
-        self.assertIn("regular(fault, write=True).unlink()", runner_source)
+        self.assertIn("remove(fault)", runner_source)
         self.assertIn('sha(base) == plan["backingSha256"]', runner_source)
         self.assertIn("verify_canaries(base, plan, work)", runner_source)
 
     def test_readonly_fsck_partition_copy_and_untrusted_bounds(self):
         import gaslux_popos_six_gpt_fsck as fsc
 
-        with tempfile.TemporaryDirectory() as folder:
-            work = Path(folder)
-            base = new_file(work / "fsck-fixture.raw", c.SIZE)
-            sentinel = b"GASLUX-SYNTHETIC-ONLY-BYTE-EXACT"
-            with base.open("r+b") as out:
-                out.seek(c.PARTS[0].start * c.SECTOR + 1024)
-                out.write(sentinel)
-            extracted = work / "fsck-before-1.img"
-            fsc.copy_owned_partition(base, extracted, c.PARTS[0].start, 16)
-            self.assertEqual(extracted.read_bytes()[1024 : 1024 + len(sentinel)], sentinel)
-            self.assertEqual(extracted.stat().st_size, 16 * c.SECTOR)
-            for first, sectors in (
-                (-1, 16),
-                (0, 0),
-                (c.COUNT, 1),
-                (c.COUNT - 4, 8),
-                (c.PARTS[0].start, -1),
-                (c.PARTS[0].start, True),
+        with tempfile.TemporaryDirectory(prefix="gaslux-pop-six-gpt-") as folder:
+            from gaslux_popos_six_gpt_ownership import OwnedDirectory
+            with OwnedDirectory(Path(folder)):
+                self._run_fsck_copy_contract(Path(folder))
+
+    def _run_fsck_copy_contract(self, work: Path) -> None:
+        import gaslux_popos_six_gpt_fsck as fsc
+        base = new_file(work / "fsck-fixture.raw", c.SIZE)
+        sentinel = b"GASLUX-SYNTHETIC-ONLY-BYTE-EXACT"
+        with base.open("r+b") as out:
+            out.seek(c.PARTS[0].start * c.SECTOR + 1024)
+            out.write(sentinel)
+        extracted = work / "fsck-before-1.img"
+        fsc.copy_owned_partition(base, extracted, c.PARTS[0].start, 16)
+        self.assertEqual(extracted.read_bytes()[1024 : 1024 + len(sentinel)], sentinel)
+        self.assertEqual(extracted.stat().st_size, 16 * c.SECTOR)
+        for first, sectors in (
+            (-1, 16),
+            (0, 0),
+            (c.COUNT, 1),
+            (c.COUNT - 4, 8),
+            (c.PARTS[0].start, -1),
+            (c.PARTS[0].start, True),
+        ):
+            with (
+                self.subTest(first=first, sectors=sectors),
+                self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
             ):
-                with (
-                    self.subTest(first=first, sectors=sectors),
-                    self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
-                ):
-                    fsc.copy_owned_partition(
-                        base,
-                        work / "fsck-after-1.img",
-                        first,
-                        sectors,
-                    )
-            with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
                 fsc.copy_owned_partition(
                     base,
-                    work / "foreign.img",
-                    c.PARTS[0].start,
-                    16,
+                    work / "fsck-after-1.img",
+                    first,
+                    sectors,
                 )
-            with self.assertRaises((OSError, Refusal)):
-                fsc.copy_owned_partition(
-                    base,
-                    extracted,
-                    c.PARTS[0].start,
-                    16,
-                )
+        with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
+            fsc.copy_owned_partition(
+                base,
+                work / "foreign.img",
+                c.PARTS[0].start,
+                16,
+            )
+        with self.assertRaises((OSError, Refusal)):
+            fsc.copy_owned_partition(
+                base,
+                extracted,
+                c.PARTS[0].start,
+                16,
+            )
 
     def test_fsck_probe_requires_frozen_backing_and_false_writer_flags(self):
         import gaslux_popos_six_gpt_fsck as fsc

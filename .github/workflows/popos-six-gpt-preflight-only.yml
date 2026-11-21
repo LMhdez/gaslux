@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/popos-six-gpt-synthetic-contracts-20261121
+      - fix/popos-six-gpt-safety-f01-f04-20261121
     paths:
       - .github/workflows/popos-six-gpt-preflight-only.yml
       - auto_tests/tools/gaslux_popos_six_gpt_*
@@ -45,32 +46,43 @@ jobs:
             'ruff==0.14.4' 'jsonschema==4.25.1'
           export PATH="$RUNNER_TEMP/pop-six-contract-venv/bin:$PATH"
           python3 -m compileall -q \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
+            auto_tests/test_popos_six_gpt_safety_f01_f04.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff check --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
+            auto_tests/test_popos_six_gpt_safety_f01_f04.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py || true
           ruff check \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
+            auto_tests/test_popos_six_gpt_safety_f01_f04.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
+            auto_tests/test_popos_six_gpt_safety_f01_f04.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --check \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
+            auto_tests/test_popos_six_gpt_safety_f01_f04.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
           export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
+          python3 -m unittest auto_tests.test_popos_six_gpt_safety_f01_f04 -v
           python3 -m unittest auto_tests.test_popos_six_gpt_contract -v
           python3 -m unittest auto_tests.test_popos_reuse_full_contract -v
           python3 -m unittest auto_tests.test_windows10_popos_native_write_set -v
@@ -123,62 +135,12 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
-          work="$(mktemp -d "$RUNNER_TEMP/gaslux-pop-six-gpt-XXXXXXXX")"
-          evidence="$GITHUB_WORKSPACE/pop-six-gpt-evidence"
-          mkdir -m 700 "$evidence"
-          cleanup() {
-            if test -d "$work" && test ! -L "$work"; then
-              case "$work" in
-                "$RUNNER_TEMP"/gaslux-pop-six-gpt-*)
-                  for file in pop-six-transaction.json recovery-proof.json filesystem-fsck-before.json filesystem-fsck-after.json; do
-                    if test -f "$work/$file" && test ! -L "$work/$file"; then
-                      cp -- "$work/$file" "$evidence/"
-                    fi
-                  done
-                  rm -rf -- "$work"
-                  ;;
-                *) echo "REFUSE: foreign lab cleanup location" >&2; return 1 ;;
-              esac
-            fi
-            (
-              cd "$evidence"
-              find . -maxdepth 1 -type f ! -name evidence.sha256 -print0 |
-                sort -z | xargs -0 -r sha256sum > evidence.sha256
-            )
-          }
-          trap cleanup EXIT
-          template=/usr/share/OVMF/OVMF_VARS_4M.fd
-          python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py prepare \
-            --work "$work" --ovmf-template "$template"
-          python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py preflight \
-            --work "$work" --ovmf-template "$template"
-          python3 auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
-            --work "$work" --phase before
-          python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py recover \
-            --work "$work" --ovmf-template "$template"
-          python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py preflight \
-            --work "$work" --ovmf-template "$template"
-          python3 auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
-            --work "$work" --phase after
-          python3 - "$work" <<'PY'
-          import json,sys
-          from pathlib import Path
-          w=Path(sys.argv[1])
-          p=json.loads((w/"pop-six-transaction.json").read_text())
-          r=json.loads((w/"recovery-proof.json").read_text())
-          assert p["transactionId"]==r["transactionId"]
-          assert p["manifestSha256"]==r["manifestSha256"]
-          assert len(p["partitions"])==6 and len(p["canaries"])==7
-          assert r["ownedFaultChildReconstructedEmpty"] is True
-          checks=[json.loads((w/f"filesystem-fsck-{phase}.json").read_text()) for phase in ("before","after")]
-          assert all(x["readOnlyFsckAllPassed"] is True and len(x["filesystems"])==3 for x in checks)
-          assert all(x["transactionId"]==p["transactionId"] and x["manifestSha256"]==p["manifestSha256"] for x in checks)
-          for name in ("windowsWriterAuthorized","productionInstallationAuthorized",
-                       "releaseEligible","stable","sameDiskDualBootVerified",
-                       "windowsInPlaceRollbackProven"):
-              assert p[name] is r[name] is False
-          print("GASLUX_POP_SIX_GPT_NO_QEMU_PROOF=1")
-          PY
+          # One Python supervisor holds both directory FDs and the exact
+          # creation-time inode inventory throughout the entire preflight.
+          # No shell trap, recursive wildcard deletion or pathname-only cleanup.
+          python3 auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
+            --ovmf-template /usr/share/OVMF/OVMF_VARS_4M.fd \
+            --evidence "$GITHUB_WORKSPACE/pop-six-gpt-evidence"
           echo 'Preflight-only. No QEMU guest; Safety must authorize any later six-GPT installation.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload ONLY bounded JSON evidence; never RAW/QCOW2/OVMF
         if: always()

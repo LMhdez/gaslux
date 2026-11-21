@@ -22,14 +22,13 @@ from gaslux_popos_reuse_snapshot_gate import (
     Refusal,
     chain,
     command,
-    make_child,
     need,
-    new_file,
     region_hash,
     regular,
     sha,
     system_ovmf_template,
 )
+from gaslux_popos_six_gpt_ownership import make_child, new_file, owner, record_created, remove
 from gaslux_popos_six_gpt_contract import (
     BOOLEANS,
     CONSENT,
@@ -83,6 +82,8 @@ def hosted(work: Path) -> None:
         and stat.S_IMODE(work.stat().st_mode) == 0o700,
         "REFUSE_IDENTITY_MISMATCH: untrusted private runner directory",
     )
+    need(owner().path == work,
+         "REFUSE_OWNERSHIP: hosted workdir has no pinned transaction FD")
 
 
 def sha_region(path: Path, sector: int, count: int) -> str:
@@ -181,13 +182,14 @@ def verify_esp_canary(base: Path, expected_hash: str, work: Path) -> None:
             str(output),
             timeout=60,
         )
+        record_created(output)
         need(
             sha(regular(output)) == expected_hash,
             "REFUSE_OUT_OF_WRITESET: protected ESP file changed",
         )
     finally:
         if output.exists():
-            regular(output).unlink()
+            remove(output)
 
 
 def verify_fs_types(base: Path) -> dict:
@@ -226,13 +228,104 @@ def verify_canaries(base: Path, plan: dict, work: Path) -> None:
     verify_esp_canary(base, plan["protectedEspFileSha256"], work)
 
 
-def ensure_empty_child(child: Path, base: Path) -> None:
+def validated_overlay_map(child: Path, base: Path) -> list[dict]:
+    """Verify chain and all image sectors without allowing partial map evidence.
+
+    A depth=0 extent is NEVER accepted as an empty overlay, even when its
+    data=false/zero=true mapping masks the backing. This is not a disk writer.
+    """
     chain(child, base)
-    extents = json.loads(command("qemu-img", "map", "--output=json", str(child), timeout=120))
+    try:
+        extents = json.loads(command("qemu-img", "map", "--output=json", str(child), timeout=120))
+    except (ValueError, TypeError) as exc:
+        raise Refusal("REFUSE_RECOVERY_UNPROVEN: malformed qemu-img map JSON") from exc
+    need(type(extents) is list and len(extents) > 0,
+         "REFUSE_RECOVERY_UNPROVEN: missing qemu-img map extents")
+    cursor = 0
+    for row in extents:
+        need(
+            type(row) is dict
+            and {"start", "length", "depth", "data", "zero"} <= set(row)
+            and set(row) <= {
+                "start", "length", "depth", "present", "data", "zero", "offset"
+            }
+            and type(row["start"]) is int
+            and type(row["length"]) is int
+            and type(row["depth"]) is int
+            and type(row["data"]) is bool
+            and type(row["zero"]) is bool
+            and ("present" not in row or type(row["present"]) is bool)
+            and ("offset" not in row or
+                 (type(row["offset"]) is int and row["offset"] >= 0))
+            and row["start"] == cursor
+            and row["length"] > 0
+            and row["depth"] >= 0
+            and row["start"] % SECTOR == 0
+            and row["length"] % SECTOR == 0
+            and cursor + row["length"] <= SIZE
+            and not (row["data"] and row["zero"]),
+            "REFUSE_RECOVERY_UNPROVEN: incomplete/contradictory QCOW2 extent",
+        )
+        cursor += row["length"]
+    need(cursor == SIZE, "REFUSE_RECOVERY_UNPROVEN: incomplete QCOW2 coverage")
+    return extents
+
+
+def ensure_empty_child(child: Path, base: Path) -> None:
+    extents = validated_overlay_map(child, base)
     need(
-        not any(x.get("depth") == 0 and x.get("data") for x in extents),
-        "REFUSE_RECOVERY_UNPROVEN: synthetic child contains foreign allocations",
+        not any(row["depth"] == 0 for row in extents),
+        "REFUSE_RECOVERY_UNPROVEN: depth-0 child data/zero mapping",
     )
+    # Checking effective bytes alone is insufficient (an allocated zero
+    # cluster may compare equal to a zero-filled backing), so require BOTH
+    # absence of child extents and full effective equivalence.
+    command(
+        "qemu-img", "compare", "-f", "qcow2", "-F", "raw",
+        str(child), str(base), timeout=300,
+    )
+
+
+def prove_injected_fault(child: Path, base: Path, sector: int,
+                         prewrite_identity: tuple[int, int]) -> dict:
+    """Material injection evidence; operational errors are NEVER detections."""
+    need(type(prewrite_identity) is tuple and len(prewrite_identity) == 2,
+         "REFUSE_RECOVERY_UNPROVEN: missing child ownership snapshot")
+    stat_now = regular(child, write=True).stat()
+    need((stat_now.st_dev, stat_now.st_ino) == prewrite_identity,
+         "REFUSE_RECOVERY_UNPROVEN: injected child inode substituted")
+    need(type(sector) is int and PARTS[2].start <= sector
+         and sector + 8 <= PARTS[2].end,
+         "REFUSE_RECOVERY_UNPROVEN: injection outside protected fixture")
+    start, length = sector * SECTOR, 4096
+    extents = validated_overlay_map(child, base)
+    matches = [
+        row for row in extents
+        if row["depth"] == 0 and row["data"] is True
+        and row["zero"] is False
+        and row["start"] <= start
+        and start + length <= row["start"] + row["length"]
+    ]
+    need(len(matches) == 1,
+         "REFUSE_RECOVERY_UNPROVEN: injected child extent not materially observed")
+    # QEMU image-map allocation is only one witness. The readback from the
+    # *exact child* must also match the injected 4KiB pattern.
+    command(
+        "qemu-io", "-f", "qcow2", "-c",
+        f"read -P 0x5a {start} {length}", str(child), timeout=120,
+    )
+    stat_after = regular(child, write=True).stat()
+    need((stat_after.st_dev, stat_after.st_ino) == prewrite_identity,
+         "REFUSE_RECOVERY_UNPROVEN: child changed during injection proof")
+    return {
+        "injectedSector": sector,
+        "injectedLengthBytes": length,
+        "childDevice": stat_after.st_dev,
+        "childInode": stat_after.st_ino,
+        "ownedDepthZeroDataObserved": True,
+        "readbackPatternVerified": True,
+        "toolErrorsAcceptedAsCorruption": False,
+    }
 
 
 def private_ovmf_copy(template: Path, out: Path) -> str:
@@ -303,9 +396,8 @@ def prepare(work: Path, template: Path) -> dict:
     need(verify_sfdisk_gpt(base) == baseline, "REFUSE_OUT_OF_WRITESET: ext4 changed GPT")
     # Protected ESP contains a SIMULATED canary, not a Windows bootloader.
     marker = work / "synthetic-esp-marker.tmp"
-    with os.fdopen(
-        os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb"
-    ) as out:
+    new_file(marker, 0)
+    with marker.open("wb") as out:
         out.write(ESP_MARKER + txid.encode("ascii") + b"\n")
         out.flush()
         os.fsync(out.fileno())
@@ -314,7 +406,7 @@ def prepare(work: Path, template: Path) -> dict:
     command("mmd", "-i", esp_image, "::/EFI/Microsoft")
     command("mcopy", "-i", esp_image, str(marker), PROTECTED_ESP_FILE)
     file_hash = sha(marker)
-    marker.unlink()
+    remove(marker)
     entries = []
     for p in PARTS[1:4]:
         entries.append(
@@ -383,9 +475,8 @@ def prepare(work: Path, template: Path) -> dict:
 
 
 def write_text_exclusive(path: Path, text: str) -> None:
-    with os.fdopen(
-        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w"
-    ) as out:
+    new_file(path, 0)
+    with path.open("w") as out:
         out.write(text)
         out.flush()
         os.fsync(out.fileno())
@@ -452,21 +543,21 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
     base = regular(work / BASE_NAME, length=SIZE)
     fault = work / "fault-injected-child.qcow2"
     make_child(fault, base)
-    try:
-        sector = PARTS[2].start + 4096  # protected SIMULATED data partition
-        command("qemu-io", "-f", "qcow2", "-c", f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
-        try:
-            ensure_empty_child(fault, base)
-        except Refusal:
-            pass
-        else:
-            raise Refusal("REFUSE_RECOVERY_UNPROVEN: injected fault not detected")
-    finally:
-        regular(fault, write=True).unlink()
+    ensure_empty_child(fault, base)
+    child_stat = regular(fault, write=True).stat()
+    prewrite_identity = (child_stat.st_dev, child_stat.st_ino)
+    sector = PARTS[2].start + 4096  # protected SIMULATED data partition
+    command("qemu-io", "-f", "qcow2", "-c",
+            f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
+    injection = prove_injected_fault(fault, base, sector, prewrite_identity)
+    need(injection["ownedDepthZeroDataObserved"]
+         and injection["readbackPatternVerified"],
+         "REFUSE_RECOVERY_UNPROVEN: incomplete material fault evidence")
+    remove(fault)
     need(not fault.exists(), "REFUSE_RECOVERY_UNPROVEN: foreign overlay retained")
     make_child(fault, base)
     ensure_empty_child(fault, base)
-    regular(fault, write=True).unlink()
+    remove(fault)
     # Independent disposable fault-injected VARS. Never overwrite reference.
     template = system_ovmf_template(template)
     broken_vars = work / "fault-injected-vars.fd"
@@ -480,13 +571,13 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
         sha(broken_vars) != plan["ovmfTemplateSha256"],
         "REFUSE_RECOVERY_UNPROVEN: OVMF fault injection ineffective",
     )
-    broken_vars.unlink()
+    remove(broken_vars)
     private_ovmf_copy(template, broken_vars)
     need(
         sha(broken_vars) == plan["ovmfTemplateSha256"],
         "REFUSE_RECOVERY_UNPROVEN: private VARS not restored",
     )
-    regular(broken_vars).unlink()
+    remove(broken_vars)
     verified = verify_checkpoint(work, template)
     proof = {
         "schemaVersion": 1,
