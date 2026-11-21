@@ -9,26 +9,33 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
-import shutil
 import re
-import stat
+import shutil
 import struct
 import subprocess
 import time
 import uuid
+from pathlib import Path
 
-from windows_mint_ab_checkpoint import (
-    AB_DIR, ARMS, CONSENT, VARS, REFERENCE, prepare_checkpoint,
-    file_guard, image_info, equivalent, sha256_file,
-)
-from windows_mint_overlay_root import (
-    _guest_disk_audit, has_orderly_shutdown_witness, MintOverlayError,
-)
 from windows_cachyos_overlay_reboot import (
-    third_guest_args, audit_complete_third_serial, gpt_windows,
+    audit_complete_third_serial,
+    gpt_windows,
+    third_guest_args,
 )
 from windows_cachyos_qcow2_gpt_readonly import VIRTUAL_BYTES
+from windows_mint_ab_checkpoint import (
+    AB_DIR,
+    ARMS,
+    CONSENT,
+    REFERENCE,
+    VARS,
+    equivalent,
+    file_guard,
+    image_info,
+    prepare_checkpoint,
+    sha256_file,
+)
+from windows_mint_overlay_root import _guest_disk_audit, has_orderly_shutdown_witness
 
 ROOT_MARKER = b"GASLUXMINT login:"
 WIN_EXPECT = ("windowsEspDigestChanged", "windowsMsrDigestChanged",
@@ -156,7 +163,7 @@ def verify_ab_source(workspace: Path, proof: dict, base: Path) -> None:
     file_guard(ref, directory, 0o400)
     require(sha256_file(ref) == proof.get("referenceSha256"),
             "immutable reference checkpoint differs before QEMU")
-    for arm, digest in zip(ARMS, (proof["controlSha256"], proof["treatmentSha256"])):
+    for arm, digest in zip(ARMS, (proof["controlSha256"], proof["treatmentSha256"]), strict=True):
         p = directory / arm
         file_guard(p, directory, 0o600)
         image_info(p)
@@ -523,10 +530,10 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
     ab["treatment"]["gptUnchanged"] = gpt_b == gpts[1]
     ab["control"]["changedPartitionFlags"] = [
         x != y for x, y in zip(before[0]["partitionSha256"],
-                             after_a["partitionSha256"])]
+                             after_a["partitionSha256"], strict=True)]
     ab["treatment"]["changedPartitionFlags"] = [
         x != y for x, y in zip(before[1]["partitionSha256"],
-                             after_b["partitionSha256"])]
+                             after_b["partitionSha256"], strict=True)]
     ab["samePartitionChangesObservedInBothArms"] = (
         ab["control"]["changedPartitionFlags"]
         == ab["treatment"]["changedPartitionFlags"])
@@ -550,7 +557,7 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
     # After forensic read-only acquisition, prove BOTH writable arms can
     # be reconstituted from the unchanged standalone checkpoint. No release
     # authorization follows from recovery of a disposable QEMU experiment.
-    from windows_mint_ab_checkpoint import reproduce_restore, clone_vars
+    from windows_mint_ab_checkpoint import clone_vars, reproduce_restore
     ref = directory / REFERENCE
     for arm in arms:
         require(reproduce_restore(ref, arm, directory),
