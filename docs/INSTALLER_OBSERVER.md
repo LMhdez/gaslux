@@ -692,9 +692,15 @@ SHA256(
 All textual identifiers use ASCII `[A-Za-z0-9._:-]`, 1–128 characters.
 Each length is an unsigned 16-bit big-endian integer. The nonce is a fresh
 32-byte value chosen by the independent requester. Exact equality to
-`TPMS_ATTEST.extraData` is mandatory. Replaying the same challenge requires
-a durable atomic requester-side replay ledger; `LaboratoryReplayGuard` is
-single-process and **only for disposable tests**.
+`TPMS_ATTEST.extraData` is mandatory. The caller must atomically reject reuse of the challenge, the original
+32-byte nonce and the request ID, even if a different request/session yields
+a different correctly signed challenge. The guard API is now
+`consume_challenge(challenge, *, nonce, request_id)`; old digest-only guards
+fail closed. `LaboratoryReplayGuard` serializes concurrent calls with a lock,
+but remains single-process, non-durable and **only for disposable tests**.
+Production needs a protected, durable atomic ledger and independent nonce
+issuance; neither the laboratory guard nor a runner-managed ledger is an
+independent root of trust.
 
 ### External trust provisioning contract — not available in this PR
 
