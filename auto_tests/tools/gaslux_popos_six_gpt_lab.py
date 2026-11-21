@@ -240,9 +240,16 @@ def validated_overlay_map(child: Path, base: Path) -> list[dict]:
         need(
             type(row) is dict
             and {"start", "length", "depth", "data", "zero"} <= set(row)
-            and set(row) <= {
-                "start", "length", "depth", "present", "data", "zero",
-                "offset", "compressed",
+            and set(row)
+            <= {
+                "start",
+                "length",
+                "depth",
+                "present",
+                "data",
+                "zero",
+                "offset",
+                "compressed",
             }
             and type(row["start"]) is int
             and type(row["length"]) is int

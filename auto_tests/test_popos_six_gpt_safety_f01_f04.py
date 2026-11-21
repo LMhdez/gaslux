@@ -295,11 +295,18 @@ class QcowMapSafetyTests(unittest.TestCase):
                 lab.ensure_empty_child(Path("/tmp/c"), Path("/tmp/b"))
 
     def test_f04_qemu_real_compressed_false_is_metadata_not_overlay(self):
-        case = [{
-            "start": 0, "length": lab.SIZE, "depth": 1,
-            "data": True, "zero": False, "present": True,
-            "compressed": False, "offset": 0,
-        }]
+        case = [
+            {
+                "start": 0,
+                "length": lab.SIZE,
+                "depth": 1,
+                "data": True,
+                "zero": False,
+                "present": True,
+                "compressed": False,
+                "offset": 0,
+            }
+        ]
         with patch.object(lab, "chain"), patch.object(lab, "command") as cmd:
             cmd.side_effect = [json.dumps(case), ""]
             lab.ensure_empty_child(Path("/tmp/c"), Path("/tmp/b"))
@@ -320,8 +327,9 @@ class QcowMapSafetyTests(unittest.TestCase):
         contents = "GASLUX SYNTHETIC ESP CANARY\n"
         digest = hashlib.sha256(contents.encode("utf-8")).hexdigest()
         with patch.object(lab, "command", return_value=contents) as cmd:
-            lab.verify_esp_canary(Path("/tmp/synthetic/prepared-six.raw"), digest,
-                                  Path("/tmp/synthetic"))
+            lab.verify_esp_canary(
+                Path("/tmp/synthetic/prepared-six.raw"), digest, Path("/tmp/synthetic")
+            )
             self.assertEqual(cmd.call_args.args[0], "mtype")
             self.assertNotIn("mcopy", cmd.call_args.args)
 
