@@ -6,7 +6,6 @@ The Ed25519 protocol is exercised only via the unchanged Observer verifier.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 import runpy
@@ -171,8 +170,6 @@ def test_same_runner_local_trace_is_still_diagnostic_and_unattested():
 def test_fail_closed_on_untrusted_gpt_origin_claims(fault):
     params = diagnostic_fixture()
     statement = params["statement"]
-    pins = params["pins"]
-    authority = params["authority"]
     records = statement["measurements"]
     if fault == "signed_invented_disk":
         records[1]["gpt"]["partitionTableId"] = (
