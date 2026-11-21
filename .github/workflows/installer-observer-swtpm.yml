@@ -54,7 +54,9 @@ jobs:
           tpm2_createek -c "$work/ek.ctx" -G rsa
           tpm2_createak -C "$work/ek.ctx" -G ecc -g sha256 -s ecdsa \
             -c "$work/ak.ctx" -u "$work/ak.pub" -n "$work/ak.name"
+          tpm2_flushcontext -t
           tpm2_readpublic -c "$work/ak.ctx" -f pem -o "$work/ak.pem"
+          tpm2_flushcontext -t
           tpm2_pcrread sha256:0,7 > "$work/pcrs.txt"
           python -m auto_tests.installer_observer.swtpm_probe "$work"
           sha256sum "$work/quote.msg" "$work/quote.sig" "$work/ak.pem" "$work/pcrs.txt" "$work/manifest.json"
