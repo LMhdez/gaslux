@@ -273,6 +273,139 @@ def write_manifest(directory: Path, name: str, data: dict) -> str:
     return sha256_file(p)
 
 
+def require_untouched_after_control(
+    *, directory: Path, base: Path, checkpoint: dict,
+    evidence: Path, transaction_id: str,
+) -> dict:
+    """A must never alter reference, unused B, backing or unused B VARS.
+
+    Persist the per-resource verdict BEFORE rejecting. No repair, baseline
+    change or guest B invocation is permitted on any mismatch.
+    """
+    reference = directory / REFERENCE
+    treatment = directory / ARMS[1]
+    vars_b = directory / VARS[1]
+    for path, mode in ((reference, 0o400), (treatment, 0o600),
+                       (vars_b, 0o600)):
+        file_guard(path, directory, mode)
+    file_guard(base, base.parent)
+    observations = {
+        "referenceSha256": sha256_file(reference),
+        "unusedTreatmentSha256": sha256_file(treatment),
+        "windowsBackingSha256": sha256_file(base),
+        "unusedTreatmentOvmfVarsSha256": sha256_file(vars_b),
+    }
+    checks = {
+        "referenceStillUntouched": (
+            observations["referenceSha256"] == checkpoint["referenceSha256"]),
+        "armBStillUntouched": (
+            observations["unusedTreatmentSha256"] == checkpoint["treatmentSha256"]),
+        "backingUnchanged": (
+            observations["windowsBackingSha256"] == checkpoint["windowsBackingSha256"]),
+        "ovmfBStillUntouched": (
+            observations["unusedTreatmentOvmfVarsSha256"]
+            == checkpoint["initialOvmfVarsSha256"]),
+    }
+    passed = all(checks.values())
+    if passed:
+        image_info(treatment)
+        equivalent(reference, treatment)
+    report = {
+        "schema": "gaslux-mint-ab-cross-arm-gate-v1",
+        "gate": "after_control_before_mint",
+        "transactionId": transaction_id,
+        "result": "PASS" if passed else "BLOCKED_INTEGRITY",
+        "checks": checks,
+        "observedSha256": observations,
+        "referenceAndBStillUntouched": passed,
+        "mintBStarted": False,
+        "windowsBStarted": False,
+        "productionInstallAuthorized": False,
+        "releaseEligible": False,
+    }
+    write_manifest(evidence, "mint-ab-after-control-gate.json", report)
+    require(passed, "F-01: after-control cross-arm integrity failure: "
+            + ", ".join(name for name, ok in checks.items() if not ok))
+    return report
+
+
+def require_integrity_after_mint(
+    *, directory: Path, base: Path, checkpoint: dict, evidence: Path,
+    transaction_id: str, before: dict, after: dict,
+    expected_gpt: dict, observed_gpt: dict,
+) -> dict:
+    """Immediately after Mint B shutdown, BEFORE Windows B can be started."""
+    reference = directory / REFERENCE
+    vars_b = directory / VARS[1]
+    file_guard(reference, directory, 0o400)
+    file_guard(vars_b, directory, 0o600)
+    file_guard(base, base.parent)
+    observed = {
+        "referenceSha256": sha256_file(reference),
+        "windowsBackingSha256": sha256_file(base),
+        "treatmentOvmfVarsSha256": sha256_file(vars_b),
+    }
+    before_partitions = before["partitionSha256"]
+    after_partitions = after["partitionSha256"]
+    require(isinstance(before_partitions, list) and len(before_partitions) == 4
+            and isinstance(after_partitions, list) and len(after_partitions) == 4
+            and all(isinstance(h, str) and re.fullmatch(r"[a-f0-9]{64}", h)
+                    for h in before_partitions + after_partitions),
+            "F-02: incomplete post-Mint Windows partition hash acquisition")
+    # Compare the *entire* GPT manifest: disk GUID, each PARTUUID,
+    # partition LBAs, sector size and primary/backup GPT byte digests.
+    gpt_fields = ("diskGuid", "partitionGuids", "partitionRanges",
+                  "sectorBytes", "rawPrimaryGptWindowSha256",
+                  "rawBackupGptWindowSha256")
+    gpt_differences = {
+        key: expected_gpt.get(key) != observed_gpt.get(key)
+        for key in gpt_fields
+    }
+    checks = {
+        "gptUnchanged": (expected_gpt == observed_gpt
+                         and not any(gpt_differences.values())),
+        "windowsEspUnchanged": before_partitions[0] == after_partitions[0],
+        "windowsMsrUnchanged": before_partitions[1] == after_partitions[1],
+        "windowsOsNtfsUnchanged": before_partitions[2] == after_partitions[2],
+        "windowsRecoveryUnchanged": before_partitions[3] == after_partitions[3],
+        "rootUuidUnchanged": before["rootUuid"] == after["rootUuid"],
+        "mintRootFilesUnchanged": before["mintRootFiles"] == after["mintRootFiles"],
+        "referenceUnchanged": observed["referenceSha256"]
+                              == checkpoint["referenceSha256"],
+        "backingUnchanged": observed["windowsBackingSha256"]
+                            == checkpoint["windowsBackingSha256"],
+        "treatmentOvmfVarsUnchanged": observed["treatmentOvmfVarsSha256"]
+                                      == checkpoint["initialOvmfVarsSha256"],
+    }
+    passed = all(checks.values())
+    report = {
+        "schema": "gaslux-mint-ab-post-mint-gate-v1",
+        "gate": "after_mint_before_windows_b",
+        "transactionId": transaction_id,
+        "result": "PASS" if passed else "BLOCKED_INTEGRITY",
+        "checks": checks,
+        "gptDifferences": gpt_differences,
+        "gptBefore": expected_gpt,
+        "gptAfterMint": observed_gpt,
+        "windowsPartitionSha256BeforeMint": before_partitions,
+        "windowsPartitionSha256AfterMint": after_partitions,
+        "rootUuidBeforeMint": before["rootUuid"],
+        "rootUuidAfterMint": after["rootUuid"],
+        "mintRootFileSha256BeforeMint": before["mintRootFiles"],
+        "mintRootFileSha256AfterMint": after["mintRootFiles"],
+        "observedSha256": observed,
+        "windowsBStarted": False,
+        "productionInstallAuthorized": False,
+        "releaseEligible": False,
+    }
+    write_manifest(evidence, "mint-ab-after-mint-gate.json", report)
+    require(passed, "F-02: post-Mint pre-Windows B integrity failure: "
+            + ", ".join(name for name, ok in checks.items() if not ok)
+            + (" (GPT: " + ", ".join(k for k, changed in gpt_differences.items()
+                                     if changed) + ")" if any(gpt_differences.values()) else ""))
+    return report
+
+
 def run_ab(*, original: list[str], base: Path, nvram: Path,
            overlay: Path, workspace: Path, root_uuid: str,
            kernel: Path, initramfs: Path, evidence: Path) -> dict:
@@ -336,14 +469,19 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
     ab["control"]["mintRootContentsPreserved"] = (after_a["mintRootFiles"]
                                                    == before[0]["mintRootFiles"])
     ab["control"]["gptUnchanged"] = (gpt_a == gpts[0])
+    # F-01: block the NEXT guest if Windows A touched any unused B resource.
+    control_gate = require_untouched_after_control(
+        directory=directory, base=base, checkpoint=checkpoint,
+        evidence=evidence, transaction_id=ab["transactionId"],
+    )
     write_manifest(evidence, "mint-ab-control.json", {
         "transactionId": ab["transactionId"],
         "sourceCommit": ab["sourceCommit"],
         "checkpointManifestSha256": ab["checkpointManifestSha256"],
         "control": ab["control"],
-        "referenceAndBStillUntouched": (
-            sha256_file(directory/REFERENCE) == checkpoint["referenceSha256"]
-            and sha256_file(arms[1]) == checkpoint["treatmentSha256"]),
+        "referenceAndBStillUntouched": control_gate["referenceAndBStillUntouched"],
+        "afterControlGateSha256": sha256_file(
+            evidence / "mint-ab-after-control-gate.json"),
         "releaseEligible": False,
     })
     # Treatment: Mint direct-kernel first, then the SAME Windows ordinal.
@@ -351,13 +489,23 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
         arms[1], kernel, initramfs, root_uuid,
         evidence/"mint-ab-arm-b-mint-serial.log")
     after_mint = guest_ro_inventory(arms[1], root_uuid)
+    # F-02: full GPT, all Windows partition digests, Mint root and
+    # immutable backing/reference MUST pass before starting Windows B.
+    after_mint_gpt = gpt_manifest(arms[1], workspace)
+    post_mint_gate = require_integrity_after_mint(
+        directory=directory, base=base, checkpoint=checkpoint,
+        evidence=evidence, transaction_id=ab["transactionId"],
+        before=before[1], after=after_mint,
+        expected_gpt=gpts[1], observed_gpt=after_mint_gpt,
+    )
     require(archive_serial(evidence/"mint-ab-arm-b-mint-serial.log",
                            directory, max_bytes=2_000_000)
             == ab["treatment"]["mintSerialSha256"],
             "Mint B transcript digest differs")
-    require(after_mint["partitionSha256"] == before[1]["partitionSha256"],
-            "Mint B mutated a protected Windows partition: fail closed")
     ab["treatment"]["partitionSha256AfterMint"] = after_mint["partitionSha256"]
+    ab["treatment"]["gptAfterMintUnchanged"] = post_mint_gate["checks"]["gptUnchanged"]
+    ab["treatment"]["postMintGateSha256"] = sha256_file(
+        evidence / "mint-ab-after-mint-gate.json")
     ab["treatment"]["windows"] = run_windows_arm(
         original, base, nvram, arms[1], directory/VARS[1],
         workspace/"mint-ab-arm-b-windows-serial.log")
