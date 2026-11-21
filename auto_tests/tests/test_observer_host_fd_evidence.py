@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -148,6 +149,49 @@ def test_real_host_fd_and_canonical_gpt_286(child_fd, canonical_gate):
     assert reading["firstSectorSha256"] == hashlib.sha256(first).hexdigest()
     assert gpt["snapshot"]["sizeBytes"] == pins.expected_size
     assert all(len(sample["sha256"]) == 64 for sample in gpt["regions"].values())
+    output_dir = os.environ.get("GASLUX_HOST_FD_EVIDENCE_DIR")
+    if output_dir:
+        destination = Path(output_dir)
+        assert destination.is_absolute() and destination.is_dir()
+        assert not destination.is_symlink() and destination.stat().st_mode & 0o077 == 0
+        example = {
+            "sampleSynthetic": True,
+            "sampleKind": "REAL_HOST_PYTHON_SUBPROCESS_FD_SYNTHETIC_GPT",
+            "classification": "NOT_INDEPENDENT",
+            "safetyAssessment": "DIAGNOSTIC_ONLY",
+            "processPid": pins.process.pid,
+            "processStartTicks": pins.process.start_ticks,
+            "qemuProcessObserved": False,
+            "qmpPeerObserved": False,
+            "mediaKind": "SYNTHETIC_RAW_GPT_REGULAR_FILE",
+            "fdEvidence": reading,
+            "gptEvidence": gpt,
+            "measuredAt": datetime.now(UTC).isoformat(),
+            "associationDecision": "DENY_UNVERIFIED_VM_FD_BINDING",
+            "originAuthenticated": False,
+            "freshnessAuthenticated": False,
+            "replayProtected": False,
+            "externallyAttested": False,
+            "checkpointImmutable": False,
+            "writerAuthorized": False,
+            "inputAuthorized": False,
+            "diskWritesAuthorized": False,
+            "productionInstallationAuthorized": False,
+            "productionWriteAuthorized": False,
+            "diskWriterCalled": False,
+            "guestInputs": 0,
+            "windowsGenuine": False,
+            "rollbackProven": False,
+            "fullPartitionContentHashMeasured": False,
+        }
+        payload = json.dumps(example, sort_keys=True, indent=2).encode("utf-8") + b"\n"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(destination / "synthetic-host-fd-trace.json", flags, 0o600)
+        with os.fdopen(fd, "wb", closefd=True) as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
 
 
 def test_host_fd_does_not_change_original_child_file_offset(child_fd, canonical_gate):

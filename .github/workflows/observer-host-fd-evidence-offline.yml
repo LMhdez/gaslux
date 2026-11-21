@@ -88,8 +88,38 @@ jobs:
         run: python3 -m pytest -q gptfd-pinned/auto_tests/tests/test_disk_identity_gate.py
       - name: Actual pinned PR #267 no-writer tests
         run: python3 -m pytest -q safety-pinned/auto_tests/tests/test_prewrite_no_writer.py
+      - name: Prepare private synthetic HOST FD evidence outside repository
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/gaslux-host-fd-synthetic"
       - name: New HOST process FD and synthetic QMP tests (NO QEMU)
+        env:
+          GASLUX_HOST_FD_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-host-fd-synthetic
         run: python3 -m pytest -q auto_tests/tests/test_observer_host_fd_evidence.py
+      - name: Verify evidence-only synthetic artifact hash (no images)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          folder="$RUNNER_TEMP/gaslux-host-fd-synthetic"
+          test -f "$folder/synthetic-host-fd-trace.json"
+          test ! -L "$folder/synthetic-host-fd-trace.json"
+          (cd "$folder" && sha256sum synthetic-host-fd-trace.json > synthetic-host-fd-sha256.txt)
+          python3 - "$folder/synthetic-host-fd-trace.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          evidence = json.loads(Path(sys.argv[1]).read_text())
+          assert evidence["sampleSynthetic"] is True
+          assert evidence["qemuProcessObserved"] is False
+          assert evidence["gptEvidence"]["assurance"] == "LOCALLY_MEASURED"
+          assert evidence["associationDecision"] == "DENY_UNVERIFIED_VM_FD_BINDING"
+          for item in ("originAuthenticated", "freshnessAuthenticated",
+                       "replayProtected", "externallyAttested",
+                       "diskWritesAuthorized", "productionInstallationAuthorized"):
+              assert evidence[item] is False
+          PY
       - name: Recheck source integrity after tests
         shell: bash
         run: |
@@ -98,3 +128,13 @@ jobs:
           test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
           test -z "$(git -C gptfd-pinned status --porcelain)"
           test -z "$(git -C safety-pinned status --porcelain)"
+      - name: Publish ONLY sanitized synthetic HOST-FD JSON and SHA-256 text
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observer-host-fd-real-process-synthetic-gpt-no-qemu
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/gaslux-host-fd-synthetic/*.json
+            ${{ runner.temp }}/gaslux-host-fd-synthetic/*.txt

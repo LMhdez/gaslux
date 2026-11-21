@@ -129,8 +129,17 @@ Offline workflow: .github/workflows/observer-host-fd-evidence-offline.yml
 - Pinned #286 canonical GPT FD tests and pinned #267 no-writer tests.
 - Ruff/compileall, clean checkouts before/after tests; NO QEMU binary,
   process, VM, guest, disks from Windows or installer/writer tests invoked.
-- Failures are not retried as successful evidence. Run artifacts are CI
-  logs only, not a signed host attestation. No QCOW2 image is uploaded.
+- The real subprocess test can write a **sanitized synthetic-only**
+  JSON witness into a private `RUNNER_TEMP` directory when explicitly
+  configured by CI. The record contains genuine local process PID/start
+  ticks, opened FD device/inode/size and GPT region hashes calculated
+  through #286. It explicitly reports `qemuProcessObserved=false`,
+  `qmpPeerObserved=false`, `associationDecision=DENY` and all authority
+  flags false. The workflow publishes only that JSON and its SHA-256 text
+  (7-day retention), **not** a RAW/QCOW2 file or an authenticated result.
+  This is a genuine fixture-process measurement, not a QEMU measurement.
+- Failed tests do not produce accepted evidence. CI logs and hashes are
+  same-runner diagnostics, **not** external chain-of-custody or signatures.
 
 ## Safety boundary and future requirements
 
