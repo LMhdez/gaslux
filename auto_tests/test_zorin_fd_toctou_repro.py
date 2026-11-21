@@ -1,10 +1,8 @@
 """Deterministic BEFORE-FIX TOCTOU reproduction using disposable synthetic GPT bytes.
 
 The fixture and pinned Safety #265 GPT reader are reused without modification.
-These tests are DIAGNOSTIC: they deliberately assert a currently unsafe
-read-only classification when a path is swapped after owned_fd().
-
-WARNING: These assertions must be inverted in the mitigation commit.
+These tests reproduce the original race, then require fail-closed refusal
+in the mitigation commit. They do not authorize any installation.
 """
 from __future__ import annotations
 
@@ -50,20 +48,18 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
         self.assertNotEqual(path.stat().st_ino, self.original_inodes[name])
         self.swaps.append(name)
 
-    def expect_unsafe_accept(self, name):
-        result = verifier.verify_private_synthetic(self.root, self.policy)
-        self.assertEqual(result["result"], "SYNTHETIC_NO_CHANGE")
-        self.assertEqual(result["authorization"], "DENY_NO_WRITER")
+    def expect_binding_refusal(self, name):
+        with self.assertRaises(verifier.WriteSetRefused) as caught:
+            verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertEqual(caught.exception.code, "E_GPT_FD_BINDING_REQUIRED")
         self.assertIn(name, self.swaps)
-        print("REPRODUCED_UNBOUND_GPT_SOURCE: " + name)
 
-    def test_control_no_swap_still_succeeds(self):
-        self.assertEqual(
-            verifier.verify_private_synthetic(self.root, self.policy)["result"],
-            "SYNTHETIC_NO_CHANGE",
-        )
+    def test_control_no_swap_requires_safety_fd_api(self):
+        with self.assertRaises(verifier.WriteSetRefused) as caught:
+            verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertEqual(caught.exception.code, "E_GPT_FD_BINDING_REQUIRED")
 
-    def test_baseline_regular_swap_before_gpt_is_accepted(self):
+    def test_baseline_regular_swap_before_gpt_is_refused(self):
         original = verifier.read_gpt
 
         def change(root, name, policy):
@@ -72,9 +68,9 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
             return original(root, name, policy)
 
         with patch.object(verifier, "read_gpt", side_effect=change):
-            self.expect_unsafe_accept("baseline.raw")
+            self.expect_binding_refusal("baseline.raw")
 
-    def test_trial_regular_swap_before_gpt_is_accepted(self):
+    def test_trial_regular_swap_before_gpt_is_refused(self):
         original = verifier.read_gpt
 
         def change(root, name, policy):
@@ -83,9 +79,9 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
             return original(root, name, policy)
 
         with patch.object(verifier, "read_gpt", side_effect=change):
-            self.expect_unsafe_accept("trial.raw")
+            self.expect_binding_refusal("trial.raw")
 
-    def test_trial_replaced_at_actual_safety_os_open_is_accepted(self):
+    def test_trial_replaced_at_actual_safety_os_open_is_refused(self):
         original_read = verifier.read_gpt
         system_open = os.open
 
@@ -102,9 +98,9 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
                 return original_read(root, name, policy)
 
         with patch.object(verifier, "read_gpt", side_effect=read_with_open_race):
-            self.expect_unsafe_accept("trial.raw")
+            self.expect_binding_refusal("trial.raw")
 
-    def test_checkpoint_path_swap_after_original_descriptor_is_accepted(self):
+    def test_checkpoint_path_swap_after_original_descriptor_is_refused(self):
         original = verifier.owned_fd
 
         def change(root, name, maximum):
@@ -114,9 +110,9 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
             return fd, stat_result
 
         with patch.object(verifier, "owned_fd", side_effect=change):
-            self.expect_unsafe_accept("checkpoint.raw")
+            self.expect_binding_refusal("checkpoint.raw")
 
-    def test_path_replaced_between_gpt_and_byte_comparison_is_accepted(self):
+    def test_path_replaced_between_gpt_and_byte_comparison_is_refused(self):
         original = verifier.compare_raw
 
         def change(a, b, policy):
@@ -124,7 +120,7 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
             return original(a, b, policy)
 
         with patch.object(verifier, "compare_raw", side_effect=change):
-            self.expect_unsafe_accept("trial.raw")
+            self.expect_binding_refusal("trial.raw")
 
     def test_foreign_partuuid_gpt_is_refused(self):
         original = verifier.read_gpt
@@ -153,7 +149,7 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
                 verifier.verify_private_synthetic(self.root, self.policy)
         self.assertEqual(caught.exception.code, "E_GPT_INVALID")
 
-    def test_hardlink_replacement_before_gpt_is_accepted(self):
+    def test_hardlink_replacement_before_gpt_is_refused(self):
         original = verifier.read_gpt
 
         def change(root, name, policy):
@@ -167,7 +163,7 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
             return original(root, name, policy)
 
         with patch.object(verifier, "read_gpt", side_effect=change):
-            self.expect_unsafe_accept("trial.raw")
+            self.expect_binding_refusal("trial.raw")
 
     def test_esp_entry_swap_between_stat_and_open_is_refused(self):
         system_open = os.open
@@ -176,7 +172,7 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
 
         def intercept(path, flags, *args, **kwargs):
             nonlocal switched
-            if Path(path) == original and not switched:
+            if str(path) == "bootmgfw.efi" and "dir_fd" in kwargs and not switched:
                 switched = True
                 foreign = self.root / "foreign-efi"
                 foreign.write_bytes(b"altered")
@@ -190,19 +186,15 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
         self.assertEqual(caught.exception.code, "E_ESP_RACE")
         self.assertTrue(switched)
 
-    def test_esp_directory_switch_between_scandir_and_open_is_unbound(self):
-        # scandir holds its old directory stream, while entry.path addresses
-        # the NEW directory inode after replacement. Equivalent content can
-        # hash identically, even though the inspected object changed.
-        system_scandir = os.scandir
+    def test_esp_directory_replaced_between_stat_and_open_is_refused(self):
+        system_open = os.open
         target = self.root / "esp-trial/EFI/Microsoft/Boot"
         original_inode = target.stat().st_ino
         did_change = False
 
-        def intercept(path):
+        def intercept(path, flags, *args, **kwargs):
             nonlocal did_change
-            stream = system_scandir(path)
-            if Path(path) == target and not did_change:
+            if str(path) == "Boot" and "dir_fd" in kwargs and not did_change:
                 did_change = True
                 replacement = self.root / "replacement-boot-dir"
                 replacement.mkdir()
@@ -210,13 +202,43 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
                 os.replace(target, self.root / "original-boot-dir")
                 os.replace(replacement, target)
                 self.assertNotEqual(target.stat().st_ino, original_inode)
-            return stream
+            return system_open(path, flags, *args, **kwargs)
+
+        with patch.object(verifier.os, "open", side_effect=intercept):
+            with self.assertRaises(verifier.WriteSetRefused) as caught:
+                verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertTrue(did_change)
+        self.assertEqual(caught.exception.code, "E_ESP_RACE")
+
+    def test_esp_open_dirfd_does_not_follow_replaced_pathname(self):
+        # A rename AFTER opening the pinned directory may not redirect
+        # the scanner to the replacement tree. The final name binding
+        # check must still refuse the transient mutation.
+        system_scandir = os.scandir
+        target = self.root / "esp-trial/EFI/Microsoft/Boot"
+        original_inode = target.stat().st_ino
+        did_change = False
+
+        def intercept(directory):
+            nonlocal did_change
+            if isinstance(directory, int) and not did_change:
+                opened = Path(os.readlink("/proc/self/fd/" + str(directory)))
+                if opened == target:
+                    did_change = True
+                    moved = self.root / "original-boot-dir"
+                    replacement = self.root / "replacement-boot-dir"
+                    replacement.mkdir()
+                    (replacement / "bootmgfw.efi").write_bytes(b"foreign")
+                    os.replace(target, moved)
+                    os.replace(replacement, target)
+                    self.assertNotEqual(target.stat().st_ino, original_inode)
+            return system_scandir(directory)
 
         with patch.object(verifier.os, "scandir", side_effect=intercept):
-            result = verifier.verify_private_synthetic(self.root, self.policy)
+            with self.assertRaises(verifier.WriteSetRefused) as caught:
+                verifier.verify_private_synthetic(self.root, self.policy)
         self.assertTrue(did_change)
-        self.assertEqual(result["result"], "SYNTHETIC_NO_CHANGE")
-        print("REPRODUCED_UNBOUND_ESP_DIRECTORY")
+        self.assertEqual(caught.exception.code, "E_ESP_RACE")
 
 if __name__ == "__main__":
     unittest.main()
