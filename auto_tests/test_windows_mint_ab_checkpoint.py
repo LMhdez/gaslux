@@ -159,6 +159,9 @@ class MintAbCheckpointContracts(unittest.TestCase):
                               return_value=ab.VIRTUAL_BYTES), \
                  patch.object(ab, "assert_detached_from_processes"), \
                  patch.object(ab, "image_info"), \
+                 patch.object(ab.os, "statvfs", return_value=type(
+                     "FakeFs", (), {"f_bavail": 1_000_000_000,
+                                    "f_frsize": 4096})()), \
                  patch.object(ab, "command", side_effect=fake_command), \
                  patch.object(ab, "standalone",
                               side_effect=OSError(errno.ENOSPC, "disk full")):
