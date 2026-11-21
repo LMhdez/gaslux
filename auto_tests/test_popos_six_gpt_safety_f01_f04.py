@@ -77,10 +77,11 @@ class OwnedFileSafetyTests(unittest.TestCase):
                         original.write_bytes(b"FOREIGN" * 9 + b"F")
                     return real_rename(src, dest, **kwargs)
 
-                with patch.object(ownership.os, "rename",
-                                  side_effect=swap_before_atomic_rename):
-                    with self.assertRaisesRegex(Refusal, "REFUSE_OWNERSHIP"):
-                        owned.remove(original)
+                with (
+                    patch.object(ownership.os, "rename", side_effect=swap_before_atomic_rename),
+                    self.assertRaisesRegex(Refusal, "REFUSE_OWNERSHIP"),
+                ):
+                    owned.remove(original)
                 self.assertTrue(other.is_file())
                 quarantined = list(work.glob(".owned-six-remove-*"))
                 self.assertEqual(len(quarantined), 1)
@@ -118,9 +119,8 @@ class OwnedFileSafetyTests(unittest.TestCase):
                 with patch.object(
                     ownership.os, "ftruncate",
                     side_effect=OSError(errno.ENOSPC, "injected ENOSPC")
-                ):
-                    with self.assertRaises(OSError):
-                        owned.create_file(work / "partial.raw", 4096)
+                ), self.assertRaises(OSError):
+                    owned.create_file(work / "partial.raw", 4096)
                 self.assertEqual((work / "partial.raw").stat().st_size, 0)
                 self.assertIn("partial.raw", owned.entries)
                 owned.cleanup()
@@ -223,19 +223,20 @@ class QcowMapSafetyTests(unittest.TestCase):
     def test_f04_exact_safety_zero_extent_refused(self):
         case = [{"depth": 0, "data": False, "zero": True,
                  "start": 0, "length": 4096}]
-        with patch.object(lab, "chain"):
-            with patch.object(lab, "command", return_value=json.dumps(case)):
-                with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
-                    lab.ensure_empty_child(Path("/tmp/child"), Path("/tmp/backing"))
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=json.dumps(case)),
+            self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
+        ):
+            lab.ensure_empty_child(Path("/tmp/child"), Path("/tmp/backing"))
 
     def test_f04_zero_child_full_length_also_refused(self):
         case = [{"depth": 0, "data": False, "zero": True,
                  "start": 0, "length": lab.SIZE}]
         with patch.object(lab, "chain"), patch.object(
             lab, "command", return_value=json.dumps(case)
-        ):
-            with self.assertRaisesRegex(Refusal, "depth-0 child"):
-                lab.ensure_empty_child(Path("/tmp/child"), Path("/tmp/backing"))
+        ), self.assertRaisesRegex(Refusal, "depth-0 child"):
+            lab.ensure_empty_child(Path("/tmp/child"), Path("/tmp/backing"))
 
     def test_f04_false_empty_map_missing_keys_gaps_and_unknown_fields(self):
         cases = [
@@ -252,11 +253,13 @@ class QcowMapSafetyTests(unittest.TestCase):
             "not an array",
         ]
         for item in cases:
-            with self.subTest(item=str(item)[:120]):
-                with patch.object(lab, "chain"), patch.object(
-                    lab, "command", return_value=json.dumps(item)
-                ), self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
-                    lab.ensure_empty_child(Path("/tmp/c"), Path("/tmp/b"))
+            with (
+                self.subTest(item=str(item)[:120]),
+                patch.object(lab, "chain"),
+                patch.object(lab, "command", return_value=json.dumps(item)),
+                self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
+            ):
+                lab.ensure_empty_child(Path("/tmp/c"), Path("/tmp/b"))
 
     def test_f04_valid_no_depth_zero_calls_effective_compare(self):
         with patch.object(lab, "chain"), patch.object(lab, "command") as cmd:
@@ -295,13 +298,15 @@ class QcowMapSafetyTests(unittest.TestCase):
                 Refusal("tool failure: qemu-img rc=1"),
                 subprocess.TimeoutExpired("qemu-img", 30),
             ):
-                with self.subTest(failure=str(failure)):
-                    with patch.object(lab, "chain"), patch.object(
-                        lab, "command", side_effect=failure
-                    ), self.assertRaises((Refusal, subprocess.TimeoutExpired)):
-                        lab.prove_injected_fault(
-                            child, base, sector, (st.st_dev, st.st_ino)
-                        )
+                with (
+                    self.subTest(failure=str(failure)),
+                    patch.object(lab, "chain"),
+                    patch.object(lab, "command", side_effect=failure),
+                    self.assertRaises((Refusal, subprocess.TimeoutExpired)),
+                ):
+                    lab.prove_injected_fault(
+                        child, base, sector, (st.st_dev, st.st_ino)
+                    )
             with patch.object(lab, "chain", side_effect=Refusal(
                 "foreign backing"
             )), self.assertRaisesRegex(Refusal, "foreign backing"):
@@ -344,9 +349,12 @@ class QcowMapSafetyTests(unittest.TestCase):
             ))
             if not any(row.get("depth") == 0 for row in info):
                 self.skipTest("QEMU optimized zero write into backing-equivalent hole")
-            with patch.object(lab, "chain"), patch.object(lab, "SIZE", 8 * 1024**2):
-                with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
-                    lab.ensure_empty_child(child, base)
+            with (
+                patch.object(lab, "chain"),
+                patch.object(lab, "SIZE", 8 * 1024**2),
+                self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
+            ):
+                lab.ensure_empty_child(child, base)
 
 
 if __name__ == "__main__":

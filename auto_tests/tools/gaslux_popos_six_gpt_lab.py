@@ -28,7 +28,6 @@ from gaslux_popos_reuse_snapshot_gate import (
     sha,
     system_ovmf_template,
 )
-from gaslux_popos_six_gpt_ownership import make_child, new_file, owner, record_created, remove
 from gaslux_popos_six_gpt_contract import (
     BOOLEANS,
     CONSENT,
@@ -49,6 +48,7 @@ from gaslux_popos_six_gpt_contract import (
     validate_geometry,
     validate_plan,
 )
+from gaslux_popos_six_gpt_ownership import make_child, new_file, owner, record_created, remove
 
 BASE_NAME = "prepared-six.raw"
 CHILD_NAME = "owned-six-child.qcow2"

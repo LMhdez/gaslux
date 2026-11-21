@@ -275,7 +275,6 @@ class SixGptNegativeTests(unittest.TestCase):
         self.assertIn("verify_canaries(base, plan, work)", runner_source)
 
     def test_readonly_fsck_partition_copy_and_untrusted_bounds(self):
-        import gaslux_popos_six_gpt_fsck as fsc
 
         with tempfile.TemporaryDirectory(prefix="gaslux-pop-six-gpt-") as folder:
             from gaslux_popos_six_gpt_ownership import OwnedDirectory

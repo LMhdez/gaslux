@@ -14,7 +14,6 @@ import sys
 from pathlib import Path
 
 from gaslux_popos_reuse_snapshot_gate import Refusal, command, need, regular, sha
-from gaslux_popos_six_gpt_ownership import new_file, remove
 from gaslux_popos_six_gpt_contract import BOOLEANS, PARTS, SECTOR, SIZE
 from gaslux_popos_six_gpt_lab import (
     BASE_NAME,
@@ -24,6 +23,7 @@ from gaslux_popos_six_gpt_lab import (
     verify_sfdisk_gpt,
     write_json_exclusive,
 )
+from gaslux_popos_six_gpt_ownership import new_file, remove
 
 
 def copy_owned_partition(base: Path, dest: Path, start: int, sectors: int) -> None:

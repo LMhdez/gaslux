@@ -21,8 +21,10 @@ from pathlib import Path
 
 from gaslux_popos_reuse_snapshot_gate import (
     Refusal,
-    make_child as original_make_child,
     need,
+)
+from gaslux_popos_reuse_snapshot_gate import (
+    make_child as original_make_child,
 )
 
 _ACTIVE = contextvars.ContextVar("gaslux_six_gpt_owned_work", default=None)
@@ -56,7 +58,7 @@ class OwnedDirectory:
         return st.st_dev, st.st_ino
 
     @classmethod
-    def create(cls, parent: Path) -> "OwnedDirectory":
+    def create(cls, parent: Path) -> OwnedDirectory:
         parent = Path(parent)
         need(parent.is_absolute() and parent.is_dir() and not parent.is_symlink(),
              "REFUSE_OWNERSHIP: foreign temporary parent")
@@ -266,10 +268,12 @@ def record_created(path: Path) -> Path:
 
 def execute_preflight(template: Path, evidence: Path) -> None:
     """One synchronous process holds directory FDs for the entire experiment."""
-    from gaslux_popos_six_gpt_lab import (
-        prepare, rehearse_recovery, verify_checkpoint,
-    )
     from gaslux_popos_six_gpt_fsck import verify_read_only_fsck
+    from gaslux_popos_six_gpt_lab import (
+        prepare,
+        rehearse_recovery,
+        verify_checkpoint,
+    )
 
     parent = Path(os.environ["RUNNER_TEMP"])
     with OwnedDirectory.create(parent) as owned:
