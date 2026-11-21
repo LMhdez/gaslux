@@ -1,4 +1,5 @@
 """Pinned-source offline composition tests; disposable raw GPT files only."""
+
 from __future__ import annotations
 
 import copy
@@ -66,15 +67,23 @@ def scan(image: Path, *, sector: int = 512) -> dict:
 
 def windows_record(snapshot: dict) -> dict:
     return {
-        "number": 0, "uniqueId": "synthetic-disk-identity-not-authenticated",
-        "sizeBytes": snapshot["sizeBytes"], "partitionStyle": "GPT",
+        "number": 0,
+        "uniqueId": "synthetic-disk-identity-not-authenticated",
+        "sizeBytes": snapshot["sizeBytes"],
+        "partitionStyle": "GPT",
         "logicalSectorSizeBytes": snapshot["logicalSectorSizeBytes"],
         "physicalSectorSizeBytes": 4096,
         "guid": snapshot["partitionTableId"][4:],
-        "signature": 0, "inventoryError": None,
+        "signature": 0,
+        "inventoryError": None,
         "partitions": [
-            {"number": 99 + i, "guid": p["partGuid"], "gptType": p["typeGuid"],
-             "offsetBytes": p["offsetBytes"], "sizeBytes": p["sizeBytes"]}
+            {
+                "number": 99 + i,
+                "guid": p["partGuid"],
+                "gptType": p["typeGuid"],
+                "offsetBytes": p["offsetBytes"],
+                "sizeBytes": p["sizeBytes"],
+            }
             for i, p in enumerate(snapshot["partitions"])
         ],
     }
@@ -88,12 +97,15 @@ def records(snapshot: dict) -> dict:
     """
     p = compat.parser_projection(parser, snapshot)
     record = {
-        "transactionId": TX, "diskId": "synthetic-unverified-disk-claim",
-        "partitionTableId": p["partitionTableId"], "partitionStyle": "GPT",
-        "sizeBytes": p["sizeBytes"], "logicalSectorBytes": p["logicalSectorBytes"],
-        "physicalSectorBytes": 4096, "partitionTableSha256": "0" * 64,
-        "partitions": [{**item, "contentSha256": "1" * 64}
-                       for item in p["partitions"]],
+        "transactionId": TX,
+        "diskId": "synthetic-unverified-disk-claim",
+        "partitionTableId": p["partitionTableId"],
+        "partitionStyle": "GPT",
+        "sizeBytes": p["sizeBytes"],
+        "logicalSectorBytes": p["logicalSectorBytes"],
+        "physicalSectorBytes": 4096,
+        "partitionTableSha256": "0" * 64,
+        "partitions": [{**item, "contentSha256": "1" * 64} for item in p["partitions"]],
     }
     return {name: copy.deepcopy(record) for name in ("windows", "host", "guest")}
 
@@ -110,9 +122,7 @@ def case(tmp_path):
     image = tmp_path / "synthetic-gpt.raw"
     upstream_gpt_test.make_image(image)
     original = scan(image)
-    snapshots = {
-        role: copy.deepcopy(original) for role in ("host", "guest", "guest-immediate")
-    }
+    snapshots = {role: copy.deepcopy(original) for role in ("host", "guest", "guest-immediate")}
     return {
         "image": image,
         "snapshot": original,
@@ -129,9 +139,13 @@ def structural(case):
 
 def decision(case):
     return compat.refuse_operational_composition(
-        parser=parser, crosscheck=crosscheck, snapshots=case["snapshots"],
-        windows_disk=case["windows_disk"], inventories=case["inventories"],
-        role_context=case["role_context"], claimed_transaction_id=TX,
+        parser=parser,
+        crosscheck=crosscheck,
+        snapshots=case["snapshots"],
+        windows_disk=case["windows_disk"],
+        inventories=case["inventories"],
+        role_context=case["role_context"],
+        claimed_transaction_id=TX,
         claimed_vm_id=VM,
     )
 
@@ -139,9 +153,11 @@ def decision(case):
 def test_gpt_from_original_fd_reconciles_structurally_only(case):
     assert case["snapshot"] == scan(case["image"])
     assert structural(case) == {
-        "structuralConsistency": True, "originAuthenticated": False,
+        "structuralConsistency": True,
+        "originAuthenticated": False,
         "guestImmediateIndependentWindows": False,
-        "contentHashesPresentFromParser": False, "authorization": False,
+        "contentHashesPresentFromParser": False,
+        "authorization": False,
     }
 
 
@@ -150,9 +166,14 @@ def test_forged_identical_crosscheck_returns_only_deny(case):
     value = decision(case)
     assert value["crosscheckConsistency"] is True
     assert value["decision"] == compat.UNVERIFIED
-    for key in ("provenanceIndependent", "replayProtected",
-                "windowsOriginVerified", "guestAttestationVerified",
-                "writerAuthorized", "productionInstallationAuthorized"):
+    for key in (
+        "provenanceIndependent",
+        "replayProtected",
+        "windowsOriginVerified",
+        "guestAttestationVerified",
+        "writerAuthorized",
+        "productionInstallationAuthorized",
+    ):
         assert value[key] is False
 
 
@@ -295,8 +316,11 @@ def test_mbr_experiment_rejected(case):
 def test_no_writer_original_real_api_does_not_authorize():
     # Original #267 tests separately cover the synthetic HMAC laboratory case.
     result = {
-        "decision": "ACCEPT_NO_WRITER", "transactionId": TX,
-        "vmId": VM, "planSha256": "0" * 64, "writeCount": 1,
+        "decision": "ACCEPT_NO_WRITER",
+        "transactionId": TX,
+        "vmId": VM,
+        "planSha256": "0" * 64,
+        "writeCount": 1,
     }
     with pytest.raises(compat.CompatibilityRefused, match="NO_WRITER_RESULT"):
         compat.deny_prewrite_promotion(result)
@@ -305,20 +329,35 @@ def test_no_writer_original_real_api_does_not_authorize():
 def test_real_no_writer_validator_refuses_missing_trust(case):
     with pytest.raises(prewrite.PrewriteDenied):
         prewrite.decide_no_writer(
-            plan={}, plan_bytes=b"", transaction_id=TX, vm_id=VM,
-            host_evidence={}, guest_evidence={}, immediate_evidence={},
-            host_key=b"", guest_key=b"", fresh_nonce="",
-            owned_regions=[], write_set=[],
+            plan={},
+            plan_bytes=b"",
+            transaction_id=TX,
+            vm_id=VM,
+            host_evidence={},
+            guest_evidence={},
+            immediate_evidence={},
+            host_key=b"",
+            guest_key=b"",
+            fresh_nonce="",
+            owned_regions=[],
+            write_set=[],
         )
 
 
 def test_real_observer_consumer_refuses_no_verified_verifier(case):
     with pytest.raises(observer.SafetyObserverRefused):
         observer.consume_observer_state_no_writer(
-            verifier=None, request=b"", response=b"", pins=None, plan_bytes=b"",
-            host_gpt=case["snapshots"]["host"], guest_gpt=case["snapshots"]["guest"],
-            immediate_gpt=case["snapshots"]["guest-immediate"], gate_evidence=None,
-            now=None, deadline=None,
+            verifier=None,
+            request=b"",
+            response=b"",
+            pins=None,
+            plan_bytes=b"",
+            host_gpt=case["snapshots"]["host"],
+            guest_gpt=case["snapshots"]["guest"],
+            immediate_gpt=case["snapshots"]["guest-immediate"],
+            gate_evidence=None,
+            now=None,
+            deadline=None,
         )
 
 
