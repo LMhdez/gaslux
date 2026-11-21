@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -125,7 +126,8 @@ def _fake_guest(
             assert path == str(synthetic)
             assert opts["format"] == "raw"
             assert opts["readonly"] == 1
-            assert opts["label"].startswith("gaslux")
+            # libguestfs rejects digits and punctuation in disk labels.
+            assert re.fullmatch(r"gaslux[a-f]{12}", opts["label"])
 
         def launch(self):
             if launch_error is not None:
