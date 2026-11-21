@@ -1,0 +1,73 @@
+name: Installer Observer offline swtpm quote (no guest input)
+on:
+  push:
+    branches:
+      - feature/installer-observer-engine
+    paths:
+      - 'auto_tests/installer_observer/guest_attestation.py'
+      - 'auto_tests/installer_observer/swtpm_probe.py'
+      - '.github/workflows/installer-observer-swtpm.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  swtpm-quote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated TPM 2.0 laboratory tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends swtpm tpm2-tools libtss2-tcti-swtpm0
+          python -m pip install 'cryptography>=50,<51' 'ruff>=0.8,<1'
+      - name: Compile and lint isolated offline verifier probe
+        run: |
+          python -m py_compile auto_tests/installer_observer/guest_attestation.py auto_tests/installer_observer/swtpm_probe.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/guest_attestation.py auto_tests/installer_observer/swtpm_probe.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/guest_attestation.py auto_tests/installer_observer/swtpm_probe.py
+      - name: Generate genuine ephemeral swtpm quote and verify it offline
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          work="$RUNNER_TEMP/gaslux-observer-swtpm"
+          mkdir -m 700 -p "$work/state"
+          swtpm socket --tpm2 --tpmstate "dir=$work/state" \
+            --server type=tcp,port=2321,bindaddr=127.0.0.1 \
+            --ctrl type=tcp,port=2322,bindaddr=127.0.0.1 \
+            --flags not-need-init &
+          swtpm_pid=$!
+          trap 'kill "$swtpm_pid" 2>/dev/null || true; wait "$swtpm_pid" 2>/dev/null || true' EXIT
+          export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=2321"
+          for attempt in {1..30}; do
+            if tpm2_startup -c >/dev/null 2>&1; then break; fi
+            if [ "$attempt" -eq 30 ]; then echo 'swtpm startup failed' >&2; exit 1; fi
+            sleep 0.2
+          done
+          tpm2_createek -c "$work/ek.ctx" -G rsa
+          tpm2_createak -C "$work/ek.ctx" -G ecc -g sha256 -s ecdsa \
+            -c "$work/ak.ctx" -u "$work/ak.pub" -n "$work/ak.name"
+          tpm2_readpublic -c "$work/ak.ctx" -f pem -o "$work/ak.pem"
+          tpm2_pcrread sha256:0,7 > "$work/pcrs.txt"
+          python -m auto_tests.installer_observer.swtpm_probe "$work"
+          sha256sum "$work/quote.msg" "$work/quote.sig" "$work/ak.pem" "$work/pcrs.txt" "$work/manifest.json"
+      - name: Preserve only public, laboratory quote evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observer-swtpm-offline-lab
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/gaslux-observer-swtpm/quote.msg
+            ${{ runner.temp }}/gaslux-observer-swtpm/quote.sig
+            ${{ runner.temp }}/gaslux-observer-swtpm/ak.pem
+            ${{ runner.temp }}/gaslux-observer-swtpm/pcrs.txt
+            ${{ runner.temp }}/gaslux-observer-swtpm/manifest.json
