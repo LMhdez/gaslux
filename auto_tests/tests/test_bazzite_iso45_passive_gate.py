@@ -189,6 +189,7 @@ def test_qemu_serial_file_backend_uses_qemu_chardev_syntax():
     assert "readonly=on,id=owned" in source
     assert "readonly=on,id=optical" in source
 
+
 def test_actual_portal_ocr_recognized_without_destination_authority():
     ocr = (
         "Drive! Bazzite Portal\\nSearch Apps and Actions\\n"
@@ -205,6 +206,7 @@ def test_actual_portal_ocr_recognized_without_destination_authority():
 def test_partial_portal_or_generic_desktop_is_not_sufficient():
     for text in ("Bazzite Portal", "Manage Bazzite", "Install to Hard Drive", "Desktop"):
         assert classify([text], guest_running=True)["result"] == "C"
+
 
 def test_any_unbound_ocr_cannot_claim_live_or_installer():
     for content in (

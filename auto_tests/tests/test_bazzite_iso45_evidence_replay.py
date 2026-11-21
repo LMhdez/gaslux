@@ -58,14 +58,17 @@ def test_wrong_zip_bytes_refused(original, tmp_path):
         replay(bad, candidate)
 
 
-@pytest.mark.parametrize("name", [
-    "iso45-screen-0.png",
-    "iso45-ocr-5.txt",
-    "iso45-serial.txt",
-    "iso45-preboot-topology.txt",
-    "iso45-synthetic-discard.json",
-    "bazzite-iso-public-readback.json",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "iso45-screen-0.png",
+        "iso45-ocr-5.txt",
+        "iso45-serial.txt",
+        "iso45-preboot-topology.txt",
+        "iso45-synthetic-discard.json",
+        "bazzite-iso-public-readback.json",
+    ],
+)
 def test_missing_member_refused(original, name):
     _, members, candidate = original
     altered = dict(members)
@@ -118,17 +121,20 @@ def test_grub_only_is_not_a_live_desktop(original):
         inspect_evidence(altered, candidate)
 
 
-@pytest.mark.parametrize(("name", "key", "value"), [
-    ("iso45-boot-preflight.json", "isoSha256", "f" * 64),
-    ("iso45-passive-boot-result.json", "provenanceResult", "B"),
-    ("iso45-passive-boot-result.json", "getActionsObserved", True),
-    ("iso45-passive-boot-result.json", "installationAuthorized", True),
-    ("iso45-passive-boot-result.json", "guestCommandChannelAuthorized", True),
-    ("iso45-passive-boot-result.json", "installerInterfaceIdentified", True),
-    ("iso45-passive-boot-result.json", "noWindowsDiskAttached", False),
-    ("iso45-synthetic-discard.json", "overlayDiscarded", False),
-    ("iso45-synthetic-after.json", "baseUnchanged", False),
-])
+@pytest.mark.parametrize(
+    ("name", "key", "value"),
+    [
+        ("iso45-boot-preflight.json", "isoSha256", "f" * 64),
+        ("iso45-passive-boot-result.json", "provenanceResult", "B"),
+        ("iso45-passive-boot-result.json", "getActionsObserved", True),
+        ("iso45-passive-boot-result.json", "installationAuthorized", True),
+        ("iso45-passive-boot-result.json", "guestCommandChannelAuthorized", True),
+        ("iso45-passive-boot-result.json", "installerInterfaceIdentified", True),
+        ("iso45-passive-boot-result.json", "noWindowsDiskAttached", False),
+        ("iso45-synthetic-discard.json", "overlayDiscarded", False),
+        ("iso45-synthetic-after.json", "baseUnchanged", False),
+    ],
+)
 def test_mutator_or_cross_run_claim_refused(original, name, key, value):
     _, members, candidate = original
     with pytest.raises(Refusal):

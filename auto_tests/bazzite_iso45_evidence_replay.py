@@ -157,17 +157,19 @@ def inspect_evidence(files: dict[str, bytes], candidate: dict) -> dict:
         )
     topology = files["iso45-preboot-topology.txt"].decode("utf-8", "replace")
     require(
-        all(x in topology for x in (
-            "GLXBAZRO001",
-            "gpt-layout-scratch.qcow2",
-            "bazzite-stable-live-amd64.iso",
-        )),
+        all(
+            x in topology
+            for x in (
+                "GLXBAZRO001",
+                "gpt-layout-scratch.qcow2",
+                "bazzite-stable-live-amd64.iso",
+            )
+        ),
         "Unexpected virtual device topology",
     )
     serial = files["iso45-serial.txt"].decode("utf-8", "replace")
     require(
-        "GRUB version 2.12" in serial
-        and "Booting `Launch Bazzite Installer'" in serial,
+        "GRUB version 2.12" in serial and "Booting `Launch Bazzite Installer'" in serial,
         "Missing UEFI/GRUB optical boot markers",
     )
     declared = files["iso45-screen-sha256.txt"].decode("utf-8").splitlines()
@@ -191,9 +193,7 @@ def inspect_evidence(files: dict[str, bytes], candidate: dict) -> dict:
             with Image.open(io.BytesIO(files[filename])) as img:
                 img.load()
                 require(
-                    img.format == "PNG"
-                    and img.mode == "RGB"
-                    and img.size == FRAME_SIZE,
+                    img.format == "PNG" and img.mode == "RGB" and img.size == FRAME_SIZE,
                     f"Unexpected PNG format or dimensions: frame {i}",
                 )
         except (UnidentifiedImageError, OSError, ValueError) as exc:
