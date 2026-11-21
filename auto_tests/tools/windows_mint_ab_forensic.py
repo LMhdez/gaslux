@@ -488,10 +488,12 @@ def run_ab(*, original: list[str], base: Path, nvram: Path,
     ab["treatment"] = run_mint_arm(
         arms[1], kernel, initramfs, root_uuid,
         evidence/"mint-ab-arm-b-mint-serial.log")
-    after_mint = guest_ro_inventory(arms[1], root_uuid)
-    # F-02: full GPT, all Windows partition digests, Mint root and
-    # immutable backing/reference MUST pass before starting Windows B.
+    # F-02: capture GPT immediately after Mint shutdown; a changed
+    # partition table must not even reach a subsequent Windows boot.
     after_mint_gpt = gpt_manifest(arms[1], workspace)
+    after_mint = guest_ro_inventory(arms[1], root_uuid)
+    # Full GPT, all Windows partition digests, Mint root and immutable
+    # backing/reference MUST pass before starting Windows B.
     post_mint_gate = require_integrity_after_mint(
         directory=directory, base=base, checkpoint=checkpoint,
         evidence=evidence, transaction_id=ab["transactionId"],
