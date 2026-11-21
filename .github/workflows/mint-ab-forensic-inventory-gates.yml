@@ -58,27 +58,6 @@ jobs:
           export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
           python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
           python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
-      - name: Produce reviewed Ruff-only source proposal after a style failure
-        if: failure()
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
-          python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
-          python3 -m ruff format auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
-          python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          for name in (
-              "auto_tests/tools/windows_mint_ab_forensic.py",
-              "auto_tests/test_windows_mint_ab_forensic.py",
-          ):
-              path = Path(name)
-              print("GASLUX_RUFF_FORMATTED_SOURCE=" + json.dumps({
-                  "path": name, "source": path.read_text(encoding="utf-8")
-              }, ensure_ascii=True), flush=True)
-          PY
       - name: Synthetic QCOW2 arm isolation (no Windows, no guest boot)
         shell: bash
         run: |
