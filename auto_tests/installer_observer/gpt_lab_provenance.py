@@ -374,13 +374,6 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
                 first, last, label, pid, before_process.start_ticks
             ),
         )
-        immediate = capture_gpt(
-            workspace / "host.raw",
-            workspace,
-            source="immediate",
-            logical_sector_size=SECTOR,
-            safety_disk=disk,
-        )
         require(process_seal(pid) == before_process, "QEMU_PROCESS_CHANGED")
         require(_qemu_executable_hash(pid) == executable_sha, "QEMU_EXECUTABLE_CHANGED")
     finally:
@@ -398,6 +391,23 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         sha_file(base) == chain_before["backingSha256"]
         and sha_file(overlay) == chain_before["overlaySha256"],
         "BACKING_HASH_CHANGED",
+    )
+    # A new, independently exported read of the unchanged QCOW2 is mandatory.
+    # Never re-label the earlier host.raw copy as an immediate live observation.
+    lab.host_snapshot(overlay, workspace / "immediate.raw", workspace)
+    immediate = capture_gpt(
+        workspace / "immediate.raw",
+        workspace,
+        source="immediate",
+        logical_sector_size=SECTOR,
+        safety_disk=disk,
+    )
+    lab.same_file(base, workspace, base_stat)
+    lab.same_file(overlay, workspace, overlay_stat)
+    require(
+        sha_file(base) == chain_before["backingSha256"]
+        and sha_file(overlay) == chain_before["overlaySha256"],
+        "BACKING_CHANGED_AFTER_IMMEDIATE",
     )
     captures = (host, guest, immediate)
     require(
@@ -496,6 +506,8 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         "virtualSerialHardwareVerified": False,
         "vmUuidReadFromQmp": False,
         "hostCapturedFromExportedQcow2RawImage": True,
+        "immediateCapturedFromFreshQcow2Export": True,
+        "immediateQemuProcessAlreadyTerminated": True,
         "guestCapturedWithLibguestfsPreadDevice": True,
         "guestCaptureAuthentication": "same-runner-readonly-not-independent",
         "snapshotCaptureSource": "real-qemu-libguestfs",
