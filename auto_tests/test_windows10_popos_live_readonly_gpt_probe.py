@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import os
 import pathlib
+from subprocess import CompletedProcess
 import sys
 import unittest
 import uuid
@@ -22,6 +23,7 @@ from windows10_popos_gpt_mirror_gate import SECTOR, TOTAL_BYTES, WINDOW_BYTES
 from windows10_popos_live_readonly_gpt_probe import (
     measure_six_gpt_windows, probe_linux_guest_gpt,
     require_stage_report, _run_readonly,
+    _require_unformatted_owned_partition,
 )
 
 
@@ -162,6 +164,88 @@ class WindowsPopLiveGptReadOnlyContracts(unittest.TestCase):
         ):
             with self.subTest(argv=argv), self.assertRaises(DiskAuditError):
                 _run_readonly(argv)
+
+
+    def test_unformatted_blkid_exit_zero_without_type_requires_empty_wipefs(self):
+        # Observed on genuine Pop 24.04 live on Windows 10 six-GPT COW:
+        # blkid exits 0 with no TYPE on the newly staged unformatted ESP.
+        for rc in (0, 2):
+            with self.subTest(blkid_rc=rc):
+                with patch(
+                    "windows10_popos_live_readonly_gpt_probe.subprocess.run",
+                    side_effect=[
+                        CompletedProcess([], rc, stdout="", stderr=""),
+                        CompletedProcess([], 0, stdout='{"signatures": []}', stderr=""),
+                    ],
+                ) as runner:
+                    _require_unformatted_owned_partition(pathlib.Path("/dev/vda5"), 5)
+                self.assertEqual(runner.call_count, 2)
+                self.assertEqual(
+                    runner.call_args_list[0].args[0],
+                    ["blkid", "-p", "-s", "TYPE", "-o", "value", "/dev/vda5"],
+                )
+                self.assertEqual(
+                    runner.call_args_list[1].args[0],
+                    ["wipefs", "--no-act", "--json", "/dev/vda5"],
+                )
+
+    def test_reject_existing_signatures_and_unknown_blkid_results(self):
+        invalid_blkid = [
+            (0, "vfat\\n", ""),
+            (0, "ext4\\n", ""),
+            (0, "crypto_LUKS\\n", ""),
+            (0, "", "unexpected diagnostic error"),
+            (1, "", ""),
+            (4, "", ""),
+            (2, "vfat\\n", ""),
+        ]
+        for rc, stdout, stderr in invalid_blkid:
+            with self.subTest(rc=rc, stdout=stdout, stderr=stderr):
+                with patch(
+                    "windows10_popos_live_readonly_gpt_probe.subprocess.run",
+                    return_value=CompletedProcess([], rc, stdout=stdout, stderr=stderr),
+                ) as runner:
+                    with self.assertRaises(DiskAuditError):
+                        _require_unformatted_owned_partition(pathlib.Path("/dev/vda6"), 6)
+                self.assertEqual(runner.call_count, 1, "wipefs must not mask blkid refusal")
+
+        invalid_wipefs = [
+            (0, '{"signatures":[{"type":"vfat","offset":"0x52"}]}', ""),
+            (0, '{"signatures":[{"type":"ext4"}]}', ""),
+            (0, '{"signatures":[{"type":"crypto_LUKS"}]}', ""),
+            (0, '{"other":[]}', ""),
+            (0, '{"signatures":[],"unexpected":true}', ""),
+            (0, '{malformed', ""),
+            (0, "", ""),
+            (1, '{"signatures":[]}', ""),
+            (0, '{"signatures":[]}', "probe warning"),
+        ]
+        for rc, stdout, stderr in invalid_wipefs:
+            with self.subTest(wipefs_rc=rc, inventory=stdout, stderr=stderr):
+                with patch(
+                    "windows10_popos_live_readonly_gpt_probe.subprocess.run",
+                    side_effect=[
+                        CompletedProcess([], 0, stdout="", stderr=""),
+                        CompletedProcess([], rc, stdout=stdout, stderr=stderr),
+                    ],
+                ) as runner:
+                    with self.assertRaises(DiskAuditError):
+                        _require_unformatted_owned_partition(pathlib.Path("/dev/vda5"), 5)
+                self.assertEqual(runner.call_count, 2)
+
+    def test_reject_foreign_partition_path_before_any_subprocess(self):
+        for path, index in [
+            ("/dev/sda5", 5),
+            ("/dev/vda1", 1),
+            ("/dev/vda6", 5),
+            ("/tmp/vda5", 5),
+            ("/dev/vda7", 7),
+        ]:
+            with self.subTest(path=path, index=index):
+                with patch("windows10_popos_live_readonly_gpt_probe.subprocess.run") as runner:
+                    with self.assertRaises(DiskAuditError):
+                        _require_unformatted_owned_partition(pathlib.Path(path), index)
+                    runner.assert_not_called()
 
 
 if __name__ == "__main__":

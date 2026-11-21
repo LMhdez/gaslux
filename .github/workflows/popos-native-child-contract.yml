@@ -1,0 +1,113 @@
+name: Real Windows Pop native COW child and signed ISO lab contracts (no media)
+
+on:
+  push:
+    branches:
+      - test/popos-genuine-windows-native-live-20261119
+    paths:
+      - .github/workflows/popos-native-child-contract.yml
+      - auto_tests/tools/windows10_popos_native_child_vm_checkpoint.py
+      - auto_tests/test_windows10_popos_native_child_vm_checkpoint.py
+      - auto_tests/tools/gaslux_popos_distinst_preview.py
+      - auto_tests/tests/test_popos_distinst_preview.py
+      - auto_tests/tools/windows10_popos_native_prewrite_guest.py
+      - auto_tests/test_windows10_popos_native_prewrite_guest.py
+      - auto_tests/tools/windows10_popos_native_write_set.py
+      - auto_tests/test_windows10_popos_native_write_set.py
+      - auto_tests/tools/windows10_popos_safety_attestation_adapter.py
+      - auto_tests/test_windows10_popos_safety_attestation_adapter.py
+      - auto_tests/tools/windows10_popos_distinst_readonly_observer.py
+      - auto_tests/test_windows10_popos_distinst_readonly_observer.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
+      - docs/POP_OS_NATIVE_WRITESET_LAB.md
+      - auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
+      - auto_tests/tools/windows10_popos_native_realwin10_firstboot_guest.sh
+      - auto_tests/tools/windows10_popos_official_iso_signed_lab.py
+      - auto_tests/test_windows10_popos_real_live_contract.py
+      - auto_tests/tools/windows10_popos_genuine_live_guest_probe.py
+      - auto_tests/tools/windows10_popos_genuine_live_console.py
+      - auto_tests/tools/windows10_popos_genuine_live_same_cow_vm.py
+  pull_request:
+    paths:
+      - .github/workflows/popos-native-child-contract.yml
+      - auto_tests/tools/gaslux_popos_distinst_preview.py
+      - auto_tests/tests/test_popos_distinst_preview.py
+      - auto_tests/tools/windows10_popos_native_write_set.py
+      - auto_tests/test_windows10_popos_native_write_set.py
+      - auto_tests/tools/windows10_popos_safety_attestation_adapter.py
+      - auto_tests/test_windows10_popos_safety_attestation_adapter.py
+      - auto_tests/tools/windows10_popos_distinst_readonly_observer.py
+      - auto_tests/test_windows10_popos_distinst_readonly_observer.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-child-no-writer-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile native/lab source without guest or media
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for source in \
+              windows10_popos_official_iso_signed_lab.py \
+              windows10_popos_native_child_vm_checkpoint.py \
+              windows10_popos_native_prewrite_guest.py \
+              windows10_popos_native_write_set.py \
+              windows10_popos_safety_attestation_adapter.py \
+              windows10_popos_distinst_readonly_observer.py \
+              windows10_popos_synthetic_qemu_trace_contract.py \
+              windows10_popos_synthetic_qemu_write_smoke.py \
+              windows10_popos_genuine_live_console.py \
+              windows10_popos_genuine_live_same_cow_vm.py \
+              windows10_popos_genuine_live_guest_probe.py \
+              windows10_popos_live_readonly_gpt_probe.py; do
+            python3 -m py_compile "auto_tests/tools/$source"
+          done
+      - name: Validate historical inert distinst ESP noformat preview and negative cases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/gaslux_popos_distinst_preview.py auto_tests/tests/test_popos_distinst_preview.py
+          python3 -m venv "$RUNNER_TEMP/gaslux-pop-preview-venv"
+          "$RUNNER_TEMP/gaslux-pop-preview-venv/bin/python" -m pip install --disable-pip-version-check pytest
+          "$RUNNER_TEMP/gaslux-pop-preview-venv/bin/python" -m pytest -q auto_tests/tests/test_popos_distinst_preview.py
+          echo 'Inert argument preview only; Windows ESP noformat negative contracts pass. Native distinst NOT executed.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Check native guest shell scripts without invoking them
+        run: |
+          set -Eeuo pipefail
+          bash -n auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
+          bash -n auto_tests/tools/windows10_popos_native_realwin10_firstboot_guest.sh
+      - name: Validate separate child backing and signed ISO identity fail-closed
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for name in \
+              test_windows10_popos_native_child_vm_checkpoint.py \
+              test_windows10_popos_native_prewrite_guest.py \
+              test_windows10_popos_native_write_set.py \
+              test_windows10_popos_safety_attestation_adapter.py \
+              test_windows10_popos_distinst_readonly_observer.py \
+              test_windows10_popos_synthetic_qemu_trace_contract.py \
+              test_windows10_popos_real_live_contract.py \
+              test_windows10_popos_live_readonly_gpt_probe.py \
+              test_windows10_popos_native_readonly_handoff_candidate.py \
+              test_windows10_popos_gpt_mirror_gate.py \
+              test_windows10_popos_independent_esp_plan.py \
+              test_windows10_popos_independent_esp_root_stage.py \
+              test_windows10_popos_same_disk_overlay_stage.py \
+              test_windows_x64_installed_gpt_ro_audit.py; do
+            python3 -m unittest discover -s auto_tests -p "$name" -v
+          done
+          echo 'Verified inert Pop #5/#6 write-set and protected Windows #1–#4 negative contracts; upstream distinst disk.commit remains unconfined. NO native writes allowed.' >> "$GITHUB_STEP_SUMMARY"

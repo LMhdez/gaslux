@@ -1,0 +1,119 @@
+name: Pop synthetic-only QEMU write trace and no-writer contracts
+
+on:
+  push:
+    branches:
+      - test/popos-genuine-windows-native-live-20261119
+    paths:
+      - .github/workflows/popos-synthetic-qemu-write-trace.yml
+      - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
+      - auto_tests/tools/windows10_popos_synthetic_distinst_guest.sh
+      - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_synthetic_distinst_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_distinst_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_distinst_guest_script_contract.py
+      - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_distinst_readonly_observer.py
+      - auto_tests/tools/windows10_popos_official_iso_signed_lab.py
+      - auto_tests/tools/windows10_popos_genuine_live_same_cow_vm.py
+  pull_request:
+    paths:
+      - .github/workflows/popos-synthetic-qemu-write-trace.yml
+      - auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
+      - auto_tests/tools/windows10_popos_synthetic_distinst_guest.sh
+      - auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py
+      - auto_tests/tools/windows10_popos_synthetic_distinst_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_distinst_trace_contract.py
+      - auto_tests/test_windows10_popos_synthetic_distinst_guest_script_contract.py
+      - auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel stale hosted ISO/QEMU media runs; do not burn multiple runners on edits.
+concurrency:
+  group: pop-synthetic-qemu-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-write-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate QEMU write-trace parser and isolation tests without disks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py \
+            auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py \
+            auto_tests/tools/windows10_popos_synthetic_distinst_trace_contract.py \
+            auto_tests/test_windows10_popos_synthetic_qemu_trace_contract.py \
+            auto_tests/test_windows10_popos_synthetic_distinst_trace_contract.py \
+            auto_tests/test_windows10_popos_synthetic_distinst_guest_script_contract.py
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows10_popos_synthetic_*_contract.py' -v
+          bash -n auto_tests/tools/windows10_popos_native_realwin10_install_guest.sh
+          echo "SYNTHETIC contract only; all Windows writer guards remain DENIED." >> "$GITHUB_STEP_SUMMARY"
+
+  synthetic-qemu-observe-real-smoke:
+    # Signed reuse --test already passed. Keep automatic no-writer contracts,
+    # but require explicit dispatch for this costly synthetic QEMU experiment.
+    # New full-install PR edits must not cancel or duplicate an older --test.
+    if: github.event_name == 'workflow_dispatch'
+    name: REAL QEMU / signed Pop live / known-write monitor + distinst --test synthetic-only
+    needs: synthetic-write-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_POP_SYNTHETIC_WRITE_CONSENT: I_ACCEPT_ONLY_DISPOSABLE_SYNTHETIC_QEMU_WRITE_TRACE
+      GASLUX_POP_SYNTHETIC_ISO_LAB_CONSENT: I_ACCEPT_OFFICIAL_POP_ISO_FOR_SYNTHETIC_QEMU_LAB
+      GASLUX_POP_DISTINST_SYNTHETIC_CONSENT: I_ACCEPT_ONLY_SYNTHETIC_POP_DISTINST_TEST
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require hosted KVM, install QEMU and verified signed ISO helpers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf dosfstools mtools \
+            grub-common grub-efi-amd64-bin gdisk aria2 squashfs-tools \
+            curl gnupg ca-certificates
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -m 700 "$GITHUB_WORKSPACE/pop-synthetic-qemu-evidence"
+      - name: Validate monitor, then execute authentic distinst --test on separate synthetic QCOW2
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py \
+            auto_tests/tools/windows10_popos_synthetic_qemu_trace_contract.py \
+            auto_tests/tools/windows10_popos_synthetic_distinst_trace_contract.py
+          bash -n auto_tests/tools/windows10_popos_synthetic_distinst_guest.sh
+          python3 auto_tests/tools/windows10_popos_synthetic_qemu_write_smoke.py
+          echo 'REAL QEMU: known-write monitor passed before authentic distinst --test on a separate disposable synthetic QCOW2. No Windows disk attached.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'SYNTHETIC VARIANT: explicit preformat of owned ESP/root, followed by authentic distinst --use reuse --test. PMBR/GPT bytes and independent QEMU write-set must pass; no Windows disk attached.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'distinst --test is NOT a dry-run or full system install. Windows writer/ESP authorization remains DENIED; no dual-boot or rollback claim.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain only bounded JSON/sector trace/sidecar, never raw or QCOW2
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pop-synthetic-qemu-virtio-write-smoke
+          path: pop-synthetic-qemu-evidence/
+          retention-days: 7
+          if-no-files-found: warn

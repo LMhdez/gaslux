@@ -1,0 +1,176 @@
+name: Genuine Windows 10 then signed Pop 24.04 live on same COW (READ ONLY VM)
+
+on:
+  push:
+    branches:
+      - test/popos-genuine-windows-native-live-20261119
+    paths:
+      - .github/workflows/windows10-popos-signed-live-same-cow.yml
+      - auto_tests/tools/windows10_popos_official_iso_signed_lab.py
+      - auto_tests/tools/windows10_popos_genuine_live_same_cow_vm.py
+      - auto_tests/tools/windows10_popos_genuine_live_console.py
+      - auto_tests/tools/windows10_popos_genuine_live_guest_probe.py
+      - auto_tests/tools/windows10_popos_live_readonly_gpt_probe.py
+      - auto_tests/test_windows10_popos_live_readonly_gpt_probe.py
+      - auto_tests/tools/windows10_popos_native_child_vm_checkpoint.py
+      - auto_tests/test_windows10_popos_native_child_vm_checkpoint.py
+      - auto_tests/test_windows10_popos_real_live_contract.py
+      - auto_tests/test_windows10_popos_genuine_live_console.py
+      - auto_tests/tools/windows_x64_tcg_firstboot.py
+      - auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+      - auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
+      - auto_tests/tools/windows10_popos_gpt_mirror_gate.py
+      - auto_tests/tools/windows10_popos_independent_esp_plan.py
+      - auto_tests/tools/windows10_popos_independent_esp_root_stage.py
+      - auto_tests/test_windows10_popos_independent_esp_plan.py
+      - auto_tests/test_windows10_popos_independent_esp_root_stage.py
+      - auto_tests/test_windows10_popos_gpt_mirror_gate.py
+      - auto_tests/test_windows10_popos_same_disk_overlay_stage.py
+      - auto_tests/test_windows_x64_installed_gpt_ro_audit.py
+      - auto_tests/tools/windows_x64_libguestfs_kernel.sh
+      - auto_tests/test_windows_x64_two_stage_boot.py
+      - auto_tests/test_windows_x64_swtpm_reconnect.py
+      - auto_tests/test_windows_x64_tcg_unattend_contract.py
+      - auto_tests/powershell/test_windows_firstlogon_serial_line_contract.ps1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-host-and-proof-contracts:
+    name: All Windows client and two-stage destructive-replay guards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: No media, no guest, fail-closed unit and Linux portability tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m py_compile auto_tests/tools/windows_x64_tcg_firstboot.py
+          python3 -m py_compile auto_tests/tools/windows_x64_installed_gpt_ro_audit.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_same_disk_overlay_stage.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_gpt_mirror_gate.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_independent_esp_plan.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_independent_esp_root_stage.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_official_iso_signed_lab.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_genuine_live_same_cow_vm.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_genuine_live_console.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_genuine_live_guest_probe.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_live_readonly_gpt_probe.py
+          python3 -m py_compile auto_tests/tools/windows10_popos_native_child_vm_checkpoint.py
+          bash -n auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          for name in \
+              test_windows_x64_two_stage_boot.py \
+              test_windows_x64_installed_gpt_ro_audit.py \
+              test_windows10_popos_same_disk_overlay_stage.py \
+              test_windows10_popos_gpt_mirror_gate.py \
+              test_windows10_popos_independent_esp_plan.py \
+              test_windows10_popos_independent_esp_root_stage.py \
+              test_windows10_popos_native_readonly_handoff_candidate.py \
+              test_windows10_popos_live_readonly_gpt_probe.py \
+              test_windows10_popos_native_child_vm_checkpoint.py \
+              test_windows10_popos_real_live_contract.py \
+              test_windows10_popos_genuine_live_console.py \
+              test_windows_x64_noprompt_one_shot.py \
+              test_windows_x64_derived_noprompt.py \
+              test_windows_x64_kvm_opt_in.py \
+              test_windows_x64_clean_poweroff_gate.py \
+              test_windows_x64_tcg_unattend_contract.py \
+              test_windows_x64_winre_baseline_contract.py \
+              test_windows_x64_qemu_host_gate.py; do
+            python3 -m unittest discover -s auto_tests -p "$name" -v
+          done
+      - name: Prove physical-host-safe swtpm listener restart with same private NV directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends swtpm
+          python3 -m unittest discover -s auto_tests -p 'test_windows_x64_swtpm_reconnect.py' -v
+          echo 'Real swtpm Unix listener reconnected with same temporary NV directory; no Windows boot proven.' >> "$GITHUB_STEP_SUMMARY"
+
+  genuine-client-two-stage-firstboot:
+    name: Genuine Microsoft ${{ matrix.profile }} + signed Pop ISO live same GPT COW
+    needs: verify-host-and-proof-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          # Historical 44048550209 reached installed Windows 10 Boot Manager
+          # with floppy media, but guest PowerShell collapsed the 7 markers.
+          # Re-run this EXACT former installation path after correcting only
+          # marker-array semantics. Do not imply support for Windows 11.
+          - win10_22h2_en_us_x64
+    env:
+      PYTHONUNBUFFERED: '1'
+      GASLUX_WINDOWS_KVM_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_ONLY
+      GASLUX_WINDOWS_TWO_STAGE_INSTALL_CONSENT: I_ACCEPT_DISPOSABLE_GITHUB_KVM_DVD_THEN_DISK_ONLY
+      GASLUX_WIN10_POP_OVERLAY_CONSENT: I_ACCEPT_GITHUB_ONLY_QCOW2_COPY_ON_WRITE_LINUX_ROOT_STAGE
+      GASLUX_WIN10_POP_PAIR_COW_CONSENT: I_ACCEPT_ONLY_DISPOSABLE_WIN10_POP_ESP_ROOT_QCOW2
+      GASLUX_WIN10_POP_PAIR_POSTBOOT_CONSENT: I_ACCEPT_DISPOSABLE_POP_PAIR_WINDOWS_THIRD_BOOT
+      GASLUX_POP_WINDOWS_COW_LIVE_CONSENT: I_ACCEPT_AUTHENTIC_POP_LIVE_WITH_READONLY_WIN10_COW
+      GASLUX_POP_WINDOWS_COW_LIVE_ISO_CONSENT: I_ACCEPT_VERIFIED_POP_ISO_IN_DISPOSABLE_WINDOWS_KVM_VM
+      GASLUX_POP_NATIVE_CHILD_COW_CONSENT: I_ACCEPT_DISPOSABLE_CHILD_ONLY_AFTER_POP_LIVE_GPT_GUEST
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require hosted KVM and prepare isolated Windows/ISO UDF tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf swtpm dosfstools mtools \
+            p7zip-full genisoimage python3-guestfs libguestfs-tools linux-image-generic \
+            aria2 squashfs-tools binutils curl gnupg ca-certificates gdisk acl \
+            grub-common grub-efi-amd64-bin
+          test -c /dev/kvm && test ! -L /dev/kvm
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          mkdir -p "$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+      - name: Select a complete private libguestfs kernel without switching host kernel
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          python3 - <<'PY'
+          import guestfs
+          print("PASS: Ubuntu python3-guestfs binding installed; no disk opened")
+          PY
+      - name: Validate official SHA, disposable first DVD Setup, detach DVD and independently firstboot Windows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export GASLUX_WINDOWS_EVIDENCE="$GITHUB_WORKSPACE/windows-x64-tcg-evidence"
+          python3 auto_tests/tools/windows_x64_tcg_firstboot.py \
+            --profile "${{ matrix.profile }}" --accel kvm \
+            --derived-no-prompt --two-stage-install-only --boot-timeout 4800 \
+            --audit-installed-gpt-readonly --stage-pop-independent-esp-root-overlay \
+            --verify-pop-post-pair-windows-reboot --probe-pop-live-on-six-gpt
+          echo 'PASS: Genuine Win10 reboot, GPG-verified Pop live GPT audit, and disposable nested QCOW2 creation/discard with parent SHA checks.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No native distinst writes, first installed Pop boot, Linux updates, Windows menu integration or rollback authorization. All experimental; no catalog promotion.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain only serial, hash and JSON; never ISO, WIM, QCOW2 or TPM state
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-genuine-pop-signed-live-${{ matrix.profile }}
+          path: windows-x64-tcg-evidence/
+          retention-days: 7
+          if-no-files-found: warn
