@@ -64,6 +64,8 @@ jobs:
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
+          # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
+          export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
           python3 -m unittest auto_tests.test_popos_six_gpt_contract -v
           python3 -m unittest auto_tests.test_popos_reuse_full_contract -v
           python3 -m unittest auto_tests.test_windows10_popos_native_write_set -v
