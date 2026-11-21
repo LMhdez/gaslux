@@ -47,7 +47,8 @@ def sample(tmp_path):
 def take(sample, source="host", *, guest=False, size=512):
     path, folder = sample
     return capture_gpt(
-        path, folder,
+        path,
+        folder,
         source=source,
         guest_sample_origin=guest,
         logical_sector_size=size,
@@ -122,9 +123,10 @@ def test_link_and_replacement_refused(sample, kind):
 def test_foreign_location_refused(sample, tmp_path_factory):
     path, _ = sample
     other = tmp_path_factory.mktemp("foreign")
-    refused("DISK_PATH_UNOWNED", lambda: capture_gpt(
-        path, other, source="host", logical_sector_size=512, safety_disk=disk
-    ))
+    refused(
+        "DISK_PATH_UNOWNED",
+        lambda: capture_gpt(path, other, source="host", logical_sector_size=512, safety_disk=disk),
+    )
 
 
 def test_replaced_while_reading_refused(sample):
@@ -145,10 +147,12 @@ def test_replaced_while_reading_refused(sample):
                 new.rename(path)
             return disk.exact_read(fd, offset, length)
 
-    refused("DISK_CHANGED_DURING_READ", lambda: capture_gpt(
-        path, folder, source="host",
-        logical_sector_size=512, safety_disk=TamperingParser
-    ))
+    refused(
+        "DISK_CHANGED_DURING_READ",
+        lambda: capture_gpt(
+            path, folder, source="host", logical_sector_size=512, safety_disk=TamperingParser
+        ),
+    )
 
 
 def test_host_guest_immediate_comparison_refuses_changed_identity(sample):
@@ -161,49 +165,77 @@ def test_host_guest_immediate_comparison_refuses_changed_identity(sample):
         transaction_id="11111111-1111-4111-8111-111111111111",
         vm_uuid="22222222-2222-4222-8222-222222222222",
         request_id="33333333-3333-4333-8333-333333333333",
-        nonce="A" * 43, sequence=1, qemu_pid=1234, qemu_start_ticks=5678,
+        nonce="A" * 43,
+        sequence=1,
+        qemu_pid=1234,
+        qemu_start_ticks=5678,
         virtual_serial="lab-only-device",
-        controller_id="lab-only-controller", collector_id="lab-only-collector",
-        observer_key_id="lab-only-key", overlay_sha256="a" * 64,
+        controller_id="lab-only-controller",
+        collector_id="lab-only-collector",
+        observer_key_id="lab-only-key",
+        overlay_sha256="a" * 64,
         backing_sha256="b" * 64,
         backing_filename=str(sample[0]),
     )
     authority = SimpleNamespace(
-        issuer_id="lab-only-issuer", observer_id="lab-only-observer",
-        collector_id=pins.collector_id, controller_id=pins.controller_id,
-        policy_id="lab-only-policy", policy_sha256="f" * 64,
+        issuer_id="lab-only-issuer",
+        observer_id="lab-only-observer",
+        collector_id=pins.collector_id,
+        controller_id=pins.controller_id,
+        policy_id="lab-only-policy",
+        policy_sha256="f" * 64,
         signing_key_id=pins.observer_key_id,
         administrative_domain="same-runner",
         qemu_executable_sha256="c" * 64,
         device_id="guestfs-label:lab-only-device",
-        overlay_path=str(sample[0]), overlay_device_id="dev:1",
-        overlay_inode=100, parent_device_id="dev:1", parent_inode=101,
+        overlay_path=str(sample[0]),
+        overlay_device_id="dev:1",
+        overlay_inode=100,
+        parent_device_id="dev:1",
+        parent_inode=101,
     )
     args = dict(
-        pins=pins, authority=authority, logical_sector_size=512,
-        schema_path=SCHEMA, expected_observer_result_sha256="e" * 64,
+        pins=pins,
+        authority=authority,
+        logical_sector_size=512,
+        schema_path=SCHEMA,
+        expected_observer_result_sha256="e" * 64,
     )
     record = build_safety_v1((host, guest, immediate), **args)
     assert record["classification"] == "NOT_INDEPENDENT"
     assert record["writeAuthorized"] is False
     assert record["measurements"][1]["readMethod"] == "guest-virtio-readonly-sector"
     assert record["measurements"][1]["originProof"]["evidenceSha256"] == guest.trace_sha256
-    refused("GPT_THREE_WAY_MISMATCH", lambda: build_safety_v1(
-        (host, replace(guest, gpt={**guest.gpt, "partitionTableId": "gpt:" + "0" * 36}), immediate),
-        **args,
-    ))
-    refused("GPT_THREE_WAY_MISMATCH", lambda: build_safety_v1(
-        (host, replace(guest, sectors={**guest.sectors, "backupArrayCrc32": 1}), immediate),
-        **args,
-    ))
-    refused("GUEST_MEASUREMENT_MISSING", lambda: build_safety_v1(
-        (host, host, immediate), **args
-    ))
-    refused("OBSERVER_RESULT_NOT_VERIFIED", lambda: build_safety_v1(
-        (host, guest, immediate),
-        **{**args, "expected_observer_result_sha256": ""},
-    ))
-    refused("GPT_PIN_MISMATCH", lambda: build_safety_v1(
-        (host, guest, immediate),
-        **{**args, "pins": SimpleNamespace(**{**vars(pins), "disk_id": "gpt:" + "0" * 36})},
-    ))
+    refused(
+        "GPT_THREE_WAY_MISMATCH",
+        lambda: build_safety_v1(
+            (
+                host,
+                replace(guest, gpt={**guest.gpt, "partitionTableId": "gpt:" + "0" * 36}),
+                immediate,
+            ),
+            **args,
+        ),
+    )
+    refused(
+        "GPT_THREE_WAY_MISMATCH",
+        lambda: build_safety_v1(
+            (host, replace(guest, sectors={**guest.sectors, "backupArrayCrc32": 1}), immediate),
+            **args,
+        ),
+    )
+    refused("GUEST_MEASUREMENT_MISSING", lambda: build_safety_v1((host, host, immediate), **args))
+    refused(
+        "OBSERVER_RESULT_NOT_VERIFIED",
+        lambda: build_safety_v1(
+            (host, guest, immediate),
+            **{**args, "expected_observer_result_sha256": ""},
+        ),
+    )
+    refused(
+        "GPT_PIN_MISMATCH",
+        lambda: build_safety_v1(
+            (host, guest, immediate),
+            **{**args, "pins": SimpleNamespace(**{**vars(pins), "disk_id": "gpt:" + "0" * 36})},
+        ),
+    )
