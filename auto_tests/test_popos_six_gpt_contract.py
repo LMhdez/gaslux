@@ -283,12 +283,13 @@ class SixGptNegativeTests(unittest.TestCase):
                 out.write(sentinel)
             extracted = work / "fsck-before-1.img"
             fsc.copy_owned_partition(base, extracted, c.PARTS[0].start, 16)
-            self.assertEqual(
-                extracted.read_bytes()[1024:1024+len(sentinel)], sentinel
-            )
-            self.assertEqual(extracted.stat().st_size, 16*c.SECTOR)
+            self.assertEqual(extracted.read_bytes()[1024 : 1024 + len(sentinel)], sentinel)
+            self.assertEqual(extracted.stat().st_size, 16 * c.SECTOR)
             for first, sectors in (
-                (-1, 16), (0, 0), (c.COUNT, 1), (c.COUNT-4, 8),
+                (-1, 16),
+                (0, 0),
+                (c.COUNT, 1),
+                (c.COUNT - 4, 8),
                 (c.PARTS[0].start, -1),
                 (c.PARTS[0].start, True),
             ):
@@ -297,15 +298,24 @@ class SixGptNegativeTests(unittest.TestCase):
                     self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
                 ):
                     fsc.copy_owned_partition(
-                        base, work / "fsck-after-1.img", first, sectors,
+                        base,
+                        work / "fsck-after-1.img",
+                        first,
+                        sectors,
                     )
             with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
                 fsc.copy_owned_partition(
-                    base, work / "foreign.img", c.PARTS[0].start, 16,
+                    base,
+                    work / "foreign.img",
+                    c.PARTS[0].start,
+                    16,
                 )
             with self.assertRaises((OSError, Refusal)):
                 fsc.copy_owned_partition(
-                    base, extracted, c.PARTS[0].start, 16,
+                    base,
+                    extracted,
+                    c.PARTS[0].start,
+                    16,
                 )
 
     def test_fsck_probe_requires_frozen_backing_and_false_writer_flags(self):

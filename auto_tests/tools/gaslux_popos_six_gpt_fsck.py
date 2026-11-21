@@ -3,6 +3,7 @@
 
 Never opens a real block device; never writes the frozen RAW or child QCOW2.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,14 +28,17 @@ from gaslux_popos_six_gpt_lab import (
 def copy_owned_partition(base: Path, dest: Path, start: int, sectors: int) -> None:
     """Extract byte-exact sparse copy into an exclusive regular file."""
     regular(base, length=SIZE)
-    need(dest.parent == base.parent
-         and dest.name in {
-             f"fsck-{phase}-{number}.img"
-             for phase in ("before", "after") for number in (1, 5, 6)
-         }
-         and type(start) is int and type(sectors) is int
-         and start > 0 and sectors > 0 and start + sectors <= SIZE // SECTOR,
-         "REFUSE_RECOVERY_UNPROVEN: invalid filesystem extraction resource/bounds")
+    need(
+        dest.parent == base.parent
+        and dest.name
+        in {f"fsck-{phase}-{number}.img" for phase in ("before", "after") for number in (1, 5, 6)}
+        and type(start) is int
+        and type(sectors) is int
+        and start > 0
+        and sectors > 0
+        and start + sectors <= SIZE // SECTOR,
+        "REFUSE_RECOVERY_UNPROVEN: invalid filesystem extraction resource/bounds",
+    )
     output = new_file(dest, sectors * SECTOR)
     with base.open("rb", buffering=0) as src, output.open("r+b", buffering=0) as dst:
         src.seek(start * SECTOR)
@@ -45,8 +49,10 @@ def copy_owned_partition(base: Path, dest: Path, start: int, sectors: int) -> No
             if data.count(0) == len(data):
                 dst.seek(len(data), os.SEEK_CUR)
             else:
-                need(dst.write(data) == len(data),
-                     "REFUSE_RECOVERY_UNPROVEN: extracted filesystem short write")
+                need(
+                    dst.write(data) == len(data),
+                    "REFUSE_RECOVERY_UNPROVEN: extracted filesystem short write",
+                )
             left -= len(data)
         dst.flush()
         os.fsync(dst.fileno())
@@ -57,12 +63,16 @@ def verify_read_only_fsck(work: Path, phase: str) -> dict:
     need(phase in {"before", "after"}, "REFUSE_RECOVERY_UNPROVEN: unknown fsck phase")
     plan = read_plan(work)
     base = regular(work / BASE_NAME, length=SIZE)
-    need(sha(base) == plan["backingSha256"],
-         "REFUSE_RECOVERY_UNPROVEN: checkpoint changed before fsck")
+    need(
+        sha(base) == plan["backingSha256"],
+        "REFUSE_RECOVERY_UNPROVEN: checkpoint changed before fsck",
+    )
     gpt = verify_sfdisk_gpt(base)
-    need(gpt["pmbrAndPrimary"] == plan["gpt"]["pmbrAndPrimary"]
-         and gpt["secondary"] == plan["gpt"]["secondary"],
-         "REFUSE_OUT_OF_WRITESET: GPT changed before fsck")
+    need(
+        gpt["pmbrAndPrimary"] == plan["gpt"]["pmbrAndPrimary"]
+        and gpt["secondary"] == plan["gpt"]["secondary"],
+        "REFUSE_OUT_OF_WRITESET: GPT changed before fsck",
+    )
     results = {}
     for number, filesystem in ((1, "vfat"), (5, "vfat"), (6, "ext4")):
         p = PARTS[number - 1]
@@ -82,8 +92,10 @@ def verify_read_only_fsck(work: Path, phase: str) -> dict:
         finally:
             if image.exists():
                 regular(image, length=p.count * SECTOR).unlink()
-    need(verify_fs_types(base) == plan["filesystems"],
-         "REFUSE_RECOVERY_UNPROVEN: filesystem type identity changed")
+    need(
+        verify_fs_types(base) == plan["filesystems"],
+        "REFUSE_RECOVERY_UNPROVEN: filesystem type identity changed",
+    )
     proof = {
         "schemaVersion": 1,
         "scenario": plan["scenario"],
