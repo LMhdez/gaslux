@@ -209,6 +209,8 @@ def test_expired_reference_policy_never_licenses_replay(tmp_path):
     _, policy, evidence = fixture()
     run(policy, evidence, guard=guard)
     assert code_of(
-        lambda: verify_with(DurableQuoteReplayGuard(path), replace(policy, valid_until=NOW), evidence)
+        lambda: verify_with(
+            DurableQuoteReplayGuard(path), replace(policy, valid_until=NOW), evidence
+        )
     ) == "POLICY_EXPIRED"
     assert subprocess_consume(path, evidence) == "CHALLENGE_REPLAY"
