@@ -431,9 +431,8 @@ def require_complete_forensic_inventories(
                 # guestfs exports only the exception *class*; never interpret
                 # that name as proof of a write, mount cause or damaged bytes.
                 reported = item.get("reason") if isinstance(item, dict) else None
-                if (
-                    isinstance(reported, str)
-                    and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", reported)
+                if isinstance(reported, str) and re.fullmatch(
+                    r"[A-Za-z_][A-Za-z0-9_]{0,79}", reported
                 ):
                     issue["reportedFailureClass"] = reported
                 unavailable.append(issue)
@@ -459,9 +458,12 @@ def require_complete_forensic_inventories(
     write_manifest(evidence, stage["filename"], report)
     require(
         complete,
-        "F-03: " + phase + " BLOCKED_EVIDENCE: "
-        + ", ".join(item["arm"] + "/" + item["resource"] + ":"
-                    + item["issue"] for item in unavailable),
+        "F-03: "
+        + phase
+        + " BLOCKED_EVIDENCE: "
+        + ", ".join(
+            item["arm"] + "/" + item["resource"] + ":" + item["issue"] for item in unavailable
+        ),
     )
     return report
 
