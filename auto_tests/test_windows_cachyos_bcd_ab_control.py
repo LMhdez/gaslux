@@ -394,7 +394,7 @@ usb_packet_state
 
     def test_bcd_ab_rejects_invalid_hash_types(self):
         with self.assertRaisesRegex(lab.BcdAbControlError,
-                                    "invalid hash, byte count or spans"):
+                                    "invalid SHA-256 digest"):
             lab.compare_bcd_ab(
                 forensic(None, "b" * 64, 1, [{"offset": 4, "length": 1}]),
                 forensic("a" * 64, "b" * 64, 1, []),
