@@ -175,6 +175,66 @@ def choose_injection_offset(reference: Path) -> int:
     return scratch_lba * SECTOR
 
 
+def assert_detached_from_processes(path: Path) -> None:
+    """Reject an arm with open guest/QEMU/QEMU-img file descriptors."""
+    require(shutil.which("fuser") is not None, "fuser is required for detached restore")
+    completed = command(["fuser", "-s", str(path)], timeout=20, check=False)
+    require(completed.returncode == 1,
+            "A/B image is still open or process-ownership cannot be verified")
+
+
+def atomic_restore_owned_arm(
+    reference: Path,
+    arm: Path,
+    directory: Path,
+    *,
+    expected_virtual_bytes: int,
+    fully_allocated_bound: int,
+) -> None:
+    """Same-fileystem, exclusive temporary, verified BEFORE atomic replacement.
+
+    The synthetic virtual size is an exact fixed CI profile only, NOT a
+    configurable reduction of the Windows 128-GiB production test.
+    """
+    require(expected_virtual_bytes in (VIRTUAL_BYTES, 64 * 1024**2)
+            and type(fully_allocated_bound) is int
+            and fully_allocated_bound >= expected_virtual_bytes,
+            "unrecognized or underestimated atomic A/B restore profile")
+    file_guard(reference, directory, 0o400)
+    file_guard(arm, directory, 0o600)
+    assert_detached_from_processes(reference)
+    assert_detached_from_processes(arm)
+    digest = sha256_file(reference)
+    image_info(reference, expected_virtual_bytes)
+    fs = os.statvfs(directory)
+    require(fs.f_bavail * fs.f_frsize > fully_allocated_bound + 2 * 1024**3,
+            "insufficient additional space for atomic A/B restoration")
+    temp = directory / (arm.name + ".restore.tmp.qcow2")
+    require(not temp.exists() and not temp.is_symlink(),
+            "refusing reused A/B restore temporary file")
+    # If this throws ENOSPC, the original arm remains identifiable, the
+    # reference is untouched, and NO checkpoint-ready proof is written.
+    standalone(reference, temp, directory, expected_virtual_bytes)
+    require(temp.stat().st_dev == arm.stat().st_dev,
+            "atomic A/B restore temp is on another filesystem")
+    file_guard(temp, directory, 0o600)
+    equivalent(reference, temp)
+    require(sha256_file(reference) == digest,
+            "immutable checkpoint changed during temporary conversion")
+    assert_detached_from_processes(arm)
+    # qemu-img has exited; the temporary image has been fully checked.
+    os.replace(temp, arm)
+    handle = os.open(directory, os.O_DIRECTORY | os.O_RDONLY)
+    try:
+        os.fsync(handle)
+    finally:
+        os.close(handle)
+    file_guard(arm, directory, 0o600)
+    equivalent(reference, arm)
+    require(sha256_file(reference) == digest,
+            "immutable checkpoint changed during atomic replacement")
+
+
 def reproduce_restore(reference: Path, arm: Path, directory: Path) -> bool:
     """Corrupt only verified free GPT extent, restore via atomic independent clone."""
     file_guard(reference, directory, 0o400)
@@ -182,30 +242,18 @@ def reproduce_restore(reference: Path, arm: Path, directory: Path) -> bool:
     offset = choose_injection_offset(reference)
     from windows_mint_ab_capacity import qemu_fully_allocated_bytes
     bound = qemu_fully_allocated_bytes()
-    fs = os.statvfs(directory)
-    require(fs.f_bavail * fs.f_frsize > bound + 2 * 1024**3,
-            "insufficient additional space for atomic A/B restoration")
-    temp = directory / (arm.name + ".restore.tmp.qcow2")
-    require(not temp.exists() and not temp.is_symlink(),
-            "refusing reused A/B restore temporary file")
+    assert_detached_from_processes(arm)
     command(["qemu-io", "-f", "qcow2", "-c",
              f"write -P 0xa5 {offset} {WRITE_SIZE}", str(arm)], timeout=120)
     corrupted = command(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2",
                          str(reference), str(arm)], timeout=1800, check=False)
     require(corrupted.returncode == 1,
             "controlled scratch corruption was not independently detected")
-    # Do not unlink the arm until a full NEW standalone restore is checked.
-    # On ENOSPC, leave the corrupted arm and immutable reference as evidence.
-    standalone(reference, temp, directory)
-    equivalent(reference, temp)
-    file_guard(arm, directory, 0o600)
-    os.replace(temp, arm)
-    fd = os.open(directory, os.O_DIRECTORY | os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    equivalent(reference, arm)
+    atomic_restore_owned_arm(
+        reference, arm, directory,
+        expected_virtual_bytes=VIRTUAL_BYTES,
+        fully_allocated_bound=bound,
+    )
     return True
 
 
