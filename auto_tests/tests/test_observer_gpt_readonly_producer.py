@@ -19,6 +19,7 @@ import pytest
 
 from auto_tests.installer_observer.gpt_readonly_producer import (
     GptProducerRefused,
+    GuestSliceProof,
     build_safety_v1,
     capture_gpt,
 )
@@ -46,11 +47,20 @@ def sample(tmp_path):
 
 def take(sample, source="host", *, guest=False, size=512):
     path, folder = sample
+    proof = None
+    if guest:
+        # Synthetic test fixture only; not a claim of a real QEMU guest.
+        data = path.read_bytes()
+        path = folder / "guest-reconstructed.raw"
+        path.write_bytes(data)
+        proof = GuestSliceProof(
+            data[:34 * 512], data[-34 * 512:], "gasluxabcdefabcdef", 1234, 5678
+        )
     return capture_gpt(
         path,
         folder,
         source=source,
-        guest_sample_origin=guest,
+        guest_sample_origin=proof,
         logical_sector_size=size,
         safety_disk=disk,
     )
@@ -101,6 +111,23 @@ def test_wrong_sector_size_fails(sample):
 
 def test_guest_source_requires_real_sample_origin(sample):
     refused("GUEST_ORIGIN_MISSING", lambda: take(sample, source="guest"))
+
+
+def test_false_guest_read_bytes_are_rejected(sample):
+    path, folder = sample
+    data = path.read_bytes()
+    target = folder / "guest-reconstructed.raw"
+    target.write_bytes(data)
+    invalid = GuestSliceProof(
+        bytes(34 * 512), data[-34 * 512:], "gasluxabcdefabcdef", 1234, 5678
+    )
+    refused(
+        "GUEST_SLICE_BYTES_MISMATCH",
+        lambda: capture_gpt(
+            target, folder, source="guest", logical_sector_size=512,
+            safety_disk=disk, guest_sample_origin=invalid,
+        ),
+    )
 
 
 @pytest.mark.parametrize("kind", ("symlink", "hardlink", "replacement"))
