@@ -24,6 +24,7 @@ from libertix_disk_identity_gate import inspect_gpt_image
 from zorin_synthetic_writeset import (
     SyntheticPolicy,
     WriteSetRefused,
+    compare_raw,
     tree_digest,
     verify_private_synthetic,
 )
@@ -162,18 +163,20 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
             self.check()
         self.assertEqual(context.exception.code, code)
 
-    def test_positive_no_change(self):
-        value = self.check()
-        self.assertEqual(value["result"], "SYNTHETIC_NO_CHANGE")
-        self.assertFalse(value["productionWriteAuthorized"])
+    def test_no_change_cannot_claim_gpt_fd_binding(self):
+        with (self.root / "baseline.raw").open("rb") as a, (
+            self.root / "trial.raw"
+        ).open("rb") as b:
+            self.assertEqual(compare_raw(a.fileno(), b.fileno(), SyntheticPolicy.parse(self.policy)), 0)
+        self.refused("E_GPT_FD_BINDING_REQUIRED")
 
-    def test_positive_root_bytes_only(self):
+    def test_valid_root_bytes_still_require_gpt_fd_binding(self):
         self.mutate("trial.raw", PARTS[1][1] * SECTOR + 77)
-        value = self.check()
-        self.assertEqual(value["result"], "SYNTHETIC_ONLY_WITHIN_ROOT")
-        self.assertEqual(value["changedLinuxBytes"], 1)
-        self.assertEqual(value["authorization"], "DENY_NO_WRITER")
-        self.assertFalse(value["windowsRollbackVerified"])
+        with (self.root / "baseline.raw").open("rb") as a, (
+            self.root / "trial.raw"
+        ).open("rb") as b:
+            self.assertEqual(compare_raw(a.fileno(), b.fileno(), SyntheticPolicy.parse(self.policy)), 1)
+        self.refused("E_GPT_FD_BINDING_REQUIRED")
 
     def test_primary_gpt_sector_refused(self):
         self.mutate("trial.raw", 1 * SECTOR + 11)
@@ -323,7 +326,7 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
             os.replace(staging, self.root / "trial.raw")
             if sha((self.root / "trial.raw").read_bytes()) != self.policy["diskSha256"]:
                 raise ValueError("E_RESTORE_VERIFY")
-            return self.check()
+            return self.policy["diskSha256"]
         finally:
             if staging.exists():
                 staging.unlink()
@@ -334,9 +337,10 @@ class ZorinSyntheticWriteSetTests(unittest.TestCase):
         self.mutate("trial.raw", PARTS[2][1] * SECTOR + 90)
         self.refused("E_OUTSIDE_LINUX_CHANGED")
         result = self.restore_synthetic_arm()
-        self.assertEqual(result["result"], "SYNTHETIC_NO_CHANGE")
+        self.assertEqual(result, self.policy["diskSha256"])
         self.assertEqual(other.read_bytes(), b"another-owner")
-        self.assertFalse(result["independentRecoveryAttested"])
+        self.assertEqual(sha((self.root / "trial.raw").read_bytes()), result)
+        self.refused("E_GPT_FD_BINDING_REQUIRED")
 
     def test_injected_enospc_is_not_restore_success(self):
         self.mutate("trial.raw", PARTS[2][1] * SECTOR + 90)
