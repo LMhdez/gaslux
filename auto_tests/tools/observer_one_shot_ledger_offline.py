@@ -200,6 +200,130 @@ def _identities(grant: dict[str, Any]) -> tuple[str, str, str]:
     return authorization_key, execution_key, review_key
 
 
+def _commit_key(grant: dict[str, Any]) -> str:
+    # A caller-chosen experimentId does not establish independent authority.
+    return _key(grant["repository"], grant["authorizationSha"], grant["scope"])
+
+
+# The SQLite storage version is independent of the grant JSON contract version.
+STORAGE_VERSION = 3
+GRANTS_DDL = (
+    "CREATE TABLE grants ("
+    "grant_id TEXT NOT NULL PRIMARY KEY, "
+    "authorization_key TEXT NOT NULL UNIQUE, "
+    "execution_key TEXT NOT NULL UNIQUE, "
+    "commit_key TEXT NOT NULL UNIQUE, "
+    "external_decision_id TEXT NOT NULL UNIQUE, "
+    "review_key TEXT NOT NULL UNIQUE, "
+    "payload TEXT NOT NULL, digest TEXT NOT NULL, "
+    "state TEXT NOT NULL, created_at TEXT NOT NULL)"
+)
+DECISIONS_DDL = (
+    "CREATE TABLE decisions ("
+    "sequence INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT NOT NULL, "
+    "at TEXT NOT NULL, before_state TEXT, after_state TEXT, "
+    "decision TEXT NOT NULL, reason TEXT NOT NULL, run_id TEXT)"
+)
+
+
+def _verify_storage(con: sqlite3.Connection) -> None:
+    """Reject schema drift, missing constraints and deceptive partial indexes.
+
+    Exact DDL is a secondary guard for PK/AUTOINCREMENT/constraint semantics;
+    structured introspection independently verifies column and index geometry.
+    This is *not* protection against an actor controlling the database file.
+    """
+    refused = "LEGACY_OR_AMBIGUOUS_LEDGER"
+    if con.execute("PRAGMA user_version").fetchone()[0] != STORAGE_VERSION:
+        raise Refused(refused)
+    objects = con.execute(
+        "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name"
+    ).fetchall()
+    if {(kind, name) for kind, name, _ in objects} != {("table", "grants"), ("table", "decisions")}:
+        raise Refused(refused)
+    if {name: ddl for _, name, ddl in objects} != {
+        "grants": GRANTS_DDL,
+        "decisions": DECISIONS_DDL,
+    }:
+        raise Refused(refused)
+
+    layouts = {
+        "grants": (
+            ("grant_id", "TEXT", 1, 1),
+            ("authorization_key", "TEXT", 1, 0),
+            ("execution_key", "TEXT", 1, 0),
+            ("commit_key", "TEXT", 1, 0),
+            ("external_decision_id", "TEXT", 1, 0),
+            ("review_key", "TEXT", 1, 0),
+            ("payload", "TEXT", 1, 0),
+            ("digest", "TEXT", 1, 0),
+            ("state", "TEXT", 1, 0),
+            ("created_at", "TEXT", 1, 0),
+        ),
+        "decisions": (
+            ("sequence", "INTEGER", 0, 1),
+            ("grant_id", "TEXT", 1, 0),
+            ("at", "TEXT", 1, 0),
+            ("before_state", "TEXT", 0, 0),
+            ("after_state", "TEXT", 0, 0),
+            ("decision", "TEXT", 1, 0),
+            ("reason", "TEXT", 1, 0),
+            ("run_id", "TEXT", 0, 0),
+        ),
+    }
+    for table, expected in layouts.items():
+        columns = con.execute(f"PRAGMA table_xinfo({table})").fetchall()
+        observed = tuple((row[1], row[2], row[3], row[5]) for row in columns)
+        if observed != expected or any(
+            row[0] != index or row[4] is not None or row[6] != 0
+            for index, row in enumerate(columns)
+        ):
+            raise Refused(refused)
+
+    expected_unique = {
+        "grant_id",
+        "authorization_key",
+        "execution_key",
+        "commit_key",
+        "external_decision_id",
+        "review_key",
+    }
+    indexes = con.execute("PRAGMA index_list(grants)").fetchall()
+    if (
+        len(indexes) != len(expected_unique)
+        or con.execute("PRAGMA index_list(decisions)").fetchall()
+    ):
+        raise Refused(refused)
+    observed_unique: set[str] = set()
+    for index in indexes:
+        # index_list: seq, name, unique, origin, partial.
+        if index[2] != 1 or index[3] not in {"u", "pk"} or index[4] != 0:
+            raise Refused(refused)
+        details = con.execute(f"PRAGMA index_xinfo({json.dumps(index[1])})").fetchall()
+        # Exactly one BINARY ascending key column plus the implicit rowid.
+        keys = [entry for entry in details if entry[5] == 1]
+        if (
+            len(keys) != 1
+            or len(details) != 2
+            or keys[0][0] != 0
+            or keys[0][1] < 0
+            or keys[0][3] != 0
+            or keys[0][4] != "BINARY"
+            or any(entry[5] != 1 and (entry[1] != -1 or entry[5] != 0) for entry in details)
+        ):
+            raise Refused(refused)
+        column = keys[0][2]
+        if column in observed_unique or column not in expected_unique:
+            raise Refused(refused)
+        if (column == "grant_id") != (index[3] == "pk"):
+            raise Refused(refused)
+        observed_unique.add(column)
+    if observed_unique != expected_unique:
+        raise Refused(refused)
+    if con.execute("PRAGMA quick_check").fetchone() != ("ok",):
+        raise Refused(refused)
+
+
 class OfflineLedger:
     """Single-file test-only SQLite model with serialized durable state transitions."""
 
@@ -211,7 +335,8 @@ class OfflineLedger:
         # directory; these checks do NOT eliminate races from an attacker with filesystem access.
         if self.path.is_symlink():
             raise Refused("LEDGER_SYMLINK_REFUSED")
-        if self.path.exists():
+        existing_file = self.path.exists()
+        if existing_file:
             details = self.path.stat()
             if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
                 raise Refused("LEDGER_ALIAS_REFUSED")
@@ -223,71 +348,13 @@ class OfflineLedger:
             os.close(fd)
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
-            tables = {
-                row[0]
-                for row in con.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table' "
-                    "AND name IN ('grants', 'decisions')"
-                ).fetchall()
-            }
-            if tables:
-                if tables != {"grants", "decisions"}:
-                    con.execute("ROLLBACK")
-                    raise Refused("LEGACY_OR_AMBIGUOUS_LEDGER")
-                names = {row[1] for row in con.execute("PRAGMA table_info(grants)").fetchall()}
-                required = {
-                    "grant_id",
-                    "authorization_key",
-                    "execution_key",
-                    "external_decision_id",
-                    "review_key",
-                    "payload",
-                    "digest",
-                    "state",
-                    "created_at",
-                }
-                unique_columns = {
-                    tuple(
-                        col[2]
-                        for col in con.execute(
-                            f"PRAGMA index_info({json.dumps(index[1])})"
-                        ).fetchall()
-                    )
-                    for index in con.execute("PRAGMA index_list(grants)").fetchall()
-                    if index[2]
-                }
-                required_unique = {
-                    ("grant_id",),
-                    ("authorization_key",),
-                    ("execution_key",),
-                    ("external_decision_id",),
-                    ("review_key",),
-                }
-                if (
-                    con.execute("PRAGMA user_version").fetchone()[0] != 2
-                    or names != required
-                    or not required_unique.issubset(unique_columns)
-                ):
-                    con.execute("ROLLBACK")
-                    raise Refused("LEGACY_OR_AMBIGUOUS_LEDGER")
+            if existing_file:
+                _verify_storage(con)
             else:
-                con.execute(
-                    "CREATE TABLE grants ("
-                    "grant_id TEXT PRIMARY KEY, "
-                    "authorization_key TEXT NOT NULL UNIQUE, "
-                    "execution_key TEXT NOT NULL UNIQUE, "
-                    "external_decision_id TEXT NOT NULL UNIQUE, "
-                    "review_key TEXT NOT NULL UNIQUE, "
-                    "payload TEXT NOT NULL, digest TEXT NOT NULL, "
-                    "state TEXT NOT NULL, created_at TEXT NOT NULL)"
-                )
-                con.execute(
-                    "CREATE TABLE decisions ("
-                    "sequence INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT NOT NULL, "
-                    "at TEXT NOT NULL, before_state TEXT, after_state TEXT, "
-                    "decision TEXT NOT NULL, reason TEXT NOT NULL, run_id TEXT)"
-                )
-                con.execute("PRAGMA user_version = 2")
+                con.execute(GRANTS_DDL)
+                con.execute(DECISIONS_DDL)
+                con.execute(f"PRAGMA user_version = {STORAGE_VERSION}")
+                _verify_storage(con)
             con.execute("COMMIT")
 
     @contextmanager
@@ -335,6 +402,7 @@ class OfflineLedger:
             raise Refused("INVALID_REQUEST_TIME")
         gid = grant["grantId"]
         authorization_key, execution_key, review_key = _identities(grant)
+        commit_key = _commit_key(grant)
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
             existing = con.execute("SELECT state FROM grants WHERE grant_id = ?", (gid,)).fetchone()
@@ -345,13 +413,14 @@ class OfflineLedger:
             try:
                 con.execute(
                     "INSERT INTO grants ("
-                    "grant_id, authorization_key, execution_key, external_decision_id, "
-                    "review_key, payload, digest, state, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "grant_id, authorization_key, execution_key, commit_key, "
+                    "external_decision_id, review_key, payload, digest, state, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         gid,
                         authorization_key,
                         execution_key,
+                        commit_key,
                         grant["externalDecisionId"],
                         review_key,
                         payload,
@@ -366,6 +435,7 @@ class OfflineLedger:
                 constraints = (
                     ("authorization_key", authorization_key, "AUTHORIZATION_ALREADY_RESERVED"),
                     ("execution_key", execution_key, "EXPERIMENT_COMMIT_ALREADY_RESERVED"),
+                    ("commit_key", commit_key, "REPOSITORY_COMMIT_ALREADY_RESERVED"),
                     (
                         "external_decision_id",
                         grant["externalDecisionId"],

@@ -284,6 +284,7 @@ class LedgerTests(unittest.TestCase):
             "grant_id",
             "authorization_key",
             "execution_key",
+            "commit_key",
             "external_decision_id",
             "review_key",
         )
@@ -293,7 +294,7 @@ class LedgerTests(unittest.TestCase):
                     columns,
                     con.execute(
                         "SELECT grant_id, authorization_key, execution_key, "
-                        "external_decision_id, review_key FROM grants"
+                        "commit_key, external_decision_id, review_key FROM grants"
                     ).fetchone(),
                     strict=True,
                 )
@@ -305,9 +306,9 @@ class LedgerTests(unittest.TestCase):
                     with self.assertRaises(sqlite3.IntegrityError):
                         con.execute(
                             "INSERT INTO grants (grant_id, authorization_key, "
-                            "execution_key, external_decision_id, review_key, "
+                            "execution_key, commit_key, external_decision_id, review_key, "
                             "payload, digest, state, created_at) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 *(other[key] for key in columns),
                                 "{}",
@@ -342,12 +343,13 @@ class LedgerTests(unittest.TestCase):
             con.execute("BEGIN IMMEDIATE")
             con.execute(
                 "INSERT INTO grants (grant_id, authorization_key, execution_key, "
-                "external_decision_id, review_key, payload, digest, state, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "commit_key, external_decision_id, review_key, payload, digest, state, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     g["grantId"],
                     keys[0],
                     keys[1],
+                    model._commit_key(g),
                     g["externalDecisionId"],
                     keys[2],
                     "{}",
@@ -702,6 +704,162 @@ os._exit(23)
                             g["grantId"], "CONSUMED", now=NOW, trusted=trusted, run=run
                         )
                     self.assertEqual(ledger.state(g["grantId"]), "APPROVED")
+
+    def test_s01_reopen_rejects_garbage_decisions_schema(self):
+        with sqlite3.connect(self.path) as con:
+            con.execute("DROP TABLE decisions")
+            con.execute("CREATE TABLE decisions (garbage TEXT)")
+        with self.assertRaisesRegex(model.Refused, "LEGACY_OR_AMBIGUOUS_LEDGER"):
+            model.OfflineLedger(self.path)
+
+    def test_s01_reopen_rejects_missing_grants_pk_and_notnull(self):
+        with sqlite3.connect(self.path) as con:
+            con.execute("DROP TABLE grants")
+            con.execute(
+                "CREATE TABLE grants (grant_id TEXT, authorization_key TEXT, "
+                "execution_key TEXT, commit_key TEXT, external_decision_id TEXT, "
+                "review_key TEXT, payload TEXT, digest TEXT, state TEXT, created_at TEXT)"
+            )
+            for column in (
+                "grant_id",
+                "authorization_key",
+                "execution_key",
+                "commit_key",
+                "external_decision_id",
+                "review_key",
+            ):
+                con.execute(f"CREATE UNIQUE INDEX idx_{column} ON grants({column})")
+        with self.assertRaisesRegex(model.Refused, "LEGACY_OR_AMBIGUOUS_LEDGER"):
+            model.OfflineLedger(self.path)
+
+    def test_s01_reopen_rejects_partial_or_missing_commit_index(self):
+        for partial in (False, True):
+            with self.subTest(partial=partial), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "ledger.sqlite3"
+                model.OfflineLedger(path)
+                with sqlite3.connect(path) as con:
+                    con.execute("DROP TABLE grants")
+                    con.execute(
+                        model.GRANTS_DDL.replace(
+                            "commit_key TEXT NOT NULL UNIQUE", "commit_key TEXT NOT NULL"
+                        )
+                    )
+                    if partial:
+                        con.execute(
+                            "CREATE UNIQUE INDEX partial_key ON grants(commit_key) "
+                            "WHERE commit_key != ''"
+                        )
+                with self.assertRaisesRegex(model.Refused, "LEGACY_OR_AMBIGUOUS_LEDGER"):
+                    model.OfflineLedger(path)
+
+    def test_s01_reopen_rejects_v2_version_and_extra_trigger(self):
+        with sqlite3.connect(self.path) as con:
+            con.execute("PRAGMA user_version = 2")
+        with self.assertRaisesRegex(model.Refused, "LEGACY_OR_AMBIGUOUS_LEDGER"):
+            model.OfflineLedger(self.path)
+        with sqlite3.connect(self.path) as con:
+            con.execute("PRAGMA user_version = 3")
+            con.execute(
+                "CREATE TRIGGER synthetic_trigger AFTER INSERT ON grants BEGIN SELECT 1; END"
+            )
+        with self.assertRaisesRegex(model.Refused, "LEGACY_OR_AMBIGUOUS_LEDGER"):
+            model.OfflineLedger(self.path)
+
+    def test_s02_cross_experiment_same_commit_denied_and_audited(self):
+        self.ledger.request(self.g, now=NOW)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        second["experimentId"] = "different-experiment-offline"
+        second["requestRef"] = "refs/heads/different-reference"
+        second["externalDecisionId"] = str(uuid.uuid4())
+        second["humanReviewId"] = "different-synthetic-human-review"
+        with self.assertRaisesRegex(model.Refused, "REPOSITORY_COMMIT_ALREADY_RESERVED"):
+            self.ledger.request(second, now=NOW)
+        self.assertEqual(
+            self.ledger.events(second["grantId"])[-1][2:4],
+            ("DENIED", "REPOSITORY_COMMIT_ALREADY_RESERVED"),
+        )
+
+    def test_s02_distinct_commits_with_independent_reviews_accepted(self):
+        self.ledger.request(self.g, now=NOW)
+        second = copy.deepcopy(self.g)
+        second["grantId"] = str(uuid.uuid4())
+        second["experimentId"] = "different-experiment-offline"
+        second["authorizationSha"] = "e" * 40
+        second["externalDecisionId"] = str(uuid.uuid4())
+        second["humanReviewId"] = "different-independent-synthetic-review"
+        self.ledger.request(second, now=NOW)
+        self.assertEqual(self.ledger.state(second["grantId"]), "REQUESTED")
+
+    def test_s02_sixteen_parallel_experiments_only_one_reserves(self):
+        barrier = threading.Barrier(16)
+        grants = []
+        for index in range(16):
+            candidate = copy.deepcopy(self.g)
+            candidate["grantId"] = str(uuid.uuid4())
+            candidate["experimentId"] = f"parallel-experiment-{index}"
+            candidate["requestRef"] = f"refs/heads/parallel-{index}"
+            candidate["externalDecisionId"] = str(uuid.uuid4())
+            candidate["humanReviewId"] = f"parallel-human-review-{index}"
+            grants.append(candidate)
+
+        def reserve(candidate):
+            barrier.wait(timeout=10)
+            try:
+                self.ledger.request(candidate, now=NOW)
+                return "REQUESTED"
+            except model.Refused as exc:
+                return exc.reason
+
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            result = list(pool.map(reserve, grants))
+        self.assertEqual(result.count("REQUESTED"), 1, result)
+        self.assertEqual(result.count("REPOSITORY_COMMIT_ALREADY_RESERVED"), 15, result)
+        self.assertEqual(sum(len(self.ledger.events(g["grantId"])) for g in grants), 16)
+
+    def test_s02_sixteen_consumers_only_one_wins(self):
+        self.ready()
+        barrier = threading.Barrier(16)
+
+        def consume(index):
+            barrier.wait(timeout=10)
+            local = model.OfflineLedger(self.path)
+            try:
+                return local.transition(
+                    self.g["grantId"],
+                    "CONSUMED",
+                    now=NOW,
+                    trusted=self.trusted,
+                    run=replace(self.run, run_id=f"s02-consumer-{index}"),
+                )
+            except model.Refused as exc:
+                return exc.reason
+
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            result = list(pool.map(consume, range(16)))
+        self.assertEqual(result.count("CONSUMED"), 1, result)
+        self.assertEqual(result.count("INVALID_STATE_TRANSITION"), 15, result)
+
+    def test_s02_global_key_survives_terminal_states(self):
+        for terminal in ("REVOKED", "REFUSED", "EXPIRED"):
+            with self.subTest(terminal=terminal), tempfile.TemporaryDirectory() as directory:
+                ledger = model.OfflineLedger(Path(directory) / "ledger.sqlite3")
+                grant = copy.deepcopy(self.g)
+                ledger.request(grant, now=NOW)
+                if terminal == "EXPIRED":
+                    with self.assertRaisesRegex(model.Refused, "GRANT_EXPIRED"):
+                        ledger.transition(
+                            grant["grantId"], "REVIEW_PENDING", now=grant["expiresAt"]
+                        )
+                else:
+                    ledger.transition(grant["grantId"], terminal, now=NOW)
+                alternate = copy.deepcopy(grant)
+                alternate["grantId"] = str(uuid.uuid4())
+                alternate["experimentId"] = "alternate-experiment-after-terminal"
+                alternate["externalDecisionId"] = str(uuid.uuid4())
+                alternate["humanReviewId"] = "alternate-human-review-after-terminal"
+                with self.assertRaisesRegex(model.Refused, "REPOSITORY_COMMIT_ALREADY_RESERVED"):
+                    ledger.request(alternate, now=NOW)
 
 
 if __name__ == "__main__":
