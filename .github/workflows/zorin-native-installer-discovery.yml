@@ -8,10 +8,13 @@ on:
       - auto_tests/tools/zorin_native_installer_discovery.py
       - auto_tests/tools/zorin_native_target_guard.py
       - auto_tests/tools/zorin_native_live_observer.py
+      - auto_tests/tools/zorin_native_ubiquity_map.py
       - auto_tests/test_zorin_native_installer_discovery.py
       - auto_tests/test_zorin_native_live_observer.py
+      - auto_tests/test_zorin_native_ubiquity_map.py
       - schemas/zorin-native-installer-discovery.schema.json
       - schemas/zorin-native-target-plan.schema.json
+      - schemas/zorin-native-ubiquity-capabilities.schema.json
       - auto_tests/fixtures/zorin-native-observed-linux-target.json
   workflow_dispatch:
 
@@ -38,17 +41,22 @@ jobs:
             auto_tests/tools/zorin_native_installer_discovery.py \
             auto_tests/tools/zorin_native_target_guard.py \
             auto_tests/tools/zorin_native_live_observer.py \
+            auto_tests/tools/zorin_native_ubiquity_map.py \
             auto_tests/test_zorin_native_installer_discovery.py \
-            auto_tests/test_zorin_native_live_observer.py
+            auto_tests/test_zorin_native_live_observer.py \
+            auto_tests/test_zorin_native_ubiquity_map.py
           ruff check --select E4,E7,E9,F \
             auto_tests/tools/zorin_native_installer_discovery.py \
             auto_tests/tools/zorin_native_target_guard.py \
             auto_tests/tools/zorin_native_live_observer.py \
+            auto_tests/tools/zorin_native_ubiquity_map.py \
             auto_tests/test_zorin_native_installer_discovery.py \
-            auto_tests/test_zorin_native_live_observer.py
+            auto_tests/test_zorin_native_live_observer.py \
+            auto_tests/test_zorin_native_ubiquity_map.py
           for suite in \
               test_zorin_native_installer_discovery.py \
               test_zorin_native_live_observer.py \
+              test_zorin_native_ubiquity_map.py \
               test_zorin_official_iso_installer_inventory.py \
               test_windows_mint_overlay_root.py \
               test_windows_mint_cow_boot_evidence.py \
@@ -128,12 +136,19 @@ jobs:
             --iso "$RUNNER_TEMP/zorin-native-source/zorin.iso" \
             --mounted "$mounted" \
             --out "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-installer-discovery.json"
+          python3 auto_tests/tools/zorin_native_ubiquity_map.py \
+            --iso "$RUNNER_TEMP/zorin-native-source/zorin.iso" \
+            --mounted "$mounted" \
+            --previous "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-installer-discovery.json" \
+            --out "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-ubiquity-code-map.json"
+          python3 -m json.tool "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-ubiquity-code-map.json" >/dev/null
           sudo umount "$mounted"
           active=0
           python3 auto_tests/tools/zorin_native_target_guard.py \
             --fixture auto_tests/fixtures/zorin-native-observed-linux-target.json \
             --out "$GITHUB_WORKSPACE/zorin-native-evidence/zorin-native-target-denied.json"
       - name: Observe optical-only genuine ISO on private OVMF/KVM VM
+        if: ${{ !contains(github.event.head_commit.message, '[zorin-static-only]') }}
         shell: bash
         run: |
           set -Eeuo pipefail
