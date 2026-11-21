@@ -302,6 +302,59 @@ def _qemu_executable_hash(pid: int) -> str:
         os.close(fd)
 
 
+
+def capture_fresh_immediate(*, workspace: Path, overlay: Path, base: Path, lab, safety_disk, host):
+    """New, pinned read-only QCOW2 export after QEMU exits; never reuse host.raw.
+
+    This is local diagnostic collection, not independent origin attestation.
+    """
+    try:
+        require(
+            workspace.resolve(strict=True) == workspace
+            and overlay == workspace / "overlay.qcow2"
+            and base == workspace / "base.raw",
+            "OBSERVATION_INCOMPLETE",
+        )
+        destination = workspace / "immediate.raw"
+        require(
+            not destination.exists() and not destination.is_symlink(),
+            "OBSERVATION_INCOMPLETE",
+        )
+        source_before = lab.own_regular(overlay, workspace)
+        base_before = lab.own_regular(base, workspace)
+        chain = lab.verify_chain(overlay, base, workspace)
+        lab.host_snapshot(overlay, destination, workspace)
+        source_after = lab.own_regular(overlay, workspace)
+        base_after = lab.own_regular(base, workspace)
+        for before, after in ((source_before, source_after), (base_before, base_after)):
+            require(
+                (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+                == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns),
+                "OBSERVATION_INCOMPLETE",
+            )
+        require(lab.verify_chain(overlay, base, workspace) == chain, "OBSERVATION_INCOMPLETE")
+        require(
+            sha_file(overlay) == chain["overlaySha256"]
+            and sha_file(base) == chain["backingSha256"],
+            "OBSERVATION_INCOMPLETE",
+        )
+        result = capture_gpt(
+            destination,
+            workspace,
+            source="immediate",
+            logical_sector_size=SECTOR,
+            safety_disk=safety_disk,
+        )
+        require(
+            result.trace["imageFile"] == str(destination)
+            and result.trace["fileInode"] != host.trace["fileInode"]
+            and result.observed_at >= host.observed_at,
+            "OBSERVATION_INCOMPLETE",
+        )
+        return result
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        raise GptProducerRefused("OBSERVATION_INCOMPLETE") from exc
+
 def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
     """Boot one guestfs appliance and collect three genuine read-only GPT samples."""
     disk, lab, provenance, adapter = install_pinned_safety(safety_root)
@@ -374,13 +427,6 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
                 first, last, label, pid, before_process.start_ticks
             ),
         )
-        immediate = capture_gpt(
-            workspace / "host.raw",
-            workspace,
-            source="immediate",
-            logical_sector_size=SECTOR,
-            safety_disk=disk,
-        )
         require(process_seal(pid) == before_process, "QEMU_PROCESS_CHANGED")
         require(_qemu_executable_hash(pid) == executable_sha, "QEMU_EXECUTABLE_CHANGED")
     finally:
@@ -399,6 +445,17 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         and sha_file(overlay) == chain_before["overlaySha256"],
         "BACKING_HASH_CHANGED",
     )
+    # No concurrent QEMU access: the guest process must already have exited.
+    # Re-export the original QCOW2 now, not the stale pre-guest host.raw.
+    immediate = capture_fresh_immediate(
+        workspace=workspace,
+        overlay=overlay,
+        base=base,
+        lab=lab,
+        safety_disk=disk,
+        host=host,
+    )
+    require(host.observed_at <= guest.observed_at <= immediate.observed_at, "OBSERVATION_INCOMPLETE")
     captures = (host, guest, immediate)
     require(
         all(c.gpt == host.gpt and c.sectors == host.sectors for c in captures),
@@ -496,6 +553,8 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         "virtualSerialHardwareVerified": False,
         "vmUuidReadFromQmp": False,
         "hostCapturedFromExportedQcow2RawImage": True,
+        "immediateCapturedFromNewPostGuestQcow2RawExport": True,
+        "immediateExportAfterQemuTermination": True,
         "guestCapturedWithLibguestfsPreadDevice": True,
         "guestCaptureAuthentication": "same-runner-readonly-not-independent",
         "snapshotCaptureSource": "real-qemu-libguestfs",

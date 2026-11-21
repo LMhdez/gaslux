@@ -10,6 +10,10 @@ import base64
 import hashlib
 import importlib
 import os
+import shutil
+import struct
+import uuid
+import zlib
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -266,5 +270,141 @@ def test_host_guest_immediate_comparison_refuses_changed_identity(sample):
         lambda: build_safety_v1(
             (host, guest, immediate),
             **{**args, "pins": SimpleNamespace(**{**vars(pins), "disk_id": "gpt:" + "0" * 36})},
+        ),
+    )
+
+
+def test_immediate_reexports_overlay_after_source_gpt_changes(sample):
+    """Synthetic exporter checks fresh source selection, not QEMU execution."""
+    from auto_tests.installer_observer.gpt_lab_provenance import capture_fresh_immediate
+
+    path, folder = sample
+    source = folder / "overlay.qcow2"
+    base = folder / "base.raw"
+    historical = folder / "host.raw"
+    for destination in (source, base, historical):
+        shutil.copyfile(path, destination)
+    host = capture_gpt(
+        historical, folder, source="host", logical_sector_size=512, safety_disk=disk
+    )
+    guest = take(sample, source="guest", guest=True)
+
+    # Mutate the current source AFTER host capture. Keep primary/backup GPT
+    # CRCs valid so failure is caused by freshness, not invalid GPT input.
+    changed = bytearray(source.read_bytes())
+    guid = uuid.UUID("81d479d3-148e-49b7-908a-19427a32c644")
+    for sector in (1, len(changed) // 512 - 1):
+        at = sector * 512
+        changed[at + 56 : at + 72] = guid.bytes_le
+        changed[at + 16 : at + 20] = b"\x00" * 4
+        changed[at + 16 : at + 20] = struct.pack(
+            "<I", zlib.crc32(changed[at : at + 92])
+        )
+    source.write_bytes(changed)
+
+    class FakeConverter:
+        tamper_during_export = False
+        exported_from = None
+
+        @staticmethod
+        def own_regular(path, folder):
+            assert path.parent == folder
+            return path.stat()
+
+        @staticmethod
+        def verify_chain(overlay, base, folder):
+            return {
+                "overlaySha256": hashlib.sha256(overlay.read_bytes()).hexdigest(),
+                "backingSha256": hashlib.sha256(base.read_bytes()).hexdigest(),
+            }
+
+        def host_snapshot(self, overlay, destination, folder):
+            self.exported_from = overlay
+            shutil.copyfile(overlay, destination)
+            if self.tamper_during_export:
+                with overlay.open("r+b") as handle:
+                    handle.seek(1000000)
+                    handle.write(b"\x01")
+
+    fake = FakeConverter()
+    immediate = capture_fresh_immediate(
+        workspace=folder,
+        overlay=source,
+        base=base,
+        lab=fake,
+        safety_disk=disk,
+        host=host,
+    )
+    assert fake.exported_from == source
+    assert immediate.trace["imageFile"] == str(folder / "immediate.raw")
+    assert immediate.trace["fileInode"] != host.trace["fileInode"]
+    assert immediate.gpt["partitionTableId"] != host.gpt["partitionTableId"]
+    assert historical.read_bytes() == path.read_bytes()
+    refused(
+        "GPT_THREE_WAY_MISMATCH",
+        lambda: build_safety_v1(
+            (host, guest, immediate),
+            pins=None,
+            authority=None,
+            logical_sector_size=512,
+            schema_path=SCHEMA,
+            expected_observer_result_sha256="e" * 64,
+        ),
+    )
+
+    # If the overlay changes *during* the fresh export, fail closed.
+    (folder / "immediate.raw").unlink()
+    fake.tamper_during_export = True
+    refused(
+        "OBSERVATION_INCOMPLETE",
+        lambda: capture_fresh_immediate(
+            workspace=folder,
+            overlay=source,
+            base=base,
+            lab=fake,
+            safety_disk=disk,
+            host=host,
+        ),
+    )
+
+
+def test_immediate_missing_export_is_observation_incomplete(sample):
+    from auto_tests.installer_observer.gpt_lab_provenance import capture_fresh_immediate
+
+    path, folder = sample
+    source = folder / "overlay.qcow2"
+    base = folder / "base.raw"
+    historical = folder / "host.raw"
+    for destination in (source, base, historical):
+        shutil.copyfile(path, destination)
+    host = capture_gpt(
+        historical, folder, source="host", logical_sector_size=512, safety_disk=disk
+    )
+
+    class MissingExport:
+        @staticmethod
+        def own_regular(path, folder):
+            return path.stat()
+
+        @staticmethod
+        def verify_chain(overlay, base, folder):
+            return {
+                "overlaySha256": hashlib.sha256(overlay.read_bytes()).hexdigest(),
+                "backingSha256": hashlib.sha256(base.read_bytes()).hexdigest(),
+            }
+
+        @staticmethod
+        def host_snapshot(overlay, destination, folder):
+            return None
+
+    refused(
+        "OBSERVATION_INCOMPLETE",
+        lambda: capture_fresh_immediate(
+            workspace=folder,
+            overlay=source,
+            base=base,
+            lab=MissingExport(),
+            safety_disk=disk,
+            host=host,
         ),
     )

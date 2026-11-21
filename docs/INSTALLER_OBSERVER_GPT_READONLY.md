@@ -62,12 +62,15 @@ trust anchor.
    ephemeral sparse RAW file for validation. The producer verifies
    the reconstructed content against the **original in-memory guest
    bytes** before marking the record `guest`.
-4. The `immediate` observation rereads the same host RAW export while
-   QEMU is still alive, after the guest read. QEMU PID/start ticks,
-   executable SHA-256 and source inode are checked in the interval.
-   The original parent and overlay are then rechecked for unchanged
-   identity, backing metadata and file SHA-256. The QEMU process must
-   exit before the lab reports success.
+4. The guest QEMU process must terminate before the `immediate` read.
+   The pinned Safety helper performs a **new read-only `qemu-img convert`**
+   from the original `overlay.qcow2` and its raw backing to a distinct
+   `immediate.raw`, which is then measured by `pread`. It never reuses
+   the old `host.raw`. Overlay/parent inode, geometry, mtime, backing
+   chain and SHA-256 are checked before/after the export. A missing or
+   inconsistent export is `OBSERVATION_INCOMPLETE`. This observation
+   occurs *after* QEMU termination, not atomically while QEMU is live.
+   Same-runner/root tampering remains outside the trust guarantee.
 5. For all three observation records, exact offsets, lengths, raw
    samples, SHA-256, calculated CRCs, normalized GUID/PARTUUID,
    partitions, acquisition method and UTC timestamp are retained.
@@ -135,3 +138,11 @@ third-party measurement receipts and effective session revocation.
 Safety PR #267 and Integrator PR #270 must review the evidence and
 any future versioned contract extension before integration. Neither
 branch or any writer/boot/install code is modified by this work.
+
+
+The new synthetic regression changes a valid GPT GUID after the host sample,
+then verifies a second source export detects it and the Safety three-way gate
+refuses. In-export tampering and a missing export fail as
+`OBSERVATION_INCOMPLETE`. This fake converter does **not** prove real QEMU
+freshness; new QEMU operational evidence and Safety consumption review are
+still required. Observer v1 and all no-writer restrictions are unchanged.
