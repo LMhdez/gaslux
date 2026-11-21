@@ -78,9 +78,17 @@ def setup(tmp_path):
         trust_anchor_id=policy.trust_anchor_id,
     )
     return dict(
-        key=key, policy=policy, evidence=signed_quote, context=ctx,
-        request=request, response=response, private=private, remote=remote,
-        proposal=proposal, quote=quote_verifier, path=path,
+        key=key,
+        policy=policy,
+        evidence=signed_quote,
+        context=ctx,
+        request=request,
+        response=response,
+        private=private,
+        remote=remote,
+        proposal=proposal,
+        quote=quote_verifier,
+        path=path,
     )
 
 
@@ -124,7 +132,10 @@ def proposed(data, *, context=None, evidence=None, request=None, response=None, 
 def resign(data, context):
     original = data["evidence"]
     return sign_quote(
-        data["key"], original.ak_spki_der, context, original.pcrs,
+        data["key"],
+        original.ak_spki_der,
+        context,
+        original.pcrs,
         data["policy"].qualified_signer_hex,
     )
 
@@ -171,9 +182,7 @@ def test_wrong_quote_policy_cannot_bind(tmp_path, field):
     altered = replace(data["context"], **{field: "wrong" if field != "policy_sha256" else "f" * 64})
     signed = resign(data, altered)
     reason = (
-        "BINDING_POLICY_MISMATCH"
-        if field != "trust_anchor_id"
-        else "BINDING_TRUST_ANCHOR_MISMATCH"
+        "BINDING_POLICY_MISMATCH" if field != "trust_anchor_id" else "BINDING_TRUST_ANCHOR_MISMATCH"
     )
     refusal(reason, lambda: proposed(data, context=altered, evidence=signed))
 
@@ -238,8 +247,7 @@ def test_changed_quote_signature_digest_blocks_proposal(tmp_path):
     data = setup(tmp_path)
     signed = replace(
         data["evidence"],
-        signature=data["evidence"].signature[:-1]
-        + bytes([data["evidence"].signature[-1] ^ 1]),
+        signature=data["evidence"].signature[:-1] + bytes([data["evidence"].signature[-1] ^ 1]),
     )
     # A new proposal describes these modified bytes but the genuine TPM check
     # must reject the signature after signed v1 verification.
