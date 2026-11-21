@@ -10,7 +10,6 @@ lab must expose a working read-only QMP control connection.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
