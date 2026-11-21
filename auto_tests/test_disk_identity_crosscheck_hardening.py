@@ -74,9 +74,11 @@ class CrosscheckHardeningTests(unittest.TestCase):
                 replaced = True
             return original_open(path, flags, *args, **kwargs)
 
-        with patch.object(checker.os, "open", swap_on_open):
-            with self.assertRaisesRegex(checker.IdentityMismatch, "substituted"):
-                checker.compare_files(self.paths)
+        with (
+            patch.object(checker.os, "open", swap_on_open),
+            self.assertRaisesRegex(checker.IdentityMismatch, "substituted"),
+        ):
+            checker.compare_files(self.paths)
         self.assertTrue(replaced)
 
     def test_swap_to_symlink_between_prestat_and_open_is_rejected(self):
@@ -94,9 +96,11 @@ class CrosscheckHardeningTests(unittest.TestCase):
                 replaced = True
             return original_open(path, flags, *args, **kwargs)
 
-        with patch.object(checker.os, "open", replace_with_symlink):
-            with self.assertRaises(checker.IdentityMismatch):
-                checker.compare_files(self.paths)
+        with (
+            patch.object(checker.os, "open", replace_with_symlink),
+            self.assertRaises(checker.IdentityMismatch),
+        ):
+            checker.compare_files(self.paths)
         self.assertTrue(replaced)
 
     def test_symlink_leaf_and_parent_are_rejected(self):
@@ -128,16 +132,20 @@ class CrosscheckHardeningTests(unittest.TestCase):
 
     def test_invalid_truncated_and_oversized_json_are_rejected(self):
         target = Path(self.paths["guest"])
-        for content in ("", "{", "not json", "{}", "\\xff", " " * (checker._MAX_EVIDENCE_BYTES + 1)):
+        invalid_contents = ("", "{", "not json", "{}", "\\xff", " " * (checker._MAX_EVIDENCE_BYTES + 1))
+        for content in invalid_contents:
             target.write_bytes(content.encode("utf-8"))
-            with self.subTest(length=len(content)):
-                with self.assertRaises(checker.IdentityMismatch):
-                    checker.compare_files(self.paths)
+            with (
+                self.subTest(length=len(content)),
+                self.assertRaises(checker.IdentityMismatch),
+            ):
+                checker.compare_files(self.paths)
 
     def test_duplicate_json_fields_rejected(self):
         target = Path(self.paths["guest"])
         content = target.read_text(encoding="utf-8")
-        target.write_text(content.replace('"diskId":', '"diskId": "duplicated", "diskId":', 1), encoding="utf-8")
+        duplicated = content.replace('"diskId":', '"diskId": "duplicated", "diskId":', 1)
+        target.write_text(duplicated, encoding="utf-8")
         with self.assertRaisesRegex(checker.IdentityMismatch, "duplicate JSON"):
             checker.compare_files(self.paths)
 
@@ -163,9 +171,11 @@ class CrosscheckHardeningTests(unittest.TestCase):
                 changed = True
             return original_pread(fd, length, offset)
 
-        with patch.object(checker.os, "pread", mutate_while_reading):
-            with self.assertRaises(checker.IdentityMismatch):
-                checker.compare_files(self.paths)
+        with (
+            patch.object(checker.os, "pread", mutate_while_reading),
+            self.assertRaises(checker.IdentityMismatch),
+        ):
+            checker.compare_files(self.paths)
         self.assertTrue(changed)
 
     def test_entry_replaced_during_read_rejected(self):
@@ -183,9 +193,11 @@ class CrosscheckHardeningTests(unittest.TestCase):
                 swapped = True
             return original_pread(fd, length, offset)
 
-        with patch.object(checker.os, "pread", swap_while_reading):
-            with self.assertRaises(checker.IdentityMismatch):
-                checker.compare_files(self.paths)
+        with (
+            patch.object(checker.os, "pread", swap_while_reading),
+            self.assertRaises(checker.IdentityMismatch),
+        ):
+            checker.compare_files(self.paths)
         self.assertTrue(swapped)
 
     def test_mbr_inventory_rejected_without_affecting_other_backends(self):
