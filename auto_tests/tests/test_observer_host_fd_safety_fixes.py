@@ -10,7 +10,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -186,25 +185,28 @@ def _command(child: subprocess.Popen, name: str) -> None:
 def test_f03_remote_original_fd_reopened_readwrite_same_inode_refused(disposable_child):
     """Real Linux child swaps fd via dup2(O_RDWR) during an existing observation."""
     child, pins = disposable_child
-    with pytest.raises(HostEvidenceRefused):
-        with borrowed_readonly_proc_fd(
+    with (
+        pytest.raises(HostEvidenceRefused),
+        borrowed_readonly_proc_fd(
             pins.process.pid,
             pins.fd_number,
             pins.media_path,
             expected_dev=pins.expected_dev,
             expected_inode=pins.expected_inode,
             expected_size=pins.expected_size,
-        ) as observed:
-            assert os.fstat(observed).st_ino == pins.expected_inode
-            _command(child, "rw")
+        ) as observed,
+    ):
+        assert os.fstat(observed).st_ino == pins.expected_inode
+        _command(child, "rw")
 
 
 @pytest.mark.parametrize("operation", ["close", "other", "exit"])
 def test_f03_remote_fd_closed_reused_or_process_gone(disposable_child, operation):
     """Real child changes the original remote FD while local reopen stays pinned."""
     child, pins = disposable_child
-    with pytest.raises(HostEvidenceRefused):
-        with borrowed_readonly_proc_fd(
+    with (
+        pytest.raises(HostEvidenceRefused),
+        borrowed_readonly_proc_fd(
             pins.process.pid,
             pins.fd_number,
             pins.media_path,
@@ -212,17 +214,19 @@ def test_f03_remote_fd_closed_reused_or_process_gone(disposable_child, operation
             expected_inode=pins.expected_inode,
             expected_size=pins.expected_size,
             expected_start_ticks=pins.process.start_ticks,
-        ) as opened:
-            assert os.fstat(opened).st_ino == pins.expected_inode
-            _command(child, operation)
-            if operation == "exit":
-                child.wait(timeout=3)
+        ) as opened,
+    ):
+        assert os.fstat(opened).st_ino == pins.expected_inode
+        _command(child, operation)
+        if operation == "exit":
+            child.wait(timeout=3)
 
 
 def test_f03_externally_wrong_start_ticks_refused(disposable_child):
     child, pins = disposable_child
-    with pytest.raises(HostEvidenceRefused, match="PROCESS_START_TICKS_MISMATCH"):
-        with borrowed_readonly_proc_fd(
+    with (
+        pytest.raises(HostEvidenceRefused, match="PROCESS_START_TICKS_MISMATCH"),
+        borrowed_readonly_proc_fd(
             child.pid,
             pins.fd_number,
             pins.media_path,
@@ -230,8 +234,9 @@ def test_f03_externally_wrong_start_ticks_refused(disposable_child):
             expected_inode=pins.expected_inode,
             expected_size=pins.expected_size,
             expected_start_ticks=pins.process.start_ticks + 1,
-        ):
-            pass
+        ),
+    ):
+        pass
 
 
 @pytest.mark.parametrize("mutation", ["wrong-device", "wrong-serial", "duplicate"])
