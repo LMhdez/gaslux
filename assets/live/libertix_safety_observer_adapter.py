@@ -11,9 +11,11 @@ from datetime import datetime
 import hashlib
 import json
 import re
+import uuid
 from typing import Any
 
 from libertix_disk_identity_gate import DiskIdentityError, assert_snapshot_matches
+from libertix_prewrite_no_writer import decide_no_writer
 
 
 class SafetyObserverRefused(DiskIdentityError):
@@ -78,6 +80,22 @@ class SafetyObserverPins:
                 "invalid virtual disk size")
 
 
+@dataclass(frozen=True)
+class SafetyGateEvidence:
+    """Externally supplied LABORATORY HMAC observations and declared free-space.
+
+    Existing decide_no_writer validates the HMACs and transaction ownership
+    assertions. These values DO NOT certify an independent physical observer.
+    """
+    host_record: dict
+    guest_record: dict
+    immediate_record: dict
+    host_key: bytes
+    guest_key: bytes
+    owned_regions: list[dict]
+    write_set: list[dict]
+
+
 def consume_observer_state_no_writer(
     *,
     verifier: Any,
@@ -88,6 +106,7 @@ def consume_observer_state_no_writer(
     host_gpt: dict,
     guest_gpt: dict,
     immediate_gpt: dict,
+    gate_evidence: SafetyGateEvidence,
     now: datetime,
     deadline: datetime,
 ) -> dict:
@@ -192,8 +211,52 @@ def consume_observer_state_no_writer(
         and host_gpt["sizeBytes"] == pins.virtual_size_bytes,
         "GPT disk or virtual geometry differs from approved Safety inventory",
     )
+    require(type(gate_evidence) is SafetyGateEvidence,
+            "authenticated Safety gate evidence is mandatory")
+    # The observer UUID must map to the SAME 128-bit Safety transaction, not to
+    # a regenerated or caller-selected unrelated string.
+    safety_transaction_id = uuid.UUID(pins.transaction_id).hex
+    try:
+        plan = json.loads(plan_bytes)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise SafetyObserverRefused("Safety plan is not canonical JSON") from exc
+    expected_disk = {key: host_gpt[key] for key in (
+        "partitionStyle", "partitionTableId", "sizeBytes",
+        "logicalSectorSizeBytes",
+    )}
+    require(
+        type(plan) is dict
+        and plan.get("planId") == safety_transaction_id
+        and plan.get("firmware") == "uefi"
+        and plan.get("disk") == expected_disk,
+        "observer transaction or GPT differs from the Safety plan",
+    )
+    gate_result = decide_no_writer(
+        plan=plan, plan_bytes=plan_bytes,
+        transaction_id=safety_transaction_id, vm_id=pins.vm_uuid,
+        fresh_nonce=pins.nonce,
+        host_evidence=gate_evidence.host_record,
+        guest_evidence=gate_evidence.guest_record,
+        immediate_evidence=gate_evidence.immediate_record,
+        host_key=gate_evidence.host_key,
+        guest_key=gate_evidence.guest_key,
+        owned_regions=gate_evidence.owned_regions,
+        write_set=gate_evidence.write_set,
+    )
+    require(gate_result["decision"] == "ACCEPT_NO_WRITER"
+            and gate_result["transactionId"] == safety_transaction_id
+            and gate_result["planSha256"] == pins.plan_sha256,
+            "Safety gate did not authorize a laboratory no-writer comparison")
+    # HMAC-valid snapshots must also be the ACTUAL snapshots supplied to this
+    # consumer, not a different but internally self-consistent fake disk.
+    for record, observed in (
+        (gate_evidence.host_record, host_gpt),
+        (gate_evidence.guest_record, guest_gpt),
+        (gate_evidence.immediate_record, immediate_gpt),
+    ):
+        assert_snapshot_matches(observed, record["payload"]["snapshot"])
     return {
-        "decision": "ACCEPT_NO_WRITER",
+        "decision": gate_result["decision"],
         "trust_boundary": "NOT_INDEPENDENT",
         "observer_message_signature_verified": True,
         "guest_attestation_verified_locally": verified.guest_attestation_verified_locally,
