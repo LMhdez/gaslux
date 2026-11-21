@@ -8,6 +8,7 @@ separately. This program does not contact GitHub, QEMU, VNC or any guest.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import stat
 import zipfile
@@ -64,7 +65,7 @@ def validate_archives(zip_dir: Path, metadata_dir: Path, originals: Path) -> dic
         if digest(binary) != expected["archiveSha256"]:
             raise Refusal(f"Historical ZIP SHA-256 mismatch: {aid}")
         try:
-            with zipfile.ZipFile(path) as archive:
+            with zipfile.ZipFile(io.BytesIO(binary)) as archive:
                 members = archive.infolist()
                 actual = [entry.filename for entry in members]
                 required = {"evidence/" + name for name in expected_names}
