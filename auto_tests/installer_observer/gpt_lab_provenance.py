@@ -302,7 +302,6 @@ def _qemu_executable_hash(pid: int) -> str:
         os.close(fd)
 
 
-
 def capture_fresh_immediate(*, workspace: Path, overlay: Path, base: Path, lab, safety_disk, host):
     """New, pinned read-only QCOW2 export after QEMU exits; never reuse host.raw.
 
@@ -354,6 +353,7 @@ def capture_fresh_immediate(*, workspace: Path, overlay: Path, base: Path, lab, 
         return result
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         raise GptProducerRefused("OBSERVATION_INCOMPLETE") from exc
+
 
 def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
     """Boot one guestfs appliance and collect three genuine read-only GPT samples."""
@@ -545,6 +545,9 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
         "safetyAssessment": assessment.result,
         "productionWriteAuthorized": False,
         "guestInputAuthorized": False,
+        "inputAuthorized": False,
+        "diskWritesAuthorized": False,
+        "productionInstallationAuthorized": False,
         "independentAttestationVerified": False,
         "remoteGuestAttestationVerifiedLocally": False,
         "remoteStateSignedWithEphemeralRunnerKey": True,

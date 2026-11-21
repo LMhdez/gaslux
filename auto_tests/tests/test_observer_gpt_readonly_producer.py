@@ -284,9 +284,7 @@ def test_immediate_reexports_overlay_after_source_gpt_changes(sample):
     historical = folder / "host.raw"
     for destination in (source, base, historical):
         shutil.copyfile(path, destination)
-    host = capture_gpt(
-        historical, folder, source="host", logical_sector_size=512, safety_disk=disk
-    )
+    host = capture_gpt(historical, folder, source="host", logical_sector_size=512, safety_disk=disk)
     guest = take(sample, source="guest", guest=True)
 
     # Mutate the current source AFTER host capture. Keep primary/backup GPT
@@ -297,9 +295,7 @@ def test_immediate_reexports_overlay_after_source_gpt_changes(sample):
         at = sector * 512
         changed[at + 56 : at + 72] = guid.bytes_le
         changed[at + 16 : at + 20] = b"\x00" * 4
-        changed[at + 16 : at + 20] = struct.pack(
-            "<I", zlib.crc32(changed[at : at + 92])
-        )
+        changed[at + 16 : at + 20] = struct.pack("<I", zlib.crc32(changed[at : at + 92]))
     source.write_bytes(changed)
 
     class FakeConverter:
@@ -377,9 +373,7 @@ def test_immediate_missing_export_is_observation_incomplete(sample):
     historical = folder / "host.raw"
     for destination in (source, base, historical):
         shutil.copyfile(path, destination)
-    host = capture_gpt(
-        historical, folder, source="host", logical_sector_size=512, safety_disk=disk
-    )
+    host = capture_gpt(historical, folder, source="host", logical_sector_size=512, safety_disk=disk)
 
     class MissingExport:
         @staticmethod
