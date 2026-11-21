@@ -12,11 +12,12 @@ import json
 import os
 import sqlite3
 import stat
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
@@ -101,7 +102,7 @@ def _utc(value: datetime | str) -> datetime:
             raise Refused("INVALID_TIME") from exc
     if not isinstance(value, datetime) or value.tzinfo is None:
         raise Refused("INVALID_TIME")
-    return value.astimezone(timezone.utc)
+    return value.astimezone(UTC)
 
 
 def _iso(value: datetime | str) -> str:

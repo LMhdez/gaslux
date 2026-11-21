@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import copy
 import importlib.util
-import os
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -157,9 +157,8 @@ class LedgerTests(unittest.TestCase):
             replace(self.trusted, protected_controller_sha="e" * 40),
             replace(self.trusted, audited_code_sha="e" * 40),
         ):
-            with self.subTest(altered=altered):
-                with self.assertRaises(model.Refused):
-                    self.ledger.transition(self.g["grantId"], "APPROVED", now=NOW, trusted=altered)
+            with self.subTest(altered=altered), self.assertRaises(model.Refused):
+                self.ledger.transition(self.g["grantId"], "APPROVED", now=NOW, trusted=altered)
         self.assertEqual(self.ledger.state(self.g["grantId"]), "REVIEW_PENDING")
 
     def test_approval_refused_without_external_review_or_authority(self):
@@ -195,7 +194,10 @@ class LedgerTests(unittest.TestCase):
             ("WRITER_OR_INSTALLATION_REFUSED", replace(self.run, scope="DISK_WRITE")),
             ("UNAPPROVED_EXACT_COMMIT_OR_CONTEXT", replace(self.run, preparation_sha="f" * 40)),
             ("UNAPPROVED_EXACT_COMMIT_OR_CONTEXT", replace(self.run, authorization_sha="f" * 40)),
-            ("UNAPPROVED_EXACT_COMMIT_OR_CONTEXT", replace(self.run, protected_controller_sha="f" * 40)),
+            (
+                "UNAPPROVED_EXACT_COMMIT_OR_CONTEXT",
+                replace(self.run, protected_controller_sha="f" * 40),
+            ),
             ("UNAPPROVED_EXACT_COMMIT_OR_CONTEXT", replace(self.run, audited_code_sha="f" * 40)),
         )
         for reason, run in cases:
@@ -250,7 +252,9 @@ class LedgerTests(unittest.TestCase):
         command = """import json, os, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(sys.argv[2])))
-from observer_one_shot_ledger_offline import OfflineLedger, TrustedDecisionFixture, RunObservationFixture
+from observer_one_shot_ledger_offline import (
+    OfflineLedger, TrustedDecisionFixture, RunObservationFixture
+)
 fixture = json.loads(Path(sys.argv[3]).read_text(encoding='utf-8'))
 trusted = TrustedDecisionFixture(
     fixture['repository'], fixture['experimentId'], fixture['preparationSha'],
@@ -299,7 +303,9 @@ os._exit(23)
         )
         self.assertTrue(all(value is False for value in model.CAPABILITIES.values()))
         self.assertEqual(set(model.CAPABILITIES), {
-            "protectedControllerOperational", "externalLedgerOperational", "guestAttestationVerified",
+            "protectedControllerOperational",
+            "externalLedgerOperational",
+            "guestAttestationVerified",
             "qemuExecutionAuthorized", "guestCommandChannelAuthorized", "diskWritesAuthorized",
             "productionInstallationAuthorized",
         })
@@ -349,8 +355,12 @@ os._exit(23)
                     ledger.transition(g["grantId"], "REVIEW_PENDING", now=NOW)
                     trusted = trusted_fixture(g)
                     ledger.transition(g["grantId"], "APPROVED", now=NOW, trusted=trusted)
-                    run = replace(run_fixture(g), preparation_sha=intermediate, authorization_sha=final)
-                    with self.assertRaisesRegex(model.Refused, "UNAPPROVED_EXACT_COMMIT_OR_CONTEXT"):
+                    run = replace(
+                        run_fixture(g), preparation_sha=intermediate, authorization_sha=final
+                    )
+                    with self.assertRaisesRegex(
+                        model.Refused, "UNAPPROVED_EXACT_COMMIT_OR_CONTEXT"
+                    ):
                         ledger.transition(g["grantId"], "CONSUMED", now=NOW,
                                           trusted=trusted, run=run)
                     self.assertEqual(ledger.state(g["grantId"]), "APPROVED")
