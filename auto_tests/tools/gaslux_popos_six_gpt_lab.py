@@ -10,22 +10,22 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import stat
 import subprocess
 import sys
 import uuid
+from pathlib import Path
 
 from gaslux_popos_reuse_snapshot_gate import (
-    Refusal, chain, command, make_child, new_file, regular, region_hash,
-    sha, system_ovmf_template, need,
+    Refusal, chain, command, make_child, need, new_file, region_hash, regular,
+    sha, system_ovmf_template,
 )
 from gaslux_popos_six_gpt_contract import (
-    BOOLEANS, CONSENT, COUNT, DISK_GUID, DISTINST_SHA256, ISO_SHA256,
-    PARTS, PROTECTED, PROTECTED_ESP_FILE, SCENARIO, SECTOR,
-    SERIAL, SIZE, SYSTEM76_GPG_FPR, UNALLOCATED_CANARIES,
-    canonical_digest, validate_geometry, validate_plan,
+    BOOLEANS, CONSENT, COUNT, DISK_GUID, DISTINST_SHA256, ISO_SHA256, PARTS,
+    PROTECTED, PROTECTED_ESP_FILE, SCENARIO, SECTOR, SERIAL, SIZE,
+    SYSTEM76_GPG_FPR, UNALLOCATED_CANARIES, canonical_digest,
+    validate_geometry, validate_plan,
 )
 
 BASE_NAME = "prepared-six.raw"
@@ -57,7 +57,7 @@ def hosted(work: Path) -> None:
 def sha_region(path: Path, sector: int, count: int) -> str:
     regular(path, length=SIZE)
     need(type(sector) is int and type(count) is int
-         and 0 <= sector and count > 0 and sector + count <= COUNT,
+         and sector >= 0 and count > 0 and sector + count <= COUNT,
          "REFUSE_IDENTITY_MISMATCH: invalid protected sector window")
     h = hashlib.sha256()
     with path.open("rb", buffering=0) as f:
@@ -107,7 +107,7 @@ def verify_sfdisk_gpt(path: Path) -> dict:
          "REFUSE_IDENTITY_MISMATCH: disk GPT identity/table missing")
     rows = table.get("partitions", [])
     need(len(rows) == 6, "REFUSE_IDENTITY_MISMATCH: unexpected GPT entries")
-    for expected, actual in zip(PARTS, rows):
+    for expected, actual in zip(PARTS, rows, strict=True):
         need(type(actual.get("start")) is int
              and type(actual.get("size")) is int
              and actual["start"] == expected.start

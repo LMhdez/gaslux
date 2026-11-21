@@ -11,7 +11,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from gaslux_popos_reuse_snapshot_gate import Refusal, WRITE, UNSAFE, need
+from gaslux_popos_reuse_snapshot_gate import Refusal, UNSAFE, WRITE, need
 
 SECTOR = 512
 SIZE = 32 * 1024**3
@@ -94,7 +94,7 @@ def validate_geometry() -> None:
          "REFUSE_IDENTITY_MISMATCH: six-GPT contract missing")
     need(PARTS[0].start >= 2048 and PARTS[-1].end < COUNT - 33,
          "REFUSE_IDENTITY_MISMATCH: GPT reserved sectors overlapped")
-    for previous, current in zip(PARTS, PARTS[1:]):
+    for previous, current in zip(PARTS, PARTS[1:], strict=True):
         need(previous.end < current.start and current.start % 2048 == 0,
              "REFUSE_IDENTITY_MISMATCH: partition overlap/misalignment")
     need(PARTS[5].count * SECTOR >= 28 * 1024**3,
@@ -157,7 +157,7 @@ def validate_plan(plan: dict, transaction_id: str) -> None:
                      (1615880, "protected-recovery"), (64, "unallocated"),
                      (1024, "unallocated"), (64006144, "unallocated"),
                      (67108800, "unallocated"),
-                 )))
+                 ), strict=True))
          and type(plan.get("protectedEspFileSha256")) is str
          and HASH.fullmatch(plan["protectedEspFileSha256"]) is not None
          and type(plan.get("ovmfTemplateSha256")) is str

@@ -7,10 +7,10 @@ from __future__ import annotations
 import copy
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 TOOLS = Path(__file__).resolve().parent / "tools"
@@ -58,6 +58,7 @@ def sample_plan() -> dict:
                 (534536, 567304, 1615880, 64, 1024, 64006144, 67108800),
                 ("protected-msr", "protected-data", "protected-recovery",
                  "unallocated", "unallocated", "unallocated", "unallocated"),
+                strict=True,
             )
         ],
         "ovmfTemplateSha256": "0"*64,
@@ -113,9 +114,11 @@ class SixGptNegativeTests(unittest.TestCase):
         invalid.extend((p.end, 1) for p in c.PROTECTED)
         invalid.extend((lba, 1) for lba in c.UNALLOCATED_CANARIES)
         for sector, count in invalid:
-            with self.subTest(sector=sector, count=count):
-                with self.assertRaisesRegex(Refusal, "REFUSE_OUT_OF_WRITESET"):
-                    c.classify_sector_write(sector, count)
+            with (
+                self.subTest(sector=sector, count=count),
+                self.assertRaisesRegex(Refusal, "REFUSE_OUT_OF_WRITESET"),
+            ):
+                c.classify_sector_write(sector, count)
 
     def test_qemu_bio_trace_parser_denylist(self):
         for invalid in (
@@ -234,10 +237,13 @@ class SixGptNegativeTests(unittest.TestCase):
     def test_injected_fault_recovery_rejects_partial_or_foreign_overlay(self):
         with patch.object(lab, "chain") as chain:
             chain.return_value = {"backing-filename": "foreign"}
-            with patch.object(lab, "command", return_value=json.dumps(
-                [{"depth": 0, "data": True}])):
-                with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
-                    lab.ensure_empty_child(Path("/tmp/foreign"), Path("/tmp/base"))
+            with (
+                patch.object(lab, "command", return_value=json.dumps(
+                    [{"depth": 0, "data": True}]
+                )),
+                self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"),
+            ):
+                lab.ensure_empty_child(Path("/tmp/foreign"), Path("/tmp/base"))
         runner_source = (TOOLS / "gaslux_popos_six_gpt_lab.py").read_text()
         self.assertIn('ensure_empty_child(fault, base)', runner_source)
         self.assertIn('regular(fault, write=True).unlink()', runner_source)
