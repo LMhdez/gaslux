@@ -42,8 +42,9 @@ class MintAbForensicContracts(unittest.TestCase):
                 kernel=d/"kernel", initramfs=d/"initramfs", evidence=d)
             with patch.dict(os.environ, {
                 "GASLUX_MINT_AB_CHECKPOINT_CONSENT": CONSENT,
-                "GASLUX_MINT_AB_BOOT_CONSENT":
-                    "I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE",
+                "GASLUX_MINT_AB_BOOT_CONSENT": (
+                    "I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE"
+                ),
                 "GITHUB_RUN_ID": "12345", "GITHUB_SHA": "a"*40,
             }, clear=True), patch.object(forensic, "prepare_checkpoint") as checkpoint:
                 with self.assertRaisesRegex(forensic.ForensicError,
@@ -231,8 +232,9 @@ class MintAbForensicContracts(unittest.TestCase):
 
         env = {
             "GASLUX_MINT_AB_CHECKPOINT_CONSENT": CONSENT,
-            "GASLUX_MINT_AB_BOOT_CONSENT":
-                "I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE",
+            "GASLUX_MINT_AB_BOOT_CONSENT": (
+                "I_ACCEPT_ONE_DISPOSABLE_WINDOWS10_MINT_AB_AFTER_RESTORE"
+            ),
             "GITHUB_RUN_ID": "99981",
             "GITHUB_SHA": "a" * 40,
         }
