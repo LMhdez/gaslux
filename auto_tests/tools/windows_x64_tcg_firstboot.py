@@ -1318,6 +1318,7 @@ def main(argv: list[str] | None = None) -> int:
                                                     run_shared_root_pacstrap,
                                                 )
                                                 pacstrap_proof = run_shared_root_pacstrap(
+                                                    original=base,
                                                     iso=Path(os.environ["GASLUX_CACHYOS_VERIFIED_ISO_PATH"]),
                                                     pinned_sha256=os.environ["GASLUX_CACHYOS_VERIFIED_ISO_SHA256"],
                                                     base=disk,
@@ -1331,6 +1332,24 @@ def main(argv: list[str] | None = None) -> int:
                                                     ext4=ext4,
                                                     fourth=fourth,
                                                     fourth_serial=workspace / "fourth-post-ext4-windows-serial.log",
+                                                )
+                                                # Keep host-private TPM/trace paths out of the
+                                                # retained JSON; only hashes and bounded evidence
+                                                # are published with the artifact.
+                                                treatment_tpm_state = Path(
+                                                    pacstrap_proof.pop("_treatmentTpmStatePath")
+                                                )
+                                                trace_events_raw = pacstrap_proof.pop(
+                                                    "_qemuTraceEventsPath", ""
+                                                )
+                                                treatment_trace_raw = pacstrap_proof.pop(
+                                                    "_treatmentQemuTracePath", ""
+                                                )
+                                                trace_events_file = (
+                                                    Path(trace_events_raw) if trace_events_raw else None
+                                                )
+                                                treatment_trace_file = (
+                                                    Path(treatment_trace_raw) if treatment_trace_raw else None
                                                 )
                                                 pacstrap_bytes = (
                                                     json.dumps(pacstrap_proof, sort_keys=True, indent=2)
@@ -1350,6 +1369,133 @@ def main(argv: list[str] | None = None) -> int:
                                                 )
                                                 print("GASLUX_CACHYOS_SHARED_ROOT_PACSTRAP_VERIFIED=1",
                                                       flush=True)
+                                                # Re-enter genuine Windows while GPT #5 still
+                                                # contains installed native CachyOS. This test
+                                                # does NOT write a Linux loader into Windows ESP.
+                                                # Any failure is retained and the owned COW is
+                                                # still discarded before the Windows baseline boot.
+                                                from windows_cachyos_postpacstrap_windows import (
+                                                    verify_windows_with_installed_root,
+                                                )
+                                                side_by_side = {
+                                                    "windowsBootWithPacstrappedCachyosOnSameDiskVerified": False,
+                                                    "cachyosBootloaderInstalledToWindowsEsp": False,
+                                                    "sameDiskDualBootVerified": False,
+                                                    "rollbackProven": False,
+                                                    "releaseEligible": False,
+                                                }
+                                                try:
+                                                    from windows_cachyos_bcd_ab_control import (
+                                                        compare_bcd_ab, running_swtpm,
+                                                    )
+                                                    with running_swtpm(
+                                                        treatment_tpm_state, workspace,
+                                                        "bcd-ab-treatment-tpm",
+                                                    ) as treatment_tpm_socket:
+                                                        side_by_side = verify_windows_with_installed_root(
+                                                            base, disk, nvram, candidate, cow, staged,
+                                                            third, ext4, fourth, pacstrap_proof,
+                                                            timeout=1500,
+                                                            tpm_socket=treatment_tpm_socket,
+                                                            trace_events_file=trace_events_file,
+                                                            trace_file=treatment_trace_file,
+                                                        )
+                                                except Exception as error:
+                                                    # Fail closed without bypassing the existing
+                                                    # disposable-COW discard and Windows reboot.
+                                                    # This covers libguestfs and QEMU failures too.
+                                                    side_by_side["failureType"] = type(error).__name__
+                                                    # This project's post-pacstrap verifier raises only
+                                                    # fixed diagnostic strings, never an arbitrary guest
+                                                    # path, command line, token or host error message.
+                                                    from windows_cachyos_postpacstrap_windows import (
+                                                        PostPacstrapWindowsError,
+                                                    )
+                                                    if isinstance(error, PostPacstrapWindowsError):
+                                                        safe_reason = str(error)
+                                                        side_by_side["failureReason"] = safe_reason
+                                                        if (error.diagnostics is not None
+                                                                and error.diagnostics.get(
+                                                                    "windowsPostPacstrapSerialSha256"
+                                                                )):
+                                                            side_by_side["windowsPostPacstrapSerialSha256"] = (
+                                                                error.diagnostics["windowsPostPacstrapSerialSha256"]
+                                                            )
+                                                        # The verifier supplies only bounded hashes,
+                                                        # byte offsets and boolean evidence; never
+                                                        # original BCD hive bytes or guest secrets.
+                                                        if error.diagnostics is not None:
+                                                            side_by_side["readonlyDiagnostics"] = (
+                                                                error.diagnostics
+                                                            )
+                                                            print("GASLUX_CACHYOS_POST_PACSTRAP_READONLY_DIAGNOSTICS="
+                                                                  + json.dumps(error.diagnostics,
+                                                                               sort_keys=True),
+                                                                  flush=True)
+                                                        print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_REASON="
+                                                              + safe_reason, flush=True)
+                                                    print("GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_REENTRY_FAILED="
+                                                          + type(error).__name__, flush=True)
+                                                try:
+                                                    from windows_cachyos_bcd_ab_control import (
+                                                        tpm_state_tree_sha256,
+                                                    )
+                                                    side_by_side["treatmentTpmStateTreeSha256AfterWindowsAttempt"] = (
+                                                        tpm_state_tree_sha256(treatment_tpm_state)
+                                                    )
+                                                except Exception as tpm_error:
+                                                    side_by_side["treatmentTpmPostBootEvidenceFailureType"] = (
+                                                        type(tpm_error).__name__
+                                                    )
+                                                # Compare only read-only BCD hashes/offsets from
+                                                # the independent Windows-only and treatment arms.
+                                                # Missing evidence remains an explicit blocker.
+                                                control_bcd = pacstrap_proof.get(
+                                                    "bcdAbControl", {}
+                                                ).get("controlBcdForensic")
+                                                treatment_bcd = side_by_side.get(
+                                                    "bcdReadOnlyForensic"
+                                                ) or side_by_side.get(
+                                                    "readonlyDiagnostics", {}
+                                                ).get("bcdReadOnlyForensic")
+                                                if (isinstance(control_bcd, dict)
+                                                        and isinstance(treatment_bcd, dict)):
+                                                    try:
+                                                        side_by_side["bcdAbComparison"] = (
+                                                            compare_bcd_ab(control_bcd, treatment_bcd)
+                                                        )
+                                                    except Exception as comparison_error:
+                                                        side_by_side["bcdAbComparison"] = {
+                                                            "classification": "INVALID_OR_MALFORMED_BCD_AB_EVIDENCE",
+                                                            "failureType": type(comparison_error).__name__,
+                                                            "processAttributionProven": False,
+                                                            "approvedMutation": False,
+                                                            "releaseEligible": False,
+                                                        }
+                                                else:
+                                                    side_by_side["bcdAbComparison"] = {
+                                                        "classification": "INCOMPLETE_CONTROL_OR_TREATMENT_BCD_EVIDENCE",
+                                                        "processAttributionProven": False,
+                                                        "approvedMutation": False,
+                                                        "releaseEligible": False,
+                                                    }
+                                                side_bytes = (json.dumps(
+                                                    side_by_side, sort_keys=True, indent=2
+                                                ) + "\n").encode("utf-8")
+                                                side_path = evidence / (
+                                                    f"{args.profile}-post-pacstrap-windows-with-linux.json"
+                                                )
+                                                require(not side_path.exists() and
+                                                        not side_path.is_symlink(),
+                                                        "refusing reused Windows/Linux re-entry proof")
+                                                with side_path.open("xb") as out:
+                                                    out.write(side_bytes)
+                                                report["windowsBootWithPacstrappedCachyosOnSameDiskVerified"] = (
+                                                    side_by_side["windowsBootWithPacstrappedCachyosOnSameDiskVerified"]
+                                                )
+                                                report["windowsWithInstalledLinuxEvidenceSha256"] = (
+                                                    hashlib.sha256(side_bytes).hexdigest()
+                                                )
                                                 from windows_cachyos_postext4_cow_rollback import (
                                                     verify_discard_postext4_cow,
                                                 )
@@ -1408,6 +1554,7 @@ def main(argv: list[str] | None = None) -> int:
                         ("third-overlay-qemu-stderr.log", "third-boot-qemu-stderr", 256_000),
                         ("fourth-post-ext4-windows-serial.log", "fourth-boot-serial", 512_000),
                         ("fourth-post-ext4-qemu-stderr.log", "fourth-boot-qemu-stderr", 256_000),
+                        ("fourth-post-ext4-boot-diagnostic.json", "fourth-boot-diagnostic", 8192),
                         ("cachyos-shared-root-pacstrap-serial.log", "cachyos-root-pacstrap-serial", 2_000_000),
                         ("cachyos-shared-root-pacstrap-qemu-stderr.log", "cachyos-root-pacstrap-qemu-stderr", 256_000),
                         ("cachyos-installed-readonly-serial.log", "cachyos-installed-readonly-serial", 512_000),
@@ -1416,13 +1563,30 @@ def main(argv: list[str] | None = None) -> int:
                         ("cachyos-installed-rw-child-stderr.log", "cachyos-installed-rw-child-stderr", 256_000),
                         ("cachyos-installed-rw-child-second-serial.log", "cachyos-installed-rw-child-second-serial", 512_000),
                         ("cachyos-installed-rw-child-second-stderr.log", "cachyos-installed-rw-child-second-stderr", 256_000),
+                        ("bcd-control-windows-only-windows-serial.log", "bcd-control-windows-only-serial", 512_000),
+                        ("bcd-control-windows-only-qemu-stderr.log", "bcd-control-windows-only-qemu-stderr", 256_000),
+                        ("bcd-control-windows-only-boot-diagnostic.json", "bcd-control-windows-only-boot-diagnostic", 8192),
+                        ("bcd-ab-control-tpm-swtpm-status.json", "bcd-control-tpm-status", 4096),
+                        ("bcd-ab-treatment-tpm-swtpm-status.json", "bcd-treatment-tpm-status", 4096),
+                        ("bcd-control-windows-only-qemu-trace.bin", "bcd-control-windows-only-qemu-trace", 10_000_000),
+                        ("bcd-ab-qemu-write-events.txt", "bcd-ab-qemu-write-events", 16_384),
+                        ("sixth-post-pacstrap-windows-serial.log", "sixth-post-pacstrap-windows-serial", 512_000),
+                        ("sixth-post-pacstrap-qemu-stderr.log", "sixth-post-pacstrap-qemu-stderr", 256_000),
+                        ("sixth-post-pacstrap-boot-diagnostic.json", "sixth-post-pacstrap-boot-diagnostic", 8192),
+                        ("sixth-post-pacstrap-qemu-trace.bin", "sixth-post-pacstrap-qemu-trace", 10_000_000),
                         ("fifth-after-ext4-discard-windows-serial.log", "fifth-post-pacstrap-discard-serial", 512_000),
                         ("fifth-after-ext4-discard-qemu-stderr.log", "fifth-post-pacstrap-discard-qemu-stderr", 256_000),
                     ):
                         source = workspace / source_name
                         if (source.is_file() and not source.is_symlink()
                                 and 0 < source.stat().st_size <= max_bytes):
-                            dest = evidence / f"{args.profile}-{suffix}.log"
+                            extension = (
+                                ".bin" if source_name.endswith(".bin")
+                                else ".txt" if source_name.endswith(".txt")
+                                else ".json" if source_name.endswith(".json")
+                                else ".log"
+                            )
+                            dest = evidence / f"{args.profile}-{suffix}{extension}"
                             with source.open("rb") as stream, dest.open("xb") as output:
                                 shutil.copyfileobj(stream, output, length=64 * 1024)
                             with dest.open("rb") as hashed:
