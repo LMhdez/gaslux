@@ -145,6 +145,11 @@ jobs:
 
   genuine-client-two-stage-firstboot:
     name: Genuine Microsoft ${{ matrix.profile }}, QEMU KVM DVD stage -> disk-only Windows boot
+    # This experimental personal-account A/B branch is unqualified for paid
+    # capacity and has a proven 776 GiB byte-budget shortfall. Neither push
+    # nor workflow_dispatch may launch Windows Setup from this branch.
+    # Re-enable only in a separately human-reviewed, authorized lab profile.
+    if: github.ref != 'refs/heads/test/mint-cow-ab-checkpoint-20261120'
     needs: [verify-host-and-proof-contracts, synthetic-guestfs-fifth-ext4]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
