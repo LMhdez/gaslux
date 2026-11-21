@@ -27,6 +27,14 @@ jobs:
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$GASLUX_EXPECTED_HEAD"
 
+      - name: Checkout pinned existing generic-kernel helper (no OS installer)
+        uses: actions/checkout@v4
+        with:
+          repository: LMhdez/gaslux
+          ref: 3f44ae2068fabe875f160ca007393f9e3eb99367
+          path: q4os-kernel-selector
+          persist-credentials: false
+
       - name: Install QEMU, OVMF and offline NTFS inspection tools
         shell: bash
         run: |
@@ -34,7 +42,7 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             qemu-system-x86 qemu-utils ovmf ntfs-3g gdisk dosfstools xorriso curl acl \
-            python3-guestfs libguestfs-tools
+            python3-guestfs libguestfs-tools libguestfs0 linux-image-generic supermin
           sudo modprobe nbd max_part=8
           if [[ -c /dev/kvm ]]; then
             sudo setfacl -m "u:$(id -un):rw" /dev/kvm || true
@@ -46,6 +54,34 @@ jobs:
             printf 'GASLUX_WIN10_ACCEL=tcg\n' >> "$GITHUB_ENV"
             echo 'Windows lab accelerator: TCG (extended timeout)'
           fi
+
+      - name: BLOCKED_GUESTFS_APPLIANCE unless real synthetic QEMU GPT observer passes
+        shell: bash
+        env:
+          GASLUX_Q4OS_GUESTFS_EVIDENCE: ${{ runner.temp }}/q4os-win10-readonly-evidence
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm && test ! -L /dev/kvm
+          test "$(git -C q4os-kernel-selector rev-parse HEAD)" = 3f44ae2068fabe875f160ca007393f9e3eb99367
+          evidence="$GASLUX_Q4OS_GUESTFS_EVIDENCE"
+          test ! -e "$evidence"
+          mkdir -m 0700 "$evidence"
+          source q4os-kernel-selector/auto_tests/tools/windows_x64_libguestfs_kernel.sh
+          mkdir -m 0700 "$RUNNER_TEMP/q4os-safety-src"
+          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git f55633c90973f633dda678f583f7730fc2cdc0ce
+          test "$(git rev-parse FETCH_HEAD)" = f55633c90973f633dda678f583f7730fc2cdc0ce
+          git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
+          git show FETCH_HEAD:assets/live/libertix_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP" LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
+          timeout --signal=TERM --kill-after=20s 300s \
+            env PYTHONPATH="$RUNNER_TEMP/q4os-safety-src" \
+            /usr/bin/python3 auto_tests/tools/q4os_libguestfs_preflight.py
+          test -s "$evidence/q4os-guestfs-synthetic-preflight.json"
+          echo 'Real QEMU appliance verified on synthetic disk; Windows media not yet touched' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download Microsoft Windows 10 Enterprise Evaluation 22H2 and verify official SHA-256
         shell: bash
@@ -162,7 +198,7 @@ jobs:
           # This folder contains only bounded status JSON, never the ISO, QCOW2,
           # OVMF state, unattended XML, serial data, passwords or other secrets.
           evidence_dir="$RUNNER_TEMP/q4os-win10-readonly-evidence"
-          mkdir -m 0700 "$evidence_dir"
+          test -d "$evidence_dir" && test ! -L "$evidence_dir"
           qmp="$work/q4os-win10-qmp.sock"
           boot_report="$work/q4os-win10-uefi-dvd-boot.json"
           test ! -e "$qmp" && test ! -e "$serial" && test ! -e "$boot_report"
@@ -262,15 +298,12 @@ jobs:
           sudo qemu-nbd --disconnect /dev/nbd0
           trap - EXIT
 
-      - name: Load exact pinned Safety #267 source for observational refusals
+      - name: Require same pinned Safety #267 from the successful synthetic preflight
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git f55633c90973f633dda678f583f7730fc2cdc0ce
-          test "$(git rev-parse FETCH_HEAD)" = "f55633c90973f633dda678f583f7730fc2cdc0ce"
-          mkdir -m 0700 "$RUNNER_TEMP/q4os-safety-src"
-          git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
-          git show FETCH_HEAD:assets/live/libertix_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+          test -s "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
+          test -s "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
           git diff --exit-code -- .github/workflows/gaslux-q4os-windows10-qcow2.yml assets/live/gaslux_q4os_win10_readonly_probe.py
       - name: Real Windows 10 host GPT versus readonly QEMU guestfs and Safety #267 refusal
         shell: bash
@@ -278,6 +311,7 @@ jobs:
           set -Eeuo pipefail
           test -d "$RUNNER_TEMP/q4os-win10-readonly-evidence"
           test ! -L "$RUNNER_TEMP/q4os-win10-readonly-evidence"
+          export LIBGUESTFS_TMPDIR="$RUNNER_TEMP" LIBGUESTFS_CACHEDIR="$RUNNER_TEMP"
           PYTHONPATH="assets/live:$RUNNER_TEMP/q4os-safety-src" /usr/bin/python3 \
             assets/live/gaslux_q4os_win10_readonly_probe.py
           git diff --exit-code -- .github/workflows/gaslux-q4os-windows10-qcow2.yml assets/live/gaslux_q4os_win10_readonly_probe.py
