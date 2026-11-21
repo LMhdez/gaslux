@@ -58,6 +58,30 @@ jobs:
           export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
           python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
           python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+      - name: Print reviewed source-only Ruff correction candidate on style failure
+        if: failure()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
+          python3 -m ruff check --fix auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+          python3 -m ruff format auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+          python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+          python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+          # Only the two public reviewed Python source files are printed.
+          # No GitHub token, Windows data, ISO, disk, env, or user paths.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for path in (
+              Path("auto_tests/tools/windows_mint_ab_forensic.py"),
+              Path("auto_tests/test_windows_mint_ab_forensic.py"),
+          ):
+              print("GASLUX_RUFF_FORMATTED_SOURCE=" + json.dumps({
+                  "path": str(path),
+                  "source": path.read_text(encoding="utf-8"),
+              }, ensure_ascii=True))
+          PY
       - name: Synthetic QCOW2 arm isolation (no Windows, no guest boot)
         shell: bash
         run: |
