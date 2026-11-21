@@ -45,22 +45,27 @@ jobs:
             'ruff==0.14.4' 'jsonschema==4.25.1'
           export PATH="$RUNNER_TEMP/pop-six-contract-venv/bin:$PATH"
           python3 -m compileall -q \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff check --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py || true
           ruff check \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --check \
+            auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
@@ -125,7 +130,7 @@ jobs:
             if test -d "$work" && test ! -L "$work"; then
               case "$work" in
                 "$RUNNER_TEMP"/gaslux-pop-six-gpt-*)
-                  for file in pop-six-transaction.json recovery-proof.json; do
+                  for file in pop-six-transaction.json recovery-proof.json filesystem-fsck-before.json filesystem-fsck-after.json; do
                     if test -f "$work/$file" && test ! -L "$work/$file"; then
                       cp -- "$work/$file" "$evidence/"
                     fi
@@ -147,10 +152,14 @@ jobs:
             --work "$work" --ovmf-template "$template"
           python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py preflight \
             --work "$work" --ovmf-template "$template"
+          python3 auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            --work "$work" --phase before
           python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py recover \
             --work "$work" --ovmf-template "$template"
           python3 auto_tests/tools/gaslux_popos_six_gpt_lab.py preflight \
             --work "$work" --ovmf-template "$template"
+          python3 auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
+            --work "$work" --phase after
           python3 - "$work" <<'PY'
           import json,sys
           from pathlib import Path
@@ -161,6 +170,9 @@ jobs:
           assert p["manifestSha256"]==r["manifestSha256"]
           assert len(p["partitions"])==6 and len(p["canaries"])==7
           assert r["ownedFaultChildReconstructedEmpty"] is True
+          checks=[json.loads((w/f"filesystem-fsck-{phase}.json").read_text()) for phase in ("before","after")]
+          assert all(x["readOnlyFsckAllPassed"] is True and len(x["filesystems"])==3 for x in checks)
+          assert all(x["transactionId"]==p["transactionId"] and x["manifestSha256"]==p["manifestSha256"] for x in checks)
           for name in ("windowsWriterAuthorized","productionInstallationAuthorized",
                        "releaseEligible","stable","sameDiskDualBootVerified",
                        "windowsInPlaceRollbackProven"):

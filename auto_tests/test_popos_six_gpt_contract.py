@@ -271,6 +271,53 @@ class SixGptNegativeTests(unittest.TestCase):
         self.assertIn('sha(base) == plan["backingSha256"]', runner_source)
         self.assertIn("verify_canaries(base, plan, work)", runner_source)
 
+    def test_readonly_fsck_partition_copy_and_untrusted_bounds(self):
+        import gaslux_popos_six_gpt_fsck as fsc
+
+        with tempfile.TemporaryDirectory() as folder:
+            work = Path(folder)
+            base = new_file(work / "fsck-fixture.raw", c.SIZE)
+            sentinel = b"GASLUX-SYNTHETIC-ONLY-BYTE-EXACT"
+            with base.open("r+b") as out:
+                out.seek(c.PARTS[0].start * c.SECTOR + 1024)
+                out.write(sentinel)
+            extracted = work / "fsck-before-1.img"
+            fsc.copy_owned_partition(base, extracted, c.PARTS[0].start, 16)
+            self.assertEqual(
+                extracted.read_bytes()[1024:1024+len(sentinel)], sentinel
+            )
+            self.assertEqual(extracted.stat().st_size, 16*c.SECTOR)
+            for first, sectors in (
+                (-1, 16), (0, 0), (c.COUNT, 1), (c.COUNT-4, 8),
+                (c.PARTS[0].start, -1),
+                (c.PARTS[0].start, True),
+            ):
+                with self.subTest(first=first, sectors=sectors):
+                    with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
+                        fsc.copy_owned_partition(
+                            base, work / "fsck-after-1.img", first, sectors,
+                        )
+            with self.assertRaisesRegex(Refusal, "REFUSE_RECOVERY_UNPROVEN"):
+                fsc.copy_owned_partition(
+                    base, work / "foreign.img", c.PARTS[0].start, 16,
+                )
+            with self.assertRaises((OSError, Refusal)):
+                fsc.copy_owned_partition(
+                    base, extracted, c.PARTS[0].start, 16,
+                )
+
+    def test_fsck_probe_requires_frozen_backing_and_false_writer_flags(self):
+        import gaslux_popos_six_gpt_fsck as fsc
+
+        with self.assertRaises((OSError, Refusal)):
+            fsc.verify_read_only_fsck(Path("/tmp/unknown-gaslux-six"), "before")
+        source = (TOOLS / "gaslux_popos_six_gpt_fsck.py").read_text()
+        self.assertIn('"fsck.fat", "-n"', source)
+        self.assertIn('"e2fsck", "-fn"', source)
+        self.assertIn("readOnlyFsckAllPassed", source)
+        self.assertIn("observationComplete", source)
+        self.assertIn("write_json_exclusive", source)
+
     def test_six_gpt_has_no_executable_qemu_or_distinst(self):
         source = (TOOLS / "gaslux_popos_six_gpt_lab.py").read_text()
         assert "qemu-system-" not in source
