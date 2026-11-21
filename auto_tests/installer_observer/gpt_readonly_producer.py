@@ -213,6 +213,7 @@ def build_safety_v1(
     authority: Any,
     logical_sector_size: int,
     schema_path: Path,
+    expected_observer_result_sha256: str,
 ) -> dict[str, Any]:
     """Produce a strict Safety v1 DIAGNOSTIC statement, with external parameters.
 
@@ -264,8 +265,7 @@ def build_safety_v1(
         "requestId": pins.request_id,
         "nonce": pins.nonce,
         "sequence": pins.sequence,
-        "observerResultSha256": pins.observer_result_sha256
-        if hasattr(pins, "observer_result_sha256") else "",
+        "observerResultSha256": expected_observer_result_sha256,
         "issuer": {
             "issuerId": authority.issuer_id,
             "observerId": authority.observer_id,
@@ -314,8 +314,9 @@ def build_safety_v1(
     }
     # The result digest is an explicit parameter, never inferred from host bytes.
     require(
-        isinstance(statement["observerResultSha256"], str)
-        and len(statement["observerResultSha256"]) == 64,
+        isinstance(expected_observer_result_sha256, str)
+        and len(expected_observer_result_sha256) == 64
+        and all(c in "0123456789abcdef" for c in expected_observer_result_sha256),
         "OBSERVER_RESULT_NOT_VERIFIED",
     )
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
