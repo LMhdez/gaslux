@@ -284,6 +284,7 @@ class LedgerTests(unittest.TestCase):
             "grant_id",
             "authorization_key",
             "execution_key",
+            "commit_key",
             "external_decision_id",
             "review_key",
         )
@@ -293,7 +294,7 @@ class LedgerTests(unittest.TestCase):
                     columns,
                     con.execute(
                         "SELECT grant_id, authorization_key, execution_key, "
-                        "external_decision_id, review_key FROM grants"
+                        "commit_key, external_decision_id, review_key FROM grants"
                     ).fetchone(),
                     strict=True,
                 )
@@ -305,9 +306,9 @@ class LedgerTests(unittest.TestCase):
                     with self.assertRaises(sqlite3.IntegrityError):
                         con.execute(
                             "INSERT INTO grants (grant_id, authorization_key, "
-                            "execution_key, external_decision_id, review_key, "
+                            "execution_key, commit_key, external_decision_id, review_key, "
                             "payload, digest, state, created_at) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 *(other[key] for key in columns),
                                 "{}",
@@ -342,12 +343,13 @@ class LedgerTests(unittest.TestCase):
             con.execute("BEGIN IMMEDIATE")
             con.execute(
                 "INSERT INTO grants (grant_id, authorization_key, execution_key, "
-                "external_decision_id, review_key, payload, digest, state, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "commit_key, external_decision_id, review_key, payload, digest, state, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     g["grantId"],
                     keys[0],
                     keys[1],
+                    model._commit_key(g),
                     g["externalDecisionId"],
                     keys[2],
                     "{}",
