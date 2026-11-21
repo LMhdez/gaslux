@@ -48,11 +48,13 @@ class SyntheticProfileTests(unittest.TestCase):
                 synthetic.validate_scratch(end, synthetic.PROFILE)
 
     def test_guest_boot_and_arbitrary_workspace_not_authorized(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            with patch.object(synthetic, "generate_private_gpt") as disk:
-                with self.assertRaisesRegex(AbCheckpointError, "consent"):
-                    synthetic.run_fixed_synthetic()
-                disk.assert_not_called()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(synthetic, "generate_private_gpt") as disk,
+        ):
+            with self.assertRaisesRegex(AbCheckpointError, "consent"):
+                synthetic.run_fixed_synthetic()
+            disk.assert_not_called()
 
     def test_reject_existing_raw_fixture_before_any_write(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
