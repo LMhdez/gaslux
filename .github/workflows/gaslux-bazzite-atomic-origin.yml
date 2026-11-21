@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/bazzite-atomic-preflight
+      - test/bazzite-atomic-write-set-readonly-20261120
     paths:
       - '.github/workflows/gaslux-bazzite-atomic-origin.yml'
       - 'assets/keys/bazzite-upstream-cosign.pub'
