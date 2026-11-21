@@ -75,7 +75,7 @@ def _record(source: str, record: object) -> dict:
         seen.add(p["id"])
         extents.append((offset, offset + length))
     extents.sort()
-    if any(a[1] > b[0] for a, b in zip(extents, extents[1:])):
+    if any(a[1] > b[0] for a, b in zip(extents, extents[1:], strict=False)):
         raise IdentityMismatch(f"{source}: overlapping partition extents")
     return record
 
@@ -89,7 +89,10 @@ def compare_evidence(evidence: dict) -> bool:
         raise IdentityMismatch("all three independent sources are required")
     records = [_record(name, evidence[name]) for name in sorted(_ALLOWED)]
     baseline = json.dumps(records[0], sort_keys=True, separators=(",", ":"))
-    if any(json.dumps(item, sort_keys=True, separators=(",", ":")) != baseline for item in records[1:]):
+    if any(
+        json.dumps(item, sort_keys=True, separators=(",", ":")) != baseline
+        for item in records[1:]
+    ):
         raise IdentityMismatch("cross-environment disk evidence mismatch")
     return True
 
