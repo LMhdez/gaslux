@@ -36,7 +36,8 @@ def refuse(reason: str) -> None:
 
 def _bounded_unsquashfs(image: Path, member: str, max_bytes: int = 65536) -> str:
     """Read one literal small file; never extract the SquashFS tree."""
-    if not re.fullmatch(r"etc/(?:os-release|q4os_version|calamares/(?:settings|modules/bootloader)\.conf)", member):
+    member_pattern = r"etc/(?:os-release|q4os_version|calamares/(?:settings|modules/bootloader)\.conf)"
+    if not re.fullmatch(member_pattern, member):
         refuse("MEDIA_INSPECT_BAD_CONFIGURATION")
     try:
         result = subprocess.run(
@@ -81,9 +82,8 @@ def _unique_yaml(text: str) -> dict:
         return doc
     except InspectRefusal:
         raise
-    except (ImportError, ValueError, TypeError, Exception) as exc:
-        # No exception text or arbitrary YAML may enter the published report.
-        _ = exc
+    except Exception:
+        # No arbitrary YAML exception text may enter the published report.
         refuse("MEDIA_INSPECT_BAD_CONFIGURATION")
 
 
