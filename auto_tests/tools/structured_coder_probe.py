@@ -72,7 +72,8 @@ def extract_function(source: str, name: str) -> str:
 def guard(task: dict, old: str, new: str) -> None:
     if len(new) > 250 or len(old) > 250 or new == old:
         raise ValueError("No short one-line change")
-    if new.count("\n") or new.count("\r") or ";" in new or "#" in new:
+    stripped = new.strip()
+    if len(stripped.splitlines()) != 1 or ";" in stripped or "#" in stripped:
         raise ValueError("Only a single expression/statement without comments allowed")
     if task["id"] == "logging_previous_handler_closed":
         expression = ast.parse(new.strip(), mode="exec")
@@ -216,6 +217,10 @@ def do_task(task: dict) -> dict:
             "spaces). Do not include tests, explanations or an entire file. "
             "Do not change any other line. The new statement must preserve the function's "
             "intended behavior and fix the observed failing test.\n"
+            "GIT DIFF / EXACT SUSPECT LINE (provide this as old_line, with no indentation):\n"
+            + task["fault"].strip() + "\n"
+            "Do not replace a multi-line expression or rewrite the file. The old_line MUST "
+            "match the suspect line exactly, new_line must be a SINGLE statement.\n"
             "FUNCTION:\n" + function + "\n"
             "FAILING TEST OUTPUT:\n" + failure[-800:] + "\n"
         )
