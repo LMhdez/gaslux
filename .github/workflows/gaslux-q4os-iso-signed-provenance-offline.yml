@@ -7,6 +7,7 @@ on:
       - 'auto_tests/tools/q4os_official_iso_provenance.py'
       - 'auto_tests/tests/test_q4os_official_iso_provenance.py'
       - 'schemas/gaslux-q4os-iso-provenance-evidence.schema.json'
+      - 'auto_tests/fixtures/q4os_6_10_r2_unsigned_catalog_candidate.json'
       - 'docs/Q4OS_ISO_SIGNED_PROVENANCE.md'
 
 permissions:
