@@ -8,6 +8,8 @@ on:
       - auto_tests/tools/cachyos_bcd_qemu_trace_offline.py
       - auto_tests/tools/cachyos_bcd_etw_contract_offline.py
       - auto_tests/test_cachyos_bcd_fat32_qemu_offline.py
+      - auto_tests/tools/cachyos_bcd_esp_provenance_offline.py
+      - auto_tests/test_cachyos_bcd_esp_provenance_offline.py
       - auto_tests/test_cachyos_bcd_etw_offline.py
       - docs/CACHYOS_BCD_FAT32_QEMU_ETW_OFFLINE.md
 
@@ -40,6 +42,8 @@ jobs:
             auto_tests/tools/cachyos_bcd_qemu_trace_offline.py \
             auto_tests/tools/cachyos_bcd_etw_contract_offline.py \
             auto_tests/test_cachyos_bcd_fat32_qemu_offline.py \
+            auto_tests/tools/cachyos_bcd_esp_provenance_offline.py \
+            auto_tests/test_cachyos_bcd_esp_provenance_offline.py \
             auto_tests/test_cachyos_bcd_etw_offline.py
           python3 - <<'PY'
           from pathlib import Path
@@ -62,6 +66,12 @@ jobs:
           set -Eeuo pipefail
           python3 -m unittest discover -s auto_tests \
             -p 'test_cachyos_bcd_fat32_qemu_offline.py' -v
+      - name: Test pinned RAW ESP source and QEMU/FD claim refusals
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_bcd_esp_provenance_offline.py' -v
       - name: Validate synthetic ETW export and BCD A/B regression
         shell: bash
         run: |
@@ -80,4 +90,6 @@ jobs:
             auto_tests/tools/cachyos_bcd_qemu_trace_offline.py \
             auto_tests/tools/cachyos_bcd_etw_contract_offline.py \
             auto_tests/test_cachyos_bcd_fat32_qemu_offline.py \
+            auto_tests/tools/cachyos_bcd_esp_provenance_offline.py \
+            auto_tests/test_cachyos_bcd_esp_provenance_offline.py \
             auto_tests/test_cachyos_bcd_etw_offline.py
