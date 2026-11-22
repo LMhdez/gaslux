@@ -17,6 +17,9 @@ import re
 import subprocess
 import sys
 
+from zorin_native_ubiquity_map import require_regular_member
+from zorin_native_installer_discovery import read_member
+
 from zorin_ubiquity_source_coverage import (
     CORE_SOURCES,
     SourceCoverageDenied,
@@ -252,6 +255,23 @@ def parse_unsquashfs_lstat(text: str, path: str) -> dict:
     }
 
 
+def read_independent_partman_script(rootfs: Path, path: str) -> bytes:
+    """Read only two separate, explicitly permitted, regular SquashFS members.
+
+    Do not broaden SOURCE-01's historical CORE_SOURCES allowlist.
+    The caller must separately authenticate the /lib -> usr/lib lexical link.
+    """
+    deny(path in PARTMAN_ALTERNATE_CANDIDATES, "E_PARTMAN_SOURCE_PATH_NOT_ALLOWED")
+    try:
+        require_regular_member(rootfs, path)
+        content = read_member(rootfs, path, 512 * 1024, optional=False)
+    except Exception as exc:
+        raise SourceCoverageDenied("E_PARTMAN_SOURCE_NOT_REGULAR") from exc
+    deny(type(content) is bytes and 0 < len(content) <= 512 * 1024,
+         "E_PARTMAN_SOURCE_BOUNDS")
+    return content
+
+
 SHELL_EFFECT_NAMES = re.compile(
     r"(?i)(?<![a-z0-9_-])(?:parted|partman|sfdisk|wipefs|mkfs(?:\.[a-z0-9_-]+)?|"
     r"resize2fs|ntfsresize|mount|umount|grub-install|efibootmgr|"
@@ -341,10 +361,8 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
             if alternates[path]["type"] != "REGULAR_METADATA_ONLY":
                 shell_sources[path] = {"status": "NOT_AUTHENTICATED"}
                 continue
-            data, status = exact_regular_bytes(rootfs, path, None)
-            if data is None or status != "REGULAR_NEWLY_ATTESTED":
-                shell_sources[path] = {"status": "NOT_AUTHENTICATED"}
-                continue
+            data = read_independent_partman_script(rootfs, path)
+            status = "REGULAR_NEWLY_ATTESTED"
             shell_sources[path] = {
                 "status": status,
                 "sha256": sha(data),
