@@ -345,3 +345,34 @@ The new private read-only diagnostic reuses the actual Q4OS `_birth_identity`, `
 The shared HOST/FD `ProcessSeal` from current `dev` is not a dependency of historical stacked #318; importing or copying it as an independent authority would require an Integrator-composed and reaudited contract. No ProcessSeal clone or replacement Observer controller is added. See the separate document for exact CI SHA, resource hashes, four-way contrast and remaining trust boundary.
 
 **Next genuine live boot only after Safety approval:** authenticate the exact native Q4OS 6.10 x64 r2 ISO bytes and release/catalogue trust (historical upstream SHA-256 already recorded above), bind firmware/boot device and process provenance to a disposable QCOW2, prove live guest kernel and userspace on the *same authenticated VM*, then separately review Calamares. Historical upstream checksum alone does not authorize an installation or count as a signed Gaslux catalogue. All production/storage/release/stability gates remain false.
+
+
+## Q4OS-NATIVE-LIVE-BOOT-01 — preparation-only source-to-guest graph (22 Nov 2026)
+
+After [Q4OS-RUNLAB-BOUNDARY-01](Q4OS_RUNLAB_READONLY_BOUNDARY.md),
+the new [native live readiness evidence](Q4OS_NATIVE_LIVE_BOOT_READINESS.md)
+records the official Q4OS 6.10 x64 r2 native desktop ISO source and
+upstream-published SHA-256 `1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d`.
+The historical official ISO and Calamares inspection from 16 Nov 2026 is
+explicitly distinguished from a **new** full-byte ISO verification: none
+was made in this stage. Exact size and independent signed catalogue provenance
+are not available in the currently examined `dev` stable release metadata.
+
+The diagnostic module `auto_tests/tools/q4os_native_live_boot_readiness.py`
+supports read-only, pinned-descriptor SHA-256 inspection of a locally
+already-provided ISO. It never starts a guest or authorizes writers; a
+matching hash is `MEDIA_HASH_ONLY`, not proof of future QEMU descriptor
+inheritance, authenticated publisher signature or Q4OS live boot. The
+JSON Schema requires `decision=DENY` and all runtime/Guest/install
+authorizations false. Offline synthetic tests include symlinks, hardlinks,
+FD mode/identity, rename and in-place mutation, invalid hash and
+schema privilege forgery. The new GitHub Actions workflow installs no
+QEMU, downloads no ISO and runs no Windows, Calamares or installation.
+
+**Blocking gate**: the independent Safety review on #338 has not been
+published; the existing review on #318 was `CHANGES_REQUIRED` before
+a subsequent corrective CI run. The `dev` HOST/FD and Guest Peer contracts
+must later be composed without duplication, only after a review of the
+exact graph ISO → QEMU FD → QCOW2/firmware → observed Guest origin.
+The stable catalogue, `QEMU_FD_BACKING_VERIFIED`, native installation
+and Windows rollback authorizations remain unchanged and false.
