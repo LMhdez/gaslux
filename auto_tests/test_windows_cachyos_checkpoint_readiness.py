@@ -117,6 +117,16 @@ class CheckpointReadinessTests(unittest.TestCase):
     def test_E_unknown_quota_refused(self):
         self.refused("UNKNOWN_QUOTA", quota=-1)
 
+    def test_unknown_quota_none_is_denied_even_with_valid_files(self):
+        with mock.patch.object(
+            readiness.os, "statvfs", return_value=self.volume
+        ), self.assertRaises(readiness.CheckpointReadinessRefusal) as caught:
+            readiness.inspect_readonly_ab_checkpoint(
+                self.root, transaction_id="test-only-transaction-001",
+                manifest=self.manifest, external_quota_bytes=None,
+            )
+        self.assertEqual(caught.exception.code, "UNKNOWN_QUOTA")
+
     def test_F_shared_ovmf_vars_refused(self):
         self.vars_a.unlink()
         os.link(self.vars_b, self.vars_a)
@@ -137,10 +147,35 @@ class CheckpointReadinessTests(unittest.TestCase):
         self.refused("BACKING_IDENTITY_MISMATCH")
 
     def test_J_restore_not_proven_even_with_self_reported_witness(self):
-        self.refused("RESTORE_NOT_PROVEN", recovery={
-            "windowsBootVerified": True, "restoreVerified": True,
-            "claim": "not independently authenticated",
-        })
+        with self.assertRaises(readiness.CheckpointReadinessRefusal) as caught:
+            self.check(recovery={
+                "windowsBootVerified": True, "restoreVerified": True,
+                "claim": "not independently authenticated",
+            })
+        self.assertEqual(caught.exception.code, "RESTORE_NOT_PROVEN")
+        measured = caught.exception.diagnostics
+        paths = (self.disk, self.control, self.vars_a, self.vars_b,
+                 self.base, self.original_vars)
+        self.assertEqual(
+            measured["localApparentArtifactBytes"],
+            sum(p.stat().st_size for p in paths),
+        )
+        self.assertEqual(
+            measured["localAllocatedArtifactBytes"],
+            sum(p.stat().st_blocks * 512 for p in paths),
+        )
+        for flag in (
+            "quotaIndependentlyVerified",
+            "sourceProvenanceAuthenticated",
+            "externalQemuProcessQuiescenceProven",
+            "checkpointInPlaceRecoveryProven",
+            "operationalWritesAuthorized",
+        ):
+            self.assertFalse(measured[flag], flag)
+        self.assertGreater(
+            measured["physicalRequiredFreeBytesBeforeRun"],
+            18 * 1024**3,
+        )
 
     def test_initial_bcd_claim_mismatch_refused(self):
         self.manifest["treatmentBcdSha256"] = "c" * 64
