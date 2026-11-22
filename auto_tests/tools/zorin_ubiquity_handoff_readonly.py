@@ -6,6 +6,7 @@ inspect_gpt_fd are authoritative for their respective shapes. This module
 does not authenticate a plan signature, VM origin, Ubiquity action graph or
 Windows recovery. No proposal can authorize any disk or firmware operation.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -31,13 +32,8 @@ CATALOG = ROOT / "release-config.json"
 # SHA-256 of the JSON map generated from authenticated Ubiquity code in #264,
 # documented in docs/ZORIN_UBIQUITY_NATIVE_CODE_MAP.md. It is a reference,
 # NOT a reauthentication of those bytes or an installer execution trace.
-PINNED_CODE_MAP_SHA = (
-    "47f42ce781af0eb39bc19f6c3bf4f2fb20569"
-    "c5467a8f17d8e6d84b273a08f24"
-)
-BOOT_ACTIONS = frozenset(
-    ("ESP_WRITE", "NVRAM_WRITE", "GRUB_INSTALL", "BIOS_BOOT_WRITE")
-)
+PINNED_CODE_MAP_SHA = "47f42ce781af0eb39bc19f6c3bf4f2fb20569c5467a8f17d8e6d84b273a08f24"
+BOOT_ACTIONS = frozenset(("ESP_WRITE", "NVRAM_WRITE", "GRUB_INSTALL", "BIOS_BOOT_WRITE"))
 PARTMAN_ACTIONS = frozenset(("PARTMAN_COMMIT",))
 ROOT_ACTIONS = frozenset(("ROOT_CONFIGURE", "ROOT_FORMAT"))
 ESP_TYPE = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
@@ -59,8 +55,7 @@ def demand(ok: bool, reason: str) -> None:
 
 def canonical_sha(obj: dict) -> str:
     return hashlib.sha256(
-        json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-        .encode("ascii")
+        json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
     ).hexdigest()
 
 
@@ -164,8 +159,7 @@ def validate_ubiquity_handoff(
     demand(
         destination["partitionTableId"] == plan_disk["partitionTableId"]
         and destination["sizeBytes"] == plan_disk["sizeBytes"]
-        and destination["logicalSectorSizeBytes"]
-        == plan_disk["logicalSectorSizeBytes"],
+        and destination["logicalSectorSizeBytes"] == plan_disk["logicalSectorSizeBytes"],
         "E_GPT_GEOMETRY_MISMATCH",
     )
     try:
@@ -180,8 +174,7 @@ def validate_ubiquity_handoff(
         canonical_sha(expected_gpt) == proposal["expectedGptSnapshotSha256"]
         and observed["partitionTableId"] == destination["partitionTableId"]
         and observed["sizeBytes"] == destination["sizeBytes"]
-        and observed["logicalSectorSizeBytes"]
-        == destination["logicalSectorSizeBytes"],
+        and observed["logicalSectorSizeBytes"] == destination["logicalSectorSizeBytes"],
         "E_GPT_GEOMETRY_MISMATCH",
     )
 
