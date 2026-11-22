@@ -115,6 +115,22 @@ jobs:
           assert d["testMedia"] == "SELF_GENERATED_SYNTHETIC_NOT_WINDOWS"
           assert d["status"] == "REAL_PAUSED_QEMU_RAW_QCOW2_FAT32_READONLY_DIAGNOSTIC_ONLY"
           assert d["qemuActualProcessObserved"] is True
+          for name in ("rawQemuHostSample", "qcow2QemuHostSample"):
+              sample = d[name]
+              assert set(sample) == {
+                  "pid", "startTicks", "commandSha256", "fileDev",
+                  "fileInode", "fdNumber", "qmpDevice",
+                  "qmpReplyAcquisition", "provenance",
+              }
+              assert type(sample["pid"]) is int and sample["pid"] > 1
+              assert type(sample["startTicks"]) is int and sample["startTicks"] > 0
+              assert type(sample["fdNumber"]) is int and sample["fdNumber"] >= 0
+              assert type(sample["fileDev"]) is int and sample["fileDev"] > 0
+              assert type(sample["fileInode"]) is int and sample["fileInode"] > 0
+              assert len(sample["commandSha256"]) == 64
+              assert sample["qmpDevice"] == "disk0"
+              assert sample["qmpReplyAcquisition"] == "LOCALLY_MEASURED"
+              assert sample["provenance"] == "LOCALLY_MEASURED_PROCESS_FD_QMP_CLAIMED_GRAPH"
           for key in ("windowsBootmgfwAuthentic", "windowsBcdAuthentic",
                       "historicalWindowsEspAuthenticated", "independentQmpNodeToFdBindingProven",
                       "qemuTraceBlkPointerBound", "qemuWriteTracePresent", "guestBooted",
