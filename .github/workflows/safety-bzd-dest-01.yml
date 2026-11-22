@@ -38,10 +38,10 @@ jobs:
           test -f pinned-267/assets/live/libertix_prewrite_no_writer.py
           test -f pinned-267/auto_tests/tests/test_prewrite_no_writer.py
           python -m pip install pytest==9.0.2
-      - name: Execute actual pinned #267 gate, positive control, negatives and strict XFAIL gaps
+      - name: Execute pinned #267 gate, negative regressions and explicit known-gap detections
         env:
           GASLUX_267_SOURCE: pinned-267
         run: |
           set -Eeuo pipefail
-          python -m pytest -q -rx auto_tests/tests/test_bzd_dest_01_cross_boundary.py
+          python -m pytest -q auto_tests/tests/test_bzd_dest_01_cross_boundary.py
           python -m pytest -q pinned-267/auto_tests/tests/test_prewrite_no_writer.py
