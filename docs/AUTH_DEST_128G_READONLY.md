@@ -129,3 +129,38 @@ also expects the upstream `FD_READ_FAILED` diagnostic on injected EIO.
 A one-line checkpoint receipt length guard remains unique to this branch.
 Do not claim these inherited upstream Safety fixes are new independent
 work in this scalability PR. #342 remains a separate metadata-only draft.
+
+
+## 2026-11-22 — SAFETY2-346-01 subprocess cleanup (correction under review)
+
+Independent [Safety-2 #355](https://github.com/LMhdez/gaslux/pull/355)
+reproduced **RED** against the immutable #346 source
+`9306d0fff8cc89794b83fe002ae133c110e641ae`.
+[Actions #45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419)
+returned SUCCESS **because it explicitly expected the failing oracle**:
+`SAFETY2-346-01 RED: descendant is still alive after _bounded_info() refused the timed-out pipe`.
+No prior process cleanup was proven.
+
+#346 now has a bounded POSIX process-session correction: implementation commit
+[`4ab0f13b`](https://github.com/LMhdez/gaslux/commit/4ab0f13b718fabf4d8cb5598626ae3df67eafce1),
+real subprocess regression addition
+[`431599b0`](https://github.com/LMhdez/gaslux/commit/431599b0b5e6f04f9b7617c028bfb1091771cef7)
+and follow-up test lint correction
+[`00f93376`](https://github.com/LMhdez/gaslux/commit/00f93376210c3bce8ab01e3ceb237a70cb0a78b8).
+The `qemu-img` diagnostic starts with `start_new_session=True`; `waitid(WNOWAIT)`
+observes exit without reaping the session leader before `killpg`.
+Cleanup terminates only the verified owned group, then reaps the direct child and
+checks group disappearance within a finite cleanup window. Unexpected session,
+signal, wait or cleanup-timeout errors produce `QEMU_INFO_CLEANUP_FAILED`;
+original output, JSON and read-only refusals remain intact.
+The correction does **not** authorize any guest or disk writer.
+
+**Independent oracle compatibility finding:** the original #355
+`_fake_popen` launcher does not forward `start_new_session` (or other
+process-session kwargs) to its real Python subprocess. A GREEN replay
+therefore requires Safety-2 to preserve the same adversarial assertion but
+forward the process-session argument and pin the corrected checkout.
+Producer regression tests forward all Popen kwargs and use real disposable
+children. Until #355 independently verifies the fixed exact HEAD, the
+finding remains **OPEN / correction not approved**. #356 remains stacked
+on its original #346 ancestor and is not integrated.

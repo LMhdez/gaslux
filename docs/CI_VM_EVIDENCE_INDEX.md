@@ -142,3 +142,27 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   `rollbackProven=false`, `sameDiskDualBootVerified=false`,
   `stable=false`.
   See [resource and trust contract](AUTH_DEST_128G_READONLY.md).
+
+
+## 2026-11-22 — SAFETY2-346-01: inherited-pipe subprocess RED and scoped candidate fix
+
+- Historical **RED**: [PR #355](https://github.com/LMhdez/gaslux/pull/355),
+  Safety HEAD `b690cf3b7da0ec34b950e354a4b8af8bd94a70c0`,
+  [Actions #45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419),
+  SUCCESS **only as an expected-negative runner**. Source tested:
+  #346 `9306d0fff8cc89794b83fe002ae133c110e641ae`.
+- Producer process cleanup correction in existing
+  [PR #346](https://github.com/LMhdez/gaslux/pull/346),
+  code `4ab0f13b718fabf4d8cb5598626ae3df67eafce1`,
+  regression code `431599b0b5e6f04f9b7617c028bfb1091771cef7`,
+  strict lint adjustment `00f93376210c3bce8ab01e3ceb237a70cb0a78b8`.
+  POSIX session isolation, group kill before leader reap, time-limited group
+  disappearance and cleanup-denial are scoped to `_bounded_info`.
+- Exact-source independent GREEN and Safety-2 judgement **pending**.
+  The original Safety test shim discards `start_new_session`; only its
+  forwarding adapter and checkout reference should be corrected by Safety-2,
+  not its adversarial assertion. No new runtime writer/guest authority.
+- Evidence type: **QEMU_HOST / offline subprocess**, not GUEST_BOOT,
+  INSTALLED, DUAL_BOOT, RECOVERED or CERTIFIED. No Windows/ESP/BCD/WinRE
+  change. Preserve `FULL_BACKING_HASH_NOT_COMPLETED` and
+  `DENY_NO_WRITER`.
