@@ -20,7 +20,6 @@ from contextlib import ExitStack
 from pathlib import Path
 
 import zstandard as zstd
-
 from bazzite_iso_public_readback import CONFIG_DIGEST, PAYLOAD_DIGEST, PAYLOAD_IMAGE
 
 PINNED = PAYLOAD_IMAGE + "@" + PAYLOAD_DIGEST
