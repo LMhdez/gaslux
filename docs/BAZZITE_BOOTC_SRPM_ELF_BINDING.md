@@ -87,3 +87,49 @@ would not prove a safe dual boot or permit installation.
 3. Independently audit bootupd/bootctl actual EFI/NVRAM writes in a stopped
    VM with Windows baseline/recovery, no authorization to write yet.
 4. Retain explicit Safety human review and gates before any writer.
+
+
+## Actual Fedora Koji source replay (read-only, 22 November 2026)
+
+GitHub Actions [#45038284594](https://github.com/LMhdez/gaslux/actions/runs/45038284594)
+completed both jobs successfully on implementation HEAD
+`6f8cadcde4ac182ab6b2da749a77bc6ef2800b0b` (historical CI;
+the exact final patch SHA may differ).
+This is reproducible read-only source analysis, **not** a completed
+build-to-ELF trust chain.
+
+| Observed property | Actual measured value and scope |
+| --- | --- |
+| Fedora source RPM | `bootc-1.17.1-1.fc45.src.rpm`; RPM `SOURCEPACKAGE=1` |
+| Entire downloaded SRPM SHA-256 | `0e037cb10ba17bc3f06af3e7a3ae56ebc096673533bf5803f6571ae89ee77e32` |
+| RPM file checksum tests | header SHA-256/SHA-1, payload SHA-256, MD5 all internally OK |
+| **SRPM cryptographic publisher signature** | **ABSENT_OR_UNVERIFIED**: `rpmkeys -Kv` returned digest checks only, no OpenPGP signature verified; isolated Fedora 45 key fingerprint did match `4F50A6114CD5C6976A7F1179655A4B02F577861E` |
+| Fedora SPEC | `Name: bootc`; `Version: 1.17.1`; `Release: %{autorelease}`; two upstream release archives Source0/Source1 |
+| Explicit patches | No `.patch`/`.diff` SRPM members, no patch directives found in examined SPEC; does not prove absence of implicit build source transformations |
+| Actual SRPM source archive SHA-256 | `8d06b7b20e6a3fe862275f089a2ac5275ff91151de2e3f0ef090a426292ab3dd` **equals official upstream release source archive** |
+| `install.rs` source Git blob | `03eeb22172457165e778b51aee03210e4d1d64a1`, **exact match** to immutable upstream commit |
+| `bootloader.rs` source Git blob | `08a208d2819ecbd6e8fa4a4c3b686bfc82e5b6c6`, **exact match** to immutable upstream commit |
+| Build metadata (SRPM) | `BUILDHOST=buildhw-x86-06.rdu3.fedoraproject.org`, `BUILDTIME=1791495602` |
+| Executable reconstructed / provenance attestation | **NOT VERIFIED**; no compiler/buildroot attestation and no independently rebuilt ELF matched to signed OCI |
+
+This establishes that the **actual source archive inside the inspected Fedora
+Koji SRPM** contains the same `install_to_filesystem`,
+`clean_boot_directories`, `clean_esp_bootloader_dirs` and
+`bootupctl`-delegating implementation as the pinned upstream tree.
+It **does not establish** that the executable in signed Bazzite OCI was
+built byte-for-byte from these sources. Nor do source equivalence or
+the upstream Git tag provide a safe ESP/NVRAM write-set.
+
+The measured SRPM SHA-256 is pinned as an **identity check** in
+`bazzite_bootc_srpm_elf_gate.py` and in the runner's source inspection;
+a different valid-looking digest must now be rejected. No signature
+or build attestation is inferred from this self-contained integrity pin.
+
+Evidence (metadata and hashes only, no SRPM archive):
+[SRPM readback #14760243698](https://github.com/LMhdez/gaslux/actions/runs/45038284594/artifacts/14760243698);
+[deny-only checks #14760204204](https://github.com/LMhdez/gaslux/actions/runs/45038284594/artifacts/14760204204).
+Both were uploaded by GitHub Actions in an ephemeral runner.
+
+**Decision remains `SOURCE_ELF_UNPROVEN` / `DENY_NO_WRITER`.**
+No Fedora SRPM unsigned bytes or caller assertion is elevated into an
+independently signed origin, no installation or runtime execution.
