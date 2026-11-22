@@ -3,6 +3,7 @@
 Storage headroom and quotas cannot be inferred from sparse or compressed images.
 Do not change the 128-GiB real Windows/Mint A/B admission bound based on these.
 """
+
 from __future__ import annotations
 
 import errno
@@ -30,7 +31,11 @@ HISTORICAL_FULL_BOUND = 137_460_187_136
 
 def runner(*argv: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(
-        argv, check=check, text=True, capture_output=True, timeout=60,
+        argv,
+        check=check,
+        text=True,
+        capture_output=True,
+        timeout=60,
     )
 
 
@@ -48,11 +53,14 @@ class AConservativeAandBBudget(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as root,
             patch.object(
-                cap.os, "statvfs", return_value=free_fs(HISTORICAL_AVAILABLE_BYTES),
+                cap.os,
+                "statvfs",
+                return_value=free_fs(HISTORICAL_AVAILABLE_BYTES),
             ),
         ):
             proof = cap.measure_capacity(
-                directory=Path(root), phase="early",
+                directory=Path(root),
+                phase="early",
                 full_allocated_bytes=HISTORICAL_FULL_BOUND,
             )
         self.assertEqual(proof["minimumFreeBytesRequired"], 867_710_795_776)
@@ -76,9 +84,11 @@ class AConservativeAandBBudget(unittest.TestCase):
             need = 4 * HISTORICAL_FULL_BOUND + 8 * GIB
             with patch.object(cap.os, "statvfs", return_value=free_fs(need - 4096)):
                 result = cap.measure_capacity(
-                    directory=work, phase="late",
+                    directory=work,
+                    phase="late",
                     full_allocated_bytes=HISTORICAL_FULL_BOUND,
-                    base=base, overlay=overlay,
+                    base=base,
+                    overlay=overlay,
                 )
             self.assertEqual(result["minimumFreeBytesRequired"], 558_430_683_136)
             self.assertEqual(result["capacityShortfallBytes"], 4096)
@@ -92,7 +102,8 @@ class AConservativeAandBBudget(unittest.TestCase):
             required = cap.EARLY_IMAGES * HISTORICAL_FULL_BOUND + cap.EARLY_RESERVE
             with patch.object(cap.os, "statvfs", return_value=free_fs(required + 4096)):
                 result = cap.measure_capacity(
-                    directory=Path(root), phase="early",
+                    directory=Path(root),
+                    phase="early",
                     full_allocated_bytes=HISTORICAL_FULL_BOUND,
                     quota_remaining_bytes=None,
                 )
@@ -108,7 +119,8 @@ class AConservativeAandBBudget(unittest.TestCase):
             need = cap.EARLY_IMAGES * HISTORICAL_FULL_BOUND + cap.EARLY_RESERVE
             with patch.object(cap.os, "statvfs", return_value=free_fs(need + 4096)):
                 result = cap.measure_capacity(
-                    directory=Path(root), phase="early",
+                    directory=Path(root),
+                    phase="early",
                     full_allocated_bytes=HISTORICAL_FULL_BOUND,
                     quota_remaining_bytes=need - 1,
                 )
@@ -130,15 +142,29 @@ class BRealSmallQcow2Restore(unittest.TestCase):
         self.arm = self.root / "arm-a.qcow2"
         runner("qemu-img", "create", "-f", "qcow2", str(self.ref), str(SMALL_VIRTUAL_BYTES))
         runner(
-            "qemu-img", "convert", "-f", "qcow2", "-O", "qcow2", "-c",
-            str(self.ref), str(self.arm),
+            "qemu-img",
+            "convert",
+            "-f",
+            "qcow2",
+            "-O",
+            "qcow2",
+            "-c",
+            str(self.ref),
+            str(self.arm),
         )
         self.ref.chmod(0o400)
         self.arm.chmod(0o600)
-        measurement = json.loads(runner(
-            "qemu-img", "measure", "--output=json", "-O", "qcow2",
-            "--size", str(SMALL_VIRTUAL_BYTES),
-        ).stdout)
+        measurement = json.loads(
+            runner(
+                "qemu-img",
+                "measure",
+                "--output=json",
+                "-O",
+                "qcow2",
+                "--size",
+                str(SMALL_VIRTUAL_BYTES),
+            ).stdout
+        )
         self.bound = measurement["fully-allocated"]
         self.assertGreaterEqual(self.bound, SMALL_VIRTUAL_BYTES)
         self.assertNotEqual(self.ref.stat().st_ino, self.arm.stat().st_ino)
@@ -151,13 +177,19 @@ class BRealSmallQcow2Restore(unittest.TestCase):
 
     def inject_arm_fault(self):
         runner(
-            "qemu-io", "-f", "qcow2", "-c", "write -P 0x77 1048576 4096",
+            "qemu-io",
+            "-f",
+            "qcow2",
+            "-c",
+            "write -P 0x77 1048576 4096",
             str(self.arm),
         )
 
     def restore(self):
         cp.atomic_restore_owned_arm(
-            self.ref, self.arm, self.root,
+            self.ref,
+            self.arm,
+            self.root,
             expected_virtual_bytes=SMALL_VIRTUAL_BYTES,
             fully_allocated_bound=self.bound,
         )
@@ -172,8 +204,15 @@ class BRealSmallQcow2Restore(unittest.TestCase):
     def test_shared_backing_chain_is_not_an_independent_arm(self):
         backed = self.root / "shared-backed.qcow2"
         runner(
-            "qemu-img", "create", "-f", "qcow2", "-F", "qcow2", "-b",
-            str(self.ref), str(backed),
+            "qemu-img",
+            "create",
+            "-f",
+            "qcow2",
+            "-F",
+            "qcow2",
+            "-b",
+            str(self.ref),
+            str(backed),
         )
         with self.assertRaisesRegex(cp.AbCheckpointError, "not independent"):
             cp.image_info(backed, SMALL_VIRTUAL_BYTES)
@@ -184,8 +223,18 @@ class BRealSmallQcow2Restore(unittest.TestCase):
         original_ref = self.digest(self.ref)
         previous_inode = self.arm.stat().st_ino
         self.assertEqual(
-            runner("qemu-img", "compare", "-f", "qcow2", "-F", "qcow2",
-                   str(self.ref), str(self.arm), check=False).returncode, 1,
+            runner(
+                "qemu-img",
+                "compare",
+                "-f",
+                "qcow2",
+                "-F",
+                "qcow2",
+                str(self.ref),
+                str(self.arm),
+                check=False,
+            ).returncode,
+            1,
         )
         self.restore()
         cp.equivalent(self.ref, self.arm)
@@ -246,8 +295,14 @@ class BRealSmallQcow2Restore(unittest.TestCase):
 
         def wrong_convert(source, destination, directory, expected_virtual):
             runner(
-                "qemu-img", "convert", "-f", "qcow2", "-O", "qcow2",
-                str(self.arm), str(destination),
+                "qemu-img",
+                "convert",
+                "-f",
+                "qcow2",
+                "-O",
+                "qcow2",
+                str(self.arm),
+                str(destination),
             )
             destination.chmod(0o600)
             return self.digest(destination)
