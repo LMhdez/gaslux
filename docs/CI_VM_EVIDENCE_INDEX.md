@@ -62,7 +62,7 @@ Estas referências são **pistas para reutilização**. Podem existir apenas em 
 
 O workflow `cachyos-bcd-fat32-trace-offline.yml` na [PR #314](https://github.com/LMhdez/gaslux/pull/314) executou [Actions #45020744228](https://github.com/LMhdez/gaslux/actions/runs/45020744228), **SUCCESS, 85 testes offline**, no HEAD `a341bd059916a151fa49fb58435a69945e005d5a`. Classificação: **SYNTHETIC_DISK + CONTRACT**, não `QEMU_SYSTEM`, `INSTALLED_GUEST`, `WINDOWS_GUEST`, `DUAL_BOOT` ou `RECOVERY`. A fixture RAW é esparsa, 128 GiB lógicos, só ficheiro regular temporário; análise QEMU é apenas consistência de claims e parser de trace.
 
-Após essa execução foram adicionados recusa explícita `O_PATH` e um teste adversarial até `f5efccd50507248ca447fa5883900d951289c551`. **Não afirmar 86/86 nem novo SUCCESS sem confirmar uma Action desse HEAD exato.** Captura histórica ESP QCOW2, QMP FD→`blk`, processo escritor e rollback continuam por demonstrar.
+Após essa execução foram adicionados recusa explícita `O_PATH` e um teste adversarial até `f5efccd50507248ca447fa5883900d951289c551`. [Action #45021184614](https://github.com/LMhdez/gaslux/actions/runs/45021184614) confirmou **SUCCESS no HEAD exato**, com 16 FAT32/QEMU + 18 ESP/RAW + 23 ETW + 29 BCD A/B = **86/86 testes offline**, compileall e Ruff; continua **sem QEMU-system nem Windows guest**. Safety diferencial ainda pendente. Captura histórica ESP QCOW2, QMP FD→`blk`, processo escritor e rollback continuam por demonstrar.
 
 ## 4. Seleção correta de workflow por missão
 
