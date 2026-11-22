@@ -38,8 +38,14 @@ WATCH = re.compile(
 )
 BODIES = tuple(p for p in CORE_SOURCES if not p.endswith(("/commit.sh", "/resize.sh")))
 UNATTESTED_SHELL = ("lib/partman/lib/commit.sh", "lib/partman/lib/resize.sh")
-PARTMAN_PARENT_INODES = ("lib/partman/lib", "lib/partman")
-ALLOWED_METADATA_INODES = frozenset(UNATTESTED_SHELL + PARTMAN_PARENT_INODES)
+PARTMAN_PARENT_INODES = ("lib", "lib/partman", "lib/partman/lib", "usr/lib/partman/lib")
+PARTMAN_ALTERNATE_CANDIDATES = (
+    "usr/lib/partman/lib/commit.sh",
+    "usr/lib/partman/lib/resize.sh",
+)
+ALLOWED_METADATA_INODES = frozenset(
+    UNATTESTED_SHELL + PARTMAN_PARENT_INODES + PARTMAN_ALTERNATE_CANDIDATES
+)
 MUTABLE_GATES = (
     "firstPersistentWriteVerified",
     "precommitNonMutatingVerified",
@@ -274,6 +280,7 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
         calls[path] = candidate_calls(source, path)
     shell = {p: lstat_member(rootfs, p) for p in UNATTESTED_SHELL}
     parents = {p: lstat_member(rootfs, p) for p in PARTMAN_PARENT_INODES}
+    alternates = {p: lstat_member(rootfs, p) for p in PARTMAN_ALTERNATE_CANDIDATES}
     result = {
         "kind": "ZORIN_UBIQUITY_FIRST_WRITER_STATIC_SOURCE_EVIDENCE",
         "isoSha256": old["isoSha256"],
@@ -282,6 +289,8 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
         "sourceFilesAuthenticated": list(BODIES),
         "shellInodeMetadata": shell,
         "parentInodeMetadata": parents,
+        "candidateTargetInodeMetadataNotFollowed": alternates,
+        "alternateTargetOwnershipAuthenticated": False,
         "staticCalls": calls,
         "allSixBodiesAstScanned": True,
         "shellSourcesAuthenticated": False,
