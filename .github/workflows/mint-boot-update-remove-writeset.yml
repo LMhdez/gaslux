@@ -69,3 +69,29 @@ jobs:
           python3 -m ruff format --check \
             auto_tests/tools/mint_boot_update_remove_writeset.py \
             auto_tests/test_mint_boot_update_remove_writeset.py
+      - name: Render Ruff format-only output for direct commit
+        if: failure()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-boot-audit-ruff"
+          python3 -m ruff format \
+            auto_tests/tools/mint_boot_update_remove_writeset.py \
+            auto_tests/test_mint_boot_update_remove_writeset.py
+          python3 -m ruff check \
+            auto_tests/tools/mint_boot_update_remove_writeset.py \
+            auto_tests/test_mint_boot_update_remove_writeset.py
+          python3 -m ruff format --check \
+            auto_tests/tools/mint_boot_update_remove_writeset.py \
+            auto_tests/test_mint_boot_update_remove_writeset.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for path in (
+              Path("auto_tests/tools/mint_boot_update_remove_writeset.py"),
+              Path("auto_tests/test_mint_boot_update_remove_writeset.py"),
+          ):
+              print("GASLUX_BOOTWRITESET_RUFF_SOURCE=" + json.dumps({
+                  "path": str(path), "content": path.read_text(encoding="utf-8"),
+              }, ensure_ascii=True))
+          PY
