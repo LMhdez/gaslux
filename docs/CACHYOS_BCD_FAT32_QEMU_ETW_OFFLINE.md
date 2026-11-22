@@ -102,11 +102,40 @@ A future signed capture manifest must include:
    binding. Do not expose raw ETL/hive/other PII publicly.
 
 `cachyos_bcd_etw_contract_offline.py` is a **strict exported-event fixture
-normalizer**, not an ETL parser or recorder. Even a FileIo↔DiskIo IRP
-candidate with matching PID lifetime remains
-`PROCESS_ATTRIBUTION_UNPROVEN` because a correlation is not sufficient
-causal evidence. Missing timestamps, PID, file identity, node binding,
-ETW losses or QEMU clock calibration force this outcome.
+normalizer**, not an ETL parser or recorder. The ETW-01 Safety review identified
+false-positive diagnostics from reversed FileIO/DiskIO timestamps, ambiguous
+PID generations, reused FileObject/IRP and missing provenance. **Exporter v1
+does not establish PID-generation identity, bounded time proximity, file-object
+lifetime, causal event order, QEMU disk identity or trusted ETW/QEMU clocks.**
+No arbitrary FileIO→DiskIO time window is claimed as an ETW provider guarantee.
+
+For compatibility, `plausibleIrpLifetimeMatches` is **deprecated and always
+zero**, with `plausibleIrpLifetimeMatchesDeprecated=true`. This is intentional:
+there are **no** validated plausible matches in the exported synthetic v1
+contract, including an otherwise well-formed illustrative fixture.
+
+The positive illustrative example is preserved as
+`sharedIrpIdentifierCoincidences=1` and
+`sharedIrpIdentifierSemantics=UNORDERED_TOKEN_EQUALITY_ONLY_NOT_CAUSAL`.
+This counts only IRP tokens appearing **exactly once** in FileIoWrite events
+and **exactly once** in DiskIoWrite events within the provided export.
+It is independent of timestamps, ProcessStart/Stop and FileObject names:
+coincidence **is not** proof that the operations are related or that a file,
+process, PID generation, device, GPT partition or Windows BCD sector was written.
+Two FileIoWrite or two DiskIoWrite entries reusing one IRP yield zero
+unique-token coincidences. A reversed-time or lost-event fixture may still
+contain identifier coincidences, but **never** a plausible/causal match.
+Consumers MUST NOT use this diagnostic to authorize changes or infer writer
+identity.
+
+The status is always `PROCESS_ATTRIBUTION_UNPROVEN`; all of
+`processAttributionProven`, `qemuClockAlignedToEtw`,
+`qemuDiskNodeAuthenticated`, `diskNumberBoundToGptIdentity` and
+`approvedMutation` remain false. Missing timestamps, PID, file identity,
+node binding, event losses, time-base calibration and events before session
+start block causal inference. `sessionCompleteWithinDeclaredWindow` reports
+only no recorded lost events/buffers and present event timestamps, **not**
+complete observation of Windows boot or validated per-process chronology.
 
 Authoritative reference: Microsoft Learn *Process*, *FileIo*, *DiskIo*,
 *DiskIo_TypeGroup1*, *FileIo_Info*, *Event Tracing Sessions*, and
