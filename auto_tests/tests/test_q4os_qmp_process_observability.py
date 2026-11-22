@@ -808,9 +808,7 @@ def test_r03_unexpected_exception_stays_redacted_in_legacy_cli(monkeypatch, tmp_
         "send_key_foreign",
     ],
 )
-def test_r01_pidfd_provenance_and_unsupervised_session_denied(
-    monkeypatch, tmp_path, scenario
-):
+def test_r01_pidfd_provenance_and_unsupervised_session_denied(monkeypatch, tmp_path, scenario):
     import time
 
     from q4os_win10_qmp_boot import Qmp
@@ -867,11 +865,7 @@ c.close();s.close()
             def poll(self):
                 return None
 
-        process = (
-            Fabricated()
-            if scenario in ("fabricated_process", "send_key_foreign")
-            else server
-        )
+        process = Fabricated() if scenario in ("fabricated_process", "send_key_foreign") else server
         qmp = Qmp(sock, negotiate=False)
         session = witness._BoundQmpSession(
             qmp, process, fd, sock, work, witness._socket_identity(sock, work)
