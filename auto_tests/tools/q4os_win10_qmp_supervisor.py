@@ -380,7 +380,16 @@ def main() -> int:
     ):
         print("GASLUX_Q4OS_DVD_BOOT_DECISION=refuse")
         return 1
-    report = run_lab(work, args.code, args.vars, args.image, args.iso, args.answer, args.accel)
+    report = run_lab(
+        work,
+        args.code,
+        args.vars,
+        args.image,
+        args.iso,
+        args.answer,
+        args.accel,
+        wait_seconds=14400 if args.accel == "tcg" else 7200,
+    )
     _private_dir(work)
     report_path = work / "q4os-win10-uefi-dvd-boot.json"
     with report_path.open("x", encoding="utf-8") as output:
