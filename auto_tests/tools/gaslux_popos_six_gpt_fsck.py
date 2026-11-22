@@ -20,7 +20,7 @@ from gaslux_popos_six_gpt_lab import (
     hosted,
     read_plan,
     verify_fs_types,
-    verify_sfdisk_gpt,
+    verify_fd_gpt,
     write_json_exclusive,
 )
 
@@ -67,7 +67,7 @@ def verify_read_only_fsck(work: Path, phase: str) -> dict:
         sha(base) == plan["backingSha256"],
         "REFUSE_RECOVERY_UNPROVEN: checkpoint changed before fsck",
     )
-    gpt = verify_sfdisk_gpt(base)
+    gpt = verify_fd_gpt(base)
     need(
         gpt["pmbrAndPrimary"] == plan["gpt"]["pmbrAndPrimary"]
         and gpt["secondary"] == plan["gpt"]["secondary"],
