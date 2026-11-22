@@ -3,6 +3,7 @@
 Builds only a private, sparse synthetic GPT regular file. The shared #333
 handoff and Safety #307 GPT inspector are exercised, not reimplemented.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -66,9 +67,7 @@ class ZorinPrecommitBoundaryTests(unittest.TestCase):
         self.candidate = untrusted_observation(self.proposal, self.plan)
 
     def check(self, **options):
-        return classify_zorin_precommit(
-            self.proposal, self.plan, self.gpt, self.fd, **options
-        )
+        return classify_zorin_precommit(self.proposal, self.plan, self.gpt, self.fd, **options)
 
     def deny(self, reason):
         with self.assertRaises(UbiquityHandoffDenied) as result:
@@ -87,15 +86,13 @@ class ZorinPrecommitBoundaryTests(unittest.TestCase):
         self.assertFalse(outcome.productionStorageWritesAuthorized)
         self.assertFalse(outcome.precommitActionGraphAuthenticated)
         self.assertFalse(outcome.windowsInPlaceRollbackProven)
-        self.assertEqual((before.st_mtime_ns, before.st_size),
-                         (after.st_mtime_ns, after.st_size))
+        self.assertEqual((before.st_mtime_ns, before.st_size), (after.st_mtime_ns, after.st_size))
 
     def test_h_structurally_valid_but_untrusted_observation_still_denied(self):
         outcome = self.check(candidate=self.candidate)
         self.assertEqual(outcome.status, PRECOMMIT_UNAVAILABLE)
         self.assertEqual(outcome.authorization, "DENY_NO_WRITER")
-        self.assertEqual(outcome.denialReasons[0],
-                         "PARTMAN_WRITE_CAN_PRECEDE_UNOBSERVED_COMMIT")
+        self.assertEqual(outcome.denialReasons[0], "PARTMAN_WRITE_CAN_PRECEDE_UNOBSERVED_COMMIT")
         self.assertFalse(outcome.firstWriteFenced)
         self.assertFalse(outcome.nativeInstallerInvoked)
 
@@ -130,9 +127,7 @@ class ZorinPrecommitBoundaryTests(unittest.TestCase):
     def test_new_bootloader_action_rejected(self):
         for kind in ("GRUB_INSTALL", "ESP_WRITE", "NVRAM_WRITE", "BIOS_BOOT_WRITE"):
             with self.subTest(kind=kind):
-                self.candidate["bootloaderActions"] = [
-                    {"kind": kind, "partitionNumber": 1}
-                ]
+                self.candidate["bootloaderActions"] = [{"kind": kind, "partitionNumber": 1}]
                 self.deny("E_UNAUTHORIZED_BOOTLOADER_ACTION")
                 self.candidate["bootloaderActions"] = []
 
