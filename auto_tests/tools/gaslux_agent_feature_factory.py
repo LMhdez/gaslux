@@ -173,8 +173,11 @@ def call_model(prompt: str) -> str:
     req = urllib.request.Request(
         "http://127.0.0.1:11434/api/generate",
         data=json.dumps({"model": MODEL, "stream": False, "think": False,
-                         "prompt": prompt, "format": "json",
-                         "options": {"temperature": 0, "num_ctx": 5800, "num_predict": 1500}}).encode(),
+                         "prompt": prompt,
+                         "format": {"type": "object",
+                                    "properties": {"addition": {"type": "string"}},
+                                    "required": ["addition"], "additionalProperties": False},
+                         "options": {"temperature": 0, "num_ctx": 5800, "num_predict": 1000}}).encode(),
         headers={"Content-Type": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=350) as response:
