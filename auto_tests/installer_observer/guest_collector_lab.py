@@ -512,7 +512,11 @@ def run_lab(workspace: Path, kernel: Path, collector: Path, output: Path) -> dic
             return result
     except GuestCollectorRefused:
         if serial.exists():
-            print("GUEST_SERIAL_DIAGNOSTIC_TAIL", serial.read_text(errors="replace")[-3500:], flush=True)
+            print(
+                "GUEST_SERIAL_DIAGNOSTIC_TAIL",
+                serial.read_text(errors="replace")[-3500:],
+                flush=True,
+            )
         raise
     finally:
         ledger.close()
