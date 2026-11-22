@@ -111,6 +111,16 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
         kwargs["process_guard"]()
         return {"qmpSendKeyAcknowledged": True}
 
+    birth_calls = 0
+
+    def fake_birth_identity(_pid):
+        nonlocal birth_calls
+        birth_calls += 1
+        if mode == "birth_drift" and birth_calls > 1:
+            return os.getpid(), 101
+        return os.getpid(), 100
+
+    monkeypatch.setattr(witness, "_birth_identity", fake_birth_identity)
     monkeypatch.setattr(witness, "_witness", guard_process)
     monkeypatch.setattr(witness, "_peer", guard_peer)
     monkeypatch.setattr(witness, "_socket_identity", socket_identity)
@@ -177,13 +187,14 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
         ("swapped", "QEMU_QMP_SOCKET_INVALID"),
         ("foreign", "QEMU_QMP_SOCKET_INVALID"),
         ("cleanup_fail", "QEMU_PROCESS_CLEANUP_FAILED"),
+        ("birth_drift", "QEMU_PROCESS_CLEANUP_FAILED"),
     ],
 )
 def test_bounded_failure_codes(monkeypatch, lab, scenario, reason):
     report = drive(monkeypatch, lab, mode=scenario)
     assert report["decision"] == "refuse"
     assert report["reasonCode"] == reason
-    if scenario == "cleanup_fail":
+    if scenario in ("cleanup_fail", "birth_drift"):
         assert report["cleanupVerified"] is False
     else:
         assert report["cleanupVerified"] is True
@@ -258,3 +269,16 @@ def test_workflow_never_triggers_windows_on_push():
     assert "q4os_win10_qmp_supervisor.py" in text
     assert "timeout --signal=TERM --kill-after=60s" not in text
     assert "qemu_pid=$!" not in text
+
+
+def test_kvm_and_tcg_machine_graph_and_wait_budgets(lab):
+    work, code, vars_path, image, iso, answer = lab
+    kvm = witness._qemu_args(work, code, vars_path, image, iso, answer, "kvm")
+    tcg = witness._qemu_args(work, code, vars_path, image, iso, answer, "tcg")
+    assert kvm[kvm.index("-accel") + 1] == "kvm"
+    assert kvm[kvm.index("-cpu") + 1] == "host"
+    assert tcg[tcg.index("-accel") + 1] == "tcg,thread=multi"
+    assert tcg[tcg.index("-cpu") + 1] == "max"
+    assert kvm[kvm.index("-m") + 1] == tcg[tcg.index("-m") + 1] == "6144"
+    source = (Path(__file__).resolve().parents[2] / "auto_tests/tools/q4os_win10_qmp_supervisor.py").read_text()
+    assert 'wait_seconds=14400 if args.accel == "tcg" else 7200' in source
