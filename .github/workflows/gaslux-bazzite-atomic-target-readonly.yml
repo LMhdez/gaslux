@@ -123,6 +123,33 @@ jobs:
           assert all(p['partuuid'] for p in report['protectedExistingPartitions'])
           print('Verified proposal only; zero installation or disk-write authority')
           PY
+      - name: Refuse signed ISO45 modern automatic-only GPT 4-6 route
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY' > bazzite-iso45-native-route-denial.json
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'auto_tests')
+          from bazzite_anaconda_write_set_gate import assess_signed_iso45_native_route
+          plan = json.loads(Path('atomic-target-proposal.json').read_text())
+          ledger = json.loads(
+              Path('auto_tests/bazzite_official_iso_candidate_20261117.json').read_text()
+          )
+          print(json.dumps(assess_signed_iso45_native_route(plan, ledger), indent=2))
+          PY
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('bazzite-iso45-native-route-denial.json').read_text())
+          assert report['status'] == 'REFUSED_SIGNED_ISO45_NO_VERIFIED_CUSTOM_GPT_4_6_ROUTE'
+          assert report['installationAuthorized'] is False
+          assert report['partitionWriteAuthorized'] is False
+          assert report['windowsEspWriteAuthorized'] is False
+          assert report['realAnacondaActionsCaptured'] is False
+          print('PASS: Signed ISO45 has no verified exact GPT 4-6 native route')
+          PY
       - name: Prove Anaconda evidence is unavailable and must fail closed
         shell: bash
         run: |
@@ -238,6 +265,7 @@ jobs:
           path: |
             synthetic-gpt-before.json
             atomic-target-proposal.json
+            bazzite-iso45-native-route-denial.json
             anaconda-write-set-status.json
             anaconda-comparison-refusal.txt
             qemu-ovmf-no-boot-inventory.txt

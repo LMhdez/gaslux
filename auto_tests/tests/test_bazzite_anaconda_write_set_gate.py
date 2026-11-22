@@ -18,6 +18,7 @@ from bazzite_anaconda_write_set_gate import (  # noqa: E402
     Refusal,
     assess_legacy_media,
     compare,
+    assess_signed_iso45_native_route,
     expected_actions,
 )
 from bazzite_atomic_destination_plan import propose  # noqa: E402
@@ -298,3 +299,117 @@ def test_proposal_fstype_role_size_and_free_extent_are_bound(partition, attribut
     plan["candidateNewPartitions"][partition][attribute] = bad_value
     with pytest.raises(Refusal, match="candidate partition"):
         expected_actions(plan)
+
+
+# The 2026-11-20 readback is a genuine prior signed-ISO CI experiment.
+# Its JSON ledger is not a new signature and never grants authority.
+def signed_iso45_ledger():
+    import json
+
+    return json.loads(
+        (ROOT / "auto_tests" / "bazzite_official_iso_candidate_20261117.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def test_signed_iso45_manual_gpt_4_6_incompatible_with_modern_installer():
+    result = assess_signed_iso45_native_route(proposal(), signed_iso45_ledger())
+    assert result["status"] == "REFUSED_SIGNED_ISO45_NO_VERIFIED_CUSTOM_GPT_4_6_ROUTE"
+    assert result["provenanceEvidenceRun"] == 44759529218
+    assert result["provenanceReverifiedInThisInvocation"] is False
+    assert result["documentedModernIsoManualPartitioning"] is False
+    assert result["gptPrimaryAndBackupWritesWouldBeRequired"] is True
+    for field in (
+        "installationAuthorized",
+        "partitionWriteAuthorized",
+        "gptMetadataWriteAuthorized",
+        "windowsEspWriteAuthorized",
+        "nvramWriteAuthorized",
+        "secureBootEnrollmentAuthorized",
+        "nativeInstallerWriteSetVerified",
+        "realAnacondaActionsCaptured",
+    ):
+        assert result[field] is False
+
+
+@pytest.mark.parametrize(
+    ("path", "replacement"),
+    [
+        (("artifact", "sha256"), "0" * 64),
+        (("artifact", "sizeBytes"), 1),
+        (("artifact", "version"), "42.20250513"),
+        (("artifact", "signature", "publicReadbackVerified"), False),
+        (("artifact", "signature", "verifiedAgainstLocalIsoBytes"), False),
+        (("artifact", "provenance", "sourceCommit"), "0" * 40),
+        (("artifact", "provenance", "verifiedAgainstLocalIsoBytes"), False),
+        (("payload", "digest"), "sha256:" + "0" * 64),
+        (("payload", "version"), "45.20261118.1"),
+        (("payload", "cosignSignatureVerifiedAgainstImmutableDigest"), False),
+        (("payload", "githubAttestationVerifiedAgainstImmutableDigest"), False),
+        (("relationship", "embeddedOciManifestReadBackVerified"), False),
+        (("relationship", "cryptographicIsoToPayloadBindingVerified"), False),
+        (("publicReadback", "workflowRunId"), 1),
+        (("publicReadback", "isoCosignVerified"), False),
+        (("publicReadback", "isoAttestationVerified"), False),
+        (("publicReadback", "payloadCosignVerified"), False),
+        (("publicReadback", "payloadAttestationVerified"), False),
+        (("publicReadback", "embeddedManifestBytesVerified"), False),
+        (("publicReadback", "payloadConfigBlobVerified"), False),
+        (("publicReadback", "terminalRunExitCode"), 1),
+        (("trust", "subjectPublicKeyInfoSha256"), "0" * 64),
+        (("support", "firmware"), ["bios"]),
+        (("support", "partitionTables"), ["mbr"]),
+        (("support", "gasluxSupport"), "stable"),
+        (("installationAuthorized",), True),
+    ],
+)
+def test_signed_iso45_wrong_artifact_payload_signer_or_compatibility_refused(
+    path, replacement
+):
+    ledger = signed_iso45_ledger()
+    target = ledger
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = replacement
+    with pytest.raises(Refusal, match="ledger identity or safety"):
+        assess_signed_iso45_native_route(proposal(), ledger)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("number", 3),
+        ("firstSector", 2048),
+        ("lastSector", 2048),
+        ("filesystem", "ntfs"),
+        ("mountPoint", "/boot/efi"),
+    ],
+)
+def test_signed_iso45_rejects_modified_gpt_candidate(field, replacement):
+    plan = proposal()
+    plan["candidateNewPartitions"][1][field] = replacement
+    with pytest.raises(Refusal):
+        assess_signed_iso45_native_route(plan, signed_iso45_ledger())
+
+
+def test_signed_iso45_refuses_windows_esp_and_false_gpt_immutability():
+    plan = proposal()
+    plan["windowsEspReuseProposed"] = True
+    with pytest.raises(Refusal):
+        assess_signed_iso45_native_route(plan, signed_iso45_ledger())
+    plan = proposal()
+    plan["gptHeadersAndPartitionTablesWouldChange"] = False
+    with pytest.raises(Refusal):
+        assess_signed_iso45_native_route(plan, signed_iso45_ledger())
+
+
+def test_signed_iso45_absent_or_self_asserted_signature_refused():
+    ledger = signed_iso45_ledger()
+    del ledger["artifact"]["signature"]
+    with pytest.raises(Refusal):
+        assess_signed_iso45_native_route(proposal(), ledger)
+    ledger = signed_iso45_ledger()
+    ledger["artifact"]["signature"]["verifiedAgainstLocalIsoBytes"] = "true"
+    with pytest.raises(Refusal):
+        assess_signed_iso45_native_route(proposal(), ledger)

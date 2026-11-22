@@ -327,3 +327,100 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def assess_signed_iso45_native_route(plan: dict, evidence: object) -> dict:
+    """Refuse signed ISO45 as no exact GPT 4-6 native route is verified.
+
+    This uses the historical CI evidence ledger, NOT a fresh cryptographic
+    verification. It does not observe or authorize native Anaconda actions.
+    """
+    from bazzite_iso_public_readback import (
+        CONFIG_DIGEST,
+        ISO_NAME,
+        ISO_SHA256,
+        PAYLOAD_DIGEST,
+        PAYLOAD_IMAGE,
+        PAYLOAD_VERSION,
+        SOURCE_COMMIT,
+    )
+
+    expected_actions(plan)
+    if not isinstance(evidence, dict):
+        raise Refusal("Missing ISO45 historical readback evidence")
+    artifact = evidence.get("artifact")
+    payload = evidence.get("payload")
+    relation = evidence.get("relationship")
+    readback = evidence.get("publicReadback")
+    trust = evidence.get("trust")
+    support = evidence.get("support")
+    if any(
+        not isinstance(x, dict)
+        for x in (artifact, payload, relation, readback, trust, support)
+    ):
+        raise Refusal("Incomplete signed ISO45 provenance evidence")
+    signature = artifact.get("signature")
+    provenance = artifact.get("provenance")
+    if not isinstance(signature, dict) or not isinstance(provenance, dict):
+        raise Refusal("Absent official ISO signature or attestation")
+    conditions = (
+        evidence.get("result") == "A",
+        evidence.get("installationAuthorized") is False,
+        artifact.get("name") == ISO_NAME,
+        artifact.get("version") == PAYLOAD_VERSION,
+        artifact.get("sizeBytes") == 8377878528,
+        artifact.get("sha256") == ISO_SHA256,
+        signature.get("publicReadbackVerified") is True,
+        signature.get("verifiedAgainstLocalIsoBytes") is True,
+        provenance.get("verifiedAgainstLocalIsoBytes") is True,
+        provenance.get("workflow") == ".github/workflows/build_iso.yml",
+        provenance.get("sourceCommit") == SOURCE_COMMIT,
+        payload.get("image") == PAYLOAD_IMAGE,
+        payload.get("version") == PAYLOAD_VERSION,
+        payload.get("digest") == PAYLOAD_DIGEST,
+        payload.get("configDigest") == CONFIG_DIGEST,
+        payload.get("cosignSignatureVerifiedAgainstImmutableDigest") is True,
+        payload.get("githubAttestationVerifiedAgainstImmutableDigest") is True,
+        relation.get("embeddedOciManifestReadBackVerified") is True,
+        relation.get("cryptographicIsoToPayloadBindingVerified") is True,
+        readback.get("workflowRunId") == 44759529218,
+        readback.get("terminalRunExitCode") == 0,
+        readback.get("isoCosignVerified") is True,
+        readback.get("isoAttestationVerified") is True,
+        readback.get("payloadCosignVerified") is True,
+        readback.get("payloadAttestationVerified") is True,
+        readback.get("embeddedManifestBytesVerified") is True,
+        readback.get("payloadConfigBlobVerified") is True,
+        readback.get("result") == "A",
+        trust.get("subjectPublicKeyInfoSha256")
+        == "efaae036a5afefcfe2c64686db0311ab64e57ae794be634d80c25286695336a6",
+        support.get("firmware") == ["uefi"],
+        support.get("partitionTables") == ["gpt"],
+        support.get("gasluxSupport") == "experimental-unverified",
+    )
+    if not all(conditions):
+        raise Refusal("Signed ISO45/OCI ledger identity or safety mismatch")
+
+    # Upstream explicitly documents automatic-only partitioning for this
+    # modern ISO family. This does not establish actual Anaconda behavior.
+    return {
+        "status": "REFUSED_SIGNED_ISO45_NO_VERIFIED_CUSTOM_GPT_4_6_ROUTE",
+        "upstreamDocument": (
+            "https://docs.bazzite.gg/General/Installation_Guide/install-guide/"
+        ),
+        "provenanceEvidenceRun": 44759529218,
+        "isoSha256": ISO_SHA256,
+        "ociManifestDigest": PAYLOAD_DIGEST,
+        "provenanceReverifiedInThisInvocation": False,
+        "documentedModernIsoManualPartitioning": False,
+        "realAnacondaActionsCaptured": False,
+        "nativeInstallerWriteSetVerified": False,
+        "windowsEspPreservationVerified": False,
+        "gptPrimaryAndBackupWritesWouldBeRequired": True,
+        "installationAuthorized": False,
+        "partitionWriteAuthorized": False,
+        "gptMetadataWriteAuthorized": False,
+        "windowsEspWriteAuthorized": False,
+        "nvramWriteAuthorized": False,
+        "secureBootEnrollmentAuthorized": False,
+    }

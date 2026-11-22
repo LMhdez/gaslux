@@ -126,3 +126,32 @@ post-update boot, rollback or Windows recovery. The signed OCI result is
 real upstream provenance evidence but has **no effect** on any installation
 authorization. Bazzite remains UEFI/GPT only, Secure Boot MOK enrollment
 remains forbidden, and no catalog or release metadata has changed.
+
+
+## Signed ISO45 / native custom-GPT incompatibility (22 November 2026)
+
+The 20 November public ISO readback (Actions #44759529218) independently
+verified the downloaded Bazzite 45.20261117.1 bytes, detached Cosign signature,
+GitHub/Sigstore attestation and embedded signed OCI manifest/config.
+The historical evidence ledger is a record of those checks, not a fresh
+signature, independent runtime attestation or Anaconda action graph.
+
+The official Bazzite installation guide states that the modern ISO only
+supports automatic partitioning for Windows dual boot and directs manual
+partitioning to legacy ISOs. Its drive-selection warning is incompatible
+with assuming a protected fixed GPT 4/5/6 plan can be implemented safely.
+Upstream source: https://docs.bazzite.gg/General/Installation_Guide/install-guide/
+
+The existing Anaconda write-set comparator now rejects the attempted signed
+ISO45-to-GPT-4/5/6 route with the machine-readable status
+REFUSED_SIGNED_ISO45_NO_VERIFIED_CUSTOM_GPT_4_6_ROUTE.
+It checks the historical signed ISO/OCI identity, protected GPT slots,
+EFI ownership and declared metadata requirements. It denies altered media
+identity, missing signature/attestation, changed payload, BIOS/MBR, changed
+GPT topology and Windows ESP reuse. Matching the ledger is never installation
+permission. No new QEMU boot, liveinst or D-Bus action was performed.
+
+The existing paused QEMU/OVMF lab publishes the refusal JSON alongside
+its QCOW2 inventory; no ISO45 guest is launched and no writes are granted.
+An independently authenticated guest observation and a demonstrated native
+manual/custom partitioning API remain prerequisites for a real write-set test.
