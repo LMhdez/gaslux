@@ -150,9 +150,7 @@ def test_missing_or_extra_rootfs_layer_refused():
     _manifest["config"]["size"] = len(b)
     a = json.dumps(_manifest).encode()
     with pytest.raises(Refusal, match="layer chain"):
-        validate_metadata(
-            a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
-        )
+        validate_metadata(a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b))
 
 
 def test_real_elf_header_observed_but_never_authorizes_execution():
