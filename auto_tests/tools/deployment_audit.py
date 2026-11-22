@@ -899,9 +899,7 @@ def entry_points(layouts: dict[str, Layout], findings: list[Finding]) -> dict[st
     return entries
 
 
-def audit_source_only_lab_tools(
-    layouts: dict[str, Layout], findings: list[Finding]
-) -> list[str]:
+def audit_source_only_lab_tools(layouts: dict[str, Layout], findings: list[Finding]) -> list[str]:
     """Check explicit checkout-only scripts without granting deployment authority."""
 
     notes = []
