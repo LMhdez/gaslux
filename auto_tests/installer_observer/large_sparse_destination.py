@@ -397,9 +397,7 @@ def assess_sparse_128g_readonly(
                 current = os.fstat(fd)
                 present = path.lstat()
                 _require(
-                    _stat_identity(current)
-                    == _stat_identity(present)
-                    == _stat_identity(initial)
+                    _stat_identity(current) == _stat_identity(present) == _stat_identity(initial)
                     and _allocated(current) == _allocated(present) == _allocated(initial),
                     "RESOURCE_MUTATED_DURING_INSPECTION",
                 )

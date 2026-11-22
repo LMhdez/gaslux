@@ -367,6 +367,7 @@ def test_legacy_digest_eio_refused(tmp_path, monkeypatch):
         with pytest.raises(small.DestinationRefused, match="FD_READ_FAILED"):
             small._digest(stream.fileno(), hashlib.sha256(b"x" * 1024).hexdigest())
 
+
 def test_342_unique_header_version_and_sparse_checkpoint_estimate(sample, monkeypatch):
     # #342 metadata semantics now belong to #346's stronger FD/GPT/QEMU gate.
     from types import SimpleNamespace
@@ -464,6 +465,7 @@ def test_342_unique_final_allocation_block_change_refused(sample, monkeypatch):
     monkeypatch.setattr(large, "_allocated", changing_allocation)
     refused(sample, "RESOURCE_MUTATED_DURING_INSPECTION")
 
+
 def test_canonical_incomplete_raw_backing_refused_before_gpt_validation(sample):
     backing = sample["paths"][1]
     with backing.open("r+b") as writable:
@@ -482,4 +484,3 @@ def test_canonical_self_claimed_checkpoint_restore_does_not_prove_recovery(sampl
         "CHECKPOINT_TRANSACTION_MISMATCH",
         expected_checkpoint_sha256=new_digest,
     )
-
