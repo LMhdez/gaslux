@@ -156,8 +156,14 @@ def validate_metadata(
 
 
 def _path(name: str) -> str:
-    if not isinstance(name, str) or len(name) > 4096 or "\x00" in name or "\\" in name:
-        raise Refusal("Invalid tar path")
+    if not isinstance(name, str):
+        raise Refusal("Tar path type invalid")
+    if len(name) > 4096:
+        raise Refusal("Tar path exceeds 4096-character bound")
+    if "\x00" in name:
+        raise Refusal("Tar path contains NUL")
+    if "\\" in name:
+        raise Refusal("Tar path contains backslash")
     if name.startswith("/") or any(part == ".." for part in name.split("/")):
         raise Refusal("Tar path escapes OCI root")
     n = posixpath.normpath(name)
