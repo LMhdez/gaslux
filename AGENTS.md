@@ -21,6 +21,21 @@ Gaslux uses orchestrated agents for implementation, adversarial safety audits, e
 
 Before acting, recheck GitHub branch/PR HEADs, the actual diff, current checks, dependencies and prior findings. Attribute actions and evidence to the executing agent and authorized account. A different agent name does not prove independent review. When integrating, preserve unique commits, artifacts, unresolved findings and rollback evidence; do not move an unverified experimental backend into the production installer or stable catalog.
 
+### Operational merge rule for delegated integrators (dev only)
+
+A maintainer's explicit delegation to **integrate vetted changes into `dev`** is standing authority for the assigned scope. **Do not request a separate human confirmation, approval click or formal GitHub review for each PR unless an actual GitHub branch protection/ruleset requirement, applicable repository policy, unresolved high-risk finding or separately reserved authority requires it.** Absence of an optional human review is not by itself a blocker. A reproducible independent technical Safety assessment may be documented in a PR comment; do not misrepresent it as a formal GitHub `APPROVE`.
+
+For each delegated integration, **perform the operation rather than stop at `READY_FOR_HUMAN_REVIEW`** when all applicable gates are satisfied:
+
+1. Revalidate the exact PR head, current `dev` head, changed files, dependency chain, mergeability, reviewer findings and all required checks. Prevent concurrent-head races using an exact-head merge precondition.
+2. Confirm evidence appropriate to the risk: successful tests/CI on the exact candidate or validated merge composition; no unresolved safety findings, privilege escalation, new unverified writer/guest authority or accidental stable-catalog exposure. Apply independent technical review when warranted by the change, irrespective of whether formal GitHub approval is required.
+3. Respect **enforced** branch protections, status checks, signed-commit/DCO requirements and repository policies. Never fabricate `Signed-off-by`, an independent approval or a test result; seek only the specific decision genuinely required.
+4. When eligible, merge into `dev` with the permitted method, confirm the resulting commit, inspect post-merge CI and stop additional merges if a required regression fails. Leave `main`, physical disks, release promotion and production installation authority unchanged.
+5. Reconcile historical/stacked PRs first where possible, preserve unique work and evidence, close **proven** duplicates, and delete **proven obsolete** branches only with authenticated permission and dependency checks. Avoid new reconciliation branches/PRs merely to reduce the queue.
+6. Report actual merges, closures, branch deletions and before/after counts with URLs and SHAs. If blocked, state the precise enforced gate or concrete technical finding; continue with other eligible work instead of repeatedly requesting ceremonial approval.
+
+**Green CI alone is not sufficient for a safety-critical merge**; the evidence and authority checks above still apply. This standing delegation applies only to repository integration in `dev` and never grants runtime disk/boot mutation, real-hardware testing or release/stability approval.
+
 Repository modification permissions never grant disk/boot mutation authority. Destructive testing must remain within explicitly approved disposable VMs with verified ownership and recovery; real-hardware experiments require separate authorization. See [AI_POLICY.md](AI_POLICY.md) for the authority model and reporting requirements.
 
 ## Non-negotiable safety rules
