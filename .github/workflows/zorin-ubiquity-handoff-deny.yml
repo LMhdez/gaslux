@@ -11,9 +11,6 @@ on:
       - '.github/workflows/zorin-ubiquity-handoff-deny.yml'
 permissions:
   contents: read
-concurrency:
-  group: zorin-ubiquity-handoff-deny-20261122
-  cancel-in-progress: false
 jobs:
   readonly-contract:
     runs-on: ubuntu-24.04
