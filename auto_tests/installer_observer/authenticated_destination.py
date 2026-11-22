@@ -260,7 +260,9 @@ def assess_authenticated_destination(
                 and decision.get("transactionId") == pins.transaction_id,
                 "UNOWNED_WRITESET_OR_PLAN",
             )
-            assert_snapshot_matches(snapshot, prewrite_inputs["host_evidence"]["payload"]["snapshot"])
+            assert_snapshot_matches(
+                snapshot, prewrite_inputs["host_evidence"]["payload"]["snapshot"]
+            )
             observation = witnessed.finish()
             require(
                 observation["status"] == "BLOCKED_TRUST_ROOT"

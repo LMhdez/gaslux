@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import importlib
 import json
 import os
 import shutil
@@ -173,9 +172,8 @@ def test_b_foreign_fd_alias_same_size_is_refused(destination, workspace):
     path = destination["paths"][0]
     foreign = workspace / "foreign.qcow2"
     shutil.copyfile(path, foreign)
-    with foreign.open("rb") as stream:
-        with pytest.raises(DestinationRefused, match="FD_ALIAS|SWAP"):
-            assess(destination, qcow2_fd=stream.fileno())
+    with foreign.open("rb") as stream, pytest.raises(DestinationRefused, match="FD_ALIAS|SWAP"):
+        assess(destination, qcow2_fd=stream.fileno())
 
 
 def test_c_qcow2_backing_path_swap_is_refused(destination, workspace):
@@ -231,15 +229,13 @@ def test_backing_fd_alias_is_refused(destination, workspace):
     raw = destination["paths"][1]
     foreign = workspace / "other.raw"
     shutil.copyfile(raw, foreign)
-    with foreign.open("rb") as stream:
-        with pytest.raises(DestinationRefused, match="FD_ALIAS"):
-            assess(destination, backing_fd=stream.fileno())
+    with foreign.open("rb") as stream, pytest.raises(DestinationRefused, match="FD_ALIAS"):
+        assess(destination, backing_fd=stream.fileno())
 
 
 def test_checkpoint_fd_alias_is_refused(destination, workspace):
     cp = destination["paths"][2]
     foreign = workspace / "foreign-checkpoint.json"
     shutil.copyfile(cp, foreign)
-    with foreign.open("rb") as stream:
-        with pytest.raises(DestinationRefused, match="FD_ALIAS"):
-            assess(destination, checkpoint_fd=stream.fileno())
+    with foreign.open("rb") as stream, pytest.raises(DestinationRefused, match="FD_ALIAS"):
+        assess(destination, checkpoint_fd=stream.fileno())
