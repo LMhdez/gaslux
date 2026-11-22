@@ -117,12 +117,18 @@ def guest_ro_inventory(disk: Path, root_uuid: str) -> dict:
                 names = sorted(guest.find("/"))
                 require(len(names) <= 120000, "A/B forensic file inventory exceeded safety bound")
                 contents = {}
+                seen = set()
                 for path in names:
                     absolute = "/" + path.lstrip("/")
                     require(
-                        "\x00" not in absolute and len(absolute) <= 4096,
+                        canonical_inventory_path(absolute),
                         "unsafe guestfs inventory path",
                     )
+                    require(
+                        absolute not in seen,
+                        "duplicate guestfs inventory entry",
+                    )
+                    seen.add(absolute)
                     if guest.is_file(absolute):
                         contents[absolute] = guest.checksum("sha256", absolute)
                 require(bool(contents), "read-only ESP/Recovery file enumeration was empty")
@@ -338,6 +344,249 @@ def write_manifest(directory: Path, name: str, data: dict) -> str:
     return sha256_file(p)
 
 
+def canonical_inventory_path(path: object) -> bool:
+    """Reject aliases and traversal without excluding legitimate Unicode names."""
+    return (
+        isinstance(path, str)
+        and 1 < len(path) <= 4096
+        and path.startswith("/")
+        and not path.startswith("//")
+        and not path.endswith("/")
+        and "\0" not in path
+        and "\\" not in path
+        and all(component not in ("", ".", "..") for component in path[1:].split("/"))
+    )
+
+
+# Each forensic stage must have usable per-file ESP and Recovery inventories
+# in addition to the four complete raw-partition SHA-256 values. An unavailable
+# filesystem inventory is NEVER evidence that contents are unchanged.
+F03_EVIDENCE_PHASES = {
+    "before_windows_a": (
+        "mint-ab-evidence-before-windows-a.json",
+        ("arm_a_preboot", "arm_b_preboot"),
+    ),
+    "after_windows_a": (
+        "mint-ab-evidence-after-windows-a.json",
+        ("arm_a_after_windows",),
+    ),
+    "after_mint_b": (
+        "mint-ab-evidence-after-mint-b.json",
+        ("arm_b_after_mint",),
+    ),
+    "after_windows_b": (
+        "mint-ab-evidence-after-windows-b.json",
+        ("arm_b_after_windows",),
+    ),
+}
+
+
+F03_PREDECESSOR_FILES = {
+    "before_windows_a": {
+        "checkpoint": "mint-ab-checkpoint.json",
+        "earlyCapacity": "mint-ab-capacity-early.json",
+    },
+    "after_windows_a": {
+        "baselineEvidence": "mint-ab-evidence-before-windows-a.json",
+        "afterControlIntegrity": "mint-ab-after-control-gate.json",
+    },
+    "after_mint_b": {
+        "baselineEvidence": "mint-ab-evidence-before-windows-a.json",
+        "afterControlEvidence": "mint-ab-evidence-after-windows-a.json",
+        "control": "mint-ab-control.json",
+        "postMintIntegrity": "mint-ab-after-mint-gate.json",
+    },
+    "after_windows_b": {
+        "afterMintEvidence": "mint-ab-evidence-after-mint-b.json",
+        "postMintIntegrity": "mint-ab-after-mint-gate.json",
+    },
+}
+
+
+def authenticated_predecessor_status(
+    *,
+    phase: str,
+    evidence: Path,
+    transaction_id: str,
+    supplied_sha256: dict,
+) -> tuple[dict, list]:
+    """Recheck owned predecessor files and their transaction, not just caller hashes.
+
+    The early capacity file predates checkpoint creation and is instead bound to
+    the same GitHub run/commit. Any missing, foreign, replaced or corrupt
+    predecessor is reported without importing its untrusted contents.
+    """
+    expected = F03_PREDECESSOR_FILES[phase]
+    require(
+        isinstance(supplied_sha256, dict) and set(supplied_sha256) == set(expected),
+        "F-03: ambiguous predecessor references",
+    )
+    status, problems = {}, []
+    for key, filename in expected.items():
+        path = evidence / filename
+        issue = None
+        digest = supplied_sha256[key]
+        if not isinstance(digest, str) or re.fullmatch(r"[a-f0-9]{64}", digest) is None:
+            issue = "invalid_expected_sha256"
+        elif (
+            path.parent != evidence
+            or not path.is_file()
+            or path.is_symlink()
+            or path.stat().st_nlink != 1
+            or path.stat().st_uid != os.getuid()
+        ):
+            issue = "missing_or_foreign_predecessor"
+        elif path.stat().st_size > 2_000_000:
+            issue = "oversized_predecessor"
+        else:
+            actual = sha256_file(path)
+            if actual != digest:
+                issue = "predecessor_sha256_mismatch"
+            else:
+                try:
+                    record = json.loads(path.read_bytes())
+                except (OSError, UnicodeError, ValueError):
+                    record = None
+                if not isinstance(record, dict):
+                    issue = "invalid_predecessor_json"
+                elif key == "earlyCapacity":
+                    if not (
+                        record.get("schema") == "gaslux-mint-ab-capacity-v1"
+                        and record.get("result") == "PASS"
+                        and record.get("githubRunId") == os.environ.get("GITHUB_RUN_ID")
+                        and record.get("sourceCommit") == os.environ.get("GITHUB_SHA")
+                    ):
+                        issue = "foreign_preflight_run"
+                elif record.get("transactionId") != transaction_id:
+                    issue = "foreign_predecessor_transaction"
+                elif record.get("result") not in (None, "PASS"):
+                    issue = "previous_gate_not_passed"
+        status[key] = {"file": filename, "sha256Matched": issue is None}
+        if issue is not None:
+            problems.append({"predecessor": key, "issue": issue})
+    return status, problems
+
+
+def require_complete_forensic_inventories(
+    *,
+    phase: str,
+    sources: dict,
+    transaction_id: str,
+    evidence: Path,
+    preceding_sha256: dict,
+) -> dict:
+    """F-03: durable, fail-closed evidence gate; never repairs guest media.
+
+    The underlying read-only guestfs acquisition may report available=False.
+    Preserve that observation without claiming an unverified mount cause.
+    """
+    require(phase in F03_EVIDENCE_PHASES, "F-03: unsupported evidence phase")
+    filename, expected_sources = F03_EVIDENCE_PHASES[phase]
+    require(
+        isinstance(sources, dict) and set(sources) == set(expected_sources),
+        "F-03: ambiguous A/B evidence sources",
+    )
+    require(
+        isinstance(transaction_id, str) and bool(transaction_id),
+        "F-03: missing checkpoint transaction ID",
+    )
+    predecessor_status, predecessor_issues = authenticated_predecessor_status(
+        phase=phase,
+        evidence=evidence,
+        transaction_id=transaction_id,
+        supplied_sha256=preceding_sha256,
+    )
+
+    resource_status = {}
+    unavailable = []
+    for label in expected_sources:
+        manifest = sources[label]
+        inventories = manifest.get("fileInventories") if isinstance(manifest, dict) else None
+        for resource in ("esp", "recovery"):
+            item = inventories.get(resource) if isinstance(inventories, dict) else None
+            files = item.get("fileSha256") if isinstance(item, dict) else None
+            if not isinstance(item, dict) or item.get("available") is not True:
+                state = "unavailable"
+            elif (
+                not isinstance(files, dict)
+                or not files
+                or len(files) > 120000
+                or not all(
+                    canonical_inventory_path(name)
+                    and isinstance(digest, str)
+                    and re.fullmatch(r"[a-f0-9]{64}", digest)
+                    for name, digest in files.items()
+                )
+            ):
+                state = "incomplete"
+            else:
+                state = "complete"
+            resource_status[label + ":" + resource] = {
+                "state": state,
+                "fileCount": len(files) if state == "complete" else None,
+            }
+            if state != "complete":
+                reason = item.get("reason") if isinstance(item, dict) else None
+                unavailable.append(
+                    {
+                        "source": label,
+                        "resource": resource,
+                        "evidenceState": state,
+                        "reportedReason": (
+                            reason if isinstance(reason, str) and len(reason) <= 128 else None
+                        ),
+                    }
+                )
+    passed = not unavailable and not predecessor_issues
+    report = {
+        "schema": "gaslux-mint-ab-required-inventory-evidence-v1",
+        "transactionId": transaction_id,
+        "phase": phase,
+        "result": "PASS" if passed else "BLOCKED_EVIDENCE",
+        "unavailableResources": unavailable,
+        "inventoryStatus": resource_status,
+        "precedingManifestSha256": preceding_sha256,
+        "authenticatedPredecessors": predecessor_status,
+        "predecessorIssues": predecessor_issues,
+        "continuationAllowedByEvidenceGate": passed,
+        # No evidence-only PASS grants permission independently of F-01/F-02,
+        # preflight, firmware and checkpoint protections.
+        "nextGuestBootAuthorizedByThisGate": False,
+        "subsequentBootsBlocked": list(
+            {
+                "before_windows_a": ("windows_a", "mint_b", "windows_b"),
+                "after_windows_a": ("mint_b", "windows_b"),
+                "after_mint_b": ("windows_b",),
+                "after_windows_b": (),
+            }[phase]
+        )
+        if not passed
+        else [],
+        "productionInstallAuthorized": False,
+        "sameDiskDualBootVerified": False,
+        "windowsInPlaceRollbackProven": False,
+        "releaseEligible": False,
+        "stable": False,
+    }
+    write_manifest(evidence, filename, report)
+    require(
+        passed,
+        "F-03: required ESP/Recovery inventory evidence incomplete at "
+        + phase
+        + ": "
+        + ", ".join(
+            item["source"] + ":" + item["resource"] + " (" + item["evidenceState"] + ")"
+            for item in unavailable
+        )
+        + (
+            " prior:" + ", ".join(i["predecessor"] + "/" + i["issue"] for i in predecessor_issues)
+            if predecessor_issues
+            else ""
+        ),
+    )
+    return report
+
+
 def require_untouched_after_control(
     *,
     directory: Path,
@@ -550,6 +799,18 @@ def run_ab(
     directory = workspace / AB_DIR
     arms = (directory / ARMS[0], directory / ARMS[1])
     before = [guest_ro_inventory(arm, root_uuid) for arm in arms]
+    # F-03: both independent reference inventories must be complete BEFORE
+    # any Windows A guest is started, even if both failures are identical.
+    require_complete_forensic_inventories(
+        phase="before_windows_a",
+        sources={"arm_a_preboot": before[0], "arm_b_preboot": before[1]},
+        transaction_id=checkpoint["transactionId"],
+        evidence=evidence,
+        preceding_sha256={
+            "checkpoint": sha256_file(evidence / "mint-ab-checkpoint.json"),
+            "earlyCapacity": early_hash,
+        },
+    )
     gpts = [gpt_manifest(arm, workspace) for arm in arms]
     require(
         before[0] == before[1] and gpts[0] == gpts[1],
@@ -562,13 +823,19 @@ def run_ab(
         "sourceCommit": os.environ.get("GITHUB_SHA"),
         "checkpointManifestSha256": sha256_file(directory / "checkpoint.json"),
         "earlyCapacityManifestSha256": early_hash,
+        "baselineInventoryEvidenceSha256": sha256_file(
+            evidence / F03_EVIDENCE_PHASES["before_windows_a"][0]
+        ),
         "sameWindowsOrdinalBeforeArms": True,
         "rootBefore": before[0]["mintRootFiles"],
         "partitionSha256Before": before[0]["partitionSha256"],
         "rawGptBefore": gpts[0],
         "nativeGrubDualBootVerified": False,
+        "sameDiskDualBootVerified": False,
         "rollbackInPlaceVerified": False,
+        "windowsInPlaceRollbackProven": False,
         "releaseEligible": False,
+        "stable": False,
         "windowsProtectedIntegrityAccepted": False,
     }
     # Both arms start from the same post-third-Windows-boot checkpoint.
@@ -602,6 +869,18 @@ def run_ab(
         evidence=evidence,
         transaction_id=ab["transactionId"],
     )
+    # F-03: an unavailable A filesystem inventory is NOT a content delta.
+    # Preserve the explicit refusal before starting Mint on B.
+    require_complete_forensic_inventories(
+        phase="after_windows_a",
+        sources={"arm_a_after_windows": after_a},
+        transaction_id=ab["transactionId"],
+        evidence=evidence,
+        preceding_sha256={
+            "baselineEvidence": ab["baselineInventoryEvidenceSha256"],
+            "afterControlIntegrity": sha256_file(evidence / "mint-ab-after-control-gate.json"),
+        },
+    )
     write_manifest(
         evidence,
         "mint-ab-control.json",
@@ -612,6 +891,9 @@ def run_ab(
             "control": ab["control"],
             "referenceAndBStillUntouched": control_gate["referenceAndBStillUntouched"],
             "afterControlGateSha256": sha256_file(evidence / "mint-ab-after-control-gate.json"),
+            "afterControlEvidenceSha256": sha256_file(
+                evidence / F03_EVIDENCE_PHASES["after_windows_a"][0]
+            ),
             "releaseEligible": False,
         },
     )
@@ -636,6 +918,22 @@ def run_ab(
         expected_gpt=gpts[1],
         observed_gpt=after_mint_gpt,
     )
+    # F-03: file-level acquisition of the treatment remains required
+    # separately from the F-02 raw GPT and partition-integrity gates.
+    require_complete_forensic_inventories(
+        phase="after_mint_b",
+        sources={"arm_b_after_mint": after_mint},
+        transaction_id=ab["transactionId"],
+        evidence=evidence,
+        preceding_sha256={
+            "baselineEvidence": ab["baselineInventoryEvidenceSha256"],
+            "afterControlEvidence": sha256_file(
+                evidence / F03_EVIDENCE_PHASES["after_windows_a"][0]
+            ),
+            "control": sha256_file(evidence / "mint-ab-control.json"),
+            "postMintIntegrity": sha256_file(evidence / "mint-ab-after-mint-gate.json"),
+        },
+    )
     require(
         archive_serial(evidence / "mint-ab-arm-b-mint-serial.log", directory, max_bytes=2_000_000)
         == ab["treatment"]["mintSerialSha256"],
@@ -644,6 +942,9 @@ def run_ab(
     ab["treatment"]["partitionSha256AfterMint"] = after_mint["partitionSha256"]
     ab["treatment"]["gptAfterMintUnchanged"] = post_mint_gate["checks"]["gptUnchanged"]
     ab["treatment"]["postMintGateSha256"] = sha256_file(evidence / "mint-ab-after-mint-gate.json")
+    ab["treatment"]["postMintEvidenceSha256"] = sha256_file(
+        evidence / F03_EVIDENCE_PHASES["after_mint_b"][0]
+    )
     ab["treatment"]["windows"] = run_windows_arm(
         original,
         base,
@@ -659,6 +960,21 @@ def run_ab(
     )
     after_b = guest_ro_inventory(arms[1], root_uuid)
     gpt_b = gpt_manifest(arms[1], workspace)
+    # The final B-versus-A per-file comparison is also inadmissible if the
+    # post-Windows B inventory is unavailable. No false completed manifest.
+    require_complete_forensic_inventories(
+        phase="after_windows_b",
+        sources={"arm_b_after_windows": after_b},
+        transaction_id=ab["transactionId"],
+        evidence=evidence,
+        preceding_sha256={
+            "afterMintEvidence": ab["treatment"]["postMintEvidenceSha256"],
+            "postMintIntegrity": ab["treatment"]["postMintGateSha256"],
+        },
+    )
+    ab["treatment"]["afterWindowsEvidenceSha256"] = sha256_file(
+        evidence / F03_EVIDENCE_PHASES["after_windows_b"][0]
+    )
     ab["treatment"]["partitionSha256AfterWindows"] = after_b["partitionSha256"]
     ab["treatment"]["fileDiff"] = changed_files(before[1], after_b)
     ab["treatment"]["mintRootContentsPreserved"] = (

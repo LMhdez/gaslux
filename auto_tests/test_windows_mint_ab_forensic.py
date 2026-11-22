@@ -254,7 +254,13 @@ class MintAbForensicContracts(unittest.TestCase):
         }
 
     def _run_with_guest_stubs(
-        self, lab, *, mutate_after_a=None, change_gpt=None, change_after_mint=None
+        self,
+        lab,
+        *,
+        mutate_after_a=None,
+        change_gpt=None,
+        change_after_mint=None,
+        inventory_changes=None,
     ):
         """Exercise REAL run_ab ordering with mocks only at guest boundaries."""
         from windows_mint_ab_checkpoint import CONSENT
@@ -266,6 +272,11 @@ class MintAbForensicContracts(unittest.TestCase):
         gpt_after = copy.deepcopy(lab["gpt"])
         if change_gpt:
             change_gpt(gpt_after)
+        inventory_states = [copy.deepcopy(pre), copy.deepcopy(pre), copy.deepcopy(pre), after]
+        for stage, mutate in (inventory_changes or {}).items():
+            if stage not in range(4):
+                raise AssertionError("unsafe fake inventory stage")
+            mutate(inventory_states[stage])
 
         win_calls = []
         mint_calls = []
@@ -309,7 +320,7 @@ class MintAbForensicContracts(unittest.TestCase):
                 patch.object(
                     forensic,
                     "guest_ro_inventory",
-                    side_effect=[copy.deepcopy(pre), copy.deepcopy(pre), copy.deepcopy(pre), after],
+                    side_effect=inventory_states,
                 )
             )
             stack.enter_context(
@@ -419,6 +430,495 @@ class MintAbForensicContracts(unittest.TestCase):
                 self.assertIn(flag, reason)
                 report = json.loads((lab["evidence"] / "mint-ab-after-mint-gate.json").read_text())
                 self.assertFalse(report["checks"][flag])
+
+    @staticmethod
+    def _set_unavailable(record, resource):
+        record["fileInventories"][resource] = {"available": False, "reason": "ReadOnlyMountError"}
+
+    def test_f03_baseline_both_esp_unavailable_must_block_windows_a(self):
+        """Red test on #274: identical unavailable baselines formerly passed."""
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(
+                lab,
+                inventory_changes={
+                    0: lambda item: self._set_unavailable(item, "esp"),
+                    1: lambda item: self._set_unavailable(item, "esp"),
+                },
+            )
+            self.assertEqual(windows, [], "No Windows A with missing ESP baseline")
+            self.assertEqual(mint, [])
+            self.assertIn("F-03", status)
+            self.assertTrue((lab["evidence"] / "mint-ab-evidence-before-windows-a.json").is_file())
+
+    def test_f03_recovery_unavailable_after_control_must_block_mint_b(self):
+        """Red test on #274: changed_files() only observed unavailable."""
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(
+                lab,
+                inventory_changes={
+                    2: lambda item: self._set_unavailable(item, "recovery"),
+                },
+            )
+            self.assertEqual(windows, [1])
+            self.assertEqual(mint, [], "No Mint B with missing Recovery control inventory")
+            self.assertIn("F-03", status)
+            self.assertTrue((lab["evidence"] / "mint-ab-evidence-after-windows-a.json").is_file())
+
+    def test_f03_esp_unavailable_after_mint_must_block_windows_b(self):
+        """Red test on #274: F-02 only looked at GPT and partition digests."""
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(
+                lab,
+                inventory_changes={
+                    3: lambda item: self._set_unavailable(item, "esp"),
+                },
+            )
+            self.assertEqual(windows, [1], "No Windows B with missing ESP after Mint")
+            self.assertEqual(mint, [1])
+            self.assertIn("F-03", status)
+            self.assertTrue((lab["evidence"] / "mint-ab-evidence-after-mint-b.json").is_file())
+
+    def test_f03_incomplete_and_missing_inventories_stop_without_guest_boot(self):
+        cases = {
+            "empty ESP": lambda m: m["fileInventories"]["esp"].update(
+                {"available": True, "fileSha256": {}}
+            ),
+            "unhashed Recovery": lambda m: m["fileInventories"]["recovery"].update(
+                {"available": True, "fileSha256": {"/Winre.wim": "not-sha256"}}
+            ),
+            "missing ESP": lambda m: m["fileInventories"].pop("esp"),
+            "missing Recovery list": lambda m: m["fileInventories"]["recovery"].pop("fileSha256"),
+        }
+        for case, change in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as root:
+                lab = self._fake_lab(root)
+                windows, mint, status = self._run_with_guest_stubs(
+                    lab, inventory_changes={0: change, 1: change}
+                )
+                self.assertEqual(windows, [])
+                self.assertEqual(mint, [])
+                self.assertIn("F-03", status)
+                report = json.loads(
+                    (lab["evidence"] / "mint-ab-evidence-before-windows-a.json").read_text()
+                )
+                self.assertEqual(report["result"], "BLOCKED_EVIDENCE")
+                self.assertFalse(report["continuationAllowedByEvidenceGate"])
+                self.assertFalse(report["nextGuestBootAuthorizedByThisGate"])
+                self.assertTrue(report["unavailableResources"])
+
+    def test_f03_invalid_after_mint_inventory_stops_before_windows_b(self):
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(
+                lab,
+                inventory_changes={
+                    3: lambda m: m["fileInventories"]["recovery"].update(
+                        {"available": True, "fileSha256": {}}
+                    ),
+                },
+            )
+            self.assertEqual(windows, [1])
+            self.assertEqual(mint, [1])
+            self.assertIn("F-03", status)
+            evidence = json.loads(
+                (lab["evidence"] / "mint-ab-evidence-after-mint-b.json").read_text()
+            )
+            self.assertEqual(evidence["phase"], "after_mint_b")
+            self.assertEqual(evidence["result"], "BLOCKED_EVIDENCE")
+            self.assertEqual(evidence["subsequentBootsBlocked"], ["windows_b"])
+            self.assertEqual(evidence["unavailableResources"][0]["evidenceState"], "incomplete")
+
+    def test_f03_refusals_preserve_reference_backing_unused_arm_and_ovmf(self):
+        for stage, resource in ((0, "esp"), (2, "recovery"), (3, "esp")):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as root:
+                lab = self._fake_lab(root)
+                all_paths = [
+                    lab["reference"],
+                    lab["base"],
+                    lab["arm_b"],
+                    lab["vars_b"],
+                ]
+                original = [path.read_bytes() for path in all_paths]
+                changes = {stage: lambda m, resource=resource: self._set_unavailable(m, resource)}
+                if stage == 0:
+                    changes[1] = changes[0]
+                windows, mint, status = self._run_with_guest_stubs(lab, inventory_changes=changes)
+                self.assertIn("F-03", status)
+                self.assertEqual(
+                    [path.read_bytes() for path in all_paths],
+                    original,
+                    "F-03 rejection must not alter reference/backing/unused arm or VARS",
+                )
+                expected_windows = [] if stage == 0 else [1]
+                self.assertEqual(windows, expected_windows)
+                self.assertEqual(mint, [1] if stage == 3 else [])
+
+    def test_f03_valid_inventories_produce_pass_manifests_without_boot_authority(self):
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(lab)
+            self.assertEqual(status, "WINDOWS_B_REACHED")
+            self.assertEqual(windows, [1, 1])
+            self.assertEqual(mint, [1])
+            for phase in ("before_windows_a", "after_windows_a", "after_mint_b"):
+                name = forensic.F03_EVIDENCE_PHASES[phase][0]
+                report = json.loads((lab["evidence"] / name).read_text())
+                self.assertEqual(report["transactionId"], lab["checkpoint"]["transactionId"])
+                self.assertEqual(report["phase"], phase)
+                self.assertEqual(report["result"], "PASS")
+                self.assertEqual(report["unavailableResources"], [])
+                self.assertTrue(report["continuationAllowedByEvidenceGate"])
+                self.assertFalse(report["nextGuestBootAuthorizedByThisGate"])
+                self.assertTrue(report["precedingManifestSha256"])
+
+    def test_f03_rejected_inventory_preserves_reported_reason_without_guessing(self):
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            windows, mint, status = self._run_with_guest_stubs(
+                lab,
+                inventory_changes={
+                    0: lambda m: self._set_unavailable(m, "esp"),
+                    1: lambda m: self._set_unavailable(m, "esp"),
+                },
+            )
+            self.assertEqual((windows, mint), ([], []))
+            self.assertIn("F-03", status)
+            data = json.loads(
+                (lab["evidence"] / "mint-ab-evidence-before-windows-a.json").read_text()
+            )
+            resource = data["unavailableResources"][0]
+            self.assertEqual(resource["resource"], "esp")
+            self.assertEqual(resource["reportedReason"], "ReadOnlyMountError")
+            self.assertEqual(resource["evidenceState"], "unavailable")
+            self.assertIn("checkpoint", data["precedingManifestSha256"])
+            self.assertIn("earlyCapacity", data["precedingManifestSha256"])
+
+    def test_f03_276_exclusive_esp_recovery_stage_regressions(self):
+        """Transport #276 alternate-resource cases absent from #278."""
+        cases = (
+            ("recovery baseline", "recovery", 0, [], []),
+            ("esp after Windows A", "esp", 2, [1], []),
+            ("recovery after Mint B", "recovery", 3, [1], [1]),
+        )
+        for title, resource, stage, windows_expected, mint_expected in cases:
+            with self.subTest(case=title), tempfile.TemporaryDirectory() as root:
+                lab = self._fake_lab(root)
+
+                def mutation(m, resource=resource):
+                    self._set_unavailable(m, resource)
+
+                changes = {stage: mutation}
+                if stage == 0:
+                    changes[1] = mutation
+                windows, mint, result = self._run_with_guest_stubs(lab, inventory_changes=changes)
+                self.assertEqual((windows, mint), (windows_expected, mint_expected))
+                self.assertIn("F-03", result)
+                phase = {0: "before_windows_a", 2: "after_windows_a", 3: "after_mint_b"}[stage]
+                report = json.loads(
+                    (lab["evidence"] / forensic.F03_EVIDENCE_PHASES[phase][0]).read_text()
+                )
+                self.assertEqual(report["result"], "BLOCKED_EVIDENCE")
+                self.assertTrue(
+                    any(x["resource"] == resource for x in report["unavailableResources"])
+                )
+
+    def test_f03_276_rejects_noncanonical_paths_before_windows_a(self):
+        """Transport #276 relative and traversal aliases, including Unicode handling."""
+        variants = (
+            "not-absolute",
+            "/.",
+            "/../boot",
+            "/EFI/../boot.efi",
+            "/EFI//boot.efi",
+            "/EFI/./boot.efi",
+            "//EFI/boot.efi",
+            "/EFI/boot.efi/",
+            "/EFI\\boot.efi",
+            "/EFI/boot.efi\x00bad",
+        )
+        for invalid in variants:
+            with self.subTest(path=repr(invalid)), tempfile.TemporaryDirectory() as root:
+                lab = self._fake_lab(root)
+
+                def change(m, path=invalid):
+                    m["fileInventories"]["esp"]["fileSha256"] = {path: "a" * 64}
+
+                windows, mint, reason = self._run_with_guest_stubs(
+                    lab,
+                    inventory_changes={0: change, 1: change},
+                )
+                self.assertEqual((windows, mint), ([], []))
+                self.assertIn("F-03", reason)
+                report = json.loads(
+                    (lab["evidence"] / "mint-ab-evidence-before-windows-a.json").read_text()
+                )
+                self.assertEqual(report["result"], "BLOCKED_EVIDENCE")
+
+    def test_f03_authenticated_predecessors_refuse_missing_foreign_and_replaced(self):
+        """Protect on-disk prior evidence; a correct looking hash alone is insufficient."""
+        for scenario in (
+            "missing",
+            "foreign_transaction",
+            "foreign_hardlink",
+            "foreign_symlink",
+            "wrong_hash",
+            "foreign_run",
+        ):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as root:
+                lab = self._fake_lab(root)
+                evidence = lab["evidence"]
+                checkpoint = evidence / "mint-ab-checkpoint.json"
+                forensic.write_manifest(evidence, checkpoint.name, lab["checkpoint"])
+                capacity = evidence / "mint-ab-capacity-early.json"
+                if scenario == "missing":
+                    checkpoint.unlink()
+                elif scenario == "foreign_transaction":
+                    checkpoint.write_text(json.dumps({"transactionId": "foreign-trans"}))
+                elif scenario == "foreign_hardlink":
+                    sibling = evidence / "owned-foreign-copy.json"
+                    sibling.write_bytes(checkpoint.read_bytes())
+                    checkpoint.unlink()
+                    os.link(sibling, checkpoint)
+                elif scenario == "foreign_symlink":
+                    sibling = evidence / "owned-foreign-copy.json"
+                    sibling.write_bytes(checkpoint.read_bytes())
+                    checkpoint.unlink()
+                    checkpoint.symlink_to(sibling)
+                elif scenario == "foreign_run":
+                    payload = json.loads(capacity.read_text())
+                    payload["githubRunId"] = "different-run"
+                    capacity.write_text(json.dumps(payload))
+                expected = {
+                    "checkpoint": (
+                        hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+                        if checkpoint.exists()
+                        else "0" * 64
+                    ),
+                    "earlyCapacity": hashlib.sha256(capacity.read_bytes()).hexdigest(),
+                }
+                if scenario == "wrong_hash":
+                    expected["checkpoint"] = "0" * 64
+                with (
+                    patch.dict(
+                        os.environ,
+                        {"GITHUB_RUN_ID": "99981", "GITHUB_SHA": "a" * 40},
+                    ),
+                    self.assertRaisesRegex(forensic.ForensicError, "F-03"),
+                ):
+                    forensic.require_complete_forensic_inventories(
+                        phase="before_windows_a",
+                        sources={
+                            "arm_a_preboot": lab["before"],
+                            "arm_b_preboot": lab["before"],
+                        },
+                        evidence=evidence,
+                        transaction_id=lab["checkpoint"]["transactionId"],
+                        preceding_sha256=expected,
+                    )
+                report = json.loads(
+                    (evidence / "mint-ab-evidence-before-windows-a.json").read_text()
+                )
+                self.assertEqual(report["result"], "BLOCKED_EVIDENCE")
+                self.assertFalse(report["continuationAllowedByEvidenceGate"])
+                self.assertFalse(report["nextGuestBootAuthorizedByThisGate"])
+                self.assertTrue(report["predecessorIssues"])
+                self.assertIn("windows_a", report["subsequentBootsBlocked"])
+
+    def test_f03_previous_manifest_keys_must_match_fixed_phase(self):
+        with tempfile.TemporaryDirectory() as root:
+            lab = self._fake_lab(root)
+            with self.assertRaisesRegex(forensic.ForensicError, "predecessor"):
+                forensic.require_complete_forensic_inventories(
+                    phase="before_windows_a",
+                    sources={
+                        "arm_a_preboot": lab["before"],
+                        "arm_b_preboot": lab["before"],
+                    },
+                    evidence=lab["evidence"],
+                    transaction_id=lab["checkpoint"]["transactionId"],
+                    preceding_sha256={"foreignManifest": "a" * 64},
+                )
+            self.assertFalse((lab["evidence"] / "mint-ab-evidence-before-windows-a.json").exists())
+
+    def test_f03_known_tree_independent_oracle_detects_silent_omissions(self):
+        """Known physical fixture oracle; does NOT prove exhaustive real guestfs."""
+        known = {
+            "esp": {
+                "/EFI/Microsoft/Boot/bootmgfw.efi": b"MZ-boot-manager",
+                "/EFI/OEM/nested/child.efi": b"MZ-child",
+                "/EFI/Unicode/maçã-工具.efi": b"unicode",
+                "/EFI/empty.bin": b"",
+            },
+            "recovery": {
+                "/Recovery/WindowsRE/winre.wim": b"recovery-fixture",
+                "/Recovery/nested/child.dat": b"x",
+                "/Recovery/empty.dat": b"",
+            },
+        }
+        with tempfile.TemporaryDirectory() as root:
+            base = Path(root)
+            for resource, files in known.items():
+                for name, payload in files.items():
+                    target = base / resource / name.lstrip("/")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(payload)
+                (base / resource / "empty-directory").mkdir()
+                (base / resource / "nested" / "empty-directory").mkdir(parents=True, exist_ok=True)
+
+            def read_files(resource, *, omitted=()):
+                files = {}
+                directory_entries = []
+                for where, dirs, filenames in os.walk(base / resource):
+                    for d in dirs:
+                        directory_entries.append(
+                            "/" + (Path(where) / d).relative_to(base / resource).as_posix()
+                        )
+                    for filename in filenames:
+                        path = Path(where) / filename
+                        relative = "/" + path.relative_to(base / resource).as_posix()
+                        if not any(
+                            relative == missing or relative.startswith(missing + "/")
+                            for missing in omitted
+                        ):
+                            files[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+                return files, directory_entries
+
+            expected = {
+                resource: {
+                    name: hashlib.sha256(content).hexdigest() for name, content in filemap.items()
+                }
+                for resource, filemap in known.items()
+            }
+            for resource in known:
+                complete, directories = read_files(resource)
+                self.assertEqual(complete, expected[resource])
+                self.assertIn("/empty-directory", directories)
+                self.assertIn("/nested/empty-directory", directories)
+                self.assertTrue(
+                    forensic.canonical_inventory_path(
+                        next(n for n in expected[resource] if "maçã-" in n)
+                    )
+                    if resource == "esp"
+                    else True
+                )
+                missing_one, _ = read_files(resource, omitted=(next(iter(expected[resource])),))
+                self.assertNotEqual(missing_one, expected[resource])
+                self.assertEqual(len(expected[resource]) - len(missing_one), 1)
+            subtree, _ = read_files("esp", omitted=("/EFI/OEM",))
+            self.assertNotIn("/EFI/OEM/nested/child.efi", subtree)
+            self.assertNotEqual(subtree, expected["esp"])
+            # A superficially well-formed but incomplete map still passes a
+            # shape gate. The independent oracle catches the KNOWN omission.
+            with tempfile.TemporaryDirectory() as evidence_root:
+                evidence = Path(evidence_root)
+                self.assertTrue(evidence.is_dir())
+                sample = {
+                    "fileInventories": {
+                        part: {"available": True, "fileSha256": read_files(part)[0]}
+                        for part in known
+                    },
+                }
+                for part in known:
+                    self.assertEqual(sample["fileInventories"][part]["fileSha256"], expected[part])
+                sample["fileInventories"]["esp"]["fileSha256"] = subtree
+                self.assertTrue(sample["fileInventories"]["esp"]["available"])
+                self.assertNotEqual(sample["fileInventories"]["esp"]["fileSha256"], expected["esp"])
+                # Only this controlled fixture's independent oracle proves omission.
+                self.assertEqual(
+                    sorted(set(expected["esp"]) - set(subtree)),
+                    ["/EFI/OEM/nested/child.efi"],
+                )
+
+    def test_f03_duplicate_and_partial_guestfs_enumeration_fail_closed(self):
+        """Exercise actual acquisition against a fake read-only guestfs interface."""
+        import types
+
+        from windows_cachyos_qcow2_gpt_readonly import VIRTUAL_BYTES
+
+        class FixtureGuest:
+            def __init__(self, *, duplicate=False, interrupted=False, **kwargs):
+                self.duplicate = duplicate
+                self.interrupted = interrupted
+                self.device = None
+
+            def add_drive_opts(self, *args, **kwargs):
+                self.drive_readonly = kwargs.get("readonly")
+
+            def launch(self):
+                pass
+
+            def list_devices(self):
+                return ["/dev/sda"]
+
+            def blockdev_getsize64(self, device):
+                return VIRTUAL_BYTES
+
+            def list_partitions(self):
+                return ["/dev/sda" + str(i) for i in range(1, 6)]
+
+            def vfs_type(self, partition):
+                return "ext4"
+
+            def vfs_uuid(self, partition):
+                return "00000000-0000-4000-8000-000000000001"
+
+            def checksum_device(self, algorithm, partition):
+                return "a" * 64
+
+            def mount_ro(self, volume, directory):
+                self.device = volume
+
+            def is_file(self, name):
+                return True
+
+            def checksum(self, algorithm, name):
+                return hashlib.sha256(name.encode("utf-8")).hexdigest()
+
+            def ls(self, directory):
+                return ["vmlinuz-6.0", "initrd.img-6.0"]
+
+            def find(self, directory):
+                if self.device == "/dev/sda1":
+                    paths = ["EFI", "EFI/Microsoft/bootmgfw.efi", "EFI/empty.bin"]
+                    if self.duplicate:
+                        paths.insert(2, "EFI/Microsoft/bootmgfw.efi")
+                    return paths
+                if self.interrupted:
+                    raise OSError("synthetic guestfs enumeration interrupted")
+                return ["Recovery", "Recovery/winre.wim"]
+
+            def umount_all(self):
+                pass
+
+            def shutdown(self):
+                pass
+
+            def close(self):
+                pass
+
+        for dup, interrupted, resource, expected_reason in (
+            (True, False, "esp", "ForensicError"),
+            (False, True, "recovery", "OSError"),
+        ):
+            with self.subTest(duplicate=dup, interrupted=interrupted):
+                guest = FixtureGuest(duplicate=dup, interrupted=interrupted)
+                with patch.dict(
+                    sys.modules,
+                    {"guestfs": types.SimpleNamespace(GuestFS=lambda guest=guest, **_: guest)},
+                ):
+                    report = forensic.guest_ro_inventory(
+                        Path("synthetic-guestfs-only.qcow2"),
+                        "00000000-0000-4000-8000-000000000001",
+                    )
+                self.assertEqual(guest.drive_readonly, 1)
+                self.assertFalse(report["fileInventories"][resource]["available"])
+                self.assertEqual(report["fileInventories"][resource]["reason"], expected_reason)
+                for other in ("esp", "recovery"):
+                    if other != resource:
+                        self.assertTrue(report["fileInventories"][other]["available"])
 
     def test_valid_two_gates_allow_only_the_next_mock_windows_boundary(self):
         with tempfile.TemporaryDirectory() as root:
