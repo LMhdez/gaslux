@@ -414,9 +414,9 @@ def prepare(work: Path, template: Path) -> dict:
                 timeout=600,
             )
             need(
-            verify_fd_gpt(base, pinned=pinned) == baseline,
-            "REFUSE_OUT_OF_WRITESET: FAT32 changed GPT",
-        )
+                verify_fd_gpt(base, pinned=pinned) == baseline,
+                "REFUSE_OUT_OF_WRITESET: FAT32 changed GPT",
+            )
         root = PARTS[5]
         command(
             "mkfs.ext4",
