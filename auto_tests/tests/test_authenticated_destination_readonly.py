@@ -248,4 +248,3 @@ def test_oversized_checkpoint_refused_before_receipt_parse(destination):
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     with pytest.raises(DestinationRefused, match="CHECKPOINT_SIZE_EXCEEDS_LIMIT"):
         assess(destination, expected_checkpoint_sha256=digest)
-
