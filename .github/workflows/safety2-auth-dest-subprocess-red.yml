@@ -139,7 +139,7 @@ jobs:
           ) 2>&1 | tee "$RUNNER_TEMP/safety2-fixed-green.log"
           grep -Fq 'GREEN imported=' "$RUNNER_TEMP/safety2-fixed-green.log"
           printf '%s\n' 'GREEN: unchanged Safety-2 descendant oracle passed against corrected pinned #346 source.' >> "$GITHUB_STEP_SUMMARY"
-      - name: C — run both inherited producer suites and complete Safety-2 oracle on fixed SHA
+      - name: C — run inherited producer suites and full independent oracle in separate pytest processes
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -147,7 +147,22 @@ jobs:
           export PYTHONPATH="$PWD"
           export GASLUX_QEMU_PIN267_ROOT="$GITHUB_WORKSPACE/safety267-pinned"
           export GASLUX_QEMU_PIN286_ROOT="$GITHUB_WORKSPACE/gpt286-pinned"
-          python - <<'PY' 2>&1 | tee "$RUNNER_TEMP/safety2-fixed-regressions.log"
+          python - <<'PY' 2>&1 | tee "$RUNNER_TEMP/safety2-fixed-producer-regressions.log"
+          import importlib
+          import pathlib
+          import subprocess
+          import sys
+          import pytest
+          module = importlib.import_module("auto_tests.installer_observer.large_sparse_destination")
+          expected = pathlib.Path.cwd() / "auto_tests/installer_observer/large_sparse_destination.py"
+          assert pathlib.Path(module.__file__).resolve() == expected.resolve(), module.__file__
+          assert subprocess.check_output(["git", "hash-object", str(expected)], text=True).strip() == "61e7c7abc7de14cc6b449eea1a6e02b92e19ef3a"
+          print(f"Producer suites imported={module.__file__}", flush=True)
+          sys.exit(pytest.main(["-q",
+              "auto_tests/tests/test_authenticated_destination_readonly.py",
+              "auto_tests/tests/test_auth_dest_128g_readonly.py"]))
+          PY
+          python - <<'PY' 2>&1 | tee "$RUNNER_TEMP/safety2-fixed-independent-regressions.log"
           import importlib
           import pathlib
           import subprocess
@@ -159,11 +174,8 @@ jobs:
           assert pathlib.Path(module.__file__).resolve() == expected.resolve(), module.__file__
           assert subprocess.check_output(["git", "hash-object", str(expected)], text=True).strip() == "61e7c7abc7de14cc6b449eea1a6e02b92e19ef3a"
           oracle = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "safety-oracle/auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py"
-          print(f"Regression producer={module.__file__} oracle={oracle}", flush=True)
-          sys.exit(pytest.main(["-q",
-              "auto_tests/tests/test_authenticated_destination_readonly.py",
-              "auto_tests/tests/test_auth_dest_128g_readonly.py",
-              str(oracle)]))
+          print(f"Independent Safety suite imported={module.__file__} oracle={oracle}", flush=True)
+          sys.exit(pytest.main(["-q", "-s", str(oracle)]))
           PY
       - name: D — start/cleanup failure must refuse without granting writer
         shell: bash
