@@ -206,6 +206,16 @@ def real_guest(tmp_path_factory, _pinned):
     original_chain = lab.verify_chain(overlay, raw, folder)
     image = build_guest(folder)
     child = _qemu_with_guest(folder, overlay, image)
+    # Pre-connect the authenticated HOST QEMU peer *before* the guest opens
+    # its virtio-serial port, otherwise initial guest read sees EOF.
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        connection.settimeout(15)
+        connection.connect(str(folder / "guest-peer.sock"))
+    except BaseException:
+        connection.close()
+        shutdown(child)
+        raise
     ledger_file = folder / "consumed.sqlite3"
     try:
         pins = pins_for(child, folder, overlay, "qcow2")
@@ -228,9 +238,8 @@ def real_guest(tmp_path_factory, _pinned):
             serial = folder / "kernel-serial.log"
             bootlog = await_boot(serial, child, "GASLUX_COLLECTOR_READY_TEST")
             assert ("GASLUX_COLLECTOR_HASH=" + str(image["collectorSha256"])).encode() in bootlog
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            with connection as conn:
                 conn.settimeout(15)
-                conn.connect(str(folder / "guest-peer.sock"))
                 peer_pins = _peer_pins(
                     conn,
                     pins,
@@ -283,6 +292,7 @@ def real_guest(tmp_path_factory, _pinned):
             _write_manifest(image, qemu, local, observed, bootlog, ledger_file, True)
         yield {"message": message, "session": session, "nonce": nonce, "image": image}
     finally:
+        connection.close()
         shutdown(child)
 
 
