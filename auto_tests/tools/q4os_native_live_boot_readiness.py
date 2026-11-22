@@ -101,7 +101,8 @@ def measure_fd(fd: int, expected_sha256: str, minimum_bytes: int, maximum_bytes:
             digest.update(block)
             offset += len(block)
         after = os.fstat(fd)
-        identity = lambda s: (
+        def identity(s: os.stat_result) -> tuple:
+            return (
             s.st_dev,
             s.st_ino,
             s.st_uid,
@@ -109,8 +110,9 @@ def measure_fd(fd: int, expected_sha256: str, minimum_bytes: int, maximum_bytes:
             s.st_mode,
             s.st_size,
             s.st_mtime_ns,
-            s.st_ctime_ns,
-        )
+                s.st_ctime_ns,
+            )
+
         if identity(before) != identity(after):
             _deny("ISO_CHANGED_DURING_READ")
         if digest.hexdigest() != expected_sha256:
@@ -133,7 +135,7 @@ def measure_official_iso(path: Path) -> dict:
     Boot is never authorized by this measurement: descriptor closes when
     the read finishes, and QEMU has not inherited or authenticated it.
     """
-    if type(path) is not Path or not path.is_absolute() or path.name != ISO_NAME:
+    if not isinstance(path, Path) or not path.is_absolute() or path.name != ISO_NAME:
         _deny("ISO_SOURCE_NAME_INVALID")
     parent = path.parent
     if parent.is_symlink():
