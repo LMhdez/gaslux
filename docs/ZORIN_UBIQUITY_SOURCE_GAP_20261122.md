@@ -116,3 +116,61 @@ A futura análise Safety deverá observar o *primeiro efeito persistente*
 sob uma política HOST/FD autenticada, com origens físicas verificáveis,
 bloqueio de quaisquer escritas antes dos gates, recuperação funcional
 restaurável e testes em VM descartável. **Até lá, DENY_NO_WRITER.**
+
+
+## Medição operacional read-only após recuperação da ISO
+
+[Actions #45034090136](https://github.com/LMhdez/gaslux/actions/runs/45034090136),
+HEAD `4785f973004d5990ea141cd63c70dbeb159e290f`:
+**SUCCESS** nos dois jobs. O primeiro recuperou e autenticou o ZIP original
+e concluiu **129 testes**: 16 Source-01, 17 pré-commit #339, 25 handoff
+#333, 21 mapa Ubiquity, 25 FD/TOCTOU e 25 Safety GPT/FD. Ruff,
+compileall e os schemas existentes passaram. O segundo recuperou a ISO
+fixada, verificou integralmente tamanho e SHA-256 e montou-a estritamente
+ISO9660 `ro,nosuid,nodev,noexec` em runner privado. Nenhum instalador,
+partman, script ou dispositivo de destino foi executado/alterado.
+
+[Artefacto #14758253847](https://github.com/LMhdez/gaslux/actions/runs/45034090136/artifacts/14758253847)
+`zorin-source-eight-modules-readonly`, ZIP SHA-256 efetivamente
+recalculado: `498f180336d2b350bd91fdb75712f98cb28a9fa3396585e7f033ca10919be777`.
+Contém **apenas** `pinned-source-static-edges.json`, não inclui scripts.
+
+**Resultados de membros reais da ISO verificada:**
+
+- `usr/bin/ubiquity`, `ubi-partman.py`, `parted_server.py`,
+  `partman_commit.py`, `grubinstaller.py` e `plugininstall.py`:
+  `REGULAR_HASH_MATCHED` nos seis, mantendo os seis SHA-256 fixados na
+  tabela anterior. Foram obtidos corpos integrais para análise AST **na
+  memória do runner**, sem arquivo ou execução dos corpos.
+- `lib/partman/lib/commit.sh` e `lib/partman/lib/resize.sh`:
+  `MISSING_OR_NONREGULAR`, `BODY_NOT_AVAILABLE`. O scanner autenticado
+  não obteve provas de que fossem ficheiros regulares nesses caminhos.
+  Não se deve interpretar ou executar possíveis symlinks, destinos ou
+  versões alternativas.
+- `usr/bin/ubiquity`: AST indica `main` (linha 14) e chamada
+  `os.system` (linha 62). A instrução concreta/efeitos desta chamada não
+  foram transformados em autorização operacional.
+- `parted_server.py`: funções de transporte/comandos `write_line`
+  (linha 68), `select_disk` (165), `write_part_entry` (185),
+  `remove_part_entry` (189) e `mkdir_part_entry` (199) estão presentes
+  no AST da fonte autenticada. **Não se sabe quais desses métodos atingem
+  dispositivos físicos nem o primeiro momento da persistência**, sem
+  inspeção causal do servidor partman/executáveis.
+- `partman_commit.py`: função `PartmanCommit.run` (linha 45),
+  referências estáticas a `self.preseed` nas linhas 51, 60, 62, 91 e
+  93. A utilização de preseed não estabelece uma barreira de escrita.
+- `grubinstaller.py`: `GrubInstaller.run` (linha 42); no
+  `plugininstall.py`, `Install.configure_bootloader` (linha 941),
+  `grubinstaller.GrubInstaller` nas linhas 969/992 e presença de
+  `os.path.ismount` na linha 991. Não há atestação independente do
+  write-set na ESP ou NVRAM.
+- `ubi-partman.py`: 146 funções AST representadas e o limite de 180
+  callsites do relatório foi atingido (**`truncated=true`**). Um
+  subconjunto truncado de chamadas não pode ser declarado completo.
+
+**Conclusão depois da leitura dos seis corpos:** houve melhoria
+substancial na proveniência, mas não foi obtido um grafo causal completo
+das operações externas partman, formatação ou GRUB/EFI; o primeiro writer
+persistente e a ausência de efeitos antes do commit continuam **não
+demonstrados**. Mantêm-se `ROUTE_B`,
+`UBIQUITY_PRECOMMIT_PLAN_UNAVAILABLE`, `DENY_NO_WRITER`.
