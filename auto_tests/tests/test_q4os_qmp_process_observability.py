@@ -83,9 +83,8 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
     def socket_identity(_path, _work):
         nonlocal call_count
         call_count += 1
-        if mode == "invalid":
-            if call_count > 1:
-                raise witness.StartupRefusal("QEMU_QMP_SOCKET_INVALID")
+        if mode == "invalid" and call_count > 1:
+            raise witness.StartupRefusal("QEMU_QMP_SOCKET_INVALID")
         if mode == "absent":
             return None
         if mode == "late" and call_count <= 3:
@@ -130,7 +129,8 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
         work, code, vars_path, image, iso, answer, "kvm",
         popen_factory=factory,
         pidfd_factory=lambda _pid: os.open(os.devnull, os.O_RDONLY),
-        connect_seconds=seconds, prompt_seconds=0.02, progress_seconds=0.02,
+        connect_seconds=0.2 if mode == "late" else seconds,
+        prompt_seconds=0.02, progress_seconds=0.02,
         wait_seconds=0.02,
     )
     assert report["installationAuthorized"] is False
