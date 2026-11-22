@@ -577,3 +577,106 @@ def test_strict_reason_code_allowlist_never_exposes_tokens(malicious):
     assert "private" not in str(reason)
     assert "confidential" not in str(reason)
     assert "password" not in str(reason)
+
+
+# R-01 / R-02 / R-03: committed as RED regressions before implementation.
+def test_r01_autonomous_boot_rejected_before_opening_qmp(monkeypatch, tmp_path):
+    import q4os_win10_qmp_boot as boot
+
+    work = tmp_path / "owned"
+    work.mkdir(mode=0o700)
+    disk = work / "synthetic.qcow2"
+    disk.write_bytes(b"synthetic")
+    serial = work / "serial.log"
+    serial.write_bytes(b"Press any key to boot from CD or DVD")
+    events = []
+
+    def forbidden_qmp(*_args, **_kwargs):
+        events.append("qmp-open")
+        raise AssertionError("autonomous connection forbidden")
+
+    monkeypatch.setattr(boot, "Qmp", forbidden_qmp)
+    with pytest.raises(boot.BootRefusal):
+        boot.supervise(work / "qmp.sock", serial, disk, connect_seconds=0.02)
+    assert events == []
+
+
+def test_r01_foreign_injected_channel_and_no_guard_rejected(monkeypatch, tmp_path):
+    import q4os_win10_qmp_boot as boot
+
+    work = tmp_path / "owned"
+    work.mkdir(mode=0o700)
+    disk = work / "synthetic.qcow2"
+    disk.write_bytes(b"synthetic")
+    serial = work / "serial.log"
+    serial.write_bytes(b"Press any key to boot from CD or DVD")
+    events = []
+
+    class ForeignQmp:
+        def send_key_once(self):
+            events.append("send-key")
+
+        def close(self):
+            pass
+
+    with pytest.raises(boot.BootRefusal):
+        boot.supervise(
+            work / "qmp.sock", serial, disk, qmp_channel=ForeignQmp(),
+            process_guard=lambda: None, prompt_seconds=0.02,
+        )
+    assert events == []
+
+
+def test_r02_arbitrary_factory_never_runs_under_closed_gate(lab):
+    work, code, vars_path, image, iso, answer = lab
+    effects = []
+
+    def malicious_factory(*_args, **_kwargs):
+        effects.append("SPAWNED")
+        raise OSError("secret=/tmp/private")
+
+    assert witness.QEMU_FD_BACKING_VERIFIED is False
+    result = witness.run_lab(
+        work, code, vars_path, image, iso, answer, "kvm",
+        popen_factory=malicious_factory, connect_seconds=0.02,
+    )
+    assert effects == []
+    assert result["qemuSpawned"] is False
+    assert result["reasonCode"] == "QEMU_STARTUP_UNCLASSIFIED"
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "QEMU_TOKEN=SECRET_SENTINEL",
+        "QEMU_EARLY_EXIT SECRET_SENTINEL",
+        "QEMU_",
+        "",
+        "日本語🚫SECRET_SENTINEL",
+    ],
+)
+def test_r03_legacy_cli_never_leaks_arbitrary_boot_reason(
+    monkeypatch, tmp_path, capsys, secret
+):
+    import q4os_win10_qmp_boot as boot
+
+    root = tmp_path / "owned"
+    root.mkdir(mode=0o700)
+    report_path = root / "report.json"
+    monkeypatch.setattr(
+        boot, "supervise", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            boot.BootRefusal(secret)
+        ),
+    )
+    monkeypatch.setattr(
+        sys, "argv",
+        ["q4os_win10_qmp_boot.py", "--qmp", str(root / "qmp.sock"),
+         "--serial", str(root / "serial"), "--disk", str(root / "disk"),
+         "--report", str(report_path)],
+    )
+    assert boot.main() == 1
+    result = report_path.read_text()
+    output = capsys.readouterr().out
+    assert "SECRET_SENTINEL" not in result + output
+    assert "reason" in result
+    assert "QEMU_TOKEN" not in result
