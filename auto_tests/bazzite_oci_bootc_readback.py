@@ -94,7 +94,9 @@ def validate_metadata(
     if manifest.get("schemaVersion") != 2:
         raise Refusal("Unsupported pinned OCI schemaVersion")
     if manifest.get("mediaType") not in MANIFEST_TYPES:
-        raise Refusal("Unsupported pinned manifest mediaType: " + str(manifest.get("mediaType"))[:128])
+        raise Refusal(
+            "Unsupported pinned manifest mediaType: " + str(manifest.get("mediaType"))[:128]
+        )
     if declared.get("digest") != expected_config:
         raise Refusal("OCI manifest config descriptor digest mismatch")
     if type(declared.get("size")) is not int or declared["size"] != len(config_bytes):

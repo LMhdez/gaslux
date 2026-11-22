@@ -102,7 +102,8 @@ def test_wrong_architecture_or_os_refused(field, value):
     manifest["config"]["digest"] = digest_bytes(encoded)
     manifest["config"]["size"] = len(encoded)
     encoded_manifest = json.dumps(manifest).encode()
-    with pytest.raises(Refusal, match="architecture" if field == "architecture" else "operating system"):
+    reason = "architecture" if field == "architecture" else "operating system"
+    with pytest.raises(Refusal, match=reason):
         validate_metadata(
             encoded_manifest,
             encoded,
