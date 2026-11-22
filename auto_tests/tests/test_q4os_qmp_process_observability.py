@@ -430,7 +430,9 @@ def test_real_python_child_reaped_despite_report_io_fault(monkeypatch, lab, faul
     assert report["decision"] == "refuse"
     assert report["cleanupVerified"] is True
     assert report["descendantsCleanupVerified"] is False
-    assert report["reasonCode"] == "QEMU_QMP_SOCKET_TIMEOUT"
+    # A synthetic child must be denied before opening QMP, even when the
+    # report flush or close fails; cleanup still reaps the real test child.
+    assert report["reasonCode"] == "QEMU_STARTUP_UNCLASSIFIED"
     assert child.poll() is not None
     assert child.wait(timeout=1) == child.returncode
 
