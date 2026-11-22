@@ -10,6 +10,7 @@ import tarfile
 from pathlib import Path
 
 import pytest
+import zstandard as zstd
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests"))
@@ -18,6 +19,7 @@ from bazzite_oci_bootc_readback import (  # noqa: E402
     MAX_LAYER,
     NO_WRITE,
     Refusal,
+    ZSTD_LAYER,
     digest_bytes,
     finish,
     scan_layer,
@@ -150,7 +152,7 @@ def test_signed_manifest_or_config_substitution_refused():
         ("size", 0),
         ("size", MAX_LAYER + 1),
         ("digest", "sha256:" + "x" * 64),
-        ("mediaType", "application/vnd.oci.image.layer.v1.tar+zstd"),
+        ("mediaType", "application/vnd.oci.image.layer.v1.tar+lz4"),
         ("urls", ["https://attacker.example/layer"]),
     ],
 )
@@ -248,6 +250,40 @@ def test_unbounded_binary_size_refused():
     compressed = gzip.compress(info.tobuf(format=tarfile.USTAR_FORMAT) + b"\0" * 1024)
     with pytest.raises(Refusal, match="Suspicious bootc executable size"):
         scan(compressed)
+
+
+
+def test_valid_zstandard_layer_replays_exact_bootc_elf_without_executing():
+    gz = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"bootc-example"})
+    zbytes = zstd.ZstdCompressor(level=1).compress(gzip.decompress(gz))
+    descriptor = {
+        "digest": digest_bytes(zbytes),
+        "size": len(zbytes),
+        "mediaType": ZSTD_LAYER,
+    }
+    state = {}
+    budget = {"members": 0, "expanded": 0}
+    scan_layer(io.BytesIO(zbytes), descriptor, state, budget)
+    result = finish(
+        state,
+        [descriptor],
+        budget,
+        {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
+    )
+    assert result["status"] == "BOOTC_PRESENT_ROUTE_UNVERIFIED"
+    assert result["bootcToFilesystemAvailableInBinaryVerified"] is False
+    assert all(result[k] is False for k in NO_WRITE)
+
+
+def test_invalid_zstandard_payload_with_matching_fake_descriptor_refused():
+    forged = b"not-zstandard-data"
+    with pytest.raises(Refusal, match="OCI layer tar"):
+        scan_layer(
+            io.BytesIO(forged),
+            {"digest": digest_bytes(forged), "size": len(forged), "mediaType": ZSTD_LAYER},
+            {},
+            {"members": 0, "expanded": 0},
+        )
 
 
 def test_malformed_gzip_refused_after_matching_descriptor():
