@@ -107,16 +107,6 @@ class ZorinSourceCoverageTests(unittest.TestCase):
         link.symlink_to(original.name)
         self.rejects("E_UNTRUSTED_ARCHIVE_PATH", open_pinned_archive, link)
 
-    def test_unauthenticated_module_hash_is_rejected(self):
-        path = "usr/lib/ubiquity/ubiquity/components/partman_commit.py"
-        self.rejects(
-            "E_SOURCE_HASH_OR_SIZE_MISMATCH",
-            report_gap,
-            self.actual_map,
-            # The script never gets the source body from guessed text.
-        )
-        # Above test uses a separate explicit malicious payload below.
-
     def test_bad_source_blob_cannot_reproduce_pinned_hash(self):
         path = "usr/lib/ubiquity/ubiquity/components/partman_commit.py"
         spoof = {path: {"data": b"def run(): return None\n", "status": "REGULAR_HASH_MATCHED"}}
