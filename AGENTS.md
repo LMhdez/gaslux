@@ -10,10 +10,18 @@ Build an optional, verified, USB-free Windows-to-Linux installer that can instal
 
 Before changing disk, firmware, recovery, catalog, or installation logic, read:
 - docs/ARCHITECTURE.md — authoritative runtime/transaction/rollback contract
-- CONTRIBUTING.md and AI_POLICY.md — contributor workflow, human accountability and license
+- CONTRIBUTING.md and AI_POLICY.md — delegated multiagent workflow, accountable authority, evidence and license
 - docs/RELEASES.md — signing and release gates
 - docs/UEFI_BOOTNEXT_BOOTORDER.md — firmware recovery
 - docs/MULTIDISTRO_PLAN.md — expansion matrix, phases and acceptance tests
+
+## Delegated multiagent engineering and integration
+
+Gaslux uses orchestrated agents for implementation, adversarial safety audits, evidence verification, PR review, forensic investigation and integration. Authorized agents may open/update PRs, answer review threads, run approved checks, fix defects, reconcile stacked branches and, when expressly delegated, merge vetted work or close proven-redundant PRs. Human oversight is **substantive and risk-based**, not a mandatory manual response or approval click for every operation.
+
+Before acting, recheck GitHub branch/PR HEADs, the actual diff, current checks, dependencies and prior findings. Attribute actions and evidence to the executing agent and authorized account. A different agent name does not prove independent review. When integrating, preserve unique commits, artifacts, unresolved findings and rollback evidence; do not move an unverified experimental backend into the production installer or stable catalog.
+
+Repository modification permissions never grant disk/boot mutation authority. Destructive testing must remain within explicitly approved disposable VMs with verified ownership and recovery; real-hardware experiments require separate authorization. See [AI_POLICY.md](AI_POLICY.md) for the authority model and reporting requirements.
 
 ## Non-negotiable safety rules
 
@@ -68,4 +76,4 @@ Keep contracts in sync across Installation/*.cs, Scripts/modules and Scripts/uef
 
 ## Definition of done for every PR
 
-Describe supported and rejected firmware/distro combinations, exact code paths and version-pinned artifacts, threat/rollback model, tests actually executed, links to CI/VM evidence, reproducible remaining blockers, and effect on Mint/Zorin. Mark unverified claims as unverified. Keep incomplete work in draft PRs. Human review remains mandatory under AI_POLICY.md; contributions must respect GPL-3.0, provenance and DCO guidance.
+Describe supported and rejected firmware/distro combinations, exact code paths and version-pinned artifacts, threat/rollback model, tests actually executed, links to CI/VM evidence, reproducible remaining blockers, and effect on Mint/Zorin. Mark unverified claims as unverified. Keep incomplete work in draft PRs. Apply risk-based human oversight and traceable, evidence-based technical review under AI_POLICY.md. An explicitly delegated integrator may merge a vetted PR without per-PR manual approval, but no reviewer or agent may waive safety, release, recovery or physical-disk authorization gates. Contributions must respect GPL-3.0, provenance and DCO guidance.
