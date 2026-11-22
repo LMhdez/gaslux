@@ -10,6 +10,9 @@ on:
       - auto_tests/test_popos_six_gpt_contract.py
       - auto_tests/test_popos_six_gpt_process_boundary.py
       - auto_tests/test_popos_six_gpt_snapshot_contract.py
+      - auto_tests/tools/gaslux_popos_gpt_fd_boundary.py
+      - auto_tests/test_popos_gpt_fd_01.py
+      - assets/live/libertix_disk_identity_gate.py
       - auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py
       - schemas/popos-six-gpt-lab.schema.json
       - docs/POP_OS_SIX_GPT_SYNTHETIC_LAB.md
@@ -20,6 +23,9 @@ on:
       - auto_tests/test_popos_six_gpt_contract.py
       - auto_tests/test_popos_six_gpt_process_boundary.py
       - auto_tests/test_popos_six_gpt_snapshot_contract.py
+      - auto_tests/tools/gaslux_popos_gpt_fd_boundary.py
+      - auto_tests/test_popos_gpt_fd_01.py
+      - assets/live/libertix_disk_identity_gate.py
       - auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py
       - schemas/popos-six-gpt-lab.schema.json
       - docs/POP_OS_SIX_GPT_SYNTHETIC_LAB.md
@@ -117,6 +123,11 @@ jobs:
             auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py \
             auto_tests/test_popos_six_gpt_process_boundary.py \
             auto_tests/test_popos_six_gpt_snapshot_contract.py
+          # Canonical GPT parser must remain blob-identical to dev/#307.
+          test "$(git hash-object assets/live/libertix_disk_identity_gate.py)" = e82a401d5a160bfb5ca232b9a820417347dfc22a
+          python3 -m compileall -q assets/live/libertix_disk_identity_gate.py             auto_tests/tools/gaslux_popos_gpt_fd_boundary.py             auto_tests/test_popos_gpt_fd_01.py
+          ruff check auto_tests/tools/gaslux_popos_gpt_fd_boundary.py auto_tests/test_popos_gpt_fd_01.py
+          ruff format --check auto_tests/tools/gaslux_popos_gpt_fd_boundary.py auto_tests/test_popos_gpt_fd_01.py
           # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
           export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
           python3 -m unittest auto_tests.test_popos_six_gpt_contract -v
@@ -168,6 +179,14 @@ jobs:
           test -x "$(command -v qemu-img)"
           test -x "$(command -v qemu-io)"
           test -f /usr/share/OVMF/OVMF_VARS_4M.fd
+      - name: POP-GPT-FD-01 real sparse GPT adversaries (read-only verifier)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
+          python3 -m unittest auto_tests.test_popos_gpt_fd_01 -v
+          echo 'POP-GPT-FD-01 tests DENY ONLY; no installer execution.' >> "$GITHUB_STEP_SUMMARY"
       - name: Build synthetic six-GPT RAW, audit protected canaries, rehearse COW recovery
         shell: bash
         run: |
