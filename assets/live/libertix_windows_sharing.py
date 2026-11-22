@@ -303,14 +303,47 @@ def atomic_write_text(
         temporary.unlink(missing_ok=True)
 
 
+def validate_existing_readonly_ntfs_mount(filesystems: Any) -> Path:
+    if not isinstance(filesystems, list) or len(filesystems) != 1:
+        raise RuntimeError("Existing Windows mount is ambiguous or unsupported")
+    filesystem = filesystems[0]
+    if not isinstance(filesystem, dict):
+        raise RuntimeError("Existing Windows mount metadata is invalid")
+    target = filesystem.get("target")
+    options = filesystem.get("options")
+    if (
+        filesystem.get("fstype") != "fuseblk"
+        or not isinstance(target, str)
+        or not target
+        or not isinstance(options, str)
+    ):
+        raise RuntimeError("Existing Windows mount cannot prove NTFS-3G no-recovery mode")
+    tokens = options.split(",")
+    allowed = {
+        "ro", "norecover", "relatime", "strictatime", "noatime", "nodiratime",
+        "nosuid", "nodev", "noexec", "default_permissions", "allow_other",
+    }
+    if (
+        len(tokens) != len(set(tokens))
+        or "ro" not in tokens
+        or "rw" in tokens
+        or "norecover" not in tokens
+        or any(
+            token not in allowed
+            and not re.fullmatch(r"(?:user_id|group_id|blksize)=\d+", token)
+            for token in tokens
+        )
+    ):
+        raise RuntimeError("Existing Windows mount is not provably read-only without journal recovery")
+    return Path(target)
+
+
 @contextmanager
 def readonly_volume(device: Path):
-    mounted = run("findmnt", "-J", "-S", str(device), "-o", "TARGET,FSTYPE", allow_no_match=True)
+    mounted = run("findmnt", "-J", "-S", str(device), "-o", "TARGET,FSTYPE,OPTIONS", allow_no_match=True)
     if mounted:
         filesystems = json.loads(mounted)["filesystems"]
-        if len(filesystems) != 1 or filesystems[0]["fstype"] not in {"fuseblk", "ntfs3", "ntfs"}:
-            raise RuntimeError("Existing Windows mount is ambiguous or unsupported")
-        yield Path(filesystems[0]["target"])
+        yield validate_existing_readonly_ntfs_mount(filesystems)
         return
     run("ntfs-3g.probe", "--readwrite", str(device))
     with tempfile.TemporaryDirectory(prefix="libertix-sharing-", dir="/run") as directory:
