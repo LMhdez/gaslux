@@ -55,6 +55,8 @@ jobs:
         with:
           ref: dev
           persist-credentials: false
+      - name: Install pinned Python runner
+        run: python3 -m pip install 'pytest==9.0.2'
       - name: Offline preflight for every backend research job
         shell: bash
         run: |
@@ -63,14 +65,18 @@ jobs:
           python3 -B auto_tests/tools/goal_supervisor.py > /tmp/gaslux-goal.json
           for pattern in \
             test_compact_ovmf_target.py \
-            test_gpt_fd_crosscheck_offline_compat.py \
-            test_protected_authority_readiness_offline.py \
+            test_windows_vm_host_capacity.py \
             test_popos_native_preflight.py \
             test_q4os_native_preflight.py \
             test_bazzite_atomic_preflight.py \
             test_bazzite_iso_signature.py; do
             test -f "auto_tests/tests/$pattern"
-            python3 -B -m unittest discover -s auto_tests/tests -p "$pattern" -v
+            case "$pattern" in
+              test_compact_ovmf_target.py|test_windows_vm_host_capacity.py)
+                python3 -B -m unittest discover -s auto_tests/tests -p "$pattern" -v ;;
+              *)
+                python3 -B -m pytest -q "auto_tests/tests/$pattern" ;;
+            esac
           done
           test -f auto_tests/tools/gaslux_candidate_live_boot.sh
           bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
@@ -112,6 +118,8 @@ jobs:
           assert report['release_eligible'] is False
           assert report['total_required_gates'] > 0
           PY
+      - name: Install pinned Python runner
+        run: python3 -m pip install 'pytest==9.0.2'
       - name: Execute safe backend contract regressions (no installer or disk writer)
         id: offline
         shell: bash
@@ -119,10 +127,10 @@ jobs:
           set -euo pipefail
           case "$GASLUX_BACKEND" in
             mint|zorin)
-              patterns=(test_compact_ovmf_target.py test_gpt_fd_crosscheck_offline_compat.py)
+              patterns=(test_compact_ovmf_target.py test_windows_vm_host_capacity.py)
               ;;
             cachyos)
-              patterns=(test_gpt_fd_crosscheck_offline_compat.py test_protected_authority_readiness_offline.py)
+              patterns=(test_windows_vm_host_capacity.py test_compact_ovmf_target.py)
               ;;
             popos)
               patterns=(test_popos_native_preflight.py)
@@ -138,7 +146,12 @@ jobs:
           esac
           for pattern in "${patterns[@]}"; do
             test -f "auto_tests/tests/$pattern"
-            python3 -B -m unittest discover -s auto_tests/tests -p "$pattern" -v
+            case "$pattern" in
+              test_compact_ovmf_target.py|test_windows_vm_host_capacity.py)
+                python3 -B -m unittest discover -s auto_tests/tests -p "$pattern" -v ;;
+              *)
+                python3 -B -m pytest -q "auto_tests/tests/$pattern" ;;
+            esac
           done
       - name: Publish next full lifecycle acceptance gate, never certify install
         if: always()
