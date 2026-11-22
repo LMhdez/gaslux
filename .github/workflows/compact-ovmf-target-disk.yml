@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils ovmf
           command -v qemu-img
       - name: Measure runner and create one private disposable 60-GiB qcow2
         shell: bash
@@ -75,6 +75,66 @@ jobs:
               if actual["format"] != "qcow2" or actual["virtual-size"] != 60 * 1024**3:
                   raise SystemExit("QCOW2 identity changed")
           PY
+      - name: Measure QCOW2 fully allocated upper bound on same runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          qemu-img measure --output=json -O qcow2 --size 60G > evidence/compact-qcow2-measure.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          target = json.loads(Path("evidence/compact-ovmf-target.json").read_text())
+          measure = json.loads(Path("evidence/compact-qcow2-measure.json").read_text())
+          bound = measure.get("fully-allocated")
+          if type(bound) is not int or bound <= 60 * 1024**3:
+              raise SystemExit("QEMU upper bound unavailable or invalid")
+          extra = (4 + 8 + 8) * 1024**3
+          report = {
+              "schema": "gaslux-compact-physical-bound-v1",
+              "source_sha": target.get("source_commit"),
+              "runner_available_bytes": target["measured_available_bytes"],
+              "qcow2_fully_allocated_bytes": bound,
+              "other_planned_reserves_bytes": extra,
+              "upper_bound_with_reserves_bytes": bound + extra,
+              "deficit_bytes": max(0, bound + extra - target["measured_available_bytes"]),
+              "quota_verified": False,
+              "lab_writer_admitted": False,
+              "windows_guest_booted": False,
+          }
+          Path("evidence/compact-physical-bound.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(report, sort_keys=True))
+          PY
+      - name: Prove real private QCOW2 and OVMF restore and negative cases (NO GUEST)
+        shell: bash
+        run: |
+          set -euo pipefail
+          vars="$(find -L /usr/share/OVMF -maxdepth 1 -type f -name 'OVMF_VARS*.fd' -print -quit)"
+          test -n "$vars"
+          python3 -B auto_tests/tools/compact_ovmf_target.py \
+            --workspace "$RUNNER_TEMP" --verify-restoration \
+            --ovmf-vars "$vars" --report evidence/compact-ovmf-restore.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path("evidence/compact-ovmf-restore.json").read_text())
+          for key in (
+              "backing_chain_verified",
+              "overlay_changed_without_baseline_mutation",
+              "overlay_reset_restored_initial_bytes",
+              "ovmf_vars_reset_verified",
+              "corrupt_overlay_rejected",
+              "foreign_backing_rejected",
+              "symlink_swap_rejected",
+              "interrupted_overlay_rejected",
+              "insufficient_capacity_rejected",
+          ):
+              if obj.get(key) is not True:
+                  raise SystemExit(f"Private restore fixture failed: {key}")
+          if obj["quota_verified"] or obj["lab_writer_admitted"]:
+              raise SystemExit("Fixture must not admit Windows/Mint guest writes")
+          print("RESTORE_FIXTURE_VERIFIED: QCOW2 + OVMF only; no Windows recovery")
+          PY
       - name: Erase only owned, private temporary guest image
         if: always()
         shell: bash
@@ -103,6 +163,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: compact-ovmf-target-evidence
-          path: evidence/compact-ovmf-target.json
+          path: |
+            evidence/compact-ovmf-target.json
+            evidence/compact-qcow2-measure.json
+            evidence/compact-physical-bound.json
+            evidence/compact-ovmf-restore.json
           if-no-files-found: warn
           retention-days: 14
