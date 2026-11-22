@@ -91,16 +91,18 @@ def validate_metadata(
     manifest = _json(manifest_bytes, "OCI manifest")
     config = _json(config_bytes, "OCI config")
     declared = _obj(manifest.get("config"), "OCI config descriptor")
-    if (
-        manifest.get("schemaVersion") != 2
-        or manifest.get("mediaType") not in MANIFEST_TYPES
-        or declared.get("digest") != expected_config
-        or type(declared.get("size")) is not int
-        or declared["size"] != len(config_bytes)
-        or config.get("architecture") != "amd64"
-        or config.get("os") != "linux"
-    ):
-        raise Refusal("OCI manifest, config, size or architecture mismatch")
+    if manifest.get("schemaVersion") != 2:
+        raise Refusal("Unsupported pinned OCI schemaVersion")
+    if manifest.get("mediaType") not in MANIFEST_TYPES:
+        raise Refusal("Unsupported pinned manifest mediaType: " + str(manifest.get("mediaType"))[:128])
+    if declared.get("digest") != expected_config:
+        raise Refusal("OCI manifest config descriptor digest mismatch")
+    if type(declared.get("size")) is not int or declared["size"] != len(config_bytes):
+        raise Refusal("OCI config descriptor size mismatch")
+    if config.get("architecture") != "amd64":
+        raise Refusal("Unexpected OCI architecture: " + str(config.get("architecture"))[:32])
+    if config.get("os") != "linux":
+        raise Refusal("Unexpected OCI operating system: " + str(config.get("os"))[:32])
     layers = manifest.get("layers")
     rootfs = _obj(config.get("rootfs"), "rootfs")
     diffids = rootfs.get("diff_ids")
