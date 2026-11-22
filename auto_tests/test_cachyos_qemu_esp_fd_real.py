@@ -124,6 +124,24 @@ def create_synthetic_esp(workspace: Path) -> tuple[Path, str, str]:
         stream.write(primary)
     esp = volume.read_bytes()
     assert len(esp) == ESP_BYTES
+    # Limited diagnostic of a self-generated FAT32 BPB only; never log
+    # an actual Windows/EFI image or unredacted contents.
+    boot = esp[:512]
+    bpbd = {
+        "spc": boot[13], "reserved": int.from_bytes(boot[14:16], "little"),
+        "fats": boot[16], "rootEntries": int.from_bytes(boot[17:19], "little"),
+        "smallSectors": int.from_bytes(boot[19:21], "little"),
+        "fat16Sectors": int.from_bytes(boot[22:24], "little"),
+        "largeSectors": int.from_bytes(boot[32:36], "little"),
+        "fat32Sectors": int.from_bytes(boot[36:40], "little"),
+        "extFlags": int.from_bytes(boot[40:42], "little"),
+        "version": int.from_bytes(boot[42:44], "little"),
+        "rootCluster": int.from_bytes(boot[44:48], "little"),
+        "fsInfo": int.from_bytes(boot[48:50], "little"),
+        "backupBoot": int.from_bytes(boot[50:52], "little"),
+        "volumeSectors": len(esp) // 512,
+    }
+    print("GASLUX_SYNTHETIC_BPBDIAGNOSTIC " + json.dumps(bpbd, sort_keys=True))
     # This is the existing checked FAT32 parser, NOT a new one.
     mapped = fat.map_bcd_fat32(
         esp, esp_start_lba=ESP_START,
