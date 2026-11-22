@@ -91,7 +91,7 @@ jobs:
           export EXPECTED_FPR=4F50A6114CD5C6976A7F1179655A4B02F577861E
           gpg --batch --homedir source-evidence/gnupg --with-colons --fingerprint \
             | grep -Fx "fpr:::::::::${EXPECTED_FPR}:"
-          gpg --batch --homedir source-evidence/gnupg --export "$EXPECTED_FPR" \
+          gpg --batch --homedir source-evidence/gnupg --armor --export "$EXPECTED_FPR" \
             > source-evidence/fedora45-only.gpg
           mkdir source-evidence/rpmdb
           rpm --dbpath "$PWD/source-evidence/rpmdb" --initdb
