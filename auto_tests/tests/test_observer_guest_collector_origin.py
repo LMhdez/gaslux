@@ -197,8 +197,8 @@ def _write_manifest(meta, qemu, peer, report, boot_log, ledger, lab):
 
 
 @pytest.fixture(scope="module")
-def real_guest(tmp_path_factory, pinned):
-    _, lab = pinned
+def real_guest(tmp_path_factory, _pinned):
+    _, lab = _pinned
     folder = tmp_path_factory.mktemp("guest-origin", numbered=True).resolve(strict=True)
     folder.chmod(0o700)
     raw = make_raw(folder, lab)
