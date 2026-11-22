@@ -36,8 +36,13 @@ No entries are extracted, executed or written to disk.
 A success decision `HISTORICAL_ARTIFACT_MATCHED` means that **supplied bytes**
 match the pinned manifest: four whole-ZIP digests, declared reports and PNG
 digests, ZIP structure, workflow metadata fields, 40 screenshot entries and 36
-historical transition records. Extra legacy inspection entries are permitted
-only within `calamares-inspect/` and remain protected by the *whole ZIP* digest.
+historical transition records. Extra legacy entries under `calamares-inspect/` (including nested
+`native-hooks/`) and non-PNG entries under `evidence/` are permitted only
+with bounded canonical paths, regular-file ZIP types and mandatory whole-ZIP
+SHA-256 identity. Optional entries are decompressed for CRC validation, but
+their individual SHA-256 values are not separately pinned in the manifest.
+A different ZIP, even with self-consistent supplied metadata, is refused
+against the hardcoded historical archive SHA-256.
 
 The supplied GitHub metadata can be forged. Even fully matching metadata
 does **not** authenticate GitHub as the source: the report always contains
