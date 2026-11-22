@@ -253,9 +253,9 @@ def parse_unsquashfs_lstat(text: str, path: str) -> dict:
 
 
 SHELL_EFFECT_NAMES = re.compile(
-    r"(?i)(?<![a-z0-9_-])(?:parted|partman|sfdisk|wipefs|mkfs(?:\\.[a-z0-9_-]+)?|"
+    r"(?i)(?<![a-z0-9_-])(?:parted|partman|sfdisk|wipefs|mkfs(?:\.[a-z0-9_-]+)?|"
     r"resize2fs|ntfsresize|mount|umount|grub-install|efibootmgr|"
-    r"dd|mkswap|fsck(?:\\.[a-z0-9_-]+)?|pvcreate|lvcreate|"
+    r"dd|mkswap|fsck(?:\.[a-z0-9_-]+)?|pvcreate|lvcreate|"
     r"blockdev|debconf|eval|commit|format)(?![a-z0-9_-])"
 )
 MAX_SHELL_REFERENCES = 300
@@ -279,7 +279,7 @@ def static_shell_references(source: bytes, path: str) -> dict:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        match_source = re.match(r"^(?:\\.|source)\\s+([^\\s;|&]+)", stripped)
+        match_source = re.match(r"^(?:\.|source)\s+([^\s;|&]+)", stripped)
         if match_source:
             sourced.append({"line": i, "expression": match_source.group(1),
                             "targetFileAuthenticated": False})
