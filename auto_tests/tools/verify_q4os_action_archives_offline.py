@@ -39,8 +39,10 @@ def require(condition: bool, reason: str) -> None:
 def _pin_manifest(path: Path) -> dict:
     manifest = parse(read(path, 1024 * 1024))
     require(digest(canonical(manifest)) == MANIFEST_SHA, "Pinned manifest digest mismatch")
-    require(manifest.get("distribution") == "q4os" and manifest.get("schemaVersion") == 1,
-            "Wrong manifest identity")
+    require(
+        manifest.get("distribution") == "q4os" and manifest.get("schemaVersion") == 1,
+        "Wrong manifest identity",
+    )
     return manifest
 
 
@@ -48,7 +50,8 @@ def _name(name: str) -> bool:
     """Strictly canonical two-component member, not filesystem path interpretation."""
     parts = name.split("/")
     return (
-        len(parts) == 2 and parts[0] in ("evidence", "calamares-inspect")
+        len(parts) == 2
+        and parts[0] in ("evidence", "calamares-inspect")
         and SAFE_NAME.fullmatch(parts[1]) is not None
         and parts[1] not in (".", "..")
         and not parts[1].endswith(".")
@@ -64,13 +67,13 @@ def _png(data: bytes) -> None:
     width = height = None
     while offset < len(data):
         require(offset + 12 <= len(data), "Truncated PNG chunk")
-        size = int.from_bytes(data[offset:offset + 4], "big")
-        kind = data[offset + 4:offset + 8]
+        size = int.from_bytes(data[offset : offset + 4], "big")
+        kind = data[offset + 4 : offset + 8]
         end = offset + 12 + size
         require(size <= MAX_PNG and end <= len(data), "Oversized PNG chunk")
-        payload = data[offset + 8:offset + 8 + size]
-        crc = int.from_bytes(data[offset + 8 + size:end], "big")
-        require(zlib.crc32(kind + payload) & 0xffffffff == crc, "Invalid PNG CRC")
+        payload = data[offset + 8 : offset + 8 + size]
+        crc = int.from_bytes(data[offset + 8 + size : end], "big")
+        require(zlib.crc32(kind + payload) & 0xFFFFFFFF == crc, "Invalid PNG CRC")
         if not seen:
             require(kind == b"IHDR" and size == 13, "PNG IHDR absent")
             width, height = struct.unpack(">II", payload[:8])
@@ -95,8 +98,10 @@ def _check_zip(binary: bytes, expected: dict, run: dict, aid: int) -> None:
     require(isinstance(reports, dict) and isinstance(shots, list), "Missing archive entries")
     expected_png = {s["path"]: s["sha256"] for s in shots}
     require(len(expected_png) == len(shots), "Duplicate screenshot declaration")
-    require(all(SHA256.fullmatch(v) for v in (*reports.values(), *expected_png.values())),
-            "Invalid pinned member digest")
+    require(
+        all(SHA256.fullmatch(v) for v in (*reports.values(), *expected_png.values())),
+        "Invalid pinned member digest",
+    )
     required = {"evidence/" + name for name in (*reports, *expected_png)}
     require(len(required) == len(reports) + len(expected_png), "Overlapping report and PNG")
     try:
@@ -110,14 +115,20 @@ def _check_zip(binary: bytes, expected: dict, run: dict, aid: int) -> None:
             for entry in entries:
                 name = entry.filename
                 mode = (entry.external_attr >> 16) & 0o170000
-                require(_name(name) and not entry.is_dir() and mode in (0, stat.S_IFREG),
-                        "Unsafe or unexpected ZIP member")
+                require(
+                    _name(name) and not entry.is_dir() and mode in (0, stat.S_IFREG),
+                    "Unsafe or unexpected ZIP member",
+                )
                 require(not entry.flag_bits & 0x1, "Encrypted ZIP member")
-                require(entry.file_size <= MAX_ENTRY and entry.compress_size <= MAX_ARCHIVE,
-                        "Oversized ZIP member")
+                require(
+                    entry.file_size <= MAX_ENTRY and entry.compress_size <= MAX_ARCHIVE,
+                    "Oversized ZIP member",
+                )
                 require(entry.compress_size > 0 or entry.file_size == 0, "Invalid compressed size")
-                require(entry.file_size <= MAX_RATIO * max(entry.compress_size, 1),
-                        "Suspicious ZIP expansion ratio")
+                require(
+                    entry.file_size <= MAX_RATIO * max(entry.compress_size, 1),
+                    "Suspicious ZIP expansion ratio",
+                )
                 total += entry.file_size
                 require(total <= MAX_TOTAL, "ZIP expansion budget exceeded")
                 if name not in required:
@@ -143,13 +154,17 @@ def validate_archives(manifest_path: Path, zip_dir: Path, metadata_dir: Path) ->
     require(len(runs) == len(archives) == 4, "Four pinned historical archives required")
     require(tuple(x["artifactId"] for x in runs) == ARTIFACTS, "Artifact identity/order changed")
     require(tuple(int(x["runId"]) for x in runs) == RUNS, "Run identity/order changed")
-    require(tuple(x["artifactId"] for x in archives) == ARTIFACTS,
-            "Archive manifest identity/order changed")
+    require(
+        tuple(x["artifactId"] for x in archives) == ARTIFACTS,
+        "Archive manifest identity/order changed",
+    )
     frames = edges = 0
     for run, item in zip(runs, archives, strict=True):
         aid = run["artifactId"]
-        require(item["artifactId"] == aid and SHA256.fullmatch(item["archiveSha256"]) is not None,
-                "Invalid archive identity/hash")
+        require(
+            item["artifactId"] == aid and SHA256.fullmatch(item["archiveSha256"]) is not None,
+            "Invalid archive identity/hash",
+        )
         metadata = parse(read(metadata_dir / f"{aid}.json", 64 * 1024))
         workflow = metadata.get("workflow_run")
         require(
@@ -191,14 +206,24 @@ def main() -> int:
     parser.add_argument("--metadata-dir", type=Path, required=True)
     args = parser.parse_args()
     try:
-        print(json.dumps(validate_archives(args.manifest, args.zip_dir, args.metadata_dir),
-                         sort_keys=True))
+        print(
+            json.dumps(
+                validate_archives(args.manifest, args.zip_dir, args.metadata_dir), sort_keys=True
+            )
+        )
         return 0
     except (Refusal, OSError, TypeError, KeyError, IndexError, OverflowError):
         # Never reflect attacker-supplied paths, ZIP filenames or raw exception strings.
-        print(json.dumps({"decision": "REFUSE_Q4OS_ARCHIVE_PROVENANCE",
-                          "externalProvenance": "EXTERNAL_PROVENANCE_UNPROVEN",
-                          "inputAuthorized": False, "diskWritesAuthorized": False}))
+        print(
+            json.dumps(
+                {
+                    "decision": "REFUSE_Q4OS_ARCHIVE_PROVENANCE",
+                    "externalProvenance": "EXTERNAL_PROVENANCE_UNPROVEN",
+                    "inputAuthorized": False,
+                    "diskWritesAuthorized": False,
+                }
+            )
+        )
         return 1
 
 
