@@ -1,0 +1,236 @@
+name: GASLUX-FEATURE-FACTORY - six distro Qwen Draft PR proposals
+
+on:
+  schedule:
+    - cron: '4,19,34,49 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/gaslux-agent-feature-factory.yml
+      - auto_tests/tools/gaslux_agent_feature_factory.py
+      - auto_tests/tests/test_gaslux_agent_feature_factory.py
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-agent-feature-factory.yml
+      - auto_tests/tools/gaslux_agent_feature_factory.py
+      - auto_tests/tests/test_gaslux_agent_feature_factory.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaslux-six-distro-feature-factory
+  cancel-in-progress: false
+
+jobs:
+  contracts:
+    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'push' || github.event_name == 'pull_request')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Adversarial developer/publisher scope and artifact tests
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
+
+  select:
+    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      active: ${{ steps.plan.outputs.active }}
+      role: ${{ steps.plan.outputs.role }}
+      base: ${{ steps.plan.outputs.base }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          path: source
+          persist-credentials: false
+      - name: Choose first missing and unclaimed backend feature
+        id: plan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py plan --repo source > /tmp/gaslux-feature-plan.json
+          cat /tmp/gaslux-feature-plan.json
+          python3 - <<'PY'
+          import json, os
+          row = json.load(open('/tmp/gaslux-feature-plan.json'))
+          if row['status'] not in ('pending', 'idle'):
+              raise SystemExit('Invalid feature factory state')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('active=' + str(row['status'] == 'pending').lower() + '\n')
+              out.write('role=' + row['role'] + '\n')
+              out.write('base=' + row['base'] + '\n')
+          PY
+
+  model:
+    needs: select
+    if: needs.select.outputs.active == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    permissions:
+      contents: read
+    env:
+      ROLE: ${{ needs.select.outputs.role }}
+      BASE: ${{ needs.select.outputs.base }}
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.base }}
+          path: source
+          persist-credentials: false
+      - name: Verify actual pinned product HEAD and local scope tests
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$BASE"
+          python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
+      - name: Install hash-pinned unprivileged local inference engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
+          (ollama serve > /tmp/ollama.log 2>&1 &)
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:11434/api/version >/dev/null; then break; fi
+            sleep 2
+          done
+          timeout 720 ollama pull qwen3.5:9b
+          python3 - <<'PY'
+          import json, urllib.request
+          tags = json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/tags'))
+          model = next((x for x in tags.get('models', []) if x.get('name') == 'qwen3.5:9b'), None)
+          assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          PY
+      - name: Generate and adversarially check model-authored backend product code
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 700 python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py generate \
+            --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
+          python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py verify \
+            --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
+      - name: Recompile and run relevant current-dev product regression tests without write token
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3'
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          info = json.loads(Path('evidence/feature-factory/report.json').read_text())
+          target = Path('source') / info['target']
+          addition = Path('evidence/feature-factory/addition.py').read_bytes()
+          raw = target.read_bytes()
+          target.write_bytes(raw.rstrip(b'\n') + b'\n\n' + addition)
+          PY
+          python3 -B -m compileall -q source/assets/live
+          case "$ROLE" in
+            mint|cachyos) suite=test_distribution_capabilities.py ;;
+            zorin) suite=test_candidate_handoff.py ;;
+            popos) suite=test_popos_native_preflight.py ;;
+            q4os) suite=test_q4os_native_preflight.py ;;
+            bazzite) suite=test_bazzite_atomic_preflight.py ;;
+            *) exit 1 ;;
+          esac
+          cd source
+          python3 -B -m pytest -q "auto_tests/tests/$suite"
+      - name: Export immutable candidate bytes, never the complete checkout
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-feature-candidate
+          path: evidence/feature-factory/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  safety:
+    needs: [select, model]
+    if: needs.model.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.base }}
+          path: source
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-feature-candidate
+          path: evidence/feature-factory/
+      - name: Independent artifact hashes, exact source, AST and lifecycle negative fixtures
+        env:
+          ROLE: ${{ needs.select.outputs.role }}
+          BASE: ${{ needs.select.outputs.base }}
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
+          python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py verify \
+            --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
+
+  publish_draft:
+    needs: [select, model, safety]
+    if: needs.model.result == 'success' && needs.safety.result == 'success' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.base }}
+          path: source
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-feature-candidate
+          path: evidence/feature-factory/
+      - name: Publish verified-only Draft PR with normal GitHub protections; never execute model code
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ROLE: ${{ needs.select.outputs.role }}
+          BASE: ${{ needs.select.outputs.base }}
+        run: |
+          set -euo pipefail
+          timeout 120 python3 -I trusted/auto_tests/tools/gaslux_agent_feature_factory.py publish \
+            --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
