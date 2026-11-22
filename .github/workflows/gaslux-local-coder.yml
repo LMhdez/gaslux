@@ -1,0 +1,59 @@
+name: Gaslux Bounded Repair - read-only evidence
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-local-coder.yml
+      - auto_tests/tools/local_coder_logging_repair.py
+  push:
+    branches: [dev]
+    paths:
+      - auto_tests/app/logging_config.py
+      - auto_tests/tests/test_logging_config.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaslux-local-coder-autofix
+  cancel-in-progress: false
+
+jobs:
+  read-only-worker:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == 'LMhdez/gaslux')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GASLUX_AGENT_DETERMINISTIC_ONLY: "1"
+      GASLUX_AGENT_SIMULATE: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+    steps:
+      - name: Checkout only the intended disposable source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'dev' }}
+          persist-credentials: false
+      - name: Install isolated focused-test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/gaslux-agent-venv
+          /tmp/gaslux-agent-venv/bin/python -m pip install --disable-pip-version-check 'pytest==9.2.0' 'python-json-logger==3.3.0'
+      - name: RED test then bounded deterministic repair and GREEN test
+        id: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 180 /tmp/gaslux-agent-venv/bin/python auto_tests/tools/local_coder_logging_repair.py
+      - name: Upload proposed patch and independent test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-local-coder-proposal
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
