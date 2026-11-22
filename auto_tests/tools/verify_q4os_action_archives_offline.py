@@ -143,10 +143,7 @@ def _check_zip(binary: bytes, expected: dict, run: dict, aid: int) -> None:
                     # whole-ZIP digest, never by untrusted metadata alone.
                     require(
                         name.startswith("calamares-inspect/")
-                        or (
-                            name.startswith("evidence/")
-                            and not name.lower().endswith(".png")
-                        ),
+                        or (name.startswith("evidence/") and not name.lower().endswith(".png")),
                         "Unexpected evidence member",
                     )
                 raw = archive.read(entry)
