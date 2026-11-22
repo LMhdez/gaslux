@@ -399,6 +399,7 @@ def run_lab(workspace: Path, kernel: Path, collector: Path, output: Path) -> dic
         stderr=subprocess.PIPE,
         cwd=workspace,
         start_new_session=True,
+        umask=0o077,
     )
     context = expected_context(image["collectorSha256"])
     ledger = LabNonceLedger(workspace / "nonce-ledger.sqlite")
