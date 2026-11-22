@@ -1,0 +1,74 @@
+name: Windows 10 VM host capacity preflight (read-only)
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/windows10-vm-host-capacity.yml
+      - auto_tests/tools/windows_vm_host_capacity.py
+      - auto_tests/tests/test_windows_vm_host_capacity.py
+      - docs/CI_VM_EVIDENCE_INDEX.md
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/windows10-vm-host-capacity.yml
+      - auto_tests/tools/windows_vm_host_capacity.py
+      - auto_tests/tests/test_windows_vm_host_capacity.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows10-vm-host-capacity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-resource-preflight:
+    if: github.repository == 'LMhdez/gaslux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout no credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Test fail-closed host capacity tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover \
+            -s auto_tests/tests -p test_windows_vm_host_capacity.py -v
+      - name: Probe actual runner storage; never allocate VM images
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B auto_tests/tools/windows_vm_host_capacity.py \
+            --workspace "$RUNNER_TEMP" \
+            --required-bytes 867710795776 \
+            --report evidence/windows-vm-capacity.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          obj = json.loads(Path("evidence/windows-vm-capacity.json").read_text())
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("## Windows 10 UEFI/GPT VM capacity preflight\n\n")
+              for key in ("resource_status", "measured_available_bytes",
+                          "required_with_reserve_bytes", "deficit_bytes",
+                          "windows_lab_admitted", "next_gate"):
+                  out.write(f"- {key}: {obj[key]}\n")
+              out.write(
+                  "\n**Resource-only evidence. No Windows guest, QCOW2 "
+                  "snapshot, restore, install, dual boot or rollback proven.**\n"
+              )
+          if obj["windows_lab_admitted"] or obj["snapshot_restore_verified"]:
+              raise SystemExit("Capacity-only gate must never admit a Windows lab")
+          PY
+      - name: Preserve measured capacity report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows10-vm-host-capacity
+          path: evidence/windows-vm-capacity.json
+          if-no-files-found: warn
+          retention-days: 14
