@@ -86,9 +86,7 @@ class SafeWorkspace:
             self.work_fd = os.open(
                 self.work.name, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW, dir_fd=self.parent_fd
             )
-            self.evidence_fd = os.open(
-                self.evidence, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW
-            )
+            self.evidence_fd = os.open(self.evidence, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
             for fd in (self.work_fd, self.evidence_fd):
                 item = os.fstat(fd)
                 need(
@@ -124,13 +122,10 @@ class SafeWorkspace:
             identity(os.fstat(self.parent_fd)) == self.parent_identity
             and identity(os.stat(self.work.parent, follow_symlinks=False)) == self.parent_identity
             and identity(os.fstat(self.work_fd)) == self.work_identity
-            and identity(
-                os.stat(self.work.name, dir_fd=self.parent_fd, follow_symlinks=False)
-            )
+            and identity(os.stat(self.work.name, dir_fd=self.parent_fd, follow_symlinks=False))
             == self.work_identity
             and identity(os.fstat(self.evidence_fd)) == self.evidence_identity
-            and identity(os.stat(self.evidence, follow_symlinks=False))
-            == self.evidence_identity,
+            and identity(os.stat(self.evidence, follow_symlinks=False)) == self.evidence_identity,
             "REFUSE_IDENTITY_MISMATCH: directory replaced",
         )
 
@@ -202,8 +197,10 @@ class SafeWorkspace:
         self.inspect()
         for name, data in docs.items():
             fd = os.open(
-                name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
-                0o600, dir_fd=self.evidence_fd,
+                name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
+                0o600,
+                dir_fd=self.evidence_fd,
             )
             try:
                 with os.fdopen(fd, "wb", closefd=False) as out:
@@ -213,12 +210,13 @@ class SafeWorkspace:
             finally:
                 os.close(fd)
         digest = "".join(
-            hashlib.sha256(docs[name]).hexdigest() + "  " + name + "\n"
-            for name in sorted(docs)
+            hashlib.sha256(docs[name]).hexdigest() + "  " + name + "\n" for name in sorted(docs)
         ).encode("ascii")
         fd = os.open(
-            "evidence.sha256", os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
-            0o600, dir_fd=self.evidence_fd,
+            "evidence.sha256",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
+            0o600,
+            dir_fd=self.evidence_fd,
         )
         try:
             os.write(fd, digest)
@@ -250,9 +248,7 @@ def run(work: Path, evidence: Path, template: Path) -> None:
         )
         for tool, args in tasks:
             workspace.inspect()
-            subprocess.run(
-                [sys.executable, str(tools / tool), *args], check=True, timeout=2400
-            )
+            subprocess.run([sys.executable, str(tools / tool), *args], check=True, timeout=2400)
             workspace.inspect()
         plan = json.loads(workspace.evidence_bytes("pop-six-transaction.json"))
         recovery = json.loads(workspace.evidence_bytes("recovery-proof.json"))
@@ -262,15 +258,11 @@ def run(work: Path, evidence: Path, template: Path) -> None:
             and len(plan["partitions"]) == 6
             and len(plan["canaries"]) == 7
             and recovery["ownedFaultChildReconstructedEmpty"] is True
-            and all(
-                plan[k] is recovery[k] is False for k in BOOLEANS
-            ),
+            and all(plan[k] is recovery[k] is False for k in BOOLEANS),
             "REFUSE_RECOVERY_UNPROVEN: inconsistent recovery plan",
         )
         for phase in ("before", "after"):
-            result = json.loads(
-                workspace.evidence_bytes("filesystem-fsck-" + phase + ".json")
-            )
+            result = json.loads(workspace.evidence_bytes("filesystem-fsck-" + phase + ".json"))
             need(
                 result["readOnlyFsckAllPassed"] is True
                 and len(result["filesystems"]) == 3
