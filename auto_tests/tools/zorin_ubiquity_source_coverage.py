@@ -5,6 +5,7 @@ No execution/import of ISO source. No Ubiquity, partman, mkfs or GRUB calls.
 This is NOT a replacement for the #333 handoff or #339 precommit classifier.
 An authenticated STATIC map never proves first-write ordering or dry-run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -59,7 +60,8 @@ MAX_GRAPH_EDGES = 180
 MUTATION_TOKENS = re.compile(
     r"(?:parted|partman|sfdisk|wipefs|mkfs|resize|mount|grub|"
     r"efibootmgr|subprocess|popen|os\.system|os\.open|os\.write|"
-    r"debconf|preseed|disk|commit|format)", re.I
+    r"debconf|preseed|disk|commit|format)",
+    re.I,
 )
 
 
@@ -117,7 +119,8 @@ def open_pinned_archive(path: Path) -> dict:
             for entry in archive.infolist():
                 mode = (entry.external_attr >> 16) & 0o170000
                 insist(
-                    not entry.is_dir() and mode != stat.S_IFLNK
+                    not entry.is_dir()
+                    and mode != stat.S_IFLNK
                     and 0 < entry.file_size <= MAX_MEMBER,
                     "E_ARCHIVE_MEMBER_TYPE",
                 )
@@ -169,9 +172,7 @@ def source_index(report: dict) -> dict:
     return indexed
 
 
-def exact_regular_bytes(
-    rootfs: Path, path: str, expected: dict | None
-) -> tuple[bytes | None, str]:
+def exact_regular_bytes(rootfs: Path, path: str, expected: dict | None) -> tuple[bytes | None, str]:
     """Read only member paths from immutable allowlist; never follow symlinks."""
     insist(path in CORE_SOURCES, "E_SOURCE_PATH_NOT_ALLOWED")
     try:
@@ -278,8 +279,10 @@ def report_gap(archive_map: dict, *, source_bodies: dict | None = None) -> dict:
             }
             continue
         insist(
-            type(entry) is dict and set(entry) == {"data", "status"}
-            and entry["status"] in REGULAR_CODES and type(entry["data"]) is bytes,
+            type(entry) is dict
+            and set(entry) == {"data", "status"}
+            and entry["status"] in REGULAR_CODES
+            and type(entry["data"]) is bytes,
             "E_UNTRUSTED_SOURCE_BODY_SET",
         )
         body = entry["data"]
@@ -313,7 +316,9 @@ def report_gap(archive_map: dict, *, source_bodies: dict | None = None) -> dict:
         "codeMapSha256": MAP_SHA256,
         "sourceBodiesFromHistoricalZip": False,
         "sources": sources,
-        "missingSourceBodies": [p for p in CORE_SOURCES if sources[p]["status"] == "BODY_NOT_AVAILABLE"],
+        "missingSourceBodies": [
+            p for p in CORE_SOURCES if sources[p]["status"] == "BODY_NOT_AVAILABLE"
+        ],
         "sourceOnlyStaticCalls": True,
         "runtimeCallGraphAuthenticated": False,
         "firstPersistentMutationLocated": False,
@@ -347,28 +352,35 @@ def inspect_authenticated_iso(iso: Path, mount: Path, original_map: dict) -> dic
     )
     scratch = Path(os.environ["RUNNER_TEMP"]).resolve()
     insist(
-        iso.is_file() and not iso.is_symlink()
+        iso.is_file()
+        and not iso.is_symlink()
         and iso.stat().st_nlink == 1
         and iso.resolve().is_relative_to(scratch)
-        and mount.is_dir() and not mount.is_symlink()
+        and mount.is_dir()
+        and not mount.is_symlink()
         and mount.resolve().is_relative_to(scratch),
         "E_UNTRUSTED_SOURCE_PATH",
     )
     verify_official_zorin(iso)  # entire 3.9 GB verified, BEFORE all source reads
     observed = subprocess.run(
         ["findmnt", "-rn", "-M", str(mount), "-o", "FSTYPE,OPTIONS"],
-        capture_output=True, timeout=20, check=False, text=True,
+        capture_output=True,
+        timeout=20,
+        check=False,
+        text=True,
     )
     columns = observed.stdout.strip().split()
     insist(
         observed.returncode == 0
-        and len(columns) == 2 and columns[0] == "iso9660"
+        and len(columns) == 2
+        and columns[0] == "iso9660"
         and "ro" in columns[1].split(","),
         "E_ISO_NOT_MOUNTED_READONLY",
     )
     rootfs = mount / "casper/filesystem.squashfs"
     insist(
-        rootfs.is_file() and not rootfs.is_symlink()
+        rootfs.is_file()
+        and not rootfs.is_symlink()
         and rootfs.resolve().is_relative_to(mount.resolve()),
         "E_UNTRUSTED_ROOTFS",
     )
