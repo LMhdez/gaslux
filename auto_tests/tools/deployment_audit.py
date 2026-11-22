@@ -945,7 +945,8 @@ def powershell_executable_code(source: str) -> str:
             newline = re.match(r"\r?\n", source[index + 2 :])
             if newline is None:
                 raise AuditStructureError("unrecognized PowerShell here-string opener")
-            terminator = re.compile(rf"(?m)^[ \t]*{re.escape(quote + '@')}[ \t]*\r?$")
+            # Windows PowerShell 5.1 requires column-zero, exact closing markers.
+            terminator = re.compile(rf"(?m)^{re.escape(quote + '@')}\r?$")
             closing = terminator.search(source, index + 2 + newline.end())
             if closing is None:
                 raise AuditStructureError("unterminated PowerShell here-string")
