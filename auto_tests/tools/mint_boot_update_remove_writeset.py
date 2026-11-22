@@ -114,7 +114,7 @@ def git_blob_sha1(content: bytes) -> str:
 
 def audit_source_pins(repository: Path) -> dict:
     """Authenticate only the local CHECKED-OUT source bytes against reviewed pins."""
-    _require(type(repository) is Path and repository.is_absolute(), "absolute repository path required")
+    _require(type(repository) is type(Path()) and repository.is_absolute(), "absolute repository path required")
     issues: list[dict] = []
     observed: dict[str, str | None] = {}
     for relative, expected in PINNED_SOURCE_BLOBS.items():
@@ -248,7 +248,7 @@ def inspect_esp_file(esp: Path, relative: str) -> dict:
     """Read-only synthetic/authorized mount inventory: never follow a path link."""
     _require(type(relative) is str and relative in ESP_AUDIT_FILES,
              "unrecognized EFI target: refuse")
-    _require(type(esp) is Path and esp.is_absolute(), "absolute ESP path required")
+    _require(type(esp) is type(Path()) and esp.is_absolute(), "absolute ESP path required")
     _require(esp.name not in {"", ".", ".."} and not esp.is_symlink(),
              "unsafe ESP root")
     base = esp.lstat()
