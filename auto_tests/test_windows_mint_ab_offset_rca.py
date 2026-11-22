@@ -47,7 +47,9 @@ class OffsetRcaTests(unittest.TestCase):
                 self.assertRaisesRegex(rca.OffsetRcaError, "BLOCKED_EVIDENCE"),
             ):
                 rca.analyze_partition_windows(
-                        lambda n, pos, fault=fault: blob[pos : pos + n - (1 if fault == "partial" else 0)],
+                        lambda n, pos, fault=fault: blob[
+                            pos : pos + n - (1 if fault == "partial" else 0)
+                        ],
                         lambda n, pos: blob[pos : pos + n],
                         partition_bytes=len(blob) - (1 if fault == "bad_size" else 0),
                         disk_start_byte=0,
