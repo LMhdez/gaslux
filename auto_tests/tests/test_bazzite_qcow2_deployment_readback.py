@@ -6,6 +6,7 @@ or faux installed deployment. Local FD measurements do not confer trust.
 
 from __future__ import annotations
 
+import json
 import os
 import struct
 import subprocess
@@ -210,23 +211,36 @@ def test_none_or_untrusted_source_never_authenticates_deployment(local_fd):
     assert_denied(result)
 
 
-def test_cli_never_accepts_qcow2_path_or_guest_execution(tmp_path):
-    output = tmp_path / "result.json"
+def test_cli_is_stdout_only_and_never_accepts_image_or_output_path(tmp_path):
     script = ROOT / "auto_tests/bazzite_qcow2_deployment_readback.py"
     proc = subprocess.run(
-        [sys.executable, str(script), "--output", str(output)],
+        [sys.executable, str(script)],
         check=False,
         capture_output=True,
         text=True,
         timeout=10,
+        cwd=tmp_path,
     )
     assert proc.returncode == 3
-    assert_denied(__import__("json").loads(output.read_text()))
-    proc = subprocess.run(
-        [sys.executable, str(script), "--image", "/dev/sda", "--output", str(output)],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert proc.returncode != 0
+    assert_denied(json.loads(proc.stdout))
+    assert list(tmp_path.iterdir()) == []
+
+    protected = tmp_path / "foreign-windows-recovery.txt"
+    protected.write_bytes(b"KEEP-FOREIGN-BYTES")
+    for arguments in (
+        ("--output", str(protected)),
+        ("--image", "/dev/sda"),
+        ("--output", "/dev/sda"),
+    ):
+        rejected = subprocess.run(
+            [sys.executable, str(script), *arguments],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=tmp_path,
+        )
+        assert rejected.returncode == 2
+        assert rejected.stdout == ""
+        assert protected.read_bytes() == b"KEEP-FOREIGN-BYTES"
+        assert sorted(p.name for p in tmp_path.iterdir()) == [protected.name]
