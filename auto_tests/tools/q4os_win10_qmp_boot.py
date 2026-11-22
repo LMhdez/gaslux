@@ -45,23 +45,34 @@ def _private(path: Path, kind: str) -> None:
 
 
 class Qmp:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, negotiate: bool = True):
+        """Connect without commands when a process owner must be authenticated.
+
+        Call negotiate_protocol() only AFTER SO_PEERCRED and inode checks.
+        Legacy direct users retain their existing full-handshake behaviour.
+        """
         _private(path, "qmp")
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket.settimeout(2)
+        self.stream = None
         try:
             self.socket.connect(str(path))
             self.stream = self.socket.makefile("rb")
-            greeting = self._read()
-            require(isinstance(greeting.get("QMP"), dict), "invalid_qmp_greeting")
-            version = greeting["QMP"].get("version")
-            require(isinstance(version, dict), "invalid_qmp_version")
-            self.command("qmp_capabilities", "capabilities")
-            status = self.command("query-status", "status")
-            require(status.get("status") == "running", "qemu_is_not_running")
+            if negotiate:
+                self.negotiate_protocol()
         except (OSError, ValueError, KeyError, BootRefusal):
-            self.socket.close()
+            self.close()
             raise
+
+    def negotiate_protocol(self) -> None:
+        """Handshake and application commands; never call before authenticating peer."""
+        greeting = self._read()
+        require(isinstance(greeting.get("QMP"), dict), "invalid_qmp_greeting")
+        version = greeting["QMP"].get("version")
+        require(isinstance(version, dict), "invalid_qmp_version")
+        self.command("qmp_capabilities", "capabilities")
+        status = self.command("query-status", "status")
+        require(status.get("status") == "running", "qemu_is_not_running")
 
     def _read(self) -> dict:
         raw = self.stream.readline(128 * 1024)
@@ -94,8 +105,11 @@ class Qmp:
         )
 
     def close(self) -> None:
-        self.stream.close()
-        self.socket.close()
+        try:
+            if self.stream is not None:
+                self.stream.close()
+        finally:
+            self.socket.close()
 
 
 def _serial_text(path: Path) -> bytes:
