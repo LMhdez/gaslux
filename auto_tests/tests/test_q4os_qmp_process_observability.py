@@ -280,5 +280,7 @@ def test_kvm_and_tcg_machine_graph_and_wait_budgets(lab):
     assert tcg[tcg.index("-accel") + 1] == "tcg,thread=multi"
     assert tcg[tcg.index("-cpu") + 1] == "max"
     assert kvm[kvm.index("-m") + 1] == tcg[tcg.index("-m") + 1] == "6144"
-    source = (Path(__file__).resolve().parents[2] / "auto_tests/tools/q4os_win10_qmp_supervisor.py").read_text()
+    source = (
+        Path(__file__).resolve().parents[2] / "auto_tests/tools/q4os_win10_qmp_supervisor.py"
+    ).read_text()
     assert 'wait_seconds=14400 if args.accel == "tcg" else 7200' in source
