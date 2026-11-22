@@ -186,9 +186,7 @@ def test_source_only_manifest_has_no_boot_or_provenance_authority():
     assert not any(doc["runtimeBindings"].values())
     assert not any(doc["guest"].values())
     assert all(
-        val is False
-        for key, val in doc["gates"].items()
-        if key != "disposableVmStandingPolicy"
+        val is False for key, val in doc["gates"].items() if key != "disposableVmStandingPolicy"
     )
     assert doc["gates"]["disposableVmStandingPolicy"] is True
     assert "SIGNED_GASLUX_ISO_CATALOG_MISSING" in doc["blockers"]
@@ -211,14 +209,11 @@ def test_no_sensitive_path_in_cli_refusal(tmp_path, monkeypatch, capsys):
 
 def test_official_sha_matches_existing_dev_workflow_and_not_stable_catalog():
     repo = Path(__file__).resolve().parents[2]
-    workflow = (
-        repo / ".github/workflows/gaslux-q4os-official-iso.yml"
-    ).read_text(encoding="utf-8")
+    workflow = (repo / ".github/workflows/gaslux-q4os-official-iso.yml").read_text(encoding="utf-8")
     catalog = json.loads((repo / "release-config.json").read_text(encoding="utf-8"))
     assert readiness.UPSTREAM_SHA256 in workflow
     assert readiness.ISO_NAME in workflow
     assert "q4os" not in {item["id"] for item in catalog["distributions"]}
-
 
 
 def test_manifest_schema_rejects_false_guest_and_release_authority():
@@ -226,9 +221,7 @@ def test_manifest_schema_rejects_false_guest_and_release_authority():
 
     repo = Path(__file__).resolve().parents[2]
     schema = json.loads(
-        (repo / "schemas/gaslux-q4os-native-live-readiness.schema.json").read_text(
-            encoding="utf-8"
-        )
+        (repo / "schemas/gaslux-q4os-native-live-readiness.schema.json").read_text(encoding="utf-8")
     )
     jsonschema.Draft202012Validator.check_schema(schema)
     doc = readiness.readiness_manifest()
