@@ -27,7 +27,7 @@ BUILD20_EARLIEST_PUBLIC_REFERENCE_UTC = "2025-10-10T03:39:24Z"
 BUILD20_REFERENCE = "https://github.com/pop-os/pop/issues/3612"
 MAX_STATUS_BYTES = 16 * 1024 * 1024
 MAX_BINARY_BYTES = 128 * 1024 * 1024
-GIT_SUFFIX = re.compile(r"~([0-9a-f]{7,12})(?:$|[~+.-])")
+GIT_SUFFIX = re.compile(r"[0-9a-f]{7,12}\\Z")
 VERSION = re.compile(r"[0-9A-Za-z.+:~_-]{1,160}\Z")
 
 
@@ -90,7 +90,15 @@ def parse_dpkg_status(status: bytes) -> dict:
     )
     dependencies = row.get("Depends", "")
     need(len(dependencies) <= 8192, "REFUSE_BUILD20: unbounded dependency metadata")
-    suffixes = GIT_SUFFIX.findall(version)
+    final_component = version.removesuffix("~dev").rsplit("~", 1)[-1]
+    # Numeric build timestamps can look like Git abbreviations; never
+    # interpret those as a candidate source commit.
+    suffixes = (
+        [final_component]
+        if GIT_SUFFIX.fullmatch(final_component)
+        and any(char in "abcdef" for char in final_component)
+        else []
+    )
     return {
         "package": "distinst",
         "version": version,
