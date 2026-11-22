@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: q4os-qmp-offline-${{ github.ref }}
+  group: q4os-qmp-offline-${{ github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
