@@ -1,0 +1,30 @@
+name: Zorin direct-kernel evidence overclaim DENY (offline)
+
+on:
+  push:
+    branches:
+      - test/zorin-evidence-overclaim-deny-20261122
+  pull_request:
+    paths:
+      - 'auto_tests/tools/validate_mint_cow_boot_evidence.py'
+      - 'auto_tests/test_windows_zorin_cow_boot_evidence.py'
+      - '.github/workflows/zorin-evidence-overclaim-deny.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Python source syntax and original Mint/Zorin contract regression
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile auto_tests/tools/validate_mint_cow_boot_evidence.py auto_tests/test_windows_zorin_cow_boot_evidence.py
+          python3 -m unittest discover -s auto_tests -p 'test_windows_zorin_cow_boot_evidence.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_mint_cow_boot_evidence.py' -v
+          echo 'DENY-ONLY: no native installer, update, recovery or boot authorization is implied.' >> "$GITHUB_STEP_SUMMARY"
