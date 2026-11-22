@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "mission": "GASLUX-UNATTENDED-CODE-AGENT-PILOT",
+  "description": "Only curated, low-risk product implementation tasks; other backends remain unadmitted",
+  "agents": [
+    "supervisor",
+    "mint",
+    "zorin",
+    "cachyos",
+    "popos",
+    "q4os",
+    "bazzite",
+    "safety",
+    "integrator"
+  ],
+  "tasks": [
+    {
+      "id": "MINT-PT-KEYBOARD-01",
+      "role": "mint",
+      "source": "Installation/WindowsKeyboardLayout.cs",
+      "anchor_identifier": "00000809",
+      "keyboard_identifier": "00000816",
+      "xkb_layout": "pt",
+      "description": "Implement genuine Windows Portuguese (Portugal) keyboard ID mapping in shared Mint/Zorin installation configuration"
+    },
+    {
+      "id": "ZORIN-BR-KEYBOARD-01",
+      "role": "zorin",
+      "source": "Installation/WindowsKeyboardLayout.cs",
+      "anchor_identifier": "0000040C",
+      "keyboard_identifier": "00000416",
+      "xkb_layout": "br",
+      "description": "Implement genuine Windows Brazilian Portuguese keyboard ID mapping for Linux installation"
+    }
+  ],
+  "excluded_authority": [
+    "physical-disks",
+    "disk-writer",
+    "bcd-esp",
+    "winre",
+    "release-catalog",
+    "main-source"
+  ],
+  "note": "Task list is deliberately small. No AI is allowed to invent a task or grant itself broader paths."
+}
