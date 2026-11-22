@@ -51,7 +51,11 @@ NO_ACCESS = NO_AUTHORITY + (
 
 
 def _hex(value: object, length: int) -> bool:
-    return type(value) is str and len(value) == length and all(c in "0123456789abcdef" for c in value)
+    return (
+        type(value) is str
+        and len(value) == length
+        and all(c in "0123456789abcdef" for c in value)
+    )
 
 
 def analyze_spec(spec: str) -> dict:
