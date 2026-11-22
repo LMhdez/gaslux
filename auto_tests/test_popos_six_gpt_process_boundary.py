@@ -178,7 +178,6 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
             ):
                 measure_pinned_evidence(workspace, self.name)
 
-
     def test_same_uid_output_collision_preserves_foreign_evidence(self):
         for name in (
             "pop-six-transaction.json",
