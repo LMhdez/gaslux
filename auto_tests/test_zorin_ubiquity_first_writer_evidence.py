@@ -38,10 +38,18 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
         self.assertFalse(report["persistentWriteProven"])
         self.assertFalse(report["selectedCallsTruncated"])
         calls = report["selectedCalls"]
-        self.assertTrue(any(c["caller"] == "PartedServer.select_disk"
-                            and c["callee"] == "self.write_line" for c in calls))
-        self.assertTrue(any(c["caller"] == "PartedServer.write_line"
-                            and c["callee"] == "self.pipe.write" for c in calls))
+        self.assertTrue(
+            any(
+                c["caller"] == "PartedServer.select_disk" and c["callee"] == "self.write_line"
+                for c in calls
+            )
+        )
+        self.assertTrue(
+            any(
+                c["caller"] == "PartedServer.write_line" and c["callee"] == "self.pipe.write"
+                for c in calls
+            )
+        )
         self.assertTrue(all(c["status"] == "STATIC_CALLSITE_NOT_EXECUTION" for c in calls))
 
     def test_partman_preseed_does_not_imply_commit_or_safe_dryrun(self):
@@ -72,13 +80,11 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
         )
         record = parse_unsquashfs_lstat(output, RESIZE)
         self.assertEqual(record["type"], "SYMLINK_NOT_FOLLOWED")
-        self.assertEqual(record["targetLexicalPathUnverified"],
-                         "/usr/share/partman/resize.sh")
+        self.assertEqual(record["targetLexicalPathUnverified"], "/usr/share/partman/resize.sh")
 
     def test_regular_metadata_does_not_authenticate_source(self):
         output = (
-            "-rwxr-xr-x root/root 91 2026-11-22 14:30 "
-            "squashfs-root/lib/partman/lib/commit.sh\n"
+            "-rwxr-xr-x root/root 91 2026-11-22 14:30 squashfs-root/lib/partman/lib/commit.sh\n"
         )
         record = parse_unsquashfs_lstat(output, COMMIT)
         self.assertEqual(record["type"], "REGULAR_METADATA_ONLY")
@@ -87,8 +93,7 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
     def test_missing_and_ambiguous_metadata_fail_closed(self):
         self.assertEqual(parse_unsquashfs_lstat("", COMMIT)["type"], "UNRESOLVED")
         line = "lrwxrwxrwx root/root 0 2026-11-22 14:30 squashfs-root/" + COMMIT + " -> target"
-        self.assertEqual(parse_unsquashfs_lstat(line + "\n" + line, COMMIT)["type"],
-                         "UNRESOLVED")
+        self.assertEqual(parse_unsquashfs_lstat(line + "\n" + line, COMMIT)["type"], "UNRESOLVED")
 
     def test_foreign_source_member_is_not_allowed(self):
         with self.assertRaises(SourceCoverageDenied) as caught:
@@ -97,8 +102,7 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
 
     def test_lstat_uses_metadata_mode_only(self):
         line = "lrwxrwxrwx root/root 0 2026-11-22 14:30 squashfs-root/" + COMMIT + " -> fake"
-        proc = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout=line.encode(), stderr=b"")
+        proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=line.encode(), stderr=b"")
         with patch(
             "zorin_ubiquity_first_writer_evidence.subprocess.run",
             return_value=proc,
@@ -110,8 +114,7 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
         self.assertNotIn("-cat", call)
 
     def test_lstat_nonzero_has_no_auto_follow(self):
-        proc = subprocess.CompletedProcess(args=[], returncode=1,
-                                           stdout=b"", stderr=b"not found")
+        proc = subprocess.CompletedProcess(args=[], returncode=1, stdout=b"", stderr=b"not found")
         with patch(
             "zorin_ubiquity_first_writer_evidence.subprocess.run",
             return_value=proc,
@@ -122,8 +125,7 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
             )
 
     def test_lstat_overlong_output_refused(self):
-        proc = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout=b"x" * 10000, stderr=b"")
+        proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"x" * 10000, stderr=b"")
         with patch(
             "zorin_ubiquity_first_writer_evidence.subprocess.run",
             return_value=proc,
