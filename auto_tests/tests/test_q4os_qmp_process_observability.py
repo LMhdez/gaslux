@@ -621,8 +621,12 @@ def test_r01_foreign_injected_channel_and_no_guard_rejected(monkeypatch, tmp_pat
 
     with pytest.raises(boot.BootRefusal):
         boot.supervise(
-            work / "qmp.sock", serial, disk, qmp_channel=ForeignQmp(),
-            process_guard=lambda: None, prompt_seconds=0.02,
+            work / "qmp.sock",
+            serial,
+            disk,
+            qmp_channel=ForeignQmp(),
+            process_guard=lambda: None,
+            prompt_seconds=0.02,
         )
     assert events == []
 
