@@ -237,7 +237,7 @@ def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
         raise Refusal("REFUSE_RECOVERY_UNPROVEN: malformed qemu-img JSON") from exc
     need(isinstance(rows, list) and bool(rows), "REFUSE_RECOVERY_UNPROVEN: absent qemu-img map")
     cursor = 0
-    allowed = {"start", "length", "depth", "data", "zero", "offset", "present"}
+    allowed = {"start", "length", "depth", "data", "zero", "offset", "present", "compressed"}
     for row in rows:
         need(
             isinstance(row, dict)
@@ -264,6 +264,8 @@ def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
             )
         if "present" in row:
             need(type(row["present"]) is bool, "REFUSE_RECOVERY_UNPROVEN: invalid present flag")
+        if "compressed" in row:
+            need(row["compressed"] is False, "REFUSE_RECOVERY_UNPROVEN: compressed extent")
         cursor += length
     if require_full:
         need(cursor == SIZE, "REFUSE_RECOVERY_UNPROVEN: incomplete QCOW2 map")
