@@ -1,0 +1,172 @@
+name: AUTH-DEST canonical 342+346 test composition (NO writer)
+
+on:
+  push:
+    branches:
+      - fix/auth-dest-canonical-342-346-20261122
+    paths:
+      - '.github/workflows/auth-dest-342-346-canonical.yml'
+      - 'auto_tests/installer_observer/qemu_local_disk_witness.py'
+      - 'auto_tests/tests/test_observer_qemu_real_disk_readonly.py'
+      - 'docs/AUTHENTICATED_DESTINATION_READONLY.md'
+      - 'auto_tests/installer_observer/authenticated_destination.py'
+      - 'auto_tests/tests/test_authenticated_destination_readonly.py'
+      - 'auto_tests/installer_observer/large_sparse_destination.py'
+      - 'auto_tests/tests/test_auth_dest_128g_readonly.py'
+      - 'docs/AUTH_DEST_128G_READONLY.md'
+      - 'docs/AUTH_DEST_342_346_CANONICAL.md'
+  pull_request:
+    branches:
+      - fix/auth-dest-128g-readonly-20261122
+    paths:
+      - '.github/workflows/auth-dest-342-346-canonical.yml'
+      - 'auto_tests/installer_observer/qemu_local_disk_witness.py'
+      - 'auto_tests/tests/test_observer_qemu_real_disk_readonly.py'
+      - 'docs/AUTHENTICATED_DESTINATION_READONLY.md'
+      - 'auto_tests/installer_observer/authenticated_destination.py'
+      - 'auto_tests/tests/test_authenticated_destination_readonly.py'
+      - 'auto_tests/installer_observer/large_sparse_destination.py'
+      - 'auto_tests/tests/test_auth_dest_128g_readonly.py'
+      - 'docs/AUTH_DEST_128G_READONLY.md'
+      - 'docs/AUTH_DEST_342_346_CANONICAL.md'
+
+permissions:
+  contents: read
+
+jobs:
+  stopped-qemu-host-disk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GASLUX_QEMU_NO_GUEST: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Checkout exact candidate without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Checkout exact Safety #267 for existing RAW/QCOW2 chain verifier
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: safety267-pinned
+          persist-credentials: false
+      - name: Checkout exact GPT FD #286 parser without copying it
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 9aed36cfdb8c09a461dc38811c326c54180273de
+          path: gpt286-pinned
+          persist-credentials: false
+      - name: Checkout immutable BZD-DEST-01 known-gap tests
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 45c430b6861ba3dce3b9e33bf3f9cccfb2b29a52
+          path: safety327-pinned
+          persist-credentials: false
+      - name: Checkout immutable #342 metadata-only baseline for isolated regressions
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 986ccf6d5ee11427e969022f6b8b5d5f48ec16c3
+          path: scale342-pinned
+          persist-credentials: false
+      - name: Assert hosted-Linux-runner isolation before installing tools or making images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$(uname -m)" = x86_64
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test "$(git -C gpt286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          test "$(git -C safety327-pinned rev-parse HEAD)" = 45c430b6861ba3dce3b9e33bf3f9cccfb2b29a52
+          test "$(git -C scale342-pinned rev-parse HEAD)" = 986ccf6d5ee11427e969022f6b8b5d5f48ec16c3
+          test "$(git hash-object auto_tests/installer_observer/host_fd_boundary.py)" = 35bc7f4a37ec8821aa32c15660f83ef80e3e29b9
+          test "$(git hash-object auto_tests/installer_observer/host_qemu_fd_evidence.py)" = 6727ca454b9282079400593356516097a297b9d6
+          test "$(git hash-object auto_tests/installer_observer/guest_transport_peer_boundary.py)" = e176d90f487aede071b12bced9d5d3a41d93199e
+          for path in . safety267-pinned gpt286-pinned safety327-pinned scale342-pinned; do
+            test -z "$(git -C "$path" status --porcelain --untracked-files=no)"
+          done
+      - name: Install real QEMU and GPT tooling (no libguestfs appliance)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils gdisk
+          test -x /usr/bin/qemu-system-x86_64
+          test -x /usr/bin/qemu-img
+          test -x /usr/sbin/sgdisk || test -x /usr/bin/sgdisk
+      - name: Configure Python lint and offline tests
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install pytest, Ruff and JSON Schema validator
+        run: python -m pip install --disable-pip-version-check 'pytest>=9,<10' 'ruff>=0.14,<0.17' 'pillow>=11,<13' 'jsonschema>=4,<5'
+      - name: Syntax, strict Ruff lint and formatting checks
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/installer_observer/large_sparse_destination.py auto_tests/tests/test_auth_dest_128g_readonly.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/installer_observer/large_sparse_destination.py auto_tests/tests/test_auth_dest_128g_readonly.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/installer_observer/large_sparse_destination.py auto_tests/tests/test_auth_dest_128g_readonly.py
+      - name: Validate existing installation and six-backend JSON Schemas
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q auto_tests/tests/test_distribution_capabilities.py
+      - name: Launch REAL STOPPED QEMU on disposable owned 0700 regular files and adversarially witness FD
+        env:
+          GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
+          GASLUX_QEMU_PIN286_ROOT: ${{ github.workspace }}/gpt286-pinned
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q -s auto_tests/tests/test_authenticated_destination_readonly.py
+          python -m pytest -q -s auto_tests/tests/test_auth_dest_128g_readonly.py
+          python -m pytest -q -s auto_tests/tests/test_observer_qemu_real_disk_readonly.py
+      - name: Replay unchanged #342 12-case metadata-only baseline in separate checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          (
+            cd scale342-pinned
+            python -m pytest -q auto_tests/tests/test_authenticated_destination_scale.py
+          )
+      - name: Replay upstream #337 independent D-337-01 digest RED and completion tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q auto_tests/test_destination_337_fd_digest.py auto_tests/test_destination_337_partial_pread_red.py
+      - name: Replay original BZD-DEST-01 known gaps and #267 real no-writer gate
+        env:
+          GASLUX_267_SOURCE: ${{ github.workspace }}/safety267-pinned
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q safety327-pinned/auto_tests/tests/test_bzd_dest_01_cross_boundary.py
+          python -m pytest -q safety267-pinned/auto_tests/tests/test_prewrite_no_writer.py
+      - name: Retain prior F-01 F-02 F-03 and integrated peer regressions
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q \
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py \
+            auto_tests/tests/test_observer_host_fd_dev_integration.py \
+            auto_tests/tests/test_guest_transport_peer_boundary.py
+      - name: Verify all source checksums and checkout refs after QEMU exit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test "$(git -C gpt286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          test "$(git -C safety327-pinned rev-parse HEAD)" = 45c430b6861ba3dce3b9e33bf3f9cccfb2b29a52
+          test "$(git -C scale342-pinned rev-parse HEAD)" = 986ccf6d5ee11427e969022f6b8b5d5f48ec16c3
+          test "$(git hash-object auto_tests/installer_observer/host_fd_boundary.py)" = 35bc7f4a37ec8821aa32c15660f83ef80e3e29b9
+          test "$(git hash-object auto_tests/installer_observer/host_qemu_fd_evidence.py)" = 6727ca454b9282079400593356516097a297b9d6
+          test "$(git hash-object auto_tests/installer_observer/guest_transport_peer_boundary.py)" = e176d90f487aede071b12bced9d5d3a41d93199e
+          for path in . safety267-pinned gpt286-pinned safety327-pinned scale342-pinned; do
+            test -z "$(git -C "$path" status --porcelain --untracked-files=no)"
+          done
+          echo 'Canonical 342+346: header, estimated checkpoint reserve and final allocation check incorporated in 346; original 342 suite replayed independently; 128GiB RAW remains FULL_BACKING_HASH_NOT_COMPLETED / DENY_NO_WRITER. No writer, guest or Windows recovery.' >> "$GITHUB_STEP_SUMMARY"
