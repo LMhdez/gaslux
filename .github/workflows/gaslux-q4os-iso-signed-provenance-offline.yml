@@ -1,0 +1,150 @@
+name: Q4OS native ISO full-byte provenance inspection (read-only, NO BOOT)
+on:
+  push:
+    branches: [test/q4os-iso-signed-provenance-20261122]
+    paths:
+      - '.github/workflows/gaslux-q4os-iso-signed-provenance-offline.yml'
+      - 'auto_tests/tools/q4os_official_iso_provenance.py'
+      - 'auto_tests/tests/test_q4os_official_iso_provenance.py'
+      - 'schemas/gaslux-q4os-iso-provenance-evidence.schema.json'
+      - 'auto_tests/fixtures/q4os_6_10_r2_unsigned_catalog_candidate.json'
+      - 'docs/Q4OS_ISO_SIGNED_PROVENANCE.md'
+
+permissions:
+  contents: read
+concurrency:
+  group: q4os-iso-provenance-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  real-iso-offline-inspection:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/test/q4os-iso-signed-provenance-20261122'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify exact HEAD and ensure the production gates remain closed
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          grep -Fxq 'QEMU_FD_BACKING_VERIFIED = False' auto_tests/tools/q4os_win10_qmp_supervisor.py
+          grep -Fxq 'SIGNED_RELEASE_METADATA_VERIFIED = False' auto_tests/tools/q4os_native_live_boot_readiness.py
+          test ! -e "$RUNNER_TEMP/q4os-iso-provenance"
+          mkdir -m 0700 "$RUNNER_TEMP/q4os-iso-provenance"
+          test "$(df -PB1 "$RUNNER_TEMP" | awk 'NR==2 {print $4}')" -gt 6000000000
+      - name: Check the real module, hostile fixtures, schemas and YAML BEFORE the ISO download
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install 'pytest>=9,<10' 'ruff>=0.8,<1' 'jsonschema>=4,<5' 'PyYAML>=6,<7'
+          python -m compileall -q auto_tests/tools/q4os_official_iso_provenance.py auto_tests/tests/test_q4os_official_iso_provenance.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/q4os_official_iso_provenance.py auto_tests/tests/test_q4os_official_iso_provenance.py
+          python -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tools/q4os_official_iso_provenance.py auto_tests/tests/test_q4os_official_iso_provenance.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/q4os_official_iso_provenance.py auto_tests/tests/test_q4os_official_iso_provenance.py
+          python -m pytest -q auto_tests/tests/test_q4os_official_iso_provenance.py auto_tests/tests/test_q4os_native_live_boot_readiness.py auto_tests/tests/test_q4os_native_preflight.py auto_tests/tests/test_q4os_readonly_boundary.py
+          python - <<'PY'
+          import json
+          import jsonschema
+          import yaml
+          from pathlib import Path
+          schema = json.loads(Path("schemas/gaslux-q4os-iso-provenance-evidence.schema.json").read_text())
+          jsonschema.Draft202012Validator.check_schema(schema)
+          file = Path(".github/workflows/gaslux-q4os-iso-signed-provenance-offline.yml")
+          parsed = yaml.safe_load(file.read_text())
+          assert len(parsed["jobs"]) == 1
+          assert "workflow_" + "dispatch:" not in file.read_text()
+          PY
+      - name: Install ISO9660 and SquashFS utilities without QEMU
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends aria2 xorriso squashfs-tools
+      - name: Download exact upstream native ISO privately; verify whole-file SHA-256
+        shell: bash
+        env:
+          Q4OS_SHA256: 1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d
+          Q4OS_URL: https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          w="$RUNNER_TEMP/q4os-iso-provenance"
+          timeout --signal=TERM --kill-after=20s 25m aria2c --continue=false --auto-file-renaming=false --split=4 --max-connection-per-server=4 --max-tries=5 --retry-wait=8 --timeout=60 --connect-timeout=30 --file-allocation=none --check-integrity=true --checksum="sha-256=$Q4OS_SHA256" -d "$w" -o q4os-6.10-x64.r2.iso "$Q4OS_URL"
+          iso="$w/q4os-6.10-x64.r2.iso"
+          test -f "$iso" && test ! -L "$iso"
+          test "$(stat -c '%a' "$iso")" = 600
+          printf '%s  %s\n' "$Q4OS_SHA256" "$iso" | sha256sum -c --status
+          python - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, "auto_tests/tools")
+          import q4os_native_live_boot_readiness as r
+          path = Path(os.environ["RUNNER_TEMP"]) / "q4os-iso-provenance" / r.ISO_NAME
+          actual = r.measure_official_iso(path)
+          print("Q4OS_FULL_SHA256_MATCHED=true")
+          print("Q4OS_ISO_EXACT_SIZE_BYTES=" + str(actual["sizeBytes"]))
+          print("Q4OS_PUBLISHER_SIGNATURE_VERIFIED=false")
+          PY
+      - name: Inspect actual ISO9660, SquashFS, native identity and Calamares READ-ONLY
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          w="$RUNNER_TEMP/q4os-iso-provenance"
+          iso="$w/q4os-6.10-x64.r2.iso"
+          root="$w/iso-root"
+          mkdir -m 0700 "$root"
+          xorriso -indev "$iso" -report_el_torito plain > "$w/el-torito.txt" 2>&1
+          test -s "$w/el-torito.txt"
+          grep -qi 'El Torito' "$w/el-torito.txt"
+          mounted=false
+          cleanup() { if [ "$mounted" = true ]; then sudo umount "$root"; fi; }
+          trap cleanup EXIT
+          sudo mount -t iso9660 -o loop,ro,nosuid,nodev,noexec "$iso" "$root"
+          mounted=true
+          python auto_tests/tools/q4os_official_iso_provenance.py --iso "$iso" --mounted-root "$root" > "$w/provenance.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import jsonschema
+          w = Path(os.environ["RUNNER_TEMP"]) / "q4os-iso-provenance"
+          report = json.loads((w / "provenance.json").read_text())
+          schema = json.loads(Path("schemas/gaslux-q4os-iso-provenance-evidence.schema.json").read_text())
+          jsonschema.validate(report, schema)
+          assert report["decision"] == "DENY"
+          assert report["publisherSignatureVerified"] is False
+          assert report["publisherSigningKeyTrusted"] is False
+          assert report["gasluxCatalogSignatureVerified"] is False
+          assert report["installationAuthorized"] is False
+          assert report["guestBooted"] is False
+          assert report["media"]["sizeBytes"] == report["candidateCatalogFieldsUnsigned"]["isoInstallerSizeBytes"]
+          print("Q4OS_ISO9660_SQUASHFS_IDENTITY_VERIFIED=true")
+          print("Q4OS_NATIVE_INSTALLER=" + report["inspection"]["nativeInstaller"])
+          print("Q4OS_INSTALL_EFI_FALLBACK=" + str(report["inspection"]["installEFIFallback"]).lower())
+          print("Q4OS_ISO_EXACT_SIZE_BYTES=" + str(report["media"]["sizeBytes"]))
+          print("Q4OS_SIGNED_PROVENANCE_VERIFIED=false")
+          PY
+          git diff --exit-code
+      - name: Retain bounded forensic JSON and boot descriptor, never the ISO
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-official-610-r2-iso-unsigned-provenance
+          path: |
+            ${{ runner.temp }}/q4os-iso-provenance/provenance.json
+            ${{ runner.temp }}/q4os-iso-provenance/el-torito.txt
+          if-no-files-found: warn
+          retention-days: 7

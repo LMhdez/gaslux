@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "artifactType": "UNSIGNED_EXPERIMENTAL_CATALOG_CANDIDATE",
+  "distribution": "q4os",
+  "candidateOnly": true,
+  "productionEligible": false,
+  "stable": false,
+  "signed": false,
+  "iso": {
+    "distributionName": "Q4OS Andromeda",
+    "version": "6.10",
+    "revision": "r2",
+    "architecture": "x86_64",
+    "sourceKind": "native-live-calamares",
+    "origin": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso",
+    "filename": "q4os-6.10-x64.r2.iso",
+    "sha256": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d",
+    "sizeBytes": 1851392000,
+    "releaseChecksumKind": "SOURCEFORGE_PUBLIC_SHA256",
+    "publisherSignatureValidated": false,
+    "publisherKeyFingerprint": null,
+    "detachedSignatureFile": null
+  },
+  "catalogCompatibleFields": {
+    "id": "q4os",
+    "name": "Q4OS Andromeda 6.10 x64 r2 (experimental)",
+    "isoInstaller": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso",
+    "isoInstallerFileName": "q4os-6.10-x64.r2.iso",
+    "isoInstallerSha256": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d",
+    "isoInstallerSizeBytes": 1851392000
+  },
+  "backend": {
+    "id": "q4os-native",
+    "osReleaseId": "debian",
+    "q4osVersionPattern": "6.10-deb13u[0-9]+",
+    "nativeInstaller": "Calamares",
+    "installEFIFallback": true,
+    "uefiGpt": "CANDIDATE_NOT_VERIFIED",
+    "biosMbr": "CANDIDATE_NOT_VERIFIED",
+    "secureBoot": "NOT_VERIFIED"
+  },
+  "trust": {
+    "publisherSignedRelease": false,
+    "authenticatedGasluxCatalog": false,
+    "signerIdentity": null,
+    "trustChain": "NOT_VERIFIED",
+    "catalogPromotionAllowed": false
+  },
+  "historicalAndCurrentEvidence": {
+    "historical": "https://github.com/LMhdez/gaslux/actions/runs/43936058057",
+    "currentRun": "https://github.com/LMhdez/gaslux/actions/runs/45036542249",
+    "currentExactBytesVerified": true,
+    "currentNativeInspectorPassed": true,
+    "verifiedActionHead": "fee6674f504cc7e994161be52f940b36d9566d28"
+  },
+  "notes": "Unsigned experiment only. Never insert into stable release-config.json or signed catalog. Requires independent publisher root/signature or approved Gaslux trust policy, Safety review and boot/rollback evidence."
+}
