@@ -419,8 +419,10 @@ class SixGptNegativeTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(Refusal, "owned extents"):
                 lab.ensure_empty_child(zero_child, base)
-            with self.assertRaises(Refusal):
-                lab.ensure_empty_child(zero_child, folder / "wrong.raw")
+            wrong = folder / "wrong.raw"
+            subprocess.run(["truncate", "-s", str(c.SIZE), str(wrong)], check=True)
+            with self.assertRaisesRegex(Refusal, "foreign QCOW2"):
+                lab.ensure_empty_child(zero_child, wrong)
 
     def test_safety_f04_zero_overlay_and_invalid_map(self):
         valid = {"start": 0, "length": c.SIZE, "depth": 1, "data": False, "zero": False}
