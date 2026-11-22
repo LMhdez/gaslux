@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/dev/schemas/observer-one-shot-grant-v1.schema.json",
+  "title": "Gaslux observer one-shot offline grant v1 (not an authorization token)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "grantId", "repository", "experimentId", "requestRef",
+    "preparationSha", "authorizationSha", "protectedControllerSha", "auditedCodeSha",
+    "requesterId", "externalApproverId", "humanReviewId", "scope", "issuedAt", "expiresAt"
+  ],
+  "properties": {
+    "contractVersion": {"const": 1},
+    "grantId": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "repository": {"const": "LMhdez/gaslux"},
+    "experimentId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{3,79}$"},
+    "requestRef": {"type": "string", "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,179}$"},
+    "preparationSha": {"$ref": "#/$defs/sha"},
+    "authorizationSha": {"$ref": "#/$defs/sha"},
+    "protectedControllerSha": {"$ref": "#/$defs/sha"},
+    "auditedCodeSha": {"$ref": "#/$defs/sha"},
+    "requesterId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+    "externalApproverId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+    "humanReviewId": {"type": "string", "minLength": 8, "maxLength": 256},
+    "scope": {"const": "READ_ONLY_DIAGNOSTIC"},
+    "issuedAt": {"type": "string", "format": "date-time"},
+    "expiresAt": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {"sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"}}
+}
