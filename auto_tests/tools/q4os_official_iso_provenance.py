@@ -36,8 +36,13 @@ def refuse(reason: str) -> None:
 
 def _bounded_unsquashfs(image: Path, member: str, max_bytes: int = 65536) -> str:
     """Read one literal small file; never extract the SquashFS tree."""
-    member_pattern = r"etc/(?:os-release|q4os_version|calamares/(?:settings|modules/bootloader)\.conf)"
-    if not re.fullmatch(member_pattern, member):
+    allowed_members = {
+        "etc/os-release",
+        "etc/q4os_version",
+        "etc/calamares/settings.conf",
+        "etc/calamares/modules/bootloader.conf",
+    }
+    if member not in allowed_members:
         refuse("MEDIA_INSPECT_BAD_CONFIGURATION")
     try:
         result = subprocess.run(
