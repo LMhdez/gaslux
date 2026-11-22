@@ -3,6 +3,7 @@
 Only a sparse regular file under tempfile is created. GPT fixture generation
 is test data only and never replaces the canonical Safety GPT inspector.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -71,9 +72,7 @@ def write_synthetic_gpt(path: Path) -> None:
             header = bytearray(SECTOR)
             header[:8] = b"EFI PART"
             struct.pack_into("<IIII", header, 8, 0x10000, 92, 0, 0)
-            struct.pack_into(
-                "<QQQQ", header, 24, current, alternate, 34, SECTORS - 34
-            )
+            struct.pack_into("<QQQQ", header, 24, current, alternate, 34, SECTORS - 34)
             header[56:72] = uuid.UUID(DISK_GUID).bytes_le
             struct.pack_into("<QIII", header, 72, array_lba, 128, 128, array_crc)
             struct.pack_into("<I", header, 16, zlib.crc32(header[:92]))
@@ -261,9 +260,7 @@ class ZorinUbiquityHandoffTests(unittest.TestCase):
         self.proposal = make_proposal(self.plan, self.snapshot)
 
     def validate(self):
-        return validate_ubiquity_handoff(
-            self.proposal, self.plan, self.snapshot, self.fd
-        )
+        return validate_ubiquity_handoff(self.proposal, self.plan, self.snapshot, self.fd)
 
     def rejected(self, reason):
         with self.assertRaises(UbiquityHandoffDenied) as caught:
@@ -279,8 +276,7 @@ class ZorinUbiquityHandoffTests(unittest.TestCase):
         self.assertEqual(result["writeOperationsAuthorized"], [])
         self.assertFalse(result["productionStorageWritesAuthorized"])
         self.assertFalse(result["windowsInPlaceRollbackProven"])
-        self.assertEqual((before.st_size, before.st_mtime_ns),
-                         (after.st_size, after.st_mtime_ns))
+        self.assertEqual((before.st_size, before.st_mtime_ns), (after.st_size, after.st_mtime_ns))
 
     def test_a_iso_hash_mismatch(self):
         self.proposal["iso"]["sha256"] = "0" * 64
@@ -404,9 +400,7 @@ class ZorinUbiquityHandoffTests(unittest.TestCase):
         rw = os.open(self.path, os.O_RDWR)
         try:
             with self.assertRaises(UbiquityHandoffDenied) as caught:
-                validate_ubiquity_handoff(
-                    self.proposal, self.plan, self.snapshot, rw
-                )
+                validate_ubiquity_handoff(self.proposal, self.plan, self.snapshot, rw)
             self.assertEqual(caught.exception.reason, "E_GPT_GEOMETRY_MISMATCH")
         finally:
             os.close(rw)
