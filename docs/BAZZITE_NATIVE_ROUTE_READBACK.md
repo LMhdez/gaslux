@@ -185,3 +185,72 @@ após tentativas com `--output` e `--image`. **Esta correção não autentica
 QCOW2, instalação, ESP, OSTree, checkpoint ou rollback.** A PR #337
 continua dependência experimental para o contrato partilhado e não concede
 autorização para escrita.
+
+
+## BZD-BOOTC-PREWRITE-SOURCE-01 — upstream bootc v1.17.1
+
+**Inspeção estática de fonte oficial por commit imutável; nenhuma execução
+de bootc, não é uma autorização de escrita.**
+
+- Fonte: `bootc-dev/bootc`, tag `v1.17.1` com objeto anotado
+  `434e0e7e1b2631c65babd0eee4c456fd77fa9070`, apontando para
+  commit `d01e723ae9480fa53aa9db09a7eff0439548e9f6`.
+  A assinatura PGP do tag aparece como `unknown_key` nos metadados GitHub:
+  **não foi validada criptograficamente nesta experiência**.
+- O RPM existente na OCI Bazzite tem NEVRA
+  `bootc-0:1.17.1-1.fc45.x86_64` e ELF SHA-256 anteriormente medido.
+  **Igualdade do número de versão não autentica** patches do SRPM Fedora,
+  flags de build, compilação nem a correspondência de bytes deste commit com
+  o ELF OCI. Não usar este source pin para autorizar o binário.
+- Implementação: `auto_tests/bazzite_bootc_prewrite_source.py` verifica
+  identidade de objeto Git dos ficheiros oficiais inteiros (com hash
+  SHA-256 adicional para registo), confirma os pontos críticos do fluxo e
+  emite `PREWRITE_UNPROVEN` (exit 2). Ficheiro alterado/erro = exit 3.
+  O resultado é sempre deny-only, mesmo num candidato estruturalmente coerente.
+
+### Mapa causal de operações (fonte upstream, não writes observados)
+
+| Ficheiro / função | Condição | Efeito potencial | Juízo Gaslux |
+| --- | --- | --- | --- |
+| `install.rs: install_to_filesystem` | `targeting_host_root` e falta de `/target` | `std::fs::create_dir("/target")` no host, antes de `prepare_install` | Caminho de host existente/ausente não autenticado |
+| `install.rs: prepare_install` | Inicialização do contexto | Pode montar `/tmp`, `/sys` e `efivarfs`; SELinux pode reexecutar processo | Estado/efeitos do host não reconciliados |
+| `install.rs: install_to_filesystem` | `--replace=wipe` | `remove_all_in_dir_no_xdev` apaga conteúdo do root selecionado | **REJEITAR** |
+| `install.rs: clean_boot_directories` | `--replace=alongside`, EFI | Remonta/limpa `/boot`, monta ESP e chama `clean_esp_bootloader_dirs` | **REJEITAR** |
+| `install.rs: clean_esp_bootloader_dirs` | ESP acessível no percurso anterior | `remove_dir_no_xdev` aplicado a `EFI` e `loader` inteiros | **RISCO CONCRETO para Windows Boot Manager** |
+| `install.rs: initialize_ostree_root` | Root vazio/novo, backend OSTree | `ostree admin init-fs --modern .` e reconfiguração do repositório | Primeira mutação de root visível neste ramo, não autorizada |
+| `install.rs: install_container` | Depois de inicializar OSTree | Importação de camadas OCI, commit e deployment OSTree | Identidade do deployment instalado ainda não observada |
+| `bootloader.rs: install_via_bootupd` | Backend OSTree e GRUB detetado | `bootupctl backend install`, escolha por `--filesystem` ou `--device`, possível `--update-firmware --auto` | EFI e NVRAM fora do write-set comprovado |
+| `bootloader.rs: install_systemd_boot` | Backend composefs/systemd-boot | `bootctl install`; `--no-variables` só no ramo `generic_image`, cópia de chaves possível | EFI/NVRAM/Secure Boot não autorizados |
+| `install/baseline.rs` | `to-disk` e particionamento pelo próprio bootc | `wipefs`, `mkfs`, `systemd-repart` | Não atribuir estas operações ao `to-filesystem` sem chamada real |
+
+As funções `to-filesystem` exigem filesystem raiz e partições de
+plataforma **preparados e montados externamente**. A fonte inspecionada
+não comprova o plano GPT 4–6 do Gaslux, nem nomes/UUID/Btrfs subvolumes
+reais, nem que o bootloader escolhido respeite Windows. O ramo
+`--replace=none` passa por `require_empty_rootdir` e depois pela
+inicialização OSTree; isto **não** demonstra que a primeira escrita real
+se limite à raiz nem que `bootupd` preserve a ESP Windows.
+
+### Regressões e decisão
+
+Testes fail-closed recusam: escolha da ESP Windows, ESP estrangeira,
+GUID de disco divergente, bootloader diferente do plano, BIOS/MBR,
+transação trocada, plano parcial, modo `wipe`/`alongside`, GUID inválido,
+campos inesperados, fonte substituída e ficheiros ligados/sobredimensionados.
+Um plano autodeclarado correto continua com
+`destinationIdentityAuthenticated=false`,
+`installationAuthorized=false` e todas as permissões de escrita falsas.
+
+**Primeira escrita potencial:** condicionada ao percurso. Em
+`to-filesystem` com root novo e sem modo `replace`, a primeira mutação
+do root claramente identificada é `ostree admin init-fs`; existe
+preparação de mounts temporários anterior. Em `replace=alongside`,
+a limpeza de ESP é concreta e precede o deployment. Em host-root,
+`mkdir /target` pode acontecer ainda antes de `prepare_install`.
+Nenhum destes ramos foi executado. A primeira escrita efetiva do
+**binário Bazzite** permanece `PREWRITE_UNPROVEN`.
+
+Próxima etapa: revisão Safety independente do diferencial de fonte e
+contratos, seguida de prova de correspondência SRPM Fedora/patches/ELF
+e reconciliação read-only do destino, antes de discutir execução
+de instalador. Nenhum merge ou ativação em catálogo.
