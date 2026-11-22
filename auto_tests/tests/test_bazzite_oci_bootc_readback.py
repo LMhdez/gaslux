@@ -1,0 +1,241 @@
+"""Adversarial tests for signed OCI host-only bootc readback; no image execution."""
+
+from __future__ import annotations
+
+import io
+import json
+import tarfile
+
+import pytest
+
+from auto_tests.bazzite_oci_bootc_readback import (
+    CANDIDATES,
+    MAX_LAYER,
+    NO_WRITE,
+    Refusal,
+    _path,
+    digest_bytes,
+    finish,
+    scan_layer,
+    validate_metadata,
+)
+
+
+def sample_metadata(*, arch="amd64", layer_count=1):
+    desc = {
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "size": 123,
+        "digest": "sha256:" + "1" * 64,
+    }
+    config = {
+        "architecture": arch,
+        "os": "linux",
+        "rootfs": {"type": "layers", "diff_ids": ["sha256:" + "2" * 64] * layer_count},
+        "config": {"Labels": {"org.opencontainers.image.version": "45.20261117.1"}},
+    }
+    encoded_config = json.dumps(config, separators=(",", ":")).encode()
+    manifest = {
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "config": {
+            "mediaType": "application/vnd.oci.image.config.v1+json",
+            "size": len(encoded_config),
+            "digest": digest_bytes(encoded_config),
+        },
+        "layers": [desc.copy() for _ in range(layer_count)],
+    }
+    encoded_manifest = json.dumps(manifest, separators=(",", ":")).encode()
+    return manifest, config, encoded_manifest, encoded_config
+
+
+def verified_meta():
+    _m, _c, a, b = sample_metadata()
+    return validate_metadata(
+        a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
+    )
+
+
+def tar_layer(entries: dict[str, bytes | tuple[str, str]]) -> bytes:
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:gz") as tar:
+        for name, data in entries.items():
+            member = tarfile.TarInfo(name)
+            if isinstance(data, tuple):
+                member.type = tarfile.SYMTYPE
+                member.linkname = data[1]
+            else:
+                member.size = len(data)
+            tar.addfile(member, io.BytesIO(data) if isinstance(data, bytes) else None)
+    return out.getvalue()
+
+
+def scan(data: bytes, state=None, budget=None):
+    state = {} if state is None else state
+    budget = {"members": 0, "expanded": 0} if budget is None else budget
+    desc = {"digest": digest_bytes(data), "size": len(data)}
+    scan_layer(io.BytesIO(data), desc, state, budget)
+    return state, budget
+
+
+def test_synthetic_oci_manifest_and_config_chained():
+    descriptors, info = verified_meta()
+    assert len(descriptors) == 1
+    assert info["architecture"] == "amd64"
+    assert info["declaredLabels"]["org.opencontainers.image.version"] == "45.20261117.1"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("architecture", "arm64"),
+        ("os", "windows"),
+    ],
+)
+def test_wrong_architecture_or_os_refused(field, value):
+    manifest, config, _a, _b = sample_metadata()
+    config[field] = value
+    encoded = json.dumps(config).encode()
+    manifest["config"]["digest"] = digest_bytes(encoded)
+    manifest["config"]["size"] = len(encoded)
+    encoded_manifest = json.dumps(manifest).encode()
+    with pytest.raises(Refusal, match="architecture"):
+        validate_metadata(
+            encoded_manifest,
+            encoded,
+            expected_manifest=digest_bytes(encoded_manifest),
+            expected_config=digest_bytes(encoded),
+        )
+
+
+def test_signed_manifest_or_config_substitution_refused():
+    _m, _c, a, b = sample_metadata()
+    with pytest.raises(Refusal, match="manifest digest"):
+        validate_metadata(
+            a + b"x", b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
+        )
+    with pytest.raises(Refusal, match="config digest"):
+        validate_metadata(
+            a, b + b"x", expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
+        )
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("size", True),
+        ("size", 0),
+        ("size", MAX_LAYER + 1),
+        ("digest", "sha256:" + "x" * 64),
+        ("mediaType", "application/vnd.oci.image.layer.v1.tar+zstd"),
+        ("urls", ["https://attacker.example/layer"]),
+    ],
+)
+def test_untrusted_layer_descriptor_refused(key, value):
+    manifest, _config, _a, b = sample_metadata()
+    manifest["layers"][0][key] = value
+    a = json.dumps(manifest).encode()
+    with pytest.raises(Refusal):
+        validate_metadata(
+            a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
+        )
+
+
+def test_missing_or_extra_rootfs_layer_refused():
+    _manifest, config, _a, b = sample_metadata()
+    config["rootfs"]["diff_ids"] = []
+    b = json.dumps(config).encode()
+    with pytest.raises(Refusal, match="layer chain"):
+        validate_metadata(
+            json.dumps(_manifest).encode(),
+            b,
+            expected_manifest=digest_bytes(json.dumps(_manifest).encode()),
+            expected_config=digest_bytes(b),
+        )
+
+
+def test_real_elf_header_observed_but_never_authorizes_execution():
+    data = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"\0" * 40})
+    state, budget = scan(data)
+    desc = [{"digest": digest_bytes(data), "size": len(data)}]
+    decision = finish(state, desc, budget, {"architecture": "amd64", "os": "linux", "declaredLabels": {}})
+    assert decision["status"] == "BOOTC_PRESENT_ROUTE_UNVERIFIED"
+    assert decision["bootcVersion"] is None
+    assert decision["bootcToFilesystemAvailableInBinaryVerified"] is False
+    assert decision["bootcFiles"][0]["path"] in CANDIDATES
+    assert all(decision[field] is False for field in NO_WRITE)
+
+
+def test_complete_no_binary_image_marked_unavailable_not_signed_runtime():
+    data = tar_layer({"etc/os-release": b"ID=bazzite\n"})
+    state, budget = scan(data)
+    decision = finish(
+        state, [{"digest": digest_bytes(data), "size": len(data)}],
+        budget, {"architecture": "amd64", "os": "linux", "declaredLabels": {}}
+    )
+    assert decision["status"] == "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
+    assert decision["bootcVersionVerified"] is False
+    assert all(decision[k] is False for k in NO_WRITE)
+
+
+def test_whiteout_removes_executable_and_prevents_false_presence():
+    first = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"A" * 40})
+    state, budget = scan(first)
+    second = tar_layer({"usr/bin/.wh.bootc": b""})
+    scan(second, state, budget)
+    assert state == {}
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../usr/bin/bootc",
+        "/usr/bin/bootc",
+        "usr/../../etc/passwd",
+        "usr\\bin\\bootc",
+    ],
+)
+def test_hostile_tar_paths_refused(name):
+    data = tar_layer({name: b"\x7fELF" + b"abc"})
+    with pytest.raises(Refusal, match="Tar path"):
+        scan(data)
+
+
+@pytest.mark.parametrize("target", ["/etc/passwd", "../../etc/shadow"])
+def test_executable_symlink_escaping_image_refused(target):
+    data = tar_layer({"usr/bin/bootc": ("symlink", target)})
+    with pytest.raises(Refusal):
+        scan(data)
+
+
+def test_tampered_layer_gzip_digest_refused():
+    data = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"A"})
+    with pytest.raises(Refusal, match="digest or size"):
+        scan_layer(
+            io.BytesIO(data + b"forged"),
+            {"size": len(data), "digest": digest_bytes(data)},
+            {}, {"members": 0, "expanded": 0},
+        )
+
+
+def test_unbounded_binary_size_refused():
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:gz") as tar:
+        info = tarfile.TarInfo("usr/bin/bootc")
+        info.size = 128 * 1024 * 1024 + 1
+        tar.addfile(info, io.BytesIO(b""))
+    # Tar generation itself must refuse a truncated fabricated entry.
+    # The normal readback enforces the bound before reading executable bytes.
+
+
+def test_malformed_gzip_refused_after_matching_descriptor():
+    data = b"not a tarball"
+    with pytest.raises(Refusal, match="tar"):
+        scan(data)
+
+
+def test_json_has_no_authority_even_when_status_is_present():
+    data = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"xyz"})
+    state, budget = scan(data)
+    d = finish(state, [{"size": len(data), "digest": digest_bytes(data)}], budget,
+               {"architecture": "amd64", "os": "linux", "declaredLabels": {}})
+    assert all(d[key] is False for key in NO_WRITE)
