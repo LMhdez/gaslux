@@ -22,10 +22,10 @@ class AgentImplementationTests(unittest.TestCase):
         # including after earlier autonomous product PRs have been merged.
         import re
         self.source = re.sub(
-            r'^\s*\{ "00000816", Mapping\("pt"\) \},\n',
+            r'^[ \t]*\{ "00000816", Mapping\("pt"\) \},\n',
             '', self.live_source, flags=re.MULTILINE)
         self.source = re.sub(
-            r'^\s*\{ "00000416", Mapping\("br"\) \},\n',
+            r'^[ \t]*\{ "00000416", Mapping\("br"\) \},\n',
             '', self.source, flags=re.MULTILINE)
         self.missions = json.loads((ROOT / "docs/autonomy/agent_missions.json").read_text())
         self.pt = next(x for x in self.missions["tasks"] if x["role"] == "mint")
