@@ -99,13 +99,16 @@ jobs:
           python --version > host-tools.txt
           cosign version >> host-tools.txt
           gh --version >> host-tools.txt
-          if ! cosign verify --key assets/live/bazzite_cosign_20261120.pub \
+          if ! cosign verify --new-bundle-format=false --key assets/live/bazzite_cosign_20261120.pub \
             "$IMAGE" > cosign-signed-oci.json; then
             printf '%s\n' '{"status":"REFUSED_UNAUTHENTICATED_OCI","reason":"immutable OCI cosign signature verification failed"}' \
               > bazzite-bootc-oci-readback.json
             exit 2
           fi
           if ! gh attestation verify "oci://$IMAGE" --repo ublue-os/bazzite \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --signer-workflow github.com/ublue-os/bazzite/.github/workflows/build.yml \
+            --source-ref refs/heads/main \
             > github-slsa-oci-verification.txt; then
             printf '%s\n' '{"status":"REFUSED_UNAUTHENTICATED_OCI","reason":"immutable OCI SLSA verification failed"}' \
               > bazzite-bootc-oci-readback.json
