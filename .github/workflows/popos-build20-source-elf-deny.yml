@@ -1,0 +1,83 @@
+name: Pop build20 source-to-ELF provenance DENY ONLY
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/popos-build20-source-elf-deny.yml
+      - auto_tests/tools/gaslux_popos_build20_source_elf.py
+      - auto_tests/test_popos_build20_source_elf.py
+      - schemas/popos-build20-source-elf-deny.schema.json
+      - docs/POP_OS_DISTINST_BUILD20_SOURCE_ELF.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pop-build20-source-elf-deny-only
+  cancel-in-progress: false
+
+jobs:
+  provenance-readonly-deny:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify runner and prepare lint-only dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          python3 -m venv "$RUNNER_TEMP/pop-b20-venv"
+          "$RUNNER_TEMP/pop-b20-venv/bin/pip" install --disable-pip-version-check \
+            'ruff==0.14.4' 'jsonschema==4.25.1'
+      - name: Source provenance fixture regressions and immutable DENY
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PATH="$RUNNER_TEMP/pop-b20-venv/bin:$PATH"
+          export PYTHONPATH="auto_tests:auto_tests/tools"
+          python3 -m compileall -q \
+            auto_tests/tools/gaslux_popos_build20_source_elf.py \
+            auto_tests/test_popos_build20_source_elf.py
+          ruff check auto_tests/tools/gaslux_popos_build20_source_elf.py \
+            auto_tests/test_popos_build20_source_elf.py
+          ruff format --check auto_tests/tools/gaslux_popos_build20_source_elf.py \
+            auto_tests/test_popos_build20_source_elf.py
+          python3 -m unittest auto_tests.test_popos_build20_source_elf -v
+          python3 -m unittest auto_tests.test_popos_distinst_prewrite_gap -v
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+          path = Path("schemas/popos-build20-source-elf-deny.schema.json")
+          schema = json.loads(path.read_text())
+          Draft202012Validator.check_schema(schema)
+          props = schema["properties"]
+          assert schema["additionalProperties"] is False
+          assert set(schema["required"]) == set(props)
+          assert props["result"]["const"] == "SOURCE_TO_ELF_UNPROVEN"
+          for key in (
+              "sourceToElfCorrespondenceVerified",
+              "signedBuildinfoVerified",
+              "aptRepositorySnapshotVerified",
+              "cargoLockOfActualBuildVerified",
+              "elfBuildIdSourceBindingVerified",
+              "isoGpgVerificationPerformedByWorkflow",
+              "firstPersistentWriteProvenForPinnedElf",
+              "firstStateChangeProvenForPinnedElf",
+              "distinstExecuted",
+              "distinstExecutionAuthorized",
+              "productionInstallationAuthorized",
+              "sameDiskDualBootVerified",
+              "stable",
+          ):
+              assert props[key]["const"] is False, key
+          print("GASLUX_POP_BUILD20_SOURCE_TO_ELF_UNPROVEN=1")
+          print("GASLUX_POP_BUILD20_DISTINST_EXECUTION_AUTHORIZED=0")
+          PY
+          echo "No ISO download or target execution in this job: metadata fixtures only." >> "$GITHUB_STEP_SUMMARY"
+          echo "SOURCE_TO_INSTALLED_ELF_UNPROVEN; DENY_NO_WRITER." >> "$GITHUB_STEP_SUMMARY"
