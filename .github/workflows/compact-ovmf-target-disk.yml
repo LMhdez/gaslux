@@ -98,6 +98,14 @@ jobs:
               "other_planned_reserves_bytes": extra,
               "upper_bound_with_reserves_bytes": bound + extra,
               "deficit_bytes": max(0, bound + extra - target["measured_available_bytes"]),
+              # A pinned Windows backing plus a growing COW overlay coexist.
+              # Never misrepresent the one-image estimate as that phase's peak.
+              "baseline_plus_overlay_unbounded_peak_bytes": 2 * bound + extra,
+              "baseline_plus_overlay_unbounded_deficit_bytes": max(
+                  0, 2 * bound + extra - target["measured_available_bytes"]
+              ),
+              "actual_frozen_windows_baseline_bytes": None,
+              "overlay_growth_limit_verified": False,
               "quota_verified": False,
               "lab_writer_admitted": False,
               "windows_guest_booted": False,
