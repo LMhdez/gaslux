@@ -117,3 +117,28 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   QCOW2 guest GPT and checkpoint authenticity **UNPROVEN**;
   Guest channel, write and installation authority **DENIED**.
   No release or stability claim.
+
+## 2026-11-22 — AUTH-DEST-128G-READONLY-01, separate dependent branch
+
+- [Actions #45034846402](https://github.com/LMhdez/gaslux/actions/runs/45034846402):
+  **SUCCESS** on tested implementation SHA
+  `6a94093271610dbd2ff908c2b8692e332e1585a1`. Real QEMU started
+  **paused**, a test-owned RAW backing was created with **128 GiB apparent
+  size but sparse allocation**, and a small QCOW2 overlay was observed
+  read-only. No Windows image/guest/source authentication was provided.
+- New bounds: QCOW2 apparent 64 MiB, RAW virtual 128 GiB, each image
+  allocated maximum 32 MiB, total allocated 64 MiB, checkpoint 64 KiB,
+  `qemu-img` JSON 64 KiB, inspection deadline 15 s default. Unknown
+  quota, short read, I/O failure, mutation, FD swap, backing mismatch,
+  checkpoint foreign transaction and user-space timeout all deny.
+  `FULL_BACKING_HASH_NOT_COMPLETED` is the **correct outcome** of a
+  structurally valid large-disk sample.
+- Existing #337 64 MiB small disk positives continue full SHA-256;
+  dependent branch addresses independent Safety D-337-01 short positive
+  `pread` without altering parent #337. The index does **not**
+  treat the 128 GiB sample/geometry as whole-file authentication.
+  `guestChannelAuthenticated=false`,
+  `productionStorageWritesAuthorized=false`,
+  `rollbackProven=false`, `sameDiskDualBootVerified=false`,
+  `stable=false`.
+  See [resource and trust contract](AUTH_DEST_128G_READONLY.md).

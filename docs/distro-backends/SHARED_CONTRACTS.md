@@ -117,3 +117,28 @@ the internal QEMU backend pointer to the original FD. The QCOW2 backing
 RAW GPT is **not** the guest-visible GPT. Checkpoint bytes/hash are not
 proof of Windows recovery. ISO/OCI signed provenance remains per-backend.
 See [detailed property matrix](../AUTHENTICATED_DESTINATION_READONLY.md).
+
+## 2026-11-22 — 128 GiB sparse virtual-capacity diagnostic (dependent #337)
+
+Separate branch `fix/auth-dest-128g-readonly-20261122` preserves the
+parent #337 at `7e0d1a27aa16f012fae41e2979fc9791066a7ee7`.
+It adds a bounded **structural** read-only observer for 128 GiB sparse RAW
+backing behind a small QCOW2 overlay (QEMU stopped). The 128 GiB virtual
+capacity is **not** the apparent host QCOW2 length or its allocated disk
+blocks. The experiment obtains the GPT via canonical FD parser without
+hashing 128 GiB. It **explicitly refuses**
+`FULL_BACKING_HASH_NOT_COMPLETED` after measuring structure and returns
+`DENY_NO_WRITER` only in bounded failure diagnostics; never claims
+authenticated full disk contents or a genuine Windows source/checkpoint.
+
+Independent Safety D-337-01 on the unchanged parent found a real positive
+short-`pread` hole in the old full-hash function. The dependent branch
+fixes exact length and cumulative-byte accounting, plus full checkpoint
+receipt reads, with RED/GREEN regression. It does **not** merge a finding
+away or change the parent during its audit. Detailed limits and unproven
+trust boundaries: [AUTH_DEST_128G_READONLY](../AUTH_DEST_128G_READONLY.md).
+
+[Read-only CI #45034846402](https://github.com/LMhdez/gaslux/actions/runs/45034846402)
+**SUCCESS** at `6a94093271610dbd2ff908c2b8692e332e1585a1`.
+No production write, guest boot, Windows restoration, ESP/BCD/WinRE,
+firmware changes, full RAW hash or release/stability authority.

@@ -107,6 +107,11 @@ GitHub-hosted Linux with immutable #267/#286/#327 dependencies and inherited
 and is not eligible for integration until Safety has cleared all dependent
 changes and CI on the exact HEAD. No physical disks, Windows or guest OS.
 
-**Validation record:** populate with exact final CI links and SHA after
-running the new workflow. Do not substitute the parent #337's green CI for
-this branch.
+**Verified base implementation CI:** [Actions #45034846402](https://github.com/LMhdez/gaslux/actions/runs/45034846402)
+completed **SUCCESS** on commit `6a94093271610dbd2ff908c2b8692e332e1585a1`:
+real stopped QEMU with a synthetic sparse 128 GiB backing, all newly
+parametrized deny-only resource and identity tests, complete small-image
+#337 regression suite, pinned original #327/#267 tests, HOST/FD, Ruff,
+compileall, and six-backend capability schema contracts. The CI proves
+local lab observation only, not a 128 GiB *Windows* image, complete 128 GiB
+content hash, guest provenance, Windows rollback or installation.
