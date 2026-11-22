@@ -94,8 +94,8 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
         source = (
             b"# mkfs.ext4 comment must be ignored\n"
             b". /lib/partman/lib/base.sh\n"
-            b"mkfs.ext4 \"$dev\"\n"
-            b"eval \"$command\"\n"
+            b'mkfs.ext4 "$dev"\n'
+            b'eval "$command"\n'
         )
         report = static_shell_references(source, "usr/lib/partman/lib/commit.sh")
         tokens = {x["token"] for x in report["effectCandidates"]}
