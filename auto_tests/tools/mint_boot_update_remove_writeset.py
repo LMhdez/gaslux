@@ -5,6 +5,7 @@ A forensic *inventory*, NOT a boot writer, policy waiver or live ESP proof.
 Do not pass this result to grub-install, apt, efibootmgr or rollback to
 authorize mutations. Source pins mean unreviewed code changes DENY analysis.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -93,8 +94,13 @@ def _read_pinned_regular(path: Path, root: Path, limit: int) -> bytes:
         after = os.fstat(fd)
         _require(
             (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
-            == (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns,
-                opened.st_ctime_ns),
+            == (
+                opened.st_dev,
+                opened.st_ino,
+                opened.st_size,
+                opened.st_mtime_ns,
+                opened.st_ctime_ns,
+            ),
             "source identity or content changed during scan",
         )
         current = path.lstat()
@@ -151,79 +157,142 @@ def classify_write_set(*, firmware: str, operation: str, preferred_active: bool)
     entries: list[dict] = []
 
     def add(target: str, nature: str, source: str, impact: str) -> None:
-        entries.append({
-            "target": target, "operation": nature, "source": source,
-            "impact": impact, "writeAuthorized": False,
-        })
+        entries.append(
+            {
+                "target": target,
+                "operation": nature,
+                "source": source,
+                "impact": impact,
+                "writeAuthorized": False,
+            }
+        )
 
     if operation == "install":
-        add("Linux root /boot and /etc", "initramfs/grub configuration", 
-            "assets/live/configure-target-main.sh", "LINUX")
+        add(
+            "Linux root /boot and /etc",
+            "initramfs/grub configuration",
+            "assets/live/configure-target-main.sh",
+            "LINUX",
+        )
         if firmware == "bios":
-            add("selected disk MBR boot code", "grub-install i386-pc --recheck", 
-                "assets/live/libertix-install-main.sh", "PROTECTED_DISK")
+            add(
+                "selected disk MBR boot code",
+                "grub-install i386-pc --recheck",
+                "assets/live/libertix-install-main.sh",
+                "PROTECTED_DISK",
+            )
         else:
-            add("ESP/EFI/Libertix/*", "signed GRUB EFI installation", 
-                "assets/live/libertix-uefi-adapter.sh", "SHARED_ESP")
-            add("NVRAM/Boot####, BootOrder, BootNext", "boot entry staging/reordering", 
-                "assets/live/libertix-uefi-adapter.sh", "FIRMWARE")
+            add(
+                "ESP/EFI/Libertix/*",
+                "signed GRUB EFI installation",
+                "assets/live/libertix-uefi-adapter.sh",
+                "SHARED_ESP",
+            )
+            add(
+                "NVRAM/Boot####, BootOrder, BootNext",
+                "boot entry staging/reordering",
+                "assets/live/libertix-uefi-adapter.sh",
+                "FIRMWARE",
+            )
     elif operation == "update":
-        add("Linux root /boot/grub/grub.cfg", "atomic candidate validation and replace",
-            "assets/live/libertix-update-grub.sh", "LINUX")
-        add("Linux root /boot/initrd.img-* and /boot/vmlinuz-*",
+        add(
+            "Linux root /boot/grub/grub.cfg",
+            "atomic candidate validation and replace",
+            "assets/live/libertix-update-grub.sh",
+            "LINUX",
+        )
+        add(
+            "Linux root /boot/initrd.img-* and /boot/vmlinuz-*",
             "package/kernel/initramfs hooks (exact package write set not established)",
-            "assets/live/configure-target-main.sh", "UNKNOWN_PACKAGE")
+            "assets/live/configure-target-main.sh",
+            "UNKNOWN_PACKAGE",
+        )
         if firmware == "bios":
-            add("selected disk MBR/PBR", "possible external grub package maintainer hooks",
-                "external dpkg package scripts not audited", "UNKNOWN_EXTERNAL_WRITER")
+            add(
+                "selected disk MBR/PBR",
+                "possible external grub package maintainer hooks",
+                "external dpkg package scripts not audited",
+                "UNKNOWN_EXTERNAL_WRITER",
+            )
         else:
-            add("ESP/EFI/Libertix/{shimx64.efi,grubx64.efi,mmx64.efi}",
+            add(
+                "ESP/EFI/Libertix/{shimx64.efi,grubx64.efi,mmx64.efi}",
                 "package-signed EFI chain synchronization",
-                "assets/live/libertix-sync-efi.sh", "SHARED_ESP")
-            add("ESP/EFI/Libertix/secure-boot-chain.json",
+                "assets/live/libertix-sync-efi.sh",
+                "SHARED_ESP",
+            )
+            add(
+                "ESP/EFI/Libertix/secure-boot-chain.json",
                 "installed EFI trust evidence replacement",
-                "assets/live/libertix-sync-efi.sh", "SHARED_ESP")
+                "assets/live/libertix-sync-efi.sh",
+                "SHARED_ESP",
+            )
             if preferred_active:
                 for name in (
-                    "bootmgfw.efi", "bootmgfw.libertix-windows.efi",
-                    "grubx64.efi", "mmx64.efi", "grub.cfg",
+                    "bootmgfw.efi",
+                    "bootmgfw.libertix-windows.efi",
+                    "grubx64.efi",
+                    "mmx64.efi",
+                    "grub.cfg",
                 ):
-                    add(f"ESP/EFI/Microsoft/Boot/{name}",
+                    add(
+                        f"ESP/EFI/Microsoft/Boot/{name}",
                         "conditional preferred-boot-path synchronization",
                         "assets/live/libertix-preferred-boot-path.py",
-                        "WINDOWS_BOOT_CRITICAL")
-                add("ESP/EFI/Libertix/BootGuardianReference/*",
+                        "WINDOWS_BOOT_CRITICAL",
+                    )
+                add(
+                    "ESP/EFI/Libertix/BootGuardianReference/*",
                     "conditional verified-reference chain synchronization",
                     "assets/live/libertix-preferred-boot-path.py",
-                    "SHARED_ESP")
-            add("EFI/BOOT and firmware BootOrder/BootNext",
+                    "SHARED_ESP",
+                )
+            add(
+                "EFI/BOOT and firmware BootOrder/BootNext",
                 "unobserved external maintainer hooks; no no-write guarantee",
-                "external dpkg/firmware scripts not audited", "UNKNOWN_EXTERNAL_WRITER")
+                "external dpkg/firmware scripts not audited",
+                "UNKNOWN_EXTERNAL_WRITER",
+            )
     else:
-        add("owned Linux partition and associated Windows NTFS geometry",
+        add(
+            "owned Linux partition and associated Windows NTFS geometry",
             "verified uninstall recovery and shrink reversal",
-            "Scripts/libertix-uefi-recovery-agent.ps1" if firmware == "uefi"
+            "Scripts/libertix-uefi-recovery-agent.ps1"
+            if firmware == "uefi"
             else "Windows BIOS recovery (writer not statically attested here)",
-            "PROTECTED_DISK")
+            "PROTECTED_DISK",
+        )
         if firmware == "uefi":
-            add("ESP/EFI/Libertix and EFI/LibertixInstaller",
+            add(
+                "ESP/EFI/Libertix and EFI/LibertixInstaller",
                 "transaction-scoped removal (historical shell paths also use rm -rf)",
-                "assets/live/libertix-uefi-adapter.sh", "SHARED_ESP")
-            add("NVRAM/Boot####, BootOrder, BootNext; BCD firmware entries",
+                "assets/live/libertix-uefi-adapter.sh",
+                "SHARED_ESP",
+            )
+            add(
+                "NVRAM/Boot####, BootOrder, BootNext; BCD firmware entries",
                 "cleanup and restoration using Windows recovery state",
-                "Scripts/uefi/Libertix.Uefi.Firmware.ps1", "FIRMWARE_AND_BCD")
+                "Scripts/uefi/Libertix.Uefi.Firmware.ps1",
+                "FIRMWARE_AND_BCD",
+            )
             if preferred_active:
-                add("ESP/EFI/Microsoft/Boot/*",
+                add(
+                    "ESP/EFI/Microsoft/Boot/*",
                     "exceptional preferred path restore; hash/identity proof required",
                     "Scripts/modules/Libertix.PreferredBootPath.psm1",
-                    "WINDOWS_BOOT_CRITICAL")
+                    "WINDOWS_BOOT_CRITICAL",
+                )
         else:
-            add("selected disk MBR/PBR, Windows active flag and BCD",
+            add(
+                "selected disk MBR/PBR, Windows active flag and BCD",
                 "BIOS rollback restoring saved boot state",
-                "assets/live/libertix-bios-adapter.sh", "PROTECTED_DISK")
+                "assets/live/libertix-bios-adapter.sh",
+                "PROTECTED_DISK",
+            )
     return {
         "schema": "gaslux-mint-boot-update-remove-writeset-readonly-v1",
-        "firmware": firmware, "operation": operation,
+        "firmware": firmware,
+        "operation": operation,
         "preferredPathActiveInput": preferred_active,
         "writeSet": entries,
         "sourceInspectionOnly": True,
@@ -236,28 +305,32 @@ def classify_write_set(*, firmware: str, operation: str, preferred_active: bool)
     }
 
 
-ESP_AUDIT_FILES = frozenset({
-    "EFI/Libertix/.libertix-owner",
-    "EFI/Libertix/shimx64.efi",
-    "EFI/Libertix/grubx64.efi",
-    "EFI/Libertix/mmx64.efi",
-    "EFI/Libertix/preferred-boot-path.json",
-    "EFI/Microsoft/Boot/bootmgfw.efi",
-    "EFI/Microsoft/Boot/bootmgfw.libertix-windows.efi",
-    "EFI/BOOT/BOOTX64.EFI",
-})
+ESP_AUDIT_FILES = frozenset(
+    {
+        "EFI/Libertix/.libertix-owner",
+        "EFI/Libertix/shimx64.efi",
+        "EFI/Libertix/grubx64.efi",
+        "EFI/Libertix/mmx64.efi",
+        "EFI/Libertix/preferred-boot-path.json",
+        "EFI/Microsoft/Boot/bootmgfw.efi",
+        "EFI/Microsoft/Boot/bootmgfw.libertix-windows.efi",
+        "EFI/BOOT/BOOTX64.EFI",
+    }
+)
 
 
 def inspect_esp_file(esp: Path, relative: str) -> dict:
     """Read-only synthetic/authorized mount inventory: never follow a path link."""
-    _require(type(relative) is str and relative in ESP_AUDIT_FILES,
-             "unrecognized EFI target: refuse")
+    _require(
+        type(relative) is str and relative in ESP_AUDIT_FILES, "unrecognized EFI target: refuse"
+    )
     _require(type(esp) is type(Path()) and esp.is_absolute(), "absolute ESP path required")
-    _require(esp.name not in {"", ".", ".."} and not esp.is_symlink(),
-             "unsafe ESP root")
+    _require(esp.name not in {"", ".", ".."} and not esp.is_symlink(), "unsafe ESP root")
     base = esp.lstat()
-    _require(stat.S_ISDIR(base.st_mode) and base.st_uid == os.getuid(),
-             "ESP root is not an owned directory")
+    _require(
+        stat.S_ISDIR(base.st_mode) and base.st_uid == os.getuid(),
+        "ESP root is not an owned directory",
+    )
     parts = PurePosixPath(relative).parts
     current = esp
     for component in parts[:-1]:
@@ -266,14 +339,17 @@ def inspect_esp_file(esp: Path, relative: str) -> dict:
             mode = current.lstat().st_mode
         except FileNotFoundError:
             return {"path": relative, "status": "ABSENT", "writeAuthorized": False}
-        _require(stat.S_ISDIR(mode) and not stat.S_ISLNK(mode),
-                 "EFI path contains a symlink or non-directory ancestor")
+        _require(
+            stat.S_ISDIR(mode) and not stat.S_ISLNK(mode),
+            "EFI path contains a symlink or non-directory ancestor",
+        )
     try:
         data = _read_pinned_regular(current / parts[-1], esp, ESP_FILE_BYTE_LIMIT)
     except FileNotFoundError:
         return {"path": relative, "status": "ABSENT", "writeAuthorized": False}
     return {
-        "path": relative, "status": "OBSERVED_READONLY",
+        "path": relative,
+        "status": "OBSERVED_READONLY",
         "sha256": hashlib.sha256(data).hexdigest(),
         "bytes": len(data),
         "sourceIdentityAndMountAuthenticated": False,
@@ -283,8 +359,10 @@ def inspect_esp_file(esp: Path, relative: str) -> dict:
 
 def audit_esp_snapshot(esp: Path, run_id: str) -> dict:
     """A marker is NOT proof of ownership or permission to replace/delete."""
-    _require(type(run_id) is str and TRANSACTION.fullmatch(run_id) is not None,
-             "invalid transaction identifier")
+    _require(
+        type(run_id) is str and TRANSACTION.fullmatch(run_id) is not None,
+        "invalid transaction identifier",
+    )
     files: dict[str, dict] = {}
     issues: list[str] = []
     for relative in sorted(ESP_AUDIT_FILES):
@@ -292,7 +370,8 @@ def audit_esp_snapshot(esp: Path, run_id: str) -> dict:
             files[relative] = inspect_esp_file(esp, relative)
         except (OSError, BootWriteSetError):
             files[relative] = {
-                "path": relative, "status": "BLOCKED_PATH_IDENTITY",
+                "path": relative,
+                "status": "BLOCKED_PATH_IDENTITY",
                 "writeAuthorized": False,
             }
             issues.append(relative)
