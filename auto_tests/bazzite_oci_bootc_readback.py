@@ -9,6 +9,7 @@ binary observation still refuses installation, GPT, EFI, NVRAM and guest access.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import posixpath
@@ -140,7 +141,7 @@ def validate_metadata(
         total += size
         if total > MAX_TOTAL:
             raise Refusal("Total compressed layers exceed inspection budget")
-        result.append({"digest": sha, "size": size, "mediaType": d["mediaType"]})
+        result.append({"digest": sha, "size": size, "mediaType": d["mediaType"], "diffId": diffid})
     labels = _obj(_obj(config.get("config"), "runtime config").get("Labels") or {}, "labels")
     relevant = {}
     for k, v in labels.items():
@@ -182,8 +183,47 @@ def _link(path: str, target: str) -> str:
     return _path(normalized)
 
 
+
+class _MeasuredTarStream:
+    """Hash ALL uncompressed layer bytes (including TAR padding/trailing bytes).
+
+    TAR iteration can stop at two zero blocks. Draining the decompressor is
+    mandatory before accepting the OCI config rootfs.diff_ids chain.
+    """
+
+    def __init__(self, source, budgets: dict):
+        self.source = source
+        self.budgets = budgets
+        self.hash = hashlib.sha256()
+        self.count = 0
+
+    def read(self, amount: int = -1) -> bytes:
+        if amount is None or amount < 0:
+            amount = 1024 * 1024
+        part = self.source.read(min(amount, 1024 * 1024))
+        self.count += len(part)
+        self.budgets["expandedStreamBytes"] = (
+            self.budgets.get("expandedStreamBytes", 0) + len(part)
+        )
+        if self.budgets["expandedStreamBytes"] > MAX_EXPANDED:
+            raise Refusal("Actual decompressed OCI stream exceeds safety budget")
+        self.hash.update(part)
+        return part
+
+    def drain(self) -> None:
+        while self.read(1024 * 1024):
+            pass
+
+    @property
+    def digest(self) -> str:
+        return "sha256:" + self.hash.hexdigest()
+
+
 def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
-    """Overlay only candidate bootc path metadata, never extract tar members."""
+    """Verify compressed and uncompressed digests; never extract tar members."""
+    expected_diffid = descriptor.get("diffId")
+    if not isinstance(expected_diffid, str) or not DIGEST.fullmatch(expected_diffid):
+        raise Refusal("Missing or malformed OCI rootfs diff-id")
     file.seek(0)
     sha = hashlib.sha256()
     total = 0
@@ -201,14 +241,13 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
     try:
         with ExitStack() as stack:
             if descriptor.get("mediaType") == ZSTD_LAYER:
-                reader = stack.enter_context(
+                decompressor = stack.enter_context(
                     zstd.ZstdDecompressor(max_window_size=128 * 1024 * 1024).stream_reader(file)
                 )
-                mode = "r|"
             else:
-                reader = file
-                mode = "r|gz"
-            archive = stack.enter_context(tarfile.open(fileobj=reader, mode=mode))
+                decompressor = stack.enter_context(gzip.GzipFile(fileobj=file, mode="rb"))
+            measured = _MeasuredTarStream(decompressor, budgets)
+            archive = stack.enter_context(tarfile.open(fileobj=measured, mode="r|"))
             count = 0
             for member in archive:
                 count += 1
@@ -270,6 +309,10 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     entries[name] = {"kind": "hardlink", "target": target}
                 else:
                     entries.pop(name, None)
+            measured.drain()
+            if measured.digest != expected_diffid:
+                raise Refusal("OCI uncompressed diff-id mismatch")
+            budgets["diffIdsVerified"] = budgets.get("diffIdsVerified", 0) + 1
     except (tarfile.TarError, EOFError, OSError, zstd.ZstdError) as exc:
         raise Refusal("Invalid or unsupported OCI layer tar") from exc
 
@@ -350,6 +393,8 @@ def download_registry() -> dict:
 
 def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) -> dict:
     """Decision only after scanning ALL signed, immutable OCI layers."""
+    if budgets.get("diffIdsVerified", 0) != len(descriptors):
+        raise Refusal("Not all OCI uncompressed diff-ids verified")
     matched = []
     unresolved = []
     for path in sorted(CANDIDATES):
@@ -394,6 +439,9 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
         "layersVerified": len(descriptors),
         "totalCompressedBytes": sum(d["size"] for d in descriptors),
         "expandedBytesDeclared": budgets["expanded"],
+        "expandedStreamBytesHashed": budgets.get("expandedStreamBytes", 0),
+        "diffIdsVerified": budgets["diffIdsVerified"],
+        "allUncompressedLayerDigestsVerified": True,
         "windowsEspPreservationVerified": False,
         "btrfsSubvolumesVerified": False,
         "bootloaderAndNVRAMWriteSetVerified": False,

@@ -78,7 +78,11 @@ def tar_layer(entries: dict[str, bytes | tuple[str, str]]) -> bytes:
 def scan(data: bytes, state=None, budget=None):
     state = {} if state is None else state
     budget = {"members": 0, "expanded": 0} if budget is None else budget
-    desc = {"digest": digest_bytes(data), "size": len(data)}
+    try:
+        expanded = gzip.decompress(data)
+    except (OSError, EOFError):
+        expanded = b"invalid-layer"
+    desc = {"digest": digest_bytes(data), "size": len(data), "diffId": digest_bytes(expanded)}
     scan_layer(io.BytesIO(data), desc, state, budget)
     return state, budget
 
@@ -251,7 +255,7 @@ def test_tampered_layer_gzip_digest_refused():
     with pytest.raises(Refusal, match="digest or size"):
         scan_layer(
             io.BytesIO(data + b"forged"),
-            {"size": len(data), "digest": digest_bytes(data)},
+            {"size": len(data), "digest": digest_bytes(data), "diffId": digest_bytes(b"tar")},
             {},
             {"members": 0, "expanded": 0},
         )
@@ -272,6 +276,7 @@ def test_valid_zstandard_layer_replays_exact_bootc_elf_without_executing():
         "digest": digest_bytes(zbytes),
         "size": len(zbytes),
         "mediaType": ZSTD_LAYER,
+        "diffId": digest_bytes(gzip.decompress(gz)),
     }
     state = {}
     budget = {"members": 0, "expanded": 0}
@@ -292,7 +297,7 @@ def test_invalid_zstandard_payload_with_matching_fake_descriptor_refused():
     with pytest.raises(Refusal, match="OCI layer tar"):
         scan_layer(
             io.BytesIO(forged),
-            {"digest": digest_bytes(forged), "size": len(forged), "mediaType": ZSTD_LAYER},
+            {"digest": digest_bytes(forged), "size": len(forged), "mediaType": ZSTD_LAYER, "diffId": digest_bytes(b"tar")},
             {},
             {"members": 0, "expanded": 0},
         )
@@ -314,3 +319,88 @@ def test_json_has_no_authority_even_when_status_is_present():
         {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
     )
     assert all(d[key] is False for key in NO_WRITE)
+
+
+def test_oci_config_diffid_is_passed_to_every_layer_descriptor():
+    _manifest, _config, a, b = sample_metadata()
+    desc, _info = validate_metadata(
+        a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
+    )
+    assert desc[0]["diffId"] == "sha256:" + "2" * 64
+
+
+def test_matching_compressed_digest_with_forged_uncompressed_diffid_refused():
+    layer = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"x" * 50})
+    wrong = {
+        "digest": digest_bytes(layer),
+        "size": len(layer),
+        "diffId": "sha256:" + "0" * 64,
+    }
+    with pytest.raises(Refusal, match="uncompressed diff-id mismatch"):
+        scan_layer(
+            io.BytesIO(layer),
+            wrong,
+            {},
+            {"members": 0, "expanded": 0},
+        )
+
+
+def test_uncompressed_diffid_must_be_present_and_well_formed():
+    layer = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"x" * 50})
+    for invalid in (None, True, "sha256:000", "0" * 64):
+        with pytest.raises(Refusal, match="Missing or malformed"):
+            scan_layer(
+                io.BytesIO(layer),
+                {"digest": digest_bytes(layer), "size": len(layer), "diffId": invalid},
+                {},
+                {"members": 0, "expanded": 0},
+            )
+
+
+def test_valid_gzip_layer_hashes_full_uncompressed_tar_not_only_members():
+    layer = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"x" * 50})
+    state, budget = scan(layer)
+    assert budget["diffIdsVerified"] == 1
+    assert budget["expandedStreamBytes"] == len(gzip.decompress(layer))
+    result = finish(
+        state,
+        [{"digest": digest_bytes(layer), "size": len(layer)}],
+        budget,
+        {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
+    )
+    assert result["allUncompressedLayerDigestsVerified"] is True
+    assert result["expandedStreamBytesHashed"] == len(gzip.decompress(layer))
+    assert all(result[key] is False for key in NO_WRITE)
+
+
+def test_uncompressed_trailing_bytes_are_included_in_diffid():
+    original = gzip.decompress(tar_layer({"usr/bin/bootc": b"\x7fELF" + b"x"}))
+    altered = original + b"UNEXPECTED_AFTER_TAR_END"
+    layer = gzip.compress(altered)
+    desc = {"digest": digest_bytes(layer), "size": len(layer), "diffId": digest_bytes(original)}
+    with pytest.raises(Refusal, match="uncompressed diff-id mismatch"):
+        scan_layer(io.BytesIO(layer), desc, {}, {"members": 0, "expanded": 0})
+
+
+def test_actual_decompressed_stream_limit_includes_padding(monkeypatch):
+    import bazzite_oci_bootc_readback as module
+
+    original = gzip.decompress(tar_layer({"usr/bin/bootc": b"\x7fELF" + b"x"}))
+    layer = gzip.compress(original + b"\x00" * 8192)
+    desc = {"digest": digest_bytes(layer), "size": len(layer), "diffId": digest_bytes(original + b"\x00" * 8192)}
+    monkeypatch.setattr(module, "MAX_EXPANDED", 1024)
+    with pytest.raises(Refusal, match="Actual decompressed OCI stream"):
+        scan_layer(io.BytesIO(layer), desc, {}, {"members": 0, "expanded": 0})
+
+
+def test_finish_refuses_unverified_diffids_even_with_forged_bootc_file():
+    data = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"payload"})
+    state, budget = scan(data)
+    budget["diffIdsVerified"] = 0
+    with pytest.raises(Refusal, match="Not all OCI uncompressed diff-ids verified"):
+        finish(
+            state,
+            [{"digest": digest_bytes(data), "size": len(data)}],
+            budget,
+            {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
+        )
