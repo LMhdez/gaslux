@@ -15,8 +15,8 @@ import subprocess
 import sys
 import time
 import uuid
-from io import BytesIO
 from dataclasses import replace
+from io import BytesIO
 from pathlib import Path
 
 import pytest
