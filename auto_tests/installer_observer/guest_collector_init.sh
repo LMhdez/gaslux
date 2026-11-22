@@ -2,7 +2,10 @@
 # Experimental, read-only Linux guest collector. No shell/command dispatch.
 # Input: one bounded challenge line on the named virtio-serial port.
 # Output: one result line and separate guest serial-console marker.
-exec 3<>/dev/virtio-ports/gaslux.observer || exit 21
+[ "$#" -eq 1 ] || exit 20
+case "$1" in /dev/vport*) ;; *) exit 20 ;; esac
+[ -c "$1" ] || exit 20
+exec 3<>"$1" || exit 21
 IFS=' ' read -r kind nonce session transaction vm sequence claimed_hash <&3 || exit 22
 [ "$kind" = "GCL1" ] || exit 23
 [ "$sequence" = "1" ] || exit 24
