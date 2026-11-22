@@ -1,0 +1,108 @@
+name: Bazzite official native route source readback deny-only
+
+on:
+  push:
+    branches:
+      - test/bazzite-native-route-readback-20261122
+    paths:
+      - '.github/workflows/bazzite-native-route-readback.yml'
+      - 'auto_tests/bazzite_native_route_readback.py'
+      - 'auto_tests/tests/test_bazzite_native_route_readback.py'
+      - 'docs/BAZZITE_NATIVE_ROUTE_READBACK.md'
+  pull_request:
+    paths:
+      - '.github/workflows/bazzite-native-route-readback.yml'
+      - 'auto_tests/bazzite_native_route_readback.py'
+      - 'auto_tests/tests/test_bazzite_native_route_readback.py'
+      - 'docs/BAZZITE_NATIVE_ROUTE_READBACK.md'
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-official-sources:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download only pinned official Markdown source (no ISO or QEMU)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          root="$RUNNER_TEMP/bazzite-route-docs"
+          mkdir -p "$root"
+          echo "GASLUX_BAZZITE_NATIVE_SOURCES=$root" >> "$GITHUB_ENV"
+          docs='1a9b77a0633443424e9c939cf4bd50718d1c79a5'
+          bootc='0fe7b14f29f1a8e6868462a170b165611992e901'
+          read_doc() {
+            local repo="$1" commit="$2" path="$3" name="$4" sha="$5"
+            curl --fail --location --silent --show-error --max-time 30 \
+              --retry 2 --max-filesize 262144 \
+              "https://raw.githubusercontent.com/$repo/$commit/$path" \
+              --output "$root/$name.md"
+            test "$(git hash-object "$root/$name.md")" = "$sha"
+          }
+          read_doc ublue-os/docs.bazzite.gg "$docs" \
+            src/General/Installation_Guide/install-guide.md modern \
+            a9a2982a962ba6ea103779e6d375f5b4423ec7e1
+          read_doc ublue-os/docs.bazzite.gg "$docs" \
+            src/General/Installation_Guide/legacy-install.md legacy \
+            81b71fa91c42d88a919e5aad46dbd2e4bd36f610
+          read_doc bootc-dev/bootc "$bootc" \
+            docs/src/man/bootc-install-to-disk.8.md to-disk \
+            0d59dc4244b5e086f68ee7f39b082411c4114063
+          read_doc bootc-dev/bootc "$bootc" \
+            docs/src/man/bootc-install-to-filesystem.8.md to-filesystem \
+            e476808a17a7ff79d54cf2ecbfea7e56ca9786ce
+          read_doc bootc-dev/bootc "$bootc" \
+            docs/src/man/bootc-install-to-existing-root.8.md to-existing-root \
+            ff7059422187a1d985f05a4d82ab589beb11517a
+          (cd "$root" && sha256sum *.md) > upstream-route-source-sha256.txt
+      - name: Test real upstream snapshot and deny-only Bazzite gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff
+          python -m pytest -q \
+            auto_tests/tests/test_bazzite_native_route_readback.py \
+            auto_tests/tests/test_bazzite_anaconda_write_set_gate.py \
+            auto_tests/tests/test_bazzite_iso45_passive_gate.py \
+            auto_tests/tests/test_bazzite_live_channel_boundary.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_native_route_readback.py \
+            auto_tests/tests/test_bazzite_native_route_readback.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_native_route_readback.py \
+            auto_tests/tests/test_bazzite_native_route_readback.py
+          python -m compileall -q auto_tests/bazzite_native_route_readback.py \
+            auto_tests/tests/test_bazzite_native_route_readback.py
+          rc=0
+          python auto_tests/bazzite_native_route_readback.py \
+            --sources-dir "$GASLUX_BAZZITE_NATIVE_SOURCES" \
+            > bazzite-native-route-denial.json || rc=$?
+          test "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('bazzite-native-route-denial.json').read_text())
+          assert len(result['routes']) == 6
+          assert all(r['installationAuthorized'] is False for r in result['routes'])
+          assert all(r['windowsEspWriteAuthorized'] is False for r in result['routes'])
+          assert result['anacondaDbusObserved'] is False
+          print('PASS: independent official source readback, no guest authority')
+          PY
+      - name: Publish bounded readback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-native-route-source-denials
+          path: |
+            upstream-route-source-sha256.txt
+            bazzite-native-route-denial.json
+          if-no-files-found: warn
+          retention-days: 14
