@@ -164,3 +164,20 @@ Producer regression tests forward all Popen kwargs and use real disposable
 children. Until #355 independently verifies the fixed exact HEAD, the
 finding remains **OPEN / correction not approved**. #356 remains stacked
 on its original #346 ancestor and is not integrated.
+
+
+### 2026-11-22 — producer CI GREEN (not independent Safety clearance)
+
+The producer candidate at `6c2af28acd7da24ce127de0909c66e15147ff873`
+has both [push Actions #45054177113](https://github.com/LMhdez/gaslux/actions/runs/45054177113)
+and [PR Actions #45054181689](https://github.com/LMhdez/gaslux/actions/runs/45054181689)
+**SUCCESS** on the same exact SHA. The existing workflow ran strict Ruff,
+Python compilation, six-backend contracts, real stopped-QEMU sparse-128GiB
+adversarial cases (including the new orphan and foreign-session subprocess
+tests), inherited small complete-FD readback, #327/#267 no-writer and
+Observer HOST/FD regressions, and final checkout integrity. This GREEN is
+**producer-side**, not the unchanged independent #355 oracle. The original
+#355 adapter omits `start_new_session` forwarding; independent Safety-2
+review was requested in
+[comment #7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427).
+The finding remains OPEN pending independent corrected-oracle replay.

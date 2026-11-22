@@ -166,3 +166,17 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   INSTALLED, DUAL_BOOT, RECOVERED or CERTIFIED. No Windows/ESP/BCD/WinRE
   change. Preserve `FULL_BACKING_HASH_NOT_COMPLETED` and
   `DENY_NO_WRITER`.
+
+
+### 2026-11-22 — #346 producer CI after process-group correction
+
+- #346 tested HEAD `6c2af28acd7da24ce127de0909c66e15147ff873`,
+  [push #45054177113](https://github.com/LMhdez/gaslux/actions/runs/45054177113)
+  **SUCCESS**, [PR #45054181689](https://github.com/LMhdez/gaslux/actions/runs/45054181689)
+  **SUCCESS**. Strict Ruff/format/compile, synthetic sparse-128GiB real
+  **paused** QEMU, real subprocess descendant cleanup and foreign-session
+  isolation, inherited #337/#327/#267, and protected checkout verification.
+- No independent #355 oracle GREEN on corrected head yet. Exact Safety-2
+  request at [#7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427).
+  Evidence stays **QEMU_HOST / offline, DENY_NO_WRITER**; source/guest
+  authentication and full 128GiB RAW hash remain unproven.

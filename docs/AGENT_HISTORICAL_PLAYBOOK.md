@@ -159,3 +159,15 @@ Safety oracle's `Popen` test launcher must forward the production
 faithfully; do not weaken its survivor assertion. Dependent #356 remains
 unmerged, and all results remain read-only HOST-only with no authenticated
 128-GiB full backing hash or Windows recovery.
+
+
+### 2026-11-22 — #346 candidate test result
+
+Producer CI on `6c2af28acd7da24ce127de0909c66e15147ff873`
+[push #45054177113](https://github.com/LMhdez/gaslux/actions/runs/45054177113)
+and [PR #45054181689](https://github.com/LMhdez/gaslux/actions/runs/45054181689)
+completed SUCCESS with real stopped-QEMU and new process-group regressions.
+This is not the independent Safety-2 GREEN. Exact-head Safety-2
+re-execution was requested in
+[PR #355 comment #7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427);
+do not close SAFETY2-346-01 before that replay/review.
