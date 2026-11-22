@@ -50,7 +50,7 @@ The final published PR head is `356782acf8b62a107a5a73a1febe66424627ef9f`.
 
 - [Final offline diagnostic #44972417908](https://github.com/LMhdez/gaslux/actions/runs/44972417908): **SUCCESS** on this exact HEAD. The job passed schema JSON parsing, workflow deny-only assertions, Ruff lint, Ruff format, Python compilation, all regression suites, and the post-test pin checks.
 - The preceding [#44972298429](https://github.com/LMhdez/gaslux/actions/runs/44972298429) failed only at `ruff format --check`: the new F-01 test had one formatting difference. The subsequent formatting correction is present in the final HEAD; the exact-HEAD run above passed.
-- Test suites in the final run: original #275 trigger regressions (42), #285 ledger regressions (43), #267 no-writer regressions (22), #295 readiness regressions (38), and the new F-01 adversarial matrix (140 cases).
+- Test suites in the final run: original #275 trigger regressions (42), #285 ledger regressions (43), #267 no-writer regressions (22), #295 readiness regressions (38), and the new F-01 adversarial matrix (106 cases).
 - The final post-test step emitted `POST_TEST_PIN_OK` for all four pinned #275/#285/#267/#294 checkouts, including expected commit SHA, clean tracked state and executable Git blob identity.
 - No artifact was emitted by #44972417908. This is expected for the offline deny-only diagnostic; it does not generate a guest, disk image or installation evidence.
 
