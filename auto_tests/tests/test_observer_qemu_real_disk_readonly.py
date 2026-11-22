@@ -135,9 +135,14 @@ def wait_qmp(path: Path, child: subprocess.Popen, timeout=12):
 
 
 def start_qemu(
-    folder: Path, media: Path, disk_format: str, *, guest_peer_endpoint: bool = False
+    folder: Path,
+    media: Path,
+    disk_format: str,
+    *,
+    guest_peer_endpoint: bool = False,
+    guest_kernel: Path | None = None,
+    guest_initrd: Path | None = None,
 ) -> subprocess.Popen:
-    assert os.environ["GASLUX_QEMU_NO_GUEST"] == "1"
     assert os.environ["GITHUB_ACTIONS"] == "true"
     assert os.environ["RUNNER_ENVIRONMENT"] == "github-hosted"
     assert str(media.parent) == str(folder)
@@ -146,13 +151,21 @@ def start_qemu(
     assert Path(EXE_QEMU_IMG).is_file()
     qmp = folder / "monitor.sock"
     assert not qmp.exists()
+    boot_guest = guest_kernel is not None or guest_initrd is not None
+    assert os.environ["GASLUX_QEMU_NO_GUEST"] == ("0" if boot_guest else "1")
+    if boot_guest:
+        assert os.environ["GASLUX_QEMU_GUEST_LAB_CONSENT"] == "1"
+        assert guest_peer_endpoint and isinstance(guest_kernel, Path)
+        assert isinstance(guest_initrd, Path) and guest_kernel.is_file()
+        assert guest_initrd.parent == folder and guest_initrd.is_file()
+        assert guest_initrd.stat().st_uid == os.getuid()
     args = [
         QEMU,
         "-machine",
         "q35,accel=tcg",
         "-S",
         "-m",
-        "64",
+        "512" if boot_guest else "64",
         "-nodefaults",
         "-no-user-config",
         "-display",
@@ -160,7 +173,7 @@ def start_qemu(
         "-monitor",
         "none",
         "-serial",
-        "none",
+        f"file:{folder / 'guest-console.log'}" if boot_guest else "none",
         "-parallel",
         "none",
         "-nic",
@@ -184,6 +197,17 @@ def start_qemu(
                 "virtio-serial-pci",
                 "-device",
                 "virtserialport,chardev=gp0,name=gaslux.observer",
+            ]
+        )
+    if boot_guest:
+        args.extend(
+            [
+                "-kernel",
+                str(guest_kernel),
+                "-initrd",
+                str(guest_initrd),
+                "-append",
+                "console=ttyS0,115200 rdinit=/init panic=-1",
             ]
         )
     previous = os.umask(0o077)
