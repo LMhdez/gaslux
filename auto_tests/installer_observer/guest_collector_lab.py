@@ -85,7 +85,8 @@ class LabNonceLedger:
         self.db.execute("PRAGMA journal_mode=DELETE")
         if not existing:
             self.db.execute(
-                "CREATE TABLE challenge (nonce TEXT PRIMARY KEY, session TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('issued','used')))"
+                "CREATE TABLE challenge (nonce TEXT PRIMARY KEY, session TEXT NOT NULL, "
+                "state TEXT NOT NULL CHECK(state IN ('issued','used')))"
             )
 
     def issue(self, nonce: str, session: str) -> None:
