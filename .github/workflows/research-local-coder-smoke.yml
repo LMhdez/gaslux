@@ -32,12 +32,15 @@ jobs:
           nproc
           free -h
           df -h .
-      - name: Install local CPU inference (experimental, unpinned upstream installer)
+      - name: Install hash-verified local Ollama inference (experimental)
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --silent --show-error https://ollama.com/install.sh -o /tmp/ollama-install.sh
-          sh /tmp/ollama-install.sh
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh \
+            -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
           ollama --version
           (ollama serve > /tmp/ollama-serve.log 2>&1 &)
           for i in $(seq 1 60); do
@@ -123,7 +126,7 @@ jobs:
           PY
       - name: Upload benchmark evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: local-coder-cpu-${{ strategy.job-index }}
           path: evidence/
@@ -142,15 +145,18 @@ jobs:
       OLLAMA_MAX_LOADED_MODELS: '1'
     steps:
       - name: Read-only checkout, no persisted credentials
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - name: Install bounded experimental Ollama
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --silent --show-error https://ollama.com/install.sh -o /tmp/ollama-install.sh
-          sh /tmp/ollama-install.sh
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh \
+            -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
           (ollama serve > /tmp/ollama-serve.log 2>&1 &)
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:11434/api/version >/dev/null; then exit 0; fi
@@ -170,7 +176,7 @@ jobs:
           timeout 480 python3 -I auto_tests/tools/local_coder_agent_benchmark.py
       - name: Upload RED and GREEN repair evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: local-coder-isolated-repair
           path: evidence/repair-benchmark.json
