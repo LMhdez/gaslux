@@ -2,6 +2,7 @@
 
 The real Linux Guest boot is a separate, non-parallel GitHub Actions step.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -28,8 +29,14 @@ def context():
 @pytest.fixture
 def response(context):
     values = [
-        "GCR1", context["nonce"], context["session"], context["transaction"],
-        context["vm"], "1", context["collector"], BOOT_ID,
+        "GCR1",
+        context["nonce"],
+        context["session"],
+        context["transaction"],
+        context["vm"],
+        "1",
+        context["collector"],
+        BOOT_ID,
     ]
     return (" ".join(values) + "\n").encode("ascii")
 
