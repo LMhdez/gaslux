@@ -136,6 +136,112 @@ class EtwOfflineTests(unittest.TestCase):
         with self.assertRaisesRegex(etw.EtwContractError, "outside"):
             etw.normalize_etw_fixture(fixture)
 
+    def test_etw01_red_01_diskio_before_fileio_not_plausible(self):
+        fixture = evidence()
+        fixture["events"][3]["timestampNs"] = 1250000000
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_red_02_pid_generation_overlaps_after_fileio(self):
+        fixture = evidence()
+        fixture["events"].insert(4, {
+            "kind": "ProcessStart", "timestampNs": 1400000000, "pid": 42,
+        })
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_repeated_irp_has_no_plausible_causal_pair(self):
+        fixture = evidence()
+        fixture["events"].insert(4, {
+            "kind": "FileIoWrite", "timestampNs": 1420000000,
+            "fileObject": "0xb456", "pid": 42, "irp": "0xbbb",
+        })
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_reused_fileobject_later_name_invalidates_lifetime(self):
+        fixture = evidence()
+        fixture["events"].insert(4, {
+            "kind": "FileIoName", "timestampNs": 1400000000,
+            "fileObject": "0xa123", "fileName": "not-bcd",
+        })
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_reused_irp_diskio_must_not_count(self):
+        fixture = evidence()
+        fixture["events"].insert(4, {
+            "kind": "DiskIoWrite", "timestampNs": 1370000000,
+            "irp": "0xbbb", "diskOffset": 1049088,
+            "length": 512, "diskNumber": 0,
+        })
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_stop_before_start_remains_unattributed(self):
+        fixture = evidence()
+        fixture["events"][0]["timestampNs"] = 1700000000
+        fixture["events"][4]["timestampNs"] = 1600000000
+        result = etw.normalize_etw_fixture(fixture)
+        self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
+        self.assertEqual(result["status"], "PROCESS_ATTRIBUTION_UNPROVEN")
+
+    def test_etw01_overlapping_pid_generations_not_plausible(self):
+        fixture = evidence()
+        fixture["events"].insert(1, {
+            "kind": "ProcessStart", "timestampNs": 1150000000, "pid": 42,
+        })
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_multiple_process_stops_not_plausible(self):
+        fixture = evidence()
+        fixture["events"].append({
+            "kind": "ProcessStop", "timestampNs": 2200000000, "pid": 42,
+        })
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_far_apart_diskio_no_justified_bound(self):
+        fixture = evidence()
+        fixture["events"][3]["timestampNs"] = 1999999000
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_session_loss_disallows_plausible_pair(self):
+        for field in ("lostEvents", "lostBuffers"):
+            with self.subTest(field=field):
+                fixture = evidence()
+                fixture["session"][field] = 1
+                result = etw.normalize_etw_fixture(fixture)
+                self.assertFalse(result["sessionCompleteWithinDeclaredWindow"])
+                self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
+
+    def test_etw01_event_presentation_order_is_not_clock_proof(self):
+        fixture = evidence()
+        fixture["events"].reverse()
+        self.assertEqual(
+            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
+        )
+
+    def test_etw01_structural_invalid_not_silent_denial(self):
+        fixture = evidence()
+        fixture["events"][3]["timestampNs"] = -1
+        with self.assertRaisesRegex(etw.EtwContractError, "timestamp"):
+            etw.normalize_etw_fixture(fixture)
+        fixture = evidence()
+        fixture["events"][2]["kind"] = "NotAnEtwEvent"
+        with self.assertRaisesRegex(etw.EtwContractError, "unknown ETW"):
+            etw.normalize_etw_fixture(fixture)
+
     def test_no_events_still_cannot_prove_process(self):
         fixture = evidence()
         fixture["events"] = []
