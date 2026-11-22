@@ -299,6 +299,7 @@ def test_other_package_cannot_claim_bootc_file():
 
 def test_bounded_db_paths_are_explicit_and_no_executable_import():
     assert "usr/share/rpm/rpmdb.sqlite" in RPMDB_PATHS
+    assert "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite" in RPMDB_PATHS
     assert "var/lib/rpm/rpmdb.sqlite" in RPMDB_PATHS
 
 

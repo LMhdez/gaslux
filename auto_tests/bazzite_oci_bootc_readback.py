@@ -477,15 +477,20 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
         else:
             package["reason"] = "Actual bootc path is not a direct /usr/bin/bootc ELF"
     proven = package["status"] == "BOOTC_RPM_IDENTITY_VERIFIED"
-    elf_metadata = {"elfArchitecture": None, "elfBuildId": None, "elfMetadataVerified": False}
+    elf_metadata = {
+        "elfArchitecture": None,
+        "elfBuildId": None,
+        "elfMetadataVerified": False,
+        "elfMetadataReason": None,
+    }
     if matched:
         direct = entries.get("usr/bin/bootc")
         if direct is not None and direct.get("kind") == "file" and direct.get("elf"):
             try:
                 elf_metadata.update(elf_build_id(direct["elfPrefix"]))
                 elf_metadata["elfMetadataVerified"] = True
-            except PackageUnproven:
-                pass
+            except PackageUnproven as exc:
+                elf_metadata["elfMetadataReason"] = str(exc)[:160]
     return {
         "status": (
             "BOOTC_PRESENT_ROUTE_UNVERIFIED" if matched else "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"

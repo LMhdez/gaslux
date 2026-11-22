@@ -15,6 +15,7 @@ import struct
 RPMDB_PATHS = frozenset(
     {
         "usr/share/rpm/rpmdb.sqlite",
+        "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite",
         "usr/lib/sysimage/rpm/rpmdb.sqlite",
         "var/lib/rpm/rpmdb.sqlite",
     }
