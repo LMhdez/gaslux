@@ -267,8 +267,7 @@ def read_independent_partman_script(rootfs: Path, path: str) -> bytes:
         content = read_member(rootfs, path, 512 * 1024, optional=False)
     except Exception as exc:
         raise SourceCoverageDenied("E_PARTMAN_SOURCE_NOT_REGULAR") from exc
-    deny(type(content) is bytes and 0 < len(content) <= 512 * 1024,
-         "E_PARTMAN_SOURCE_BOUNDS")
+    deny(type(content) is bytes and 0 < len(content) <= 512 * 1024, "E_PARTMAN_SOURCE_BOUNDS")
     return content
 
 
