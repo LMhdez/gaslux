@@ -208,6 +208,8 @@ def inspect_build20_extraction(
         "upstreamCommitPostdatesOriginalBuild20Reference": True,
         "isoGpgVerificationPerformedByWorkflow": False,
         "isoHashMatchesPreviouslySignedManifestPin": True,
+        "elfExtractionOriginBoundToPinnedIso": False,
+        "dpkgStatusOriginBoundToPinnedIso": False,
         "cargoLockOfActualBuildVerified": False,
         "elfBuildIdSourceBindingVerified": False,
         "sourceToElfCorrespondenceVerified": False,
