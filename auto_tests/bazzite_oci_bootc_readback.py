@@ -26,7 +26,9 @@ from bazzite_oci_rpm_binding import (
     MAX_ELF_PREFIX,
     MAX_RPMDB,
     RPMDB_ALL,
+    PackageUnproven,
     bind_rpm,
+    elf_build_id,
 )
 
 PINNED = PAYLOAD_IMAGE + "@" + PAYLOAD_DIGEST
@@ -269,6 +271,15 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                 ):
                     raise Refusal("OCI tar expansion/member limit exceeded")
                 name = _path(member.name)
+                directory, basename = posixpath.split(name)
+                if (
+                    not basename.startswith(".wh.")
+                    and basename in {"rpmdb.sqlite", "Packages.db", "Packages"}
+                    and name.startswith(("usr/", "var/lib/"))
+                ):
+                    hints = budgets.setdefault("rpmDbPathHints", set())
+                    if len(hints) < 64:
+                        hints.add(name)
                 if name in CANDIDATES or name.endswith("/bootc"):
                     if name in bootc_names_in_layer:
                         raise Refusal("Duplicate bootc path in a single OCI layer")
@@ -466,6 +477,15 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
         else:
             package["reason"] = "Actual bootc path is not a direct /usr/bin/bootc ELF"
     proven = package["status"] == "BOOTC_RPM_IDENTITY_VERIFIED"
+    elf_metadata = {"elfArchitecture": None, "elfBuildId": None, "elfMetadataVerified": False}
+    if matched:
+        direct = entries.get("usr/bin/bootc")
+        if direct is not None and direct.get("kind") == "file" and direct.get("elf"):
+            try:
+                elf_metadata.update(elf_build_id(direct["elfPrefix"]))
+                elf_metadata["elfMetadataVerified"] = True
+            except PackageUnproven:
+                pass
     return {
         "status": (
             "BOOTC_PRESENT_ROUTE_UNVERIFIED" if matched else "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
@@ -477,6 +497,8 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
         "bootcVersion": package["rpmPackage"]["version"] if proven else None,
         "bootcVersionVerified": proven,
         "bootcRpmIdentity": package,
+        **elf_metadata,
+        "rpmDbPathHintsObserved": sorted(budgets.get("rpmDbPathHints", set())),
         "bootcToFilesystemDocumentedInRpm": (
             package["rpmPackage"]["toFilesystemManpageDeclared"] if proven else False
         ),
