@@ -892,13 +892,18 @@ c.close();s.close()
             qmp.close()
         if fd is not None:
             os.close(fd)
-        for proc in (server, other):
-            if proc.poll() is None:
-                proc.terminate()
-            proc.wait(timeout=5)
-    # No command, including send-key, may ever reach an unowned peer.
-    if record.exists():
-        assert record.read_bytes() == b""
+        # The server must finish its read and write a transcript before
+        # asserting that no command arrived; an absent transcript is NOT proof.
+        try:
+            server.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            server.terminate()
+            server.wait(timeout=5)
+        if other.poll() is None:
+            other.terminate()
+        other.wait(timeout=5)
+    assert record.exists(), "must independently observe the UNIX peer transcript"
+    assert record.read_bytes() == b"", "unauthorized peer received QMP bytes"
 
 
 def test_r01_kernel_pidfd_binding_and_fd_substitution_real_children():
@@ -948,3 +953,58 @@ def test_r01_kernel_pidfd_binding_and_fd_substitution_real_children():
             if child.poll() is None:
                 child.terminate()
             child.wait(timeout=5)
+
+
+
+def test_r01_post_authentication_socket_swap_denies_send_key(monkeypatch, tmp_path):
+    """OS socket peer and inode are rechecked after initially verified connect."""
+    import socket
+
+    from q4os_win10_qmp_boot import Qmp
+
+    work = tmp_path / "private"
+    work.mkdir(mode=0o700)
+    sock = work / "qmp.sock"
+    other = work / "foreign.sock"
+    owned = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    foreign = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    owned.bind(str(sock))
+    owned.listen(1)
+    foreign.bind(str(other))
+    foreign.listen(1)
+
+    class SyntheticOwner:
+        pid = os.getpid()
+
+        def poll(self):
+            return None
+
+    qmp = None
+    peer = None
+    # Protocol-only instrumentation: test the real inode/SO_PEERCRED guards,
+    # not authority issuance; no production gate is changed.
+    monkeypatch.setattr(witness, "_verify_session_authority", lambda _session: None)
+    monkeypatch.setattr(witness, "_witness", lambda *_args: None)
+    try:
+        original_inode = witness._socket_identity(sock, work)
+        qmp = Qmp(sock, negotiate=False)
+        peer, _ = owned.accept()
+        session = witness._BoundQmpSession(
+            qmp, SyntheticOwner(), -1, sock, work, original_inode
+        )
+        qmp.bind_verified_session(session)
+        session.verify()
+        sock.unlink()
+        sock.symlink_to(other)
+        with pytest.raises(witness.StartupRefusal, match="QEMU_QMP_SOCKET_INVALID"):
+            qmp.send_key_once()
+        peer.settimeout(0.1)
+        with pytest.raises(socket.timeout):
+            peer.recv(1)
+    finally:
+        if qmp is not None:
+            qmp.close()
+        if peer is not None:
+            peer.close()
+        owned.close()
+        foreign.close()
