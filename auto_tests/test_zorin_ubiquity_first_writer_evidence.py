@@ -118,9 +118,7 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
             side_effect=ValueError("not regular"),
         ):
             with self.assertRaises(SourceCoverageDenied) as caught:
-                read_independent_partman_script(
-                    Path("/fake"), "usr/lib/partman/lib/commit.sh"
-                )
+                read_independent_partman_script(Path("/fake"), "usr/lib/partman/lib/commit.sh")
         self.assertEqual(caught.exception.code, "E_PARTMAN_SOURCE_NOT_REGULAR")
 
     def test_shell_reader_uses_own_explicit_regular_source_gate(self):
