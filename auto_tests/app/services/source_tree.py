@@ -40,8 +40,7 @@ class LocalSourceTree:
                 raise RuntimeError("Gaslux checkout Git inspection failed") from error
             if completed.returncode != 0:
                 raise RuntimeError(
-                    "Gaslux checkout Git inspection failed: "
-                    + completed.stderr.strip()[:300]
+                    "Gaslux checkout Git inspection failed: " + completed.stderr.strip()[:300]
                 )
             return completed.stdout.strip()
 
