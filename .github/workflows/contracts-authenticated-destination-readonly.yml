@@ -100,8 +100,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m compileall -q auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/test_destination_337_partial_pread_red.py auto_tests/test_destination_337_fd_digest.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/test_destination_337_partial_pread_red.py auto_tests/test_destination_337_fd_digest.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/test_destination_337_partial_pread_red.py auto_tests/test_destination_337_fd_digest.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/test_destination_337_fd_digest.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/test_destination_337_fd_digest.py
       - name: Validate existing installation and six-backend JSON Schemas
         run: |
           set -Eeuo pipefail
