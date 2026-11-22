@@ -47,6 +47,20 @@ class AgentImplementationTests(unittest.TestCase):
         agent.acceptance(self.source, updated, self.pt)
         self.assertEqual(len(updated.splitlines()), len(self.source.splitlines()) + 1)
 
+    def test_real_model_missing_trailing_comma_is_safely_normalized(self):
+        # Observed in exact GitHub Actions #45058019123, second model try.
+        proposed = '{ "00000816", Mapping("pt") }'
+        updated = agent.propose(self.source, self.pt, proposed)
+        agent.acceptance(self.source, updated, self.pt)
+        self.assertIn('{ "00000816", Mapping("pt") },', updated)
+
+    def test_real_model_invalid_multiline_or_extra_expression_still_denied(self):
+        for proposed in (' ,\\n["00000816", Mapping("pt")]}',
+                         '{ "00000816", Mapping("pt") }\\nSystem.IO.File.Delete("x");',
+                         '{ "00000816", Mapping("pt") };'):
+            with self.subTest(proposed=proposed), self.assertRaises(ValueError):
+                agent.propose(self.source, self.pt, proposed)
+
     def test_zorin_candidate_is_distinct_real_feature(self):
         updated = agent.propose(self.source, self.br, '{ "00000416", Mapping("br") },')
         agent.acceptance(self.source, updated, self.br)
