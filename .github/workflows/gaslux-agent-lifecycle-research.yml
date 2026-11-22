@@ -130,13 +130,19 @@ jobs:
           goal_path = Path('evidence/goal-progress.json')
           goal = json.loads(goal_path.read_text()) if goal_path.is_file() else None
           assert goal is None or goal['release_eligible'] is False
-          next_gate = None
-          if goal:
-              for row in goal.get('remaining_gates', []):
-                  pass
-              # Supervisor reports the next global gate; absence of specific
-              # verified backend evidence remains an explicit blocker.
-              next_gate = goal.get('next_gate')
+          source = json.loads(Path('docs/autonomy/goal.json').read_text())
+          registry = json.loads(Path('docs/autonomy/evidence.json').read_text())
+          details = next(b for b in source['backends'] if b['id'] == backend)
+          reviewed = {
+              (r['backend'], r['platform'], r['gate']) for r in registry['records']
+          }
+          next_gate = next((
+              {'platform': platform, 'gate': gate}
+              for platform in source['platforms']
+              if platform in details['platforms']
+              for gate in source['gates']
+              if (backend, platform, gate) not in reviewed
+          ), None)
           report = {
               'backend': backend,
               'dev_commit': subprocess.check_output(
