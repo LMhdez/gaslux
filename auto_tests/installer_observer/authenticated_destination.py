@@ -77,13 +77,27 @@ def _pin(fd: int, path: Path, workspace: Path) -> os.stat_result:
 
 
 def _digest(fd: int, expected: str) -> str:
+    """Hash every byte of the pinned FD, refusing all short/failed pread calls.
+
+    A positive short pread is legal on POSIX, but cannot be accepted as a
+    complete requested chunk or skipped over. Fail closed rather than retry
+    to keep this bounded read-only measurement deterministic.
+    """
     require(type(expected) is str and bool(HEX64.fullmatch(expected)), "HASH_PIN_INVALID")
     initial = os.fstat(fd)
+    require(0 < initial.st_size <= MAX_BYTES, "FD_SIZE_INVALID")
     sha = hashlib.sha256()
-    for offset in range(0, initial.st_size, 1024 * 1024):
-        chunk = os.pread(fd, min(1024 * 1024, initial.st_size - offset), offset)
-        require(bool(chunk), "FD_SHORT_READ")
+    offset = 0
+    while offset < initial.st_size:
+        requested = min(1024 * 1024, initial.st_size - offset)
+        try:
+            chunk = os.pread(fd, requested, offset)
+        except OSError as exc:
+            raise DestinationRefused("FD_READ_FAILED") from exc
+        require(type(chunk) is bytes and len(chunk) == requested, "FD_SHORT_READ")
         sha.update(chunk)
+        offset += len(chunk)
+    require(offset == initial.st_size, "FD_SHORT_READ")
     require(_stat_identity(initial) == _stat_identity(os.fstat(fd)), "FD_MUTATED_DURING_HASH")
     actual = sha.hexdigest()
     require(actual == expected, "PINNED_HASH_MISMATCH")
