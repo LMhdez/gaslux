@@ -6,6 +6,7 @@ Safety #267 and canonical GPT FD #286 are imported from exact pinned trees.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -21,6 +22,11 @@ from pathlib import Path
 
 import pytest
 
+from auto_tests.installer_observer.guest_transport_peer_boundary import (
+    LocalSessionPins,
+    LocalTransportWitness,
+    TransportBoundaryRefused,
+)
 from auto_tests.installer_observer.host_fd_boundary import (
     HostBoundaryRefused,
     _read_response,
@@ -128,7 +134,9 @@ def wait_qmp(path: Path, child: subprocess.Popen, timeout=12):
     raise AssertionError("REAL_QEMU_QMP_SOCKET_NOT_READY")
 
 
-def start_qemu(folder: Path, media: Path, disk_format: str) -> subprocess.Popen:
+def start_qemu(
+    folder: Path, media: Path, disk_format: str, *, guest_peer_endpoint: bool = False
+) -> subprocess.Popen:
     assert os.environ["GASLUX_QEMU_NO_GUEST"] == "1"
     assert os.environ["GITHUB_ACTIONS"] == "true"
     assert os.environ["RUNNER_ENVIRONMENT"] == "github-hosted"
@@ -164,6 +172,20 @@ def start_qemu(folder: Path, media: Path, disk_format: str) -> subprocess.Popen:
         "-device",
         "virtio-blk-pci,drive=disk0",
     ]
+    if guest_peer_endpoint:
+        # QEMU-owned host endpoint, no guest boot, collector or guest bytes.
+        endpoint = folder / "guest-peer.sock"
+        assert not endpoint.exists()
+        args.extend(
+            [
+                "-chardev",
+                f"socket,id=gp0,path={endpoint},server=on,wait=off",
+                "-device",
+                "virtio-serial-pci",
+                "-device",
+                "virtserialport,chardev=gp0,name=gaslux.observer",
+            ]
+        )
     previous = os.umask(0o077)
     try:
         child = subprocess.Popen(
@@ -178,6 +200,8 @@ def start_qemu(folder: Path, media: Path, disk_format: str) -> subprocess.Popen:
         os.umask(previous)
     try:
         wait_qmp(qmp, child)
+        if guest_peer_endpoint:
+            wait_qmp(folder / "guest-peer.sock", child)
         return child
     except BaseException:
         shutdown(child)
@@ -490,3 +514,244 @@ def test_truncated_or_oversized_qmp_response_refused(payload):
     """Untrusted framed QMP cannot bypass the inherited bounded real parser."""
     with pytest.raises(HostBoundaryRefused):
         _read_response(BytesIO(payload))
+
+
+def _peer_pins(conn: socket.socket, qemu: QemuDiskPins, image_sha: str) -> LocalSessionPins:
+    fd = os.fstat(conn.fileno())
+    return LocalSessionPins(
+        process=qemu.process,
+        transport_dev=fd.st_dev,
+        transport_inode=fd.st_ino,
+        session_id=str(uuid.uuid4()),
+        transaction_id=str(uuid.uuid4()),
+        host_vm_id=qemu.vm_label,
+        disk_identity_sha256=image_sha,
+        collector_sha256="a" * 64,
+        challenge=os.urandom(32).hex(),
+    )
+
+
+def _peer_claims(pins: LocalSessionPins) -> dict[str, str]:
+    return {
+        "sessionId": pins.session_id,
+        "transactionId": pins.transaction_id,
+        "hostVmId": pins.host_vm_id,
+        "diskIdentitySha256": pins.disk_identity_sha256,
+        "collectorSha256": pins.collector_sha256,
+        "challenge": pins.challenge,
+        "provenance": "CLAIMED",
+    }
+
+
+def _guest_peer_denied(host: dict, peer: dict) -> None:
+    assert host["localQemuReadonlyDiskFdOpenProven"] is True
+    assert host["process"]["pid"]["value"] == peer["peer"]["pid"]
+    assert host["process"]["startTicks"]["value"] == peer["peer"]["startTicks"]
+    assert peer["localKernelPeerObserved"] is True
+    assert host["status"] == peer["status"] == "BLOCKED_TRUST_ROOT"
+    assert host["classification"] == peer["classification"] == "NOT_INDEPENDENT"
+    for key in (
+        "guestChannelAuthenticated", "guestProcessAuthenticated",
+        "collectorAuthenticated", "anacondaProcessVerified",
+        "persistentLedgerVerified", "replayProtected", "externallyAttested",
+        "freshnessAuthenticated", "inputAuthorized", "diskWritesAuthorized",
+        "productionInstallationAuthorized", "productionWriteAuthorized",
+    ):
+        assert peer[key] is False, key
+    for key in (
+        "qemuBackendToFdBindingIndependentlyProven", "guestChannelAuthenticated",
+        "diskWriteAuthorized", "productionInstallationAuthorized",
+        "rollbackProven", "stable",
+    ):
+        assert host[key] is False, key
+
+
+def _guest_peer_manifest(qemu: QemuDiskPins, host: dict, peer: dict, chain: dict,
+                         gpt: dict, reaped: bool) -> None:
+    """Emit bounded, UNSIGNED local host evidence; zero guest observations."""
+    root = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+    output = root / "gaslux-observer-guest-peer"
+    output.mkdir(mode=0o700, exist_ok=True)
+    assert output.resolve(strict=True) == output
+    assert output.stat().st_uid == os.getuid()
+    assert output.stat().st_mode & 0o077 == 0
+    manifest = {
+        "schema": "gaslux-observer-qemu-host-peer-v1",
+        "status": "BLOCKED_TRUST_ROOT",
+        "classification": "NOT_INDEPENDENT",
+        "scope": "QEMU_HOST_VIRTIO_SERIAL_ENDPOINT_NO_GUEST",
+        "qemuPid": host["process"]["pid"]["value"],
+        "qemuStartTicks": host["process"]["startTicks"]["value"],
+        "diskDev": host["disk"]["dev"]["value"],
+        "diskInode": host["disk"]["inode"]["value"],
+        "diskFormat": qemu.disk_format,
+        "backingSha256": chain["backingSha256"],
+        "diskGuid": gpt["partitionTableId"],
+        "partUuid": gpt["partitions"][0]["partGuid"],
+        "peerPid": peer["peer"]["pid"],
+        "peerInode": peer["transportDescriptor"]["inode"],
+        "peerProvenance": "CLAIMED",
+        "qmpPayloadProvenance": "CLAIMED",
+        "guestBooted": False,
+        "guestObservationsReceived": 0,
+        "guestChannelAuthenticated": False,
+        "collectorAuthenticated": False,
+        "replayProtected": False,
+        "diskWriteAuthorized": False,
+        "productionInstallationAuthorized": False,
+        "rollbackProven": False,
+        "stable": False,
+        "qemuProcessReaped": reaped,
+    }
+    content = (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    assert len(content) < 4096
+    with (output / "manifest.json").open("xb") as stream:
+        stream.write(content)
+    (output / "manifest.sha256").write_text(
+        f"{hashlib.sha256(content).hexdigest()}  manifest.json\n", encoding="ascii"
+    )
+    print("GASLUX_QEMU_GUEST_PEER_DENY " + content.decode().strip(), flush=True)
+
+
+def test_paused_real_qemu_guest_channel_is_host_only(workspace, pinned):
+    gate, lab = pinned
+    raw = make_raw(workspace, lab)
+    overlay = make_qcow(workspace, lab, raw)
+    chain = lab.verify_chain(overlay, raw, workspace)
+    gpt = gate.inspect_gpt_image(raw, logical_sector_size=512)
+    child = start_qemu(workspace, overlay, "qcow2", guest_peer_endpoint=True)
+    try:
+        qemu = pins_for(child, workspace, overlay, "qcow2")
+        with QemuLocalDiskWitness(qemu) as disk:
+            host = disk.finish()
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+                conn.settimeout(3)
+                conn.connect(str(workspace / "guest-peer.sock"))
+                pins = _peer_pins(conn, qemu, chain["overlaySha256"])
+                witness = LocalTransportWitness(conn, pins)
+                peer = witness.finish(_peer_claims(pins))
+                _guest_peer_denied(host, peer)
+                assert peer["peer"]["pid"] == child.pid
+                assert peer["sessionContext"]["collectorSha256"]["assurance"] == "CLAIMED"
+                with pytest.raises(
+                    TransportBoundaryRefused, match="SESSION_ALREADY_USED_LOCAL_ONLY"
+                ):
+                    witness.finish(_peer_claims(pins))
+                # Replayed claims can be remeasured by a fresh object: no durable ledger.
+                repeated = LocalTransportWitness(conn, pins).finish(_peer_claims(pins))
+                assert repeated["replayProtected"] is False
+            shutdown(child)
+            closed = disk.assert_stopped()
+            assert closed["qemuProcessReaped"] is True
+            _guest_peer_manifest(qemu, host, peer, chain, gpt, True)
+    finally:
+        shutdown(child)
+
+
+def test_qemu_without_guest_peer_does_not_claim_guest(workspace, pinned):
+    _, lab = pinned
+    raw = make_raw(workspace, lab)
+    overlay = make_qcow(workspace, lab, raw)
+    child = start_qemu(workspace, overlay, "qcow2")
+    try:
+        qemu = pins_for(child, workspace, overlay, "qcow2")
+        with QemuLocalDiskWitness(qemu) as witness:
+            assert witness.finish()["guestChannelAuthenticated"] is False
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            with pytest.raises(FileNotFoundError):
+                conn.connect(str(workspace / "guest-peer.sock"))
+    finally:
+        shutdown(child)
+
+
+def test_host_proxy_forged_guest_peer_is_denied(workspace, pinned):
+    _, lab = pinned
+    raw = make_raw(workspace, lab)
+    overlay = make_qcow(workspace, lab, raw)
+    child = start_qemu(workspace, overlay, "qcow2")
+    try:
+        qemu = pins_for(child, workspace, overlay, "qcow2")
+        fake = workspace / "fake-guest.sock"
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+            server.bind(str(fake))
+            server.listen(1)
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+                conn.connect(str(fake))
+                pins = _peer_pins(conn, qemu, lab.sha256(overlay))
+                with pytest.raises(
+                    TransportBoundaryRefused, match="REMOTE_PROCESS_IDENTITY_MISMATCH"
+                ):
+                    LocalTransportWitness(conn, pins)
+    finally:
+        shutdown(child)
+
+
+def test_interrupted_real_qemu_guest_channel_is_denied(workspace, pinned):
+    _, lab = pinned
+    raw = make_raw(workspace, lab)
+    overlay = make_qcow(workspace, lab, raw)
+    child = start_qemu(workspace, overlay, "qcow2", guest_peer_endpoint=True)
+    try:
+        qemu = pins_for(child, workspace, overlay, "qcow2")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            conn.connect(str(workspace / "guest-peer.sock"))
+            pins = _peer_pins(conn, qemu, lab.sha256(overlay))
+            witness = LocalTransportWitness(conn, pins)
+            shutdown(child)
+            with pytest.raises(TransportBoundaryRefused):
+                witness.finish(_peer_claims(pins))
+    finally:
+        shutdown(child)
+
+
+def test_different_real_qemu_process_cannot_claim_peer(tmp_path, pinned):
+    _, lab = pinned
+    left, right = tmp_path / "left", tmp_path / "right"
+    left.mkdir(mode=0o700)
+    right.mkdir(mode=0o700)
+    raw_left, raw_right = make_raw(left, lab), make_raw(right, lab)
+    a, b = make_qcow(left, lab, raw_left), make_qcow(right, lab, raw_right)
+    first = start_qemu(left, a, "qcow2")
+    second = start_qemu(right, b, "qcow2", guest_peer_endpoint=True)
+    try:
+        p_first = pins_for(first, left, a, "qcow2")
+        with QemuLocalDiskWitness(p_first) as witness:
+            assert witness.finish()["localQemuReadonlyDiskFdOpenProven"] is True
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            conn.connect(str(right / "guest-peer.sock"))
+            pins = _peer_pins(conn, p_first, lab.sha256(a))
+            with pytest.raises(
+                TransportBoundaryRefused, match="REMOTE_PROCESS_IDENTITY_MISMATCH"
+            ):
+                LocalTransportWitness(conn, pins)
+    finally:
+        shutdown(first)
+        shutdown(second)
+
+
+@pytest.mark.parametrize(
+    "field", ["provenance", "collectorSha256", "transactionId", "guestChannelAuthenticated"]
+)
+def test_real_qemu_guest_claim_forgery_is_denied(workspace, pinned, field):
+    _, lab = pinned
+    raw = make_raw(workspace, lab)
+    overlay = make_qcow(workspace, lab, raw)
+    child = start_qemu(workspace, overlay, "qcow2", guest_peer_endpoint=True)
+    try:
+        qemu = pins_for(child, workspace, overlay, "qcow2")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            conn.connect(str(workspace / "guest-peer.sock"))
+            pins = _peer_pins(conn, qemu, lab.sha256(overlay))
+            forged = _peer_claims(pins)
+            if field == "guestChannelAuthenticated":
+                forged[field] = True
+            elif field == "provenance":
+                forged[field] = "AUTHENTICATED_GUEST"
+            elif field == "collectorSha256":
+                forged[field] = "f" * 64
+            else:
+                forged[field] = str(uuid.uuid4())
+            with pytest.raises(TransportBoundaryRefused):
+                LocalTransportWitness(conn, pins).finish(forged)
+    finally:
+        shutdown(child)

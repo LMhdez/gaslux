@@ -87,3 +87,47 @@ Successful local witness classification:
 
 The GitHub Actions CI is **not** an operational permit. Do not merge
 before diff-scoped independent Safety review and Integrator reconciliation.
+
+## 22 November 2026 — QEMU-owned virtio-serial HOST socket; guest provenance negative
+
+[PR #325](https://github.com/LMhdez/gaslux/pull/325) was merged at
+`8e68a475d6397ba8fef2e0f9f83758545e202a5f`; its 19 real stopped
+QEMU adversarial tests prove a local QEMU process has a read-only FD for
+a specific disposable RAW/QCOW2 host file. They do **not** prove a guest
+collector. The #294 and #321 historical branches remain closed, #259
+is not imported.
+
+The next **test-only** experiment reuses that supervisor, #319
+`host_fd_boundary.py` and `guest_transport_peer_boundary.py`. QEMU starts
+with an additional private host AF_UNIX socket configured as a
+`virtserialport` chardev, but **-S keeps the CPUs paused**. The host
+connects, and the kernel `SO_PEERCRED` of that socket identifies the
+QEMU **host process**, never a guest process. The independent QEMU
+disk-FD witness and local peer witness can therefore both pass while
+`guestChannelAuthenticated=false`.
+
+This is a decisive negative counterexample to treating a QEMU-owned
+socket as guest provenance: **no guest operating system, guest collector,
+guest bytes or authenticated observations exist in this scenario**.
+The second sample and in-memory same-witness replay check cannot
+authenticate older data; another witness may re-observe the same
+claimed session and report only local kernel identity. This is
+explicitly **not** durable replay protection.
+
+The same disposable GitHub Actions workflow now tests a missing
+guest endpoint, a fake host-side socket, an interrupted endpoint,
+a different concurrent QEMU, altered collector/transaction/provenance
+claims, injected authorization flags, and attempted replay. All
+guest and writer verdicts remain negative. The host-only JSON
+manifest and SHA-256 are **untrusted runner-generated diagnostics**,
+not an external signature or attestation. The manifest must state
+`guestBooted=false` and `guestObservationsReceived=0`.
+
+Required next trust boundary remains a protected host-to-guest
+provenance protocol with independently delivered/verified collector
+and guest execution identity, a protected persistent challenge
+ledger and independent policy approval; attaching virtio-serial
+hardware or querying QMP is not enough.
+
+No QGA, SSH, guest commands, installer, partition operations, or
+Windows/physical disk writes were added by this experiment.
