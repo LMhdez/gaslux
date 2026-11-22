@@ -294,9 +294,7 @@ class SixGptNegativeTests(unittest.TestCase):
             vars_path = work / lab.OVMF_NAME
             vars_path.write_bytes(b"original-private-vars")
             with (
-                patch.dict(
-                    os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(repo)}
-                ),
+                patch.dict(os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(repo)}),
                 owner.SafeWorkspace(work, evidence) as guard,
             ):
                 old = work / "fault-injected-vars.fd"
@@ -383,6 +381,13 @@ class SixGptNegativeTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
+            raw_map = subprocess.run(
+                ["qemu-img", "map", "--output=json", str(child)],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            print("F04_QEMU_MAP_CLEAN=" + raw_map[:4000], flush=True)
             lab.ensure_empty_child(child, base)
             subprocess.run(
                 ["qemu-io", "-f", "qcow2", "-c", "write -P 0x5a 3188736 4096", str(child)],
