@@ -127,3 +127,49 @@ The added twelfth real-QEMU test supplies that matching claimed hash and
 requires `CHECKPOINT_SIZE_EXCEEDS_LIMIT`. The earlier 11-test results remain
 historical evidence for the preceding module HEAD; they are **not** a
 substitute for CI on the new checkpoint-bound candidate.
+
+## D-337-01 — verified full-FD digest (2026-11-22)
+
+Independent Safety [finding #7080704589](https://github.com/LMhdez/gaslux/pull/337#issuecomment-7080704589)
+identified that `_digest()` accepted a POSIX-legal positive short `os.pread()`
+and skipped missing bytes in each 1 MiB window. The Safety RED workflow
+[#45033893644](https://github.com/LMhdez/gaslux/actions/runs/45033893644)
+against the **unchanged** module blob
+`133909a2cdcc7b6f4d8f19c3e013ca2717ff0fb4` passed the complete-read
+control and failed the short-positive-read refusal check. A caller-supplied
+prefix hash could therefore be accepted as a full-FD hash.
+
+The existing #337 module now **rejects any short or empty `pread`
+immediately**, including positive short reads. It requires each returned
+block length to equal the requested number of bytes, advances by only the
+length actually authenticated, requires the sum to equal pinned `st_size`,
+rejects I/O errors, and rechecks initial/final FD identity before comparing
+the complete SHA-256. No large-image support or `MAX_BYTES` increase was
+introduced. Unlike a retry strategy, a legal positive short read is an
+explicit **diagnostic refusal**, not a successful authentication.
+
+The exact Safety regression was copied **byte-for-byte**, as
+`auto_tests/test_destination_337_partial_pread_red.py`, Git blob
+`c84b979caae17e85eeac3f3cf81532f34c3e9974`. Its unmodified
+assertion is pinned in the workflow; the original source is preserved in
+Safety branch `b77933ee0eee4807689580d5bb002a65b3ea5d44`. Additional
+`auto_tests/test_destination_337_fd_digest.py` tests cover: A valid
+multi-window FD, B positive short read, C matching prefix-only hash,
+D premature EOF, E repeated short reads (refusal at first unread byte),
+F content mutation, G size change and H injected EIO.
+
+The fix and eight tests passed the real stopped-QEMU suite on
+[`5dcf4fad` / Action #45034974154](https://github.com/LMhdez/gaslux/actions/runs/45034974154):
+Safety oracle 2/2, A–H 8/8, original destination checks, reused #325/#327/#267
+tests, HOST/FD, Ruff and compileall. **No guest boot, image writer or
+installation** occurred. This CI proves the specific D-337-01 bug is fixed
+under the tested fault model. It does **not** authenticate caller-supplied
+plan provenance, QEMU's internal backend pointer, guest-effective GPT or
+Windows checkpoint recovery. The separate checkpoint JSON `pread` parsing
+path and original path/FD ABA limitations still require differential Safety
+review; neither is permission to trust guest claims or enable writers.
+
+**Final authority unchanged:** `READONLY_STRUCTURE_OBSERVED`,
+`DENY_NO_WRITER`, `guestCommandChannelAuthorized=false`,
+`productionStorageWritesAuthorized=false`, `rollbackProven=false`,
+`sameDiskDualBootVerified=false`, `stable=false`.
