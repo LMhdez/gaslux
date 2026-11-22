@@ -30,6 +30,7 @@ jobs:
         run: |
           python -m compileall -q assets/live/libertix_disk_identity_gate.py auto_tests/tests/test_disk_identity_gate.py auto_tests/tests/test_disk_identity_snapshot_semantics.py
           python -m ruff check --config auto_tests/pyproject.toml assets/live/libertix_disk_identity_gate.py auto_tests/tests/test_disk_identity_snapshot_semantics.py
+          python -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tests/test_disk_identity_snapshot_semantics.py || true
           python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_disk_identity_snapshot_semantics.py
       - name: Verify read-only GPT identity and adversarial cases
         run: python -m pytest -q auto_tests/tests/test_disk_identity_gate.py auto_tests/tests/test_disk_identity_snapshot_semantics.py
