@@ -211,6 +211,19 @@ def map_bcd_fat32(
                 first_data_cluster = (_u16(item, 20) << 16) | _u16(item, 26)
                 size = _u32(item, 28)
                 is_dir = bool(item[11] & 0x10)
+                if name in (".", ".."):
+                    # Native FAT32 directories contain special dot records.
+                    # ".." at the volume root is allowed to reference cluster
+                    # 0; it is NOT a dereferenceable data/file cluster.
+                    # Never treat foreign entries with cluster 0 as valid.
+                    require(long_name is None and item[11] == 0x10
+                            and size == 0 and is_dir
+                            and ((name == "." and first_data_cluster == first)
+                                 or (name == ".." and
+                                     (first_data_cluster == 0 or
+                                      2 <= first_data_cluster <= clusters + 1))),
+                            "invalid FAT32 special dot directory entry")
+                    continue
                 require(2 <= first_data_cluster <= clusters + 1,
                         "nonempty directory entry has bad first cluster")
                 result.append((name, first_data_cluster, size, is_dir))
