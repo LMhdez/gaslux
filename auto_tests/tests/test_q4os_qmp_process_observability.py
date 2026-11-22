@@ -1125,3 +1125,97 @@ def test_r03_dangling_symlink_report_is_bounded_refusal(monkeypatch, tmp_path, c
     assert "SECRET_SENTINEL" not in output.out
     assert report.is_symlink()
     assert not target.exists()
+
+
+
+@pytest.mark.parametrize("runner_name", ["_run_lab_impl", "_run_lab_synthetic"])
+def test_r02_real_unix_socket_never_receives_synthetic_qmp(monkeypatch, lab, runner_name):
+    """Existing Python child plus same-UID UNIX QMP server; zero commands."""
+    import time
+
+    work, code, vars_path, image, iso, answer = lab
+    sock = work / "q4os-win10-qmp.sock"
+    transcript = work / "qmp-bytes.bin"
+    server_script = """
+import socket,sys
+from pathlib import Path
+s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+s.bind(sys.argv[1]);s.listen(1);s.settimeout(0.7)
+data=b''
+try:
+    client,_=s.accept()
+    client.settimeout(0.5)
+    try:
+        data=client.recv(4096)
+    except (socket.timeout,OSError):
+        pass
+    client.close()
+except socket.timeout:
+    pass
+Path(sys.argv[2]).write_bytes(data)
+s.close()
+"""
+    sleeper = subprocess.Popen(
+        [sys.executable, "-c", "import time;time.sleep(15)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    owner = {}
+    original_args = witness._qemu_args
+
+    def args_after_preflight(*args, **kwargs):
+        # The core's initial qmp-socket-absent check has completed.
+        result = original_args(*args, **kwargs)
+        owner["server"] = subprocess.Popen(
+            [sys.executable, "-u", "-c", server_script, str(sock), str(transcript)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        deadline = time.monotonic() + 3
+        while not sock.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert sock.exists()
+        return result
+
+    monkeypatch.setattr(witness, "_qemu_args", args_after_preflight)
+    try:
+        report = getattr(witness, runner_name)(
+            work,
+            code,
+            vars_path,
+            image,
+            iso,
+            answer,
+            "kvm",
+            synthetic_child=sleeper,
+            connect_seconds=0.1,
+        )
+    finally:
+        if sleeper.poll() is None:
+            sleeper.terminate()
+        sleeper.wait(timeout=5)
+        if "server" in owner:
+            child = owner["server"]
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.terminate()
+                child.wait(timeout=5)
+    assert witness.QEMU_FD_BACKING_VERIFIED is False
+    assert transcript.exists(), "the synthetic peer must publish its observation"
+    received = transcript.read_bytes()
+    for command in (b"qmp_capabilities", b"query-status", b"send-key"):
+        assert command not in received
+    assert received == b"", "synthetic helper must not establish a QMP connection"
+    assert report["decision"] == "refuse"
+    assert report["qemuSpawned"] is False
+    assert report["qemuPidRecorded"] is False
+    assert report["qmpHandshakeVerified"] is False
+    assert report["qmpSendKeyAcknowledged"] is False
+    assert report["installationAuthorized"] is False
+    assert report["diskWritesAuthorized"] is False
+    assert sleeper.poll() is not None
