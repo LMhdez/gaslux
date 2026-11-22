@@ -396,6 +396,55 @@ class SixGptNegativeTests(unittest.TestCase):
             with self.assertRaisesRegex(Refusal, "owned extents"):
                 lab.ensure_empty_child(child, backing)
 
+    def test_safety_f01_export_symlink_hardlink_foreign_survive(self):
+        import gaslux_popos_six_gpt_ownership as owner
+
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            work = parent / "gaslux-pop-six-gpt-links"
+            evidence = parent / "evidence"
+            work.mkdir(mode=0o700)
+            evidence.mkdir(mode=0o700)
+            foreign = parent / "foreign-transaction.json"
+            foreign.write_bytes(b"foreign data survives")
+            destination = work / owner.FILES[0]
+            st = work.stat()
+            directory_pin = (st.st_dev, st.st_ino)
+            destination.symlink_to(foreign)
+            with self.assertRaises(OSError):
+                owner.export_evidence(work, evidence, directory_pin)
+            self.assertEqual(foreign.read_bytes(), b"foreign data survives")
+            destination.unlink()  # Test fixture setup only; never the lab cleanup path.
+            os.link(foreign, destination)
+            with self.assertRaises(owner.OwnershipRefusal):
+                owner.export_evidence(work, evidence, directory_pin)
+            self.assertEqual(foreign.read_bytes(), b"foreign data survives")
+            self.assertTrue(destination.exists())
+
+    def test_safety_f01_enospc_partial_file_retained_without_cleanup_delete(self):
+        import errno
+        import gaslux_popos_six_gpt_ownership as owner
+
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            work = parent / "gaslux-pop-six-gpt-enospc"
+            evidence = parent / "evidence"
+            work.mkdir(mode=0o700)
+            evidence.mkdir(mode=0o700)
+            target = work / "incomplete-create.raw"
+            with patch(
+                "gaslux_popos_reuse_snapshot_gate.os.ftruncate",
+                side_effect=OSError(errno.ENOSPC, "synthetic no space"),
+            ):
+                with self.assertRaises(OSError):
+                    new_file(target, 8192)
+            if target.exists():
+                target.rename(work / "original-partial.raw")
+            target.write_bytes(b"foreign transaction after ENOSPC")
+            st = work.stat()
+            owner.export_evidence(work, evidence, (st.st_dev, st.st_ino))
+            self.assertEqual(target.read_bytes(), b"foreign transaction after ENOSPC")
+
     def test_valid_plan_is_permanently_no_writer(self):
         plan = sample_plan()
         c.validate_plan(plan, TX)
