@@ -54,7 +54,9 @@ def test_digest_flip_denied_without_public_path(source):
         measurement(target, hashlib.sha256(data + b"x").hexdigest())
 
 
-@pytest.mark.parametrize("size_range", [(len(b"TEST_ONLY_NOT_A_Q4OS_ISO" * 400) + 1, 50000), (1, 3)])
+@pytest.mark.parametrize(
+    "size_range", [(len(b"TEST_ONLY_NOT_A_Q4OS_ISO" * 400) + 1, 50000), (1, 3)]
+)
 def test_wrong_length_denied(source, size_range):
     target, data = source
     with pytest.raises(readiness.MediaRefusal, match="ISO_SIZE_OUT_OF_RANGE"):
@@ -183,7 +185,11 @@ def test_source_only_manifest_has_no_boot_or_provenance_authority():
     assert doc["source"]["installerObservedInThisRun"] is False
     assert not any(doc["runtimeBindings"].values())
     assert not any(doc["guest"].values())
-    assert all(val is False for key, val in doc["gates"].items() if key != "disposableVmStandingPolicy")
+    assert all(
+        val is False
+        for key, val in doc["gates"].items()
+        if key != "disposableVmStandingPolicy"
+    )
     assert doc["gates"]["disposableVmStandingPolicy"] is True
     assert "SIGNED_GASLUX_ISO_CATALOG_MISSING" in doc["blockers"]
 
