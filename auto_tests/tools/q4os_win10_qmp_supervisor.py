@@ -50,7 +50,7 @@ DETAIL_CODES = frozenset(
 )
 # QEMU /proc/self/fd drive-argument compatibility has not been proven in a
 # separately authorized VM test. Consequently the production spawn is blocked.
-# popen_factory is for offline, injected synthetic process tests ONLY.
+# The operational API never accepts a spawn factory as authority.
 QEMU_FD_BACKING_VERIFIED = False
 
 
@@ -158,6 +158,31 @@ def _peer(channel: Qmp, process: subprocess.Popen) -> None:
     _require(pid == process.pid and uid == os.getuid(), "QEMU_QMP_SOCKET_INVALID")
 
 
+class _BoundQmpSession:
+    """Kernel-checked peer/process/inode witness; no caller-supplied guard.
+
+    Every protocol action re-verifies the same child, pidfd and socket inode.
+    A Python callback or mock QMP object alone is never an authorization.
+    """
+
+    def __init__(self, channel: Qmp, process: subprocess.Popen, pidfd: int,
+                 path: Path, work: Path, identity: tuple[int, int]):
+        self.channel = channel
+        self.process = process
+        self.pidfd = pidfd
+        self.path = path
+        self.work = work
+        self.identity = identity
+
+    def verify(self) -> None:
+        _witness(self.process, self.pidfd)
+        _require(
+            _socket_identity(self.path, self.work) == self.identity,
+            "QEMU_QMP_SOCKET_INVALID",
+        )
+        _peer(self.channel, self.process)
+
+
 def _await_qmp(
     process: subprocess.Popen,
     pidfd: int,
@@ -167,7 +192,7 @@ def _await_qmp(
     *,
     seconds: float = 15,
     interval: float = 0.05,
-) -> tuple[Qmp, tuple[int, int]]:
+) -> _BoundQmpSession:
     deadline = time.monotonic() + seconds
     refused = False
     while time.monotonic() < deadline:
@@ -182,17 +207,17 @@ def _await_qmp(
             # Connect-only. No capabilities/query-status until the peer PID
             # and actual connected socket have been authenticated.
             channel = Qmp(path, negotiate=False)
-            _peer(channel, process)
-            _require(_socket_identity(path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
-            _witness(process, pidfd)
+            # No protocol bytes are allowed until the real kernel peer
+            # and owned process have been authenticated.
+            session = _BoundQmpSession(channel, process, pidfd, path, work, identity)
+            session.verify()
+            channel.bind_verified_session(session)
             channel.negotiate_protocol()
-            _peer(channel, process)
-            _require(_socket_identity(path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
-            _witness(process, pidfd)
+            session.verify()
             report["qmpSocketState"] = "CONNECTED"
             report["qmpHandshakeVerified"] = True
             report["qmpRunningVerified"] = True
-            return channel, identity
+            return session
         except ConnectionRefusedError:
             refused = True
             report["qmpSocketState"] = "CONNECTION_REFUSED"
@@ -420,7 +445,7 @@ def run_lab(
             os.close(pidfd)
             pidfd = None
             raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED")
-        channel, identity = _await_qmp(
+        session = _await_qmp(
             process,
             pidfd,
             qmp_path,
@@ -429,11 +454,6 @@ def run_lab(
             seconds=connect_seconds,
         )
 
-        def guard() -> None:
-            _witness(process, pidfd)
-            _require(_socket_identity(qmp_path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
-            _peer(channel, process)
-
         try:
             result = supervise(
                 qmp_path,
@@ -441,8 +461,7 @@ def run_lab(
                 image,
                 prompt_seconds=prompt_seconds,
                 progress_seconds=progress_seconds,
-                qmp_channel=channel,
-                process_guard=guard,
+                qmp_session=session,
             )
             report["qmpSendKeyAcknowledged"] = result["qmpSendKeyAcknowledged"]
         except BootRefusal as exc:
