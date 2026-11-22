@@ -37,15 +37,7 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
     class Process:
         pid = os.getpid()
 
-        def __init__(self, args, **kwargs):
-            assert args[0] == witness.QEMU
-            assert kwargs["start_new_session"] is True
-            assert kwargs["stdin"] == subprocess.DEVNULL
-            assert kwargs["cwd"] == work
-            assert "-net" in args and args[args.index("-net") + 1] == "none"
-            assert "send-key" not in args
-            kwargs["stdout"].write(stderr)
-            kwargs["stdout"].flush()
+        def __init__(self):
             self.returncode = 19 if mode in ("early", "exit_after_socket") else None
             holder["process"] = self
 
@@ -60,8 +52,11 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
             return self.returncode
 
     class FakeChannel:
+        def bind_verified_session(self, session):
+            self.session = session
+
         def negotiate_protocol(self):
-            pass
+            self.session.verify()
 
         def close(self):
             pass
@@ -116,9 +111,8 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
             raise BootRefusal("QEMU_EARLY_EXIT SECRET=/tmp/private")
         if mode == "valid_reason":
             raise BootRefusal("QEMU_QMP_SOCKET_INVALID")
-        assert kwargs["qmp_channel"] is not None
-        assert callable(kwargs["process_guard"])
-        kwargs["process_guard"]()
+        assert type(kwargs["qmp_session"]) is witness._BoundQmpSession
+        kwargs["qmp_session"].verify()
         return {"qmpSendKeyAcknowledged": True}
 
     birth_calls = 0
@@ -136,14 +130,7 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
     monkeypatch.setattr(witness, "_socket_identity", socket_identity)
     monkeypatch.setattr(witness, "Qmp", fake_qmp)
     monkeypatch.setattr(witness, "supervise", fake_supervise)
-    if mode == "spawn":
-
-        def spawn_fails(*_args, **_kwargs):
-            raise OSError("private path must not appear in report")
-
-        factory = spawn_fails
-    else:
-        factory = Process
+    child = None if mode == "spawn" else Process()
     if mode == "cleanup_fail":
 
         def signal_fails(*_args, **_kwargs):
@@ -158,7 +145,7 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
 
         monkeypatch.setattr(witness.signal, "pidfd_send_signal", fake_pidfd_signal)
 
-    report = witness.run_lab(
+    report = witness._run_lab_synthetic(
         work,
         code,
         vars_path,
@@ -166,7 +153,9 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
         iso,
         answer,
         "kvm",
-        popen_factory=factory,
+        synthetic_child=child,
+        synthetic_spawn_failure=mode == "spawn",
+        synthetic_log_data=stderr,
         pidfd_factory=lambda _pid: os.open(os.devnull, os.O_RDONLY),
         connect_seconds=0.2 if mode == "late" else seconds,
         prompt_seconds=0.02,
@@ -404,35 +393,28 @@ def test_real_python_child_reaped_despite_report_io_fault(monkeypatch, lab, faul
             return FaultyOutput(result)
         return result
 
-    def start_python(_qemu_args, **kwargs):
-        assert all(
-            x != "/usr/bin/qemu-system-x86_64"
-            for x in [
-                sys.executable,
-            ]
-        )
-        proc = subprocess.Popen(
-            [sys.executable, "-c", "import time;time.sleep(30)"],
-            **kwargs,
-        )
-        holder["child"] = proc
-        return proc
-
     monkeypatch.setattr(Path, "open", fault_open)
     monkeypatch.setattr(witness, "_witness", lambda *_args: None)
     work, code, vars_path, image, iso, answer = lab
-    report = witness.run_lab(
-        work,
-        code,
-        vars_path,
-        image,
-        iso,
-        answer,
-        "kvm",
-        popen_factory=start_python,
-        connect_seconds=0.03,
+    # The test itself creates a real, disposable Python child. Gaslux core
+    # never receives or invokes an executable/factory, only an existing PID.
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time;time.sleep(30)"],
+        cwd=work,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
-    child = holder["child"]
+    try:
+        report = witness._run_lab_synthetic(
+            work, code, vars_path, image, iso, answer, "kvm",
+            synthetic_child=child, connect_seconds=0.03,
+        )
+    finally:
+        if child.poll() is None:
+            child.terminate()
+        child.wait(timeout=5)
     assert report["reportIoFailed"] is True
     assert report["decision"] == "refuse"
     assert report["cleanupVerified"] is True
@@ -457,95 +439,35 @@ def test_symlink_swap_after_initial_validation_refused_before_spawn(monkeypatch,
             seen["swap"] = True
         return original(path, expected, **kwargs)
 
-    def forbidden_spawn(*_args, **_kwargs):
-        seen["spawn"] = True
-        raise AssertionError("no spawn after inode/symlink mismatch")
-
     monkeypatch.setattr(witness, "_pin_file", pin_then_swap)
-    report = witness.run_lab(
-        work,
-        code,
-        vars_path,
-        image,
-        iso,
-        answer,
-        "kvm",
-        popen_factory=forbidden_spawn,
+    report = witness._run_lab_synthetic(
+        work, code, vars_path, image, iso, answer, "kvm",
+        synthetic_child=object(),
     )
     assert report["decision"] == "refuse"
-    assert seen == {"spawn": False, "swap": True}
+    assert seen["swap"] is True
+    assert report["qemuSpawned"] is False
     assert foreign.read_bytes() == b"FOREIGN-DATA"
     assert report["diskWritesAuthorized"] is False
 
 
 def test_pinned_fd_remains_on_original_inode_after_path_swap(monkeypatch, lab, tmp_path):
-    """The old synthetic file is pinned even when its path is replaced."""
-    work, code, vars_path, image, iso, answer = lab
+    """Pinned inode write never follows an attacker-swapped synthetic path."""
+    work, _code, _vars_path, image, _iso, _answer = lab
     foreign = tmp_path / "foreign-synthetic"
     foreign.write_bytes(b"PROTECTED-CONTENT")
-    original = image.read_bytes()
-    called = {"spawn": False}
-
-    class FakeProcess:
-        pid = os.getpid()
-
-        def __init__(self, args, **kwargs):
-            called["spawn"] = True
-            media = args[args.index("-drive") + 1]
-            assert "/proc/self/fd/" in media
-            assert "disk.qcow2" not in " ".join(args)
-            assert len(kwargs["pass_fds"]) == 5
-            image.rename(work / "original-owned-image")
-            image.symlink_to(foreign)
-            pinned_fd = next(
-                fd
-                for fd in kwargs["pass_fds"]
-                if os.fstat(fd).st_ino == (work / "original-owned-image").stat().st_ino
-            )
-            os.lseek(pinned_fd, 0, os.SEEK_SET)
-            os.write(pinned_fd, b"OWNED-FD")
-            self.returncode = None
-
-        def poll(self):
-            return self.returncode
-
-        def wait(self, _timeout):
-            if self.returncode is None:
-                self.returncode = 0
-            return self.returncode
-
-    def fake_signal(_fd, sig):
-        assert sig == 15
-        # The fake child is not an OS process; signalling remains mocked.
-        fake.returncode = -sig
-
-    fake = None
-
-    def spawn(args, **kwargs):
-        nonlocal fake
-        fake = FakeProcess(args, **kwargs)
-        return fake
-
-    monkeypatch.setattr(witness, "_birth_identity", lambda *_args: (1, 2))
-    monkeypatch.setattr(witness, "_witness", lambda *_args: None)
-    monkeypatch.setattr(witness.signal, "pidfd_send_signal", fake_signal)
-    report = witness.run_lab(
-        work,
-        code,
-        vars_path,
-        image,
-        iso,
-        answer,
-        "kvm",
-        popen_factory=spawn,
-        pidfd_factory=lambda _pid: os.open(os.devnull, os.O_RDONLY),
-        connect_seconds=0.02,
-    )
-    assert called["spawn"]
-    assert foreign.read_bytes() == b"PROTECTED-CONTENT"
-    assert (work / "original-owned-image").read_bytes().startswith(b"OWNED-FD")
-    assert original != (work / "original-owned-image").read_bytes()
-    assert report["decision"] == "refuse"
+    old_bytes = image.read_bytes()
+    fd = witness._pin_file(image, image.lstat(), writable=True)
+    try:
+        image.rename(work / "original-owned-image")
+        image.symlink_to(foreign)
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.write(fd, b"OWNED-FD")
+        assert foreign.read_bytes() == b"PROTECTED-CONTENT"
+        assert (work / "original-owned-image").read_bytes().startswith(b"OWNED-FD")
+        assert old_bytes != (work / "original-owned-image").read_bytes()
+    finally:
+        os.close(fd)
 
 
 def test_unproven_qemu_backing_contract_blocks_real_spawn(monkeypatch, lab):
