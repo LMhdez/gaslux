@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import io
 import json
 import tarfile
@@ -144,12 +145,12 @@ def test_missing_or_extra_rootfs_layer_refused():
     _manifest, config, _a, b = sample_metadata()
     config["rootfs"]["diff_ids"] = []
     b = json.dumps(config).encode()
+    _manifest["config"]["digest"] = digest_bytes(b)
+    _manifest["config"]["size"] = len(b)
+    a = json.dumps(_manifest).encode()
     with pytest.raises(Refusal, match="layer chain"):
         validate_metadata(
-            json.dumps(_manifest).encode(),
-            b,
-            expected_manifest=digest_bytes(json.dumps(_manifest).encode()),
-            expected_config=digest_bytes(b),
+            a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
         )
 
 
@@ -200,7 +201,7 @@ def test_hostile_tar_paths_refused(name):
         scan(data)
 
 
-@pytest.mark.parametrize("target", ["/etc/passwd", "../../etc/shadow"])
+@pytest.mark.parametrize("target", ["/etc/passwd", "../../../etc/shadow"])
 def test_executable_symlink_escaping_image_refused(target):
     data = tar_layer({"usr/bin/bootc": ("symlink", target)})
     with pytest.raises(Refusal):
@@ -218,13 +219,11 @@ def test_tampered_layer_gzip_digest_refused():
 
 
 def test_unbounded_binary_size_refused():
-    out = io.BytesIO()
-    with tarfile.open(fileobj=out, mode="w:gz") as tar:
-        info = tarfile.TarInfo("usr/bin/bootc")
-        info.size = 128 * 1024 * 1024 + 1
-        tar.addfile(info, io.BytesIO(b""))
-    # Tar generation itself must refuse a truncated fabricated entry.
-    # The normal readback enforces the bound before reading executable bytes.
+    info = tarfile.TarInfo("usr/bin/bootc")
+    info.size = 128 * 1024 * 1024 + 1
+    compressed = gzip.compress(info.tobuf(format=tarfile.USTAR_FORMAT) + b"\0" * 1024)
+    with pytest.raises(Refusal, match="Suspicious bootc executable size"):
+        scan(compressed)
 
 
 def test_malformed_gzip_refused_after_matching_descriptor():
