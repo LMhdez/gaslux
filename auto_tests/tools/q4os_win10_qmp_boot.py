@@ -257,8 +257,6 @@ def supervise(
         qmp.close()
 
 
-
-
 def _write_report_exclusive(path: Path, qmp_path: Path, report: dict) -> bool:
     """Write a bounded report only to a freshly created, owned regular inode.
 
@@ -290,8 +288,7 @@ def _write_report_exclusive(path: Path, qmp_path: Path, report: dict) -> bool:
             stat.S_ISDIR(directory.st_mode)
             and directory.st_uid == os.getuid()
             and not directory.st_mode & 0o077
-            and (directory.st_dev, directory.st_ino)
-            == (observed.st_dev, observed.st_ino)
+            and (directory.st_dev, directory.st_ino) == (observed.st_dev, observed.st_ino)
             and stat.S_ISDIR(observed.st_mode)
         ):
             return False
@@ -323,7 +320,14 @@ def _write_report_exclusive(path: Path, qmp_path: Path, report: dict) -> bool:
                 return False
             offset += written
         os.fsync(fd)
-        if os.fstat(fd).st_nlink != 1:
+        final_parent = path.parent.lstat()
+        final_named = os.stat(path.name, dir_fd=dirfd, follow_symlinks=False)
+        if not (
+            os.fstat(fd).st_nlink == 1
+            and (final_parent.st_dev, final_parent.st_ino)
+            == (directory.st_dev, directory.st_ino)
+            and (final_named.st_dev, final_named.st_ino) == (own.st_dev, own.st_ino)
+        ):
             return False
         # File/dir close failures are failures, not verified persistence.
         os.close(fd)
@@ -339,6 +343,7 @@ def _write_report_exclusive(path: Path, qmp_path: Path, report: dict) -> bool:
             if owned_fd is not None:
                 with contextlib.suppress(OSError):
                     os.close(owned_fd)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
