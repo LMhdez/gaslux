@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -272,6 +273,55 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
                                     "invalid BCD forensic inputs"):
             lab.summarize_bcd_difference(b"forged", after)
 
+
+
+    def test_real_workflow_auditor_imports_its_windows_verifier(self):
+        """Regression for #44900941635: inline audit must not depend on prior sys.path."""
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github/workflows/cachyos-windows10-shared-root-pacstrap.yml"
+        ).read_text(encoding="utf-8")
+        step = workflow.split(
+            "      - name: Independently gate pacstrap, Windows integrity "
+            "and disposable COW recovery", 1
+        )[1].split("      - name: Retain only bounded JSON", 1)[0]
+        setup = (
+            'sys.path.insert(0, str((Path.cwd() / "auto_tests/tools")'
+            '.resolve(strict=True)))'
+        )
+        verifier = (
+            "from windows_cachyos_overlay_reboot "
+            "import audit_complete_third_serial"
+        )
+        self.assertEqual(step.count(setup), 1)
+        self.assertEqual(step.count(verifier), 1)
+        self.assertLess(step.index(setup), step.index(verifier))
+        # Do not treat a successful import as authorization to ignore BCD changes.
+        self.assertIn(
+            'if comparison["controlBcdChanged"] or comparison["treatmentBcdChanged"]:',
+            step,
+        )
+        self.assertIn(
+            '"protected BCD changed; diagnostic does not authorize mutation"',
+            step,
+        )
+        command = (
+            "import sys\n"
+            "from pathlib import Path\n"
+            + setup
+            + "\n"
+            + verifier
+            + "\nassert callable(audit_complete_third_serial)\n"
+        )
+        smoke = subprocess.run(
+            [sys.executable, "-c", command],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(smoke.returncode, 0, smoke.stdout + smoke.stderr)
 
 
 if __name__ == "__main__":
