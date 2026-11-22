@@ -23,6 +23,7 @@ from zorin_ubiquity_source_coverage import (
     exact_regular_bytes,
     inspect_authenticated_iso,
     open_pinned_archive,
+    sha,
     source_index,
 )
 
@@ -251,6 +252,57 @@ def parse_unsquashfs_lstat(text: str, path: str) -> dict:
     }
 
 
+SHELL_EFFECT_NAMES = re.compile(
+    r"(?i)(?<![a-z0-9_-])(?:parted|partman|sfdisk|wipefs|mkfs(?:\\.[a-z0-9_-]+)?|"
+    r"resize2fs|ntfsresize|mount|umount|grub-install|efibootmgr|"
+    r"dd|mkswap|fsck(?:\\.[a-z0-9_-]+)?|pvcreate|lvcreate|"
+    r"blockdev|debconf|eval|commit|format)(?![a-z0-9_-])"
+)
+MAX_SHELL_REFERENCES = 300
+
+
+def static_shell_references(source: bytes, path: str) -> dict:
+    """Bounded lexical shell call references: never source/execute the script.
+
+    Tokens in conditions, strings and functions are not established calls;
+    shell evaluation, sourced files and external executables remain opaque.
+    """
+    deny(type(source) is bytes and 0 < len(source) <= 512 * 1024,
+         "E_PARTMAN_SHELL_SOURCE_BOUNDS")
+    try:
+        lines = source.decode("utf-8", "strict").splitlines()
+    except UnicodeDecodeError as exc:
+        raise SourceCoverageDenied("E_PARTMAN_SHELL_ENCODING") from exc
+    references = []
+    sourced = []
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match_source = re.match(r"^(?:\\.|source)\\s+([^\\s;|&]+)", stripped)
+        if match_source:
+            sourced.append({"line": i, "expression": match_source.group(1),
+                            "targetFileAuthenticated": False})
+        for found in SHELL_EFFECT_NAMES.finditer(stripped):
+            references.append({
+                "line": i,
+                "token": found.group(0),
+                "basis": "STATIC_SHELL_TOKEN_NOT_EXECUTION",
+                "runtimeReachabilityProven": False,
+            })
+    deny(len(references) <= MAX_SHELL_REFERENCES,
+         "E_PARTMAN_SHELL_STATIC_COVERAGE_TRUNCATED")
+    return {
+        "path": path,
+        "lineCount": len(lines),
+        "sourceReferences": sourced,
+        "effectCandidates": references,
+        "runtimeEffectsAuthenticated": False,
+        "completeShellDependenciesAuthenticated": False,
+        "firstPersistentWriteVerified": False,
+    }
+
+
 def reject_forged_effect_graph(graph: dict) -> None:
     deny(type(graph) is dict, "E_EFFECT_GRAPH_SHAPE")
     deny(not any(graph.get(k) is True for k in MUTABLE_GATES), "E_FALSE_EFFECT_GRAPH")
@@ -281,6 +333,29 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
     shell = {p: lstat_member(rootfs, p) for p in UNATTESTED_SHELL}
     parents = {p: lstat_member(rootfs, p) for p in PARTMAN_PARENT_INODES}
     alternates = {p: lstat_member(rootfs, p) for p in PARTMAN_ALTERNATE_CANDIDATES}
+    shell_sources = {}
+    alias = parents["lib"]
+    if alias["type"] == "SYMLINK_NOT_FOLLOWED" and alias["targetText"] == "usr/lib":
+        for path in PARTMAN_ALTERNATE_CANDIDATES:
+            if alternates[path]["type"] != "REGULAR_METADATA_ONLY":
+                shell_sources[path] = {"status": "NOT_AUTHENTICATED"}
+                continue
+            data, status = exact_regular_bytes(rootfs, path, None)
+            if data is None or status != "REGULAR_NEWLY_ATTESTED":
+                shell_sources[path] = {"status": "NOT_AUTHENTICATED"}
+                continue
+            shell_sources[path] = {
+                "status": status,
+                "sha256": sha(data),
+                "sizeBytes": len(data),
+                "packageOwnerAuthenticated": False,
+                "staticAnalysis": static_shell_references(data, path),
+            }
+    else:
+        shell_sources = {
+            path: {"status": "ALIAS_NOT_AUTHENTICATED"}
+            for path in PARTMAN_ALTERNATE_CANDIDATES
+        }
     result = {
         "kind": "ZORIN_UBIQUITY_FIRST_WRITER_STATIC_SOURCE_EVIDENCE",
         "isoSha256": old["isoSha256"],
@@ -291,6 +366,8 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
         "parentInodeMetadata": parents,
         "candidateTargetInodeMetadataNotFollowed": alternates,
         "alternateTargetOwnershipAuthenticated": False,
+        "partmanShellSourcesFromVerifiedIso": shell_sources,
+        "shellRuntimeEffectsAuthenticated": False,
         "staticCalls": calls,
         "allSixBodiesAstScanned": True,
         "shellSourcesAuthenticated": False,
