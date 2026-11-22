@@ -44,7 +44,6 @@ jobs:
           set -Eeuo pipefail
           python -m compileall -q auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py
           python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py
-          python -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tests/test_observer_host_fd_safety_fixes.py || true
           python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py
       - name: Deny-only HOST-FD, Observer and legacy Mint/Zorin regressions
         run: |
