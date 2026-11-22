@@ -1,0 +1,214 @@
+name: Gaslux autonomous GitHub agents
+
+on:
+  schedule:
+    - cron: '37 * * * *' # GitHub default-branch scheduler, one dispatch per hour
+  workflow_dispatch:
+    inputs:
+      role:
+        type: choice
+        required: true
+        default: auto
+        options: [auto, mint, zorin]
+  push:
+    branches: [main, automation/default-branch-agent-clock-20261122]
+    paths:
+      - .github/workflows/gaslux-agent-clock.yml
+      - auto_tests/tools/gaslux_agent_trusted_publish.py
+      - auto_tests/tests/test_gaslux_agent_trusted_publish.py
+      - docs/GASLUX_ACTIONS_AGENT_CLOCK.md
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-agent-clock.yml
+      - auto_tests/tools/gaslux_agent_trusted_publish.py
+      - auto_tests/tests/test_gaslux_agent_trusted_publish.py
+      - docs/GASLUX_ACTIONS_AGENT_CLOCK.md
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gaslux-agent-factory
+  cancel-in-progress: false
+
+jobs:
+  publisher_contracts:
+    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'pull_request' || github.event_name == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_trusted_publish.py -v
+
+  supervisor:
+    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    outputs:
+      active: ${{ steps.admission.outputs.active }}
+      role: ${{ steps.plan.outputs.role }}
+      base_sha: ${{ steps.plan.outputs.base_sha }}
+    steps:
+      - name: Inspect live dev product, not a synthetic regression
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Select real missing curated feature
+        id: plan
+        env:
+          OVERRIDE_ROLE: ${{ inputs.role || 'auto' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_implement.py -v
+          if [[ "$OVERRIDE_ROLE" == "auto" ]]; then
+            python3 -B auto_tests/tools/gaslux_agent_implement.py plan > /tmp/plan.json
+          else
+            python3 -B auto_tests/tools/gaslux_agent_implement.py plan --role "$OVERRIDE_ROLE" > /tmp/plan.json
+          fi
+          cat /tmp/plan.json
+          python3 - <<'PY'
+          import json, os
+          p=json.load(open("/tmp/plan.json",encoding="utf-8"))
+          if p["status"] not in ("idle","pending"): raise SystemExit("Bad plan")
+          with open(os.environ["GITHUB_OUTPUT"],"a",encoding="utf-8") as f:
+              f.write("has_task="+("true" if p["status"]=="pending" else "false")+"\n")
+              f.write("role="+p.get("role","")+"\n")
+              f.write("base_sha="+p.get("source_commit","")+"\n")
+          PY
+      - name: Avoid repeated model downloads for pending same-base proposal
+        id: dedupe
+        if: steps.plan.outputs.has_task == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLE: ${{ steps.plan.outputs.role }}
+          BASE_SHA: ${{ steps.plan.outputs.base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="bot/gaslux-$ROLE-keyboard-$(printf '%.12s' "$BASE_SHA")"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
+            echo 'duplicate=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'duplicate=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Admit bounded development task or idle
+        id: admission
+        env:
+          WORK: ${{ steps.plan.outputs.has_task }}
+          DUPLICATE: ${{ steps.dedupe.outputs.duplicate }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$WORK" == "true" && "$DUPLICATE" == "false" ]]; then
+            echo 'active=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'active=false' >> "$GITHUB_OUTPUT"
+            echo 'No unclaimed curated product task: no local model run'
+          fi
+
+  backend_developer:
+    needs: supervisor
+    if: needs.supervisor.outputs.active == 'true'
+    uses: LMhdez/gaslux/.github/workflows/gaslux-agent-builder.yml@dev
+    with:
+      role: ${{ needs.supervisor.outputs.role }}
+    permissions:
+      contents: read
+
+  safety_review:
+    needs: [supervisor, backend_developer]
+    if: needs.backend_developer.outputs.candidate_ready == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout main-only trusted validator, no persisted token
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-role-implementation
+          path: evidence/autonomous-agent/
+      - name: Exact source and SHA independent validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_trusted_publish.py -v
+          python3 -B auto_tests/tools/gaslux_agent_trusted_publish.py verify
+
+  windows_wpf_acceptance:
+    needs: [supervisor, backend_developer, safety_review]
+    if: needs.backend_developer.outputs.candidate_ready == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 22
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact dev source commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.supervisor.outputs.base_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-role-implementation
+          path: evidence/autonomous-agent/
+      - name: Copy validated candidate into disposable Windows checkout
+        env:
+          BASE_SHA: ${{ needs.supervisor.outputs.base_sha }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $report=Get-Content evidence/autonomous-agent/report.json -Raw | ConvertFrom-Json
+          if ($report.base_commit -ne $env:BASE_SHA -or $report.target -ne 'Installation/WindowsKeyboardLayout.cs' -or $report.candidate_valid -ne $true) {
+            throw 'Artifact/source identity mismatch'
+          }
+          Copy-Item evidence/autonomous-agent/candidate.cs Installation/WindowsKeyboardLayout.cs -Force
+      - uses: microsoft/setup-msbuild@v2
+      - name: Compile actual .NET Framework 4.8 WPF Gaslux installer
+        shell: pwsh
+        run: |
+          msbuild Libertix.sln /restore /m /p:Configuration=Release '/p:Platform=Any CPU'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows C# contract tests
+        shell: pwsh
+        run: |
+          dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  integrator_publisher:
+    needs: [supervisor, backend_developer, safety_review, windows_wpf_acceptance]
+    if: >-
+      needs.backend_developer.outputs.candidate_ready == 'true' &&
+      needs.safety_review.result == 'success' &&
+      needs.windows_wpf_acceptance.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Trusted main publisher only, never model-controlled dev source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-role-implementation
+          path: evidence/autonomous-agent/
+      - name: Revalidate dev and publish Draft PR only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          timeout 120 python3 -I auto_tests/tools/gaslux_agent_trusted_publish.py publish
