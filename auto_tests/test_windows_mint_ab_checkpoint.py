@@ -100,6 +100,34 @@ class MintAbCheckpointContracts(unittest.TestCase):
             info = ab.clone_tpm_state(None, Path(d))
             self.assertIs(info["applicable"], False)
 
+    def test_optional_stopped_tpm_state_has_two_independent_owned_clones(self):
+        """A copied TPM state is not a real TPM boot/recovery proof."""
+        import hashlib
+
+        with tempfile.TemporaryDirectory() as root:
+            workspace = Path(root)
+            state = workspace / "swtpm-state"
+            state.mkdir(mode=0o700)
+            original = state / "tpm2-00.permall"
+            original.write_bytes(b"synthetic-not-a-real-tpm-state")
+            directory = workspace / ab.AB_DIR
+            directory.mkdir(mode=0o700)
+            proof = ab.clone_tpm_state(state, directory)
+            self.assertTrue(proof["applicable"])
+            variants = [
+                directory / proof["armA"] / "tpm2-00.permall",
+                directory / proof["armB"] / "tpm2-00.permall",
+            ]
+            self.assertEqual(
+                len({original.stat().st_ino, *[f.stat().st_ino for f in variants]}),
+                3,
+            )
+            digest = hashlib.sha256(original.read_bytes()).hexdigest()
+            self.assertEqual(proof["sourceHashes"]["tpm2-00.permall"], digest)
+            self.assertTrue(all(
+                hashlib.sha256(f.read_bytes()).hexdigest() == digest for f in variants
+            ))
+
     def test_tpm_rejects_links_and_unexpected_socket(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
