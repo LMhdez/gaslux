@@ -1,0 +1,45 @@
+name: Safety M-278-01 real-module RED regression (NO GUESTS)
+
+on:
+  push:
+    branches:
+      - safety/mint-m278-real-regression-20261122
+    paths:
+      - auto_tests/test_mint_m278_real_regression.py
+      - .github/workflows/safety-mint-m278-real-regression.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safety-m278-real-module-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mint-m278-red:
+    name: M-278-01 real module regression — RED expected on vulnerable head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Confirm branch and vulnerable base SHA
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "${GITHUB_REPOSITORY}" = "LMhdez/gaslux"
+          test "${GITHUB_REF}" = "refs/heads/safety/mint-m278-real-regression-20261122"
+          git merge-base --is-ancestor 7b8954a51b8c68819a4dc57358f17df74aee00fa HEAD
+          test -f auto_tests/tools/windows_mint_ab_forensic.py
+      - name: Compile independent test and real Mint module
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m compileall -q auto_tests/test_mint_m278_real_regression.py auto_tests/tools/windows_mint_ab_forensic.py
+      - name: Real-module A/B/C RED and D/E GREEN — NO QEMU, NO WRITER
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p 'test_mint_m278_real_regression.py' -v
