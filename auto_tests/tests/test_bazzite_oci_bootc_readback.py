@@ -5,11 +5,15 @@ from __future__ import annotations
 import gzip
 import io
 import json
+import sys
 import tarfile
+from pathlib import Path
 
 import pytest
 
-from auto_tests.bazzite_oci_bootc_readback import (
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "auto_tests"))
+from bazzite_oci_bootc_readback import (  # noqa: E402
     CANDIDATES,
     MAX_LAYER,
     NO_WRITE,
