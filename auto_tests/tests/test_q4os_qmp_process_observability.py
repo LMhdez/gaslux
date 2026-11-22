@@ -811,7 +811,6 @@ def test_r03_unexpected_exception_stays_redacted_in_legacy_cli(monkeypatch, tmp_
 def test_r01_pidfd_provenance_and_unsupervised_session_denied(
     monkeypatch, tmp_path, scenario
 ):
-    import socket
     import time
 
     from q4os_win10_qmp_boot import Qmp
