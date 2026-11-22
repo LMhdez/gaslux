@@ -250,6 +250,13 @@ def _wait_marker(log: Path, marker: bytes, child: subprocess.Popen, seconds: flo
         if log.exists() and marker in log.read_bytes()[-64000:]:
             return
         time.sleep(0.1)
+    # Only test-guest serial kernel diagnostic; no host secrets or disk dump.
+    if log.exists():
+        print(
+            "GASLUX_GUEST_BOOT_SERIAL_DIAGNOSTIC "
+            + log.read_bytes()[-5000:].decode("utf-8", errors="replace"),
+            flush=True,
+        )
     raise RuntimeError("GUEST_COLLECTOR_BOOT_MARKER_MISSING")
 
 
