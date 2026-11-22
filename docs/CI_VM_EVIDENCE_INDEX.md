@@ -85,4 +85,13 @@ Após essa execução foram adicionados recusa explícita `O_PATH` e um teste ad
 - Sobrescrever workflows antigos sem consultar a branch de origem e sem preservar o consent gate/segurança.
 - Criar outro workflow porque o existente tem nome pouco evidente; preferir adaptar workflow já testado após rever as dependências.
 
+
+## Observer HOST/FD — integração e reconciliação em dev (22/11/2026)
+
+- [#319](https://github.com/LMhdez/gaslux/pull/319) foi integrada em `dev` por `b57bbf97057a154beeb744bcbeef710687d520b4`: HOST/FD e Local Peer de sockets Unix são diagnóstico local **DENY-ONLY**, não autenticação do guest nem associação independente QEMU→disco.
+- [#312](https://github.com/LMhdez/gaslux/pull/312) foi integrada por `e382cad6760ad71df03bebf463f435f682a07508`, preservando as 16 funções históricas de teste da [#294](https://github.com/LMhdez/gaslux/pull/294). A #294 foi encerrada sem merge; a workflow antiga e os seus commits continuam recuperáveis em `e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9`, mas não executam em `dev`.
+- No HEAD de `dev` `e382cad6760ad71df03bebf463f435f682a07508`, as Actions **SUCCESS** incluem: [HOST/FD #45021654845](https://github.com/LMhdez/gaslux/actions/runs/45021654845), [Windows Recovery #45021654768](https://github.com/LMhdez/gaslux/actions/runs/45021654768), [CachyOS recovery #45021654819](https://github.com/LMhdez/gaslux/actions/runs/45021654819) e [GPT FD #45021654757](https://github.com/LMhdez/gaslux/actions/runs/45021654757). São **testes de contratos/offline**: não demonstram arranque QEMU no percurso Observer, guest autenticado, instalação, dual boot ou rollback Windows.
+- A [#325](https://github.com/LMhdez/gaslux/pull/325) é uma experiência QEMU **separada**, ainda Draft. Nenhum resultado dela foi integrado pelo fecho da #294. Preservar separadamente as provas e gates.
+
+
 Para contratos base e critérios de estabilidade, ver [histórico/guia de agentes](AGENT_HISTORICAL_PLAYBOOK.md), [ARCHITECTURE](ARCHITECTURE.md), [issues CachyOS #3](https://github.com/LMhdez/gaslux/issues/3) e [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
