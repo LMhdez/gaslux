@@ -1,0 +1,158 @@
+name: Observer HOST / QEMU FD evidence - OFFLINE read-only (NO QEMU)
+
+on:
+  push:
+    branches:
+      - test/observer-host-qemu-fd-evidence-20261121
+      - fix/observer-host-fd-f01-f02-f03-20261121
+      - integration/observer-host-fd-deny-only-dev-20261122
+      - dev
+    paths:
+      - 'auto_tests/installer_observer/host_qemu_fd_evidence.py'
+      - 'auto_tests/tests/test_observer_host_fd_evidence.py'
+      - 'auto_tests/tests/test_observer_host_fd_safety_fixes.py'
+      - '.github/workflows/observer-host-fd-evidence-offline.yml'
+      - 'docs/OBSERVER_HOST_FD_EVIDENCE.md'
+      - 'docs/samples/OBSERVER_HOST_FD_SYNTHETIC.json'
+
+permissions:
+  contents: read
+
+jobs:
+  host-fd-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout diagnostics source without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Checkout GPT FD parser and tests from PR #286 (EXACT SHA)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 9aed36cfdb8c09a461dc38811c326c54180273de
+          path: gptfd-pinned
+          persist-credentials: false
+      - name: Checkout Safety/no-writer from PR #267 (EXACT SHA)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: safety-pinned
+          persist-credentials: false
+      - name: Confirm source identities and exclude QEMU access
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(git -C gptfd-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test -z "$(git -C gptfd-pinned status --porcelain)"
+          test -z "$(git -C safety-pinned status --porcelain)"
+          test -f gptfd-pinned/assets/live/libertix_disk_identity_gate.py
+          test -f gptfd-pinned/auto_tests/tests/test_disk_identity_gate.py
+          test -f safety-pinned/auto_tests/tests/test_prewrite_no_writer.py
+      - name: Install only Python lint and offline contracts
+        shell: bash
+        run: |
+          python3 -m pip install 'pytest==9.0.2' 'ruff==0.13.3' 'pyyaml>=6,<7' \
+            'jsonschema>=4,<5' 'cryptography>=50,<51' 'rfc8785>=0.1.4,<1' 'pillow>=11,<13'
+      - name: Static workflow trigger and no-QEMU job checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+          content = Path(".github/workflows/observer-host-fd-evidence-offline.yml").read_text()
+          workflow = yaml.load(content, Loader=yaml.BaseLoader)
+          assert set(workflow["on"]) == {"push"}
+          assert set(workflow["jobs"]) == {"host-fd-contracts"}
+          assert workflow["permissions"] == {"contents": "read"}
+          print("Only offline contracts; QEMU launch and dispatch absent")
+          PY
+      - name: Compile and Ruff (producer, adversarial tests)
+        shell: bash
+        run: |
+          python3 -m compileall -q \
+            auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py
+          python3 -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml \
+            auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py
+          python3 -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_evidence.py \
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py
+      - name: Actual pinned PR #286 raw GPT FD tests (temporary synthetic files only)
+        run: python3 -m pytest -q gptfd-pinned/auto_tests/tests/test_disk_identity_gate.py
+      - name: Actual pinned PR #267 no-writer tests
+        run: python3 -m pytest -q safety-pinned/auto_tests/tests/test_prewrite_no_writer.py
+      - name: Prepare private synthetic HOST FD evidence outside repository
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/gaslux-host-fd-synthetic"
+      - name: New HOST process FD and synthetic QMP tests (NO QEMU)
+        env:
+          GASLUX_HOST_FD_EVIDENCE_DIR: ${{ runner.temp }}/gaslux-host-fd-synthetic
+        run: python3 -m pytest -q auto_tests/tests/test_observer_host_fd_evidence.py
+      - name: F-01/F-02/F-03 security regressions on actual #292 source (expect RED before fix)
+        shell: bash
+        run: |
+          git rev-parse HEAD
+          echo "HOST_SOURCE_BLOB=$(git hash-object auto_tests/installer_observer/host_qemu_fd_evidence.py)"
+          python3 -m pytest -q auto_tests/tests/test_observer_host_fd_safety_fixes.py
+      - name: Verify evidence-only synthetic artifact hash (no images)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          folder="$RUNNER_TEMP/gaslux-host-fd-synthetic"
+          test -f "$folder/synthetic-host-fd-trace.json"
+          test ! -L "$folder/synthetic-host-fd-trace.json"
+          (cd "$folder" && sha256sum synthetic-host-fd-trace.json > synthetic-host-fd-sha256.txt)
+          python3 - "$folder/synthetic-host-fd-trace.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          evidence = json.loads(Path(sys.argv[1]).read_text())
+          assert evidence["sampleSynthetic"] is True
+          assert evidence["qemuProcessObserved"] is False
+          assert evidence["gptEvidence"]["assurance"] == "LOCALLY_MEASURED"
+          assert evidence["associationDecision"] == "DENY_UNVERIFIED_VM_FD_BINDING"
+          for item in ("originAuthenticated", "freshnessAuthenticated",
+                       "replayProtected", "externallyAttested",
+                       "diskWritesAuthorized", "productionInstallationAuthorized"):
+              assert evidence[item] is False
+          PY
+      - name: Recheck source integrity after tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C gptfd-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test -z "$(git -C gptfd-pinned status --porcelain)"
+          test -z "$(git -C safety-pinned status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Publish ONLY sanitized synthetic HOST-FD JSON and SHA-256 text
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observer-host-fd-real-process-synthetic-gpt-no-qemu
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/gaslux-host-fd-synthetic/*.json
+            ${{ runner.temp }}/gaslux-host-fd-synthetic/*.txt

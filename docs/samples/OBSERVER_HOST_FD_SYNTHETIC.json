@@ -1,0 +1,71 @@
+{
+  "$comment": "SYNTHETIC EXAMPLE ONLY. NOT A HOST MEASUREMENT OR QEMU AUTHORIZATION.",
+  "sampleSynthetic": true,
+  "status": "HOST_MEASUREMENT_NOT_PERFORMED",
+  "classification": "NOT_INDEPENDENT",
+  "safetyAssessment": "DIAGNOSTIC_ONLY",
+  "process": {
+    "pid": {
+      "value": null,
+      "assurance": "CLAIMED"
+    },
+    "startTicks": {
+      "value": null,
+      "assurance": "CLAIMED"
+    },
+    "executableSha256": {
+      "value": null,
+      "assurance": "CLAIMED"
+    }
+  },
+  "diskFd": {
+    "value": null,
+    "assurance": "CLAIMED",
+    "reason": "No real process FD measured in this illustration"
+  },
+  "gptFd": {
+    "value": null,
+    "assurance": "CLAIMED",
+    "reason": "No GPT sectors measured; use pinned PR #286 in real offline test"
+  },
+  "declared": {
+    "transactionId": {
+      "value": "SYNTHETIC-TX",
+      "assurance": "CLAIMED"
+    },
+    "vmUuid": {
+      "value": "SYNTHETIC-VM-UUID",
+      "assurance": "CLAIMED"
+    },
+    "challenge": {
+      "value": "SYNTHETIC-UNISSUED-CHALLENGE",
+      "assurance": "CLAIMED"
+    },
+    "serial": {
+      "value": "SYNTHETIC-SERIAL",
+      "assurance": "CLAIMED"
+    }
+  },
+  "qmp": {
+    "deviceFdAssociationProven": false,
+    "vmDiskBindingProven": false,
+    "reason": "QMP_SOCKET_AND_FD_NOT_OBSERVED"
+  },
+  "associationDecision": "DENY_UNVERIFIED_VM_FD_BINDING",
+  "originAuthenticated": false,
+  "freshnessAuthenticated": false,
+  "replayProtected": false,
+  "checkpointImmutable": false,
+  "externallyAttested": false,
+  "writerAuthorized": false,
+  "inputAuthorized": false,
+  "diskWritesAuthorized": false,
+  "productionInstallationAuthorized": false,
+  "productionWriteAuthorized": false,
+  "windowsGenuine": false,
+  "rollbackProven": false,
+  "diskWriterCalled": false,
+  "guestInputs": 0,
+  "fullPartitionContentHashMeasured": false,
+  "partitionContentSha256": null
+}
