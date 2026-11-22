@@ -5,8 +5,11 @@ on:
     branches:
       - test/observer-host-qemu-fd-evidence-20261121
       - fix/observer-host-fd-f01-f02-f03-20261121
+      - fix/observer-host-fd-import-boundary-20261122
     paths:
       - 'auto_tests/installer_observer/host_qemu_fd_evidence.py'
+      - 'auto_tests/installer_observer/host_fd_boundary.py'
+      - 'auto_tests/tests/test_observer_host_import_boundary.py'
       - 'auto_tests/tests/test_observer_host_fd_evidence.py'
       - 'auto_tests/tests/test_observer_host_fd_safety_fixes.py'
       - '.github/workflows/observer-host-fd-evidence-offline.yml'
@@ -24,6 +27,13 @@ jobs:
       - name: Checkout diagnostics source without credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          persist-credentials: false
+      - name: Checkout clean dev for strictly minimal import replay (EXACT SHA)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: ca68de69992a8e95f9abd6367bab5458437cbfa7
+          path: dev-pinned
           persist-credentials: false
       - name: Checkout GPT FD parser and tests from PR #286 (EXACT SHA)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -47,6 +57,8 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(git -C dev-pinned rev-parse HEAD)" = ca68de69992a8e95f9abd6367bab5458437cbfa7
+          test -z "$(git -C dev-pinned status --porcelain)"
           test "$(git -C gptfd-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
           test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
           test -z "$(git -C gptfd-pinned status --porcelain)"
@@ -78,20 +90,28 @@ jobs:
         run: |
           python3 -m compileall -q \
             auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/installer_observer/host_fd_boundary.py \
             auto_tests/tests/test_observer_host_fd_evidence.py \
-            auto_tests/tests/test_observer_host_fd_safety_fixes.py
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py \
+            auto_tests/tests/test_observer_host_import_boundary.py
           python3 -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/installer_observer/host_fd_boundary.py \
             auto_tests/tests/test_observer_host_fd_evidence.py \
-            auto_tests/tests/test_observer_host_fd_safety_fixes.py
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py \
+            auto_tests/tests/test_observer_host_import_boundary.py
           python3 -m ruff format --diff --config auto_tests/pyproject.toml \
             auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/installer_observer/host_fd_boundary.py \
             auto_tests/tests/test_observer_host_fd_evidence.py \
-            auto_tests/tests/test_observer_host_fd_safety_fixes.py
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py \
+            auto_tests/tests/test_observer_host_import_boundary.py
           python3 -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/installer_observer/host_qemu_fd_evidence.py \
+            auto_tests/installer_observer/host_fd_boundary.py \
             auto_tests/tests/test_observer_host_fd_evidence.py \
-            auto_tests/tests/test_observer_host_fd_safety_fixes.py
+            auto_tests/tests/test_observer_host_fd_safety_fixes.py \
+            auto_tests/tests/test_observer_host_import_boundary.py
       - name: Actual pinned PR #286 raw GPT FD tests (temporary synthetic files only)
         run: python3 -m pytest -q gptfd-pinned/auto_tests/tests/test_disk_identity_gate.py
       - name: Actual pinned PR #267 no-writer tests
@@ -112,6 +132,10 @@ jobs:
           git rev-parse HEAD
           echo "HOST_SOURCE_BLOB=$(git hash-object auto_tests/installer_observer/host_qemu_fd_evidence.py)"
           python3 -m pytest -q auto_tests/tests/test_observer_host_fd_safety_fixes.py
+      - name: Import HOST diagnostics into an isolated clean dev package in a fresh interpreter
+        env:
+          GASLUX_PINNED_DEV_ROOT: ${{ github.workspace }}/dev-pinned
+        run: python3 -m pytest -q auto_tests/tests/test_observer_host_import_boundary.py
       - name: Verify evidence-only synthetic artifact hash (no images)
         shell: bash
         run: |
@@ -138,6 +162,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          test "$(git -C dev-pinned rev-parse HEAD)" = ca68de69992a8e95f9abd6367bab5458437cbfa7
+          test -z "$(git -C dev-pinned status --porcelain)"
           test "$(git -C gptfd-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
           test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
           test -z "$(git -C gptfd-pinned status --porcelain)"

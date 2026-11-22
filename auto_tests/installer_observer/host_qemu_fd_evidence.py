@@ -20,7 +20,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .lab_identity import ProcessSeal, _execute, _read_response, process_seal
+from .host_fd_boundary import (
+    ProcessSeal,
+    _execute,
+    _qemu_executable_hash,
+    _read_response,
+    process_seal,
+)
 
 MAX_FDS = 4096
 MAX_SECTORS_BYTES = 4 * 1024 * 1024
@@ -398,8 +404,6 @@ def observe_host_qemu(
     require(qmp_blocks is None or qmp_socket is None, "AMBIGUOUS_QMP_ORIGIN")
     initial = process_seal(pins.process.pid)
     require_process_identity(pins.process, initial)
-    from .gpt_lab_provenance import _qemu_executable_hash
-
     require(
         _qemu_executable_hash(pins.process.pid) == pins.qemu_executable_sha256,
         "QEMU_EXECUTABLE_HASH_MISMATCH",
