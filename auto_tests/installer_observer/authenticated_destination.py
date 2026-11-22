@@ -241,6 +241,7 @@ def assess_authenticated_destination(
             _qcow2_chain(qcow2_fd, backing_path, raw_st.st_size)
             _digest(checkpoint_fd, expected_checkpoint_sha256)
             payload = os.pread(checkpoint_fd, check_st.st_size, 0)
+            require(len(payload) == check_st.st_size, "CHECKPOINT_SHORT_READ")
             receipt = json.loads(payload, object_pairs_hook=_unique_pairs)
             require(
                 type(receipt) is dict

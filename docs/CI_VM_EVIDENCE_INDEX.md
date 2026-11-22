@@ -186,3 +186,70 @@ This avoids expensive or unsafe VM startup on a runner already known to have ins
 ## 2026-11-22 — #337 integration branch reconciled with dev (non-destructive)
 
 Original #337 HEAD `f1e082c37ab58887f942b1e9ab0a841cb4b2b02a` composed with dev `55a70a90bdde29d0d41d4592de205013ee61bc16` by a two-parent merge (common ancestor `8e68a475d6397ba8fef2e0f9f83758545e202a5f`). The only overlapping path was this evidence index: retain the entire dev text including #361/#368/#369 and append the original #337 historical section without editing it. The authenticated_destination.py source blob `328653beca42b5ac006974d014e1bc6da1182e63` remains unchanged; Safety D-337-01 technical closure applies exclusively to the audited offline read-only code. Fresh exact-composition CI and dev integration checks are mandatory. No writer, independent Guest or Windows recovery authorization.
+
+## 2026-11-22 — AUTH-DEST-128G-READONLY-01, separate dependent branch
+
+- [Actions #45034846402](https://github.com/LMhdez/gaslux/actions/runs/45034846402):
+  **SUCCESS** on tested implementation SHA
+  `6a94093271610dbd2ff908c2b8692e332e1585a1`. Real QEMU started
+  **paused**, a test-owned RAW backing was created with **128 GiB apparent
+  size but sparse allocation**, and a small QCOW2 overlay was observed
+  read-only. No Windows image/guest/source authentication was provided.
+- New bounds: QCOW2 apparent 64 MiB, RAW virtual 128 GiB, each image
+  allocated maximum 32 MiB, total allocated 64 MiB, checkpoint 64 KiB,
+  `qemu-img` JSON 64 KiB, inspection deadline 15 s default. Unknown
+  quota, short read, I/O failure, mutation, FD swap, backing mismatch,
+  checkpoint foreign transaction and user-space timeout all deny.
+  `FULL_BACKING_HASH_NOT_COMPLETED` is the **correct outcome** of a
+  structurally valid large-disk sample.
+- Existing #337 64 MiB small disk positives continue full SHA-256;
+  dependent branch addresses independent Safety D-337-01 short positive
+  `pread` without altering parent #337. The index does **not**
+  treat the 128 GiB sample/geometry as whole-file authentication.
+  `guestChannelAuthenticated=false`,
+  `productionStorageWritesAuthorized=false`,
+  `rollbackProven=false`, `sameDiskDualBootVerified=false`,
+  `stable=false`.
+  See [resource and trust contract](AUTH_DEST_128G_READONLY.md).
+
+
+## 2026-11-22 — SAFETY2-346-01: inherited-pipe subprocess RED and scoped candidate fix
+
+- Historical **RED**: [PR #355](https://github.com/LMhdez/gaslux/pull/355),
+  Safety HEAD `b690cf3b7da0ec34b950e354a4b8af8bd94a70c0`,
+  [Actions #45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419),
+  SUCCESS **only as an expected-negative runner**. Source tested:
+  #346 `9306d0fff8cc89794b83fe002ae133c110e641ae`.
+- Producer process cleanup correction in existing
+  [PR #346](https://github.com/LMhdez/gaslux/pull/346),
+  code `4ab0f13b718fabf4d8cb5598626ae3df67eafce1`,
+  regression code `431599b0b5e6f04f9b7617c028bfb1091771cef7`,
+  strict lint adjustment `00f93376210c3bce8ab01e3ceb237a70cb0a78b8`.
+  POSIX session isolation, group kill before leader reap, time-limited group
+  disappearance and cleanup-denial are scoped to `_bounded_info`.
+- Exact-source independent GREEN and Safety-2 judgement **pending**.
+  The original Safety test shim discards `start_new_session`; only its
+  forwarding adapter and checkout reference should be corrected by Safety-2,
+  not its adversarial assertion. No new runtime writer/guest authority.
+- Evidence type: **QEMU_HOST / offline subprocess**, not GUEST_BOOT,
+  INSTALLED, DUAL_BOOT, RECOVERED or CERTIFIED. No Windows/ESP/BCD/WinRE
+  change. Preserve `FULL_BACKING_HASH_NOT_COMPLETED` and
+  `DENY_NO_WRITER`.
+
+
+### 2026-11-22 — #346 producer CI after process-group correction
+
+- #346 tested HEAD `6c2af28acd7da24ce127de0909c66e15147ff873`,
+  [push #45054177113](https://github.com/LMhdez/gaslux/actions/runs/45054177113)
+  **SUCCESS**, [PR #45054181689](https://github.com/LMhdez/gaslux/actions/runs/45054181689)
+  **SUCCESS**. Strict Ruff/format/compile, synthetic sparse-128GiB real
+  **paused** QEMU, real subprocess descendant cleanup and foreign-session
+  isolation, inherited #337/#327/#267, and protected checkout verification.
+- No independent #355 oracle GREEN on corrected head yet. Exact Safety-2
+  request at [#7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427).
+  Evidence stays **QEMU_HOST / offline, DENY_NO_WRITER**; source/guest
+  authentication and full 128GiB RAW hash remain unproven.
+
+## 2026-11-22 — #346 reconciled after #337 dev integration
+
+Corrected #346 source at `49389810a46d43bee407304a237b912b2faebc07` was composed after #337 landed in dev at `c97cef409c39f6d488d9ec0722b3cfa845685826`. The paragraphs above are retained as dated snapshots; the later [Safety-2 RED→GREEN decision](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) closed `SAFETY2-346-01` only in the offline HOST read-only boundary. The newly composed HEAD requires fresh CI. No change to `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, guest trust or Windows rollback/writer authority.

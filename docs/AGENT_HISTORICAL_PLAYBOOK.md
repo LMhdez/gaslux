@@ -149,3 +149,37 @@ A [PR #294](https://github.com/LMhdez/gaslux/pull/294) foi **encerrada sem merge
 - [Plano de arquitetura/rollback](ARCHITECTURE.md) e [matriz multidistro](MULTIDISTRO_PLAN.md).
 - [Critérios CachyOS #3](https://github.com/LMhdez/gaslux/issues/3), [Windows 11 #71](https://github.com/LMhdez/gaslux/issues/71), [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
 - [Guias técnicos por backend](distro-backends/README.md), [contratos partilhados](distro-backends/SHARED_CONTRACTS.md).
+
+## 2026-11-22 — Safety-2 process-lifecycle boundary in #346
+
+[Safety #355](https://github.com/LMhdez/gaslux/pull/355) demonstrated on
+the immutable source #346 `9306d0fff8cc89794b83fe002ae133c110e641ae`
+that a dead `qemu-img` leader can leave a live descendant holding stdout:
+[expected RED #45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419).
+The outcome SUCCESS is **not** cleanup success. Integrator-2 published a
+scoped process-session correction into the **same #346 branch** at
+`4ab0f13b718fabf4d8cb5598626ae3df67eafce1`, real-process
+regressions at `431599b0b5e6f04f9b7617c028bfb1091771cef7`,
+and test lint adjustment at `00f93376210c3bce8ab01e3ceb237a70cb0a78b8`.
+Independent Safety-2 GREEN and approval remain pending. The original
+Safety oracle's `Popen` test launcher must forward the production
+`start_new_session` kwarg to reproduce the new group ownership
+faithfully; do not weaken its survivor assertion. Dependent #356 remains
+unmerged, and all results remain read-only HOST-only with no authenticated
+128-GiB full backing hash or Windows recovery.
+
+
+### 2026-11-22 — #346 candidate test result
+
+Producer CI on `6c2af28acd7da24ce127de0909c66e15147ff873`
+[push #45054177113](https://github.com/LMhdez/gaslux/actions/runs/45054177113)
+and [PR #45054181689](https://github.com/LMhdez/gaslux/actions/runs/45054181689)
+completed SUCCESS with real stopped-QEMU and new process-group regressions.
+This is not the independent Safety-2 GREEN. Exact-head Safety-2
+re-execution was requested in
+[PR #355 comment #7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427);
+do not close SAFETY2-346-01 before that replay/review.
+
+## 2026-11-22 — #346 reconciled after #337 dev integration
+
+Corrected #346 source at `49389810a46d43bee407304a237b912b2faebc07` was composed after #337 landed in dev at `c97cef409c39f6d488d9ec0722b3cfa845685826`. The paragraphs above are retained as dated snapshots; the later [Safety-2 RED→GREEN decision](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) closed `SAFETY2-346-01` only in the offline HOST read-only boundary. The newly composed HEAD requires fresh CI. No change to `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, guest trust or Windows rollback/writer authority.
