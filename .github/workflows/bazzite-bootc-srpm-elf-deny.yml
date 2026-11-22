@@ -118,9 +118,15 @@ jobs:
           assert len(fields)==4, f"INVALID_SRPM_METADATA:{fields!r}"
           # RPM source-package 'arch' headers vary by RPM format. NEVER infer
           # trust from this field; the key signature is assessed separately.
-          assert fields[3] in ("src", "(none)"), f"FOREIGN_SRPM_ARCH:{fields!r}"
+          assert fields[3] in ("x86_64", "src"), f"FOREIGN_SRPM_ARCH:{fields!r}"
           print("FEDORA_45_SOURCE_NVR_OBSERVED_NOT_ELF_BOUND", fields)
           PY
+          # A signed filename/extension does not prove the source-package bit.
+          # Require RPM's own RPMTAG_SOURCEPACKAGE instead of inferring from ARCH.
+          rpm -qp --qf '%{SOURCEPACKAGE}\n' \
+            source-evidence/bootc-1.17.1-1.fc45.src.rpm \
+            | tee source-evidence/sourcepackage-marker.txt
+          grep -Fx '1' source-evidence/sourcepackage-marker.txt
           cat source-evidence/signature-state.txt
           sha256sum source-evidence/bootc-1.17.1-1.fc45.src.rpm \
             > source-evidence/srpm-sha256.txt
@@ -173,6 +179,7 @@ jobs:
           name: bazzite-official-srpm-source-readback
           path: |
             source-evidence/nevra.txt
+            source-evidence/sourcepackage-marker.txt
             source-evidence/srpm-sha256.txt
             source-evidence/signature.txt
             source-evidence/signature-state.txt
