@@ -234,12 +234,15 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $actualHead -ne $env:BASE_SHA) {
             throw 'Checkout commit differs from validated worker base'
           }
-          $original = Get-FileHash 'Installation/WindowsKeyboardLayout.cs' -Algorithm SHA256
+          # Hash the committed Git blob, not the Windows working tree:
+          # checkout may convert LF to CRLF depending on runner configuration.
+          $blobHash = (& python -c 'import hashlib,subprocess; print(hashlib.sha256(subprocess.check_output(["git","show","HEAD:Installation/WindowsKeyboardLayout.cs"])).hexdigest())').Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not hash the tracked source blob' }
           $candidatePath = Join-Path $folder 'candidate.cs'
           $candidate = Get-FileHash $candidatePath -Algorithm SHA256
-          if ($original.Hash.ToLowerInvariant() -ne $report.source_sha256 -or
+          if ($blobHash -ne $report.source_sha256 -or
               $candidate.Hash.ToLowerInvariant() -ne $report.candidate_sha256) {
-            throw 'Original/candidate file SHA-256 mismatch'
+            throw 'Original Git blob or candidate file SHA-256 mismatch'
           }
           Copy-Item $candidatePath Installation/WindowsKeyboardLayout.cs -Force
       - uses: microsoft/setup-msbuild@v2
