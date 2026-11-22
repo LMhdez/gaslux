@@ -173,6 +173,25 @@ class CompactOvmfTargetTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unowned"):
                 mod._owned_regular(base, root)
 
+    def test_corrupt_qcow2_auto_detected_as_raw_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            corrupt = Path(tmp) / "corrupt.qcow2"
+            corrupt.write_bytes(b"not-a-qcow2")
+            with patch.object(mod.subprocess, "run") as proc:
+                proc.return_value.returncode = 0
+                proc.return_value.stdout = b'{"format":"raw","virtual-size":12}'
+                mod._require_corrupt_image_rejected(corrupt, qemu_img="qemu-img")
+
+    def test_corrupt_qcow2_false_validity_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            corrupt = Path(tmp) / "corrupt.qcow2"
+            corrupt.write_bytes(b"not-a-qcow2")
+            with patch.object(mod.subprocess, "run") as proc:
+                proc.return_value.returncode = 0
+                proc.return_value.stdout = b'{"format":"qcow2","virtual-size":12}'
+                with self.assertRaisesRegex(ValueError, "accepted as QCOW2"):
+                    mod._require_corrupt_image_rejected(corrupt, qemu_img="qemu-img")
+
     def test_missing_ovmf_vars_stops_before_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
