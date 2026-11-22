@@ -448,6 +448,7 @@ def test_s319_fdinfo_missing_or_unreadable_is_fail_closed(
         assert os.fstat(reopened).st_ino == pins.expected_inode
     assert calls >= (1 if when == "before" else 2)
 
+
 @pytest.mark.skipif(
     os.name != "posix" or not hasattr(os, "O_PATH") or not Path("/proc").is_dir(),
     reason="Linux procfs and O_PATH required",
