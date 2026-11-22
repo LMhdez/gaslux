@@ -9,6 +9,7 @@ witness. All observations and output are bounded and redact free-form text.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -23,6 +24,31 @@ BOOT_TIMEOUT = b"bdsdxe: failed to start"
 ANSI = re.compile(rb"\x1b\[[0-9;=?]*[ -/]*[@-~]")
 MAX_SERIAL_BYTES = 512 * 1024
 DISK_GROWTH_BYTES = 4 * 1024 * 1024
+# Finite, disclosure-safe diagnostic output only. This CLI has NO authority
+# to create a supervisor session or send keyboard input by itself.
+BOOT_REASON_CODES = frozenset(
+    {
+        "qmp_supervisor_required",
+        "qmp_socket_unavailable",
+        "invalid_qmp_greeting",
+        "invalid_qmp_version",
+        "qmp_send_key_failed",
+        "qmp_is_not_socket",
+        "nonprivate_lab_directory",
+        "unsafe_serial_path",
+        "unsafe_disk_path",
+        "dvd_prompt_not_detected",
+        "uefi_shell_detected",
+        "uefi_boot_timeout",
+        "no_disk_progress_after_dvd_key",
+        "QEMU_STARTUP_UNCLASSIFIED",
+    }
+)
+
+
+def _safe_reason(exc: Exception) -> str:
+    value = str(exc) if isinstance(exc, BootRefusal) else ""
+    return value if value in BOOT_REASON_CODES else "QEMU_STARTUP_UNCLASSIFIED"
 
 
 class BootRefusal(RuntimeError):
@@ -45,27 +71,46 @@ def _private(path: Path, kind: str) -> None:
 
 
 class Qmp:
-    def __init__(self, path: Path, *, negotiate: bool = True):
-        """Connect without commands when a process owner must be authenticated.
-
-        Call negotiate_protocol() only AFTER SO_PEERCRED and inode checks.
-        Legacy direct users retain their existing full-handshake behaviour.
-        """
+    def __init__(self, path: Path, *, negotiate: bool = False):
+        """Connect-only. No public autonomous QMP negotiation or commands."""
+        require(not negotiate, "qmp_supervisor_required")
         _private(path, "qmp")
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket.settimeout(2)
         self.stream = None
+        self._bound_session = None
         try:
             self.socket.connect(str(path))
             self.stream = self.socket.makefile("rb")
-            if negotiate:
-                self.negotiate_protocol()
         except (OSError, ValueError, KeyError, BootRefusal):
             self.close()
             raise
 
+    def bind_verified_session(self, session) -> None:
+        # This is a type-bound ownership witness, not an arbitrary callback.
+        # Verification checks the kernel socket peer, pidfd-owning process
+        # and original inode on every QMP operation.
+        from q4os_win10_qmp_supervisor import _BoundQmpSession
+
+        require(type(session) is _BoundQmpSession, "qmp_supervisor_required")
+        require(session.channel is self, "qmp_supervisor_required")
+        session.verify()
+        self._bound_session = session
+
+    def _require_authenticated(self) -> None:
+        # Never trust a caller's injected verify() callback or mutated member.
+        from q4os_win10_qmp_supervisor import _BoundQmpSession
+
+        session = self._bound_session
+        require(
+            type(session) is _BoundQmpSession and session.channel is self,
+            "qmp_supervisor_required",
+        )
+        session.verify()
+
     def negotiate_protocol(self) -> None:
-        """Handshake and application commands; never call before authenticating peer."""
+        """Require a verified process-bound session before any QMP command."""
+        self._require_authenticated()
         greeting = self._read()
         require(isinstance(greeting.get("QMP"), dict), "invalid_qmp_greeting")
         version = greeting["QMP"].get("version")
@@ -82,6 +127,7 @@ class Qmp:
         return result
 
     def command(self, operation: str, identifier: str, arguments: dict | None = None) -> dict:
+        self._require_authenticated()
         request: dict = {"execute": operation, "id": "gaslux-" + identifier}
         if arguments is not None:
             request["arguments"] = arguments
@@ -139,6 +185,7 @@ def supervise(
     prompt_seconds: float = 90,
     progress_seconds: float = 600,
     tick: float = 0.05,
+    qmp_session=None,
     qmp_channel: Qmp | None = None,
     process_guard=None,
 ) -> dict:
@@ -147,6 +194,17 @@ def supervise(
     QCOW2 growth is an operational progress signal, NOT proof of Windows Setup.
     Only the later NTFS/ESP/first-logon verification can establish that result.
     """
+    # Reject legacy clients, injected channels and untrusted callbacks
+    # BEFORE touching disk or socket paths and without sending any QMP.
+    from q4os_win10_qmp_supervisor import _BoundQmpSession
+
+    require(
+        qmp_channel is None and process_guard is None and type(qmp_session) is _BoundQmpSession,
+        "qmp_supervisor_required",
+    )
+    qmp_session.verify()
+    qmp = qmp_session.channel
+    require(qmp._bound_session is qmp_session, "qmp_supervisor_required")
     parent = socket_path.parent
     require(
         parent == serial_path.parent == disk_path.parent
@@ -157,39 +215,26 @@ def supervise(
         "nonprivate_lab_directory",
     )
     _private(disk_path, "disk")
-    connect_deadline = time.monotonic() + connect_seconds
-    qmp = qmp_channel
-    if qmp is None:
-        while time.monotonic() < connect_deadline:
-            try:
-                qmp = Qmp(socket_path)
-                break
-            except (FileNotFoundError, ConnectionRefusedError):
-                time.sleep(tick)
-            except (OSError, ValueError, json.JSONDecodeError) as exc:
-                raise BootRefusal("qmp_unavailable_or_malformed") from exc
-    require(qmp is not None, "qmp_socket_unavailable")
+    # connect_seconds remains for API compatibility but no auto-connect occurs.
+    _ = connect_seconds
     try:
         deadline = time.monotonic() + prompt_seconds
         while time.monotonic() < deadline:
-            if process_guard is not None:
-                process_guard()
+            qmp_session.verify()
             serial = _serial_text(serial_path)
             error = _boot_error(serial)
             require(error is None, error or "unknown_boot_error")
             if PROMPT in serial:
                 # Never issue another key during Windows Setup or later reboots.
                 size_before_key = disk_path.stat().st_size
-                if process_guard is not None:
-                    process_guard()
+                qmp_session.verify()
                 try:
                     qmp.send_key_once()
                 except (OSError, ValueError, BootRefusal) as exc:
                     raise BootRefusal("qmp_send_key_failed") from exc
                 deadline_progress = time.monotonic() + progress_seconds
                 while time.monotonic() < deadline_progress:
-                    if process_guard is not None:
-                        process_guard()
+                    qmp_session.verify()
                     serial = _serial_text(serial_path)
                     error = _boot_error(serial)
                     require(error is None, error or "unknown_boot_error")
@@ -212,6 +257,93 @@ def supervise(
         qmp.close()
 
 
+def _write_report_exclusive(path: Path, qmp_path: Path, report: dict) -> bool:
+    """Write a bounded report only to a freshly created, owned regular inode.
+
+    Pin every directory component without following symlinks. Never re-open
+    the created file by pathname; never unlink foreign or partial reports.
+    Any I/O or close failure is a fixed denial, not a traceback or success.
+    """
+    dirfd = None
+    fd = None
+    try:
+        if not (
+            path.is_absolute()
+            and qmp_path.is_absolute()
+            and path.parent == qmp_path.parent
+            and path.name not in ("", ".", "..")
+        ):
+            return False
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        dirfd = os.open("/", flags)
+        for part in path.parent.parts[1:]:
+            if part in ("", ".", ".."):
+                return False
+            next_dirfd = os.open(part, flags, dir_fd=dirfd)
+            os.close(dirfd)
+            dirfd = next_dirfd
+        directory = os.fstat(dirfd)
+        observed = path.parent.lstat()
+        if not (
+            stat.S_ISDIR(directory.st_mode)
+            and directory.st_uid == os.getuid()
+            and not directory.st_mode & 0o077
+            and (directory.st_dev, directory.st_ino) == (observed.st_dev, observed.st_ino)
+            and stat.S_ISDIR(observed.st_mode)
+        ):
+            return False
+        data = (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        if len(data) > 4096:
+            return False
+        fd = os.open(
+            path.name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=dirfd,
+        )
+        own = os.fstat(fd)
+        named = os.stat(path.name, dir_fd=dirfd, follow_symlinks=False)
+        if not (
+            stat.S_ISREG(own.st_mode)
+            and own.st_uid == os.getuid()
+            and own.st_nlink == 1
+            and own.st_size == 0
+            and own.st_mode & 0o077 == 0
+            and own.st_dev == directory.st_dev
+            and (own.st_dev, own.st_ino) == (named.st_dev, named.st_ino)
+        ):
+            return False
+        offset = 0
+        while offset < len(data):
+            written = os.write(fd, data[offset:])
+            if written <= 0:
+                return False
+            offset += written
+        os.fsync(fd)
+        final_parent = path.parent.lstat()
+        final_named = os.stat(path.name, dir_fd=dirfd, follow_symlinks=False)
+        if not (
+            os.fstat(fd).st_nlink == 1
+            and (final_parent.st_dev, final_parent.st_ino) == (directory.st_dev, directory.st_ino)
+            and (final_named.st_dev, final_named.st_ino) == (own.st_dev, own.st_ino)
+        ):
+            return False
+        # File/dir close failures are failures, not verified persistence.
+        os.close(fd)
+        fd = None
+        os.close(dirfd)
+        dirfd = None
+        return True
+    except Exception:
+        # No str(exc), paths, traceback, or sensitive arguments are emitted.
+        return False
+    finally:
+        for owned_fd in (fd, dirfd):
+            if owned_fd is not None:
+                with contextlib.suppress(OSError):
+                    os.close(owned_fd)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--qmp", type=Path, required=True)
@@ -231,23 +363,25 @@ def main() -> int:
             progress_seconds=args.progress_seconds,
         )
         exit_code = 0
-    except (BootRefusal, OSError, ValueError, json.JSONDecodeError) as exc:
+    except Exception as exc:
+        # No free-form exception text may reach reports or stdout.
         report = {
             "decision": "refuse",
-            "reason": str(exc) if isinstance(exc, BootRefusal) else "qmp_io_or_protocol_error",
+            "reason": _safe_reason(exc),
             "qmpSendKeyAcknowledged": False,
             "windowsSetupVerified": False,
             "installationAuthorized": False,
         }
         exit_code = 1
-    require(
-        args.report.parent == args.qmp.parent and not args.report.exists(),
-        "unsafe_report_destination",
+    if not _write_report_exclusive(args.report, args.qmp, report):
+        print("GASLUX_Q4OS_DVD_BOOT_DECISION=refuse")
+        return 1
+    decision = (
+        "dvd_key_sent_once"
+        if exit_code == 0 and report["decision"] == "dvd_key_sent_once"
+        else "refuse"
     )
-    with args.report.open("x", encoding="utf-8") as output:
-        json.dump(report, output, indent=2, sort_keys=True)
-        output.write("\n")
-    print("GASLUX_Q4OS_DVD_BOOT_DECISION=" + report["decision"])
+    print("GASLUX_Q4OS_DVD_BOOT_DECISION=" + decision)
     return exit_code
 
 

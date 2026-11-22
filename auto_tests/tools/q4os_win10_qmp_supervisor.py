@@ -11,12 +11,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import select
 import signal
 import socket
 import stat
 import struct
 import subprocess
 import time
+import weakref
 from pathlib import Path
 
 from q4os_win10_qemu_ovmf_preflight import classify_qemu_error
@@ -50,8 +52,16 @@ DETAIL_CODES = frozenset(
 )
 # QEMU /proc/self/fd drive-argument compatibility has not been proven in a
 # separately authorized VM test. Consequently the production spawn is blocked.
-# popen_factory is for offline, injected synthetic process tests ONLY.
+# The operational API never accepts a spawn factory as authority.
 QEMU_FD_BACKING_VERIFIED = False
+
+# Trusted in-process supervisor bookkeeping: neither a caller-provided Popen
+# nor a bare pidfd creates a QMP authority. The operational path registers
+# ONLY the real child returned by its own subprocess.Popen call.
+# Python cannot defend these private objects from malicious code *already*
+# executing inside this interpreter. The production gate remains false.
+_OWNED_CHILDREN = weakref.WeakKeyDictionary()
+_ISSUED_QMP_SESSIONS = weakref.WeakSet()
 
 
 class StartupRefusal(RuntimeError):
@@ -143,10 +153,70 @@ def _birth_identity(pid: int) -> tuple[int, int]:
         raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from exc
 
 
-def _witness(process: subprocess.Popen, pidfd: int) -> None:
-    _require(pidfd >= 0 and process.pid > 0, "QEMU_STARTUP_UNCLASSIFIED")
+def _pidfd_target(pidfd: int, pid: int) -> None:
+    """Verify Linux kernel fdinfo and live pidfd, not a numeric FD claim."""
+    _require(
+        type(pidfd) is int and pidfd >= 0 and type(pid) is int and pid > 0,
+        "QEMU_STARTUP_UNCLASSIFIED",
+    )
+    try:
+        # A regular FD (including /dev/null) and a pidfd for another child
+        # must fail before a QMP command, even if the fd number is recycled.
+        _require(
+            os.readlink(f"/proc/self/fd/{pidfd}") == "anon_inode:[pidfd]",
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
+        info = Path(f"/proc/self/fdinfo/{pidfd}").read_text(encoding="ascii")
+        target = [
+            line.partition(":")[2].strip() for line in info.splitlines() if line.startswith("Pid:")
+        ]
+        _require(
+            len(target) == 1 and int(target[0]) == pid,
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
+        poll = select.poll()
+        poll.register(pidfd, select.POLLIN | select.POLLHUP | select.POLLERR)
+        _require(not poll.poll(0), "QEMU_EARLY_EXIT")
+    except (OSError, ValueError, TypeError):
+        raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from None
+
+
+def _register_owned_child(process: subprocess.Popen, pidfd: int, birth: tuple[int, int]) -> None:
+    """Only called after operational Popen and successful birth/pidfd checks."""
+    _require(
+        QEMU_FD_BACKING_VERIFIED and type(process) is subprocess.Popen,
+        "QEMU_STARTUP_UNCLASSIFIED",
+    )
     _require(process.poll() is None, "QEMU_EARLY_EXIT")
-    # pidfd signals are pinned to the kernel process object, unlike kill(pid).
+    _pidfd_target(pidfd, process.pid)
+    _require(_birth_identity(process.pid) == birth, "QEMU_STARTUP_UNCLASSIFIED")
+    _OWNED_CHILDREN[process] = (process.pid, pidfd, birth)
+
+
+def _verify_session_authority(session: _BoundQmpSession) -> None:
+    """Reject directly fabricated sessions and any detached/changed pidfd."""
+    _require(
+        QEMU_FD_BACKING_VERIFIED and session in _ISSUED_QMP_SESSIONS,
+        "QEMU_STARTUP_UNCLASSIFIED",
+    )
+    process = session.process
+    _require(type(process) is subprocess.Popen, "QEMU_STARTUP_UNCLASSIFIED")
+    record = _OWNED_CHILDREN.get(process)
+    _require(
+        record is not None and record[0] == process.pid and record[1] == session.pidfd,
+        "QEMU_STARTUP_UNCLASSIFIED",
+    )
+    _pidfd_target(session.pidfd, process.pid)
+    _require(_birth_identity(process.pid) == record[2], "QEMU_STARTUP_UNCLASSIFIED")
+
+
+def _witness(process: subprocess.Popen, pidfd: int) -> None:
+    _require(type(process) is subprocess.Popen, "QEMU_STARTUP_UNCLASSIFIED")
+    _require(process.pid > 0, "QEMU_STARTUP_UNCLASSIFIED")
+    _require(process.poll() is None, "QEMU_EARLY_EXIT")
+    _pidfd_target(pidfd, process.pid)
+    # The birth identity and supervisor's own Popen registration are checked
+    # separately, on *each* session command, before inspecting the socket.
     _require(os.path.samefile(f"/proc/{process.pid}/exe", QEMU), "QEMU_STARTUP_UNCLASSIFIED")
 
 
@@ -158,6 +228,39 @@ def _peer(channel: Qmp, process: subprocess.Popen) -> None:
     _require(pid == process.pid and uid == os.getuid(), "QEMU_QMP_SOCKET_INVALID")
 
 
+class _BoundQmpSession:
+    """Kernel-checked peer/process/inode witness; no caller-supplied guard.
+
+    Every protocol action re-verifies the same child, pidfd and socket inode.
+    A Python callback or mock QMP object alone is never an authorization.
+    """
+
+    def __init__(
+        self,
+        channel: Qmp,
+        process: subprocess.Popen,
+        pidfd: int,
+        path: Path,
+        work: Path,
+        identity: tuple[int, int],
+    ):
+        self.channel = channel
+        self.process = process
+        self.pidfd = pidfd
+        self.path = path
+        self.work = work
+        self.identity = identity
+
+    def verify(self) -> None:
+        _verify_session_authority(self)
+        _witness(self.process, self.pidfd)
+        _require(
+            _socket_identity(self.path, self.work) == self.identity,
+            "QEMU_QMP_SOCKET_INVALID",
+        )
+        _peer(self.channel, self.process)
+
+
 def _await_qmp(
     process: subprocess.Popen,
     pidfd: int,
@@ -167,7 +270,10 @@ def _await_qmp(
     *,
     seconds: float = 15,
     interval: float = 0.05,
-) -> tuple[Qmp, tuple[int, int]]:
+) -> _BoundQmpSession:
+    # Neither a synthetic child nor a direct helper call can authorize guest
+    # protocol input while operational QEMU FD backing remains unverified.
+    _require(QEMU_FD_BACKING_VERIFIED, "QEMU_STARTUP_UNCLASSIFIED")
     deadline = time.monotonic() + seconds
     refused = False
     while time.monotonic() < deadline:
@@ -182,17 +288,18 @@ def _await_qmp(
             # Connect-only. No capabilities/query-status until the peer PID
             # and actual connected socket have been authenticated.
             channel = Qmp(path, negotiate=False)
-            _peer(channel, process)
-            _require(_socket_identity(path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
-            _witness(process, pidfd)
+            # No protocol bytes are allowed until the real kernel peer
+            # and owned process have been authenticated.
+            session = _BoundQmpSession(channel, process, pidfd, path, work, identity)
+            _ISSUED_QMP_SESSIONS.add(session)
+            session.verify()
+            channel.bind_verified_session(session)
             channel.negotiate_protocol()
-            _peer(channel, process)
-            _require(_socket_identity(path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
-            _witness(process, pidfd)
+            session.verify()
             report["qmpSocketState"] = "CONNECTED"
             report["qmpHandshakeVerified"] = True
             report["qmpRunningVerified"] = True
-            return channel, identity
+            return session
         except ConnectionRefusedError:
             refused = True
             report["qmpSocketState"] = "CONNECTION_REFUSED"
@@ -284,26 +391,33 @@ def _qemu_args(
 
 
 def _cleanup(process: subprocess.Popen | None, pidfd: int | None) -> bool:
+    """Never send TERM/KILL unless kernel pidfd targets this exact child.
+
+    Synthetic fixture-supplied pidfds are untrusted. A mismatched descriptor
+    must not signal another process or be counted as successful cleanup.
+    """
     if process is None:
         return True
     try:
         if process.poll() is None:
             if pidfd is None:
                 return False
+            _pidfd_target(pidfd, process.pid)
             signal.pidfd_send_signal(pidfd, signal.SIGTERM)
         try:
             process.wait(timeout=8)
         except subprocess.TimeoutExpired:
             if pidfd is None:
                 return False
+            _pidfd_target(pidfd, process.pid)
             signal.pidfd_send_signal(pidfd, signal.SIGKILL)
             process.wait(timeout=5)
         return process.poll() is not None
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, StartupRefusal, TypeError, ValueError):
         return False
 
 
-def run_lab(
+def _run_lab_impl(
     work: Path,
     code: Path,
     vars_path: Path,
@@ -316,10 +430,17 @@ def run_lab(
     prompt_seconds: float = 90,
     progress_seconds: float = 600,
     wait_seconds: float = 7200,
-    popen_factory=None,
+    synthetic_child=None,
+    synthetic_log_data: bytes = b"",
+    synthetic_spawn_failure: bool = False,
     pidfd_factory=None,
 ) -> dict:
-    """Observe a direct child and clean up only through its kernel pidfd."""
+    """Shared witness: only accepts an ALREADY-CREATED synthetic child.
+
+    With QEMU backing unverified, even direct imports of this internal helper
+    cannot launch any operating-system process, no matter what is supplied.
+    No arbitrary factory is ever invoked.
+    """
     report = {
         "schemaVersion": 1,
         "decision": "refuse",
@@ -344,6 +465,7 @@ def run_lab(
     }
     process = None
     pidfd = None
+    session = None
     output = None
     pinned: dict[str, int] = {}
     work_fd = None
@@ -382,36 +504,61 @@ def run_lab(
         serial = work / "windows10-qemu-serial.log"
         _require(not serial.exists() and not serial.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
         args = _qemu_args(work, code, vars_path, image, iso, answer, accelerator, pinned)
-        # DENY real QEMU until the backing-file descriptor contract has been
-        # verified independently; never silently fall back to mutable paths.
+        # A synthetic process is supplied *already constructed*. The seam
+        # has no factory, shell command or callable spawn hook.
+        # If no child is provided, the real process gate is mandatory even
+        # when someone imports this private function directly.
         _require(
-            popen_factory is not None or QEMU_FD_BACKING_VERIFIED,
+            synthetic_child is not None or synthetic_spawn_failure or QEMU_FD_BACKING_VERIFIED,
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
+        _require(
+            not synthetic_log_data or synthetic_child is not None,
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
+        # Operational callers cannot supply their own pidfd factory, even
+        # if the FD-compatibility gate is eventually validated independently.
+        _require(
+            pidfd_factory is None or synthetic_child is not None,
             "QEMU_STARTUP_UNCLASSIFIED",
         )
         log = work / "windows10-qemu-process.log"
         output = log.open("xb")
-        try:
-            factory = popen_factory or subprocess.Popen
-            process = factory(
-                args,
-                cwd=work,
-                stdin=subprocess.DEVNULL,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-                pass_fds=tuple(pinned.values()),
-            )
-        except OSError:
-            raise StartupRefusal("QEMU_SPAWN_FAILED") from None
-        report["qemuSpawned"] = True
-        report["qemuPidRecorded"] = True
+        if synthetic_spawn_failure:
+            raise StartupRefusal("QEMU_SPAWN_FAILED")
+        if synthetic_child is None:
+            try:
+                process = subprocess.Popen(
+                    args,
+                    cwd=work,
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    pass_fds=tuple(pinned.values()),
+                )
+            except OSError:
+                raise StartupRefusal("QEMU_SPAWN_FAILED") from None
+        else:
+            process = synthetic_child
+            if synthetic_log_data:
+                output.write(synthetic_log_data)
+                output.flush()
+        # Synthetic processes, including genuine pre-existing Python children,
+        # have NOT been spawned by the operational QEMU supervisor.
+        report["qemuSpawned"] = synthetic_child is None
+        report["qemuPidRecorded"] = synthetic_child is None
         if process.poll() is not None:
             raise StartupRefusal("QEMU_EARLY_EXIT")
         birth = _birth_identity(process.pid)
         fd_factory = pidfd_factory or os.pidfd_open
         try:
             pidfd = fd_factory(process.pid)
-        except OSError:
+            # Before granting the supplied FD any cleanup or QMP authority,
+            # bind it to the exact kernel PID. A synthetic factory cannot
+            # redirect subsequent TERM/KILL to another live Python child.
+            _pidfd_target(pidfd, process.pid)
+        except (OSError, StartupRefusal, TypeError, ValueError):
             if process.poll() is not None:
                 raise StartupRefusal("QEMU_EARLY_EXIT") from None
             raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from None
@@ -420,7 +567,16 @@ def run_lab(
             os.close(pidfd)
             pidfd = None
             raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED")
-        channel, identity = _await_qmp(
+        # Synthetic fixtures must never register a child as operational.
+        if synthetic_child is None:
+            _register_owned_child(process, pidfd, birth)
+        # The synthetic path is diagnostic-only. Never open QMP or input a
+        # guest key, including when imported and called directly.
+        _require(
+            synthetic_child is None and QEMU_FD_BACKING_VERIFIED,
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
+        session = _await_qmp(
             process,
             pidfd,
             qmp_path,
@@ -429,11 +585,6 @@ def run_lab(
             seconds=connect_seconds,
         )
 
-        def guard() -> None:
-            _witness(process, pidfd)
-            _require(_socket_identity(qmp_path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
-            _peer(channel, process)
-
         try:
             result = supervise(
                 qmp_path,
@@ -441,8 +592,7 @@ def run_lab(
                 image,
                 prompt_seconds=prompt_seconds,
                 progress_seconds=progress_seconds,
-                qmp_channel=channel,
-                process_guard=guard,
+                qmp_session=session,
             )
             report["qmpSendKeyAcknowledged"] = result["qmpSendKeyAcknowledged"]
         except BootRefusal as exc:
@@ -517,6 +667,12 @@ def run_lab(
             except Exception:
                 report["reportIoFailed"] = True
                 report["decision"] = "refuse"
+            # Revoke before releasing descriptors; no retained QMP object
+            # can claim authority after its child has been reaped.
+            if session is not None:
+                _ISSUED_QMP_SESSIONS.discard(session)
+            if process is not None:
+                _OWNED_CHILDREN.pop(process, None)
             for fd in (pidfd, *pinned.values(), work_fd):
                 if fd is not None:
                     try:
@@ -533,6 +689,113 @@ def run_lab(
             if report["decision"] == "refuse" and report["reasonCode"] is None:
                 report["reasonCode"] = "QEMU_STARTUP_UNCLASSIFIED"
     return report
+
+
+def _refused_report() -> dict:
+    """Stable no-spawn diagnostic without accessing any caller-controlled path."""
+    return {
+        "schemaVersion": 1,
+        "decision": "refuse",
+        "reasonCode": "QEMU_STARTUP_UNCLASSIFIED",
+        "qemuSpawned": False,
+        "qemuPidRecorded": False,
+        "qemuExitCode": None,
+        "qemuSignal": None,
+        "qmpSocketState": "ABSENT",
+        "qmpHandshakeVerified": False,
+        "qmpRunningVerified": False,
+        "qmpSendKeyAcknowledged": False,
+        "cleanupVerified": False,
+        "windowsSetupVerified": False,
+        "installationAuthorized": False,
+        "diskWritesAuthorized": False,
+        "rollbackVerified": False,
+        "errorDetailCode": None,
+        "cleanupReasonCode": None,
+        "reportIoFailed": False,
+        "descendantsCleanupVerified": False,
+    }
+
+
+def _run_lab_synthetic(
+    work: Path,
+    code: Path,
+    vars_path: Path,
+    image: Path,
+    iso: Path,
+    answer: Path,
+    accelerator: str,
+    *,
+    synthetic_child=None,
+    synthetic_log_data: bytes = b"",
+    synthetic_spawn_failure: bool = False,
+    pidfd_factory=None,
+    connect_seconds: float = 0.04,
+    prompt_seconds: float = 0.02,
+    progress_seconds: float = 0.02,
+    wait_seconds: float = 0.02,
+) -> dict:
+    """Internal DENY-ONLY fixture seam, never manufactures a process.
+
+    Tests may provide a child they created independently. This function
+    cannot run an injected executable or factory; every disk remains owned
+    by the disposable test fixture. Never use as operational authority.
+    """
+    return _run_lab_impl(
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        accelerator,
+        synthetic_child=synthetic_child,
+        synthetic_log_data=synthetic_log_data,
+        synthetic_spawn_failure=synthetic_spawn_failure,
+        pidfd_factory=pidfd_factory,
+        connect_seconds=connect_seconds,
+        prompt_seconds=prompt_seconds,
+        progress_seconds=progress_seconds,
+        wait_seconds=wait_seconds,
+    )
+
+
+def run_lab(
+    work: Path,
+    code: Path,
+    vars_path: Path,
+    image: Path,
+    iso: Path,
+    answer: Path,
+    accelerator: str,
+    *,
+    connect_seconds: float = 15,
+    prompt_seconds: float = 90,
+    progress_seconds: float = 600,
+    wait_seconds: float = 7200,
+    popen_factory=None,
+    pidfd_factory=None,
+) -> dict:
+    """Public/CLI entry: synthetic factories cannot grant spawn authority."""
+    # In particular, reject factories BEFORE evaluating them, checking
+    # paths, pinning files, opening outputs, or calling subprocess.Popen.
+    if popen_factory is not None or pidfd_factory is not None:
+        return _refused_report()
+    if not QEMU_FD_BACKING_VERIFIED:
+        return _refused_report()
+    return _run_lab_impl(
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        accelerator,
+        connect_seconds=connect_seconds,
+        prompt_seconds=prompt_seconds,
+        progress_seconds=progress_seconds,
+        wait_seconds=wait_seconds,
+    )
 
 
 def main() -> int:

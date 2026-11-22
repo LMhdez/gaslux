@@ -10,13 +10,15 @@ import sys
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "auto_tests/tools"))
 
-from q4os_win10_qmp_boot import BootRefusal, supervise  # noqa: E402
+import q4os_win10_qmp_supervisor as witness  # noqa: E402
+from q4os_win10_qmp_boot import BootRefusal, Qmp, supervise  # noqa: E402
 
 
 class FakeQemu:
@@ -89,17 +91,55 @@ def lab(tmp_path):
 
 
 def run(lab, **overrides):
+    """Protocol fixture: synthetic peer verified by OS PID, binary witness mocked.
+
+    The fixture never exercises an autonomous boot/QMP entrypoint. Only
+    _witness (the QEMU-executable check) is replaced for this thread-local
+    fake QMP server; SO_PEERCRED and inode checks run against real sockets.
+    """
     qmp, serial, disk = lab
-    return supervise(
-        qmp,
-        serial,
-        disk,
-        connect_seconds=0.25,
-        prompt_seconds=0.25,
-        progress_seconds=0.25,
-        tick=0.01,
-        **overrides,
-    )
+    if qmp.parent.stat().st_mode & 0o077:
+        raise BootRefusal("nonprivate_lab_directory")
+    if not qmp.exists():
+        raise BootRefusal("qmp_socket_unavailable")
+
+    class SyntheticOwner:
+        pid = os.getpid()
+
+        def poll(self):
+            return None
+
+    # The protocol-only fixture explicitly replaces issuance; operational
+    # authentication still refuses all unregistered and forged sessions.
+    with (
+        patch.object(witness, "_witness", lambda *_args: None),
+        patch.object(witness, "_verify_session_authority", lambda _session: None),
+    ):
+        channel = Qmp(qmp, negotiate=False)
+        session = witness._BoundQmpSession(
+            channel,
+            SyntheticOwner(),
+            -1,
+            qmp,
+            qmp.parent,
+            witness._socket_identity(qmp, qmp.parent),
+        )
+        try:
+            channel.bind_verified_session(session)
+            channel.negotiate_protocol()
+            return supervise(
+                qmp,
+                serial,
+                disk,
+                connect_seconds=0.25,
+                prompt_seconds=0.25,
+                progress_seconds=0.25,
+                tick=0.01,
+                qmp_session=session,
+                **overrides,
+            )
+        finally:
+            channel.close()
 
 
 def test_prompt_detected_key_acknowledged_progress_observed_once(lab):
@@ -267,3 +307,146 @@ def test_windows_qemu_workflow_bash_scripts_parse_without_execution():
             text=True,
         )
         assert result.returncode == 0, (step["name"], result.stderr)
+
+
+def _run_denied_report_cli(monkeypatch, root: Path, report_path: Path) -> int:
+    import q4os_win10_qmp_boot as boot
+
+    def denied(*_args, **_kwargs):
+        raise BootRefusal("QEMU_TOKEN=SECRET_SENTINEL /tmp/private")
+
+    monkeypatch.setattr(boot, "supervise", denied)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "q4os_win10_qmp_boot.py",
+            "--qmp",
+            str(root / "qmp.sock"),
+            "--serial",
+            str(root / "serial.log"),
+            "--disk",
+            str(root / "disk.qcow2"),
+            "--report",
+            str(report_path),
+        ],
+    )
+    return boot.main()
+
+
+@pytest.mark.parametrize("kind", ["symlink_existing", "regular_existing", "directory_symlink"])
+def test_r03_exclusive_report_existing_paths_and_symlinks(monkeypatch, tmp_path, capsys, kind):
+    root = tmp_path / "SECRET_SENTINEL_private"
+    root.mkdir(mode=0o700)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir(mode=0o700)
+    target = foreign / "report.json"
+    target.write_bytes(b"FOREIGN_BYTES_UNMODIFIED")
+    report = root / "report.json"
+    if kind == "symlink_existing":
+        report.symlink_to(target)
+    elif kind == "regular_existing":
+        report.write_bytes(b"FOREIGN_BYTES_UNMODIFIED")
+    else:
+        moved = tmp_path / "original-owned"
+        root.rename(moved)
+        root.symlink_to(foreign, target_is_directory=True)
+    assert _run_denied_report_cli(monkeypatch, root, report) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "GASLUX_Q4OS_DVD_BOOT_DECISION=refuse\n"
+    assert captured.err == ""
+    assert target.read_bytes() == b"FOREIGN_BYTES_UNMODIFIED"
+    if kind == "regular_existing":
+        assert report.read_bytes() == b"FOREIGN_BYTES_UNMODIFIED"
+    if kind == "symlink_existing":
+        assert report.is_symlink()
+    if kind == "directory_symlink":
+        assert not (tmp_path / "original-owned" / "report.json").exists()
+
+
+def test_r03_directory_swapped_after_descriptor_pinning(monkeypatch, tmp_path, capsys):
+    import q4os_win10_qmp_boot as boot
+
+    root = tmp_path / "SECRET_SENTINEL_private"
+    root.mkdir(mode=0o700)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir(mode=0o700)
+    protected = foreign / "report.json"
+    protected.write_bytes(b"FOREIGN_BYTES_UNMODIFIED")
+    moved = tmp_path / "original-owned"
+    report = root / "report.json"
+    native_open = os.open
+    altered = []
+
+    def open_and_swap(path, flags, *args, **kwargs):
+        if path == "report.json" and kwargs.get("dir_fd") is not None and not altered:
+            root.rename(moved)
+            root.symlink_to(foreign, target_is_directory=True)
+            altered.append(True)
+        return native_open(path, flags, *args, **kwargs)
+
+    with monkeypatch.context() as m:
+        m.setattr(boot.os, "open", open_and_swap)
+        assert _run_denied_report_cli(m, root, report) == 1
+    captured = capsys.readouterr()
+    assert altered == [True]
+    assert captured.out == "GASLUX_Q4OS_DVD_BOOT_DECISION=refuse\n"
+    assert captured.err == ""
+    assert protected.read_bytes() == b"FOREIGN_BYTES_UNMODIFIED"
+
+
+@pytest.mark.parametrize("failure", ["ENOSPC", "EIO", "short_write", "fsync", "close"])
+def test_r03_report_io_faults_fail_closed_no_traceback(monkeypatch, tmp_path, capsys, failure):
+    import q4os_win10_qmp_boot as boot
+
+    root = tmp_path / "SECRET_SENTINEL_private"
+    root.mkdir(mode=0o700)
+    report = root / "report.json"
+    original_open = os.open
+    original_write = os.write
+    original_fsync = os.fsync
+    original_close = os.close
+    report_fd = {}
+    partial = []
+
+    def track_open(path, flags, *args, **kwargs):
+        fd = original_open(path, flags, *args, **kwargs)
+        if path == "report.json" and kwargs.get("dir_fd") is not None:
+            report_fd["value"] = fd
+        return fd
+
+    def fault_write(fd, data):
+        if fd == report_fd.get("value") and failure in ("ENOSPC", "EIO", "short_write"):
+            if failure == "short_write" and not partial:
+                partial.append(True)
+                return original_write(fd, data[:3])
+            raise OSError(28 if failure == "ENOSPC" else 5, "SECRET_SENTINEL private path")
+        return original_write(fd, data)
+
+    def fault_fsync(fd):
+        if fd == report_fd.get("value") and failure == "fsync":
+            raise OSError(5, "SECRET_SENTINEL private path")
+        return original_fsync(fd)
+
+    def fault_close(fd):
+        if fd == report_fd.get("value") and failure == "close":
+            original_close(fd)
+            raise OSError(5, "SECRET_SENTINEL private path")
+        return original_close(fd)
+
+    with monkeypatch.context() as m:
+        m.setattr(boot.os, "open", track_open)
+        m.setattr(boot.os, "write", fault_write)
+        m.setattr(boot.os, "fsync", fault_fsync)
+        m.setattr(boot.os, "close", fault_close)
+        assert _run_denied_report_cli(m, root, report) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "GASLUX_Q4OS_DVD_BOOT_DECISION=refuse\n"
+    assert captured.err == ""
+    assert "SECRET_SENTINEL" not in captured.out + captured.err
+    assert report_fd
+    assert report.exists()
+    if failure == "short_write":
+        assert report.read_bytes() == b"{\n "
+    if failure in ("ENOSPC", "EIO"):
+        assert report.read_bytes() == b""
