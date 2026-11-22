@@ -309,7 +309,6 @@ def test_windows_qemu_workflow_bash_scripts_parse_without_execution():
         assert result.returncode == 0, (step["name"], result.stderr)
 
 
-
 def _run_denied_report_cli(monkeypatch, root: Path, report_path: Path) -> int:
     import q4os_win10_qmp_boot as boot
 
