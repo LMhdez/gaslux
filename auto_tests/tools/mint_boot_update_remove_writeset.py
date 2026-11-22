@@ -109,12 +109,16 @@ def _read_pinned_regular(path: Path, root: Path, limit: int) -> bytes:
 
 
 def git_blob_sha1(content: bytes) -> str:
-    return hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\x00" + content).hexdigest()
+    header = b"blob " + str(len(content)).encode("ascii") + b"\x00"
+    return hashlib.sha1(header + content).hexdigest()
 
 
 def audit_source_pins(repository: Path) -> dict:
     """Authenticate only the local CHECKED-OUT source bytes against reviewed pins."""
-    _require(type(repository) is type(Path()) and repository.is_absolute(), "absolute repository path required")
+    _require(
+        type(repository) is type(Path()) and repository.is_absolute(),
+        "absolute repository path required",
+    )
     issues: list[dict] = []
     observed: dict[str, str | None] = {}
     for relative, expected in PINNED_SOURCE_BLOBS.items():
