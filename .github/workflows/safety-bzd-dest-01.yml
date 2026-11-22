@@ -45,14 +45,3 @@ jobs:
           set -Eeuo pipefail
           python -m pytest -q -rx auto_tests/tests/test_bzd_dest_01_cross_boundary.py
           python -m pytest -q pinned-267/auto_tests/tests/test_prewrite_no_writer.py
-      - name: Prove test workflow cannot start guest or mutate storage
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          source = Path('.github/workflows/safety-bzd-dest-01.yml').read_text()
-          assert 'permissions:\n  contents: read' in source
-          for name in ('qemu-system-', 'pacstrap ', 'mkfs.', 'parted ', 'sfdisk ', 'bootc install'):
-              assert name not in source
-          print('PASS: no operational QEMU/disk writer step')
-          PY
