@@ -83,6 +83,7 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
+          import os
           target = json.loads(Path("evidence/compact-ovmf-target.json").read_text())
           measure = json.loads(Path("evidence/compact-qcow2-measure.json").read_text())
           bound = measure.get("fully-allocated")
@@ -91,7 +92,7 @@ jobs:
           extra = (4 + 8 + 8) * 1024**3
           report = {
               "schema": "gaslux-compact-physical-bound-v1",
-              "source_sha": target.get("source_commit"),
+              "source_sha": os.environ.get("GITHUB_SHA"),
               "runner_available_bytes": target["measured_available_bytes"],
               "qcow2_fully_allocated_bytes": bound,
               "other_planned_reserves_bytes": extra,
