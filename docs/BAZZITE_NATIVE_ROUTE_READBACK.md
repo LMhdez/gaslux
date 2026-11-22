@@ -254,3 +254,25 @@ Próxima etapa: revisão Safety independente do diferencial de fonte e
 contratos, seguida de prova de correspondência SRPM Fedora/patches/ELF
 e reconciliação read-only do destino, antes de discutir execução
 de instalador. Nenhum merge ou ativação em catálogo.
+
+
+### Updates — dois ramos de implementação, não uma prova de Bazzite instalado
+
+A leitura estática adicional do mesmo commit bootc v1.17.1 cobre:
+
+- `crates/lib/src/deploy.rs: deploy`: `ostree.stage_tree_with_options`
+  prepara um novo deployment OSTree. É uma chamada potencialmente persistente
+  que exige uma instância de sysroot instalada; a fonte não comprova a
+  preservação da entrada Windows após upgrades.
+- `crates/lib/src/bootc_composefs/update.rs: do_upgrade`: após preparar
+  o novo estado, chama `write_composefs_state`, `composefs_gc`
+  (`dry_run: false`, `prune_repo: true`) e `apply_upgrade`.
+  Estas são escritas de estado e manutenção de deployments; o ramo depende
+  de o sistema usar composefs.
+
+A escolha real OSTree/composefs, chaves de bootloader, entrada NVRAM,
+deployments e comportamento pós-atualização da **OCI Bazzite específica**
+não foram observados. Os dois novos ficheiros são também fixados por
+identidade Git no leitor source-only, mantendo
+`updateRuntimeAndBootSafetyVerified=false`,
+`PREWRITE_UNPROVEN` e todos os bloqueios de escrita.
