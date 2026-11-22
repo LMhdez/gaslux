@@ -102,6 +102,12 @@ def example_guest_disk():
                 "children": [
                     {
                         "type": "part",
+                        "partn": n,
+                        "parttype": (
+                            "C12A7328-F81F-11D2-BA4B-00A0C93EC93B" if n == 1 else
+                            "E3C9E316-0B5C-4DB8-817D-F92DF00215AE" if n == 2 else
+                            "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
+                        ),
                         "partuuid": f"0000000{n}-2222-4333-8444-555555555555",
                         "start": first,
                         "size": (last - first + 1) * 512,
@@ -356,3 +362,35 @@ def test_capture_does_not_verify_payload_geometry_esp_or_atomic_deployment():
         assert report[name] is False
     assert "diskGuid" not in report
     assert "payloadDigest" not in report
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("partn", 4),
+        ("partn", True),
+        ("parttype", "DE94BBA4-06D1-4D40-A16A-BFD50179D6AC"),
+        ("start", 618496),
+        ("size", 4096),
+    ],
+)
+def test_guest_disk_rejects_partition_identity_and_exact_geometry_drift(field, value):
+    data = example_guest_disk()
+    data["blockdevices"][0]["children"][1][field] = value
+    with pytest.raises(CaptureRefusal):
+        guest_disk_inventory(data)
+
+
+def test_guest_disk_rejects_reordered_partition_slots_and_unrelated_recovery():
+    data = example_guest_disk()
+    parts = data["blockdevices"][0]["children"]
+    parts[0], parts[1] = parts[1], parts[0]
+    with pytest.raises(CaptureRefusal):
+        guest_disk_inventory(data)
+
+    data = example_guest_disk()
+    data["blockdevices"][0]["children"][2]["parttype"] = (
+        "DE94BBA4-06D1-4D40-A16A-BFD50179D6AC"
+    )
+    with pytest.raises(CaptureRefusal):
+        guest_disk_inventory(data)
