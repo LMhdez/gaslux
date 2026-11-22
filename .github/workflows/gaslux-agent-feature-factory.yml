@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gaslux-six-distro-feature-factory
+  group: gaslux-six-distro-feature-factory-${{ github.event_name == 'pull_request' && github.event.number || 'runtime' }}
   cancel-in-progress: false
 
 jobs:

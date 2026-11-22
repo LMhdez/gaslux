@@ -230,19 +230,56 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str) -> None:
     raise RuntimeError(f"Isolated Qwen proposal failed acceptance: {last}")
 
 
+
+def safe_forward_draft_base(root: Path, role: str, old: str, current: str) -> bool:
+    """Only a forward-only unchanged feature source+test may reuse model evidence.
+
+    This does NOT grant auto-merge: the result is always a Draft PR, and the
+    model's old-base product tests are never presented as live-base CI.
+    """
+    if role not in TASKS or not SHA.fullmatch(old) or not SHA.fullmatch(current):
+        return False
+    if old == current:
+        return True
+    ancestor = subprocess.run(
+        ["git", "-C", str(root), "merge-base", "--is-ancestor", old, current],
+        check=False, capture_output=True, timeout=20,
+    )
+    if ancestor.returncode != 0:
+        return False
+    source, test, _ = TASKS[role]
+    for path in (source, "auto_tests/tests/" + test):
+        try:
+            original = subprocess.check_output(
+                ["git", "-C", str(root), "show", old + ":" + path],
+                timeout=20,
+            )
+            now = subprocess.check_output(
+                ["git", "-C", str(root), "show", current + ":" + path],
+                timeout=20,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return False
+        if original != now:
+            return False
+    return True
+
 def publish(root: Path, evidence_dir: Path, role: str, base: str) -> None:
     if os.getenv("GITHUB_REPOSITORY") != REPO or os.getenv("GITHUB_REF") != "refs/heads/main":
         raise ValueError("Only trusted default-branch Actions may publish")
     # Static-only checks: never execute model text in a token-bearing job.
     verify(root, evidence_dir, role, base, execute=False)
     git(root, "fetch", "origin", "refs/heads/dev:refs/remotes/origin/dev")
-    if git(root, "rev-parse", "refs/remotes/origin/dev") != base:
-        print(json.dumps({"status": "stale_base", "role": role}))
+    live = git(root, "rev-parse", "refs/remotes/origin/dev")
+    if not safe_forward_draft_base(root, role, base, live):
+        print(json.dumps({"status": "stale_or_relevant_dev_change", "role": role}))
         return
     branch = origin_branch(role, base)
     addition = (evidence_dir / "addition.py").read_text(encoding="utf-8")
+    # Safe forward-only changes are included by ancestry, but this review PR
+    # is still always Draft. No model text runs with publication credentials.
+    git(root, "checkout", "-b", branch, live)
     _, proposed = expected_source(root, role, addition)
-    git(root, "checkout", "-b", branch)
     (root / TASKS[role][0]).write_bytes(proposed)
     if git(root, "diff", "--name-only") != TASKS[role][0]:
         raise ValueError("Unexpected changed product path")
