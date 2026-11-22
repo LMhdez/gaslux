@@ -260,6 +260,10 @@ class Fat32OfflineTests(unittest.TestCase):
         self.assertEqual(counts["ESP_OTHER_SECTOR_OVERLAP"], 1)
         self.assertEqual(counts["UNMAPPED_ESP_WRITE"], 1)
         self.assertEqual(counts["PROCESS_UNATTRIBUTED"], 4)
+        self.assertEqual(
+            result["first64OverlapExamples"][0]["first16BcdFileByteRanges"],
+            [{"fileOffset": 120, "length": 28, "cluster": 6}],
+        )
         self.assertFalse(result["bcdModificationConfirmed"])
         self.assertFalse(result["processAttributionProven"])
         no_identity = trace.correlate_qemu_writes(
@@ -269,6 +273,32 @@ class Fat32OfflineTests(unittest.TestCase):
         self.assertEqual(no_identity["classificationCounts"],
                          {"PROCESS_UNATTRIBUTED": 4, "UNMAPPED_ESP_WRITE": 4})
         self.assertFalse(no_identity["qemuBlkNodeToDiskAuthenticated"])
+
+    def test_qemu_spanning_bcd_data_and_fat_metadata_reports_both(self):
+        m = mapping(self.fragmented)
+        first_fat = (ESP_LBA + RESERVED) * 512
+        bcd_disk = m["bcdDataExtents"][0]["diskOffset"]
+        size = bcd_disk + 64 - first_fat
+        raw = (
+            "blk_co_pwritev blk 0xa1 bs 0xbb offset " +
+            str(first_fat) + " bytes " + str(size) + " flags 0x0\\n"
+        ).encode("ascii")
+        parsed = trace.parse_qemu_trace(raw)
+        result = trace.correlate_qemu_writes(
+            parsed, disk_bytes=DISK_BYTES,
+            esp_start_lba=ESP_LBA, esp_end_lba=ESP_END, fat32_map=m,
+            synthetic_fixture_binding={
+                "scope": "SYNTHETIC_FIXTURE_ONLY",
+                "blkPointer": "0xa1",
+                "traceSha256": hashlib.sha256(raw).hexdigest(),
+            },
+        )
+        self.assertEqual(result["classificationCounts"]["BCD_DATA_SECTOR_OVERLAP"], 1)
+        self.assertEqual(result["classificationCounts"]["FAT32_METADATA_OVERLAP"], 1)
+        example = result["first64OverlapExamples"][0]
+        self.assertEqual(example["first16BcdFileByteRanges"][0],
+                         {"fileOffset": 0, "length": 64, "cluster": 6})
+        self.assertFalse(result["bcdModificationConfirmed"])
 
     def test_trace_invalid_offset_malformed_line_and_missing_newline(self):
         good = b"blk_co_pwritev blk 0x1 bs 0x2 offset 1024 bytes 512 flags 0x0\n"
