@@ -203,6 +203,7 @@ def assess_authenticated_destination(
         qcow_st = _pin(qcow2_fd, pins.media_path, pins.workspace)
         raw_st = _pin(backing_fd, backing_path, pins.workspace)
         check_st = _pin(checkpoint_fd, checkpoint_path, pins.workspace)
+        require(check_st.st_size <= 64 * 1024, "CHECKPOINT_SIZE_EXCEEDS_LIMIT")
         require(
             (qcow_st.st_dev, qcow_st.st_ino, qcow_st.st_size)
             == (pins.media_dev, pins.media_inode, pins.media_size),

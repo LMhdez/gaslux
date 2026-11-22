@@ -239,3 +239,12 @@ def test_checkpoint_fd_alias_is_refused(destination, workspace):
     shutil.copyfile(cp, foreign)
     with foreign.open("rb") as stream, pytest.raises(DestinationRefused, match="FD_ALIAS"):
         assess(destination, checkpoint_fd=stream.fileno())
+
+def test_oversized_checkpoint_refused_before_receipt_parse(destination):
+    path = destination["paths"][2]
+    with path.open("ab") as stream:
+        stream.write(b" " * (64 * 1024))
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(DestinationRefused, match="CHECKPOINT_SIZE_EXCEEDS_LIMIT"):
+        assess(destination, expected_checkpoint_sha256=digest)
+
