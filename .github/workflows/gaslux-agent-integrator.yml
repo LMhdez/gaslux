@@ -2,7 +2,7 @@ name: GASLUX-INTEGRATOR - scheduled exact-HEAD dev merge
 
 on:
   schedule:
-    - cron: '53 * * * *'
+    - cron: '7,22,37,52 * * * *' # every 15 minutes, plus success-triggered executions
   workflow_dispatch:
   workflow_run:
     workflows: ["Gaslux autonomous GitHub agents", "Gaslux Goal Supervisor - read-only progress"]
