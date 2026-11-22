@@ -4,7 +4,7 @@
 
 - Corrected Observer HOST FD [#294](https://github.com/LMhdez/gaslux/pull/294), exact parent `e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9`; original #292 `db50e57b4e296033cb732cd4c249a0403df6b02e`.
 - Source Observer [#259](https://github.com/LMhdez/gaslux/pull/259), `e9055bf6e9d83d5c758b69a3a77a8c4a6fd48748`; **not** imported as a full experimental subtree.
-- Clean target `dev` fixed at `ca68de69992a8e95f9abd6367bab5458437cbfa7` at implementation time; recheck live `dev` and refresh the replay pin before integration.
+- Clean target `dev` fixed at `af5c28c5c66e6fe294bd7f768ea13467aa0db3f6` at implementation time; recheck live `dev` and refresh the replay pin before integration.
 - Safety GPT FD [#286](https://github.com/LMhdez/gaslux/pull/286), `9aed36cfdb8c09a461dc38811c326c54180273de`. Safety/no-writer [#267](https://github.com/LMhdez/gaslux/pull/267), `0be04192acd542646a5b6cd952e01620379edf5d`.
 - Failed integration [#305](https://github.com/LMhdez/gaslux/pull/305), HEAD `903cda22dc080d52f118e9f57c844870177d62ee` (closed unmerged). Its [Action #45011213674](https://github.com/LMhdez/gaslux/actions/runs/45011213674) was **FAILED at Ruff**, before any authoritative runtime import proof; the separate clean-dev repro covers the missing import boundary.
 

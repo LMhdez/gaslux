@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: LMhdez/gaslux
-          ref: ca68de69992a8e95f9abd6367bab5458437cbfa7
+          ref: af5c28c5c66e6fe294bd7f768ea13467aa0db3f6
           path: dev-pinned
           persist-credentials: false
       - name: Checkout original Observer PR #294 for RED import proof (EXACT SHA)
@@ -64,7 +64,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=no)"
-          test "$(git -C dev-pinned rev-parse HEAD)" = ca68de69992a8e95f9abd6367bab5458437cbfa7
+          test "$(git -C dev-pinned rev-parse HEAD)" = af5c28c5c66e6fe294bd7f768ea13467aa0db3f6
           test -z "$(git -C dev-pinned status --porcelain)"
           test "$(git -C original294-pinned rev-parse HEAD)" = e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9
           test -z "$(git -C original294-pinned status --porcelain)"
@@ -172,7 +172,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(git -C dev-pinned rev-parse HEAD)" = ca68de69992a8e95f9abd6367bab5458437cbfa7
+          test "$(git -C dev-pinned rev-parse HEAD)" = af5c28c5c66e6fe294bd7f768ea13467aa0db3f6
           test -z "$(git -C dev-pinned status --porcelain)"
           test "$(git -C original294-pinned rev-parse HEAD)" = e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9
           test -z "$(git -C original294-pinned status --porcelain)"

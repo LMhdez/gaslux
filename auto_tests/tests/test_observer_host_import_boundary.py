@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-DEV_SHA = "ca68de69992a8e95f9abd6367bab5458437cbfa7"
+DEV_SHA = "af5c28c5c66e6fe294bd7f768ea13467aa0db3f6"
 MODULES = (
     "host_fd_boundary.py",
     "host_qemu_fd_evidence.py",
