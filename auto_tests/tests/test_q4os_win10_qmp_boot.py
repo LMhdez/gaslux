@@ -238,8 +238,7 @@ def test_workflow_runs_qmp_once_and_never_exports_vm_password():
     assert '--image "$image" --iso "$iso" --answer "$answer"' in workflow
     assert "qemu_pid=$!" not in workflow
     supervisor = (
-        Path(__file__).resolve().parents[2]
-        / "auto_tests/tools/q4os_win10_qmp_supervisor.py"
+        Path(__file__).resolve().parents[2] / "auto_tests/tools/q4os_win10_qmp_supervisor.py"
     ).read_text(encoding="utf-8")
     assert "unix:" in supervisor and ",server=on,wait=off" in supervisor
     assert "pidfd_send_signal" in supervisor
