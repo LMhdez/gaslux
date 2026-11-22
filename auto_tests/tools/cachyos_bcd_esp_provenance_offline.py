@@ -87,7 +87,7 @@ def _valid_identity(identity: object) -> bool:
 
 
 def _check_open_descriptor(fd: int, path: Path, pinned: dict) -> dict:
-    require(type(fd) is int and fd >= 0 and type(path) is Path
+    require(type(fd) is int and fd >= 0 and isinstance(path, Path)
             and path.is_absolute(), "FD/path shape invalid")
     try:
         mode = fcntl.fcntl(fd, fcntl.F_GETFL)
