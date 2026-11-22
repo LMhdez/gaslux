@@ -117,3 +117,16 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   QCOW2 guest GPT and checkpoint authenticity **UNPROVEN**;
   Guest channel, write and installation authority **DENIED**.
   No release or stability claim.
+
+
+### DESTINATION-337-CI-AND-SCALE-01 — separação de escalas (22-11-2026)
+
+A [PR #337](https://github.com/LMhdez/gaslux/pull/337) corrigiu a falha
+original `type(path) is Path` no commit
+`d2e382a60120d09a0b225e4188309f48f0315845`, substituindo pela
+classe concreta `type(Path())`. CI [#45032719682](https://github.com/LMhdez/gaslux/actions/runs/45032719682)
+SUCCESS no HEAD documental `829da9e5964e609d3555719d0fea173030aa6506`.
+A proposta de metadados de 128 GiB é uma branch dependente, test-only,
+sem hash integral ou checkpoint, e não altera a classificação #337.
+A CI da branch e a revisão Safety devem ser validadas no HEAD exato
+antes de qualquer merge. QEMU anterior foi **stopped**, sem guest/Windows.

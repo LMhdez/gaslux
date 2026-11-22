@@ -117,3 +117,18 @@ the internal QEMU backend pointer to the original FD. The QCOW2 backing
 RAW GPT is **not** the guest-visible GPT. Checkpoint bytes/hash are not
 proof of Windows recovery. ISO/OCI signed provenance remains per-backend.
 See [detailed property matrix](../AUTHENTICATED_DESTINATION_READONLY.md).
+
+
+### AUTHENTICATED-DESTINATION-01 — dimensão virtual de 128 GiB
+
+A PR de qualificação `test/authenticated-destination-128g-metadata-deny-20261122`
+reutiliza o contrato de #337 sem alterar autores de escrita, #267 ou #327.
+A dimensão virtual QCOW2 **não** corresponde ao tamanho lógico do overlay,
+aos blocos fisicamente alocados nem ao trabalho de hashing do backing RAW.
+O gate integral de SHA-256 permanece <=512 MiB por ficheiro. O novo
+`probe_destination_scale_metadata` inspeciona somente 32 bytes de cabeçalho
+e os `fstat` dos FDs pertencentes ao laboratório, com limite físico agregado
+de 512 MiB e backing lógico <=128 GiB. Continua sempre `DENY_NO_WRITER`,
+sem autenticação do Windows/QCOW2, Guest, checkpoint ou rollback.
+Um resultado de metadados não satisfaz preflight de escrita e nunca é
+aceite como prova de instalação, recuperação ou deployment real.
