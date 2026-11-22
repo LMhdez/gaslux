@@ -1,0 +1,36 @@
+name: Pop EFI Boot Chain Offline Contracts
+on:
+  push:
+    paths:
+      - 'auto_tests/tools/windows10_popos_efi_boot_gate.py'
+      - 'auto_tests/test_windows10_popos_efi_boot_gate.py'
+      - '.github/workflows/popos-efi-boot-chain-offline.yml'
+  pull_request:
+    paths:
+      - 'auto_tests/tools/windows10_popos_efi_boot_gate.py'
+      - 'auto_tests/test_windows10_popos_efi_boot_gate.py'
+      - '.github/workflows/popos-efi-boot-chain-offline.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: popos-efi-offline-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile, syntax, unit and negative tests
+        run: |
+          python -m py_compile auto_tests/tools/windows10_popos_efi_boot_gate.py auto_tests/test_windows10_popos_efi_boot_gate.py
+          python -m unittest -v auto_tests/test_windows10_popos_efi_boot_gate.py
+      - name: Lint and format
+        run: |
+          python -m pip install ruff==0.14.5
+          ruff check auto_tests/tools/windows10_popos_efi_boot_gate.py auto_tests/test_windows10_popos_efi_boot_gate.py
+          ruff format --check auto_tests/tools/windows10_popos_efi_boot_gate.py auto_tests/test_windows10_popos_efi_boot_gate.py
