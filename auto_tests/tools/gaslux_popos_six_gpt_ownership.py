@@ -21,6 +21,7 @@ from pathlib import Path
 
 from gaslux_popos_reuse_snapshot_gate import Refusal, need
 from gaslux_popos_six_gpt_contract import BOOLEANS, CONSENT
+from gaslux_popos_six_gpt_process_boundary import measure_pinned_evidence
 
 # Closed inventory of all files the six-GPT lab may create. Not a glob/delete
 # authority. Temporary files are accounted for, including on incomplete runs.
@@ -265,6 +266,18 @@ def run(work: Path, evidence: Path, template: Path) -> None:
             workspace.inspect()
             subprocess.run([sys.executable, str(tools / tool), *args], check=True, timeout=2400)
             workspace.inspect()
+        # Resource-bound read-only subprocess stage: a swapped pathname cannot
+        # make a foreign evidence file pass as a recovered artifact. Existing
+        # tool calls in the lab remain UNISOLATED and DENY-ONLY.
+        for evidence_name in EVIDENCE:
+            measured = measure_pinned_evidence(workspace, evidence_name)
+            need(
+                measured["sha256"]
+                == hashlib.sha256(workspace.evidence_bytes(evidence_name)).hexdigest()
+                and measured["distinstExecutionAuthorized"] is False
+                and measured["observationComplete"] is False,
+                "REFUSE_SUBPROCESS_BOUNDARY: inconsistent pinned evidence",
+            )
         plan = json.loads(workspace.evidence_bytes("pop-six-transaction.json"))
         recovery = json.loads(workspace.evidence_bytes("recovery-proof.json"))
         need(
