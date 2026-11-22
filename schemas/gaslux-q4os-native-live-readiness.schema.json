@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Q4OS Native Live Boot Readiness — DENY-only evidence",
+  "description": "Shape validation cannot authenticate provenance, sign catalogues, or authorize QEMU/guest boot.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "intent": {
+      "const": "Q4OS_NATIVE_LIVE_BOOT_PREPARATION_ONLY"
+    },
+    "decision": {
+      "const": "DENY"
+    },
+    "evidenceLevel": {
+      "enum": [
+        "SOURCE_REFERENCE_ONLY",
+        "MEDIA_HASH_ONLY"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "distribution": {
+          "const": "q4os"
+        },
+        "release": {
+          "const": "6.10"
+        },
+        "revision": {
+          "const": "r2"
+        },
+        "architecture": {
+          "const": "x86_64"
+        },
+        "fileName": {
+          "const": "q4os-6.10-x64.r2.iso"
+        },
+        "officialDownloadSource": {
+          "const": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso"
+        },
+        "publicChecksumPage": {
+          "const": "https://sourceforge.net/projects/q4os/files/stable/q4os-6.10-x64.r2.iso/download"
+        },
+        "upstreamPublishedSha256": {
+          "const": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
+        },
+        "signedGasluxCatalogVerified": {
+          "const": false
+        },
+        "exactCatalogSizeBytes": {
+          "type": "null"
+        },
+        "historicalNativeInstaller": {
+          "const": "Calamares"
+        },
+        "installerObservedInThisRun": {
+          "const": false
+        }
+      },
+      "required": [
+        "distribution",
+        "release",
+        "revision",
+        "architecture",
+        "fileName",
+        "officialDownloadSource",
+        "publicChecksumPage",
+        "upstreamPublishedSha256",
+        "signedGasluxCatalogVerified",
+        "exactCatalogSizeBytes",
+        "historicalNativeInstaller",
+        "installerObservedInThisRun"
+      ]
+    },
+    "iso": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sha256MatchedThisRun": {
+          "type": "boolean"
+        },
+        "observed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "const": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "minimum": 1500000001,
+                  "maximum": 2999999999
+                },
+                "fdReadOnlyPinnedDuringMeasurement": {
+                  "const": true
+                },
+                "qemuFdBound": {
+                  "const": false
+                }
+              },
+              "required": [
+                "sha256",
+                "sizeBytes",
+                "fdReadOnlyPinnedDuringMeasurement",
+                "qemuFdBound"
+              ]
+            }
+          ]
+        },
+        "isoFdRetainedForQemu": {
+          "const": false
+        }
+      },
+      "required": [
+        "sha256MatchedThisRun",
+        "observed",
+        "isoFdRetainedForQemu"
+      ]
+    },
+    "runtimeBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "qemuProcessIdentityVerified": {
+          "const": false
+        },
+        "qemuExecutableVerified": {
+          "const": false
+        },
+        "qmpPeerVerified": {
+          "const": false
+        },
+        "isoFdIdentityBoundToQemu": {
+          "const": false
+        },
+        "qcow2FdIdentityBoundToQemu": {
+          "const": false
+        },
+        "firmwareCodeAndVarsBoundToQemu": {
+          "const": false
+        },
+        "qcow2GeometryVerified": {
+          "const": false
+        },
+        "qcow2BackingVerified": {
+          "const": false
+        },
+        "qcow2SnapshotRestorable": {
+          "const": false
+        }
+      },
+      "required": [
+        "qemuProcessIdentityVerified",
+        "qemuExecutableVerified",
+        "qmpPeerVerified",
+        "isoFdIdentityBoundToQemu",
+        "qcow2FdIdentityBoundToQemu",
+        "firmwareCodeAndVarsBoundToQemu",
+        "qcow2GeometryVerified",
+        "qcow2BackingVerified",
+        "qcow2SnapshotRestorable"
+      ]
+    },
+    "guest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "qemuStarted": {
+          "const": false
+        },
+        "isoBooted": {
+          "const": false
+        },
+        "kernelBooted": {
+          "const": false
+        },
+        "userspaceBooted": {
+          "const": false
+        },
+        "guestObservationReceived": {
+          "const": false
+        },
+        "guestOriginAttested": {
+          "const": false
+        }
+      },
+      "required": [
+        "qemuStarted",
+        "isoBooted",
+        "kernelBooted",
+        "userspaceBooted",
+        "guestObservationReceived",
+        "guestOriginAttested"
+      ]
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "independentSafetyApproved": {
+          "const": false
+        },
+        "liveBootAuthorized": {
+          "const": false
+        },
+        "QEMU_FD_BACKING_VERIFIED": {
+          "const": false
+        },
+        "productionStorageWritesAuthorized": {
+          "const": false
+        },
+        "q4osNativeInstallationVerified": {
+          "const": false
+        },
+        "sameDiskDualBootVerified": {
+          "const": false
+        },
+        "windowsInPlaceRollbackProven": {
+          "const": false
+        },
+        "releaseEligible": {
+          "const": false
+        },
+        "stable": {
+          "const": false
+        },
+        "disposableVmStandingPolicy": {
+          "const": true
+        }
+      },
+      "required": [
+        "independentSafetyApproved",
+        "liveBootAuthorized",
+        "QEMU_FD_BACKING_VERIFIED",
+        "productionStorageWritesAuthorized",
+        "q4osNativeInstallationVerified",
+        "sameDiskDualBootVerified",
+        "windowsInPlaceRollbackProven",
+        "releaseEligible",
+        "stable",
+        "disposableVmStandingPolicy"
+      ]
+    },
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 6,
+      "items": {
+        "enum": [
+          "INDEPENDENT_SAFETY_APPROVAL_MISSING",
+          "SIGNED_GASLUX_ISO_CATALOG_MISSING",
+          "ISO_SIZE_NOT_FIXED_IN_SIGNED_METADATA",
+          "ISO_TO_QEMU_FD_BINDING_NOT_OBSERVED",
+          "QCOW2_CHECKPOINT_RECOVERY_NOT_OBSERVED",
+          "GUEST_BOOT_NOT_OBSERVED",
+          "ISO_BYTES_NOT_RECHECKED_THIS_RUN"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "intent",
+    "decision",
+    "evidenceLevel",
+    "source",
+    "iso",
+    "runtimeBindings",
+    "guest",
+    "gates",
+    "blockers"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "evidenceLevel": {
+            "const": "SOURCE_REFERENCE_ONLY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "iso": {
+            "properties": {
+              "sha256MatchedThisRun": {
+                "const": false
+              },
+              "observed": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidenceLevel": {
+            "const": "MEDIA_HASH_ONLY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "iso": {
+            "properties": {
+              "sha256MatchedThisRun": {
+                "const": true
+              },
+              "observed": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
