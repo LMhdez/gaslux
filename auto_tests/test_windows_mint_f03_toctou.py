@@ -231,7 +231,9 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                                         "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
                         })
                 else:
-                    def wrong_inode(name, *args, original_stat=original_stat, target=target, **kwargs):
+                    def wrong_inode(
+                        name, *args, original_stat=original_stat, target=target, **kwargs
+                    ):
                         info = original_stat(name, *args, **kwargs)
                         if name != target.name or kwargs.get("dir_fd") is None:
                             return info
