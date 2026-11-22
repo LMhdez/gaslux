@@ -163,6 +163,31 @@ jobs:
             --iso "$RUNNER_TEMP/zorin-source-pinned/zorin.iso" \
             --mounted "$mountdir" \
             --out zorin-target-source-evidence/pinned-source-static-edges.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("zorin-target-source-evidence/pinned-source-static-edges.json").read_text())
+          core = (
+              "usr/bin/ubiquity",
+              "usr/lib/ubiquity/plugins/ubi-partman.py",
+              "usr/lib/ubiquity/ubiquity/parted_server.py",
+              "usr/lib/ubiquity/ubiquity/components/partman_commit.py",
+              "usr/lib/ubiquity/ubiquity/components/grubinstaller.py",
+              "usr/share/ubiquity/plugininstall.py",
+          )
+          unresolved = ("lib/partman/lib/commit.sh", "lib/partman/lib/resize.sh")
+          assert all(report["sources"][p]["status"] == "REGULAR_HASH_MATCHED" for p in core)
+          assert set(report["missingSourceBodies"]) == set(unresolved)
+          assert all(report["unavailableFromSquashfs"][p] == "MISSING_OR_NONREGULAR" for p in unresolved)
+          assert report["sources"]["usr/lib/ubiquity/plugins/ubi-partman.py"]["staticCalls"]["truncated"] is True
+          assert report["firstPersistentMutationLocated"] is False
+          assert report["nonMutatingPrecommitProven"] is False
+          assert report["runtimeCallGraphAuthenticated"] is False
+          assert report["authorization"] == "DENY_NO_WRITER"
+          assert report["nativeInstallerInvoked"] is False
+          assert report["productionStorageWritesAuthorized"] is False
+          print("PASS: six ISO-authenticated bodies, two non-regular/unavailable partman scripts, no first-writer claim")
+          PY
           sudo umount "$mountdir"
           mounted=0
           echo 'SOURCES: only static calls from verified bytes, no proven first write, action graph, dry-run or writer.' >> "$GITHUB_STEP_SUMMARY"
