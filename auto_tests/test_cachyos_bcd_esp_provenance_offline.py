@@ -9,7 +9,6 @@ import binascii
 import hashlib
 import os
 from pathlib import Path
-import stat
 import struct
 import sys
 import tempfile
@@ -20,7 +19,6 @@ import uuid
 TOOLS = Path(__file__).resolve().parent / "tools"
 sys.path.insert(0, str(TOOLS))
 import cachyos_bcd_esp_provenance_offline as source
-import cachyos_bcd_fat32_offline as fat
 import cachyos_bcd_qemu_trace_offline as trace
 import windows_cachyos_qcow2_gpt_readonly as gpt
 from test_cachyos_bcd_fat32_qemu_offline import (
