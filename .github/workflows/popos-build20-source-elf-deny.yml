@@ -68,6 +68,8 @@ jobs:
               "aptRepositorySnapshotVerified",
               "cargoLockOfActualBuildVerified",
               "elfBuildIdSourceBindingVerified",
+              "elfExtractionOriginBoundToPinnedIso",
+              "dpkgStatusOriginBoundToPinnedIso",
               "isoGpgVerificationPerformedByWorkflow",
               "firstPersistentWriteProvenForPinnedElf",
               "firstStateChangeProvenForPinnedElf",
