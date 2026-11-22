@@ -2,7 +2,7 @@ name: GASLUX-FEATURE-FACTORY - six distro Qwen Draft PR proposals
 
 on:
   schedule:
-    - cron: '4,19,34,49 * * * *'
+    - cron: '6,21,36,51 * * * *' # staggered scheduler registration refresh
   workflow_dispatch:
   push:
     branches: [main]
