@@ -296,7 +296,11 @@ def test_live_resolution_refuses_changed_storage(plan, sharing, devices, change)
     ("fstype", "options", "accepted"),
     [
         ("fuseblk", "ro,norecover,relatime", True),
-        ("fuseblk", "ro,norecover,nosuid,nodev,relatime,user_id=0,group_id=0,allow_other,blksize=4096", True),
+        (
+            "fuseblk",
+            "ro,norecover,nosuid,nodev,relatime,user_id=0,group_id=0,allow_other,blksize=4096",
+            True,
+        ),
         ("fuseblk", "ro,relatime", False),
         ("fuseblk", "rw,norecover,relatime", False),
         ("fuseblk", "ro,rw,norecover", False),
@@ -316,16 +320,17 @@ def test_existing_windows_mount_requires_readonly_norecover_and_known_options(
     def fake_run(*arguments, **kwargs):
         calls.append(arguments)
         assert arguments[:4] == ("findmnt", "-J", "-S", "/dev/mock")
-        return json.dumps({"filesystems": [{"target": str(tmp_path), "fstype": fstype, "options": options}]})
+        return json.dumps(
+            {"filesystems": [{"target": str(tmp_path), "fstype": fstype, "options": options}]}
+        )
 
     monkeypatch.setattr(sharing, "run", fake_run)
     if accepted:
         with sharing.readonly_volume(Path("/dev/mock")) as mount:
             assert mount == tmp_path
     else:
-        with pytest.raises(RuntimeError):
-            with sharing.readonly_volume(Path("/dev/mock")):
-                pytest.fail("Unsafe pre-mounted NTFS volume was accepted")
+        with pytest.raises(RuntimeError), sharing.readonly_volume(Path("/dev/mock")):
+            pytest.fail("Unsafe pre-mounted NTFS volume was accepted")
     assert len(calls) == 1
     assert calls[0][-1] == "TARGET,FSTYPE,OPTIONS"
 
@@ -354,9 +359,10 @@ def test_existing_windows_mount_rejects_ambiguous_findmnt_state(
         )
 
     monkeypatch.setattr(sharing, "run", fake_run)
-    with pytest.raises(RuntimeError, match="ambiguous"):
-        with sharing.readonly_volume(Path("/dev/mock")):
-            pytest.fail("Ambiguous pre-mounted NTFS state was accepted")
+    with pytest.raises(RuntimeError, match="ambiguous"), sharing.readonly_volume(
+        Path("/dev/mock")
+    ):
+        pytest.fail("Ambiguous pre-mounted NTFS state was accepted")
 
 
 def test_existing_windows_mount_rejects_missing_mount_target(sharing):

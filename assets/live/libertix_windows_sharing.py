@@ -334,13 +334,17 @@ def validate_existing_readonly_ntfs_mount(filesystems: Any) -> Path:
             for token in tokens
         )
     ):
-        raise RuntimeError("Existing Windows mount is not provably read-only without journal recovery")
+        raise RuntimeError(
+            "Existing Windows mount is not provably read-only without journal recovery"
+        )
     return Path(target)
 
 
 @contextmanager
 def readonly_volume(device: Path):
-    mounted = run("findmnt", "-J", "-S", str(device), "-o", "TARGET,FSTYPE,OPTIONS", allow_no_match=True)
+    mounted = run(
+        "findmnt", "-J", "-S", str(device), "-o", "TARGET,FSTYPE,OPTIONS", allow_no_match=True
+    )
     if mounted:
         filesystems = json.loads(mounted)["filesystems"]
         yield validate_existing_readonly_ntfs_mount(filesystems)
