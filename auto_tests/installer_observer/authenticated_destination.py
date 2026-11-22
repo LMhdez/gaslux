@@ -80,10 +80,17 @@ def _digest(fd: int, expected: str) -> str:
     require(type(expected) is str and bool(HEX64.fullmatch(expected)), "HASH_PIN_INVALID")
     initial = os.fstat(fd)
     sha = hashlib.sha256()
+    total = 0
     for offset in range(0, initial.st_size, 1024 * 1024):
-        chunk = os.pread(fd, min(1024 * 1024, initial.st_size - offset), offset)
-        require(bool(chunk), "FD_SHORT_READ")
+        requested = min(1024 * 1024, initial.st_size - offset)
+        try:
+            chunk = os.pread(fd, requested, offset)
+        except OSError as exc:
+            raise DestinationRefused("FD_HASH_IO_FAILED") from exc
+        require(len(chunk) == requested, "FD_SHORT_READ")
         sha.update(chunk)
+        total += len(chunk)
+    require(total == initial.st_size, "FD_INCOMPLETE_HASH")
     require(_stat_identity(initial) == _stat_identity(os.fstat(fd)), "FD_MUTATED_DURING_HASH")
     actual = sha.hexdigest()
     require(actual == expected, "PINNED_HASH_MISMATCH")
@@ -227,6 +234,7 @@ def assess_authenticated_destination(
             _qcow2_chain(qcow2_fd, backing_path, raw_st.st_size)
             _digest(checkpoint_fd, expected_checkpoint_sha256)
             payload = os.pread(checkpoint_fd, check_st.st_size, 0)
+            require(len(payload) == check_st.st_size, "CHECKPOINT_SHORT_READ")
             receipt = json.loads(payload, object_pairs_hook=_unique_pairs)
             require(
                 type(receipt) is dict
