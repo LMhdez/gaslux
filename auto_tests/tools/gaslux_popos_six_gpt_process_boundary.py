@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import shutil
 import stat
 import subprocess
 from typing import TYPE_CHECKING
@@ -89,26 +88,40 @@ def measure_pinned_evidence(workspace: SafeWorkspace, name: str) -> dict:
         info.st_ctime_ns,
     )
     initial_hash = _pinned_sha256(fd)
-    exe = shutil.which("sha256sum")
     need(
-        exe is not None and os.path.isabs(exe) and not os.path.islink(exe),
-        "REFUSE_SUBPROCESS_BOUNDARY: sha256sum unavailable/untrusted executable path",
+        hasattr(os, "O_PATH") and os.path.isdir("/proc/self/fd"),
+        "REFUSE_SUBPROCESS_BOUNDARY: Linux descriptor execution unavailable",
     )
-    # Private FD transport: replacing the original filename cannot redirect
-    # sha256sum to a different inode. No shell, output file or QCOW2 backing.
-    fd_path = f"/proc/self/fd/{fd}"
+    # Pin both the data file AND the executable; PATH is never searched.
+    # execve(/proc/self/fd/<exe_fd>) removes the executable pathname race.
     try:
-        result = subprocess.run(
-            [exe, "--", fd_path],
-            pass_fds=(fd,),
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=30,
-            env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+        exe_fd = os.open("/usr/bin/sha256sum", os.O_PATH | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise Refusal("REFUSE_SUBPROCESS_BOUNDARY: trusted tool missing") from exc
+    try:
+        executable = os.fstat(exe_fd)
+        need(
+            stat.S_ISREG(executable.st_mode)
+            and executable.st_uid == 0
+            and executable.st_mode & 0o022 == 0,
+            "REFUSE_SUBPROCESS_BOUNDARY: executable owner/mode not trusted",
         )
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise Refusal("REFUSE_SUBPROCESS_BOUNDARY: pinned tool failed") from exc
+        fd_path = f"/proc/self/fd/{fd}"
+        try:
+            result = subprocess.run(
+                ["/usr/bin/sha256sum", "--", fd_path],
+                executable=f"/proc/self/fd/{exe_fd}",
+                pass_fds=(fd, exe_fd),
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=30,
+                env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise Refusal("REFUSE_SUBPROCESS_BOUNDARY: pinned tool failed") from exc
+    finally:
+        os.close(exe_fd)
     workspace.inspect()
     final = os.fstat(fd)
     now = (
