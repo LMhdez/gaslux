@@ -43,6 +43,7 @@ def validate_capabilities(distribution_id: str, os_release_id: str, cap: object)
     if (
         not isinstance(cap, dict)
         or set(cap) != expected_keys
+        or type(cap["version"]) is not int
         or cap["version"] != 1
         or not expected
     ):
