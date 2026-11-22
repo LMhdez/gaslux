@@ -214,10 +214,16 @@ class SnapshotContractTests(unittest.TestCase):
                         ):
                             guard.export(snapshot)
                     else:
+                        original_close = os.close
+
+                        def fail_export_close(fd: int) -> None:
+                            target = os.readlink(f"/proc/self/fd/{fd}")
+                            if target.startswith(str(evidence) + os.sep):
+                                raise OSError(errno.EIO, "injected export close")
+                            original_close(fd)
+
                         with (
-                            patch.object(
-                                owner.os, "close", side_effect=OSError(errno.EIO, "close")
-                            ),
+                            patch.object(owner.os, "close", side_effect=fail_export_close),
                             self.assertRaises(Refusal),
                         ):
                             guard.export(snapshot)
