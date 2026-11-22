@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from app.config import Settings
+from app.models import AutomationRequest
+from app.services.automation import AutomationService
 from app.errors import WorkflowError
 from app.services.common import ResultBuilder
 from app.services.validation import ValidationService
@@ -156,3 +159,77 @@ def test_gaslux_source_local_records_revision_before_ssh(
     assert result.steps[0].step == "server.source_provenance"
     assert result.steps[0].context["revision"] == revision
     assert result.steps[0].context["repository"] == "LMhdez/gaslux"
+
+
+
+@pytest.mark.parametrize("source", ["published", "local"])
+@pytest.mark.parametrize("prepared_release", [None, (r"C:\test\Libertix.exe", "0" * 64)])
+def test_automation_denies_invalid_source_before_any_vm_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    prepared_release: tuple[str, str] | None,
+) -> None:
+    """Safety F-361-01: even a prebuilt campaign lane must not restore a VM first."""
+
+    service = AutomationService(_settings())
+    if source == "local":
+        root, _ = _checkout(tmp_path, "https://github.com/ekimiateam/libertix.git")
+        monkeypatch.setattr(service.validation, "_local_repository_root", lambda: root)
+    remote_restore = Mock(side_effect=AssertionError("Proxmox snapshot was reached"))
+    remote_proxmox = Mock(side_effect=AssertionError("Proxmox client was reached"))
+    remote_ssh = Mock(side_effect=AssertionError("SSH client was reached"))
+    remote_windows = Mock(side_effect=AssertionError("Windows preparation was reached"))
+    remote_secondary = Mock(side_effect=AssertionError("secondary VM boot was reached"))
+    monkeypatch.setattr(service, "_restore_clean_snapshots", remote_restore)
+    monkeypatch.setattr(service, "_proxmox", remote_proxmox)
+    monkeypatch.setattr(service.validation, "ssh", remote_ssh)
+    monkeypatch.setattr(service, "_prepare_windows_test_vm", remote_windows)
+    monkeypatch.setattr(service, "_prepare_secondary_boot_devices", remote_secondary)
+
+    result = service.run(
+        ["vm2"],
+        AutomationRequest(apply=True, linux_password="example", source=source),
+        run_workspace=tmp_path,
+        prepared_release=prepared_release,
+    )
+    assert result.status == "error"
+    assert any(
+        step.step == "server.source_provenance" and step.status == "error"
+        for step in result.steps
+    )
+    remote_restore.assert_not_called()
+    remote_proxmox.assert_not_called()
+    remote_ssh.assert_not_called()
+    remote_windows.assert_not_called()
+    remote_secondary.assert_not_called()
+
+
+@pytest.mark.parametrize("source", ["remote", "local"])
+def test_valid_automation_source_can_reach_mocked_vm_barrier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    """A valid local checkout or configured remote source must remain admissible."""
+
+    service = AutomationService(_settings())
+    if source == "local":
+        root, _ = _checkout(tmp_path, "https://github.com/LMhdez/gaslux.git")
+        monkeypatch.setattr(service.validation, "_local_repository_root", lambda: root)
+    restore = Mock(side_effect=RuntimeError("stop at mock VM barrier"))
+    ssh = Mock(side_effect=AssertionError("unexpected SSH before VM barrier"))
+    monkeypatch.setattr(service, "_restore_clean_snapshots", restore)
+    monkeypatch.setattr(service.validation, "ssh", ssh)
+
+    result = service.run(
+        ["vm2"],
+        AutomationRequest(apply=True, linux_password="example", source=source),
+        run_workspace=tmp_path,
+        prepared_release=(r"C:\test\Libertix.exe", "0" * 64),
+    )
+    assert result.status == "error"  # stopped by the mock, not a live operation
+    assert restore.call_count == 1
+    ssh.assert_not_called()
+    assert any(
+        step.step == "server.source_provenance" and step.status == "ok"
+        for step in result.steps
+    )
