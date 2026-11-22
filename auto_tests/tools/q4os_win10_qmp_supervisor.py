@@ -165,8 +165,15 @@ class _BoundQmpSession:
     A Python callback or mock QMP object alone is never an authorization.
     """
 
-    def __init__(self, channel: Qmp, process: subprocess.Popen, pidfd: int,
-                 path: Path, work: Path, identity: tuple[int, int]):
+    def __init__(
+        self,
+        channel: Qmp,
+        process: subprocess.Popen,
+        pidfd: int,
+        path: Path,
+        work: Path,
+        identity: tuple[int, int],
+    ):
         self.channel = channel
         self.process = process
         self.pidfd = pidfd
@@ -419,9 +426,7 @@ def _run_lab_impl(
         # If no child is provided, the real process gate is mandatory even
         # when someone imports this private function directly.
         _require(
-            synthetic_child is not None
-            or synthetic_spawn_failure
-            or QEMU_FD_BACKING_VERIFIED,
+            synthetic_child is not None or synthetic_spawn_failure or QEMU_FD_BACKING_VERIFIED,
             "QEMU_STARTUP_UNCLASSIFIED",
         )
         _require(
@@ -576,7 +581,6 @@ def _run_lab_impl(
     return report
 
 
-
 def _refused_report() -> dict:
     """Stable no-spawn diagnostic without accessing any caller-controlled path."""
     return {
@@ -628,7 +632,13 @@ def _run_lab_synthetic(
     by the disposable test fixture. Never use as operational authority.
     """
     return _run_lab_impl(
-        work, code, vars_path, image, iso, answer, accelerator,
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        accelerator,
         synthetic_child=synthetic_child,
         synthetic_log_data=synthetic_log_data,
         synthetic_spawn_failure=synthetic_spawn_failure,
@@ -664,7 +674,13 @@ def run_lab(
     if not QEMU_FD_BACKING_VERIFIED:
         return _refused_report()
     return _run_lab_impl(
-        work, code, vars_path, image, iso, answer, accelerator,
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        accelerator,
         connect_seconds=connect_seconds,
         prompt_seconds=prompt_seconds,
         progress_seconds=progress_seconds,
