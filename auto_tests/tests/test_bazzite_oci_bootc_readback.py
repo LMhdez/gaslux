@@ -297,7 +297,12 @@ def test_invalid_zstandard_payload_with_matching_fake_descriptor_refused():
     with pytest.raises(Refusal, match="OCI layer tar"):
         scan_layer(
             io.BytesIO(forged),
-            {"digest": digest_bytes(forged), "size": len(forged), "mediaType": ZSTD_LAYER, "diffId": digest_bytes(b"tar")},
+            {
+                "digest": digest_bytes(forged),
+                "size": len(forged),
+                "mediaType": ZSTD_LAYER,
+                "diffId": digest_bytes(b"tar"),
+            },
             {},
             {"members": 0, "expanded": 0},
         )
@@ -387,7 +392,11 @@ def test_actual_decompressed_stream_limit_includes_padding(monkeypatch):
 
     original = gzip.decompress(tar_layer({"usr/bin/bootc": b"\x7fELF" + b"x"}))
     layer = gzip.compress(original + b"\x00" * 8192)
-    desc = {"digest": digest_bytes(layer), "size": len(layer), "diffId": digest_bytes(original + b"\x00" * 8192)}
+    desc = {
+        "digest": digest_bytes(layer),
+        "size": len(layer),
+        "diffId": digest_bytes(original + b"\x00" * 8192),
+    }
     monkeypatch.setattr(module, "MAX_EXPANDED", 1024)
     with pytest.raises(Refusal, match="Actual decompressed OCI stream"):
         scan_layer(io.BytesIO(layer), desc, {}, {"members": 0, "expanded": 0})
