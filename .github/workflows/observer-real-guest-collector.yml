@@ -1,0 +1,121 @@
+name: Observer real Linux Guest collector (RAM-only, no writer)
+
+on:
+  push:
+    branches:
+      - test/observer-real-guest-collector-20261122
+    paths:
+      - '.github/workflows/observer-real-guest-collector.yml'
+      - 'auto_tests/installer_observer/guest_collector_lab.py'
+      - 'auto_tests/installer_observer/guest_collector_init.sh'
+      - 'auto_tests/tests/test_observer_guest_collector_lab.py'
+      - 'docs/OBSERVER_GUEST_COLLECTOR_ORIGIN_LAB.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaslux-observer-guest-collector-lab-single
+  cancel-in-progress: false
+
+jobs:
+  real-linux-guest-collector:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Checkout exact candidate (no persisted credentials)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Require GitHub-hosted Linux and unchanged integrated witness blobs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$(uname -m)" = x86_64
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git hash-object auto_tests/installer_observer/host_fd_boundary.py)" = 35bc7f4a37ec8821aa32c15660f83ef80e3e29b9
+          test "$(git hash-object auto_tests/installer_observer/host_qemu_fd_evidence.py)" = 6727ca454b9282079400593356516097a297b9d6
+          test "$(git hash-object auto_tests/installer_observer/guest_transport_peer_boundary.py)" = e176d90f487aede071b12bced9d5d3a41d93199e
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Set up Python test and lint environment
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install exact-purpose host tools and Linux test kernel
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils linux-image-virtual busybox-static cpio kmod zstd
+          python -m pip install --disable-pip-version-check 'pytest>=9,<10' 'ruff>=0.14,<0.17'
+          test -x /usr/bin/qemu-system-x86_64
+          test -x /usr/bin/qemu-img
+          test -x /bin/busybox
+          KERNEL=$(find /boot -maxdepth 1 -type f -name 'vmlinuz-*-generic' | sort -V | tail -n 1)
+          test -n "$KERNEL" && test -s "$KERNEL"
+          test -s "/boot/config-$(basename "$KERNEL" | sed 's/vmlinuz-//')"
+          echo "GASLUX_GUEST_KERNEL=$KERNEL" >> "$GITHUB_ENV"
+          echo "GASLUX_GUEST_COLLECTOR=$GITHUB_WORKSPACE/auto_tests/installer_observer/guest_collector_init.sh" >> "$GITHUB_ENV"
+          sha256sum "$KERNEL" auto_tests/installer_observer/guest_collector_init.sh
+      - name: Compile, Ruff strict lint and formatting
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q auto_tests/installer_observer/guest_collector_lab.py auto_tests/tests/test_observer_guest_collector_lab.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/guest_collector_lab.py auto_tests/tests/test_observer_guest_collector_lab.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/guest_collector_lab.py auto_tests/tests/test_observer_guest_collector_lab.py
+          sh -n auto_tests/installer_observer/guest_collector_init.sh
+      - name: A-I adversarial offline contract tests
+        run: python -m pytest -q auto_tests/tests/test_observer_guest_collector_lab.py
+      - name: REAL one-Guest RAM-only Linux boot over existing virtio-serial
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m auto_tests.installer_observer.guest_collector_lab
+      - name: Verify bounded local results and permanent denial
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os
+          root = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True) / "gaslux-real-guest-evidence"
+          data = (root / "manifest.json").read_bytes()
+          assert len(data) < 4096
+          assert (root / "manifest.sha256").read_text().split() == [hashlib.sha256(data).hexdigest(), "manifest.json"]
+          m = json.loads(data)
+          for field in ("guestBooted", "guestCollectorExecutedObserved", "guestMessageReceived", "hostQemuPeerAuthenticated", "replayProtectedWithinLab", "qemuReaped"):
+              assert m[field] is True, field
+          for field in ("guestOriginIndependentlyAttested", "guestChannelAuthenticated", "replayProtectedAgainstCompromisedHost", "diskWritesAuthorized", "productionInstallationAuthorized", "inputAuthorized"):
+              assert m[field] is False, field
+          assert m["guestOrigin"] == "NOT_ATTESTED"
+          assert m["classification"] == "NOT_INDEPENDENT"
+          assert m["safetyAssessment"] == "DIAGNOSTIC_ONLY"
+          assert m["diskSha256Before"] == m["diskSha256After"]
+          assert m["observerPeerPid"] == m["qemuPid"]
+          print("GUEST_BOOT_AND_TRANSPORT_DIAGNOSTIC_ONLY", m["guestImage"])
+          PY
+      - name: Archive only bounded manifest and hash, never VM images or nonce ledger
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-guest-collector-origin-diagnostic-only
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/gaslux-real-guest-evidence/manifest.json
+            ${{ runner.temp }}/gaslux-real-guest-evidence/manifest.sha256
+      - name: Verify code unchanged after run
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
