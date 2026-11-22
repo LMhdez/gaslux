@@ -236,6 +236,134 @@ class DescriptorPathToctouAfterFix(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(caught.exception.code, "E_GPT_INVALID")
 
+    def test_short_read_in_canonical_gpt_is_refused(self):
+        """Actual GPT reader receives fewer bytes than the primary sector."""
+        system_pread = os.pread
+        trial_inode = self.original_inodes["trial.raw"]
+        shortened = False
+
+        def intercept(fd, length, offset):
+            nonlocal shortened
+            result = system_pread(fd, length, offset)
+            if (
+                not shortened
+                and offset == fixture.SECTOR
+                and length == fixture.SECTOR
+                and os.fstat(fd).st_ino == trial_inode
+            ):
+                shortened = True
+                return result[:-1]
+            return result
+
+        with patch.object(safety.os, "pread", side_effect=intercept):
+            with self.assertRaises(verifier.WriteSetRefused) as caught:
+                verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertTrue(shortened)
+        self.assertEqual(caught.exception.code, "E_GPT_INVALID")
+
+    def test_short_read_in_full_raw_comparison_is_refused(self):
+        """The real RAW comparator refuses a short read after valid FD GPT."""
+        system_pread = os.pread
+        original_compare = verifier.compare_raw
+        trial_inode = self.original_inodes["trial.raw"]
+        shortened = False
+
+        def intercept_compare(baseline_fd, trial_fd, policy):
+            def short_read(fd, length, offset):
+                nonlocal shortened
+                result = system_pread(fd, length, offset)
+                if (
+                    not shortened
+                    and os.fstat(fd).st_ino == trial_inode
+                    and offset == 0
+                    and length == verifier.BLOCK
+                ):
+                    shortened = True
+                    return result[:-1]
+                return result
+
+            with patch.object(verifier.os, "pread", side_effect=short_read):
+                return original_compare(baseline_fd, trial_fd, policy)
+
+        with patch.object(verifier, "compare_raw", side_effect=intercept_compare):
+            with self.assertRaises(verifier.WriteSetRefused) as caught:
+                verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertTrue(shortened)
+        self.assertEqual(caught.exception.code, "E_TRUNCATED_SOURCE")
+
+    def test_authenticated_geometry_4096_against_512_gpt_is_refused(self):
+        """The declared 4K sector geometry must not reinterpret 512B GPT."""
+        altered = self.policy.copy()
+        altered["diskIdentity"] = {**self.policy["diskIdentity"]}
+        altered["logicalSectorBytes"] = 4096
+        altered["diskIdentity"]["logicalSectorSizeBytes"] = 4096
+        with self.assertRaises(verifier.WriteSetRefused) as caught:
+            verifier.verify_private_synthetic(self.root, altered)
+        self.assertEqual(caught.exception.code, "E_GPT_INVALID")
+
+    def test_stale_disk_geometry_is_refused_before_any_gpt_read(self):
+        """Mismatched policy geometry cannot be trusted as a target plan."""
+        altered = self.policy.copy()
+        altered["diskBytes"] = self.policy["diskBytes"] + fixture.SECTOR
+        with self.assertRaises(verifier.WriteSetRefused) as caught:
+            verifier.verify_private_synthetic(self.root, altered)
+        self.assertEqual(caught.exception.code, "E_POLICY_GEOMETRY")
+
+    def test_foreign_artifact_provenance_is_refused(self):
+        """Matching data bytes do not convert a foreign receipt into ownership."""
+        import json
+
+        receipt = self.case.receipt.copy()
+        receipt["provenance"] = "FOREIGN_BACKEND"
+        (self.root / "receipt.json").write_text(json.dumps(receipt))
+        with self.assertRaises(verifier.WriteSetRefused) as caught:
+            verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertEqual(caught.exception.code, "E_FOREIGN_TRANSACTION")
+
+    def test_missing_transaction_ownership_is_refused(self):
+        """A diagnostic synthetic owner label cannot be substituted by CachyOS."""
+        altered = self.policy.copy()
+        altered["ownerLabel"] = "GASLUX-CACHYOS-ROOT"
+        with self.assertRaises(verifier.WriteSetRefused) as caught:
+            verifier.verify_private_synthetic(self.root, altered)
+        self.assertEqual(caught.exception.code, "E_POLICY_SCHEMA")
+
+    def test_primary_gpt_mutation_after_inspection_is_refused(self):
+        """Mutating GPT after the canonical read cannot become a clean verdict."""
+        original_compare = verifier.compare_raw
+        mutated = False
+
+        def intercept(baseline_fd, trial_fd, policy):
+            nonlocal mutated
+            mutated = True
+            self.case.mutate("trial.raw", fixture.SECTOR + 64)
+            return original_compare(baseline_fd, trial_fd, policy)
+
+        with patch.object(verifier, "compare_raw", side_effect=intercept):
+            with self.assertRaises(verifier.WriteSetRefused) as caught:
+                verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertTrue(mutated)
+        self.assertEqual(caught.exception.code, "E_GPT_BYTES_CHANGED")
+
+    def test_late_in_place_mutation_after_byte_comparison_is_refused(self):
+        """A late write on the still-pinned RAW FD invalidates final metadata."""
+        original_guard = verifier.close_guard
+        trial_inode = self.original_inodes["trial.raw"]
+        mutated = False
+
+        def intercept(fd, original):
+            nonlocal mutated
+            if not mutated and os.fstat(fd).st_ino == trial_inode:
+                mutated = True
+                self.case.mutate("trial.raw", fixture.PARTS[2][1] * fixture.SECTOR + 31)
+            return original_guard(fd, original)
+
+        with patch.object(verifier, "close_guard", side_effect=intercept):
+            with self.assertRaises(verifier.WriteSetRefused) as caught:
+                verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertTrue(mutated)
+        self.assertEqual(caught.exception.code, "E_SOURCE_RACE")
+
     def test_esp_entry_swap_between_stat_and_open_is_refused(self):
         system_open = os.open
         original = self.root / "esp-trial/EFI/Microsoft/Boot/bootmgfw.efi"
