@@ -302,6 +302,24 @@ def _qemu_executable_hash(pid: int) -> str:
         os.close(fd)
 
 
+def capture_fresh_immediate(lab, overlay: Path, workspace: Path, safety_disk):
+    """Export current overlay bytes again; never reuse the earlier HOST export."""
+    destination = workspace / "immediate.raw"
+    require(not os.path.lexists(destination), "IMMEDIATE_EXPORT_ALREADY_EXISTS")
+    lab.host_snapshot(overlay, destination, workspace)
+    require(
+        not os.path.samefile(destination, workspace / "host.raw"),
+        "IMMEDIATE_EXPORT_ALIASED_HOST",
+    )
+    return capture_gpt(
+        destination,
+        workspace,
+        source="immediate",
+        logical_sector_size=SECTOR,
+        safety_disk=safety_disk,
+    )
+
+
 def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
     """Boot one guestfs appliance and collect three genuine read-only GPT samples."""
     disk, lab, provenance, adapter = install_pinned_safety(safety_root)
@@ -394,14 +412,7 @@ def experiment(workspace: Path, evidence: Path, safety_root: Path) -> dict:
     )
     # A new, independently exported read of the unchanged QCOW2 is mandatory.
     # Never re-label the earlier host.raw copy as an immediate live observation.
-    lab.host_snapshot(overlay, workspace / "immediate.raw", workspace)
-    immediate = capture_gpt(
-        workspace / "immediate.raw",
-        workspace,
-        source="immediate",
-        logical_sector_size=SECTOR,
-        safety_disk=disk,
-    )
+    immediate = capture_fresh_immediate(lab, overlay, workspace, disk)
     lab.same_file(base, workspace, base_stat)
     lab.same_file(overlay, workspace, overlay_stat)
     require(
