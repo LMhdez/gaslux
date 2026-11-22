@@ -303,7 +303,7 @@ def assess_sparse_128g_readonly(
         _require(raw_st.st_size == MAX_LARGE_VIRTUAL_BYTES, "NOT_128G_BACKING_GEOMETRY")
         # #342 supplied this bounded header/version and geometry cross-check.
         # qemu-img remains a local chain inspector, not a guest proof.
-        _require(qcow_st.st_size >= 72, "QCOW2_HEADER_TRUNCATED")
+        _require(overlay_st.st_size >= 72, "QCOW2_HEADER_TRUNCATED")
         header = _read_exact(qcow2_fd, 0, 32, deadline)
         _require(header[:4] == b"QFI\xfb", "QCOW2_MAGIC_INVALID")
         qcow2_version = int.from_bytes(header[4:8], "big")
