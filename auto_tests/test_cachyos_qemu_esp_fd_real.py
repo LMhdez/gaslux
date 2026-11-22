@@ -221,6 +221,12 @@ def test_actual_stopped_qemu_raw_qcow2_fat32_gpt_readonly(tmp_path):
     try:
         pins = pins_for(child, root, raw, "raw")
         with QemuLocalDiskWitness(pins) as observer:
+            # Exact existing HOST/FD witness must refuse wrong inode and
+            # ambiguous QMP identity while the genuine QEMU is still alive.
+            with pytest.raises(QemuDiskRefused):
+                QemuLocalDiskWitness(replace(pins, media_inode=pins.media_inode + 1))
+            with pytest.raises(QemuDiskRefused):
+                QemuLocalDiskWitness(replace(pins, qmp_device="foreign-device"))
             # The inherited HOST/FD module reads the real QEMU-owned RAW FD;
             # the canonical #286 parser authenticates structural GPT bytes.
             with borrowed_readonly_proc_fd(
