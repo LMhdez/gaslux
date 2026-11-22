@@ -6,6 +6,8 @@ on:
       - .github/workflows/compact-ovmf-target-disk.yml
       - auto_tests/tools/compact_ovmf_target.py
       - auto_tests/tests/test_compact_ovmf_target.py
+      - auto_tests/tools/compact_qcow2_quota_lab.py
+      - auto_tests/tests/test_compact_qcow2_quota_lab.py
       - docs/COMPACT_VM_INSTALL_LAB.md
   push:
     branches: [dev]
@@ -75,6 +77,36 @@ jobs:
               if actual["format"] != "qcow2" or actual["virtual-size"] != 60 * 1024**3:
                   raise SystemExit("QCOW2 identity changed")
           PY
+      - name: Offline adversarial tests for hard bounded ext4/QCOW2 lab quota
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests \
+            -p test_compact_qcow2_quota_lab.py -v
+      - name: Real QEMU ENOSPC in owned loopback ext4, restore immutable baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v mkfs.ext4
+          command -v qemu-io
+          python3 -B auto_tests/tools/compact_qcow2_quota_lab.py \
+            --workspace "$RUNNER_TEMP" \
+            --report evidence/compact-qcow2-quota-fixture.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("evidence/compact-qcow2-quota-fixture.json").read_text())
+          for field in ("loop_source_exact_verified", "ext4_capacity_bound_tested",
+                        "qemu_io_enospc_observed", "baseline_unchanged_after_enospc",
+                        "overlay_recreated_and_canary_restored"):
+              assert data[field] is True, field
+          for field in ("real_60gib_quota_verified", "lab_writer_admitted",
+                        "windows_guest_booted", "mint_guest_installed",
+                        "dual_boot_verified", "windows_recovery_verified"):
+              assert data[field] is False, field
+          assert data["disk_writes_to_host_devices"] == 0
+          print("QUOTA_FIXTURE_VERIFIED: only 384-MiB private image, not guest admission")
+          PY
       - name: Erase only owned, private temporary guest image
         if: always()
         shell: bash
@@ -103,6 +135,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: compact-ovmf-target-evidence
-          path: evidence/compact-ovmf-target.json
+          path: |
+            evidence/compact-ovmf-target.json
+            evidence/compact-qcow2-quota-fixture.json
           if-no-files-found: warn
           retention-days: 14
