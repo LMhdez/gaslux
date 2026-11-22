@@ -123,7 +123,7 @@ def inspect(number: int, expected: str | None = None) -> dict:
     head, base = pr.get("head", {}), pr.get("base", {})
     branch = head.get("ref", "")
     match = BOT.fullmatch(branch)
-    commit, dev = head.get("sha", ""), base.get("sha", "")
+    commit, declared_base = head.get("sha", ""), base.get("sha", "")
     if (pr.get("number") != number or pr.get("state") != "open" or
         type(pr.get("draft")) is not bool or
         pr.get("user", {}).get("login") != "github-actions[bot]" or
@@ -131,11 +131,15 @@ def inspect(number: int, expected: str | None = None) -> dict:
         head.get("repo", {}).get("full_name") != REPO or
         base.get("repo", {}).get("full_name") != REPO or
         base.get("ref") != "dev" or
-        not SHA.fullmatch(str(commit)) or not SHA.fullmatch(str(dev)) or
+        not SHA.fullmatch(str(commit)) or not SHA.fullmatch(str(declared_base)) or
         (expected is not None and expected != commit)):
         raise ValueError("Not an approved exact-base GitHub bot Draft PR")
-    if api("GET", "/git/ref/heads/dev")["object"]["sha"] != dev:
-        raise StaleProposal("dev changed during selection; retry")
+    # GitHub PR metadata may retain an historical base.sha for a long-lived PR.
+    # Only the live git ref is the integration target; never treat PR base.sha
+    # as a fresh branch snapshot or as proof of the checked-out source.
+    dev = api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    if not SHA.fullmatch(str(dev)):
+        raise ValueError("Invalid current dev ref")
     parents = api("GET", f"/git/commits/{commit}").get("parents", [])
     if len(parents) != 1 or not SHA.fullmatch(str(parents[0].get("sha", ""))):
         raise ValueError("Proposal has unexpected ancestry")
