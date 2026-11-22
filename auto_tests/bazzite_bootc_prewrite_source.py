@@ -71,6 +71,7 @@ def _read_source(path: Path, expected_git_blob: str) -> tuple[str, dict]:
                 raise Refusal("TRUNCATED_UPSTREAM_SOURCE")
             raw.extend(chunk)
         after = os.fstat(fd)
+
         def identity(st):
             return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
         if identity(before) != identity(after):
@@ -152,7 +153,7 @@ def analyze_source(root: Path) -> dict:
             '["--update-firmware", "--auto"]',
             "Some(device.require_single_root()?.path())",
             'Command::new("bootupctl")',
-            'let mut bootctl_args = vec![',
+            "let mut bootctl_args = vec![",
             '"install",',
             '"--esp-path",',
             'bootctl_args.push("--no-variables")',
@@ -238,10 +239,19 @@ def _guid(value: object) -> str:
 def assess_candidate(plan: dict) -> dict:
     """Deny every candidate; identify contradictions before any native writer."""
     expected = {
-        "firmware", "partitionTable", "planComplete", "transactionId",
-        "planTransactionId", "approvedDiskGuid", "selectedDiskGuid",
-        "windowsEspPartuuid", "linuxEspPartuuid", "selectedEspPartuuid",
-        "plannedBootloader", "requestedBootloader", "replaceMode",
+        "firmware",
+        "partitionTable",
+        "planComplete",
+        "transactionId",
+        "planTransactionId",
+        "approvedDiskGuid",
+        "selectedDiskGuid",
+        "windowsEspPartuuid",
+        "linuxEspPartuuid",
+        "selectedEspPartuuid",
+        "plannedBootloader",
+        "requestedBootloader",
+        "replaceMode",
     }
     if type(plan) is not dict or set(plan) != expected:
         raise Refusal("PARTIAL_OR_UNKNOWN_PLAN")
@@ -251,7 +261,8 @@ def assess_candidate(plan: dict) -> dict:
         raise Refusal("PARTIAL_PLAN")
     transaction = plan["transactionId"]
     if (
-        type(transaction) is not str or not 1 <= len(transaction) <= 128
+        type(transaction) is not str
+        or not 1 <= len(transaction) <= 128
         or not re.fullmatch(r"[A-Za-z0-9_.:-]+", transaction)
         or transaction != plan["planTransactionId"]
     ):
