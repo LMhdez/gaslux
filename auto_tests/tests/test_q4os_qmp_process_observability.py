@@ -641,8 +641,15 @@ def test_r02_arbitrary_factory_never_runs_under_closed_gate(lab):
 
     assert witness.QEMU_FD_BACKING_VERIFIED is False
     result = witness.run_lab(
-        work, code, vars_path, image, iso, answer, "kvm",
-        popen_factory=malicious_factory, connect_seconds=0.02,
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        "kvm",
+        popen_factory=malicious_factory,
+        connect_seconds=0.02,
     )
     assert effects == []
     assert result["qemuSpawned"] is False
@@ -659,24 +666,31 @@ def test_r02_arbitrary_factory_never_runs_under_closed_gate(lab):
         "日本語🚫SECRET_SENTINEL",
     ],
 )
-def test_r03_legacy_cli_never_leaks_arbitrary_boot_reason(
-    monkeypatch, tmp_path, capsys, secret
-):
+def test_r03_legacy_cli_never_leaks_arbitrary_boot_reason(monkeypatch, tmp_path, capsys, secret):
     import q4os_win10_qmp_boot as boot
 
     root = tmp_path / "owned"
     root.mkdir(mode=0o700)
     report_path = root / "report.json"
     monkeypatch.setattr(
-        boot, "supervise", lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            boot.BootRefusal(secret)
-        ),
+        boot,
+        "supervise",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(boot.BootRefusal(secret)),
     )
     monkeypatch.setattr(
-        sys, "argv",
-        ["q4os_win10_qmp_boot.py", "--qmp", str(root / "qmp.sock"),
-         "--serial", str(root / "serial"), "--disk", str(root / "disk"),
-         "--report", str(report_path)],
+        sys,
+        "argv",
+        [
+            "q4os_win10_qmp_boot.py",
+            "--qmp",
+            str(root / "qmp.sock"),
+            "--serial",
+            str(root / "serial"),
+            "--disk",
+            str(root / "disk"),
+            "--report",
+            str(report_path),
+        ],
     )
     assert boot.main() == 1
     result = report_path.read_text()
