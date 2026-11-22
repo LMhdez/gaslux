@@ -25,7 +25,8 @@ MISSION_PATH = Path("docs/autonomy/agent_missions.json")
 OUT = Path("evidence/autonomous-agent")
 EXPECTED_MODEL = "qwen3.5:9b"
 EXPECTED_DIGEST = "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
-SOURCE = Path("Installation/WindowsKeyboardLayout.cs")
+SOURCE_PATH = "Installation/WindowsKeyboardLayout.cs"
+SOURCE = Path(SOURCE_PATH)
 ALLOWED_IDS = {"00000816": "pt", "00000416": "br"}
 LINE = re.compile(r'^\s*\{\s*"([0-9A-Fa-f]{8})",\s*Mapping\("([a-z]{2})"\)\s*\},\s*$')
 
@@ -42,7 +43,7 @@ def tasks() -> list[dict]:
     if len(result) != 2 or {x["keyboard_identifier"] for x in result} != set(ALLOWED_IDS):
         raise ValueError("Mission changes require trusted publisher review")
     for x in result:
-        if x["source"] != str(SOURCE) or ALLOWED_IDS.get(x["keyboard_identifier"]) != x["xkb_layout"]:
+        if x["source"] != SOURCE_PATH or ALLOWED_IDS.get(x["keyboard_identifier"]) != x["xkb_layout"]:
             raise ValueError("Task outside approved product scope")
     return result
 
