@@ -101,16 +101,17 @@ def measure_fd(fd: int, expected_sha256: str, minimum_bytes: int, maximum_bytes:
             digest.update(block)
             offset += len(block)
         after = os.fstat(fd)
-        def identity(s: os.stat_result) -> tuple:
+
+        def identity(item: os.stat_result) -> tuple:
             return (
-            s.st_dev,
-            s.st_ino,
-            s.st_uid,
-            s.st_nlink,
-            s.st_mode,
-            s.st_size,
-            s.st_mtime_ns,
-                s.st_ctime_ns,
+                item.st_dev,
+                item.st_ino,
+                item.st_uid,
+                item.st_nlink,
+                item.st_mode,
+                item.st_size,
+                item.st_mtime_ns,
+                item.st_ctime_ns,
             )
 
         if identity(before) != identity(after):
