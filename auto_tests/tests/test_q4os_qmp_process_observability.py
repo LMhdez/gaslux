@@ -158,9 +158,7 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
         synthetic_child=child,
         synthetic_spawn_failure=mode == "spawn",
         synthetic_log_data=stderr,
-        pidfd_factory=(
-            None if mode == "spawn" else lambda _pid: os.open(os.devnull, os.O_RDONLY)
-        ),
+        pidfd_factory=(None if mode == "spawn" else lambda _pid: os.open(os.devnull, os.O_RDONLY)),
         connect_seconds=0.2 if mode == "late" else seconds,
         prompt_seconds=0.02,
         progress_seconds=0.02,
@@ -901,7 +899,6 @@ c.close();s.close()
     # No command, including send-key, may ever reach an unowned peer.
     if record.exists():
         assert record.read_bytes() == b""
-
 
 
 def test_r01_kernel_pidfd_binding_and_fd_substitution_real_children():
