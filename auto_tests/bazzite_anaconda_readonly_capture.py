@@ -265,8 +265,7 @@ def guest_disk_inventory(data: object) -> dict:
             or part["parttype"].lower() != partition_type.lower()
             or start != expected_first
             or size != (expected_last - expected_first + 1) * 512
-            or
-            not isinstance(unique, str)
+            or not isinstance(unique, str)
             or not re.fullmatch(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", unique)
             or unique.lower() in guids
             or type(start) is not int
