@@ -12,7 +12,6 @@ class LocalSourceTree:
     def repository_root() -> Path:
         return Path(__file__).resolve().parents[3]
 
-
     @staticmethod
     def verified_gaslux_checkout(root: Path) -> tuple[str, str]:
         """Record Git origin and HEAD, denying a wrong or nested source checkout.
