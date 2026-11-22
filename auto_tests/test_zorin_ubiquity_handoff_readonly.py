@@ -5,7 +5,6 @@ is test data only and never replaces the canonical Safety GPT inspector.
 """
 from __future__ import annotations
 
-from copy import deepcopy
 import hashlib
 import os
 from pathlib import Path
