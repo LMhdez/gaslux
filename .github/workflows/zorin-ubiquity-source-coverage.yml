@@ -218,7 +218,18 @@ jobs:
           for path in ("lib/partman/lib/commit.sh", "lib/partman/lib/resize.sh"):
               assert result["shellInodeMetadata"][path]["type"] != "REGULAR_HASH_MATCHED"
               assert result["shellInodeMetadata"][path].get("targetProvenanceAuthenticated") is not True
-          print("PASS: source-authenticated six-file AST plus read-only non-following partman inode inspection")
+          assert result["parentInodeMetadata"]["lib"]["type"] == "SYMLINK_NOT_FOLLOWED"
+          assert result["parentInodeMetadata"]["lib"]["targetText"] == "usr/lib"
+          for member in ("usr/lib/partman/lib/commit.sh", "usr/lib/partman/lib/resize.sh"):
+              assert result["candidateTargetInodeMetadataNotFollowed"][member]["type"] == "REGULAR_METADATA_ONLY"
+              source = result["partmanShellSourcesFromVerifiedIso"][member]
+              assert source["status"] == "REGULAR_NEWLY_ATTESTED"
+              assert len(source["sha256"]) == 64 and source["sizeBytes"] > 0
+              assert source["packageOwnerAuthenticated"] is False
+              assert source["staticAnalysis"]["runtimeEffectsAuthenticated"] is False
+              assert source["staticAnalysis"]["firstPersistentWriteVerified"] is False
+          assert result["shellRuntimeEffectsAuthenticated"] is False
+          print("PASS: six original source hashes, two newly SHA-verified partman sources; all effects DENY")
           PY
           sudo umount "$mountdir"
           mounted=0
