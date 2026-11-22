@@ -366,3 +366,101 @@ def test_legacy_digest_eio_refused(tmp_path, monkeypatch):
         monkeypatch.setattr(small.os, "pread", faulty)
         with pytest.raises(small.DestinationRefused, match="FD_READ_FAILED"):
             small._digest(stream.fileno(), hashlib.sha256(b"x" * 1024).hexdigest())
+
+def test_342_unique_header_version_and_sparse_checkpoint_estimate(sample, monkeypatch):
+    # #342 metadata semantics now belong to #346's stronger FD/GPT/QEMU gate.
+    from types import SimpleNamespace
+
+    # Less than the 128-GiB minimum full recovery reserve; >1MiB probe floor.
+    monkeypatch.setattr(
+        large.os,
+        "statvfs",
+        lambda _: SimpleNamespace(f_bavail=3_000_000, f_frsize=4096),
+    )
+    observed = refused(sample, "FULL_BACKING_HASH_NOT_COMPLETED").observed
+    assert observed["qcow2HeaderBytesRead"] == 32
+    assert observed["qcow2HeaderVersion"] in (2, 3)
+    assert observed["backingIsSparse"] is True
+    assert observed["freeSpaceEstimatedBytes"] == 3_000_000 * 4096
+    assert observed["fullCheckpointReserveMinimumBytes"] == CAPACITY
+    assert observed["checkpointCapacityEstimateSufficient"] is False
+    assert observed["checkpointReserveProven"] is False
+    assert observed["fullRawContentBytesAuthenticated"] == 0
+    assert observed["authorization"] == "DENY_NO_WRITER"
+
+
+def test_342_unique_capacity_sufficient_estimate_never_proves_reservation(sample, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        large.os,
+        "statvfs",
+        lambda _: SimpleNamespace(f_bavail=40_000_000, f_frsize=4096),
+    )
+    observed = refused(sample, "FULL_BACKING_HASH_NOT_COMPLETED").observed
+    assert observed["checkpointCapacityEstimateSufficient"] is True
+    assert observed["checkpointReserveProven"] is False
+    assert observed["rawBackingFullSha256Verified"] is False
+    assert observed["productionStorageWritesAuthorized"] is False
+
+
+def test_342_unique_positive_short_qcow2_header_read_refused(sample, monkeypatch):
+    original = large.os.pread
+    qcow_fd = sample["fds"][0]
+
+    def short_header(fd, size, offset):
+        if fd == qcow_fd and size == 32 and offset == 0:
+            return original(fd, 31, 0)
+        return original(fd, size, offset)
+
+    monkeypatch.setattr(large.os, "pread", short_header)
+    refused(sample, "SPARSE_SHORT_READ")
+
+
+def test_342_unique_qcow2_header_version_invalid_refused(sample, monkeypatch):
+    original = large.os.pread
+    qcow_fd = sample["fds"][0]
+
+    def invalid_version(fd, size, offset):
+        data = original(fd, size, offset)
+        if fd == qcow_fd and size == 32 and offset == 0:
+            return data[:4] + (99).to_bytes(4, "big") + data[8:]
+        return data
+
+    monkeypatch.setattr(large.os, "pread", invalid_version)
+    refused(sample, "QCOW2_HEADER_VERSION_INVALID")
+
+
+def test_342_unique_qcow2_header_virtual_size_mismatch_refused(sample, monkeypatch):
+    original = large.os.pread
+    qcow_fd = sample["fds"][0]
+
+    def wrong_virtual(fd, size, offset):
+        data = original(fd, size, offset)
+        if fd == qcow_fd and size == 32 and offset == 0:
+            return data[:24] + (64 * 1024**3).to_bytes(8, "big")
+        return data
+
+    monkeypatch.setattr(large.os, "pread", wrong_virtual)
+    refused(sample, "QCOW2_HEADER_VIRTUAL_GEOMETRY_MISMATCH")
+
+
+def test_342_unique_final_allocation_block_change_refused(sample, monkeypatch):
+    original = large._allocated
+    backing_st = os.fstat(sample["fds"][1])
+    calls = 0
+
+    def changing_allocation(st):
+        nonlocal calls
+        value = original(st)
+        if st.st_dev == backing_st.st_dev and st.st_ino == backing_st.st_ino:
+            calls += 1
+            # Initial allocation passes; final sample no longer matches,
+            # although inode/size/mtime/ctime are unchanged.
+            if calls == 2:
+                return value + 512
+        return value
+
+    monkeypatch.setattr(large, "_allocated", changing_allocation)
+    refused(sample, "RESOURCE_MUTATED_DURING_INSPECTION")
+
