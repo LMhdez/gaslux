@@ -399,8 +399,9 @@ def test_qemu_info_reaps_orphaned_pipe_descendant(tmp_path, monkeypatch):
     source.write_bytes(b"read-only")
     descendant_pid = None
     try:
-        with source.open("rb") as image, pytest.raises(
-            large.LargeDestinationRefused, match="QEMU_INFO_TIMEOUT"
+        with (
+            source.open("rb") as image,
+            pytest.raises(large.LargeDestinationRefused, match="QEMU_INFO_TIMEOUT"),
         ):
             large._bounded_info(
                 image.fileno(),
@@ -426,8 +427,7 @@ def test_qemu_info_reaps_orphaned_pipe_descendant(tmp_path, monkeypatch):
         ("import sys; sys.stdout.write('[{}, {}]')", None),
         ("import sys; sys.stdout.write('invalid json')", "QEMU_INFO_INVALID_JSON"),
         (
-            "import sys, time; sys.stdout.write('Z'*70000); "
-            "sys.stdout.flush(); time.sleep(10)",
+            "import sys, time; sys.stdout.write('Z'*70000); sys.stdout.flush(); time.sleep(10)",
             "QEMU_INFO_OUTPUT_LIMIT",
         ),
     ],
