@@ -1,0 +1,56 @@
+# GitHub Actions local AI coder: bounded experimental evidence (2026-11-22 UTC)
+
+Repository `LMhdez/gaslux`; initial verified `dev` at `8e68a475d6397ba8fef2e0f9f83758545e202a5f`. **PR #363 was squash-merged into `dev`** at `09fba3df79302577338d81bd4fbdde9e20913a24` on 2026-11-22 UTC. The merged implementation produces **read-only AI candidate artifacts**, not an autonomous code-publishing or merging service. `main` was not changed.
+
+## Integration record — 2026-11-22 UTC
+
+- [PR #363](https://github.com/LMhdez/gaslux/pull/363) — **MERGED** into `dev`, method **squash**, result `09fba3df79302577338d81bd4fbdde9e20913a24`. Tested candidate HEAD `ac700637e85e32a0ce29dd5dfb5f27f0892bc227` had **5/5 successful applicable pre-merge checks**.
+- Scope integrated: two narrowly scoped artifact-only workflows, deterministic logging evidence, read-only AI Observer ranking patch proposal, manual research benchmarks and this document. No `contents:write`, `pull-requests:write`, `GH_TOKEN` publisher or code push added by this integration.
+- **Privileged Draft PR publishers NOT merged.** Preserved for separate safety review at `research/local-coder-publisher-safety-hold-20261122` (`85af89dc896d90b7f8875ce6559fcd911bea79b1`). No automated PR publication was demonstrated or activated.
+- Post-merge Actions on `dev` were started for the merge commit; their completion is a separate evidence gate. A successful pre-merge PR check is not a claim about all post-merge runs.
+- `main` and stable release code/catalog are unchanged. Workflow `workflow_dispatch` for experiments on a non-default branch may require further activation according to GitHub's default-branch rules; do not claim a continuous scheduler exists.
+
+## Integration scope decision — 2026-11-22 (updated on this branch)
+
+This PR's **current merge candidate is read-only/nonprivileged only**. Privileged automatic Draft PR publishers are **NOT** included in this integration. Their original code and historical evidence were preserved at branch `research/local-coder-publisher-safety-hold-20261122` (HEAD `85af89dc896d90b7f8875ce6559fcd911bea79b1`) for separate independent adversarial review. The active workflows have `permissions: contents: read` or `permissions: {}` and no write token. They can produce read-only artifacts but cannot create PRs, push commits, merge or change boot/disk/install code.
+
+The two experimental multi-model benchmarks are now **manual `workflow_dispatch` only**. Prior failing model-quality results remain documented below and are not repackaged as passing checks. The bounded deterministic logging recovery and bounded Qwen3.5 9B Observer ranking candidate remain triggered by scoped `pull_request` and `dev` pushes, but produce only evidence/artifacts. This is **NOT** a continuously autonomous programmer or automated publication service. Scheduled running requires separate default-branch policy decisions and is NOT enabled.
+
+After a successful exact-head CI and policy review, this read-only slice may be integrated into `dev`. The sections below preserve historical design/evidence, including now-**quarantined** publisher descriptions, and must not be interpreted as current write authority.
+
+## Evidence classification
+
+- [#45044956114](https://github.com/LMhdez/gaslux/actions/runs/45044956114), HEAD `30b954110195349c0d09f42fc945a76a9b0b6336`: **SUCCESS**. Local CPU Qwen2.5-Coder 1.5B/3B each passed 6/6 simple mathematical expression tests. Sample inference times 2.07/2.88 s respectively, not runner startup/throughput.
+- [#45045177815](https://github.com/LMhdez/gaslux/actions/runs/45045177815), HEAD `6ca8f3c92858cd3bc100bc01606c455db3b74659`: **SUCCESS**. The 3B model repaired an artificially reversed ranking in a disposable copy of a Gaslux Python function, RED to GREEN; ~6.616 s in-process. Not a live CI failure.
+- [#45045568126](https://github.com/LMhdez/gaslux/actions/runs/45045568126), [#45045926549](https://github.com/LMhdez/gaslux/actions/runs/45045926549), [#45046288165](https://github.com/LMhdez/gaslux/actions/runs/45046288165), and [#45046635949](https://github.com/LMhdez/gaslux/actions/runs/45046635949): **FAIL**. Qwen2.5-Coder 3B/7B could not correctly close the previous logging handler in two tries; proposed unsafe/incorrect alternatives were blocked.
+- [#45046883051](https://github.com/LMhdez/gaslux/actions/runs/45046883051) and optimized [#45047071724](https://github.com/LMhdez/gaslux/actions/runs/45047071724): **SUCCESS**, **deterministic** allowlisted missing-handler-close fix in a disposable checkout, RED to GREEN. Explicitly no AI solution or production changes. The optimized workflow needs no model download.
+- [#45047830418](https://github.com/LMhdez/gaslux/actions/runs/45047830418): **FAILED/INVALID BENCHMARK**. Models generated a correct ranking patch but the initial validator incorrectly rejected its own trailing newline; the benchmark was fixed. Logging code proposals also failed.
+- [#45048188089](https://github.com/LMhdez/gaslux/actions/runs/45048188089), HEAD `109d16c1bde59094785cda4b3ff839d2bdd7c33b`: **overall FAIL**. After correcting the validator, **Qwen3.5 9B solved 1/2** deliberate bugs (ranking: first attempt, 27.357 s model inference). Qwen2.5-Coder 7B solved **0/2**. Both failed the logging-handler task. Do not claim general source repair quality based on ranking success.
+- [#45048767157](https://github.com/LMhdez/gaslux/actions/runs/45048767157), HEAD `35da1bf2f98bdd1f950aa24a6e8bb15e22300ab9`: **SUCCESS**. A narrowly scoped **model-authored**, JSON-patch worker detected the seeded reversed-ranking failure (RED), generated the correct changed line with **Qwen3.5 9B** on its first attempt, then independently passed the functional test (GREEN). Model inference: **40.864 s**. Candidate SHA-256 `79d9736f961c01c6966a266e6453438a67551c707c0a6c71860919688f1115b3`. No source was pushed; publishing job **SKIPPED** on PR event as required.
+
+## Implementation in PR #363
+
+1. `.github/workflows/research-local-coder-smoke.yml` and `auto_tests/tools/local_coder_agent_benchmark.py`: initial CPU inference and model-authored ranking smoke, read-only.
+2. `.github/workflows/research-model-authored-patches.yml` and `auto_tests/tools/structured_coder_probe.py`: structured JSON patch comparisons on two isolated real Gaslux Python functions with deliberately seeded regressions, at most two attempts per task, AST constraints, independent functional RED/GREEN checks. Experimental failures are preserved as evidence, not hidden.
+3. `.github/workflows/gaslux-local-coder.yml` and `auto_tests/tools/local_coder_logging_repair.py`: an **explicitly deterministic** noncritical logging handler recovery. No AI model is invoked in the optimized workflow; other failures stop without edits.
+4. `.github/workflows/gaslux-ai-observer-rank.yml` and `auto_tests/tools/ai_rank_candidate.py`: a **narrow model-generated** candidate path for `auto_tests/tools/rank_capture_changes.py` only. On PRs, it seeds a reversible fault only in memory and forbids publication. On trusted `dev` event once integrated, it first tests the existing source, skips expensive model installation when already GREEN, and otherwise permits up to two Qwen3.5 9B attempts, a single `sorted(...)` return-line change, AST guard, test GREEN and candidate artifact. No token or persisted checkout credentials in the model job.
+5. `auto_tests/tools/ai_rank_publisher.py`: **separate privileged job**, skipped on PR events and absent unless a real worker returns a tested candidate. It does not execute candidate code, re-reads live `dev`, confirms SHA-256, verifies exactly one ranking return-line AST edit, blocks duplicate branch, and would open at most one **Draft PR**. No auto-merge or release authority. The same principle applies to the deterministic logging publisher, restricted to the exact single-line deterministic change.
+
+## Explicitly unresolved gates
+
+- **A real failing test on `dev` followed by an automatically published Draft PR has NOT been demonstrated.** Tested AI success concerns a seeded reversible regression, not a real production defect.
+- GitHub repository setting `Allow GitHub Actions to create and approve pull requests` may be disabled; not verified. The publisher would fail closed if denied.
+- PR #363 stays Draft pending independent review of the privileged publisher, successful applicable exact-head CI, and integration policy. No merge into `dev`, no changes to `main` or stable catalogs.
+- This workflow is event-driven, **not guaranteed 24/7**. GitHub `schedule` only loads workflows from default `main`, and no scheduler has been integrated there. The new AI worker is limited to changes to a noncritical Observer helper, not an issue-wide or repo-wide coding agent.
+- The local model is pinned by digest `56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90` in the narrow worker; Ollama installer script is pinned and SHA-256 checked. Some older experimental workflows remain unpinned and must not gain privileged authority.
+- Need repeatability across varied unseen tasks, adversarial security evaluation, publisher integration tests, cancellation/rate limits, model/license review, full CI pass, and actual user-independent bug selection before extending code-edit privileges.
+- **No Windows-to-Linux installation, Windows recovery, dual boot, rollback, uninstall or release proofs result from this research.** Disk/ESP/BCD/NVRAM/WinRE, installer and recovery source paths remain excluded. The unrelated Mint/WPF Draft PR #361 is untouched.
+- Standard public-repo GitHub-hosted runners may offer no per-minute charge, but job limits, fair-use and availability restrictions remain. No unlimited free 24/7 GPU/CPU capacity or ChatGPT-equivalent 13-agent quality is asserted.
+
+Next engineering gate: review publisher and exact safe workflow diff independently; verify repo Actions PR-creation permissions; then, only within a disposable branch/CI, reproduce a real noncritical failing test and validate the end-to-end Draft PR path without bypassing protected Windows safety gates.
+
+## 2026-11-22 UTC — independent no-token publisher guard validation
+
+- [Action #45049079620](https://github.com/LMhdez/gaslux/actions/runs/45049079620), workflow HEAD `11f04d03362a3440f0ea733a595868a04598ac13`: **SUCCESS**. The unprivileged job accepted one valid one-line ranking correction and rejected **four deliberately invalid** candidates (out-of-scope call, multiline change, unrelated change, identical unchanged source). This is a narrowly scoped guard test, **not** a general sandbox certification.
+- In the same Action, Qwen3.5 9B independently generated the correct seeded noncritical ranking patch in one attempt; RED before and GREEN after, 40.244 seconds model inference. Model digest was verified before generation. The privileged publisher was **SKIPPED**, because the event was a pull request.
+- **No real Draft PR was created by the automated publisher.** The repository Actions permission to create PRs and end-to-end automation on a genuine failing dev check still require validation. The workflow is in Draft PR #363, not integrated. No production installer, disk, boot or recovery authority was granted.

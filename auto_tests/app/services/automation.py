@@ -125,6 +125,10 @@ class AutomationService(
             selected_vms = self.validation.select_vms(vm_selectors)
             self._assert_vm_scope(selected_vms, options)
             profiles = self._automation_profiles(selected_vms, vm_selectors)
+            # Admission is purely local. Never restore a snapshot or touch a guest
+            # until its requested Gaslux source has passed the same guard used by
+            # ValidationService.prepare_server, including prebuilt campaign lanes.
+            self.validation.verify_source_provenance(result, source=request.source)
             # Restore every selected VM after one all-VM preflight barrier so
             # parallel nominal runs start from one coherent clean baseline.
             self._restore_clean_snapshots(result, [profiles[vm.name] for vm in selected_vms])

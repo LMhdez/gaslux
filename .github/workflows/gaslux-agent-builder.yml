@@ -1,0 +1,124 @@
+name: GASLUX-AGENT-BUILDER - isolated local implementation
+
+on:
+  workflow_call:
+    inputs:
+      role:
+        description: "Exact curated backend role from the Supervisor"
+        required: true
+        type: string
+    outputs:
+      candidate_ready:
+        description: "True only after model-authored candidate passes acceptance"
+        value: ${{ jobs.implementation.outputs.candidate_ready }}
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-agent-builder.yml
+      - docs/autonomy/agent_missions.json
+      - auto_tests/tools/gaslux_agent_implement.py
+      - auto_tests/tests/test_gaslux_agent_implement.py
+
+permissions:
+  contents: read
+
+jobs:
+  implementation:
+    if: github.repository == 'LMhdez/gaslux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    outputs:
+      candidate_ready: ${{ steps.result.outputs.ready }}
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+      GASLUX_AGENT_ROLE: ${{ inputs.role }}
+    steps:
+      - name: Fetch source without persisted write token
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'dev' }}
+          persist-credentials: false
+      - name: Verify real product feature acceptance and scoped candidate code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests \
+            -p test_gaslux_agent_implement.py -v
+      - name: Select one genuine missing feature for this role
+        id: select
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B auto_tests/tools/gaslux_agent_implement.py plan \
+            --role "$GASLUX_AGENT_ROLE" > /tmp/gaslux-agent-plan.json
+          cat /tmp/gaslux-agent-plan.json
+          python3 - <<'PY'
+          import json
+          import os
+          p = json.load(open("/tmp/gaslux-agent-plan.json", encoding="utf-8"))
+          if p["status"] not in ("pending", "idle"):
+              raise SystemExit("Unrecognized task state")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("work=" + ("true" if p["status"] == "pending" else "false") + "\n")
+          PY
+      - name: Install hash-checked local CPU inference only when real work exists
+        if: steps.select.outputs.work == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh \
+            -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
+          (ollama serve > /tmp/ollama-agent.log 2>&1 &)
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:11434/api/version > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          tail -40 /tmp/ollama-agent.log
+          exit 1
+      - name: Verify Qwen3.5 9B model digest before inference
+        if: steps.select.outputs.work == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 720 ollama pull qwen3.5:9b
+          python3 - <<'PY'
+          import json
+          import urllib.request
+          data = json.load(urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=15))
+          model = next((m for m in data.get("models", []) if m["name"] == "qwen3.5:9b"), None)
+          if model is None or model.get("digest") != "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90":
+              raise SystemExit("Untrusted or moved model digest")
+          PY
+      - name: Model-authored real missing product code
+        if: steps.select.outputs.work == 'true'
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 700 python3 -B auto_tests/tools/gaslux_agent_implement.py run \
+            --role "$GASLUX_AGENT_ROLE"
+      - name: Export exact success without writing GitHub
+        id: result
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.select.outputs.work }}" == "true" \
+               && -f evidence/autonomous-agent/candidate.cs \
+               && -f evidence/autonomous-agent/report.json ]]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Preserve candidate and evidence within same workflow run
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-role-implementation
+          path: evidence/autonomous-agent/
+          if-no-files-found: ignore
+          retention-days: 7

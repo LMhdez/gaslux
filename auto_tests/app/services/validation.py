@@ -323,9 +323,55 @@ class ValidationService:
         accepted = tuple(f"{prefix}=" for prefix in prefixes)
         return dict(line.split("=", 1) for line in stdout.splitlines() if line.startswith(accepted))
 
+    def verify_source_provenance(
+        self, result: ResultBuilder, *, source: SourceMode = "remote"
+    ) -> None:
+        """Refuse unsafe source identity without Proxmox, SSH or VM side effects."""
+
+        s = self.settings
+        if source == "published":
+            raise WorkflowError(
+                "server.source_provenance",
+                "Gaslux published builds are disabled until Gaslux-signed metadata "
+                "and artifact origin can be verified",
+                details={"reason": "GASLUX_PUBLISHED_RELEASE_UNVERIFIED"},
+            )
+        if source == "local":
+            try:
+                origin, revision = LocalSourceTree.verified_gaslux_checkout(
+                    self._local_repository_root()
+                )
+            except RuntimeError as error:
+                raise WorkflowError(
+                    "server.source_provenance",
+                    "Gaslux local source identity verification failed",
+                    details={"reason": str(error)},
+                ) from error
+            result.ok(
+                "server.source_provenance",
+                "Gaslux local Git origin and HEAD recorded before deployment",
+                source="local",
+                repository="LMhdez/gaslux",
+                origin=origin,
+                revision=revision,
+                assurance="operator-controlled Git config and HEAD; not remote attestation",
+            )
+        else:
+            result.ok(
+                "server.source_provenance",
+                "Gaslux remote origin configuration validated before checkout",
+                source="remote",
+                repository="LMhdez/gaslux",
+                origin=s.repository_url,
+                branch=s.repository_branch,
+                assurance="configured origin only; remote HEAD checked after clone",
+            )
+
     def prepare_server(
         self, result: ResultBuilder, *, source: SourceMode = "remote"
     ) -> PurePosixPath:
+        # Defence in depth for standalone validation and campaign prebuild callers.
+        self.verify_source_provenance(result, source=source)
         s = self.settings
         password = s.main_ssh_password.get_secret_value()
         source_path = f"{s.smb_root}/{s.source_dir_name}"

@@ -1,0 +1,63 @@
+name: Gaslux Goal Supervisor - read-only progress
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-goal-supervisor.yml
+      - docs/autonomy/**
+      - auto_tests/tools/goal_supervisor.py
+      - auto_tests/tests/test_goal_supervisor.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaslux-goal-supervisor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate-project-goal:
+    if: github.repository == 'LMhdez/gaslux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact triggering tree without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Fail-closed goal and safety regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_goal_supervisor.py -v
+      - name: Generate machine-readable next acceptance task
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B auto_tests/tools/goal_supervisor.py
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads(Path("evidence/goal-progress.json").read_text())
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+              stream.write("## GASLUX objective\n\n")
+              stream.write(f"- Recorded reviewed gates: {report['recorded_reviewed_gates']} / {report['total_required_gates']}\n")
+              stream.write("- Recorded references are NOT independently verified by this job.\n")
+              stream.write(f"- Next required gate: {report['next_gate']}\n")
+              stream.write(f"- Next read-only research candidate: {report['next_auto_research']}\n")
+              stream.write("- No PR publication, automatic merge, release or disk writes.\n")
+          if report["release_eligible"] or not report["blocked_for_automerge"]:
+              raise SystemExit("Goal supervisor must not grant release authority")
+          PY
+      - name: Save auditable goal-progress artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-objective-progress
+          path: evidence/goal-progress.json
+          if-no-files-found: warn
+          retention-days: 14
