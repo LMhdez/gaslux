@@ -262,7 +262,47 @@ def make_resources(work: Path) -> tuple[dict[str, Path], dict]:
     return paths, meta
 
 
-def args_for(mode: str, sock: Path, fds: dict[str, int], readonly_fds: dict[str, int]) -> list[str]:
+def args_for(
+    mode: str,
+    sock: Path,
+    fds: dict[str, int],
+    readonly_fds: dict[str, int],
+    paths: dict[str, Path],
+) -> list[str]:
+    if mode == "pr_argv":
+        # Reuse the REAL PR #318 argument builder, never operational run_lab.
+        # Production gate stays false; ONLY the independent stopped-guest
+        # laboratory is allowed to launch a process.
+        import q4os_win10_qmp_supervisor as operational
+
+        require(operational.QEMU_FD_BACKING_VERIFIED is False, "PRODUCTION_GATE_CHANGED")
+        require(operational.QEMU == QEMU, "QEMU_EXECUTABLE_CHANGED")
+        mapped = {
+            "code": fds["code.fd"],
+            "vars": fds["vars.fd"],
+            "image": fds["disk.qcow2"],
+            "iso": fds["synthetic.iso"],
+            "answer": fds["answer.iso"],
+        }
+        args = operational._qemu_args(
+            sock.parent,
+            paths["code.fd"],
+            paths["vars.fd"],
+            paths["disk.qcow2"],
+            paths["synthetic.iso"],
+            paths["answer.iso"],
+            "tcg",
+            mapped,
+        )
+        require(args[args.index("-qmp") + 1].startswith(f"unix:{sock},"),
+                "PR_QMP_SOCKET_MISMATCH")
+        # Mandatory experiment-only changes: never execute firmware or an
+        # installer; reduce CPU/RAM demand of the CI ephemeral runner.
+        require("-S" not in args, "PR_ARGV_ALREADY_PAUSED")
+        args += ["-S", "-no-reboot"]
+        args[args.index("-m") + 1] = "128"
+        args[args.index("-smp") + 1] = "1"
+        return args
     args = [
         QEMU,
         "-machine",
@@ -324,6 +364,16 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
     work = root / mode
     work.mkdir(mode=0o700)
     paths, geometry = make_resources(work)
+    if mode == "pr_argv":
+        answer = work / "answer.iso"
+        answer.write_bytes(b"GASLUX_SYNTHETIC_ANSWER_NOT_BOOTABLE" + bytes(512))
+        answer.chmod(0o600)
+        paths["answer.iso"] = answer
+        geometry["resources"]["answer.iso"] = {
+            "bytes": answer.stat().st_size,
+            "sha256": sha256(answer),
+        }
+    qmp_path = work / ("q4os-win10-qmp.sock" if mode == "pr_argv" else "qmp.sock")
     fds = {}
     readonly_fds = {}
     child = None
@@ -368,7 +418,7 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             report["renameForeignUnchanged"] = False
         with stderr.open("xb") as error_output:
             child = subprocess.Popen(
-                args_for(mode, work / "qmp.sock", fds, readonly_fds),
+                args_for(mode, qmp_path, fds, readonly_fds, paths),
                 cwd=work,
                 start_new_session=True,
                 pass_fds=tuple(fds.values()) + tuple(readonly_fds.values()),
@@ -420,7 +470,7 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
         finally:
             report["foreignPidfdCleanup"] = close_process(other, other_fd, other_birth)
         require(report["foreignPidfdCleanup"]["directReaped"], "FOREIGN_CHILD_NOT_REAPED")
-        transcript, channel = qmp_readonly(child, work / "qmp.sock", start, pidfd)
+        transcript, channel = qmp_readonly(child, qmp_path, start, pidfd)
         report["qmp"] = transcript
         report["openedOwnedInodes"] = fd_inventory(child.pid, fds)
         for name, fd in fds.items():
@@ -432,7 +482,7 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             report["renameForeignUnchanged"] = sha256(paths["disk.qcow2"]) == foreign_hash
             require(report["renameForeignUnchanged"], "FOREIGN_DISK_MODIFIED")
         before_queries = tuple(transcript["queries"])
-        socket_path = work / "qmp.sock"
+        socket_path = qmp_path
         identity = socket_path.lstat()
         socket_path.unlink()
         socket_path.symlink_to(paths["synthetic.iso"])
@@ -709,9 +759,11 @@ def main() -> int:
         report["scenarios"]["proc"] = scenario(root, "proc", True)
         report["scenarios"]["fdset"] = scenario(root, "fdset", False)
         report["scenarios"]["hybrid"] = scenario(root, "hybrid", False)
+        report["scenarios"]["pr_argv"] = scenario(root, "pr_argv", False)
         report["negative"] = negative_cases(root)
         report["compatible"] = all(
-            report["scenarios"][name]["success"] for name in ("proc", "fdset", "hybrid")
+            report["scenarios"][name]["success"]
+            for name in ("proc", "fdset", "hybrid", "pr_argv")
         )
     except Exception as exc:
         report["compatible"] = False
