@@ -26,6 +26,8 @@ SOURCE_BLOBS = {
     "crates/lib/src/install.rs": "03eeb22172457165e778b51aee03210e4d1d64a1",
     "crates/lib/src/bootloader.rs": "08a208d2819ecbd6e8fa4a4c3b686bfc82e5b6c6",
     "crates/lib/src/install/baseline.rs": "d45688a5968ffa63bf2c3d5075921089abb6f971",
+    "crates/lib/src/deploy.rs": "4ef2b471ab5459a1932751cde50b7eaffea80906",
+    "crates/lib/src/bootc_composefs/update.rs": "c0dcafe3461c7076058b9acd05afa8b6b66d03cb",
     "docs/src/man/bootc-install-to-filesystem.8.md": "9549e156b2b8e3dc629ab9f948c230857996040a",
 }
 MAX_SOURCE_BYTES = 512 * 1024
@@ -111,6 +113,8 @@ def analyze_source(root: Path) -> dict:
     code = source["crates/lib/src/install.rs"]
     boot = source["crates/lib/src/bootloader.rs"]
     baseline = source["crates/lib/src/install/baseline.rs"]
+    ostree_deploy = source["crates/lib/src/deploy.rs"]
+    composefs_update = source["crates/lib/src/bootc_composefs/update.rs"]
     manual = source["docs/src/man/bootc-install-to-filesystem.8.md"]
 
     entry = code.split("pub(crate) async fn install_to_filesystem(", 1)
@@ -172,6 +176,16 @@ def analyze_source(root: Path) -> dict:
         ("prepared and mounted by an external tool or script", "--replace"),
         "UPSTREAM_MANUAL",
     )
+    _require_fragments(
+        ostree_deploy,
+        ("async fn deploy(", "ostree.stage_tree_with_options("),
+        "OSTREE_UPDATE_DEPLOYMENT",
+    )
+    _require_fragments(
+        composefs_update,
+        ("pub(crate) async fn do_upgrade(", "write_composefs_state(", "composefs_gc(", "apply_upgrade("),
+        "COMPOSEFS_UPDATE",
+    )
 
     return {
         "decision": "PREWRITE_UNPROVEN",
@@ -184,6 +198,8 @@ def analyze_source(root: Path) -> dict:
         "upstreamTagSignatureVerifiedByGaslux": False,
         "sourceToBazziteElfCryptographicBindingVerified": False,
         "bootcRuntimePathObserved": False,
+        "updateSourceBranchesIdentified": ["ostree.staged_deployment", "composefs.staged_state_and_gc"],
+        "updateRuntimeAndBootSafetyVerified": False,
         "firstPotentialPersistentOperations": [
             {
                 "path": "crates/lib/src/install.rs",
@@ -219,6 +235,7 @@ def analyze_source(root: Path) -> dict:
             "bootupd/bootctl EFI files and NVRAM effects",
             "target OCI deployment versus upstream Rust build identity",
             "Btrfs subvolume and OSTree updates/rollback",
+            "OSTree stage_tree_with_options and composefs state writes/GC on update",
             "target ESP physical identity and owner",
         ],
         **{k: False for k in NO_AUTHORITY},
