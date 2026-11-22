@@ -2,7 +2,7 @@
 """Read-only byte-diff verifier for SMALL, private, synthetic Zorin GPT fixtures.
 
 Never grants a write permission. The GPT parser is imported, unchanged, from
-Safety #265. Missing that pinned external dependency is a hard failure.
+Safety #307 (merged into dev). Missing the pinned FD API is a hard failure.
 This is not an independent attestation, an installer fence, or Windows rollback.
 """
 
@@ -19,7 +19,7 @@ import stat
 from jsonschema import Draft202012Validator
 from libertix_disk_identity_gate import (
     DiskIdentityError,
-    inspect_gpt_image,
+    inspect_gpt_fd,
     assert_snapshot_matches,
 )
 
@@ -175,8 +175,8 @@ def owned_fd(root: Path, name: str, max_bytes: int):
         try:
             got = os.fstat(fd)
             insist(
-                (got.st_dev, got.st_ino, got.st_size, got.st_mtime_ns)
-                == (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns),
+                (got.st_dev, got.st_ino, got.st_size, got.st_mtime_ns, got.st_ctime_ns)
+                == (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns),
                 "E_SOURCE_RACE",
             )
         except Exception:
@@ -200,10 +200,13 @@ def digest_fd(fd: int, size: int) -> str:
 
 
 def close_guard(fd: int, original: os.stat_result) -> None:
-    now = os.fstat(fd)
+    try:
+        now = os.fstat(fd)
+    except OSError as exc:
+        raise WriteSetRefused("E_SOURCE_RACE") from exc
     insist(
-        (now.st_dev, now.st_ino, now.st_size, now.st_mtime_ns)
-        == (original.st_dev, original.st_ino, original.st_size, original.st_mtime_ns),
+        (now.st_dev, now.st_ino, now.st_size, now.st_mtime_ns, now.st_ctime_ns, now.st_nlink)
+        == (original.st_dev, original.st_ino, original.st_size, original.st_mtime_ns, original.st_ctime_ns, original.st_nlink),
         "E_SOURCE_RACE",
     )
 
@@ -320,9 +323,10 @@ def tree_digest(root: Path, folder: str) -> str:
             os.close(root_fd)
 
 
-def read_gpt(root: Path, name: str, policy: SyntheticPolicy) -> dict:
+def read_gpt(fd: int, policy: SyntheticPolicy) -> dict:
+    """Canonical Safety #307 reader on the same pinned FD used by byte-diff."""
     try:
-        return inspect_gpt_image(root / name, logical_sector_size=policy.sector_bytes)
+        return inspect_gpt_fd(fd, logical_sector_size=policy.sector_bytes)
     except (DiskIdentityError, OSError, ValueError) as exc:
         raise WriteSetRefused("E_GPT_INVALID") from exc
 
@@ -416,8 +420,8 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
         )
         insist(tree_digest(root, "esp-base") == policy.esp_sha256, "E_ESP_BASE_CHANGED")
         insist(tree_digest(root, "esp-trial") == policy.esp_sha256, "E_ESP_FILES_CHANGED")
-        start = read_gpt(root, "baseline.raw", policy)
-        end = read_gpt(root, "trial.raw", policy)
+        start = read_gpt(fds["baseline.raw"][0], policy)
+        end = read_gpt(fds["trial.raw"][0], policy)
         try:
             assert_snapshot_matches(policy.expected_disk, start)
         except DiskIdentityError as exc:
@@ -431,7 +435,7 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
             assert_snapshot_matches(start, end)
         except DiskIdentityError as exc:
             raise WriteSetRefused("E_GPT_IDENTITY_CHANGED") from exc
-        compare_raw(fds["baseline.raw"][0], fds["trial.raw"][0], policy)
+        changed = compare_raw(fds["baseline.raw"][0], fds["trial.raw"][0], policy)
         insist(
             digest_fd(fds["baseline.raw"][0], fds["baseline.raw"][1].st_size) == policy.disk_sha256,
             "E_BASELINE_CHANGED",
@@ -454,14 +458,32 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
         )
         for fd, original in fds.values():
             close_guard(fd, original)
-        # The pinned Safety #265 GPT reader currently accepts only paths.
-        # It re-opens root/name instead of measuring the authenticated raw FD.
-        # A valid matching GPT on a swapped inode can therefore pass. Do NOT
-        # publish even a synthetic success classification without a shared
-        # Safety inspect_gpt_fd(fd, ...) API. Path-stat checks are not a fix:
-        # an attacker can replace-and-restore the name between observations.
-        # This refusal is intentionally unconditional until Safety review.
-        raise WriteSetRefused("E_GPT_FD_BINDING_REQUIRED")
+        # Final path identity is a supplemental fail-closed rename detector,
+        # NOT the source of GPT evidence: all GPT/hash/diff reads used pinned FDs.
+        # Rename-and-restore or concurrent writes remain outside an externally
+        # authenticated immutable snapshot and cannot authorize installation.
+        for name in ("baseline.raw", "trial.raw", "checkpoint.raw"):
+            try:
+                linked = (root / name).lstat()
+            except OSError as exc:
+                raise WriteSetRefused("E_SOURCE_RACE") from exc
+            initial = fds[name][1]
+            insist(
+                stat.S_ISREG(linked.st_mode)
+                and (linked.st_dev, linked.st_ino, linked.st_size, linked.st_nlink)
+                == (initial.st_dev, initial.st_ino, initial.st_size, initial.st_nlink),
+                "E_SOURCE_RACE",
+            )
+        return {
+            "result": "SYNTHETIC_ONLY_WITHIN_ROOT" if changed else "SYNTHETIC_NO_CHANGE",
+            "changedLinuxBytes": changed,
+            "transactionId": policy.transaction,
+            "checkpointId": policy.checkpoint_id,
+            "authorization": "DENY_NO_WRITER",
+            "independentRecoveryAttested": False,
+            "windowsRollbackVerified": False,
+            "productionWriteAuthorized": False,
+        }
 
     finally:
         for fd, _ in fds.values():
