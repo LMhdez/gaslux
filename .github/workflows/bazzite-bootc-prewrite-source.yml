@@ -1,0 +1,89 @@
+name: Bazzite bootc v1.17.1 upstream prewrite source (deny only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/bazzite-native-route-readback-20261122
+    paths:
+      - auto_tests/bazzite_bootc_prewrite_source.py
+      - auto_tests/tests/test_bazzite_bootc_prewrite_source.py
+      - .github/workflows/bazzite-bootc-prewrite-source.yml
+  pull_request:
+    paths:
+      - auto_tests/bazzite_bootc_prewrite_source.py
+      - auto_tests/tests/test_bazzite_bootc_prewrite_source.py
+      - .github/workflows/bazzite-bootc-prewrite-source.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-upstream-source-deny-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout Gaslux exact HEAD without credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout upstream bootc pinned commit, not moving tag
+        uses: actions/checkout@v4
+        with:
+          repository: bootc-dev/bootc
+          ref: d01e723ae9480fa53aa9db09a7eff0439548e9f6
+          path: upstream-bootc
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate immutable git commit and run offline refusal tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C upstream-bootc rev-parse HEAD)" = d01e723ae9480fa53aa9db09a7eff0439548e9f6
+          python -m pip install pytest ruff
+          python -m pytest -q auto_tests/tests/test_bazzite_bootc_prewrite_source.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_bootc_prewrite_source.py \
+            auto_tests/tests/test_bazzite_bootc_prewrite_source.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_bootc_prewrite_source.py \
+            auto_tests/tests/test_bazzite_bootc_prewrite_source.py
+          python -m compileall -q \
+            auto_tests/bazzite_bootc_prewrite_source.py \
+            auto_tests/tests/test_bazzite_bootc_prewrite_source.py
+          rc=0
+          python auto_tests/bazzite_bootc_prewrite_source.py \
+            --upstream-root upstream-bootc > bazzite-bootc-prewrite-denial.json || rc=$?
+          test "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path("bazzite-bootc-prewrite-denial.json").read_text())
+          assert d["decision"] == "PREWRITE_UNPROVEN"
+          assert d["upstreamGitBlobIdentitiesMatched"] is True
+          assert d["sourceToBazziteElfCryptographicBindingVerified"] is False
+          assert any("Windows EFI" in x["scope"] for x in d["firstPotentialPersistentOperations"])
+          for key in (
+              "installationAuthorized", "partitionWriteAuthorized",
+              "windowsEspWriteAuthorized", "gptMetadataWriteAuthorized",
+              "nvramWriteAuthorized", "guestCommandChannelAuthorized",
+              "nativeInstallationVerified", "sameDiskDualBootVerified",
+              "rollbackProven", "stable",
+          ):
+              assert d[key] is False, key
+          print("BOOTC_V1_17_1_SOURCE_PREWRITE_UNPROVEN_DENY_ONLY")
+          PY
+          sha256sum bazzite-bootc-prewrite-denial.json > bazzite-bootc-prewrite-evidence-sha256.txt
+      - name: Publish bounded upstream source findings only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-bootc-source-prewrite-deny-only
+          path: |
+            bazzite-bootc-prewrite-denial.json
+            bazzite-bootc-prewrite-evidence-sha256.txt
+          if-no-files-found: warn
+          retention-days: 14
