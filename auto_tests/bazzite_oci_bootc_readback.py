@@ -162,8 +162,8 @@ def _path(name: str) -> str:
         raise Refusal("Tar path exceeds 4096-character bound")
     if "\x00" in name:
         raise Refusal("Tar path contains NUL")
-    if "\\" in name:
-        raise Refusal("Tar path contains backslash")
+    # POSIX tar names may contain backslash as an ordinary filename character.
+    # Never treat it as a directory separator or extract any member.
     if name.startswith("/") or any(part == ".." for part in name.split("/")):
         raise Refusal("Tar path escapes OCI root")
     n = posixpath.normpath(name)

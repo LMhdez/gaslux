@@ -217,7 +217,6 @@ def test_whiteout_removes_executable_and_prevents_false_presence():
         "../usr/bin/bootc",
         "/usr/bin/bootc",
         "usr/../../etc/passwd",
-        "usr\\bin\\bootc",
     ],
 )
 def test_hostile_tar_paths_refused(name):
@@ -227,6 +226,20 @@ def test_hostile_tar_paths_refused(name):
 
 
 @pytest.mark.parametrize("target", ["/etc/passwd", "../../../etc/shadow"])
+def test_backslash_in_posix_tar_name_is_not_a_directory_separator():
+    archive = tar_layer({"usr\\\\bin\\\\bootc": b"\\x7fELF" + b"not-the-real-path"})
+    state, budget = scan(archive)
+    assert "usr/bin/bootc" not in state
+    result = finish(
+        state,
+        [{"digest": digest_bytes(archive), "size": len(archive)}],
+        budget,
+        {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
+    )
+    assert result["status"] == "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
+    assert all(result[field] is False for field in NO_WRITE)
+
+
 def test_executable_symlink_escaping_image_refused(target):
     data = tar_layer({"usr/bin/bootc": ("symlink", target)})
     with pytest.raises(Refusal):
