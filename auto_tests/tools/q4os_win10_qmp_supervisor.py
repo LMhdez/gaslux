@@ -391,22 +391,29 @@ def _qemu_args(
 
 
 def _cleanup(process: subprocess.Popen | None, pidfd: int | None) -> bool:
+    """Never send TERM/KILL unless kernel pidfd targets this exact child.
+
+    Synthetic fixture-supplied pidfds are untrusted. A mismatched descriptor
+    must not signal another process or be counted as successful cleanup.
+    """
     if process is None:
         return True
     try:
         if process.poll() is None:
             if pidfd is None:
                 return False
+            _pidfd_target(pidfd, process.pid)
             signal.pidfd_send_signal(pidfd, signal.SIGTERM)
         try:
             process.wait(timeout=8)
         except subprocess.TimeoutExpired:
             if pidfd is None:
                 return False
+            _pidfd_target(pidfd, process.pid)
             signal.pidfd_send_signal(pidfd, signal.SIGKILL)
             process.wait(timeout=5)
         return process.poll() is not None
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, StartupRefusal, TypeError, ValueError):
         return False
 
 
@@ -547,7 +554,11 @@ def _run_lab_impl(
         fd_factory = pidfd_factory or os.pidfd_open
         try:
             pidfd = fd_factory(process.pid)
-        except OSError:
+            # Before granting the supplied FD any cleanup or QMP authority,
+            # bind it to the exact kernel PID. A synthetic factory cannot
+            # redirect subsequent TERM/KILL to another live Python child.
+            _pidfd_target(pidfd, process.pid)
+        except (OSError, StartupRefusal, TypeError, ValueError):
             if process.poll() is not None:
                 raise StartupRefusal("QEMU_EARLY_EXIT") from None
             raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from None
