@@ -93,3 +93,34 @@ def test_invalid_geometry_rejected_even_when_snapshots_equal(mutation):
         value["partitions"].append(other)
     with pytest.raises(gate.DiskIdentityError):
         gate.assert_snapshot_matches(value, value)
+
+@pytest.mark.parametrize("sector", [512, 4096])
+@pytest.mark.parametrize("lba", [1, 2, 4094, 4095])
+def test_reserved_gpt_lba_rejected_for_identical_snapshots(sector, lba):
+    """RED: metadata LBAs must never be accepted as partition payload."""
+    value = snapshot()
+    value["logicalSectorSizeBytes"] = sector
+    value["sizeBytes"] = 4096 * sector
+    value["partitions"][0]["offsetBytes"] = lba * sector
+    value["partitions"][0]["sizeBytes"] = sector
+    with pytest.raises(gate.DiskIdentityError):
+        gate.assert_snapshot_matches(value, value)
+
+
+def test_positive_four_kib_sector_snapshot_is_accepted():
+    value = snapshot()
+    value["logicalSectorSizeBytes"] = 4096
+    value["sizeBytes"] = 4096 * 4096
+    value["partitions"][0]["offsetBytes"] = 64 * 4096
+    value["partitions"][0]["sizeBytes"] = 960 * 4096
+    gate.assert_snapshot_matches(value, value)
+
+
+def test_duplicate_slot_with_distinct_guid_rejected():
+    value = snapshot()
+    other = dict(value["partitions"][0])
+    other["partGuid"] = "00000000-0000-4000-8000-000000000002"
+    other["offsetBytes"] += other["sizeBytes"]
+    value["partitions"].append(other)
+    with pytest.raises(gate.DiskIdentityError):
+        gate.assert_snapshot_matches(value, value)
