@@ -65,6 +65,12 @@ Git abbreviated revision is a **candidate**, never attestation.
 positive fixtures are tiny synthetic files with monkeypatched expected
 hashes; they cannot and must not support claims that official ISO,
 ELF, repository signature, Cargo.lock or build-id were reverified.
+A malicious or foreign `dpkg.status` file could still be placed beside
+otherwise hash-matching ISO and ELF files: this inspector does **not**
+cryptographically bind their extraction origin to the ISO. Accordingly,
+`dpkgStatusOriginBoundToPinnedIso=false` and
+`elfExtractionOriginBoundToPinnedIso=false` remain mandatory, including
+when an apparently valid package version or Git suffix is observed.
 The report always sets source correspondence, build-info authentication,
 boot, rollback, installer execution and release eligibility to false.
 
