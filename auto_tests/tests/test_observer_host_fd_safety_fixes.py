@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from auto_tests.installer_observer.host_fd_boundary import ProcessSeal
 from auto_tests.installer_observer.host_qemu_fd_evidence import (
     HostEvidenceRefused,
     HostPins,
@@ -20,7 +21,6 @@ from auto_tests.installer_observer.host_qemu_fd_evidence import (
     correlate_qmp_fd,
     observe_pinned_qcow2_chain,
 )
-from auto_tests.installer_observer.host_fd_boundary import ProcessSeal
 
 
 def _seal(pid: int) -> ProcessSeal:

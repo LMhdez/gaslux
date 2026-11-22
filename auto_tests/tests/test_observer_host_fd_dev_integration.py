@@ -89,25 +89,35 @@ def test_closed_fd_wrong_identities_and_symlinks_are_refused(tmp_path):
         "expected_size": pins.expected_size,
         "expected_start_ticks": pins.process.start_ticks,
     }
-    with pytest.raises(HostEvidenceRefused):
-        with borrowed_readonly_proc_fd(os.getpid(), fd, image, **kwargs):
-            pytest.fail("Closed descriptor was accepted")
-    with pytest.raises(HostEvidenceRefused, match="INVALID_PID_OR_FD"):
-        with borrowed_readonly_proc_fd(0, 4, image, **kwargs):
-            pytest.fail("Invalid PID was accepted")
-    with pytest.raises(HostEvidenceRefused, match="INVALID_PID_OR_FD"):
-        with borrowed_readonly_proc_fd(os.getpid(), -1, image, **kwargs):
-            pytest.fail("Invalid FD was accepted")
+    with (
+        pytest.raises(HostEvidenceRefused),
+        borrowed_readonly_proc_fd(os.getpid(), fd, image, **kwargs),
+    ):
+        pytest.fail("Closed descriptor was accepted")
+    with (
+        pytest.raises(HostEvidenceRefused, match="INVALID_PID_OR_FD"),
+        borrowed_readonly_proc_fd(0, 4, image, **kwargs),
+    ):
+        pytest.fail("Invalid PID was accepted")
+    with (
+        pytest.raises(HostEvidenceRefused, match="INVALID_PID_OR_FD"),
+        borrowed_readonly_proc_fd(os.getpid(), -1, image, **kwargs),
+    ):
+        pytest.fail("Invalid FD was accepted")
     link = tmp_path / "symlink.raw"
     link.symlink_to(image)
-    with pytest.raises(HostEvidenceRefused, match="UNSAFE_MEDIA_PATH"):
-        with borrowed_readonly_proc_fd(os.getpid(), fd, link, **kwargs):
-            pytest.fail("Symlink was accepted")
+    with (
+        pytest.raises(HostEvidenceRefused, match="UNSAFE_MEDIA_PATH"),
+        borrowed_readonly_proc_fd(os.getpid(), fd, link, **kwargs),
+    ):
+        pytest.fail("Symlink was accepted")
     with image.open("rb") as source:
         incorrect = {**kwargs, "expected_inode": pins.expected_inode + 1}
-        with pytest.raises(HostEvidenceRefused):
-            with borrowed_readonly_proc_fd(os.getpid(), source.fileno(), image, **incorrect):
-                pytest.fail("Wrong inode was accepted")
+        with (
+            pytest.raises(HostEvidenceRefused),
+            borrowed_readonly_proc_fd(os.getpid(), source.fileno(), image, **incorrect),
+        ):
+            pytest.fail("Wrong inode was accepted")
 
 
 def test_clean_python_import_without_experimental_authority_modules():
