@@ -52,10 +52,19 @@ echo "GASLUX_COLLECTOR_HASH=$HASH" >/dev/console
 echo GASLUX_COLLECTOR_READY_TEST >/dev/console
 exec 3<>"$PORT" || { echo GASLUX_COLLECTOR_PORT_OPEN_FAILED_TEST >/dev/console; exit 73; }
 echo GASLUX_COLLECTOR_PORT_OPENED_TEST >/dev/console
-IFS='|' read -r PREFIX SESSION NONCE <&3 || { echo GASLUX_COLLECTOR_READ_FAILED_TEST >/dev/console; exit 74; }
+IFS='|' read -r PREFIX SESSION NONCE <&3 || {
+  echo GASLUX_COLLECTOR_READ_FAILED_TEST >/dev/console
+  exit 74
+}
 echo GASLUX_COLLECTOR_CHALLENGE_READ_TEST >/dev/console
-[ "$PREFIX" = "GASLUX_CHAL_V1" ] || { echo GASLUX_COLLECTOR_BAD_PREFIX_TEST >/dev/console; exit 75; }
-[ "$(/bin/busybox printf '%s' "$NONCE" | /bin/busybox wc -c)" -eq 64 ] || { echo GASLUX_COLLECTOR_BAD_NONCE_TEST >/dev/console; exit 76; }
+[ "$PREFIX" = "GASLUX_CHAL_V1" ] || {
+  echo GASLUX_COLLECTOR_BAD_PREFIX_TEST >/dev/console
+  exit 75
+}
+[ "$(/bin/busybox printf '%s' "$NONCE" | /bin/busybox wc -c)" -eq 64 ] || {
+  echo GASLUX_COLLECTOR_BAD_NONCE_TEST >/dev/console
+  exit 76
+}
 /bin/busybox printf 'GASLUX_REPORT_V1|%s|%s|%s|%s|1\n' "$SESSION" "$NONCE" "$HASH" "$BOOT" >&3
 echo GASLUX_COLLECTOR_RESPONSE_SENT_TEST >/dev/console
 /bin/busybox sleep 12
