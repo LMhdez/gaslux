@@ -61,8 +61,8 @@ def _file_map(value: object) -> dict:
     require(type(value) is dict and len(value) <= 256, "INVALID_FILE_INVENTORY")
     for path, info in value.items():
         require(type(path) is str and FILE.fullmatch(path) is not None
-                and "//" not in path and "/./" not in path
-                and "/../" not in path
+                and "//" not in path
+                and not any(component in {".", ".."} for component in path.split("/"))
                 and type(info) is dict and set(info) == FILE_KEYS
                 and type(info["sizeBytes"]) is int
                 and 0 <= info["sizeBytes"] <= 16 * 1024 * 1024
@@ -166,6 +166,9 @@ def compare_synthetic_snapshots(before: dict, after: dict) -> dict[str, Any]:
             continue
         if path.startswith(EFI_OWNED):
             boundary = "GASLUX_ESP_DECLARED_NOT_AUTHENTICATED"
+        elif path.lower().startswith(EFI_OWNED.lower()):
+            boundary = "EFI_CASEFOLD_COLLISION"
+            violations.append("EFI_CASEFOLD_COLLISION:" + path)
         elif path.startswith(ESP_PREFIX):
             boundary = "FOREIGN_OR_PROTECTED_ESP_WRITE"
             violations.append("FOREIGN_OR_PROTECTED_ESP_WRITE:" + path)
