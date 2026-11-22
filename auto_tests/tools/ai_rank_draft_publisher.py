@@ -109,7 +109,10 @@ def request_json(
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as response:
-            value = json.load(response)
+            raw = response.read()
+            if not raw:
+                return {}  # GitHub DELETE returns HTTP 204 with no JSON body.
+            value = json.loads(raw)
             if not isinstance(value, dict):
                 raise ValueError("GitHub REST returned a non-object")
             return value
@@ -150,13 +153,17 @@ def main() -> None:
     request_json("POST", "/git/refs", {
         "ref": f"refs/heads/{branch}", "sha": sha,
     })
-    request_json("PUT", f"/contents/{TARGET}", {
+    update = request_json("PUT", f"/contents/{TARGET}", {
         "message": "fix(observer): propose locally generated ranking correction",
         "content": base64.b64encode(candidate).decode("ascii"),
         "sha": encoded["sha"],
         "branch": branch,
     })
-    pr = request_json("POST", "/pulls", {
+    created_commit = update.get("commit", {}).get("sha")
+    if not created_commit or not COMMITTED.fullmatch(created_commit):
+        raise RuntimeError("GitHub did not return the candidate commit identity")
+    try:
+        pr = request_json("POST", "/pulls", {
         "head": branch,
         "base": BASE,
         "draft": True,
@@ -169,7 +176,21 @@ def main() -> None:
             "DRAFT ONLY. Exact-head CI and independent Safety review required; "
             "no automatic merge, installer/disk/boot authority or release promotion."
         ),
-    })
+        })
+    except Exception:
+        # If GitHub disallows Actions-created PRs, do not leave an orphan
+        # branch that would permanently block the next attempt. Delete only
+        # when the ref still points to the exact commit created by this job.
+        try:
+            current = request_json("GET", f"/git/ref/heads/{branch}")
+            if current["object"]["sha"] == created_commit:
+                request_json("DELETE", f"/git/refs/heads/{branch}")
+                print("Orphan proposal branch cleaned up after PR API failure")
+            else:
+                print("Proposal branch moved; manual inspection required")
+        except Exception as cleanup_error:
+            print("Could not safely clean proposal branch:", type(cleanup_error).__name__)
+        raise
     print("Created Draft PR:", pr["html_url"])
 
 
