@@ -19,6 +19,7 @@ from auto_tests.installer_observer.host_qemu_fd_evidence import (
     HostPins,
     borrowed_readonly_proc_fd,
     correlate_qmp_fd,
+    observe_descriptor,
     observe_pinned_qcow2_chain,
 )
 
@@ -355,6 +356,8 @@ def test_s319_remote_opath_same_inode_and_path_refused_before_measurement(dispos
         ) as reopened,
     ):
         pytest.fail(f"O_PATH remote FD reached LOCALLY_MEASURED: {reopened}")
+    with pytest.raises(HostEvidenceRefused, match="QEMU_FD_NOT_READONLY"):
+        observe_descriptor(pins)
 
 
 @pytest.mark.skipif(
@@ -444,3 +447,23 @@ def test_s319_fdinfo_missing_or_unreadable_is_fail_closed(
         assert when == "after", "fdinfo before must reject without reopening"
         assert os.fstat(reopened).st_ino == pins.expected_inode
     assert calls >= (1 if when == "before" else 2)
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "O_PATH") or not Path("/proc").is_dir(),
+    reason="Linux procfs and O_PATH required",
+)
+def test_s319_missing_linux_o_path_constant_denied(disposable_child, monkeypatch):
+    child, pins = disposable_child
+    monkeypatch.delattr(os, "O_PATH")
+    with (
+        pytest.raises(HostEvidenceRefused, match="REMOTE_O_PATH_FLAG_UNAVAILABLE"),
+        borrowed_readonly_proc_fd(
+            child.pid,
+            pins.fd_number,
+            pins.media_path,
+            expected_dev=pins.expected_dev,
+            expected_inode=pins.expected_inode,
+            expected_size=pins.expected_size,
+        ) as reopened,
+    ):
+        pytest.fail(f"Host without O_PATH support was accepted: {reopened}")
