@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -122,6 +123,21 @@ class FeatureFactoryTests(unittest.TestCase):
              patch.object(factory.subprocess, "check_output") as read:
             self.assertFalse(factory.safe_forward_draft_base(root, "mint", old, new))
             read.assert_not_called()
+
+    def test_qwen_generation_has_strict_schema_and_rejects_extra_keys(self):
+        good = json.dumps({"response": json.dumps({"addition": valid("mint")})}).encode()
+        bad = json.dumps({"response": json.dumps({
+            "addition": valid("mint"), "explanation": "unreviewed"})}).encode()
+        with patch.object(factory.urllib.request, "urlopen") as url:
+            url.return_value.__enter__.return_value = io.BytesIO(good)
+            self.assertIn("def assess_mint", factory.call_model("test"))
+            req = url.call_args.args[0]
+            data = json.loads(req.data)
+            self.assertEqual(data["format"]["required"], ["addition"])
+            self.assertIs(data["format"]["additionalProperties"], False)
+            url.return_value.__enter__.return_value = io.BytesIO(bad)
+            with self.assertRaisesRegex(ValueError, "schema"):
+                factory.call_model("test")
 
     def test_branch_names_are_exactly_scoped_and_no_untrusted_role(self):
         name = factory.origin_branch("bazzite", "a" * 40)
