@@ -45,6 +45,8 @@ jobs:
             auto_tests/test_popos_build20_source_elf.py
           ruff check auto_tests/tools/gaslux_popos_build20_source_elf.py \
             auto_tests/test_popos_build20_source_elf.py
+          ruff format --diff auto_tests/tools/gaslux_popos_build20_source_elf.py \
+            auto_tests/test_popos_build20_source_elf.py
           ruff format --check auto_tests/tools/gaslux_popos_build20_source_elf.py \
             auto_tests/test_popos_build20_source_elf.py
           python3 -m unittest auto_tests.test_popos_build20_source_elf -v
