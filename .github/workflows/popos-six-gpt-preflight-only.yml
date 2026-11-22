@@ -12,6 +12,10 @@ on:
       - auto_tests/test_popos_six_gpt_snapshot_contract.py
       - auto_tests/tools/gaslux_popos_gpt_fd_boundary.py
       - auto_tests/test_popos_gpt_fd_01.py
+      - auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py
+      - auto_tests/test_popos_distinst_prewrite_gap.py
+      - schemas/popos-distinst-prewrite-deny.schema.json
+      - docs/POP_OS_DISTINST_PREWRITE_BOUNDARY.md
       - assets/live/libertix_disk_identity_gate.py
       - auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py
       - schemas/popos-six-gpt-lab.schema.json
@@ -25,6 +29,10 @@ on:
       - auto_tests/test_popos_six_gpt_snapshot_contract.py
       - auto_tests/tools/gaslux_popos_gpt_fd_boundary.py
       - auto_tests/test_popos_gpt_fd_01.py
+      - auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py
+      - auto_tests/test_popos_distinst_prewrite_gap.py
+      - schemas/popos-distinst-prewrite-deny.schema.json
+      - docs/POP_OS_DISTINST_PREWRITE_BOUNDARY.md
       - assets/live/libertix_disk_identity_gate.py
       - auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py
       - schemas/popos-six-gpt-lab.schema.json
@@ -128,11 +136,16 @@ jobs:
           python3 -m compileall -q assets/live/libertix_disk_identity_gate.py             auto_tests/tools/gaslux_popos_gpt_fd_boundary.py             auto_tests/test_popos_gpt_fd_01.py
           ruff check auto_tests/tools/gaslux_popos_gpt_fd_boundary.py auto_tests/test_popos_gpt_fd_01.py
           ruff format --check auto_tests/tools/gaslux_popos_gpt_fd_boundary.py auto_tests/test_popos_gpt_fd_01.py
+          # POP-DISTINST-PREWRITE-01 is pure Python: no ISO, CLI or disk writer.
+          python3 -m compileall -q auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py auto_tests/test_popos_distinst_prewrite_gap.py
+          ruff check auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py auto_tests/test_popos_distinst_prewrite_gap.py
+          ruff format --check auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py auto_tests/test_popos_distinst_prewrite_gap.py
           # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
           export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
           python3 -m unittest auto_tests.test_popos_six_gpt_contract -v
           python3 -m unittest auto_tests.test_popos_six_gpt_process_boundary -v
           python3 -m unittest auto_tests.test_popos_six_gpt_snapshot_contract -v
+          python3 -m unittest auto_tests.test_popos_distinst_prewrite_gap -v
           python3 -m unittest auto_tests.test_popos_reuse_full_contract -v
           python3 -m unittest auto_tests.test_windows10_popos_native_write_set -v
           python3 -m unittest auto_tests.test_windows10_popos_safety_attestation_adapter -v
@@ -147,6 +160,16 @@ jobs:
                       "releaseEligible", "stable"):
               assert schema["properties"][key]["const"] is False
           print("GASLUX_POP_SIX_GPT_SCHEMA_FAIL_CLOSED=1")
+          deny=json.loads(Path("schemas/popos-distinst-prewrite-deny.schema.json").read_text())
+          Draft202012Validator.check_schema(deny)
+          for k in ("observationComplete", "distinstExecutionAuthorized",
+                    "windowsWriterAuthorized", "productionInstallationAuthorized",
+                    "sameDiskDualBootVerified", "windowsInPlaceRollbackProven",
+                    "releaseEligible", "stable", "sourceToInstalledElfCorrespondenceVerified",
+                    "nativeTestFlagIsReadOnly", "nativeBootloaderVerifiedForPinnedElf"):
+              assert deny["properties"][k]["const"] is False
+          assert deny["properties"]["decision"]["const"] == "DENY_NO_WRITER"
+          print("GASLUX_POP_DISTINST_PREWRITE_DENY_SCHEMA=1")
           PY
           bash -n auto_tests/tools/gaslux_popos_reuse_full_install_guest.sh
           bash -n auto_tests/tools/gaslux_popos_reuse_full_firstboot_vm.sh
