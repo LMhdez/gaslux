@@ -230,6 +230,7 @@ def test_v2_generator_excludes_unreleased_entries_from_main(tmp_path):
     assert [d["id"] for d in dev["distributions"]] == ["mint", "zorin"]
     assert all(d["capabilities"]["status"] == "released" for d in main["distributions"])
 
+
 # Cross-language JSON type boundary: bool is a subclass of int in Python.
 # C# and PowerShell deserialize version as an integer; do not grant a
 # capability when Python sees JSON true in place of protocol version 1.
