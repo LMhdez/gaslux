@@ -39,8 +39,6 @@ jobs:
         run: |
           python3 -m venv .core-venv
           .core-venv/bin/python -m pip install -e ./auto_tests 'pytest==9.0.2' 'ruff==0.15.20' 'Twisted[tls]>=24,<26' 'pyOpenSSL==26.4.0'
-      - name: Show auditor formatting adjustments before strict check
-        run: .core-venv/bin/python -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tests/test_deployment_audit.py || true
       - name: Check Python source and tests
         run: |
           .core-venv/bin/python -m compileall -q auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
