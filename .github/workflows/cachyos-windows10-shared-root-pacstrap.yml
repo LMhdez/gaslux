@@ -27,6 +27,8 @@ on:
       - auto_tests/tools/windows_cachyos_bcd_ab_control.py
       - auto_tests/test_windows_cachyos_postpacstrap_windows.py
       - auto_tests/test_windows_cachyos_bcd_ab_control.py
+      - auto_tests/tools/windows_cachyos_checkpoint_readiness.py
+      - auto_tests/test_windows_cachyos_checkpoint_readiness.py
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -64,6 +66,8 @@ on:
       - auto_tests/tools/windows_cachyos_bcd_ab_control.py
       - auto_tests/test_windows_cachyos_postpacstrap_windows.py
       - auto_tests/test_windows_cachyos_bcd_ab_control.py
+      - auto_tests/tools/windows_cachyos_checkpoint_readiness.py
+      - auto_tests/test_windows_cachyos_checkpoint_readiness.py
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -116,6 +120,8 @@ jobs:
             auto_tests/tools/windows_cachyos_postpacstrap_windows.py \
             auto_tests/tools/windows_cachyos_bcd_ab_control.py \
             auto_tests/test_windows_cachyos_bcd_ab_control.py \
+            auto_tests/tools/windows_cachyos_checkpoint_readiness.py \
+            auto_tests/test_windows_cachyos_checkpoint_readiness.py \
             auto_tests/test_windows_cachyos_postpacstrap_windows.py \
             auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \
             auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
@@ -145,6 +151,7 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_rw_child.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postpacstrap_windows.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_bcd_ab_control.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_checkpoint_readiness.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_cow_rollback.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_windows.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_ext4_only.py' -v
