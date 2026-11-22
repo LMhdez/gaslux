@@ -10,6 +10,7 @@ import base64
 import hashlib
 import importlib
 import os
+import shutil
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -17,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from auto_tests.installer_observer.gpt_lab_provenance import capture_fresh_immediate
 from auto_tests.installer_observer.gpt_readonly_producer import (
     GptProducerRefused,
     GuestSliceProof,
@@ -268,3 +270,30 @@ def test_host_guest_immediate_comparison_refuses_changed_identity(sample):
             **{**args, "pins": SimpleNamespace(**{**vars(pins), "disk_id": "gpt:" + "0" * 36})},
         ),
     )
+
+def test_immediate_export_reads_current_source_not_old_host_copy(sample):
+    source, workspace = sample
+    host = workspace / "host.raw"
+    shutil.copyfile(source, host)
+    assert take((host, workspace)).gpt["partitionStyle"] == "GPT"
+
+    # Source changes after HOST acquisition. Replaying host.raw would pass,
+    # whereas a second source export must observe invalid current GPT bytes.
+    with source.open("r+b") as stream:
+        stream.seek(510)
+        stream.write(b"\\x00\\x00")
+    calls = []
+
+    def export_current(overlay, destination, parent):
+        assert overlay == source and parent == workspace
+        calls.append(destination.name)
+        shutil.copyfile(overlay, destination)
+
+    fake_lab = SimpleNamespace(host_snapshot=export_current)
+    refused(
+        "GPT_SECTOR_INVALID",
+        lambda: capture_fresh_immediate(fake_lab, source, workspace, disk),
+    )
+    assert calls == ["immediate.raw"]
+    assert (workspace / "immediate.raw").read_bytes() != host.read_bytes()
+
