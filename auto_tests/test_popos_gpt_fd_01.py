@@ -151,10 +151,12 @@ class PinnedPopGptTests(unittest.TestCase):
                     os.fsync(obj.fileno())
             return value
 
-        with PinnedSixGpt(self.work) as pin:
-            with patch.object(canonical.os, "pread", side_effect=interfere):
-                with self.assertRaises(Refusal):
-                    pin.inspect()
+        with (
+            PinnedSixGpt(self.work) as pin,
+            patch.object(canonical.os, "pread", side_effect=interfere),
+            self.assertRaises(Refusal),
+        ):
+            pin.inspect()
         self.assertTrue(attacked["yes"])
         self.assertEqual(self.base.stat().st_ino, inode)
 
