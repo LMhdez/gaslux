@@ -121,6 +121,9 @@ jobs:
           test -x "$(command -v qemu-img)"
           test -x "$(command -v qemu-io)"
           test -f /usr/share/OVMF/OVMF_VARS_4M.fd
+          # Real QCOW2 zero-map reproduction via qemu-utils ONLY; never qemu-system.
+          PYTHONPATH=auto_tests:auto_tests/tools python3 -m unittest \
+            auto_tests.test_popos_six_gpt_contract.SixGptNegativeTests.test_real_qemu_img_qemu_io_zero_mapping_without_guest -v
       - name: Build synthetic six-GPT RAW, audit protected canaries, rehearse COW recovery
         shell: bash
         run: |

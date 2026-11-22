@@ -166,28 +166,19 @@ def verify_sfdisk_gpt(path: Path) -> dict:
 
 
 def verify_esp_canary(base: Path, expected_hash: str, work: Path) -> None:
-    # Read protected simulated ESP via mtools without any write to disk image.
-    output = work / "readback-protected-esp-canary.tmp"
-    need(
-        not output.exists() and not output.is_symlink(),
-        "REFUSE_IDENTITY_MISMATCH: foreign ESP readback resource",
+    """Read simulated ESP canary through mtype; no temporary host file."""
+    need(base.parent == work, "REFUSE_IDENTITY_MISMATCH: foreign ESP backing")
+    contents = command(
+        "mtype",
+        "-i",
+        f"{base}@@{PARTS[0].start * SECTOR}",
+        PROTECTED_ESP_FILE,
+        timeout=60,
     )
-    try:
-        command(
-            "mcopy",
-            "-i",
-            f"{base}@@{PARTS[0].start * SECTOR}",
-            PROTECTED_ESP_FILE,
-            str(output),
-            timeout=60,
-        )
-        need(
-            sha(regular(output)) == expected_hash,
-            "REFUSE_OUT_OF_WRITESET: protected ESP file changed",
-        )
-    finally:
-        if output.exists():
-            regular(output).unlink()
+    need(
+        hashlib.sha256(contents.encode("utf-8")).hexdigest() == expected_hash,
+        "REFUSE_OUT_OF_WRITESET: protected ESP canary changed",
+    )
 
 
 def verify_fs_types(base: Path) -> dict:
@@ -254,7 +245,10 @@ def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
             and start == cursor
             and length > 0
             and depth >= 0
-            and start + length <= SIZE,
+            and start + length <= SIZE
+            and start % SECTOR == 0
+            and length % SECTOR == 0
+            and not (row["data"] and row["zero"]),
             "REFUSE_RECOVERY_UNPROVEN: inconsistent extent geometry",
         )
         if "offset" in row:
@@ -276,9 +270,7 @@ def child_owned_extents(child: Path, base: Path) -> list[dict]:
     chain(child, base)
     rows = parse_qcow_map(command("qemu-img", "map", "--output=json", str(child), timeout=120))
     # depth=0 data=false zero=true is an allocated overlay mask, not empty.
-    return [
-        r for r in rows if r["depth"] == 0 and (r["data"] or r["zero"] or r.get("present") is True)
-    ]
+    return [r for r in rows if r["depth"] == 0]
 
 
 def ensure_empty_child(child: Path, base: Path) -> None:
@@ -286,9 +278,30 @@ def ensure_empty_child(child: Path, base: Path) -> None:
         not child_owned_extents(child, base),
         "REFUSE_RECOVERY_UNPROVEN: synthetic child contains owned extents",
     )
+    command("qemu-img", "compare", "-f", "qcow2", "-F", "raw",
+            str(child), str(base), timeout=300)
 
 
-def verify_injected_fault(child: Path, base: Path, offset: int, length: int) -> None:
+def pin_identity(path: Path) -> tuple[int, int]:
+    """An opened original FD prevents inode recycling while this check runs."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        st = os.fstat(fd)
+        need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1,
+             "REFUSE_IDENTITY_MISMATCH: foreign QCOW2 child")
+        return st.st_dev, st.st_ino
+    finally:
+        os.close(fd)
+
+
+def verify_injected_fault(
+    child: Path,
+    base: Path,
+    offset: int,
+    length: int,
+    expected_identity: tuple[int, int],
+) -> None:
+    """Require child inode + allocation + actual 0x5a readback; never catch tool errors."""
     need(
         type(offset) is int
         and type(length) is int
@@ -297,17 +310,26 @@ def verify_injected_fault(child: Path, base: Path, offset: int, length: int) -> 
         and offset + length <= SIZE,
         "REFUSE_RECOVERY_UNPROVEN: invalid injected interval",
     )
+    need(pin_identity(child) == expected_identity,
+         "REFUSE_IDENTITY_MISMATCH: injected QCOW2 child replaced")
     owned = child_owned_extents(child, base)
+    need(pin_identity(child) == expected_identity,
+         "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during map")
     need(
         any(
             r["start"] <= offset
             and r["start"] + r["length"] >= offset + length
             and r["data"] is True
+            and r["zero"] is False
             for r in owned
         ),
         "REFUSE_RECOVERY_UNPROVEN: injected write not materialized",
     )
-    raise ProtectedFaultDetected("independent protected child allocation observed")
+    command("qemu-io", "-f", "qcow2", "-c",
+            f"read -P 0x5a {offset} {length}", str(child), timeout=120)
+    need(pin_identity(child) == expected_identity,
+         "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during readback")
+    raise ProtectedFaultDetected("protected QCOW2 allocation and pattern readback proven")
 
 
 def private_ovmf_copy(template: Path, out: Path) -> str:
@@ -389,7 +411,7 @@ def prepare(work: Path, template: Path) -> dict:
     command("mmd", "-i", esp_image, "::/EFI/Microsoft")
     command("mcopy", "-i", esp_image, str(marker), PROTECTED_ESP_FILE)
     file_hash = sha(marker)
-    marker.unlink()
+    # Do not unlink transaction artefacts through pathname; runner teardown owns disposal.
     entries = []
     for p in PARTS[1:4]:
         entries.append(
@@ -529,9 +551,12 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
     make_child(fault, base)
     sector = PARTS[2].start + 4096  # protected SIMULATED data partition
     ensure_empty_child(fault, base)
+    child_identity = pin_identity(fault)
     command("qemu-io", "-f", "qcow2", "-c", f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
+    need(pin_identity(fault) == child_identity,
+         "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during fault injection")
     try:
-        verify_injected_fault(fault, base, sector * SECTOR, 4096)
+        verify_injected_fault(fault, base, sector * SECTOR, 4096, child_identity)
     except ProtectedFaultDetected:
         pass
     else:

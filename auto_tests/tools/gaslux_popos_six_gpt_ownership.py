@@ -25,7 +25,12 @@ class OwnershipRefusal(Exception):
     pass
 
 
-def export_evidence(work: Path, evidence: Path, pinned: tuple[int, int]) -> None:
+def export_evidence(
+    work: Path,
+    evidence: Path,
+    pinned: tuple[int, int],
+    pinned_files: dict[str, tuple[int, int]] | None = None,
+) -> None:
     """Export only if original work dir is still linked at its original path."""
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     parent = os.open(work.parent, flags)
@@ -49,6 +54,8 @@ def export_evidence(work: Path, evidence: Path, pinned: tuple[int, int]) -> None
                 try:
                     st = os.fstat(fd)
                     linked = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                    if pinned_files is not None and (st.st_dev, st.st_ino) != pinned_files.get(name):
+                        raise OwnershipRefusal("REFUSE_IDENTITY_MISMATCH: evidence inode replaced")
                     if (
                         not stat.S_ISREG(st.st_mode)
                         or st.st_nlink != 1

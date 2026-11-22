@@ -195,10 +195,11 @@ class SixGptNegativeTests(unittest.TestCase):
         )
         with (
             patch.object(lab, "chain"),
+            patch.object(lab, "pin_identity", return_value=(11, 22)),
             patch.object(lab, "command", return_value=full),
             self.assertRaisesRegex(Refusal, "not materialized"),
         ):
-            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096, (11, 22))
         for error in (
             Refusal("qemu-img failed"),
             subprocess.TimeoutExpired("qemu-img", 1),
@@ -206,10 +207,11 @@ class SixGptNegativeTests(unittest.TestCase):
         ):
             with (
                 patch.object(lab, "chain"),
+                patch.object(lab, "pin_identity", return_value=(11, 22)),
                 patch.object(lab, "command", side_effect=error),
                 self.assertRaises(type(error)),
             ):
-                lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+                lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096, (11, 22))
         injected = json.dumps(
             [
                 {"start": 0, "length": 8192, "depth": 1, "data": True, "zero": False},
@@ -220,9 +222,10 @@ class SixGptNegativeTests(unittest.TestCase):
         with (
             patch.object(lab, "chain"),
             patch.object(lab, "command", return_value=injected),
+            patch.object(lab, "pin_identity", return_value=(11, 22)),
             self.assertRaises(lab.ProtectedFaultDetected),
         ):
-            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096, (11, 22))
 
     def test_safety_f04_zero_overlay_and_map_validation(self):
         zero = [
@@ -296,6 +299,101 @@ class SixGptNegativeTests(unittest.TestCase):
                 owner.export_evidence(work, evidence, pinned)
             self.assertTrue((work / owner.FILES[1]).exists())
             self.assertTrue((parent / "moved" / owner.FILES[0]).exists())
+
+    def test_safety_f03_readback_failure_is_not_material_detection(self):
+        injected = json.dumps(
+            [
+                {"start": 0, "length": 8192, "depth": 1, "data": True, "zero": False},
+                {"start": 8192, "length": 4096, "depth": 0, "data": True, "zero": False},
+                {"start": 12288, "length": c.SIZE - 12288, "depth": 1, "data": True, "zero": False},
+            ]
+        )
+
+        def command_with_bad_readback(*argv, **kwargs):
+            if argv[:2] == ("qemu-img", "map"):
+                return injected
+            raise Refusal("qemu-io 0x5a readback mismatch")
+
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "pin_identity", return_value=(11, 22)),
+            patch.object(lab, "command", side_effect=command_with_bad_readback),
+            self.assertRaisesRegex(Refusal, "readback mismatch"),
+        ):
+            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096, (11, 22))
+
+    def test_safety_f03_child_replacement_refused_before_map(self):
+        with tempfile.TemporaryDirectory() as folder:
+            child = Path(folder) / "child.qcow2"
+            original = Path(folder) / "original.qcow2"
+            child.write_bytes(b"original")
+            identity = lab.pin_identity(child)
+            child.rename(original)
+            child.write_bytes(b"foreign!")
+            with self.assertRaisesRegex(Refusal, "child replaced"):
+                lab.verify_injected_fault(child, Path(folder) / "base", 8192, 4096, identity)
+            self.assertTrue(original.exists())
+            self.assertEqual(child.read_bytes(), b"foreign!")
+
+    def test_safety_f04_depth_zero_no_data_no_zero_refused(self):
+        suspect = [
+            {"start": 0, "length": 4096, "depth": 0, "data": False, "zero": False},
+            {"start": 4096, "length": c.SIZE - 4096, "depth": 1, "data": True, "zero": False},
+        ]
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=json.dumps(suspect)),
+            self.assertRaisesRegex(Refusal, "owned extents"),
+        ):
+            lab.ensure_empty_child(Path("child"), Path("base"))
+
+    def test_safety_f01_same_size_inode_swap_does_not_delete(self):
+        import gaslux_popos_six_gpt_ownership as owner
+
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            work = parent / "gaslux-pop-six-gpt-pinned"
+            evidence = parent / "evidence"
+            work.mkdir(mode=0o700)
+            evidence.mkdir(mode=0o700)
+            document = work / owner.FILES[0]
+            document.write_bytes(b"original")
+            stat_doc = document.stat()
+            file_pins = {document.name: (stat_doc.st_dev, stat_doc.st_ino)}
+            original = work / "original-retained"
+            document.rename(original)
+            document.write_bytes(b"FOREIGN!")
+            st = work.stat()
+            with self.assertRaisesRegex(owner.OwnershipRefusal, "inode replaced"):
+                owner.export_evidence(work, evidence, (st.st_dev, st.st_ino), file_pins)
+            self.assertEqual(document.read_bytes(), b"FOREIGN!")
+            self.assertEqual(original.read_bytes(), b"original")
+
+    @unittest.skipUnless(
+        os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and __import__("shutil").which("qemu-img")
+        and __import__("shutil").which("qemu-io"),
+        "qemu-utils unavailable outside disposable synthetic runner",
+    )
+    def test_real_qemu_img_qemu_io_zero_mapping_without_guest(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            backing = new_file(root / "backing.raw", c.SIZE)
+            child = root / "zero-overlay.qcow2"
+            subprocess.run(
+                ["qemu-img", "create", "-f", "qcow2", "-F", "raw",
+                 "-b", str(backing), str(child)],
+                check=True, capture_output=True,
+            )
+            lab.ensure_empty_child(child, backing)
+            subprocess.run(
+                ["qemu-io", "-f", "qcow2", "-c", "write -z 0 4096", str(child)],
+                check=True, capture_output=True,
+            )
+            with self.assertRaisesRegex(Refusal, "owned extents"):
+                lab.ensure_empty_child(child, backing)
 
     def test_valid_plan_is_permanently_no_writer(self):
         plan = sample_plan()

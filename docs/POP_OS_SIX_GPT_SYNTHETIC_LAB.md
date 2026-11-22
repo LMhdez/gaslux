@@ -57,3 +57,31 @@ Preflight sintético e recuperação por descarte do overlay NÃO são rollback 
 - **F-04:** mapas QCOW2 exigem cobertura contígua completa, tipos coerentes e ausência de alocações próprias, incluindo `depth=0,zero=true`. Um mapa textual não prova por si só autenticidade do backing.
 
 Nenhum resultado autoriza execução System76, QEMU guest, Windows genuíno, operações de produção ou merge. Reauditoria independente GASLUX-SAFETY é obrigatória.
+
+
+### Adversarial tightening after the initial F-01..F-04 patch
+
+- F-01: ESP canary verification now uses read-only \`mtype\`, without a
+  temporary file deleted by pathname. The synthetic marker is retained until
+  hosted-runner disposal. A same-name, same-size evidence swap can be rejected
+  when a creation-time dev/inode pin is available; the multi-process workflow
+  has **no authenticated creation-time file inventory**. It therefore does
+  not claim an ownership attestation, does not delete workdir contents at all,
+  and must remain outside production.
+- F-03: recovery now pins the child inode before fault injection and demands
+  matching identity before map verification and after pattern readback.
+  Independently observed depth-0 allocation covering exactly the injected
+  interval **and** successful \`qemu-io read -P 0x5a\` are required for the
+  typed positive result. Any command failure remains failure, never success.
+- F-04: *all* depth-0 extents are rejected as evidence of an empty child,
+  including \`data=false, zero=false\`. The complete extent map is checked
+  against sector alignment, contradictory data/zero flags and virtual size.
+  \`qemu-img compare\` verifies read-equivalence with the unmodified backing;
+  read-equivalence alone never proves absence of an allocated zero cluster.
+  The hosted no-guest job also executes a real QCOW2 zero-write reproduction
+  using \`qemu-img\` and \`qemu-io\`.
+
+This does not provide a safe prewrite barrier or independently authenticated
+QEMU provenance. A same-UID hostile process racing path-based external
+utilities remains an unsolved trust boundary. The eight permanent false
+authorization/observation flags are unchanged.
