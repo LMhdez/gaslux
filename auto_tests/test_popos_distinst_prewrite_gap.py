@@ -6,7 +6,6 @@ no case proves genuine Windows, a signed handoff, or real source↔ELF mapping.
 
 from __future__ import annotations
 
-import copy
 import json
 import sys
 import unittest
