@@ -509,6 +509,10 @@ def run_lab(workspace: Path, kernel: Path, collector: Path, output: Path) -> dic
                 hashlib.sha256(payload).hexdigest() + "  manifest.json\n", encoding="ascii"
             )
             return result
+    except GuestCollectorRefused:
+        if serial.exists():
+            print("GUEST_SERIAL_DIAGNOSTIC_TAIL", serial.read_text(errors="replace")[-3500:], flush=True)
+        raise
     finally:
         ledger.close()
         if proc.poll() is None:
