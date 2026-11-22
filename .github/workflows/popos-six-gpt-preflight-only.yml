@@ -45,26 +45,31 @@ jobs:
             'ruff==0.14.4' 'jsonschema==4.25.1'
           export PATH="$RUNNER_TEMP/pop-six-contract-venv/bin:$PATH"
           python3 -m compileall -q \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff check --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py || true
           ruff check \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --check \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
@@ -116,6 +121,9 @@ jobs:
           test -x "$(command -v qemu-img)"
           test -x "$(command -v qemu-io)"
           test -f /usr/share/OVMF/OVMF_VARS_4M.fd
+          # Real QCOW2 zero-map reproduction via qemu-utils ONLY; no guest emulator.
+          PYTHONPATH=auto_tests:auto_tests/tools python3 -m unittest \
+            auto_tests.test_popos_six_gpt_contract.SixGptNegativeTests.test_real_qemu_img_qemu_io_zero_mapping_without_guest -v
       - name: Build synthetic six-GPT RAW, audit protected canaries, rehearse COW recovery
         shell: bash
         run: |
@@ -126,20 +134,15 @@ jobs:
           work="$(mktemp -d "$RUNNER_TEMP/gaslux-pop-six-gpt-XXXXXXXX")"
           evidence="$GITHUB_WORKSPACE/pop-six-gpt-evidence"
           mkdir -m 700 "$evidence"
+          # A private same-UID process can rename this path. Pin its original
+          # identity and export by open directory FD. NEVER rm -rf / unlink
+          # laboratory resources from a pathname. Hosted runner disposal owns
+          # eventual cleanup, outside this workflow's authority.
+          read -r work_dev work_ino < <(stat -Lc '%d %i' -- "$work")
           cleanup() {
-            if test -d "$work" && test ! -L "$work"; then
-              case "$work" in
-                "$RUNNER_TEMP"/gaslux-pop-six-gpt-*)
-                  for file in pop-six-transaction.json recovery-proof.json filesystem-fsck-before.json filesystem-fsck-after.json; do
-                    if test -f "$work/$file" && test ! -L "$work/$file"; then
-                      cp -- "$work/$file" "$evidence/"
-                    fi
-                  done
-                  rm -rf -- "$work"
-                  ;;
-                *) echo "REFUSE: foreign lab cleanup location" >&2; return 1 ;;
-              esac
-            fi
+            python3 auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
+              --work "$work" --evidence "$evidence" \
+              --dev "$work_dev" --ino "$work_ino"
             (
               cd "$evidence"
               find . -maxdepth 1 -type f ! -name evidence.sha256 -print0 |

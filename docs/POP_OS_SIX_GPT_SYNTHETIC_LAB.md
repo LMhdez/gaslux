@@ -47,3 +47,41 @@ productionInstallationAuthorized, windowsWriterAuthorized, sameDiskDualBootVerif
 Revisão GASLUX-SAFETY **específica** antes de sequer propor a única experiência QEMU nativa seis-GPT. Aprovação deve confirmar inventário de seis PARTUUID, canários, checkpoint, cadeia QCOW2, serial/dispositivo vinculado à transação, monitorização externa QEMU e eventos de descarte, integridade de GPT e ESP protegida, segregação OVMF e condições de recusa. Uma aprovação autoriza no máximo **um laboratório sintético Linux-only**, não escritor Windows nem dual boot.
 
 Preflight sintético e recuperação por descarte do overlay NÃO são rollback Windows in-place, dual boot, atualização segura ou estabilidade.
+
+
+## Correções Safety F-01–F-04 (PR #296, apenas preparação)
+
+- **F-01:** o workflow deixa de executar `rm -rf` e o laboratório deixa de fazer `unlink` dos filhos, VARS e cópias de fsck. O exportador abre o diretório por FD, verifica dev/inode, recusa symlinks/hardlinks e preserva o diretório original em caso de troca de pathname. Os ficheiros temporários são deixados ao mecanismo de descarte do runner. **Limite:** POSIX não oferece `unlinkat` condicional por inode; perante adversário concorrente da mesma UID não há prova suficiente para limpeza ativa. A ausência de eliminação deliberada é a medida fail-closed. O exportador não autentica por si só o conteúdo produzido por processos não fiáveis.
+- **F-02:** o parser de trace só aceita uma operação por registo, com gramática integral e um único identificador virtual, recusa concatenação, discard/zero e eventos desconhecidos. Mesmo um trace aceite é **PARSED_UNTRUSTED**, não uma atestação de QEMU/FD/child/backing/transação nem barreira preventiva. `observedWritesConfinedToOwnedPopPartitions=false` e `observationComplete=false`.
+- **F-03:** uma falha injetada só é detetada por extents QCOW2 alocados na janela esperada; exceção tipada distinta de falhas de ferramenta, JSON ou timeout. O filho corrompido fica retido para diagnóstico e outro filho é criado com exclusividade e validado.
+- **F-04:** mapas QCOW2 exigem cobertura contígua completa, tipos coerentes e ausência de alocações próprias, incluindo `depth=0,zero=true`. Um mapa textual não prova por si só autenticidade do backing.
+
+Nenhum resultado autoriza execução System76, QEMU guest, Windows genuíno, operações de produção ou merge. Reauditoria independente GASLUX-SAFETY é obrigatória.
+
+
+### Adversarial tightening after the initial F-01..F-04 patch
+
+- F-01: ESP canary verification now uses read-only \`mtype\`, without a
+  temporary file deleted by pathname. The synthetic marker is retained until
+  hosted-runner disposal. A same-name, same-size evidence swap can be rejected
+  when a creation-time dev/inode pin is available; the multi-process workflow
+  has **no authenticated creation-time file inventory**. It therefore does
+  not claim an ownership attestation, does not delete workdir contents at all,
+  and must remain outside production.
+- F-03: recovery now pins the child inode before fault injection and demands
+  matching identity before map verification and after pattern readback.
+  Independently observed depth-0 allocation covering exactly the injected
+  interval **and** successful \`qemu-io read -P 0x5a\` are required for the
+  typed positive result. Any command failure remains failure, never success.
+- F-04: *all* depth-0 extents are rejected as evidence of an empty child,
+  including \`data=false, zero=false\`. The complete extent map is checked
+  against sector alignment, contradictory data/zero flags and virtual size.
+  \`qemu-img compare\` verifies read-equivalence with the unmodified backing;
+  read-equivalence alone never proves absence of an allocated zero cluster.
+  The hosted no-guest job also executes a real QCOW2 zero-write reproduction
+  using \`qemu-img\` and \`qemu-io\`.
+
+This does not provide a safe prewrite barrier or independently authenticated
+QEMU provenance. A same-UID hostile process racing path-based external
+utilities remains an unsolved trust boundary. The eight permanent false
+authorization/observation flags are unchanged.

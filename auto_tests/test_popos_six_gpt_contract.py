@@ -160,8 +160,293 @@ class SixGptNegativeTests(unittest.TestCase):
             f"virtio_blk_handle_write sector {c.PARTS[5].start} nsectors 16\n"
         )
         self.assertEqual(valid["observedBytes"], 12288)
+        self.assertFalse(valid["observedWritesConfinedToOwnedPopPartitions"])
+        self.assertEqual(valid["traceClassification"], "PARSED_UNTRUSTED")
         self.assertFalse(valid["observationComplete"])
         self.assertFalse(valid["productionInstallationAuthorized"])
+
+    def test_safety_f02_multidevice_concatenation_and_untrusted(self):
+        for trace in (
+            "vda virtio_blk_handle_write sector 3188736 nsectors 1\n"
+            "vdb virtio_blk_handle_write sector 5285888 nsectors 1",
+            "virtio_blk_handle_write sector 64 nsectors 1 "
+            "virtio_blk_handle_write sector 3188736 nsectors 1",
+            "virtio_blk_handle_write sector -1 nsectors 1",
+            "virtio_blk_handle_write sector 3188736 nsectors 1x",
+            "virtio_blk_handle_write sector 3188736 nsectors 0",
+            "virtio_blk_handle_write sector 3188736 nsectors 999999999999",
+            "virtio_blk_handle_write_zeroes sector 3188736 nsectors 1",
+        ):
+            with self.subTest(trace=trace), self.assertRaises(Refusal):
+                c.audit_qemu_trace(trace)
+        parsed = c.audit_qemu_trace("vda virtio_blk_handle_write sector 3188736 nsectors 1")
+        self.assertFalse(parsed["observedWritesConfinedToOwnedPopPartitions"])
+        self.assertFalse(parsed["traceProvenanceAuthenticated"])
+        self.assertFalse(parsed["observationComplete"])
+
+    def test_safety_f03_fault_detection_not_tool_failure(self):
+        import subprocess
+
+        full = json.dumps(
+            [
+                {"start": 0, "length": 4096, "depth": 1, "data": True, "zero": False},
+                {"start": 4096, "length": c.SIZE - 4096, "depth": 0, "data": False, "zero": False},
+            ]
+        )
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "pin_identity", return_value=(11, 22)),
+            patch.object(lab, "command", return_value=full),
+            self.assertRaisesRegex(Refusal, "not materialized"),
+        ):
+            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096, (11, 22))
+        for error in (
+            Refusal("qemu-img failed"),
+            subprocess.TimeoutExpired("qemu-img", 1),
+            ValueError("malformed JSON"),
+        ):
+            with (
+                patch.object(lab, "chain"),
+                patch.object(lab, "pin_identity", return_value=(11, 22)),
+                patch.object(lab, "command", side_effect=error),
+                self.assertRaises(type(error)),
+            ):
+                lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096, (11, 22))
+        injected = json.dumps(
+            [
+                {"start": 0, "length": 8192, "depth": 1, "data": True, "zero": False},
+                {"start": 8192, "length": 4096, "depth": 0, "data": True, "zero": False},
+                {"start": 12288, "length": c.SIZE - 12288, "depth": 1, "data": True, "zero": False},
+            ]
+        )
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=injected),
+            patch.object(lab, "pin_identity", return_value=(11, 22)),
+            self.assertRaises(lab.ProtectedFaultDetected),
+        ):
+            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096, (11, 22))
+
+    def test_safety_f04_zero_overlay_and_map_validation(self):
+        zero = [
+            {"depth": 0, "data": False, "zero": True, "start": 0, "length": 4096},
+            {"depth": 1, "data": True, "zero": False, "start": 4096, "length": c.SIZE - 4096},
+        ]
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=json.dumps(zero)),
+            self.assertRaisesRegex(Refusal, "owned extents"),
+        ):
+            lab.ensure_empty_child(Path("child"), Path("backing"))
+        for malformed in (
+            "{",
+            "[]",
+            '[{"depth":0,"data":false,"zero":true,"start":0,"length":4096}]',
+            json.dumps(
+                [
+                    {
+                        "depth": 1,
+                        "data": True,
+                        "zero": False,
+                        "start": 0,
+                        "length": c.SIZE,
+                        "surprise": True,
+                    }
+                ]
+            ),
+        ):
+            with self.subTest(malformed=malformed[:20]), self.assertRaises(Refusal):
+                lab.parse_qcow_map(malformed)
+        with self.assertRaisesRegex(Refusal, "compressed extent"):
+            lab.parse_qcow_map(
+                json.dumps(
+                    [
+                        {
+                            "start": 0,
+                            "length": c.SIZE,
+                            "depth": 1,
+                            "data": True,
+                            "zero": False,
+                            "compressed": True,
+                        }
+                    ]
+                )
+            )
+        empty = [{"start": 0, "length": c.SIZE, "depth": 1, "data": True, "zero": False}]
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=json.dumps(empty)),
+        ):
+            lab.ensure_empty_child(Path("child"), Path("backing"))
+
+    def test_safety_f01_directory_swap_export_refuses_foreign(self):
+        import gaslux_popos_six_gpt_ownership as owner
+
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            work = parent / "gaslux-pop-six-gpt-owned"
+            work.mkdir(mode=0o700)
+            evidence = parent / "evidence"
+            evidence.mkdir(mode=0o700)
+            (work / owner.FILES[0]).write_text("original")
+            pinned = (work.stat().st_dev, work.stat().st_ino)
+            owner.export_evidence(work, evidence, pinned)
+            self.assertEqual((evidence / owner.FILES[0]).read_text(), "original")
+            work.rename(parent / "moved")
+            work.mkdir(mode=0o700)
+            (work / owner.FILES[1]).write_text("FOREIGN")
+            with self.assertRaises(owner.OwnershipRefusal):
+                owner.export_evidence(work, evidence, pinned)
+            self.assertTrue((work / owner.FILES[1]).exists())
+            self.assertTrue((parent / "moved" / owner.FILES[0]).exists())
+
+    def test_safety_f03_readback_failure_is_not_material_detection(self):
+        injected = json.dumps(
+            [
+                {"start": 0, "length": 8192, "depth": 1, "data": True, "zero": False},
+                {"start": 8192, "length": 4096, "depth": 0, "data": True, "zero": False},
+                {"start": 12288, "length": c.SIZE - 12288, "depth": 1, "data": True, "zero": False},
+            ]
+        )
+
+        def command_with_bad_readback(*argv, **kwargs):
+            if argv[:2] == ("qemu-img", "map"):
+                return injected
+            raise Refusal("qemu-io 0x5a readback mismatch")
+
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "pin_identity", return_value=(11, 22)),
+            patch.object(lab, "command", side_effect=command_with_bad_readback),
+            self.assertRaisesRegex(Refusal, "readback mismatch"),
+        ):
+            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096, (11, 22))
+
+    def test_safety_f03_child_replacement_refused_before_map(self):
+        with tempfile.TemporaryDirectory() as folder:
+            child = Path(folder) / "child.qcow2"
+            original = Path(folder) / "original.qcow2"
+            child.write_bytes(b"original")
+            identity = lab.pin_identity(child)
+            child.rename(original)
+            child.write_bytes(b"foreign!")
+            with self.assertRaisesRegex(Refusal, "child replaced"):
+                lab.verify_injected_fault(child, Path(folder) / "base", 8192, 4096, identity)
+            self.assertTrue(original.exists())
+            self.assertEqual(child.read_bytes(), b"foreign!")
+
+    def test_safety_f04_depth_zero_no_data_no_zero_refused(self):
+        suspect = [
+            {"start": 0, "length": 4096, "depth": 0, "data": False, "zero": False},
+            {"start": 4096, "length": c.SIZE - 4096, "depth": 1, "data": True, "zero": False},
+        ]
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=json.dumps(suspect)),
+            self.assertRaisesRegex(Refusal, "owned extents"),
+        ):
+            lab.ensure_empty_child(Path("child"), Path("base"))
+
+    def test_safety_f01_same_size_inode_swap_does_not_delete(self):
+        import gaslux_popos_six_gpt_ownership as owner
+
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            work = parent / "gaslux-pop-six-gpt-pinned"
+            evidence = parent / "evidence"
+            work.mkdir(mode=0o700)
+            evidence.mkdir(mode=0o700)
+            document = work / owner.FILES[0]
+            document.write_bytes(b"original")
+            stat_doc = document.stat()
+            file_pins = {document.name: (stat_doc.st_dev, stat_doc.st_ino)}
+            original = work / "original-retained"
+            document.rename(original)
+            document.write_bytes(b"FOREIGN!")
+            st = work.stat()
+            with self.assertRaisesRegex(owner.OwnershipRefusal, "inode replaced"):
+                owner.export_evidence(work, evidence, (st.st_dev, st.st_ino), file_pins)
+            self.assertEqual(document.read_bytes(), b"FOREIGN!")
+            self.assertEqual(original.read_bytes(), b"original")
+
+    @unittest.skipUnless(
+        os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and __import__("shutil").which("qemu-img")
+        and __import__("shutil").which("qemu-io"),
+        "qemu-utils unavailable outside disposable synthetic runner",
+    )
+    def test_real_qemu_img_qemu_io_zero_mapping_without_guest(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            backing = new_file(root / "backing.raw", c.SIZE)
+            child = root / "zero-overlay.qcow2"
+            subprocess.run(
+                ["qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(backing), str(child)],
+                check=True,
+                capture_output=True,
+            )
+            lab.ensure_empty_child(child, backing)
+            subprocess.run(
+                ["qemu-io", "-f", "qcow2", "-c", "write -z 0 4096", str(child)],
+                check=True,
+                capture_output=True,
+            )
+            with self.assertRaisesRegex(Refusal, "owned extents"):
+                lab.ensure_empty_child(child, backing)
+
+    def test_safety_f01_export_symlink_hardlink_foreign_survive(self):
+        import gaslux_popos_six_gpt_ownership as owner
+
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            work = parent / "gaslux-pop-six-gpt-links"
+            evidence = parent / "evidence"
+            work.mkdir(mode=0o700)
+            evidence.mkdir(mode=0o700)
+            foreign = parent / "foreign-transaction.json"
+            foreign.write_bytes(b"foreign data survives")
+            destination = work / owner.FILES[0]
+            st = work.stat()
+            directory_pin = (st.st_dev, st.st_ino)
+            destination.symlink_to(foreign)
+            with self.assertRaises(OSError):
+                owner.export_evidence(work, evidence, directory_pin)
+            self.assertEqual(foreign.read_bytes(), b"foreign data survives")
+            destination.unlink()  # Test fixture setup only; never the lab cleanup path.
+            os.link(foreign, destination)
+            with self.assertRaises(owner.OwnershipRefusal):
+                owner.export_evidence(work, evidence, directory_pin)
+            self.assertEqual(foreign.read_bytes(), b"foreign data survives")
+            self.assertTrue(destination.exists())
+
+    def test_safety_f01_enospc_partial_file_retained_without_cleanup_delete(self):
+        import errno
+
+        import gaslux_popos_six_gpt_ownership as owner
+
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            work = parent / "gaslux-pop-six-gpt-enospc"
+            evidence = parent / "evidence"
+            work.mkdir(mode=0o700)
+            evidence.mkdir(mode=0o700)
+            target = work / "incomplete-create.raw"
+            with (
+                patch(
+                    "gaslux_popos_reuse_snapshot_gate.os.ftruncate",
+                    side_effect=OSError(errno.ENOSPC, "synthetic no space"),
+                ),
+                self.assertRaises(OSError),
+            ):
+                new_file(target, 8192)
+            if target.exists():
+                target.rename(work / "original-partial.raw")
+            target.write_bytes(b"foreign transaction after ENOSPC")
+            st = work.stat()
+            owner.export_evidence(work, evidence, (st.st_dev, st.st_ino))
+            self.assertEqual(target.read_bytes(), b"foreign transaction after ENOSPC")
 
     def test_valid_plan_is_permanently_no_writer(self):
         plan = sample_plan()
@@ -267,7 +552,7 @@ class SixGptNegativeTests(unittest.TestCase):
                 lab.ensure_empty_child(Path("/tmp/foreign"), Path("/tmp/base"))
         runner_source = (TOOLS / "gaslux_popos_six_gpt_lab.py").read_text()
         self.assertIn("ensure_empty_child(fault, base)", runner_source)
-        self.assertIn("regular(fault, write=True).unlink()", runner_source)
+        self.assertNotIn("regular(fault, write=True).unlink()", runner_source)
         self.assertIn('sha(base) == plan["backingSha256"]', runner_source)
         self.assertIn("verify_canaries(base, plan, work)", runner_source)
 
