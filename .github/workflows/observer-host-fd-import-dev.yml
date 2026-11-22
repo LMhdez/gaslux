@@ -5,12 +5,15 @@ on:
     branches:
       - dev
       - integration/observer-host-fd-offline-dev-20261122
+      - fix/observer-host-fd-import-boundary-20261122
     paths:
       - '.github/workflows/observer-host-fd-import-dev.yml'
       - 'auto_tests/installer_observer/host_fd_boundary.py'
       - 'auto_tests/installer_observer/host_qemu_fd_evidence.py'
       - 'auto_tests/tests/test_observer_host_fd_safety_fixes.py'
       - 'auto_tests/tests/test_observer_host_fd_dev_integration.py'
+      - 'auto_tests/tests/test_observer_host_fd_evidence.py'
+      - 'docs/samples/OBSERVER_HOST_FD_SYNTHETIC.json'
   pull_request:
     branches:
       - dev
@@ -20,6 +23,8 @@ on:
       - 'auto_tests/installer_observer/host_qemu_fd_evidence.py'
       - 'auto_tests/tests/test_observer_host_fd_safety_fixes.py'
       - 'auto_tests/tests/test_observer_host_fd_dev_integration.py'
+      - 'auto_tests/tests/test_observer_host_fd_evidence.py'
+      - 'docs/samples/OBSERVER_HOST_FD_SYNTHETIC.json'
 
 permissions:
   contents: read
@@ -38,19 +43,20 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install only offline test dependencies
-        run: python -m pip install --disable-pip-version-check 'pytest>=9,<10' 'ruff>=0.8,<1' 'pillow>=11,<13' 'jsonschema>=4,<5'
+        run: python -m pip install --disable-pip-version-check 'pytest>=9,<10' 'ruff>=0.8,<1' 'pillow>=11,<13' 'jsonschema>=4,<5' 'pyyaml>=6,<7'
       - name: Static source, formatting and syntax
         run: |
           set -Eeuo pipefail
-          python -m compileall -q auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py
+          python -m compileall -q auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py auto_tests/tests/test_observer_host_fd_evidence.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py auto_tests/tests/test_observer_host_fd_evidence.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/host_fd_boundary.py auto_tests/installer_observer/host_qemu_fd_evidence.py auto_tests/tests/test_observer_host_fd_safety_fixes.py auto_tests/tests/test_observer_host_fd_dev_integration.py auto_tests/tests/test_observer_host_fd_evidence.py
       - name: Deny-only HOST-FD, Observer and legacy Mint/Zorin regressions
         run: |
           set -Eeuo pipefail
           python -m pytest -q \
             auto_tests/tests/test_observer_host_fd_safety_fixes.py \
             auto_tests/tests/test_observer_host_fd_dev_integration.py \
+            auto_tests/tests/test_observer_host_fd_evidence.py \
             auto_tests/tests/test_observer_boundary_model.py \
             auto_tests/tests/test_observer_boundary_dev_integration.py \
             auto_tests/tests/test_observer_screenshot_dev_integration.py \
