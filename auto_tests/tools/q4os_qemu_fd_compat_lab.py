@@ -17,10 +17,9 @@ import socket
 import stat
 import struct
 import subprocess
-import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 QEMU = "/usr/bin/qemu-system-x86_64"
@@ -255,7 +254,9 @@ def args_for(mode: str, sock: Path, fds: dict[str, int]) -> list[str]:
              "-device", "ich9-ahci,id=sata",
              "-drive", f"if=none,id=system,format=qcow2,file={backing['disk.qcow2']}",
              "-device", "ide-hd,drive=system,bus=sata.0",
-             "-drive", f"if=none,id=install,format=raw,media=cdrom,readonly=on,file={backing['synthetic.iso']}",
+             "-drive",
+             "if=none,id=install,format=raw,media=cdrom,readonly=on,"
+             f"file={backing['synthetic.iso']}",
              "-device", "ide-cd,drive=install,bus=sata.1"]
     return args
 
@@ -436,7 +437,7 @@ def main() -> int:
     report: dict = {
         "schemaVersion": 1, "fixtureOnly": True,
         "head": os.environ.get("GITHUB_SHA", ""),
-        "utc": datetime.now(timezone.utc).isoformat(),
+        "utc": datetime.now(UTC).isoformat(),
         "qemuBooted": False, "guestOsUsed": False,
         "windowsSetupVerified": False, "calamaresExecuted": False,
         "productionStorageWritesAuthorized": False,
