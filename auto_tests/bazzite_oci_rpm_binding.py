@@ -98,14 +98,21 @@ def _read_tag(
 
 def rpm_header(data: bytes) -> dict:
     """Read only required scalar and per-file tags from one bounded RPM header."""
-    if not isinstance(data, bytes) or not 16 <= len(data) <= MAX_RPM_HEADER:
+    # rpmdb SQLite Packages.blob is an exported Header image and may omit
+    # the eight magic/reserved bytes present in .rpm package-file headers.
+    # Both encodings MUST pass the same exact index/store length checks.
+    if not isinstance(data, bytes) or not 8 <= len(data) <= MAX_RPM_HEADER:
         raise PackageUnproven("Invalid RPM header size")
-    if data[:8] != RPM_HEADER_MAGIC:
-        raise PackageUnproven("Invalid RPM header magic")
-    n, size = struct.unpack_from(">II", data, 8)
-    if n == 0 or n > 100000 or size > MAX_RPM_HEADER - 16 or 16 + 16 * n + size != len(data):
+    offset_magic = 8 if data[:8] == RPM_HEADER_MAGIC else 0
+    if len(data) < offset_magic + 8:
+        raise PackageUnproven("Truncated RPM header prefix")
+    n, size = struct.unpack_from(">II", data, offset_magic)
+    entries_start = offset_magic + 8
+    if n == 0 or n > 100000 or size > MAX_RPM_HEADER - entries_start:
         raise PackageUnproven("RPM header index/store lengths invalid")
-    offset = 16 + 16 * n
+    offset = entries_start + 16 * n
+    if offset + size != len(data):
+        raise PackageUnproven("RPM header index/store lengths invalid")
     wanted = {}
     selected = {
         NAME,
@@ -123,7 +130,7 @@ def rpm_header(data: bytes) -> dict:
         FILEDIGESTALGO,
     }
     for i in range(n):
-        tag, typ, pos, count = struct.unpack_from(">IIII", data, 16 + 16 * i)
+        tag, typ, pos, count = struct.unpack_from(">IIII", data, entries_start + 16 * i)
         if tag not in selected:
             continue
         if tag in wanted or pos >= size or count == 0 or count > MAX_ARRAY:
