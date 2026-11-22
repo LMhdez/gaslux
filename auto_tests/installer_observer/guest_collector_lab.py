@@ -217,6 +217,8 @@ def make_ramfs(workspace: Path, collector: Path, kernel: Path) -> tuple[Path, di
     stage = workspace / "ramfs"
     (stage / "bin").mkdir(parents=True, mode=0o700)
     (stage / "modules").mkdir(mode=0o700)
+    for mountpoint in ("dev", "proc", "sys"):
+        (stage / mountpoint).mkdir(mode=0o700)
     shutil.copyfile(busybox, stage / "bin" / "busybox")
     (stage / "bin" / "busybox").chmod(0o755)
     (stage / "bin" / "sh").symlink_to("busybox")
