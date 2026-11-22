@@ -1,0 +1,80 @@
+name: Mint M-278-01 FD-pinned predecessor race regressions (NO GUESTS)
+
+on:
+  push:
+    branches:
+      - fix/mint-f03-predecessor-fd-toctou-20261122
+    paths:
+      - auto_tests/tools/windows_mint_ab_forensic.py
+      - auto_tests/test_windows_mint_f03_toctou.py
+      - .github/workflows/mint-f03-predecessor-fd.yml
+  workflow_dispatch:
+
+concurrency:
+  group: mint-m27801-fd-only-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  real-module-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    name: Real Mint module synthetic adversarial races (NO WINDOWS)
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Restrict runner and branch identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GITHUB_REF" = refs/heads/fix/mint-f03-predecessor-fd-toctou-20261122
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+      - name: Reproduce RED or validate GREEN on actual Mint implementation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_f03_toctou.py -v
+      - name: Existing Mint A/B F-01 F-02 F-03 and Windows regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for suite in \
+            test_windows_mint_ab_forensic.py \
+            test_windows_mint_ab_checkpoint.py \
+            test_windows_mint_ab_capacity.py \
+            test_windows_mint_ab_synthetic.py \
+            test_windows_mint_ab_infrastructure.py \
+            test_windows_mint_overlay_root.py \
+            test_windows_x64_two_stage_boot.py; do
+            python3 -m unittest discover -s auto_tests -p "$suite" -v
+          done
+      - name: Pytest real-module and predecessor regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-m27801-pytest" "pytest==8.4.2"
+          PYTHONPATH="$RUNNER_TEMP/gaslux-m27801-pytest" python3 -m pytest -q \
+            auto_tests/test_windows_mint_f03_toctou.py \
+            auto_tests/test_windows_mint_ab_forensic.py
+      - name: Python compileall
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m compileall -q \
+            auto_tests/tools/windows_mint_ab_forensic.py \
+            auto_tests/test_windows_mint_f03_toctou.py \
+            auto_tests/test_windows_mint_ab_forensic.py
+      - name: Ruff 0.15.20 check and format
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-m27801-ruff" --no-deps "ruff==0.15.20"
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-m27801-ruff"
+          python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
+          python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
