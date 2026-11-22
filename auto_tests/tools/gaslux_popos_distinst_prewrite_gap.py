@@ -27,7 +27,7 @@ SOURCE_BLOBS = {
     "cli/src/main.rs": "bac1346a59ef2b48befd913d6d462f60187aa81d",
     "cli/src/configure/reuse.rs": "31bfbe010479a5ede32a966e4867efc42850a562",
     "src/installer/mod.rs": "1f73056529fcff7b282afe2f91b53f07eb2ae255",
-    "src/installer/steps/initialize.rs": None,  # not pinned: no false mapping
+    "src/installer/steps/initialize.rs": "06b84e139d373266c61ca86e51f1d01ee9db9f6b",
     "src/installer/steps/partition.rs": "863a0e35ca1c5d69b9369727fc9cdde260e6fe0f",
     "src/installer/steps/bootloader.rs": "6def4885a1b654cbd9e698a8d4f87bf6f3de8c71",
     "crates/disk-ops/src/ops.rs": "9381e4b5fa14b420260fe8b29716d5cc86512901",
