@@ -308,9 +308,7 @@ def test_real_paused_qemu_opens_exact_regular_image_and_reports_qmp(workspace, p
     finally:
         shutdown(child)
     assert image.stat().st_ino == pins.media_inode
-    gate.assert_snapshot_matches(
-        expected, gate.inspect_gpt_image(raw, logical_sector_size=512)
-    )
+    gate.assert_snapshot_matches(expected, gate.inspect_gpt_image(raw, logical_sector_size=512))
     if format == "qcow2":
         assert lab.verify_chain(image, raw, workspace) == chain
 
@@ -485,6 +483,7 @@ def test_qemu_cleanup_unconfirmed_is_explicit_refusal(workspace, pinned):
             assert witness.assert_stopped()["qemuProcessReaped"] is True
     finally:
         shutdown(child)
+
 
 @pytest.mark.parametrize("payload", [b'{"return":', b"", b"x" * 262145])
 def test_truncated_or_oversized_qmp_response_refused(payload):
