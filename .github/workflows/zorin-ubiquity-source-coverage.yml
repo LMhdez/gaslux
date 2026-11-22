@@ -1,0 +1,176 @@
+name: Zorin 18.1 Ubiquity source provenance (read-only)
+on:
+  push:
+    branches:
+      - test/zorin-ubiquity-source-gap-20261122
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  authentic-artifact-and-negative-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout only historical source-review branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Checkout exact canonical Safety FD reader, no changes
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: LMhdez/gaslux
+          ref: d5eb20114df34a778ada1af1f6f4f6bff0c49845
+          path: canonical-safety
+          persist-credentials: false
+          sparse-checkout: |
+            assets/live/libertix_disk_identity_gate.py
+            auto_tests/tests/test_disk_identity_gate.py
+          sparse-checkout-cone-mode: false
+      - name: Recover exact original #264 map ZIP, no source bodies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = "LMhdez/gaslux"
+          test "$RUNNER_ENVIRONMENT" = "github-hosted"
+          umask 077
+          curl --fail --silent --show-error --location --max-time 90 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/LMhdez/gaslux/actions/artifacts/14702053502/zip" \
+            -o "$RUNNER_TEMP/zorin-original-code-map.zip"
+          test -f "$RUNNER_TEMP/zorin-original-code-map.zip"
+          test ! -L "$RUNNER_TEMP/zorin-original-code-map.zip"
+          printf '%s  %s\n' \
+            641bf31056addd3e54126d3e636ea524d12d0a4ac16e4188510aef8ae1f08da9 \
+            "$RUNNER_TEMP/zorin-original-code-map.zip" | sha256sum -c
+      - name: Ruff, compileall, authenticated map, negative and shared regressions
+        env:
+          PYTHONPATH: canonical-safety/assets/live:auto_tests/tools
+          GASLUX_ZORIN_ORIGINAL_MAP_ZIP: /home/runner/work/_temp/zorin-original-code-map.zip
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C canonical-safety rev-parse HEAD)" = d5eb20114df34a778ada1af1f6f4f6bff0c49845
+          python3 -m pip install --break-system-packages --no-input 'jsonschema>=4.20,<5' 'ruff>=0.10,<0.18' 'pytest>=8,<9'
+          python3 -m compileall -q auto_tests/tools/zorin_ubiquity_source_coverage.py auto_tests/test_zorin_ubiquity_source_coverage.py
+          ruff check --select E4,E7,E9,F auto_tests/tools/zorin_ubiquity_source_coverage.py auto_tests/test_zorin_ubiquity_source_coverage.py
+          ruff format --check auto_tests/tools/zorin_ubiquity_source_coverage.py auto_tests/test_zorin_ubiquity_source_coverage.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+          for name in ("schemas/zorin-native-ubiquity-capabilities.schema.json",
+                       "schemas/zorin-ubiquity-handoff-readonly.schema.json",
+                       "schemas/installation-plan.schema.json"):
+              Draft202012Validator.check_schema(json.loads(Path(name).read_text(encoding="utf-8")))
+          print("PASS: reused JSON Schemas, no new generic contracts")
+          PY
+          python3 -m unittest discover -s auto_tests -p test_zorin_ubiquity_source_coverage.py -v
+          python3 -m unittest discover -s auto_tests -p test_zorin_ubiquity_precommit_boundary.py -v
+          python3 -m unittest discover -s auto_tests -p test_zorin_ubiquity_handoff_readonly.py -v
+          python3 -m unittest discover -s auto_tests -p test_zorin_native_ubiquity_map.py -v
+          python3 -m unittest discover -s auto_tests -p test_zorin_fd_toctou_repro.py -v
+          python3 -m pytest -q canonical-safety/auto_tests/tests/test_disk_identity_gate.py
+          mkdir -m 700 -p zorin-source-evidence
+          python3 auto_tests/tools/zorin_ubiquity_source_coverage.py \
+            --artifact-zip "$GASLUX_ZORIN_ORIGINAL_MAP_ZIP" \
+            --out zorin-source-evidence/authenticated-historical-source-gap.json
+          echo 'DENY_NO_WRITER: original #264 ZIP is a static map, NOT a source-body or call-graph archive.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive metadata only; never upload source bodies
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-source-map-gap-text
+          path: zorin-source-evidence/authenticated-historical-source-gap.json
+          if-no-files-found: error
+          retention-days: 7
+
+  pinned-iso-targeted-source:
+    needs: authentic-artifact-and-negative-regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      ZORIN_SHA256: 44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5
+      ZORIN_BYTES: '3909091328'
+      ZORIN_URL: https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso
+      PYTHONPATH: auto_tests/tools
+    steps:
+      - name: Checkout pinned code and read-only scanner
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install passive ISO/SquashFS reader utilities
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+          sudo timeout --signal=TERM --kill-after=15s 480s \
+            apt-get -o Acquire::Retries=2 update -qq
+          sudo timeout --signal=TERM --kill-after=15s 480s \
+            env DEBIAN_FRONTEND=noninteractive \
+            apt-get install -y --no-install-recommends aria2 squashfs-tools python3-jsonschema
+          mkdir -m 700 -p "$RUNNER_TEMP/zorin-source-pinned"
+          mkdir -m 700 -p zorin-target-source-evidence
+      - name: Fetch pinned artifact and full immutable Zorin ISO (no guest disk)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          curl --fail --silent --show-error --location --max-time 90 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/LMhdez/gaslux/actions/artifacts/14702053502/zip" \
+            -o "$RUNNER_TEMP/zorin-source-pinned/original-map.zip"
+          printf '%s  %s\n' \
+            641bf31056addd3e54126d3e636ea524d12d0a4ac16e4188510aef8ae1f08da9 \
+            "$RUNNER_TEMP/zorin-source-pinned/original-map.zip" | sha256sum -c
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4 \
+            --max-tries=4 --retry-wait=10 --timeout=90 --connect-timeout=30 \
+            --check-integrity=true --checksum="sha-256=$ZORIN_SHA256" \
+            --dir="$RUNNER_TEMP/zorin-source-pinned" --out=zorin.iso "$ZORIN_URL"
+          iso="$RUNNER_TEMP/zorin-source-pinned/zorin.iso"
+          test -f "$iso" && test ! -L "$iso"
+          test "$(stat -c %s "$iso")" = "$ZORIN_BYTES"
+          printf '%s  %s\n' "$ZORIN_SHA256" "$iso" | sha256sum -c
+      - name: Inspect only eight exact modules in verified ISO mount
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mountdir="$RUNNER_TEMP/zorin-source-pinned/iso9660"
+          mkdir -m 700 "$mountdir"
+          mounted=0
+          cleanup() {
+            if [ "$mounted" = 1 ]; then
+              sudo umount "$mountdir" || echo "::error::Read-only source mount cleanup failed"
+            fi
+          }
+          trap cleanup EXIT
+          sudo mount -t iso9660 -o ro,loop,nosuid,nodev,noexec \
+            "$RUNNER_TEMP/zorin-source-pinned/zorin.iso" "$mountdir"
+          mounted=1
+          python3 auto_tests/tools/zorin_ubiquity_source_coverage.py \
+            --artifact-zip "$RUNNER_TEMP/zorin-source-pinned/original-map.zip" \
+            --iso "$RUNNER_TEMP/zorin-source-pinned/zorin.iso" \
+            --mounted "$mountdir" \
+            --out zorin-target-source-evidence/pinned-source-static-edges.json
+          sudo umount "$mountdir"
+          mounted=0
+          echo 'SOURCES: only static calls from verified bytes, no proven first write, action graph, dry-run or writer.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload text metadata, no extracted source or ISO
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-source-eight-modules-readonly
+          path: zorin-target-source-evidence/pinned-source-static-edges.json
+          if-no-files-found: error
+          retention-days: 7
