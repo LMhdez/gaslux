@@ -90,8 +90,9 @@ def verify_read_only_fsck(work: Path, phase: str) -> dict:
                 "endLba": p.end,
             }
         finally:
-            if image.exists():
-                regular(image, length=p.count * SECTOR).unlink()
+            # Preserve exact extracted fixture for hosted runner disposal.
+            # A pathname unlink cannot prove ownership against same-UID swaps.
+            pass
     need(
         verify_fs_types(base) == plan["filesystems"],
         "REFUSE_RECOVERY_UNPROVEN: filesystem type identity changed",

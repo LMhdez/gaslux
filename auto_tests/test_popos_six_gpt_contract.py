@@ -160,8 +160,105 @@ class SixGptNegativeTests(unittest.TestCase):
             f"virtio_blk_handle_write sector {c.PARTS[5].start} nsectors 16\n"
         )
         self.assertEqual(valid["observedBytes"], 12288)
+        self.assertFalse(valid["observedWritesConfinedToOwnedPopPartitions"])
+        self.assertEqual(valid["traceClassification"], "PARSED_UNTRUSTED")
         self.assertFalse(valid["observationComplete"])
         self.assertFalse(valid["productionInstallationAuthorized"])
+
+    def test_safety_f02_multidevice_concatenation_and_untrusted(self):
+        for trace in (
+            "vda virtio_blk_handle_write sector 3188736 nsectors 1\n"
+            "vdb virtio_blk_handle_write sector 5285888 nsectors 1",
+            "virtio_blk_handle_write sector 64 nsectors 1 "
+            "virtio_blk_handle_write sector 3188736 nsectors 1",
+            "virtio_blk_handle_write sector -1 nsectors 1",
+            "virtio_blk_handle_write sector 3188736 nsectors 1x",
+            "virtio_blk_handle_write sector 3188736 nsectors 0",
+            "virtio_blk_handle_write sector 3188736 nsectors 999999999999",
+            "virtio_blk_handle_write_zeroes sector 3188736 nsectors 1",
+        ):
+            with self.subTest(trace=trace), self.assertRaises(Refusal):
+                c.audit_qemu_trace(trace)
+        parsed = c.audit_qemu_trace(
+            "vda virtio_blk_handle_write sector 3188736 nsectors 1"
+        )
+        self.assertFalse(parsed["observedWritesConfinedToOwnedPopPartitions"])
+        self.assertFalse(parsed["traceProvenanceAuthenticated"])
+        self.assertFalse(parsed["observationComplete"])
+
+    def test_safety_f03_fault_detection_not_tool_failure(self):
+        import subprocess
+
+        full = json.dumps([
+            {"start": 0, "length": 4096, "depth": 1, "data": True, "zero": False},
+            {"start": 4096, "length": c.SIZE-4096, "depth": 0,
+             "data": False, "zero": False},
+        ])
+        with patch.object(lab, "chain"), patch.object(lab, "command", return_value=full):
+            with self.assertRaisesRegex(Refusal, "not materialized"):
+                lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+        for error in (
+            Refusal("qemu-img failed"),
+            subprocess.TimeoutExpired("qemu-img", 1),
+            ValueError("malformed JSON"),
+        ):
+            with patch.object(lab, "chain"), patch.object(lab, "command", side_effect=error):
+                with self.assertRaises(type(error)):
+                    lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+        injected = json.dumps([
+            {"start": 0, "length": 8192, "depth": 1, "data": True, "zero": False},
+            {"start": 8192, "length": 4096, "depth": 0, "data": True, "zero": False},
+            {"start": 12288, "length": c.SIZE-12288, "depth": 1,
+             "data": True, "zero": False},
+        ])
+        with patch.object(lab, "chain"), patch.object(lab, "command", return_value=injected):
+            with self.assertRaises(lab.ProtectedFaultDetected):
+                lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+
+    def test_safety_f04_zero_overlay_and_map_validation(self):
+        zero = [{"depth": 0, "data": False, "zero": True, "start": 0,
+                 "length": 4096},
+                {"depth": 1, "data": True, "zero": False, "start": 4096,
+                 "length": c.SIZE-4096}]
+        with patch.object(lab, "chain"), patch.object(
+            lab, "command", return_value=json.dumps(zero)
+        ):
+            with self.assertRaisesRegex(Refusal, "owned extents"):
+                lab.ensure_empty_child(Path("child"), Path("backing"))
+        for malformed in (
+            "{", "[]", '[{"depth":0,"data":false,"zero":true,"start":0,"length":4096}]',
+            json.dumps([{"depth": 1, "data": True, "zero": False, "start": 0,
+                         "length": c.SIZE, "surprise": True}]),
+        ):
+            with self.subTest(malformed=malformed[:20]), self.assertRaises(Refusal):
+                lab.parse_qcow_map(malformed)
+        empty = [{"start": 0, "length": c.SIZE, "depth": 1,
+                  "data": True, "zero": False}]
+        with patch.object(lab, "chain"), patch.object(
+            lab, "command", return_value=json.dumps(empty)
+        ):
+            lab.ensure_empty_child(Path("child"), Path("backing"))
+
+    def test_safety_f01_directory_swap_export_refuses_foreign(self):
+        import gaslux_popos_six_gpt_ownership as owner
+
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            work = parent / "gaslux-pop-six-gpt-owned"
+            work.mkdir(mode=0o700)
+            evidence = parent / "evidence"
+            evidence.mkdir(mode=0o700)
+            (work / owner.FILES[0]).write_text("original")
+            pinned = (work.stat().st_dev, work.stat().st_ino)
+            owner.export_evidence(work, evidence, pinned)
+            self.assertEqual((evidence / owner.FILES[0]).read_text(), "original")
+            work.rename(parent / "moved")
+            work.mkdir(mode=0o700)
+            (work / owner.FILES[1]).write_text("FOREIGN")
+            with self.assertRaises(owner.OwnershipRefusal):
+                owner.export_evidence(work, evidence, pinned)
+            self.assertTrue((work / owner.FILES[1]).exists())
+            self.assertTrue((parent / "moved" / owner.FILES[0]).exists())
 
     def test_valid_plan_is_permanently_no_writer(self):
         plan = sample_plan()
@@ -267,7 +364,7 @@ class SixGptNegativeTests(unittest.TestCase):
                 lab.ensure_empty_child(Path("/tmp/foreign"), Path("/tmp/base"))
         runner_source = (TOOLS / "gaslux_popos_six_gpt_lab.py").read_text()
         self.assertIn("ensure_empty_child(fault, base)", runner_source)
-        self.assertIn("regular(fault, write=True).unlink()", runner_source)
+        self.assertNotIn("regular(fault, write=True).unlink()", runner_source)
         self.assertIn('sha(base) == plan["backingSha256"]', runner_source)
         self.assertIn("verify_canaries(base, plan, work)", runner_source)
 
