@@ -246,13 +246,22 @@ for module in /modules/*.ko; do
     [ -f "$module" ] && insmod "$module" || true
 done
 i=0
-while [ ! -e /dev/virtio-ports/gaslux.observer ]; do
+while [ "$i" -le 30 ]; do
+    for namefile in /sys/class/virtio-ports/vport*/name; do
+        [ -f "$namefile" ] || continue
+        IFS= read -r current_name < "$namefile" || continue
+        [ "$current_name" = "gaslux.observer" ] || continue
+        record=${namefile%/name}
+        port=${record##*/}
+        if [ -c "/dev/$port" ]; then
+            echo "GASLUX_GUEST_BOOT_READY $(cat /proc/sys/kernel/random/boot_id)" > /dev/ttyS0
+            exec /bin/sh /collector "/dev/$port"
+        fi
+    done
     i=$((i+1))
-    [ "$i" -le 25 ] || exit 14
     sleep 1
 done
-echo "GASLUX_GUEST_BOOT_READY $(cat /proc/sys/kernel/random/boot_id)" > /dev/ttyS0
-exec /bin/sh /collector
+exit 14
 """
 
 
