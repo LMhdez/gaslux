@@ -45,8 +45,10 @@ def parse_dpkg_status(status: bytes) -> dict:
 
     This is NOT a signed repository package index, .buildinfo or source proof.
     """
-    need(type(status) is bytes and 0 < len(status) <= MAX_STATUS_BYTES,
-         "REFUSE_BUILD20: unbounded/invalid dpkg status")
+    need(
+        type(status) is bytes and 0 < len(status) <= MAX_STATUS_BYTES,
+        "REFUSE_BUILD20: unbounded/invalid dpkg status",
+    )
     try:
         data = status.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -71,16 +73,21 @@ def parse_dpkg_status(status: bytes) -> dict:
             matches.append(props)
     need(len(matches) == 1, "REFUSE_BUILD20: missing/ambiguous distinst package")
     row = matches[0]
-    need(row.get("Status") == "install ok installed",
-         "REFUSE_BUILD20: distinst not installed in live squashfs")
+    need(
+        row.get("Status") == "install ok installed",
+        "REFUSE_BUILD20: distinst not installed in live squashfs",
+    )
     version = row.get("Version", "")
-    need(VERSION.fullmatch(version) is not None,
-         "REFUSE_BUILD20: invalid distinst binary version")
-    need(row.get("Architecture") == "amd64",
-         "REFUSE_BUILD20: unexpected distinst package architecture")
+    need(VERSION.fullmatch(version) is not None, "REFUSE_BUILD20: invalid distinst binary version")
+    need(
+        row.get("Architecture") == "amd64",
+        "REFUSE_BUILD20: unexpected distinst package architecture",
+    )
     source = row.get("Source")
-    need(source is None or re.fullmatch(r"[0-9A-Za-z.+:~_() -]{1,160}", source) is not None,
-         "REFUSE_BUILD20: invalid source metadata")
+    need(
+        source is None or re.fullmatch(r"[0-9A-Za-z.+:~_() -]{1,160}", source) is not None,
+        "REFUSE_BUILD20: invalid source metadata",
+    )
     dependencies = row.get("Depends", "")
     need(len(dependencies) <= 8192, "REFUSE_BUILD20: unbounded dependency metadata")
     suffixes = GIT_SUFFIX.findall(version)
@@ -99,15 +106,21 @@ def parse_dpkg_status(status: bytes) -> dict:
 
 
 def _regular_owned(path: Path, limit: int, expected: int | None = None) -> int:
-    need(isinstance(path, Path) and path.is_absolute() and not path.is_symlink(),
-         "REFUSE_BUILD20: non-absolute/symlink input")
+    need(
+        isinstance(path, Path) and path.is_absolute() and not path.is_symlink(),
+        "REFUSE_BUILD20: non-absolute/symlink input",
+    )
     try:
         info = path.lstat()
     except OSError as exc:
         raise Build20ProvenanceRefusal("REFUSE_BUILD20: input unavailable") from exc
-    need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid()
-         and info.st_nlink == 1 and 0 < info.st_size <= limit,
-         "REFUSE_BUILD20: foreign, non-regular or unbounded input")
+    need(
+        stat.S_ISREG(info.st_mode)
+        and info.st_uid == os.geteuid()
+        and info.st_nlink == 1
+        and 0 < info.st_size <= limit,
+        "REFUSE_BUILD20: foreign, non-regular or unbounded input",
+    )
     if expected is not None:
         need(info.st_size == expected, "REFUSE_BUILD20: unexpected file length")
     return info.st_size
@@ -122,7 +135,10 @@ def sha256_file(path: Path) -> str:
 
 
 def inspect_build20_extraction(
-    iso: Path, elf: Path, status: Path, workspace: Path,
+    iso: Path,
+    elf: Path,
+    status: Path,
+    workspace: Path,
 ) -> dict:
     """Only after hosted runner downloaded *and GPG-verified* the exact ISO.
 
@@ -146,8 +162,7 @@ def inspect_build20_extraction(
     )
     w = workspace.resolve(strict=True)
     need(
-        workspace.stat().st_uid == os.geteuid()
-        and stat.S_IMODE(workspace.stat().st_mode) == 0o700,
+        workspace.stat().st_uid == os.geteuid() and stat.S_IMODE(workspace.stat().st_mode) == 0o700,
         "REFUSE_BUILD20: workspace must be private",
     )
     for path in (iso, elf, status):
@@ -158,10 +173,14 @@ def inspect_build20_extraction(
     _regular_owned(iso, PINNED_ISO_BYTES, PINNED_ISO_BYTES)
     _regular_owned(elf, MAX_BINARY_BYTES)
     _regular_owned(status, MAX_STATUS_BYTES)
-    need(sha256_file(iso) == PINNED_ISO_SHA256,
-         "REFUSE_BUILD20: signed-ISO expected SHA-256 mismatch")
-    need(sha256_file(elf) == ELF_SHA256,
-         "REFUSE_BUILD20: extracted ELF differs from build20 live pin")
+    need(
+        sha256_file(iso) == PINNED_ISO_SHA256,
+        "REFUSE_BUILD20: signed-ISO expected SHA-256 mismatch",
+    )
+    need(
+        sha256_file(elf) == ELF_SHA256,
+        "REFUSE_BUILD20: extracted ELF differs from build20 live pin",
+    )
     raw_status = status.read_bytes()
     package = parse_dpkg_status(raw_status)
     return {

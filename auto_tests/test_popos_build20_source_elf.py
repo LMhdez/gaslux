@@ -34,9 +34,7 @@ class PackageStatusTests(unittest.TestCase):
         self.assertFalse(info["sourceBuildEnvironmentReproduced"])
 
     def test_new_source_commit_postdates_old_iso(self) -> None:
-        self.assertGreater(
-            audit.SOURCE_COMMITTED_UTC, audit.BUILD20_EARLIEST_PUBLIC_REFERENCE_UTC
-        )
+        self.assertGreater(audit.SOURCE_COMMITTED_UTC, audit.BUILD20_EARLIEST_PUBLIC_REFERENCE_UTC)
 
     def test_ambiguous_absent_wrong_or_corrupt_status_refuses(self) -> None:
         corrupt = (
@@ -53,9 +51,7 @@ class PackageStatusTests(unittest.TestCase):
             b" Bad continuation\n",
         )
         for content in corrupt:
-            with self.subTest(data=content[:30]), self.assertRaises(
-                audit.Build20ProvenanceRefusal
-            ):
+            with self.subTest(data=content[:30]), self.assertRaises(audit.Build20ProvenanceRefusal):
                 audit.parse_dpkg_status(content)
 
     def test_missing_source_is_not_source_proof(self) -> None:
@@ -105,9 +101,7 @@ class TinyExtractedFixtureTests(unittest.TestCase):
         self.addCleanup(pins.stop)
 
     def inspect(self) -> dict:
-        return audit.inspect_build20_extraction(
-            self.iso, self.elf, self.status, self.work
-        )
+        return audit.inspect_build20_extraction(self.iso, self.elf, self.status, self.work)
 
     def test_synthetic_positive_still_returns_unproven(self) -> None:
         report = self.inspect()
