@@ -464,3 +464,22 @@ def test_342_unique_final_allocation_block_change_refused(sample, monkeypatch):
     monkeypatch.setattr(large, "_allocated", changing_allocation)
     refused(sample, "RESOURCE_MUTATED_DURING_INSPECTION")
 
+def test_canonical_incomplete_raw_backing_refused_before_gpt_validation(sample):
+    backing = sample["paths"][1]
+    with backing.open("r+b") as writable:
+        writable.truncate(CAPACITY - 512)
+    refused(sample, "NOT_128G_BACKING_GEOMETRY")
+
+
+def test_canonical_self_claimed_checkpoint_restore_does_not_prove_recovery(sample):
+    checkpoint = sample["paths"][2]
+    content = json.loads(checkpoint.read_text(encoding="utf-8"))
+    content["restoreProven"] = True
+    checkpoint.write_text(json.dumps(content, sort_keys=True), encoding="utf-8")
+    new_digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    refused(
+        sample,
+        "CHECKPOINT_TRANSACTION_MISMATCH",
+        expected_checkpoint_sha256=new_digest,
+    )
+
