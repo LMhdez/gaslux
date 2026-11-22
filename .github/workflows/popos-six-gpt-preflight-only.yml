@@ -29,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pop-six-gpt-preflight-no-guest
+  group: pop-six-gpt-preflight-no-guest-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
