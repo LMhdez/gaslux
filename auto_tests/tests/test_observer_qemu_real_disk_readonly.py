@@ -551,23 +551,34 @@ def _guest_peer_denied(host: dict, peer: dict) -> None:
     assert host["status"] == peer["status"] == "BLOCKED_TRUST_ROOT"
     assert host["classification"] == peer["classification"] == "NOT_INDEPENDENT"
     for key in (
-        "guestChannelAuthenticated", "guestProcessAuthenticated",
-        "collectorAuthenticated", "anacondaProcessVerified",
-        "persistentLedgerVerified", "replayProtected", "externallyAttested",
-        "freshnessAuthenticated", "inputAuthorized", "diskWritesAuthorized",
-        "productionInstallationAuthorized", "productionWriteAuthorized",
+        "guestChannelAuthenticated",
+        "guestProcessAuthenticated",
+        "collectorAuthenticated",
+        "anacondaProcessVerified",
+        "persistentLedgerVerified",
+        "replayProtected",
+        "externallyAttested",
+        "freshnessAuthenticated",
+        "inputAuthorized",
+        "diskWritesAuthorized",
+        "productionInstallationAuthorized",
+        "productionWriteAuthorized",
     ):
         assert peer[key] is False, key
     for key in (
-        "qemuBackendToFdBindingIndependentlyProven", "guestChannelAuthenticated",
-        "diskWriteAuthorized", "productionInstallationAuthorized",
-        "rollbackProven", "stable",
+        "qemuBackendToFdBindingIndependentlyProven",
+        "guestChannelAuthenticated",
+        "diskWriteAuthorized",
+        "productionInstallationAuthorized",
+        "rollbackProven",
+        "stable",
     ):
         assert host[key] is False, key
 
 
-def _guest_peer_manifest(qemu: QemuDiskPins, host: dict, peer: dict, chain: dict,
-                         gpt: dict, reaped: bool) -> None:
+def _guest_peer_manifest(
+    qemu: QemuDiskPins, host: dict, peer: dict, chain: dict, gpt: dict, reaped: bool
+) -> None:
     """Emit bounded, UNSIGNED local host evidence; zero guest observations."""
     root = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
     output = root / "gaslux-observer-guest-peer"
@@ -722,9 +733,7 @@ def test_different_real_qemu_process_cannot_claim_peer(tmp_path, pinned):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
             conn.connect(str(right / "guest-peer.sock"))
             pins = _peer_pins(conn, p_first, lab.sha256(a))
-            with pytest.raises(
-                TransportBoundaryRefused, match="REMOTE_PROCESS_IDENTITY_MISMATCH"
-            ):
+            with pytest.raises(TransportBoundaryRefused, match="REMOTE_PROCESS_IDENTITY_MISMATCH"):
                 LocalTransportWitness(conn, pins)
     finally:
         shutdown(first)
