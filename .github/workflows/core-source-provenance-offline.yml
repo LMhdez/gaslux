@@ -76,7 +76,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "C# contract tests failed: $LASTEXITCODE" }
       - name: Existing PowerShell Pester suite
         if: always()
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
