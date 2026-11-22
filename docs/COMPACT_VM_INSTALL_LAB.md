@@ -28,6 +28,12 @@ This implementation provisions **one private sparse 60-GiB QEMU target disk**, n
 - `.github/workflows/compact-ovmf-target-disk.yml` executes the actual program on ephemeral GitHub-hosted Ubuntu, tests negative cases, independently re-reads the disk geometry, deletes only the image-owned private directory and uploads **JSON evidence only**, never the virtual disk or ISO.
 - **No guest receives read/write access**; no Windows/Mint boot, partitioning, BCD/ESP/WinRE, installation, update, uninstall or rollback operation is executed here. No stable catalog or production runtime changes.
 
+## Private hard-quota ENOSPC fixture (separate proposed change)
+
+The same existing compact workflow builds a **384-MiB exclusively owned sparse file**, formats it as ext4 and mounts only its exact loop-device mapping under a private runner workspace. It creates a **real** QCOW2 baseline and overlay on this bounded filesystem. The fixture verifies backing-chain ownership, then fills ext4 to leave a measured 3-MiB reserve. A real `qemu-io` write must fail specifically with **ENOSPC**. Baseline SHA-256 must remain unchanged; the fixture deletes only its owned overlay and filler, recreates the overlay, and verifies the baseline canary after restoration. Foreign loop sources, symlinked workspaces, unrelated write failures, insufficient host reserve, or failed unmount **fail closed**. A failed unmount leaves the workspace intact instead of traversing a mounted directory.
+
+The output is `evidence/compact-qcow2-quota-fixture.json`. It proves physical-limit behavior for a **384-MiB synthetic ext4 loopback fixture only**. `real_60gib_quota_verified=false`, `lab_writer_admitted=false`, and all installed/Windows/dual-boot/rollback assertions remain `false`. No guest receives write permission. A future full-size lab must establish effective capacity, bounded baseline+overlay growth, authentic Windows media, and independent Safety acceptance. If a GitHub-hosted runner cannot mount the private loop device, the test must report blocked, not a false success.
+
 ## Next real engineering steps
 
 1. Confirm exact current runner capacity and actual successful sparse image creation from CI evidence. `BLOCKED_STORAGE` is a valid measurement, not proof of installation.
