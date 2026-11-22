@@ -1,0 +1,120 @@
+name: Gaslux Local Coder - bounded regression proposals
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-local-coder.yml
+      - auto_tests/tools/local_coder_logging_repair.py
+      - auto_tests/tools/local_coder_publish.py
+  push:
+    branches: [dev]
+    paths:
+      - auto_tests/app/logging_config.py
+      - auto_tests/tests/test_logging_config.py
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaslux-local-coder-autofix
+  cancel-in-progress: false
+
+jobs:
+  read-only-worker:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == 'LMhdez/gaslux')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      proposed: ${{ steps.worker.outputs.proposed }}
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      GASLUX_AGENT_MODEL: qwen2.5-coder:3b
+      GASLUX_AGENT_SIMULATE: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    steps:
+      - name: Checkout only the intended disposable source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'dev' }}
+          persist-credentials: false
+      - name: Install isolated focused-test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/gaslux-agent-venv
+          /tmp/gaslux-agent-venv/bin/python -m pip install --disable-pip-version-check 'pytest>=9,<10' 'python-json-logger>=2,<4'
+      - name: Start experimental local Ollama CPU server (worker has no write token)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error https://ollama.com/install.sh -o /tmp/ollama-install.sh
+          sh /tmp/ollama-install.sh
+          (ollama serve > /tmp/ollama-serve.log 2>&1 &)
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:11434/api/version >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/ollama-serve.log
+          exit 1
+      - name: Fetch bounded 3B coding model
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 600 ollama pull "$GASLUX_AGENT_MODEL"
+          ollama list
+      - name: RED test then bounded model repair and GREEN test
+        id: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 480 /tmp/gaslux-agent-venv/bin/python auto_tests/tools/local_coder_logging_repair.py
+          if [[ -f evidence/candidate-logging_config.py ]]; then
+            echo proposed=true >> "$GITHUB_OUTPUT"
+          else
+            echo proposed=false >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload proposed patch and independent test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaslux-local-coder-proposal
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+  draft-pr-publisher:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.event_name != 'pull_request' &&
+      needs.read-only-worker.outputs.proposed == 'true'
+    needs: read-only-worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout controlled publisher code (never execute proposed module)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Download completed worker evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: gaslux-local-coder-proposal
+          path: evidence/
+      - name: Exact-current-dev check and create at most one Draft PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 -I auto_tests/tools/local_coder_publish.py
