@@ -28,7 +28,7 @@ def evidence() -> dict:
             {"kind": "ProcessStart", "timestampNs": 1100000000, "pid": 42},
             {"kind": "FileIoName", "timestampNs": 1200000000,
              "fileObject": "0xa123", "fileName":
-             r"\\Device\\HarddiskVolume1\\EFI\\Microsoft\\Boot\\BCD"},
+             r"\Device\HarddiskVolume1\EFI\Microsoft\Boot\BCD"},
             {"kind": "FileIoWrite", "timestampNs": 1300000000,
              "fileObject": "0xa123", "pid": 42, "irp": "0xbbb"},
             {"kind": "DiskIoWrite", "timestampNs": 1350000000,
@@ -97,7 +97,7 @@ class EtwOfflineTests(unittest.TestCase):
         fixture["events"].insert(2, {
             "kind": "FileIoName", "timestampNs": 1250000000,
             "fileObject": "0xa123", "fileName":
-            r"\\Device\\HarddiskVolume1\\EFI\\Microsoft\\Boot\\BCD",
+            r"\Device\HarddiskVolume1\EFI\Microsoft\Boot\BCD",
         })
         result = etw.normalize_etw_fixture(fixture)
         self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
