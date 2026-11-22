@@ -17,7 +17,6 @@ import pytest
 
 from auto_tests.installer_observer import authenticated_destination as dest
 
-
 GiB = 1024**3
 
 
