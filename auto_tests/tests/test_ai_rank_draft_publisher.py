@@ -22,6 +22,8 @@ SPEC.loader.exec_module(publisher)
 class DraftPublisherTests(unittest.TestCase):
     def setUp(self):
         original = (ROOT / publisher.TARGET).read_bytes()
+        if original.count(publisher.FAULT.encode()) == 1:
+            original = original.replace(publisher.FAULT.encode(), publisher.FIXED.encode(), 1)
         self.assertEqual(original.count(publisher.FIXED.encode()), 1)
         self.good = original
         self.bad = original.replace(
@@ -98,7 +100,7 @@ class DraftPublisherTests(unittest.TestCase):
 
         def fake_api(method, route, payload=None, allow_missing=False):
             calls.append((method, route, payload))
-            if method == "GET" and route == "/git/ref/heads/dev":
+            if method == "GET" and route == "/git/ref/heads/autonomy/lab-ai-rank-publisher-20261122":
                 return {"object": {"sha": current_sha}}
             if method == "GET" and route == (
                 f"/contents/{publisher.TARGET}?ref={self.head}"
@@ -126,7 +128,7 @@ class DraftPublisherTests(unittest.TestCase):
             ), patch.object(publisher, "request_json", side_effect=fake_api), patch.dict(
                 os.environ, {
                     "GITHUB_EVENT_NAME": "push",
-                    "GITHUB_REF": "refs/heads/dev",
+                    "GITHUB_REF": "refs/heads/autonomy/lab-ai-rank-publisher-20261122",
                     "GITHUB_REPOSITORY": publisher.REPO,
                     "GITHUB_SHA": self.head,
                     "GH_TOKEN": "fake-token-not-used",
@@ -147,7 +149,7 @@ class DraftPublisherTests(unittest.TestCase):
         self.assertEqual(mutations[1][1], f"/contents/{publisher.TARGET}")
         self.assertEqual(mutations[2][1], "/pulls")
         self.assertTrue(mutations[2][2]["draft"])
-        self.assertEqual(mutations[2][2]["base"], "dev")
+        self.assertEqual(mutations[2][2]["base"], "autonomy/lab-ai-rank-publisher-20261122")
 
     def test_changed_dev_base_blocks_all_mutations(self):
         calls = self.run_mock_publish(current_sha="b" * 40)

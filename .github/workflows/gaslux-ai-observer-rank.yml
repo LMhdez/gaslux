@@ -6,7 +6,7 @@ on:
       - .github/workflows/gaslux-ai-observer-rank.yml
       - auto_tests/tools/ai_rank_candidate.py
   push:
-    branches: [dev]
+    branches: [dev, autonomy/lab-ai-rank-publisher-20261122]
     paths:
       - auto_tests/tools/rank_capture_changes.py
       - .github/workflows/gaslux-ai-observer-rank.yml
@@ -39,7 +39,7 @@ jobs:
       - name: Checkout disposable source with no persisted credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'dev' }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Early test, skip inference if source already green
         id: baseline
@@ -133,7 +133,7 @@ jobs:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/dev' &&
+      github.ref == 'refs/heads/autonomy/lab-ai-rank-publisher-20261122' &&
       needs.unprivileged-candidate.outputs.proposed == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5

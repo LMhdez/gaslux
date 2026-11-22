@@ -24,7 +24,7 @@ def ranked_changes(directory: Path, pattern: str) -> list[tuple[float, Path, Pat
             changes.append((image_score(previous, current), previous, current))
         except OSError as exc:
             print(f"skip {current}: {exc}")
-    return sorted(changes, reverse=True, key=lambda item: item[0])
+    return sorted(changes, reverse=False, key=lambda item: item[0])
 
 
 def main() -> int:

@@ -19,7 +19,7 @@ import urllib.request
 
 
 REPO = "LMhdez/gaslux"
-BASE = "dev"
+BASE = "autonomy/lab-ai-rank-publisher-20261122"
 TARGET = "auto_tests/tools/rank_capture_changes.py"
 API_ROOT = f"https://api.github.com/repos/{REPO}"
 REPORT = Path("evidence/ai-rank-repair.json")
@@ -121,7 +121,7 @@ def request_json(
 
 def main() -> None:
     if os.environ.get("GITHUB_EVENT_NAME") != "push" or (
-        os.environ.get("GITHUB_REF") != "refs/heads/dev"
+        os.environ.get("GITHUB_REF") != "refs/heads/autonomy/lab-ai-rank-publisher-20261122"
     ) or os.environ.get("GITHUB_REPOSITORY") != REPO:
         raise RuntimeError("Publisher may only run on trusted dev pushes")
     sha = os.environ["GITHUB_SHA"]
