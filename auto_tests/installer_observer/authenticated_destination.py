@@ -123,9 +123,7 @@ def _qcow2_chain(fd: int, backing: Path, virtual_bytes: int) -> None:
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise DestinationRefused("QCOW2_CHAIN_INSPECTION_FAILED") from exc
     require(
-        type(chain) is list
-        and len(chain) == 2
-        and all(type(node) is dict for node in chain),
+        type(chain) is list and len(chain) == 2 and all(type(node) is dict for node in chain),
         "QCOW2_BACKING_DEPTH_INVALID",
     )
     overlay, parent = chain
@@ -174,11 +172,10 @@ def assess_authenticated_destination(
         and prewrite_inputs["plan"].get("planId") == pins.transaction_id,
         "TRANSACTION_MISMATCH",
     )
+    require(guest_claim is None, "GUEST_ORIGIN_NOT_AUTHENTICATED")
     require(
-        guest_claim is None, "GUEST_ORIGIN_NOT_AUTHENTICATED"
-    )
-    require(
-        source_claim is None or (
+        source_claim is None
+        or (
             type(source_claim) is dict
             and set(source_claim) == {"kind", "digest"}
             and source_claim["kind"] in {"iso", "oci", "native-iso"}
@@ -199,8 +196,7 @@ def assess_authenticated_destination(
         "INVALID_TYPED_PLAN",
     )
     require(
-        backing_path.parent == pins.workspace
-        and checkpoint_path.parent == pins.workspace,
+        backing_path.parent == pins.workspace and checkpoint_path.parent == pins.workspace,
         "FOREIGN_RESOURCE_PATH",
     )
     try:
@@ -213,8 +209,7 @@ def assess_authenticated_destination(
             "DESTINATION_SWAP_OR_FD_ALIAS",
         )
         require(
-            68 * 512 <= raw_st.st_size <= MAX_BYTES
-            and raw_st.st_size % 512 == 0,
+            68 * 512 <= raw_st.st_size <= MAX_BYTES and raw_st.st_size % 512 == 0,
             "GPT_GEOMETRY_MISMATCH",
         )
         require(os.pread(qcow2_fd, 4, 0) == b"QFI\xfb", "QCOW2_HEADER_INVALID")
@@ -234,7 +229,8 @@ def assess_authenticated_destination(
             receipt = json.loads(payload, object_pairs_hook=_unique_pairs)
             require(
                 type(receipt) is dict
-                and set(receipt) == {
+                and set(receipt)
+                == {
                     "schemaVersion",
                     "transactionId",
                     "qcow2Sha256",
