@@ -14,6 +14,9 @@ from collections.abc import Mapping
 from bazzite_bootc_prewrite_source import NO_AUTHORITY, Refusal, assess_candidate
 
 EXPECTED_SOURCE = "bootc-1.17.1-1.fc45.src.rpm"
+# Measured from official Koji SRPM bytes in exact-head read-only Actions #45038284594.
+# A pin is identity, not independent publisher authentication.
+EXPECTED_SRPM_SHA256 = "0e037cb10ba17bc3f06af3e7a3ae56ebc096673533bf5803f6571ae89ee77e32"
 EXPECTED_RPM = "bootc-0:1.17.1-1.fc45.x86_64"
 EXPECTED_ELF_SHA256 = "f8944e5431de613133aa56bd7ac623dcf223f40ec3745a8c87b9cdcff4956e08"
 EXPECTED_BUILD_ID = "b6de95c7102a4d12325589251e67353b9e4f936c"
@@ -101,6 +104,8 @@ def assess_source_elf_binding(evidence: Mapping, plan: dict) -> dict:
             raise Refusal("FOREIGN_SRPM_ELF_IDENTITY_" + key)
     if not _hex(evidence["srpmSha256"], 64):
         raise Refusal("UNPINNED_SRPM_BYTES")
+    if evidence["srpmSha256"] != EXPECTED_SRPM_SHA256:
+        raise Refusal("FOREIGN_SRPM_SHA256")
     if not _hex(evidence["sourceTarSha256"], 64):
         raise Refusal("UNPINNED_SOURCE_ARCHIVE")
     for key in (
@@ -135,6 +140,7 @@ def assess_source_elf_binding(evidence: Mapping, plan: dict) -> dict:
         "decision": "SOURCE_ELF_UNPROVEN",
         "authorization": "DENY_NO_WRITER",
         "sourceRpm": EXPECTED_SOURCE,
+        "srpmSha256": EXPECTED_SRPM_SHA256,
         "fedoraKeyFingerprint": EXPECTED_F45_FINGERPRINT,
         "elfSha256": EXPECTED_ELF_SHA256,
         "sourceCommit": EXPECTED_GIT,
