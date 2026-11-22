@@ -404,7 +404,11 @@ F03_PREDECESSOR_FILES = {
 
 
 def authenticated_predecessor_status(
-    *, phase: str, evidence: Path, transaction_id: str, supplied_sha256: dict,
+    *,
+    phase: str,
+    evidence: Path,
+    transaction_id: str,
+    supplied_sha256: dict,
 ) -> tuple[dict, list]:
     """Recheck owned predecessor files and their transaction, not just caller hashes.
 
@@ -559,7 +563,10 @@ def require_complete_forensic_inventories(
         if not passed
         else [],
         "productionInstallAuthorized": False,
+        "sameDiskDualBootVerified": False,
+        "windowsInPlaceRollbackProven": False,
         "releaseEligible": False,
+        "stable": False,
     }
     write_manifest(evidence, filename, report)
     require(
@@ -572,9 +579,9 @@ def require_complete_forensic_inventories(
             for item in unavailable
         )
         + (
-            " prior:" + ", ".join(i["predecessor"] + "/" + i["issue"]
-                                for i in predecessor_issues)
-            if predecessor_issues else ""
+            " prior:" + ", ".join(i["predecessor"] + "/" + i["issue"] for i in predecessor_issues)
+            if predecessor_issues
+            else ""
         ),
     )
     return report
@@ -824,8 +831,11 @@ def run_ab(
         "partitionSha256Before": before[0]["partitionSha256"],
         "rawGptBefore": gpts[0],
         "nativeGrubDualBootVerified": False,
+        "sameDiskDualBootVerified": False,
         "rollbackInPlaceVerified": False,
+        "windowsInPlaceRollbackProven": False,
         "releaseEligible": False,
+        "stable": False,
         "windowsProtectedIntegrityAccepted": False,
     }
     # Both arms start from the same post-third-Windows-boot checkpoint.
