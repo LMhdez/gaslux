@@ -1,7 +1,6 @@
 """Synthetic ETW exported-event contracts; no ETL, Windows or collection."""
 from __future__ import annotations
 
-import copy
 import sys
 from pathlib import Path
 import unittest
