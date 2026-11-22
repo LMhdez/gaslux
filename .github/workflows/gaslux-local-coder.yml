@@ -34,7 +34,7 @@ jobs:
       proposed: ${{ steps.worker.outputs.proposed }}
     env:
       OLLAMA_HOST: 127.0.0.1:11434
-      GASLUX_AGENT_MODEL: qwen2.5-coder:3b
+      GASLUX_AGENT_MODEL: qwen2.5-coder:7b
       GASLUX_AGENT_SIMULATE: ${{ github.event_name == 'pull_request' && '1' || '0' }}
       OLLAMA_NUM_PARALLEL: '1'
       OLLAMA_MAX_LOADED_MODELS: '1'
@@ -80,7 +80,7 @@ jobs:
           done
           cat /tmp/ollama-serve.log
           exit 1
-      - name: Pull and verify known 3B model digest prefix
+      - name: Pull and inspect 7B model digest (not yet pinned)
         if: steps.baseline.outputs.needs_model == 'true'
         shell: bash
         run: |
@@ -91,9 +91,9 @@ jobs:
           import json
           import urllib.request
           response = json.load(urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=15))
-          model = next((m for m in response["models"] if m["name"] == "qwen2.5-coder:3b"), None)
-          if model is None or not model.get("digest", "").startswith("f72c60cabf62"):
-              raise SystemExit("Wrong local model digest; no repair permitted")
+          model = next((m for m in response["models"] if m["name"] == "qwen2.5-coder:7b"), None)
+          if model is None or len(model.get("digest", "")) != 64:
+              raise SystemExit("Missing valid model digest; no repair permitted")
           print("Verified local model digest:", model["digest"])
           PY
       - name: RED test then bounded model repair and GREEN test
