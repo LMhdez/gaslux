@@ -288,8 +288,12 @@ def test_workflow_never_triggers_windows_on_push():
 
 def test_kvm_and_tcg_machine_graph_and_wait_budgets(lab):
     work, code, vars_path, image, iso, answer = lab
-    kvm = witness._qemu_args(work, code, vars_path, image, iso, answer, "kvm")
-    tcg = witness._qemu_args(work, code, vars_path, image, iso, answer, "tcg")
+    fd_owners = {"code": 50, "vars": 51, "image": 52, "iso": 53, "answer": 54}
+    kvm = witness._qemu_args(work, code, vars_path, image, iso, answer, "kvm", fd_owners)
+    tcg = witness._qemu_args(work, code, vars_path, image, iso, answer, "tcg", fd_owners)
+    assert "/proc/self/fd/52" in " ".join(kvm)
+    assert "disk.qcow2" not in " ".join(kvm)
+    assert "win.iso" not in " ".join(kvm)
     assert kvm[kvm.index("-accel") + 1] == "kvm"
     assert kvm[kvm.index("-cpu") + 1] == "host"
     assert tcg[tcg.index("-accel") + 1] == "tcg,thread=multi"
