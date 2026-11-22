@@ -11,6 +11,8 @@ on:
       - 'docs/AUTHENTICATED_DESTINATION_READONLY.md'
       - 'auto_tests/installer_observer/authenticated_destination.py'
       - 'auto_tests/tests/test_authenticated_destination_readonly.py'
+      - 'auto_tests/test_destination_337_partial_pread_red.py'
+      - 'auto_tests/test_destination_337_fd_digest.py'
   pull_request:
     branches:
       - dev
@@ -21,6 +23,8 @@ on:
       - 'docs/AUTHENTICATED_DESTINATION_READONLY.md'
       - 'auto_tests/installer_observer/authenticated_destination.py'
       - 'auto_tests/tests/test_authenticated_destination_readonly.py'
+      - 'auto_tests/test_destination_337_partial_pread_red.py'
+      - 'auto_tests/test_destination_337_fd_digest.py'
 
 permissions:
   contents: read
@@ -95,13 +99,19 @@ jobs:
       - name: Syntax, strict Ruff lint and formatting checks
         run: |
           set -Eeuo pipefail
-          python -m compileall -q auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py
+          python -m compileall -q auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/test_destination_337_partial_pread_red.py auto_tests/test_destination_337_fd_digest.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/test_destination_337_partial_pread_red.py auto_tests/test_destination_337_fd_digest.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/test_destination_337_partial_pread_red.py auto_tests/test_destination_337_fd_digest.py
       - name: Validate existing installation and six-backend JSON Schemas
         run: |
           set -Eeuo pipefail
           python -m pytest -q auto_tests/tests/test_distribution_capabilities.py
+      - name: Verify D-337-01 against the unchanged independent Safety RED oracle and A-H contracts
+        run: |
+          set -Eeuo pipefail
+          test "$(git hash-object auto_tests/test_destination_337_partial_pread_red.py)" = c84b979caae17e85eeac3f3cf81532f34c3e9974
+          python -m unittest discover -s auto_tests -p 'test_destination_337_partial_pread_red.py' -v
+          python -m unittest discover -s auto_tests -p 'test_destination_337_fd_digest.py' -v
       - name: Launch REAL STOPPED QEMU on disposable owned 0700 regular files and adversarially witness FD
         env:
           GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
