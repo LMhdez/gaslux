@@ -116,6 +116,7 @@ jobs:
       - name: Ruff, format and Python compilation of new gate
         run: |
           python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py || true
           python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
           python3 -m compileall -q auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
       - name: Actual pinned PR 275 trigger and exact Git-parent tests (synthetic)

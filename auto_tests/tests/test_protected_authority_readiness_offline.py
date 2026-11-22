@@ -1,7 +1,6 @@
 """Adversarial static readiness checks. None authenticate an administrative actor."""
 from __future__ import annotations
 
-import copy
 import importlib.util
 import json
 import os
