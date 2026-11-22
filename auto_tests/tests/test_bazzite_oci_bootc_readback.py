@@ -252,7 +252,6 @@ def test_unbounded_binary_size_refused():
         scan(compressed)
 
 
-
 def test_valid_zstandard_layer_replays_exact_bootc_elf_without_executing():
     gz = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"bootc-example"})
     zbytes = zstd.ZstdCompressor(level=1).compress(gzip.decompress(gz))
