@@ -3,6 +3,7 @@
 Read-only test file descriptors and private temporary regular files only.
 No QEMU, guest, block device, Windows partition, or writer authority.
 """
+
 from __future__ import annotations
 
 import errno
@@ -38,12 +39,13 @@ class FullFdDigestContracts(unittest.TestCase):
             fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
             real_read = os.pread
             try:
-                with patch(
-                    "auto_tests.installer_observer.authenticated_destination.os.pread",
-                    side_effect=lambda f, n, off: read_override(
-                        path, fd, real_read, f, n, off
+                with (
+                    patch(
+                        "auto_tests.installer_observer.authenticated_destination.os.pread",
+                        side_effect=lambda f, n, off: read_override(path, fd, real_read, f, n, off),
                     ),
-                ), self.assertRaisesRegex(DestinationRefused, reason):
+                    self.assertRaisesRegex(DestinationRefused, reason),
+                ):
                     _digest(fd, expected)
             finally:
                 os.close(fd)
@@ -68,8 +70,10 @@ class FullFdDigestContracts(unittest.TestCase):
             return read(f, n, offset)[: n // 2]
 
         self._assert_denied(
-            content=payload, expected=self._sha(payload),
-            read_override=half, reason="FD_SHORT_READ",
+            content=payload,
+            expected=self._sha(payload),
+            read_override=half,
+            reason="FD_SHORT_READ",
         )
         self.assertEqual(offsets, [0])
 
@@ -80,8 +84,10 @@ class FullFdDigestContracts(unittest.TestCase):
             return read(f, n, offset)[:512]
 
         self._assert_denied(
-            content=payload, expected=self._sha(payload[:512]),
-            read_override=prefix, reason="FD_SHORT_READ",
+            content=payload,
+            expected=self._sha(payload[:512]),
+            read_override=prefix,
+            reason="FD_SHORT_READ",
         )
 
     def test_d_premature_eof_denied(self):
@@ -103,8 +109,10 @@ class FullFdDigestContracts(unittest.TestCase):
 
         for _ in range(2):
             self._assert_denied(
-                content=payload, expected=self._sha(payload),
-                read_override=one_byte, reason="FD_SHORT_READ",
+                content=payload,
+                expected=self._sha(payload),
+                read_override=one_byte,
+                reason="FD_SHORT_READ",
             )
         self.assertEqual(seen, [(len(payload), 0), (len(payload), 0)])
 
@@ -127,8 +135,10 @@ class FullFdDigestContracts(unittest.TestCase):
             return data
 
         self._assert_denied(
-            content=payload, expected=self._sha(payload),
-            read_override=mutate, reason="FD_MUTATED_DURING_HASH",
+            content=payload,
+            expected=self._sha(payload),
+            read_override=mutate,
+            reason="FD_MUTATED_DURING_HASH",
         )
         self.assertEqual(touched, [True])
 
@@ -143,8 +153,10 @@ class FullFdDigestContracts(unittest.TestCase):
             return data
 
         self._assert_denied(
-            content=payload, expected=self._sha(payload),
-            read_override=expand, reason="FD_MUTATED_DURING_HASH",
+            content=payload,
+            expected=self._sha(payload),
+            read_override=expand,
+            reason="FD_MUTATED_DURING_HASH",
         )
 
     def test_h_eio_is_refusal_not_authenticated_data(self):
@@ -152,8 +164,10 @@ class FullFdDigestContracts(unittest.TestCase):
             raise OSError(errno.EIO, "injected I/O failure")
 
         self._assert_denied(
-            content=b"private FD bytes", expected=self._sha(b"private FD bytes"),
-            read_override=fail, reason="FD_READ_FAILED",
+            content=b"private FD bytes",
+            expected=self._sha(b"private FD bytes"),
+            read_override=fail,
+            reason="FD_READ_FAILED",
         )
 
 
