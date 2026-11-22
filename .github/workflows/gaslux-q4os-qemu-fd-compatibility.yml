@@ -1,0 +1,120 @@
+name: Q4OS disposable QEMU FD/PFLASH compatibility (paused guest only)
+
+on:
+  push:
+    branches: [fix/q4os-qmp-legacy-factory-error-boundary-20261122]
+    paths:
+      - '.github/workflows/gaslux-q4os-qemu-fd-compatibility.yml'
+      - 'auto_tests/tools/q4os_qemu_fd_compat_lab.py'
+      - 'docs/Q4OS_QEMU_FD_COMPATIBILITY.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: q4os-qemu-fd-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  disposable-paused-fd-only:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/fix/q4os-qmp-legacy-factory-error-boundary-20261122'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GASLUX_Q4OS_FD_EVIDENCE: ${{ runner.temp }}/q4os-fd-evidence-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Lock evidence to source SHA and ephemeral CI runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(uname -m)" = x86_64
+          test ! -e "$GASLUX_Q4OS_FD_EVIDENCE"
+          mkdir -m 0700 "$GASLUX_Q4OS_FD_EVIDENCE"
+          grep -Fxq 'QEMU_FD_BACKING_VERIFIED = False' \
+            auto_tests/tools/q4os_win10_qmp_supervisor.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install QEMU/OVMF on disposable runner, no guest OS or Windows ISO
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf
+          python -m pip install 'ruff>=0.8,<1' 'pytest>=9,<10' 'PyYAML>=6,<7'
+          command -v qemu-system-x86_64
+          command -v qemu-img
+          qemu-system-x86_64 --version | head -n 1
+      - name: Static lint, syntax and isolated workflow contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q auto_tests/tools/q4os_qemu_fd_compat_lab.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tools/q4os_qemu_fd_compat_lab.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tools/q4os_qemu_fd_compat_lab.py
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          p = Path(".github/workflows/gaslux-q4os-qemu-fd-compatibility.yml")
+          data = yaml.safe_load(p.read_text())
+          assert isinstance(data, dict) and len(data["jobs"]) == 1
+          txt = p.read_text()
+          assert "workflow_dispatch" not in txt
+          assert "gaslux-q4os-windows-boundary.yml" not in txt
+          assert "permissions:\n  contents: read" in txt
+          PY
+      - name: Run actual stopped-QEMU FD/procfs and FD-set experiments
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # QEMU is launched only by the standalone experimental script.
+          # No imports or invocation of the blocked operational run_lab().
+          timeout --signal=INT --kill-after=30s 240s \
+            python auto_tests/tools/q4os_qemu_fd_compat_lab.py
+      - name: Verify bounded evidence and unchanged operational gate
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -Fxq 'QEMU_FD_BACKING_VERIFIED = False' \
+            auto_tests/tools/q4os_win10_qmp_supervisor.py
+          git diff --exit-code
+          if test -s "$GASLUX_Q4OS_FD_EVIDENCE/q4os-fd-evidence.json"; then
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads((Path(os.environ["GASLUX_Q4OS_FD_EVIDENCE"]) /
+                               "q4os-fd-evidence.json").read_text())
+          assert report["fixtureOnly"] is True
+          assert report["qemuBooted"] is False
+          assert report["guestOsUsed"] is False
+          assert report["productionStorageWritesAuthorized"] is False
+          assert report["q4osNativeInstallationVerified"] is False
+          assert report["windowsInPlaceRollbackProven"] is False
+          assert report["stable"] is False
+          print("GASLUX_Q4OS_FD_EVIDENCE_BOUNDED=PASS")
+          PY
+          fi
+      - name: Upload sanitized FD/QMP/QCOW2/OVMF readback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-paused-qemu-fd-compatibility
+          path: ${{ runner.temp }}/q4os-fd-evidence-${{ github.run_id }}/q4os-fd-evidence.json
+          if-no-files-found: warn
+          retention-days: 7
