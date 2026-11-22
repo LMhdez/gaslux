@@ -216,11 +216,13 @@ class SnapshotContractTests(unittest.TestCase):
                     else:
                         original_close = os.close
 
-                        def fail_export_close(fd: int) -> None:
+                        def fail_export_close(
+                            fd: int, *, target_directory=evidence, close_impl=original_close
+                        ) -> None:
                             target = os.readlink(f"/proc/self/fd/{fd}")
-                            if target.startswith(str(evidence) + os.sep):
+                            if target.startswith(str(target_directory) + os.sep):
                                 raise OSError(errno.EIO, "injected export close")
-                            original_close(fd)
+                            close_impl(fd)
 
                         with (
                             patch.object(owner.os, "close", side_effect=fail_export_close),
