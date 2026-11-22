@@ -19,8 +19,8 @@ from gaslux_popos_six_gpt_lab import (
     BASE_NAME,
     hosted,
     read_plan,
-    verify_fs_types,
     verify_fd_gpt,
+    verify_fs_types,
     write_json_exclusive,
 )
 
