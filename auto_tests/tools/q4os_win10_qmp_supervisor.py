@@ -328,7 +328,7 @@ def _cleanup(process: subprocess.Popen | None, pidfd: int | None) -> bool:
         return False
 
 
-def run_lab(
+def _run_lab_impl(
     work: Path,
     code: Path,
     vars_path: Path,
@@ -341,10 +341,17 @@ def run_lab(
     prompt_seconds: float = 90,
     progress_seconds: float = 600,
     wait_seconds: float = 7200,
-    popen_factory=None,
+    synthetic_child=None,
+    synthetic_log_data: bytes = b"",
+    synthetic_spawn_failure: bool = False,
     pidfd_factory=None,
 ) -> dict:
-    """Observe a direct child and clean up only through its kernel pidfd."""
+    """Shared witness: only accepts an ALREADY-CREATED synthetic child.
+
+    With QEMU backing unverified, even direct imports of this internal helper
+    cannot launch any operating-system process, no matter what is supplied.
+    No arbitrary factory is ever invoked.
+    """
     report = {
         "schemaVersion": 1,
         "decision": "refuse",
@@ -407,27 +414,42 @@ def run_lab(
         serial = work / "windows10-qemu-serial.log"
         _require(not serial.exists() and not serial.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
         args = _qemu_args(work, code, vars_path, image, iso, answer, accelerator, pinned)
-        # DENY real QEMU until the backing-file descriptor contract has been
-        # verified independently; never silently fall back to mutable paths.
+        # A synthetic process is supplied *already constructed*. The seam
+        # has no factory, shell command or callable spawn hook.
+        # If no child is provided, the real process gate is mandatory even
+        # when someone imports this private function directly.
         _require(
-            popen_factory is not None or QEMU_FD_BACKING_VERIFIED,
+            synthetic_child is not None
+            or synthetic_spawn_failure
+            or QEMU_FD_BACKING_VERIFIED,
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
+        _require(
+            not synthetic_log_data or synthetic_child is not None,
             "QEMU_STARTUP_UNCLASSIFIED",
         )
         log = work / "windows10-qemu-process.log"
         output = log.open("xb")
-        try:
-            factory = popen_factory or subprocess.Popen
-            process = factory(
-                args,
-                cwd=work,
-                stdin=subprocess.DEVNULL,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-                pass_fds=tuple(pinned.values()),
-            )
-        except OSError:
-            raise StartupRefusal("QEMU_SPAWN_FAILED") from None
+        if synthetic_spawn_failure:
+            raise StartupRefusal("QEMU_SPAWN_FAILED")
+        if synthetic_child is None:
+            try:
+                process = subprocess.Popen(
+                    args,
+                    cwd=work,
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    pass_fds=tuple(pinned.values()),
+                )
+            except OSError:
+                raise StartupRefusal("QEMU_SPAWN_FAILED") from None
+        else:
+            process = synthetic_child
+            if synthetic_log_data:
+                output.write(synthetic_log_data)
+                output.flush()
         report["qemuSpawned"] = True
         report["qemuPidRecorded"] = True
         if process.poll() is not None:
@@ -552,6 +574,102 @@ def run_lab(
             if report["decision"] == "refuse" and report["reasonCode"] is None:
                 report["reasonCode"] = "QEMU_STARTUP_UNCLASSIFIED"
     return report
+
+
+
+def _refused_report() -> dict:
+    """Stable no-spawn diagnostic without accessing any caller-controlled path."""
+    return {
+        "schemaVersion": 1,
+        "decision": "refuse",
+        "reasonCode": "QEMU_STARTUP_UNCLASSIFIED",
+        "qemuSpawned": False,
+        "qemuPidRecorded": False,
+        "qemuExitCode": None,
+        "qemuSignal": None,
+        "qmpSocketState": "ABSENT",
+        "qmpHandshakeVerified": False,
+        "qmpRunningVerified": False,
+        "qmpSendKeyAcknowledged": False,
+        "cleanupVerified": False,
+        "windowsSetupVerified": False,
+        "installationAuthorized": False,
+        "diskWritesAuthorized": False,
+        "rollbackVerified": False,
+        "errorDetailCode": None,
+        "cleanupReasonCode": None,
+        "reportIoFailed": False,
+        "descendantsCleanupVerified": False,
+    }
+
+
+def _run_lab_synthetic(
+    work: Path,
+    code: Path,
+    vars_path: Path,
+    image: Path,
+    iso: Path,
+    answer: Path,
+    accelerator: str,
+    *,
+    synthetic_child=None,
+    synthetic_log_data: bytes = b"",
+    synthetic_spawn_failure: bool = False,
+    pidfd_factory=None,
+    connect_seconds: float = 0.04,
+    prompt_seconds: float = 0.02,
+    progress_seconds: float = 0.02,
+    wait_seconds: float = 0.02,
+) -> dict:
+    """Internal DENY-ONLY fixture seam, never manufactures a process.
+
+    Tests may provide a child they created independently. This function
+    cannot run an injected executable or factory; every disk remains owned
+    by the disposable test fixture. Never use as operational authority.
+    """
+    return _run_lab_impl(
+        work, code, vars_path, image, iso, answer, accelerator,
+        synthetic_child=synthetic_child,
+        synthetic_log_data=synthetic_log_data,
+        synthetic_spawn_failure=synthetic_spawn_failure,
+        pidfd_factory=pidfd_factory,
+        connect_seconds=connect_seconds,
+        prompt_seconds=prompt_seconds,
+        progress_seconds=progress_seconds,
+        wait_seconds=wait_seconds,
+    )
+
+
+def run_lab(
+    work: Path,
+    code: Path,
+    vars_path: Path,
+    image: Path,
+    iso: Path,
+    answer: Path,
+    accelerator: str,
+    *,
+    connect_seconds: float = 15,
+    prompt_seconds: float = 90,
+    progress_seconds: float = 600,
+    wait_seconds: float = 7200,
+    popen_factory=None,
+    pidfd_factory=None,
+) -> dict:
+    """Public/CLI entry: synthetic factories cannot grant spawn authority."""
+    # In particular, reject factories BEFORE evaluating them, checking
+    # paths, pinning files, opening outputs, or calling subprocess.Popen.
+    if popen_factory is not None or pidfd_factory is not None:
+        return _refused_report()
+    if not QEMU_FD_BACKING_VERIFIED:
+        return _refused_report()
+    return _run_lab_impl(
+        work, code, vars_path, image, iso, answer, accelerator,
+        connect_seconds=connect_seconds,
+        prompt_seconds=prompt_seconds,
+        progress_seconds=progress_seconds,
+        wait_seconds=wait_seconds,
+    )
 
 
 def main() -> int:
