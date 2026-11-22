@@ -208,7 +208,7 @@ jobs:
           retention-days: 14
 
   compact_vm_admission:
-    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: vars.GASLUX_AUTONOMY_PAUSED != 'true' && github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -242,6 +242,7 @@ jobs:
 
   official_mint_live_guest:
     if: >-
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
       github.repository == 'LMhdez/gaslux' &&
       ((github.event_name == 'schedule' && github.event.schedule == '29 3 * * *') ||
        (github.event_name == 'workflow_dispatch' && inputs.mint_live_boot == true))
