@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/zorin-synthetic-writeset-v1.schema.json",
+  "title": "Zorin synthetic immutable write-set observation only (non-authorizing)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "transactionId",
+    "checkpointId",
+    "ownerLabel",
+    "diskBytes",
+    "logicalSectorBytes",
+    "diskSha256",
+    "checkpointSha256",
+    "espTreeSha256",
+    "ovmfVarsSha256",
+    "diskIdentity",
+    "esp",
+    "linux",
+    "writeSet",
+    "writeOperations",
+    "authorization",
+    "syntheticOnly",
+    "transactionOwned",
+    "externalAttestationVerified",
+    "windowsRollbackVerified",
+    "nativeInstallerInvoked"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "ZORIN_SYNTHETIC_WRITESET_V1"
+    },
+    "transactionId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "checkpointId": {
+      "type": "string",
+      "pattern": "^zorin-cp-[0-9a-f]{16}$"
+    },
+    "ownerLabel": {
+      "const": "GASLUX-ZORIN-SYNTHETIC"
+    },
+    "diskBytes": {
+      "type": "integer",
+      "minimum": 16777216,
+      "maximum": 67108864
+    },
+    "logicalSectorBytes": {
+      "enum": [
+        512,
+        4096
+      ]
+    },
+    "diskSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "checkpointSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "espTreeSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ovmfVarsSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "diskIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "partitionStyle",
+        "partitionTableId",
+        "sizeBytes",
+        "logicalSectorSizeBytes",
+        "partitions"
+      ],
+      "properties": {
+        "partitionStyle": {
+          "const": "GPT"
+        },
+        "partitionTableId": {
+          "type": "string",
+          "pattern": "^gpt:[0-9a-f-]{36}$"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 16777216,
+          "maximum": 67108864
+        },
+        "logicalSectorSizeBytes": {
+          "enum": [
+            512,
+            4096
+          ]
+        },
+        "partitions": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "number",
+              "typeGuid",
+              "partGuid",
+              "offsetBytes",
+              "sizeBytes",
+              "attributes"
+            ],
+            "properties": {
+              "number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "typeGuid": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "partGuid": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "offsetBytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sizeBytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "attributes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "esp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "number",
+        "partGuid",
+        "offsetBytes",
+        "sizeBytes"
+      ],
+      "properties": {
+        "role": {
+          "const": "ESP"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "partGuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "offsetBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "linux": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "number",
+        "partGuid",
+        "offsetBytes",
+        "sizeBytes"
+      ],
+      "properties": {
+        "role": {
+          "const": "LINUX_ROOT"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "partGuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "offsetBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "writeSet": {
+      "const": [
+        "LINUX_ROOT_BYTES_ONLY"
+      ]
+    },
+    "writeOperations": {
+      "const": []
+    },
+    "authorization": {
+      "const": "DENY_NO_WRITER"
+    },
+    "syntheticOnly": {
+      "const": true
+    },
+    "transactionOwned": {
+      "const": false
+    },
+    "externalAttestationVerified": {
+      "const": false
+    },
+    "windowsRollbackVerified": {
+      "const": false
+    },
+    "nativeInstallerInvoked": {
+      "const": false
+    }
+  }
+}
