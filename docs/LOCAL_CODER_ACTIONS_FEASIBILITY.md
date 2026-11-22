@@ -1,6 +1,14 @@
 # GitHub Actions local AI coder: bounded experimental evidence (2026-11-22 UTC)
 
-Repository `LMhdez/gaslux`; initial verified `dev` at `8e68a475d6397ba8fef2e0f9f83758545e202a5f`. This research is Draft PR #363, **not** an autonomous coding service already deployed to `dev` or `main`.
+Repository `LMhdez/gaslux`; initial verified `dev` at `8e68a475d6397ba8fef2e0f9f83758545e202a5f`. **PR #363 was squash-merged into `dev`** at `09fba3df79302577338d81bd4fbdde9e20913a24` on 2026-11-22 UTC. The merged implementation produces **read-only AI candidate artifacts**, not an autonomous code-publishing or merging service. `main` was not changed.
+
+## Integration record — 2026-11-22 UTC
+
+- [PR #363](https://github.com/LMhdez/gaslux/pull/363) — **MERGED** into `dev`, method **squash**, result `09fba3df79302577338d81bd4fbdde9e20913a24`. Tested candidate HEAD `ac700637e85e32a0ce29dd5dfb5f27f0892bc227` had **5/5 successful applicable pre-merge checks**.
+- Scope integrated: two narrowly scoped artifact-only workflows, deterministic logging evidence, read-only AI Observer ranking patch proposal, manual research benchmarks and this document. No `contents:write`, `pull-requests:write`, `GH_TOKEN` publisher or code push added by this integration.
+- **Privileged Draft PR publishers NOT merged.** Preserved for separate safety review at `research/local-coder-publisher-safety-hold-20261122` (`85af89dc896d90b7f8875ce6559fcd911bea79b1`). No automated PR publication was demonstrated or activated.
+- Post-merge Actions on `dev` were started for the merge commit; their completion is a separate evidence gate. A successful pre-merge PR check is not a claim about all post-merge runs.
+- `main` and stable release code/catalog are unchanged. Workflow `workflow_dispatch` for experiments on a non-default branch may require further activation according to GitHub's default-branch rules; do not claim a continuous scheduler exists.
 
 ## Integration scope decision — 2026-11-22 (updated on this branch)
 
