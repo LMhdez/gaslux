@@ -34,10 +34,13 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
         self.work.mkdir(mode=0o700)
         self.evidence = github / "pop-six-gpt-evidence"
         self.evidence.mkdir(mode=0o700)
-        env = patch.dict(os.environ, {
-            "RUNNER_TEMP": str(self.runner),
-            "GITHUB_WORKSPACE": str(github),
-        })
+        env = patch.dict(
+            os.environ,
+            {
+                "RUNNER_TEMP": str(self.runner),
+                "GITHUB_WORKSPACE": str(github),
+            },
+        )
         env.start()
         self.addCleanup(env.stop)
         self.name = "recovery-proof.json"
@@ -52,17 +55,25 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
         )
         self.assertTrue(result["descriptorBoundReadCompleted"])
         for key in (
-            "allExternalToolsIsolated", "sameUidInPlaceWriteIsolationProven",
-            "qcow2BackingResolutionAuthenticated", "observationComplete",
-            "distinstExecutionAuthorized", "windowsWriterAuthorized",
-            "productionInstallationAuthorized", "releaseEligible", "stable",
+            "allExternalToolsIsolated",
+            "sameUidInPlaceWriteIsolationProven",
+            "qcow2BackingResolutionAuthenticated",
+            "observationComplete",
+            "distinstExecutionAuthorized",
+            "windowsWriterAuthorized",
+            "productionInstallationAuthorized",
+            "releaseEligible",
+            "stable",
         ):
             self.assertFalse(result[key])
 
     def test_same_uid_process_swaps_child_backing_vars_and_proof(self):
         for name in (
-            "recovery-proof.json", "prepared-six.raw", "owned-six-child.qcow2",
-            "ovmf-original-install.fd", "fault-injected-vars.fd",
+            "recovery-proof.json",
+            "prepared-six.raw",
+            "owned-six-child.qcow2",
+            "ovmf-original-install.fd",
+            "fault-injected-vars.fd",
             "fault-rebuilt-child.qcow2",
         ):
             with self.subTest(name=name):
@@ -71,8 +82,15 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
                 foreign = self.root / "foreign"
                 foreign.write_bytes(b"FOREIGN\n")
                 original_run = subprocess.run
-                def attack(command, *, target_name=name,
-                           runner=original_run, attacker_file=foreign, **kwargs):
+
+                def attack(
+                    command,
+                    *,
+                    target_name=name,
+                    runner=original_run,
+                    attacker_file=foreign,
+                    **kwargs,
+                ):
                     self.assertTrue(command[-1].startswith("/proc/self/fd/"))
                     self.assertNotIn(str(self.work / target_name), command)
                     code = (
@@ -81,9 +99,16 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
                         "os.replace(sys.argv[2],sys.argv[1])"
                     )
                     runner(
-                        [sys.executable, "-c", code, str(self.work / target_name),
-                         str(attacker_file), str(self.root / "detached")],
-                        check=True, timeout=10,
+                        [
+                            sys.executable,
+                            "-c",
+                            code,
+                            str(self.work / target_name),
+                            str(attacker_file),
+                            str(self.root / "detached"),
+                        ],
+                        check=True,
+                        timeout=10,
                     )
                     return runner(command, **kwargs)
 
@@ -101,23 +126,17 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
                 if (self.root / "detached").exists():
                     (self.root / "detached").unlink()
                 if name == self.name:
-                    (self.work / name).write_bytes(
-                        b'{"valid":false,"test":"pinned"}\n'
-                    )
+                    (self.work / name).write_bytes(b'{"valid":false,"test":"pinned"}\n')
 
     def test_same_uid_process_replaces_directory_during_child(self):
         original_run = subprocess.run
 
         def attack(command, **kwargs):
-            code = (
-                "import os,sys;"
-                "os.rename(sys.argv[1],sys.argv[2]);"
-                "os.mkdir(sys.argv[1],0o700)"
-            )
+            code = "import os,sys;os.rename(sys.argv[1],sys.argv[2]);os.mkdir(sys.argv[1],0o700)"
             original_run(
-                [sys.executable, "-c", code, str(self.work),
-                 str(self.root / "detached-work")],
-                check=True, timeout=10,
+                [sys.executable, "-c", code, str(self.work), str(self.root / "detached-work")],
+                check=True,
+                timeout=10,
             )
             return original_run(command, **kwargs)
 
@@ -164,8 +183,7 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
         self.assertIn("qemu-io", UNISOLATED_EXTERNAL_COMMANDS)
         self.assertIn("mkfs.ext4", UNISOLATED_EXTERNAL_COMMANDS)
         with SafeWorkspace(self.work, self.evidence) as workspace:
-            for name in ("../../foreign", "owned-six-child.qcow2",
-                         "ovmf-original-install.fd"):
+            for name in ("../../foreign", "owned-six-child.qcow2", "ovmf-original-install.fd"):
                 with self.subTest(name=name), self.assertRaises(Refusal):
                     measure_pinned_evidence(workspace, name)
 
