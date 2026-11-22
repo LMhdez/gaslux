@@ -1,0 +1,104 @@
+name: Mint A/B storage blocker no-guest capacity and restore gates
+
+on:
+  push:
+    branches:
+      - test/mint-ab-storage-blocker-20261122
+    paths:
+      - .github/workflows/mint-ab-storage-blocker.yml
+      - auto_tests/test_windows_mint_ab_storage_blocker.py
+  workflow_dispatch:
+
+concurrency:
+  group: mint-ab-storage-blocker-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  storage-deny-only:
+    name: Tiny owned QCOW2 and F-01 F-02 F-03 regressions (NO GUESTS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Restrict hosted-runner identity, no Windows/guest tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GITHUB_REF" = refs/heads/test/mint-ab-storage-blocker-20261122
+          test "$RUNNER_TEMP" = /home/runner/work/_temp
+      - name: QEMU disk utilities only (no hypervisor/guest)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils psmisc
+          command -v qemu-img
+          command -v qemu-io
+          command -v fuser
+      - name: Measure current runner early conservative capacity read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd() / "auto_tests" / "tools"))
+          import windows_mint_ab_capacity as capacity
+          image_bound = capacity.qemu_fully_allocated_bytes()
+          report = capacity.measure_capacity(
+              directory=Path(os.environ["RUNNER_TEMP"]),
+              phase="early",
+              full_allocated_bytes=image_bound,
+              quota_remaining_bytes=None,
+          )
+          assert capacity.EARLY_IMAGES == 6
+          assert capacity.LATE_IMAGES == 4
+          assert capacity.EARLY_RESERVE == 40 * capacity.GiB
+          assert capacity.LATE_RESERVE == 8 * capacity.GiB
+          assert report["compressionAssumedForCapacity"] is False
+          assert report["checkpointReadyForReview"] is False
+          assert report["windowsGuestBootsAuthorized"] is False
+          assert report["productionInstallAuthorized"] is False
+          assert report["quotaStatus"] == "not-observable"
+          print("GASLUX_MINT_STORAGE_EARLY_READONLY=" + json.dumps(report, sort_keys=True))
+          print("No capacity override, no quota inferred, no guest boot, no checkpoint.")
+          PY
+      - name: Tiny independent QCOW2 storage and restore negative tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_storage_blocker.py -v
+      - name: Existing F01 F02 F03 Mint safety contract regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for suite in \
+            test_windows_mint_f03_toctou.py \
+            test_windows_mint_ab_forensic.py \
+            test_windows_mint_ab_checkpoint.py \
+            test_windows_mint_ab_capacity.py \
+            test_windows_mint_ab_synthetic.py \
+            test_windows_mint_ab_infrastructure.py \
+            test_windows_mint_overlay_root.py \
+            test_windows_x64_two_stage_boot.py; do
+            python3 -m unittest discover -s auto_tests -p "$suite" -v
+          done
+      - name: Python compileall and Ruff check/format
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m compileall -q auto_tests/test_windows_mint_ab_storage_blocker.py
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-ruff-0.15.20" --no-deps "ruff==0.15.20"
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
+          python3 -m ruff check auto_tests/test_windows_mint_ab_storage_blocker.py
+          python3 -m ruff format --check auto_tests/test_windows_mint_ab_storage_blocker.py
