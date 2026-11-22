@@ -9,6 +9,7 @@ on:
       - 'auto_tests/tests/test_observer_qemu_real_disk_readonly.py'
       - '.github/workflows/observer-guest-collector-origin-lab.yml'
       - 'docs/OBSERVER_GUEST_COLLECTOR_ORIGIN_LAB.md'
+      - 'docs/CI_VM_EVIDENCE_INDEX.md'
   pull_request:
     branches: [test/observer-qemu-guest-peer-origin-deny-20261122]
 

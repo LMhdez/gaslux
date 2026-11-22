@@ -34,3 +34,17 @@ Published artefacts contain only bounded JSON and hash from the runner, not disk
 ## Next independent root
 
 An independently provisioned and verified guest image + collector must be bound to immutable VM/backend FD identity and boot state, accompanied by protected host-to-guest transport with replay-resistant external ledger and separate Safety-approved policy. The present lab only verifies functional transport and bounded negative trust semantics. No state-machine controller #259 is needed or introduced.
+
+## Exact observed execution — 22 November 2026, 15:13 UTC
+
+[GitHub Action #45036971429](https://github.com/LMhdez/gaslux/actions/runs/45036971429), **SUCCESS** at code HEAD `3916847d3e594e88d5e0398379efd6c386da6ca8`. The job passed the separate negative protocol suite, the **real booted guest collector** and inherited QEMU/Observer regression suite, plus Ruff check/format and Python compileall. It verified the #267/#286 fixed SHAs, the actual inherited HOST/FD source blobs and the test-runner isolation conditions.
+
+The operational manifest reported actual Linux guest boot and collector execution observed on a separate serial-console witness, guest-port response to a fresh host nonce, and successful durable in-run challenge consumption. The QEMU PID was `7762`; host Linux SO_PEERCRED on the chardev reported that same QEMU PID (not a Guest PID); the host read-only QCOW2 inode was `2645815`. The image/backing identity was checked with the existing pinned canonical code. The disposable guest used apt package `linux-image-6.8.0-151-generic` version `6.8.0-151.151`, host-measured SHA-256 `fc6f2a37b8dafff46ac1ff66361503b1f6eeab0e2df680447299235b7d6453be`. The guest initramfs SHA-256 was `8dc98ce81d50c3a34bdc3ef0d9c2a9cd04137c3c64c487b0d2e4f545bf3e18a9` and collector source SHA-256 `79ffdfbe1fdbdf8fa466ecc2a63ee165bd9375c46a80fc6cf64c79521ca14ee6`, measured during this runner execution rather than independently authenticated from an external release catalog. No known-value hash was invented.
+
+[Artifact #14760345793](https://github.com/LMhdez/gaslux/actions/runs/45036971429/artifacts/14760345793) is a **runner-only, unsigned** JSON manifest plus SHA-256 file. ZIP SHA-256 `65ae2bbca9fd61dbcd5d3db900322109b1c301518baa4f18b513edd72ac2495c`. This digest is not independent attestation. The manifest explicitly records:
+- `guestBootObserved=true`; `guestCollectorExecutedObserved=true`; `guestMessageReceived=true`; `hostQemuPeerAuthenticated=true`;
+- `labLedgerSingleUseVerified=true` and `replayProtectedAgainstHostCompromise=false`;
+- `guestOriginIndependentlyAttested=false`, `guestChannelAuthenticated=false`, `diskWriteAuthorized=false`, `productionInstallationAuthorized=false`, `rollbackProven=false`, `stable=false`;
+- `status=BLOCKED_TRUST_ROOT`; `classification=NOT_ATTESTED`.
+
+The real QEMU guest was **not** Linux installed onto QCOW2; it ran a test-only initramfs directly from a signed-apt kernel. Its virtual QCOW2 was attached read-only. No Anaconda, Bazzite, Windows, backend writes, QGA/SSH shell, physical disks or bootloader operations occurred. This is **real guest boot + functional read-only guest-to-host transport** in a disposable CI VM, **not** guest-independent provenance, installed-Linux boot, dual boot, Windows recovery, or stability.
