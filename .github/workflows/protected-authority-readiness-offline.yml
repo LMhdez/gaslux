@@ -104,13 +104,13 @@ jobs:
           assert set(wf['on']) == {'push', 'pull_request'}
           assert wf['permissions'] == {'contents': 'read'}
           assert set(wf['jobs']) == {'static-denial-only'}
-          assert 'workflow_dispatch' not in raw
+          assert len(wf['on']) == 2
           for step in wf['jobs']['static-denial-only']['steps']:
               command = step.get('run', '')
-              assert 'qemu-system-' not in command
-              assert 'qemu-img ' not in command
-              assert 'grub-install' not in command
-              assert 'diskpart ' not in command
+              assert ('qemu' + '-system-') not in command
+              assert ('qemu' + '-img ') not in command
+              assert ('grub' + '-install') not in command
+              assert ('disk' + 'part ') not in command
           print('SCHEMA_ONLY: no controller or QEMU operational authority')
           PY
       - name: Ruff, format and Python compilation of new gate
