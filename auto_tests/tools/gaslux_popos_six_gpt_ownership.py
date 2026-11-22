@@ -54,9 +54,8 @@ def export_evidence(
                 try:
                     st = os.fstat(fd)
                     linked = os.stat(name, dir_fd=directory, follow_symlinks=False)
-                    if (
-                        pinned_files is not None
-                        and (st.st_dev, st.st_ino) != pinned_files.get(name)
+                    if pinned_files is not None and (st.st_dev, st.st_ino) != pinned_files.get(
+                        name
                     ):
                         raise OwnershipRefusal("REFUSE_IDENTITY_MISMATCH: evidence inode replaced")
                     if (

@@ -278,8 +278,7 @@ def ensure_empty_child(child: Path, base: Path) -> None:
         not child_owned_extents(child, base),
         "REFUSE_RECOVERY_UNPROVEN: synthetic child contains owned extents",
     )
-    command("qemu-img", "compare", "-f", "qcow2", "-F", "raw",
-            str(child), str(base), timeout=300)
+    command("qemu-img", "compare", "-f", "qcow2", "-F", "raw", str(child), str(base), timeout=300)
 
 
 def pin_identity(path: Path) -> tuple[int, int]:
@@ -287,8 +286,10 @@ def pin_identity(path: Path) -> tuple[int, int]:
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
         st = os.fstat(fd)
-        need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1,
-             "REFUSE_IDENTITY_MISMATCH: foreign QCOW2 child")
+        need(
+            stat.S_ISREG(st.st_mode) and st.st_nlink == 1,
+            "REFUSE_IDENTITY_MISMATCH: foreign QCOW2 child",
+        )
         return st.st_dev, st.st_ino
     finally:
         os.close(fd)
@@ -310,11 +311,15 @@ def verify_injected_fault(
         and offset + length <= SIZE,
         "REFUSE_RECOVERY_UNPROVEN: invalid injected interval",
     )
-    need(pin_identity(child) == expected_identity,
-         "REFUSE_IDENTITY_MISMATCH: injected QCOW2 child replaced")
+    need(
+        pin_identity(child) == expected_identity,
+        "REFUSE_IDENTITY_MISMATCH: injected QCOW2 child replaced",
+    )
     owned = child_owned_extents(child, base)
-    need(pin_identity(child) == expected_identity,
-         "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during map")
+    need(
+        pin_identity(child) == expected_identity,
+        "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during map",
+    )
     need(
         any(
             r["start"] <= offset
@@ -325,10 +330,13 @@ def verify_injected_fault(
         ),
         "REFUSE_RECOVERY_UNPROVEN: injected write not materialized",
     )
-    command("qemu-io", "-f", "qcow2", "-c",
-            f"read -P 0x5a {offset} {length}", str(child), timeout=120)
-    need(pin_identity(child) == expected_identity,
-         "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during readback")
+    command(
+        "qemu-io", "-f", "qcow2", "-c", f"read -P 0x5a {offset} {length}", str(child), timeout=120
+    )
+    need(
+        pin_identity(child) == expected_identity,
+        "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during readback",
+    )
     raise ProtectedFaultDetected("protected QCOW2 allocation and pattern readback proven")
 
 
@@ -553,8 +561,10 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
     ensure_empty_child(fault, base)
     child_identity = pin_identity(fault)
     command("qemu-io", "-f", "qcow2", "-c", f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
-    need(pin_identity(fault) == child_identity,
-         "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during fault injection")
+    need(
+        pin_identity(fault) == child_identity,
+        "REFUSE_IDENTITY_MISMATCH: QCOW2 child replaced during fault injection",
+    )
     try:
         verify_injected_fault(fault, base, sector * SECTOR, 4096, child_identity)
     except ProtectedFaultDetected:

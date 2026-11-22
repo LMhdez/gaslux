@@ -383,14 +383,15 @@ class SixGptNegativeTests(unittest.TestCase):
             backing = new_file(root / "backing.raw", c.SIZE)
             child = root / "zero-overlay.qcow2"
             subprocess.run(
-                ["qemu-img", "create", "-f", "qcow2", "-F", "raw",
-                 "-b", str(backing), str(child)],
-                check=True, capture_output=True,
+                ["qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(backing), str(child)],
+                check=True,
+                capture_output=True,
             )
             lab.ensure_empty_child(child, backing)
             subprocess.run(
                 ["qemu-io", "-f", "qcow2", "-c", "write -z 0 4096", str(child)],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
             with self.assertRaisesRegex(Refusal, "owned extents"):
                 lab.ensure_empty_child(child, backing)
