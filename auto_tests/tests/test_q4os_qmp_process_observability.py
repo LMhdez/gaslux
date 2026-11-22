@@ -1005,3 +1005,120 @@ def test_r01_post_authentication_socket_swap_denies_send_key(monkeypatch, tmp_pa
             peer.close()
         owned.close()
         foreign.close()
+
+
+
+def test_r02_fabricated_synthetic_child_never_claims_qemu_spawn(lab):
+    work, code, vars_path, image, iso, answer = lab
+
+    class Invented:
+        pid = os.getpid()
+
+        def poll(self):
+            return 5
+
+        def wait(self, timeout):
+            return 5
+
+    for runner in (witness._run_lab_synthetic, witness._run_lab_impl):
+        # Fresh paths prevent synthetic log collisions between calls.
+        for name in ("windows10-qemu-process.log",):
+            (work / name).unlink(missing_ok=True)
+        result = runner(
+            work,
+            code,
+            vars_path,
+            image,
+            iso,
+            answer,
+            "kvm",
+            synthetic_child=Invented(),
+            connect_seconds=0.03,
+        )
+        assert result["qemuSpawned"] is False
+        assert result["qemuPidRecorded"] is False
+        assert result["qmpHandshakeVerified"] is False
+        assert result["qmpSendKeyAcknowledged"] is False
+        assert result["decision"] == "refuse"
+
+
+@pytest.mark.parametrize("runner_name", ["_run_lab_impl", "_run_lab_synthetic"])
+def test_r02_preexisting_python_child_cannot_reach_qmp(monkeypatch, lab, runner_name):
+    work, code, vars_path, image, iso, answer = lab
+    calls = []
+    native = witness._await_qmp
+
+    def forbidden_qmp(*args, **kwargs):
+        calls.append("QMP_ATTEMPT")
+        raise witness.StartupRefusal("QEMU_STARTUP_UNCLASSIFIED")
+
+    monkeypatch.setattr(witness, "_await_qmp", forbidden_qmp)
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(20)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        report = getattr(witness, runner_name)(
+            work,
+            code,
+            vars_path,
+            image,
+            iso,
+            answer,
+            "kvm",
+            synthetic_child=child,
+            connect_seconds=0.03,
+        )
+    finally:
+        monkeypatch.setattr(witness, "_await_qmp", native)
+        if child.poll() is None:
+            child.terminate()
+        child.wait(timeout=5)
+    assert witness.QEMU_FD_BACKING_VERIFIED is False
+    assert calls == [], "synthetic child must not enter QMP transport"
+    assert report["qemuSpawned"] is False
+    assert report["qemuPidRecorded"] is False
+    assert report["qmpHandshakeVerified"] is False
+    assert report["qmpSendKeyAcknowledged"] is False
+    assert report["installationAuthorized"] is False
+    assert report["diskWritesAuthorized"] is False
+    assert child.poll() is not None
+
+
+def test_r03_dangling_symlink_report_is_bounded_refusal(monkeypatch, tmp_path, capsys):
+    import q4os_win10_qmp_boot as boot
+
+    work = tmp_path / "SECRET_SENTINEL_PRIVATE"
+    work.mkdir(mode=0o700)
+    report = work / "report.json"
+    target = work / "missing-secret"
+    report.symlink_to(target)
+    monkeypatch.setattr(
+        boot,
+        "supervise",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(boot.BootRefusal("dvd_prompt_not_detected")),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "q4os_win10_qmp_boot.py",
+            "--qmp",
+            str(work / "qmp.sock"),
+            "--serial",
+            str(work / "serial.log"),
+            "--disk",
+            str(work / "disk.qcow2"),
+            "--report",
+            str(report),
+        ],
+    )
+    assert boot.main() == 1
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert "SECRET_SENTINEL" not in output.out
+    assert report.is_symlink()
+    assert not target.exists()
