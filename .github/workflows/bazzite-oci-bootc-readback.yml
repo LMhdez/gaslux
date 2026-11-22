@@ -6,12 +6,16 @@ on:
       - test/bazzite-native-route-readback-20261122
     paths:
       - auto_tests/bazzite_oci_bootc_readback.py
+      - auto_tests/bazzite_oci_rpm_binding.py
       - auto_tests/tests/test_bazzite_oci_bootc_readback.py
+      - auto_tests/tests/test_bazzite_oci_rpm_binding.py
       - .github/workflows/bazzite-oci-bootc-readback.yml
   pull_request:
     paths:
       - auto_tests/bazzite_oci_bootc_readback.py
+      - auto_tests/bazzite_oci_rpm_binding.py
       - auto_tests/tests/test_bazzite_oci_bootc_readback.py
+      - auto_tests/tests/test_bazzite_oci_rpm_binding.py
       - .github/workflows/bazzite-oci-bootc-readback.yml
 
 permissions:
@@ -41,18 +45,25 @@ jobs:
           python -m pip install pytest ruff jsonschema zstandard==0.25.0
           python -m pytest -q \
             auto_tests/tests/test_bazzite_oci_bootc_readback.py \
+            auto_tests/tests/test_bazzite_oci_rpm_binding.py \
             auto_tests/tests/test_bazzite_anaconda_write_set_gate.py \
             auto_tests/tests/test_bazzite_iso45_passive_gate.py \
             auto_tests/tests/test_bazzite_live_channel_boundary.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_oci_bootc_readback.py \
-            auto_tests/tests/test_bazzite_oci_bootc_readback.py
+            auto_tests/bazzite_oci_rpm_binding.py \
+            auto_tests/tests/test_bazzite_oci_bootc_readback.py \
+            auto_tests/tests/test_bazzite_oci_rpm_binding.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_oci_bootc_readback.py \
-            auto_tests/tests/test_bazzite_oci_bootc_readback.py
+            auto_tests/bazzite_oci_rpm_binding.py \
+            auto_tests/tests/test_bazzite_oci_bootc_readback.py \
+            auto_tests/tests/test_bazzite_oci_rpm_binding.py
           python -m compileall -q \
             auto_tests/bazzite_oci_bootc_readback.py \
-            auto_tests/tests/test_bazzite_oci_bootc_readback.py
+            auto_tests/bazzite_oci_rpm_binding.py \
+            auto_tests/tests/test_bazzite_oci_bootc_readback.py \
+            auto_tests/tests/test_bazzite_oci_rpm_binding.py
       - name: Run exact #280 offline guest contract tests without executing guest
         uses: actions/checkout@v4
         with:
@@ -139,6 +150,11 @@ jobs:
           assert result["windowsEspWriteAuthorized"] is False
           assert result["guestCommandChannelAuthorized"] is False
           assert result["nativeInstallationVerified"] is False
+          assert result["stable"] is False
+          assert result["bootcToFilesystemAvailableInBinaryVerified"] is False
+          assert result["bootcRpmIdentity"]["status"] in (
+              "BOOTC_RPM_IDENTITY_VERIFIED", "BOOTC_PACKAGE_BINDING_UNPROVEN"
+          )
           print("PASS: bounded OCI readback, deny-only:", result["status"])
           PY
       - name: Publish limited non-executable OCI evidence
