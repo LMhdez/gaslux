@@ -183,7 +183,6 @@ def _link(path: str, target: str) -> str:
     return _path(normalized)
 
 
-
 class _MeasuredTarStream:
     """Hash ALL uncompressed layer bytes (including TAR padding/trailing bytes).
 
@@ -202,9 +201,7 @@ class _MeasuredTarStream:
             amount = 1024 * 1024
         part = self.source.read(min(amount, 1024 * 1024))
         self.count += len(part)
-        self.budgets["expandedStreamBytes"] = (
-            self.budgets.get("expandedStreamBytes", 0) + len(part)
-        )
+        self.budgets["expandedStreamBytes"] = self.budgets.get("expandedStreamBytes", 0) + len(part)
         if self.budgets["expandedStreamBytes"] > MAX_EXPANDED:
             raise Refusal("Actual decompressed OCI stream exceeds safety budget")
         self.hash.update(part)
