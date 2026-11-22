@@ -121,7 +121,7 @@ def inspect_gpt_fd(fd: int, *, logical_sector_size: int) -> dict:
                                    attributes=attributes))
         sorted_parts = sorted(partitions, key=lambda p: p["offsetBytes"])
         require(all(a["offsetBytes"] + a["sizeBytes"] <= b["offsetBytes"]
-                    for a, b in zip(sorted_parts, sorted_parts[1:])),
+                    for a, b in zip(sorted_parts, sorted_parts[1:], strict=False)),
                 "overlapping partitions")
         require(len({p["partGuid"] for p in partitions}) == len(partitions),
                 "duplicate partition GUID")
@@ -175,15 +175,50 @@ def assert_snapshot_matches(expected: dict, observed: dict) -> None:
                 type(disk["logicalSectorSizeBytes"]) is int and
                 disk["logicalSectorSizeBytes"] in (512, 4096), "invalid geometry")
         require(type(disk["partitions"]) is list, "partition inventory absent")
+        sector = disk["logicalSectorSizeBytes"]
+        require(disk["sizeBytes"] % sector == 0 and
+                disk["sizeBytes"] >= 68 * sector, "invalid aligned GPT disk geometry")
+        try:
+            disk_guid = str(uuid.UUID(disk["partitionTableId"][4:]))
+        except (ValueError, AttributeError) as error:
+            raise DiskIdentityError("malformed GPT disk ID") from error
+        require(disk["partitionTableId"] == "gpt:" + disk_guid and
+                disk_guid != str(uuid.UUID(int=0)), "noncanonical GPT disk ID")
         numbers = set()
+        guids = set()
+        spans = []
         for part in disk["partitions"]:
             require(type(part) is dict and set(part) == pk, "incomplete partition")
             require(all(type(part[k]) is int for k in
                         ("number", "offsetBytes", "sizeBytes", "attributes")) and
-                    part["number"] > 0 and part["offsetBytes"] > 0 and
-                    part["sizeBytes"] > 0, "invalid partition geometry")
-            require(all(type(part[k]) is str and len(part[k]) == 36
-                        for k in ("typeGuid", "partGuid")), "invalid partition GUID")
+                    1 <= part["number"] <= 4096 and part["offsetBytes"] > 0 and
+                    part["sizeBytes"] > 0 and 0 <= part["attributes"] < 2**64,
+                    "invalid partition geometry")
+            # Any GPT layout accepted by inspect_gpt_fd has a primary
+            # header at LBA 1, a primary array starting at >= LBA 2,
+            # a backup array before the final header, and at least
+            # one partition-entry sector on each end. Exact
+            # first/last usable LBAs need the original GPT headers.
+            require(part["offsetBytes"] % sector == 0 and
+                    part["sizeBytes"] % sector == 0 and
+                    part["offsetBytes"] >= 3 * sector and
+                    part["offsetBytes"] + part["sizeBytes"] <=
+                    disk["sizeBytes"] - 2 * sector,
+                    "partition intersects mandatory GPT reserved LBAs")
+            for key in ("typeGuid", "partGuid"):
+                require(type(part[key]) is str, "invalid partition GUID")
+                try:
+                    parsed = str(uuid.UUID(part[key]))
+                except (ValueError, AttributeError) as error:
+                    raise DiskIdentityError("malformed partition GUID") from error
+                require(part[key] == parsed and parsed != str(uuid.UUID(int=0)),
+                        "noncanonical or zero partition GUID")
             require(part["number"] not in numbers, "duplicate partition slot")
+            require(part["partGuid"] not in guids, "duplicate partition GUID")
             numbers.add(part["number"])
+            guids.add(part["partGuid"])
+            spans.append((part["offsetBytes"], part["offsetBytes"] + part["sizeBytes"]))
+        spans.sort()
+        require(all(a[1] <= b[0] for a, b in zip(spans, spans[1:], strict=False)),
+                "overlapping partitions")
     require(expected == observed, "disk identity or partition geometry changed")
