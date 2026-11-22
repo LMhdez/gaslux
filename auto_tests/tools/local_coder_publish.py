@@ -99,10 +99,10 @@ def main() -> None:
     if sha256(original_bytes) != report.get("original_sha256"):
         raise ValueError("dev file changed after generation: stale candidate rejected")
     old = original_bytes.decode("utf-8")
-    anchor = "        root.removeHandler(handler)\\n"
+    anchor = "        root.removeHandler(handler)\n"
     if old.count(anchor) != 1 or "handler.close()" in old:
         raise ValueError("Unsupported source layout; no deterministic proposal")
-    expected = old.replace(anchor, anchor + "        handler.close()\\n", 1)
+    expected = old.replace(anchor, anchor + "        handler.close()\n", 1)
     if candidate.decode("utf-8") != expected:
         raise ValueError("Candidate is not the single permitted insertion")
     validate(old, expected)
