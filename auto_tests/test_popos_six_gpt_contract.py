@@ -253,7 +253,8 @@ class SixGptNegativeTests(unittest.TestCase):
                     child = work / lab.CHILD_NAME
                     child.write_bytes(b"first")
                     guard.inspect()
-                    child.unlink()
+                    # Preserve the original inode so inode reuse cannot hide a swap.
+                    child.rename(work / "synthetic-esp-marker.tmp")
                     child.write_bytes(b"replacement")
                     with self.assertRaisesRegex(Refusal, "inode substituted"):
                         guard.inspect()
