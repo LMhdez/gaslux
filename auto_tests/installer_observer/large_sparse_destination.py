@@ -28,7 +28,6 @@ from assets.live.libertix_disk_identity_gate import (
 
 from .authenticated_destination import (
     DestinationRefused,
-    _digest,
     _pin,
     _stat_identity,
     _unique_pairs,
@@ -400,7 +399,9 @@ def assess_sparse_128g_readonly(
                     "RESOURCE_MUTATED_DURING_INSPECTION",
                 )
             _elapsed(deadline)
-    except (OSError, DiskIdentityError, QemuDiskRefused, DestinationRefused, KeyError, TypeError) as exc:
+    except (
+        OSError, DiskIdentityError, QemuDiskRefused, DestinationRefused, KeyError, TypeError
+    ) as exc:
         if isinstance(exc, LargeDestinationRefused):
             raise
         raise LargeDestinationRefused("LARGE_DESTINATION_INSPECTION_REFUSED") from exc
