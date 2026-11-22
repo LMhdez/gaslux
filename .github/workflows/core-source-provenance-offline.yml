@@ -45,6 +45,7 @@ jobs:
       - name: Inherited deployment audit
         run: cd auto_tests && ../.core-venv/bin/python -m tools.deployment_audit
       - name: Inherited core and signed-release unit tests
+        if: always()
         run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_core.py auto_tests/tests/test_published_release.py
 
   windows-wpf-build:
