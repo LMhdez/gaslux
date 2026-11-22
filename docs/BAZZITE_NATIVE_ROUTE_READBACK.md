@@ -112,3 +112,52 @@ classifica destino e recuperação como INSUFFICIENT_EVIDENCE.
 O próximo passo de execução depende de um controlador independente
 Safety/Observer, prova de ownership do QCOW2/FD e um checkpoint de
 recuperação; não reinterpretar JSON ou fixtures como prova de deploy.
+
+
+## BZD-QCOW2-DEPLOYMENT-READBACK-01 — 22/11/2026 UTC
+
+**Inventário operacional verificado, sem imagem instalada:** foram consultados os
+artefactos da CI de origem Bazzite #45030530822 e #45024613641
+(ambos contêm apenas JSON de OCI/RPM e hashes), Safety BZD-DEST-01
+#45030191718/#45030196771 (sem artefacto QCOW2) e Observer QEMU real parado
+#45030813901/#45030818339 (pequenos manifestos host-only, sem exportação
+de disco instalado, sem guest arrancado). Nenhum contém um QCOW2 autenticamente
+associado a instalação Fedora Atomic concluída, e não existe uma transação
+identificada com checkpoint, backing chain validado e guest readback
+independente. Uma imagem usada no laboratório QEMU host para observar FDs
+não é deployment Bazzite.
+
+**Código experimental:** \`auto_tests/bazzite_qcow2_deployment_readback.py\`
+contém \`inspect_qcow2_fd(fd)\`, que lê um descritor O_RDONLY **já aberto**
+e mede o cabeçalho QCOW2, o inode e o SHA-256 dos bytes armazenados
+(arquivo regular, um único hardlink, limite 16 GiB, verificação fstat inicial
+e final); não recebe pathname e não abre QEMU, guest, sistemas de ficheiros,
+blocos de partição nem backing. Imagens com backing, encriptação, snapshots,
+feature incompatível, tamanho fora dos limites ou FD gravável são recusadas.
+A leitura do cabeçalho **não** descodifica setores virtuais do QCOW2; a
+geometria lógica GPT/ESP/Btrfs permanece por observar. Os testes de estrutura
+utilizam apenas ficheiros mínimos de cabeçalho, **sem GPT ou OS**.
+
+\`assess()\` compara medições locais com reivindicações, mas todas estas
+últimas são \`CLAIMED\`: não faz delas fonte de confiança externa.
+Mesmo no caso coerente, devolve
+\`BLOCKED_NO_AUTHENTICATED_DEPLOYMENT_QCOW2\`; não há estado ACCEPT.
+As negativas A–J rejeitam ou sinalizam como não provados swaps de QCOW2,
+backing, GUID/sector GPT, versões RPM/bootc, OSTree, EFI, BIOS/MBR e ausência
+de checkpoint. Não há \`bootc install\`, Anaconda, mount ou escritor.
+
+**Ligação pendente (Integrador 2/Safety):** um contrato partilhado
+\`assess_authenticated_destination(...)\`, ainda inexistente, deverá fornecer
+prova de origem e propriedade do QCOW2, host FD/process seal/QMP,
+backing graph, leitura dos setores virtuais autenticados e GPT primária/
+secundária pelo parser canónico, partições e filesystems Btrfs, arquivos OSTree
+e bootc/RPM lidos por um canal de bytes fiável, FAT32 ESP/EFI e checkpoint.
+Só depois poderá este backend implementar um consumidor de bytes do deployment
+ancorado no mesmo QCOW2. Identidade da OCI e RPM é origem estática, não
+instalação, boot, manutenção ou rollback.
+
+**Permissões inalteradas:** somente UEFI/GPT, todos os flags de instalação,
+partição, canal guest, Linux/Windows boot, dual boot e rollback são \`false\`.
+A existência de SHA local, claim JSON ou resultado HOST/FD \`LOCALLY_MEASURED\`
+não substitui um controlador autenticado nem autoriza um writer. PR #320
+permanece Draft.
