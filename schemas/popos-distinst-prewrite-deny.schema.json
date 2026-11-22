@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/schemas/popos-distinst-prewrite-deny.schema.json",
+  "title": "Pop!_OS System76 Native Prewrite Gap (DENY ONLY)",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "scenario",
+    "transactionId",
+    "diskGuid",
+    "isoBuild",
+    "isoSha256",
+    "distinstElfSha256",
+    "upstreamSourceCommitObserved",
+    "sourceToInstalledElfCorrespondenceVerified",
+    "firstPotentialPersistentDiskStep",
+    "nativeTestFlagIsReadOnly",
+    "completeNativeWriteSetAvailableBeforeMutation",
+    "nativeBootloaderVerifiedForPinnedElf",
+    "nativePreflightToCommitFDIdentityVerified",
+    "proposalIsFromNativeInstaller",
+    "candidateOwnershipShapeChecked",
+    "blockedBy",
+    "decision",
+    "observationComplete",
+    "distinstExecutionAuthorized",
+    "windowsWriterAuthorized",
+    "productionInstallationAuthorized",
+    "sameDiskDualBootVerified",
+    "windowsInPlaceRollbackProven",
+    "releaseEligible",
+    "stable"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "scenario": {
+      "const": "pop-distinst-native-prewrite-deny-only"
+    },
+    "transactionId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "diskGuid": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36
+    },
+    "isoBuild": {
+      "const": "24.04/intel/20"
+    },
+    "isoSha256": {
+      "const": "a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c"
+    },
+    "distinstElfSha256": {
+      "const": "8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5"
+    },
+    "upstreamSourceCommitObserved": {
+      "const": "282dfc441ee608e963930d0ce01f04b672ca4f71"
+    },
+    "firstPotentialPersistentDiskStep": {
+      "const": "Installer::partition -> disk.commit"
+    },
+    "candidateOwnershipShapeChecked": {
+      "const": true
+    },
+    "blockedBy": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "native-source-to-ELF-correspondence-unverified",
+          "native-complete-prewrite-write-set-unavailable",
+          "native-disk-commit-and-format-effects-unconfined",
+          "cross-process-FD-identity-handoff-unverified",
+          "Windows-in-place-rollback-unproven",
+          "independent-bootloader-file-and-NVRAM-proof-unavailable"
+        ]
+      }
+    },
+    "decision": {
+      "const": "DENY_NO_WRITER"
+    },
+    "sourceToInstalledElfCorrespondenceVerified": {
+      "const": false
+    },
+    "nativeTestFlagIsReadOnly": {
+      "const": false
+    },
+    "completeNativeWriteSetAvailableBeforeMutation": {
+      "const": false
+    },
+    "nativeBootloaderVerifiedForPinnedElf": {
+      "const": false
+    },
+    "nativePreflightToCommitFDIdentityVerified": {
+      "const": false
+    },
+    "proposalIsFromNativeInstaller": {
+      "const": false
+    },
+    "observationComplete": {
+      "const": false
+    },
+    "distinstExecutionAuthorized": {
+      "const": false
+    },
+    "windowsWriterAuthorized": {
+      "const": false
+    },
+    "productionInstallationAuthorized": {
+      "const": false
+    },
+    "sameDiskDualBootVerified": {
+      "const": false
+    },
+    "windowsInPlaceRollbackProven": {
+      "const": false
+    },
+    "releaseEligible": {
+      "const": false
+    },
+    "stable": {
+      "const": false
+    }
+  }
+}
