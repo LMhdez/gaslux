@@ -17,6 +17,7 @@ import re
 import stat
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from gaslux_popos_reuse_snapshot_gate import Refusal, need
@@ -59,6 +60,33 @@ O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceDocument:
+    """One copy of exactly the bytes accepted by pinned FD measurement."""
+
+    name: str
+    payload: bytes
+    sha256: str
+    resource_identity: tuple[int, int]
+    metadata: tuple[int, int, int]
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceSnapshot:
+    """Closed, immutable evidence set; never represents a pathname re-read."""
+
+    documents: tuple[EvidenceDocument, ...]
+    owner_token: object
+
+    def __getitem__(self, name: str) -> EvidenceDocument:
+        for document in self.documents:
+            if document.name == name:
+                return document
+        raise Refusal("REFUSE_SNAPSHOT_DIVERGED: unbound document requested")
+
+
 def identity(info: os.stat_result) -> tuple[int, int]:
     return info.st_dev, info.st_ino
 
@@ -72,6 +100,7 @@ class SafeWorkspace:
         self.parent_fd = -1
         self.work_fd = -1
         self.evidence_fd = -1
+        self._snapshot_token = object()
         self.inventory: dict[str, tuple[int, int]] = {}
         self.open_files: dict[str, int] = {}
         try:
@@ -185,61 +214,170 @@ class SafeWorkspace:
         self.check_directories()
 
     def evidence_bytes(self, name: str) -> bytes:
+        """Bounded content read exclusively through the original pinned inode."""
         need(name in EVIDENCE and name in self.inventory, "REFUSE_IDENTITY_MISMATCH: missing proof")
         self.inspect()
-        fd = os.open(name, os.O_RDONLY | O_NOFOLLOW, dir_fd=self.work_fd)
-        try:
-            info = os.fstat(fd)
-            need(
-                stat.S_ISREG(info.st_mode)
-                and info.st_nlink == 1
-                and identity(info) == self.inventory[name]
-                and 0 < info.st_size < 1024 * 1024,
-                "REFUSE_IDENTITY_MISMATCH: proof file swapped/oversized",
-            )
-            data = bytearray()
-            while len(data) < info.st_size:
-                block = os.read(fd, min(65536, info.st_size - len(data)))
-                need(bool(block), "REFUSE_IDENTITY_MISMATCH: truncated proof")
-                data.extend(block)
-            need(os.fstat(fd).st_size == len(data), "REFUSE_IDENTITY_MISMATCH: proof mutated")
-            self.check_directories()
-            return bytes(data)
-        finally:
-            os.close(fd)
-
-    def export(self) -> None:
-        docs = {name: self.evidence_bytes(name) for name in EVIDENCE}
-        self.inspect()
-        for name, data in docs.items():
-            fd = os.open(
-                name,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
-                0o600,
-                dir_fd=self.evidence_fd,
-            )
-            try:
-                with os.fdopen(fd, "wb", closefd=False) as out:
-                    out.write(data)
-                    out.flush()
-                    os.fsync(fd)
-            finally:
-                os.close(fd)
-        digest = "".join(
-            hashlib.sha256(docs[name]).hexdigest() + "  " + name + "\n" for name in sorted(docs)
-        ).encode("ascii")
-        fd = os.open(
-            "evidence.sha256",
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
-            0o600,
-            dir_fd=self.evidence_fd,
+        fd = self.open_files[name]
+        info = os.fstat(fd)
+        need(
+            stat.S_ISREG(info.st_mode)
+            and info.st_uid == os.geteuid()
+            and info.st_nlink == 1
+            and identity(info) == self.inventory[name]
+            and 0 < info.st_size < 1024 * 1024,
+            "REFUSE_IDENTITY_MISMATCH: proof inode swapped/oversized",
         )
+        before = (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        chunks = []
+        offset = 0
+        while offset < info.st_size:
+            block = os.pread(fd, min(65536, info.st_size - offset), offset)
+            need(bool(block), "REFUSE_SNAPSHOT_DIVERGED: short pinned proof read")
+            chunks.append(block)
+            offset += len(block)
+        current = os.fstat(fd)
+        need(
+            (current.st_size, current.st_mtime_ns, current.st_ctime_ns) == before
+            and offset == before[0]
+            and identity(current) == self.inventory[name],
+            "REFUSE_SNAPSHOT_DIVERGED: source changed during pinned read",
+        )
+        self.inspect()
+        return b"".join(chunks)
+
+    def capture_evidence(self) -> EvidenceSnapshot:
+        """Measure once, freeze bytes once, and reject intermediate mutations."""
+        self.inspect()
+        captured = []
+        for name in EVIDENCE:
+            measurement = measure_pinned_evidence(self, name)
+            data = self.evidence_bytes(name)
+            digest = hashlib.sha256(data).hexdigest()
+            need(
+                measurement["sha256"] == digest
+                and measurement["descriptorBoundReadCompleted"] is True
+                and measurement["distinstExecutionAuthorized"] is False
+                and measurement["observationComplete"] is False,
+                "REFUSE_SNAPSHOT_DIVERGED: measured bytes differ from captured bytes",
+            )
+            info = os.fstat(self.open_files[name])
+            captured.append(
+                EvidenceDocument(
+                    name, data, digest, identity(info),
+                    (info.st_size, info.st_mtime_ns, info.st_ctime_ns),
+                )
+            )
+        snapshot = EvidenceSnapshot(tuple(captured), self._snapshot_token)
+        self.verify_snapshot(snapshot)
+        return snapshot
+
+    def verify_snapshot(self, snapshot: EvidenceSnapshot) -> None:
+        """Assert all source inodes and bytes still match the frozen transaction."""
+        need(
+            isinstance(snapshot, EvidenceSnapshot)
+            and snapshot.owner_token is self._snapshot_token
+            and tuple(doc.name for doc in snapshot.documents) == EVIDENCE,
+            "REFUSE_SNAPSHOT_DIVERGED: foreign/incomplete evidence snapshot",
+        )
+        self.inspect()
+        for doc in snapshot.documents:
+            need(
+                type(doc.payload) is bytes
+                and type(doc.sha256) is str
+                and hashlib.sha256(doc.payload).hexdigest() == doc.sha256
+                and len(doc.payload) == doc.metadata[0],
+                "REFUSE_SNAPSHOT_DIVERGED: invalid frozen evidence bytes",
+            )
+            info = os.fstat(self.open_files[doc.name])
+            need(
+                identity(info) == doc.resource_identity
+                and info.st_nlink == 1
+                and info.st_uid == os.geteuid()
+                and (info.st_size, info.st_mtime_ns, info.st_ctime_ns) == doc.metadata
+                and self.evidence_bytes(doc.name) == doc.payload,
+                "REFUSE_SNAPSHOT_DIVERGED: source changed since measurement",
+            )
+        self.inspect()
+
+    def _check_exported(self, name: str, fd: int, expected: bytes) -> None:
+        """Verify bytes at the created inode, never a substituted output pathname."""
+        original = os.fstat(fd)
+        visible = os.stat(name, dir_fd=self.evidence_fd, follow_symlinks=False)
+        need(
+            stat.S_ISREG(original.st_mode)
+            and original.st_uid == os.geteuid()
+            and original.st_nlink == 1
+            and identity(original) == identity(visible)
+            and original.st_size == len(expected),
+            "REFUSE_SNAPSHOT_DIVERGED: exported output replaced",
+        )
+        result = bytearray()
+        while len(result) < len(expected):
+            chunk = os.pread(fd, min(65536, len(expected) - len(result)), len(result))
+            need(bool(chunk), "REFUSE_SNAPSHOT_DIVERGED: truncated exported bytes")
+            result.extend(chunk)
+        need(
+            bytes(result) == expected
+            and hashlib.sha256(result).digest() == hashlib.sha256(expected).digest(),
+            "REFUSE_SNAPSHOT_DIVERGED: exported bytes not equal to frozen proof",
+        )
+
+    def export(self, snapshot: EvidenceSnapshot | None = None) -> None:
+        """Export ONLY validated frozen bytes; no fallback to file re-reading."""
+        need(snapshot is not None, "REFUSE_SNAPSHOT_DIVERGED: snapshot required for export")
+        self.verify_snapshot(snapshot)
+        opened: list[tuple[str, int, bytes]] = []
         try:
-            os.write(fd, digest)
+            for doc in snapshot.documents:
+                self.verify_snapshot(snapshot)
+                fd = os.open(
+                    doc.name, os.O_RDWR | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
+                    0o600, dir_fd=self.evidence_fd,
+                )
+                opened.append((doc.name, fd, doc.payload))
+                with os.fdopen(fd, "wb", closefd=False) as output:
+                    need(
+                        output.write(doc.payload) == len(doc.payload),
+                        "REFUSE_SNAPSHOT_DIVERGED: short exported write",
+                    )
+                    output.flush()
+                    os.fsync(fd)
+                self._check_exported(doc.name, fd, doc.payload)
+            self.verify_snapshot(snapshot)
+            manifest = "".join(
+                doc.sha256 + "  " + doc.name + "\n"
+                for doc in sorted(snapshot.documents, key=lambda item: item.name)
+            ).encode("ascii")
+            fd = os.open(
+                "evidence.sha256",
+                os.O_RDWR | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
+                0o600, dir_fd=self.evidence_fd,
+            )
+            opened.append(("evidence.sha256", fd, manifest))
+            index = 0
+            while index < len(manifest):
+                written = os.write(fd, manifest[index:])
+                need(written > 0, "REFUSE_SNAPSHOT_DIVERGED: short manifest write")
+                index += written
             os.fsync(fd)
+            self._check_exported("evidence.sha256", fd, manifest)
+            self.verify_snapshot(snapshot)
+            for name, export_fd, payload in opened:
+                self._check_exported(name, export_fd, payload)
+            self.check_directories()
+            os.fsync(self.evidence_fd)
         finally:
-            os.close(fd)
-        self.check_directories()
+            # No pathname removal. A close failure refuses success, and files
+            # remain available for runner teardown, never treated as rollback.
+            failure = None
+            for _, fd, _ in opened:
+                try:
+                    os.close(fd)
+                except OSError as exc:
+                    if failure is None:
+                        failure = exc
+            if failure is not None:
+                raise Refusal("REFUSE_SNAPSHOT_DIVERGED: export descriptor close failed") from failure
 
 
 def run(work: Path, evidence: Path, template: Path) -> None:
@@ -269,17 +407,9 @@ def run(work: Path, evidence: Path, template: Path) -> None:
         # Resource-bound read-only subprocess stage: a swapped pathname cannot
         # make a foreign evidence file pass as a recovered artifact. Existing
         # tool calls in the lab remain UNISOLATED and DENY-ONLY.
-        for evidence_name in EVIDENCE:
-            measured = measure_pinned_evidence(workspace, evidence_name)
-            need(
-                measured["sha256"]
-                == hashlib.sha256(workspace.evidence_bytes(evidence_name)).hexdigest()
-                and measured["distinstExecutionAuthorized"] is False
-                and measured["observationComplete"] is False,
-                "REFUSE_SUBPROCESS_BOUNDARY: inconsistent pinned evidence",
-            )
-        plan = json.loads(workspace.evidence_bytes("pop-six-transaction.json"))
-        recovery = json.loads(workspace.evidence_bytes("recovery-proof.json"))
+        snapshot = workspace.capture_evidence()
+        plan = json.loads(snapshot["pop-six-transaction.json"].payload)
+        recovery = json.loads(snapshot["recovery-proof.json"].payload)
         need(
             plan["transactionId"] == recovery["transactionId"]
             and plan["manifestSha256"] == recovery["manifestSha256"]
@@ -290,7 +420,7 @@ def run(work: Path, evidence: Path, template: Path) -> None:
             "REFUSE_RECOVERY_UNPROVEN: inconsistent recovery plan",
         )
         for phase in ("before", "after"):
-            result = json.loads(workspace.evidence_bytes("filesystem-fsck-" + phase + ".json"))
+            result = json.loads(snapshot["filesystem-fsck-" + phase + ".json"].payload)
             need(
                 result["readOnlyFsckAllPassed"] is True
                 and len(result["filesystems"]) == 3
@@ -298,7 +428,7 @@ def run(work: Path, evidence: Path, template: Path) -> None:
                 and result["manifestSha256"] == plan["manifestSha256"],
                 "REFUSE_RECOVERY_UNPROVEN: incomplete synthetic fsck",
             )
-        workspace.export()
+        workspace.export(snapshot)
     print("GASLUX_POP_SIX_GPT_NO_QEMU_PROOF=1", flush=True)
 
 
