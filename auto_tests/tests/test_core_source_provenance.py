@@ -107,14 +107,14 @@ def test_gaslux_source_rejects_foreign_remote_config(origin: str) -> None:
 
 
 def test_gaslux_source_has_no_inherited_published_endpoint() -> None:
-    assert settings().published_dev_metadata_base_url is None
+    assert _settings().published_dev_metadata_base_url is None
 
 
 def test_gaslux_source_local_upstream_refused_before_ssh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root, _ = _checkout(tmp_path, "https://github.com/ekimiateam/libertix.git")
-    service = ValidationService(settings())
+    service = ValidationService(_settings())
     monkeypatch.setattr(service, "_local_repository_root", lambda: root)
 
     def forbidden_ssh(*_args: object, **_kwargs: object) -> None:
@@ -126,7 +126,7 @@ def test_gaslux_source_local_upstream_refused_before_ssh(
 
 
 def test_gaslux_source_published_refused_before_ssh(monkeypatch: pytest.MonkeyPatch) -> None:
-    service = ValidationService(settings())
+    service = ValidationService(_settings())
 
     def forbidden_ssh(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("SSH was attempted for an unverified published release")
@@ -140,7 +140,7 @@ def test_gaslux_source_local_records_revision_before_ssh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root, revision = _checkout(tmp_path, "https://github.com/LMhdez/gaslux.git")
-    service = ValidationService(settings())
+    service = ValidationService(_settings())
     monkeypatch.setattr(service, "_local_repository_root", lambda: root)
 
     class ConnectionAttempt(Exception):
