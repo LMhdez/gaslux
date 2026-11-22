@@ -18,6 +18,7 @@ import socket
 import stat
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import UTC, datetime
@@ -329,6 +330,7 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
     pidfd = None
     start = None
     channel = None
+    stale_pidfd = None
     report: dict = {
         "mode": mode,
         "renameAfterPin": rename,
@@ -395,6 +397,29 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
                 raise LabRefusal("FOREIGN_PID_ACCEPTED")
         finally:
             os.close(wrong)
+        # A real pidfd from an unrelated Python child must never authenticate
+        # the live QEMU PID, even though both processes have the same UID.
+        other = subprocess.Popen(
+            [sys.executable, "-c", "import time;time.sleep(10)"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        other_fd = None
+        other_birth = None
+        try:
+            other_birth = birth(other.pid)
+            other_fd = os.pidfd_open(other.pid)
+            try:
+                assert_pidfd(other_fd, child.pid, start)
+            except LabRefusal:
+                report["foreignRealPidfdRejected"] = True
+            else:
+                raise LabRefusal("FOREIGN_REAL_PIDFD_ACCEPTED")
+        finally:
+            report["foreignPidfdCleanup"] = close_process(other, other_fd, other_birth)
+        require(report["foreignPidfdCleanup"]["directReaped"], "FOREIGN_CHILD_NOT_REAPED")
         transcript, channel = qmp_readonly(child, work / "qmp.sock", start, pidfd)
         report["qmp"] = transcript
         report["openedOwnedInodes"] = fd_inventory(child.pid, fds)
@@ -439,6 +464,8 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
     finally:
         if channel is not None:
             channel.close()
+        if pidfd is not None:
+            stale_pidfd = os.dup(pidfd)
         try:
             report["cleanup"] = close_process(child, pidfd, start)
         except (LabRefusal, OSError, subprocess.SubprocessError) as exc:
@@ -447,6 +474,13 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
                 "descendantsAbsent": False,
                 "reason": str(exc) if isinstance(exc, LabRefusal) else "CLEANUP_FAILED",
             }
+        if stale_pidfd is not None:
+            try:
+                assert_pidfd(stale_pidfd, child.pid, start)
+            except (LabRefusal, FileNotFoundError, ProcessLookupError, OSError):
+                report["stalePidfdRejected"] = True
+            finally:
+                os.close(stale_pidfd)
         for fd in (*fds.values(), *readonly_fds.values()):
             os.close(fd)
         if stderr.is_file():
@@ -469,9 +503,12 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             for name, path in paths.items()
             if path.is_file() and not path.is_symlink()
         }
-        if rename:
-            report["pinnedDiskAfter"] = sha256(work / "retained-owned-disk.qcow2")
-        # Quiescent guest: OVMF VARS must never change unexpectedly.
+        pinned_disk = work / "retained-owned-disk.qcow2" if rename else paths["disk.qcow2"]
+        report["pinnedDiskAfter"] = sha256(pinned_disk)
+        report["qcowUnchanged"] = (
+            report["pinnedDiskAfter"] == geometry["resources"]["disk.qcow2"]["sha256"]
+        )
+        # Quiescent guest: OVMF VARS and QCOW2 must never change unexpectedly.
         report["varsUnchanged"] = (
             report["postHash"]["vars.fd"] == geometry["resources"]["vars.fd"]["sha256"]
         )
@@ -482,6 +519,8 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             report["success"]
             and report["varsUnchanged"]
             and report["codeUnchanged"]
+            and report["qcowUnchanged"]
+            and report.get("stalePidfdRejected") is True
             and report["cleanup"].get("directReaped") is True
             and report["cleanup"].get("descendantsAbsent") is True
         )
@@ -535,6 +574,33 @@ def negative_cases(root: Path) -> dict:
         check=False,
     )
     result["closedFdRejectedByQemu"] = done.returncode != 0
+    # A malicious QCOW2 backing dependency is rejected before any VM spawn.
+    raw = work / "synthetic-base.raw"
+    raw.write_bytes(bytes(4096))
+    backed = work / "untrusted-backing.qcow2"
+    subprocess.run(
+        [
+            QEMU_IMG, "create", "-f", "qcow2", "-F", "raw",
+            "-b", str(raw), str(backed), "64M",
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=15,
+    )
+    backed_info = json.loads(subprocess.check_output(
+        [QEMU_IMG, "info", "--output=json", str(backed)], timeout=15
+    ))
+    result["foreignBackingRejected"] = bool(backed_info.get("backing-filename"))
+    try:
+        subprocess.Popen(
+            [str(work / "not-an-executable")],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        result["spawnFailureDetected"] = True
     # A live, paused QEMU without a QMP listener must not be mistaken for QMP.
     timeout_process = None
     timeout_pidfd = None
@@ -578,6 +644,8 @@ def negative_cases(root: Path) -> dict:
                 "varsMutationDetected",
                 "wrongFdRejected",
                 "closedFdRejectedByQemu",
+                "foreignBackingRejected",
+                "spawnFailureDetected",
                 "noQmpTimeoutRefused",
             )
         ),
