@@ -160,3 +160,29 @@ This branch introduces [windows_vm_host_capacity.py](../auto_tests/tools/windows
 **Evidence scope:** `BLOCKED_STORAGE` or `CAPACITY_ONLY_OK`, both with `windows_lab_admitted=false`. The script does not create QCOW2, attach disks, boot Windows, touch NVRAM/BCD/ESP, assert media provenance, verify snapshot/restore or install Linux. A passing CI job proves only that the negative/positive capacity classification ran correctly; it cannot establish a Windows VM or satisfy the Mint install/dual-boot/recovery acceptance gate. Even `CAPACITY_ONLY_OK` requires a distinct owned virtual disk, authenticated Windows media, actual guest boot, snapshot and restore witnesses before any guest mutation.
 
 This avoids expensive or unsafe VM startup on a runner already known to have insufficient real storage, without conflating sparse QCOW2 *virtual size* with physical host capacity. When real backing storage is sufficient, the next independent admission gates remain open. The tool is deliberately read-only, no model or GitHub write permissions, and cannot promote release eligibility. This is useful to the final project but **not an installer implementation**.
+
+## 2026-11-22 — read-only destination cross-backend contract (PR #337)
+
+- [PR #337](https://github.com/LMhdez/gaslux/pull/337) adds host-only
+  `assess_authenticated_destination` with actual QEMU pidfd/procfd
+  observations, held QCOW2/backing/checkpoint read-only FDs, checked SHA-256,
+  canonical RAW backing GPT parser and *unchanged*, pinned #267 no-writer gate.
+- [Actions #45032388422](https://github.com/LMhdez/gaslux/actions/runs/45032388422)
+  and [#45032391998](https://github.com/LMhdez/gaslux/actions/runs/45032391998)
+  **SUCCESS** on core HEAD `d2e382a60120d09a0b225e4188309f48f0315845`:
+  private QEMU stopped before guest boot; 11 destination attack/positive
+  cases, #327 BZD-DEST-01 suite and #267/HOST-FD/QEMU regressions;
+  Ruff + compileall passed.
+- [CachyOS recovery #45032392005](https://github.com/LMhdez/gaslux/actions/runs/45032392005)
+  and [Windows recovery #45032392037](https://github.com/LMhdez/gaslux/actions/runs/45032392037)
+  **SUCCESS** on the same HEAD. All are contract/fixture
+  runs, **not** Windows/Linux boot, dual boot, in-place recovery or rollback.
+- Properties: local FD and backing GPT **PROVEN locally**; caller plan, source
+  and write-set ownership **CLAIMED**; independent backend/FD, effective
+  QCOW2 guest GPT and checkpoint authenticity **UNPROVEN**;
+  Guest channel, write and installation authority **DENIED**.
+  No release or stability claim.
+
+## 2026-11-22 — #337 integration branch reconciled with dev (non-destructive)
+
+Original #337 HEAD `f1e082c37ab58887f942b1e9ab0a841cb4b2b02a` composed with dev `55a70a90bdde29d0d41d4592de205013ee61bc16` by a two-parent merge (common ancestor `8e68a475d6397ba8fef2e0f9f83758545e202a5f`). The only overlapping path was this evidence index: retain the entire dev text including #361/#368/#369 and append the original #337 historical section without editing it. The authenticated_destination.py source blob `328653beca42b5ac006974d014e1bc6da1182e63` remains unchanged; Safety D-337-01 technical closure applies exclusively to the audited offline read-only code. Fresh exact-composition CI and dev integration checks are mandatory. No writer, independent Guest or Windows recovery authorization.
