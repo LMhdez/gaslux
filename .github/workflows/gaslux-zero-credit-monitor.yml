@@ -1,0 +1,45 @@
+name: Gaslux zero-credit progress monitor
+
+on:
+  schedule:
+    # UTC, offset from :00 to avoid peak scheduler contention. Requires main branch.
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-zero-credit-monitor.yml'
+      - 'auto_tests/tools/gaslux_zero_credit_monitor.py'
+      - 'auto_tests/tests/test_gaslux_zero_credit_monitor.py'
+      - 'docs/GASLUX_ZERO_CREDIT_AUTOMATION.md'
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: gaslux-zero-credit-monitor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout read-only source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate offline monitor tests
+        run: python3 -m unittest discover -s auto_tests/tests -p 'test_gaslux_zero_credit_monitor.py' -v
+      - name: Inspect repository metadata (read-only, zero AI credits)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 auto_tests/tools/gaslux_zero_credit_monitor.py --repo "$GITHUB_REPOSITORY"
+      - name: Retain bounded public metadata report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaslux-zero-credit-snapshot-${{ github.run_id }}
+          path: artifacts/gaslux-monitor/
+          retention-days: 3
