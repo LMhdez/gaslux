@@ -62,6 +62,10 @@ class Refusal(ValueError):
     """Cannot establish complete, bounded, pinned OCI identity and content."""
 
 
+class InsufficientEvidence(Refusal):
+    """Verified bytes contain an unresolved bootc path, not proof of absence."""
+
+
 def digest_bytes(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
@@ -246,6 +250,7 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
             measured = _MeasuredTarStream(decompressor, budgets)
             archive = stack.enter_context(tarfile.open(fileobj=measured, mode="r|"))
             count = 0
+            bootc_names_in_layer = set()
             for member in archive:
                 count += 1
                 budgets["members"] += 1
@@ -257,6 +262,10 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                 ):
                     raise Refusal("OCI tar expansion/member limit exceeded")
                 name = _path(member.name)
+                if name in CANDIDATES or name.endswith("/bootc"):
+                    if name in bootc_names_in_layer:
+                        raise Refusal("Duplicate bootc path in a single OCI layer")
+                    bootc_names_in_layer.add(name)
                 directory, basename = posixpath.split(name)
                 if basename.startswith(".wh."):
                     victim = basename[4:]
@@ -417,7 +426,7 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
         else:
             raise Refusal("Excessive bootc symbolic links")
     if unresolved and not matched:
-        raise Refusal("Image bootc path exists but cannot be resolved safely")
+        raise InsufficientEvidence("Image bootc path exists but cannot be resolved safely")
     return {
         "status": (
             "BOOTC_PRESENT_ROUTE_UNVERIFIED" if matched else "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
@@ -452,6 +461,14 @@ def main() -> None:
     args = parser.parse_args()
     try:
         result = download_registry()
+    except InsufficientEvidence as exc:
+        result = {
+            "status": "INSUFFICIENT_EVIDENCE",
+            "reason": str(exc)[:512],
+            "requestedImage": PINNED,
+            "bootcFileVerified": False,
+            **{key: False for key in NO_WRITE},
+        }
     except (Refusal, OSError, ValueError, urllib.error.URLError, tarfile.TarError) as exc:
         result = {
             "status": "REFUSED_UNAUTHENTICATED_OCI",
@@ -465,7 +482,8 @@ def main() -> None:
         print("REFUSED_UNAUTHENTICATED_OCI:", result["reason"])
     else:
         print(result["status"])
-    raise SystemExit(2 if result["status"] != "REFUSED_UNAUTHENTICATED_OCI" else 3)
+    valid = {"BOOTC_PRESENT_ROUTE_UNVERIFIED", "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"}
+    raise SystemExit(2 if result["status"] in valid else 3)
 
 
 if __name__ == "__main__":

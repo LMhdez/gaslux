@@ -19,6 +19,7 @@ from bazzite_oci_bootc_readback import (  # noqa: E402
     MAX_LAYER,
     NO_WRITE,
     ZSTD_LAYER,
+    InsufficientEvidence,
     Refusal,
     digest_bytes,
     finish,
@@ -413,3 +414,44 @@ def test_finish_refuses_unverified_diffids_even_with_forged_bootc_file():
             budget,
             {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
         )
+
+
+def test_duplicate_bootc_file_in_one_layer_is_ambiguous_and_refused():
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:gz") as tar:
+        for payload in (b"\x7fELFfirst", b"\x7fELFsecond"):
+            entry = tarfile.TarInfo("usr/bin/bootc")
+            entry.size = len(payload)
+            tar.addfile(entry, io.BytesIO(payload))
+    with pytest.raises(Refusal, match="Duplicate bootc path"):
+        scan(out.getvalue())
+
+
+def test_unresolved_bootc_path_is_insufficient_not_absent():
+    layer = tar_layer({"usr/bin/bootc": ("symlink", "not-present")})
+    state, budget = scan(layer)
+    with pytest.raises(InsufficientEvidence, match="cannot be resolved safely"):
+        finish(
+            state,
+            [{"digest": digest_bytes(layer), "size": len(layer)}],
+            budget,
+            {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
+        )
+
+
+def test_cli_insufficient_evidence_fails_closed_without_writer(tmp_path, monkeypatch):
+    import bazzite_oci_bootc_readback as module
+
+    def cannot_resolve():
+        raise module.InsufficientEvidence("Unresolved executable")
+
+    monkeypatch.setattr(module, "download_registry", cannot_resolve)
+    dest = tmp_path / "readback.json"
+    monkeypatch.setattr(sys, "argv", ["inspector", "--output", str(dest)])
+    with pytest.raises(SystemExit) as exited:
+        module.main()
+    assert exited.value.code == 3
+    result = json.loads(dest.read_text())
+    assert result["status"] == "INSUFFICIENT_EVIDENCE"
+    assert result["bootcFileVerified"] is False
+    assert all(result[flag] is False for flag in NO_WRITE)
