@@ -128,3 +128,27 @@ def test_red_timeout_must_reap_descendant_inherited_pipe(
                 os.kill(descendant_pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+
+
+@pytest.mark.parametrize(
+    "field, excessive",
+    [
+        ("max_virtual_bytes", 128 * 1024**3 + 1),
+        ("max_qcow2_apparent_bytes", 64 * 1024**2 + 1),
+        ("max_qcow2_allocated_bytes", 32 * 1024**2 + 1),
+        ("max_raw_allocated_bytes", 32 * 1024**2 + 1),
+        ("max_total_allocated_bytes", 64 * 1024**2 + 1),
+        ("max_checkpoint_bytes", 64 * 1024 + 1),
+        ("max_qemu_info_bytes", 64 * 1024 + 1),
+        ("max_seconds", 31),
+    ],
+)
+def test_budget_caps_reject_all_excess_values(field, excessive):
+    with pytest.raises(actual.LargeDestinationRefused, match="INVALID_RESOURCE_LIMIT"):
+        actual.LargeReadOnlyBudget(known_quota_bytes=64 * 1024**2, **{field: excessive})
+
+
+def test_unknown_quota_is_explicitly_unproven():
+    # Budget metadata may carry None; the assessment is responsible for refusal.
+    value = actual.LargeReadOnlyBudget(known_quota_bytes=None)
+    assert value.known_quota_bytes is None
