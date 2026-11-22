@@ -49,9 +49,9 @@
   "historicalAndCurrentEvidence": {
     "historical": "https://github.com/LMhdez/gaslux/actions/runs/43936058057",
     "currentRun": "https://github.com/LMhdez/gaslux/actions/runs/45036542249",
-    "currentHead": "fee6674f504cc7e994161be52f940b36d9566d28",
     "currentExactBytesVerified": true,
-    "currentNativeInspectorPassed": true
+    "currentNativeInspectorPassed": true,
+    "verifiedActionHead": "fee6674f504cc7e994161be52f940b36d9566d28"
   },
   "notes": "Unsigned experiment only. Never insert into stable release-config.json or signed catalog. Requires independent publisher root/signature or approved Gaslux trust policy, Safety review and boot/rollback evidence."
 }
