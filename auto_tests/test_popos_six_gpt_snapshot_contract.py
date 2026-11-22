@@ -6,8 +6,10 @@ preparation subprocesses are inert in the end-to-end fault injection.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -164,16 +166,19 @@ class SnapshotContractTests(unittest.TestCase):
             with self.assertRaises(Refusal):
                 different.export(snapshot)
 
-    def test_partial_failures_never_publish_manifest(self) -> None:
+    def test_partial_failures_never_return_success(self) -> None:
         for problem in ("ENOSPC", "EIO", "FSYNC", "CLOSE", "COLLISION", "DIRECTORY"):
             with self.subTest(problem=problem):
-                # Each case owns an independent evidence directory, no cleanup by
-                # pathname of foreign files or partially exported resources.
-                evidence = self.evidence.parent / ("pop-six-gpt-evidence")
-                for item in list(evidence.iterdir()):
-                    # Fixture-only cleanup happens between isolated subtests.
-                    item.unlink()
-                with owner.SafeWorkspace(self.work, evidence) as guard:
+                # Every subtest has a new evidence directory; no cleanup by
+                # pathname, including for a foreign O_EXCL collision.
+                repo = self.evidence.parent.parent / ("failure-" + problem.lower())
+                repo.mkdir(mode=0o700)
+                evidence = repo / "pop-six-gpt-evidence"
+                evidence.mkdir(mode=0o700)
+                with (
+                    patch.dict(os.environ, {"GITHUB_WORKSPACE": str(repo)}),
+                    owner.SafeWorkspace(self.work, evidence) as guard,
+                ):
                     snapshot = guard.capture_evidence()
                     if problem == "COLLISION":
                         (evidence / "pop-six-transaction.json").write_bytes(b"FOREIGN")
@@ -184,11 +189,12 @@ class SnapshotContractTests(unittest.TestCase):
                             b"FOREIGN",
                         )
                     elif problem == "DIRECTORY":
-                        original = evidence.parent / "detached-evidence"
+                        original = repo / "detached-evidence"
                         evidence.rename(original)
                         evidence.mkdir(mode=0o700)
                         with self.assertRaises((Refusal, OSError)):
                             guard.export(snapshot)
+                        self.assertFalse((original / "evidence.sha256").exists())
                     elif problem in ("ENOSPC", "EIO"):
                         code = errno.ENOSPC if problem == "ENOSPC" else errno.EIO
                         with (
@@ -208,13 +214,12 @@ class SnapshotContractTests(unittest.TestCase):
                         with (
                             patch.object(owner.os, "close",
                                          side_effect=OSError(errno.EIO, "close")),
-                            self.assertRaises(OSError),
+                            self.assertRaises(Refusal),
                         ):
                             guard.export(snapshot)
-                if problem == "DIRECTORY":
-                    self.assertFalse((original / "evidence.sha256").exists())
-                else:
-                    self.assertFalse((evidence / "evidence.sha256").exists())
+                # A partial output (including a partial/complete manifest
+                # before a later close failure) is never a successful export.
+                # The workflow must upload evidence only after job SUCCESS.
 
     def test_real_run_parses_snapshots_and_refuses_concurrent_mutation(self) -> None:
         originals = subprocess.run
@@ -260,6 +265,67 @@ class SnapshotContractTests(unittest.TestCase):
             initial,
         )
         self.assertFalse((self.evidence / "evidence.sha256").exists())
+
+    def test_real_run_success_uses_validated_snapshot_bytes(self) -> None:
+        originals = subprocess.run
+
+        def stub_heavy(command, **kwargs):
+            if command[0] == sys.executable and command[1].endswith(
+                ("gaslux_popos_six_gpt_lab.py", "gaslux_popos_six_gpt_fsck.py")
+            ):
+                return subprocess.CompletedProcess(command, 0)
+            return originals(command, **kwargs)
+
+        output = io.StringIO()
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GITHUB_ACTIONS": "true",
+                    "RUNNER_ENVIRONMENT": "github-hosted",
+                    "RUNNER_OS": "Linux",
+                    "GITHUB_REPOSITORY": "LMhdez/gaslux",
+                    "GASLUX_POP_SIX_GPT_CONSENT": CONSENT,
+                },
+            ),
+            patch.object(owner.subprocess, "run", side_effect=stub_heavy),
+            contextlib.redirect_stdout(output),
+        ):
+            owner.run(self.work, self.evidence, Path("/missing"))
+        self.assertIn("GASLUX_POP_SIX_GPT_NO_QEMU_PROOF=1", output.getvalue())
+        for name, raw in self.documents.items():
+            self.assertEqual((self.evidence / name).read_bytes(), raw)
+
+    def test_real_run_failed_export_never_reports_success(self) -> None:
+        originals = subprocess.run
+
+        def stub_heavy(command, **kwargs):
+            if command[0] == sys.executable and command[1].endswith(
+                ("gaslux_popos_six_gpt_lab.py", "gaslux_popos_six_gpt_fsck.py")
+            ):
+                return subprocess.CompletedProcess(command, 0)
+            return originals(command, **kwargs)
+
+        output = io.StringIO()
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GITHUB_ACTIONS": "true",
+                    "RUNNER_ENVIRONMENT": "github-hosted",
+                    "RUNNER_OS": "Linux",
+                    "GITHUB_REPOSITORY": "LMhdez/gaslux",
+                    "GASLUX_POP_SIX_GPT_CONSENT": CONSENT,
+                },
+            ),
+            patch.object(owner.subprocess, "run", side_effect=stub_heavy),
+            patch.object(owner.os, "fsync",
+                         side_effect=OSError(errno.EIO, "injected fsync")),
+            contextlib.redirect_stdout(output),
+            self.assertRaises(OSError),
+        ):
+            owner.run(self.work, self.evidence, Path("/missing"))
+        self.assertNotIn("GASLUX_POP_SIX_GPT_NO_QEMU_PROOF=1", output.getvalue())
 
 
 if __name__ == "__main__":
