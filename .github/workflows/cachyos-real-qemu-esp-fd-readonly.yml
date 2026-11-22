@@ -1,0 +1,155 @@
+name: CachyOS paused QEMU ESP FAT32 FD diagnostic no guest
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/cachyos-real-qemu-esp-fd-readonly.yml'
+      - 'auto_tests/test_cachyos_qemu_esp_fd_real.py'
+permissions:
+  contents: read
+concurrency:
+  group: cachyos-paused-qemu-esp-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  qemu-paused-esp-fd-no-guest:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 314 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'test/cachyos-bcd-fat32-trace-correlation-20261122' &&
+      github.event.pull_request.base.ref == 'fix/cachyos-bcd-ab-forensic-contract-no-qemu-20261121'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GASLUX_QEMU_NO_GUEST: '1'
+      PYTHONUNBUFFERED: '1'
+      GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
+      GASLUX_QEMU_PIN286_ROOT: ${{ github.workspace }}/gpt286-pinned
+      GASLUX_CACHY_EVIDENCE_OUT: ${{ github.workspace }}/cachyos-qemu-esp-safe-evidence.json
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Checkout pinned dev HOST FD and Local Peer
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 8e68a475d6397ba8fef2e0f9f83758545e202a5f
+          path: observer-dev
+          persist-credentials: false
+      - name: Checkout pinned Safety QCOW2 chain verifier
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: safety267-pinned
+          persist-credentials: false
+      - name: Checkout pinned canonical GPT FD
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 9aed36cfdb8c09a461dc38811c326c54180273de
+          path: gpt286-pinned
+          persist-credentials: false
+      - name: Verify hosted isolation and pinned source hashes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$(uname -m)" = x86_64
+          test "$GASLUX_QEMU_NO_GUEST" = 1
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git -C observer-dev rev-parse HEAD)" = 8e68a475d6397ba8fef2e0f9f83758545e202a5f
+          test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test "$(git -C gpt286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          test "$(git -C observer-dev hash-object auto_tests/installer_observer/host_fd_boundary.py)" = 35bc7f4a37ec8821aa32c15660f83ef80e3e29b9
+          test "$(git -C observer-dev hash-object auto_tests/installer_observer/host_qemu_fd_evidence.py)" = 6727ca454b9282079400593356516097a297b9d6
+          test "$(git -C observer-dev hash-object auto_tests/installer_observer/qemu_local_disk_witness.py)" = b7fab5ab0211904af5f43f089c54a6a72141d0ed
+          test "$(git -C observer-dev hash-object auto_tests/installer_observer/guest_transport_peer_boundary.py)" = e176d90f487aede071b12bced9d5d3a41d93199e
+          for dir in observer-dev gpt286-pinned safety267-pinned; do
+            test -z "$(git -C "$dir" status --porcelain --untracked-files=no)"
+          done
+      - name: Install QEMU and FAT32 tools on disposable hosted runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils gdisk dosfstools mtools
+          python3 -m pip install --disable-pip-version-check 'pytest>=9,<10' 'ruff==0.14.5'
+      - name: Compile and lint minimal new lab code
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m compileall -q auto_tests/test_cachyos_qemu_esp_fd_real.py
+          ruff check --select E4,E7,E9,F --ignore E402 auto_tests/test_cachyos_qemu_esp_fd_real.py
+      - name: Exercise real paused QEMU and pinned source GPT/ESP read-only
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/observer-dev:${{ github.workspace }}
+        run: |
+          set -Eeuo pipefail
+          python3 -m pytest -q -s auto_tests/test_cachyos_qemu_esp_fd_real.py
+          test -s "$GASLUX_CACHY_EVIDENCE_OUT"
+      - name: Reuse integrated Local Peer negative tests without a guest
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/observer-dev
+        run: |
+          set -Eeuo pipefail
+          python3 -m pytest -q observer-dev/auto_tests/tests/test_guest_transport_peer_boundary.py
+      - name: Verify fail-closed evidence and SHA-256 sidecar
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["GASLUX_CACHY_EVIDENCE_OUT"])
+          d = json.loads(p.read_text())
+          assert d["testMedia"] == "SELF_GENERATED_SYNTHETIC_NOT_WINDOWS"
+          assert d["status"] == "REAL_PAUSED_QEMU_RAW_QCOW2_FAT32_READONLY_DIAGNOSTIC_ONLY"
+          assert d["qemuActualProcessObserved"] is True
+          for name in ("rawQemuHostSample", "qcow2QemuHostSample"):
+              sample = d[name]
+              assert set(sample) == {
+                  "pid", "startTicks", "commandSha256", "fileDev",
+                  "fileInode", "fdNumber", "qmpDevice",
+                  "qmpReplyAcquisition", "provenance",
+              }
+              assert type(sample["pid"]) is int and sample["pid"] > 1
+              assert type(sample["startTicks"]) is int and sample["startTicks"] > 0
+              assert type(sample["fdNumber"]) is int and sample["fdNumber"] >= 0
+              assert type(sample["fileDev"]) is int and sample["fileDev"] > 0
+              assert type(sample["fileInode"]) is int and sample["fileInode"] > 0
+              assert len(sample["commandSha256"]) == 64
+              assert sample["qmpDevice"] == "disk0"
+              assert sample["qmpReplyAcquisition"] == "LOCALLY_MEASURED"
+              assert sample["provenance"] == "LOCALLY_MEASURED_PROCESS_FD_QMP_CLAIMED_GRAPH"
+          for key in ("windowsBootmgfwAuthentic", "windowsBcdAuthentic",
+                      "historicalWindowsEspAuthenticated", "independentQmpNodeToFdBindingProven",
+                      "qemuTraceBlkPointerBound", "qemuWriteTracePresent", "guestBooted",
+                      "archisoPacstrapExecuted", "processAttributionProven", "approvedMutation",
+                      "productionStorageWritesAuthorized", "sameDiskDualBootVerified",
+                      "rollbackProven", "releaseEligible", "stable"):
+              assert d[key] is False, key
+          assert p.stat().st_size < 8192
+          PY
+          cd "$GITHUB_WORKSPACE"
+          sha256sum cachyos-qemu-esp-safe-evidence.json > cachyos-qemu-esp-safe-evidence.json.sha256
+          sha256sum -c cachyos-qemu-esp-safe-evidence.json.sha256
+          echo 'Paused real QEMU only. Synthetic FAT32, fake Windows loader. No guest or writes.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish bounded metadata only, never FAT32 or Windows bytes
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cachyos-esp-fd-deny-only-${{ github.event.pull_request.head.sha }}
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            ${{ github.workspace }}/cachyos-qemu-esp-safe-evidence.json
+            ${{ github.workspace }}/cachyos-qemu-esp-safe-evidence.json.sha256
