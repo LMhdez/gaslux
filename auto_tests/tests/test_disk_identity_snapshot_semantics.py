@@ -3,6 +3,7 @@
 These negative fixtures exercise a read-only boundary; they are not boot or
 rollback evidence, and never authorize storage writes.
 """
+
 import importlib.util
 import struct
 import uuid
@@ -29,10 +30,16 @@ def snapshot():
         "partitionTableId": "gpt:" + DISK,
         "sizeBytes": 4096 * 512,
         "logicalSectorSizeBytes": 512,
-        "partitions": [{
-            "number": 1, "typeGuid": TYPE, "partGuid": PART,
-            "offsetBytes": 64 * 512, "sizeBytes": 960 * 512, "attributes": 0,
-        }],
+        "partitions": [
+            {
+                "number": 1,
+                "typeGuid": TYPE,
+                "partGuid": PART,
+                "offsetBytes": 64 * 512,
+                "sizeBytes": 960 * 512,
+                "attributes": 0,
+            }
+        ],
     }
 
 
@@ -41,11 +48,14 @@ def test_valid_snapshot_self_comparison():
     gate.assert_snapshot_matches(value, value)
 
 
-@pytest.mark.parametrize("disk_id", [
-    "gpt:" + "0" * 36,
-    "gpt:" + "z" * 36,
-    "gpt:" + DISK.upper(),
-])
+@pytest.mark.parametrize(
+    "disk_id",
+    [
+        "gpt:" + "0" * 36,
+        "gpt:" + "z" * 36,
+        "gpt:" + DISK.upper(),
+    ],
+)
 def test_invalid_disk_guid_rejected_even_when_snapshots_equal(disk_id):
     value = snapshot()
     value["partitionTableId"] = disk_id
@@ -53,12 +63,15 @@ def test_invalid_disk_guid_rejected_even_when_snapshots_equal(disk_id):
         gate.assert_snapshot_matches(value, value)
 
 
-@pytest.mark.parametrize("field, invalid", [
-    ("partGuid", str(uuid.UUID(int=0))),
-    ("typeGuid", str(uuid.UUID(int=0))),
-    ("partGuid", "z" * 36),
-    ("typeGuid", TYPE.upper()),
-])
+@pytest.mark.parametrize(
+    "field, invalid",
+    [
+        ("partGuid", str(uuid.UUID(int=0))),
+        ("typeGuid", str(uuid.UUID(int=0))),
+        ("partGuid", "z" * 36),
+        ("typeGuid", TYPE.upper()),
+    ],
+)
 def test_invalid_partition_guid_rejected(field, invalid):
     value = snapshot()
     value["partitions"][0][field] = invalid
@@ -66,10 +79,18 @@ def test_invalid_partition_guid_rejected(field, invalid):
         gate.assert_snapshot_matches(value, value)
 
 
-@pytest.mark.parametrize("mutation", [
-    "duplicate_guid", "overlap", "outside", "misaligned", "negative_attributes",
-    "oversized_attributes", "unaligned_disk",
-])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "duplicate_guid",
+        "overlap",
+        "outside",
+        "misaligned",
+        "negative_attributes",
+        "oversized_attributes",
+        "unaligned_disk",
+    ],
+)
 def test_invalid_geometry_rejected_even_when_snapshots_equal(mutation):
     value = snapshot()
     part = value["partitions"][0]
@@ -95,6 +116,7 @@ def test_invalid_geometry_rejected_even_when_snapshots_equal(mutation):
         value["partitions"].append(other)
     with pytest.raises(gate.DiskIdentityError):
         gate.assert_snapshot_matches(value, value)
+
 
 @pytest.mark.parametrize("sector", [512, 4096])
 @pytest.mark.parametrize("lba", [1, 2, 4094, 4095])
@@ -157,7 +179,7 @@ def test_four_kib_sectors_from_actual_fd_gpt_reader(tmp_path):
     struct.pack_into("<QQQ", entries, 32, 64, 1023, 0)
     entries_crc = zlib.crc32(entries)
     for lba in (2, sectors - 5):
-        image[lba * sector:lba * sector + len(entries)] = entries
+        image[lba * sector : lba * sector + len(entries)] = entries
 
     def header(current, alternate, array_lba):
         raw = bytearray(sector)
@@ -169,8 +191,8 @@ def test_four_kib_sectors_from_actual_fd_gpt_reader(tmp_path):
         struct.pack_into("<I", raw, 16, zlib.crc32(raw[:92]))
         return raw
 
-    image[sector:2 * sector] = header(1, sectors - 1, 2)
-    image[(sectors - 1) * sector:] = header(sectors - 1, 1, sectors - 5)
+    image[sector : 2 * sector] = header(1, sectors - 1, 2)
+    image[(sectors - 1) * sector :] = header(sectors - 1, 1, sectors - 5)
     path = tmp_path / "synthetic-4k-gpt.img"
     path.write_bytes(image)
     actual = gate.inspect_gpt_image(path, logical_sector_size=sector)
