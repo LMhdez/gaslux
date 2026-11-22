@@ -70,7 +70,7 @@ def assert_blocked(value):
     assert all(item is False for item in value["capabilities"].values())
 
 
-def probe(key, payload, *, status=200, source="GITHUB_READ_ONLY"):
+def probe(payload, *, status=200, source="GITHUB_READ_ONLY"):
     return {"source": source, "httpStatus": status, "payload": payload}
 
 
