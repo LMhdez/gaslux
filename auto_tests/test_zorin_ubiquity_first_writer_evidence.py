@@ -17,6 +17,7 @@ from zorin_ubiquity_first_writer_evidence import (
     lstat_member,
     parse_unsquashfs_lstat,
     reject_forged_effect_graph,
+    read_independent_partman_script,
     static_shell_references,
 )
 
@@ -105,6 +106,37 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
         self.assertFalse(report["sourceReferences"][0]["targetFileAuthenticated"])
         self.assertFalse(report["runtimeEffectsAuthenticated"])
         self.assertFalse(report["firstPersistentWriteVerified"])
+
+    def test_two_path_shell_reader_rejects_non_allowlisted_member(self):
+        with self.assertRaises(SourceCoverageDenied) as caught:
+            read_independent_partman_script(Path("/fake"), "../foreign.sh")
+        self.assertEqual(caught.exception.code, "E_PARTMAN_SOURCE_PATH_NOT_ALLOWED")
+
+    def test_shell_reader_rejects_symlink_or_nonregular_member(self):
+        with patch(
+            "zorin_ubiquity_first_writer_evidence.require_regular_member",
+            side_effect=ValueError("not regular"),
+        ):
+            with self.assertRaises(SourceCoverageDenied) as caught:
+                read_independent_partman_script(
+                    Path("/fake"), "usr/lib/partman/lib/commit.sh"
+                )
+        self.assertEqual(caught.exception.code, "E_PARTMAN_SOURCE_NOT_REGULAR")
+
+    def test_shell_reader_uses_own_explicit_regular_source_gate(self):
+        member = "usr/lib/partman/lib/resize.sh"
+        with (
+            patch("zorin_ubiquity_first_writer_evidence.require_regular_member") as regular,
+            patch(
+                "zorin_ubiquity_first_writer_evidence.read_member",
+                return_value=b"# verified fixture\\n",
+            ) as reader,
+        ):
+            content = read_independent_partman_script(Path("/readonly"), member)
+        self.assertEqual(content, b"# verified fixture\\n")
+        regular.assert_called_once()
+        reader.assert_called_once()
+        self.assertEqual(reader.call_args.args[1], member)
 
     def test_untrusted_shell_encoding_is_not_accepted_as_code(self):
         with self.assertRaises(SourceCoverageDenied) as caught:
