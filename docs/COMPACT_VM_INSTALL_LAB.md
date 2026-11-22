@@ -28,6 +28,16 @@ This implementation provisions **one private sparse 60-GiB QEMU target disk**, n
 - `.github/workflows/compact-ovmf-target-disk.yml` executes the actual program on ephemeral GitHub-hosted Ubuntu, tests negative cases, independently re-reads the disk geometry, deletes only the image-owned private directory and uploads **JSON evidence only**, never the virtual disk or ISO.
 - **No guest receives read/write access**; no Windows/Mint boot, partitioning, BCD/ESP/WinRE, installation, update, uninstall or rollback operation is executed here. No stable catalog or production runtime changes.
 
+## MINT-LEAN-CAPACITY-RESTORE-01 — no-guest fixture extension (22-11-2026 UTC)
+
+**This is not Safety admission.** The existing compact OVMF workflow measures QEMU's fully-allocated QCOW2 upper bound on the **same runner**, reports a physical upper bound plus reserved space, and explicitly records `quota_verified=false`. Its original nominal 80-GiB plan is not a real enforceable quota, and the true QCOW2 fully allocated bound may exceed that plan.
+
+The existing `compact_ovmf_target.py` now adds a small controlled 16-MiB QCOW2 baseline/overlay fixture, with an explicitly pinned two-entry backing chain, actual `qemu-io` canary write/read, overlay discard and recreation, SHA-256 preservation of its backing image and a separate real installed OVMF_VARS template/copy reset verified by hash. Negative probes reject corrupted QCOW2 metadata, wrong backing target, symlink swaps, incomplete interrupted output, and low-capacity planning. All file operations remain restricted to a fresh isolated 0700 runner workspace; **no QEMU guest is launched**, and the 60-GiB Windows target remains unattached.
+
+**Scope:** a hash-verified baseline with read-only file permissions is not independently immutable Windows recovery. No Windows GPT/ESP/BCD/WinRE guest, Windows ISO/license, Mint installation, installed first boot, uninstall or Windows rollback is demonstrated. No enforceable Windows guest overlay physical quota is proven by this fixture. A real Windows baseline, lawful media, effective quota and independent Safety review are still required for `LEAN_VM_ADMITTED`.
+
+The Core `automation.py` and `automation_preflight.py` still assume a Proxmox-backed Windows VM; the isolated QEMU runner has no authorized Gaslux Windows-manifest handoff yet. A future change must preserve the signed/identified Windows transaction plan and Windows NTFS geometry, not replace Gaslux with an upstream installer or invented manifest.
+
 ## Next real engineering steps
 
 1. Confirm exact current runner capacity and actual successful sparse image creation from CI evidence. `BLOCKED_STORAGE` is a valid measurement, not proof of installation.
