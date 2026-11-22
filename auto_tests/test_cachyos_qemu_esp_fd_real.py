@@ -260,6 +260,17 @@ def test_actual_stopped_qemu_raw_qcow2_fat32_gpt_readonly(tmp_path):
             ) as fd:
                 measured = read_exact_gpt_esp(fd, gate, baseline, esp_hash)
             witnessed = observer.finish()
+            raw_host_sample = {
+                "pid": pins.process.pid,
+                "startTicks": pins.process.start_ticks,
+                "commandSha256": pins.process.command_sha256,
+                "fileDev": pins.media_dev,
+                "fileInode": pins.media_inode,
+                "fdNumber": witnessed["disk"]["fdNumber"],
+                "qmpDevice": witnessed["qmpReply"]["payload"]["device"],
+                "qmpReplyAcquisition": witnessed["qmpReply"]["acquisition"],
+                "provenance": "LOCALLY_MEASURED_PROCESS_FD_QMP_CLAIMED_GRAPH",
+            }
             assert witnessed["localQemuReadonlyDiskFdOpenProven"] is True
             assert witnessed["localQmpPeerProcessMatched"] is True
             assert witnessed["qemuBackendToFdBindingIndependentlyProven"] is False
@@ -285,6 +296,17 @@ def test_actual_stopped_qemu_raw_qcow2_fat32_gpt_readonly(tmp_path):
         pins = pins_for(child, root, qcow, "qcow2")
         with QemuLocalDiskWitness(pins) as observer:
             witnessed_qcow = observer.finish()
+            qcow_host_sample = {
+                "pid": pins.process.pid,
+                "startTicks": pins.process.start_ticks,
+                "commandSha256": pins.process.command_sha256,
+                "fileDev": pins.media_dev,
+                "fileInode": pins.media_inode,
+                "fdNumber": witnessed_qcow["disk"]["fdNumber"],
+                "qmpDevice": witnessed_qcow["qmpReply"]["payload"]["device"],
+                "qmpReplyAcquisition": witnessed_qcow["qmpReply"]["acquisition"],
+                "provenance": "LOCALLY_MEASURED_PROCESS_FD_QMP_CLAIMED_GRAPH",
+            }
             assert witnessed_qcow["localQemuReadonlyDiskFdOpenProven"] is True
             assert witnessed_qcow["disk"]["format"]["value"] == "qcow2"
             assert witnessed_qcow["qemuBackendToFdBindingIndependentlyProven"] is False
@@ -300,6 +322,8 @@ def test_actual_stopped_qemu_raw_qcow2_fat32_gpt_readonly(tmp_path):
         "status": "REAL_PAUSED_QEMU_RAW_QCOW2_FAT32_READONLY_DIAGNOSTIC_ONLY",
         "testMedia": "SELF_GENERATED_SYNTHETIC_NOT_WINDOWS",
         "qemuActualProcessObserved": True,
+        "rawQemuHostSample": raw_host_sample,
+        "qcow2QemuHostSample": qcow_host_sample,
         "qmpKernelPeerMatched": True,
         "qemuOriginalImageFdReadOnlyMeasured": True,
         "gptFromPinnedQemuRawFd": True,
