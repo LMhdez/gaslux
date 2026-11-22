@@ -60,8 +60,6 @@ O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class EvidenceDocument:
     """One copy of exactly the bytes accepted by pinned FD measurement."""
@@ -263,7 +261,10 @@ class SafeWorkspace:
             info = os.fstat(self.open_files[name])
             captured.append(
                 EvidenceDocument(
-                    name, data, digest, identity(info),
+                    name,
+                    data,
+                    digest,
+                    identity(info),
                     (info.st_size, info.st_mtime_ns, info.st_ctime_ns),
                 )
             )
@@ -331,8 +332,10 @@ class SafeWorkspace:
             for doc in snapshot.documents:
                 self.verify_snapshot(snapshot)
                 fd = os.open(
-                    doc.name, os.O_RDWR | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
-                    0o600, dir_fd=self.evidence_fd,
+                    doc.name,
+                    os.O_RDWR | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
+                    0o600,
+                    dir_fd=self.evidence_fd,
                 )
                 opened.append((doc.name, fd, doc.payload))
                 with os.fdopen(fd, "wb", closefd=False) as output:
@@ -351,7 +354,8 @@ class SafeWorkspace:
             fd = os.open(
                 "evidence.sha256",
                 os.O_RDWR | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
-                0o600, dir_fd=self.evidence_fd,
+                0o600,
+                dir_fd=self.evidence_fd,
             )
             opened.append(("evidence.sha256", fd, manifest))
             index = 0
