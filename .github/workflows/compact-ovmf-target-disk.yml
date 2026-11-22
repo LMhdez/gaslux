@@ -10,6 +10,8 @@ on:
       - auto_tests/tests/test_compact_qcow2_quota_lab.py
       - auto_tests/tools/compact_fullscale_quota_lab.py
       - auto_tests/tests/test_compact_fullscale_quota_lab.py
+      - auto_tests/tools/windows_media_intake.py
+      - auto_tests/tests/test_windows_media_intake.py
       - docs/COMPACT_VM_INSTALL_LAB.md
   push:
     branches: [dev]
@@ -147,6 +149,24 @@ jobs:
           print('FULLSIZE_QUOTA_FILE_VERIFIED: 60-GiB physical reservation, no guest')
           PY
 
+      - name: Windows 10 media intake adversarial checks (official SHA pins)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_windows_media_intake.py -v
+          python3 -B auto_tests/tools/windows_media_intake.py \
+            --product windows10-22h2-pt-pt-x64 \
+            --report evidence/windows10-media-intake.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('evidence/windows10-media-intake.json').read_text())
+          assert r['status'] == 'BLOCKED_MEDIA'
+          assert r['file_verified'] is False
+          assert r['guest_writer_admitted'] is False
+          print('BLOCKED_MEDIA: official Windows 10 SHA pinned; ISO not supplied')
+          PY
+
       - name: Erase only owned, private temporary guest image
         if: always()
         shell: bash
@@ -180,5 +200,6 @@ jobs:
             evidence/compact-qcow2-quota-fixture.json
             evidence/compact-fullscale-readiness.json
             evidence/compact-fullscale-quota.json
+            evidence/windows10-media-intake.json
           if-no-files-found: warn
           retention-days: 14
