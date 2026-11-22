@@ -290,7 +290,7 @@ def args_for(mode: str, sock: Path, fds: dict[str, int]) -> list[str]:
     ]
     backing = {}
     for index, (name, fd) in enumerate(fds.items(), start=1):
-        if mode == "fdset":
+        if mode == "fdset" or (mode == "hybrid" and name in ("disk.qcow2", "synthetic.iso")):
             args += ["-add-fd", f"fd={fd},set={index},opaque={name}"]
             backing[name] = f"/dev/fdset/{index}"
         else:
@@ -432,6 +432,21 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             }
         for fd in fds.values():
             os.close(fd)
+        if stderr.is_file():
+            data = stderr.read_bytes()[:8192].lower()
+            # Fixed boolean diagnostics only; never leak QEMU stderr or paths.
+            report["errorFingerprint"] = {
+                "fdset": b"fdset" in data,
+                "pflash": b"pflash" in data,
+                "qcow2": b"qcow2" in data,
+                "noSuchFile": b"no such file" in data,
+                "openFailed": b"could not open" in data or b"failed to open" in data,
+                "permission": b"permission denied" in data,
+                "invalid": b"invalid" in data,
+                "alreadyUsed": b"in use" in data,
+                "readOnly": b"read-only" in data,
+                "fdsetMissing": b"no such fdset" in data or b"not found" in data,
+            }
         report["postHash"] = {
             name: sha256(path)
             for name, path in paths.items()
@@ -600,9 +615,10 @@ def main() -> int:
     try:
         report["scenarios"]["proc"] = scenario(root, "proc", True)
         report["scenarios"]["fdset"] = scenario(root, "fdset", False)
+        report["scenarios"]["hybrid"] = scenario(root, "hybrid", False)
         report["negative"] = negative_cases(root)
         report["compatible"] = all(
-            report["scenarios"][name]["success"] for name in ("proc", "fdset")
+            report["scenarios"][name]["success"] for name in ("proc", "fdset", "hybrid")
         )
     except Exception as exc:
         report["compatible"] = False
