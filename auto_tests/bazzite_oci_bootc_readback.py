@@ -22,6 +22,13 @@ from pathlib import Path
 
 import zstandard as zstd
 from bazzite_iso_public_readback import CONFIG_DIGEST, PAYLOAD_DIGEST, PAYLOAD_IMAGE
+from bazzite_oci_rpm_binding import (
+    MAX_ELF_PREFIX,
+    MAX_RPMDB,
+    RPMDB_ALL,
+    RPMDB_PATHS,
+    bind_rpm,
+)
 
 PINNED = PAYLOAD_IMAGE + "@" + PAYLOAD_DIGEST
 MANIFEST_TYPES = frozenset(
@@ -251,6 +258,7 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
             archive = stack.enter_context(tarfile.open(fileobj=measured, mode="r|"))
             count = 0
             bootc_names_in_layer = set()
+            rpmdb_names_in_layer = set()
             for member in archive:
                 count += 1
                 budgets["members"] += 1
@@ -266,6 +274,10 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     if name in bootc_names_in_layer:
                         raise Refusal("Duplicate bootc path in a single OCI layer")
                     bootc_names_in_layer.add(name)
+                if name in RPMDB_ALL:
+                    if name in rpmdb_names_in_layer:
+                        raise Refusal("Duplicate RPM DB path in a single OCI layer")
+                    rpmdb_names_in_layer.add(name)
                 directory, basename = posixpath.split(name)
                 if basename.startswith(".wh."):
                     victim = basename[4:]
@@ -282,7 +294,25 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     continue
                 if member.isdev() or member.isfifo():
                     raise Refusal("Device or FIFO in untrusted OCI layer")
-                if name not in CANDIDATES and not name.endswith("/bootc"):
+                if name not in CANDIDATES and not name.endswith("/bootc") and name not in RPMDB_ALL:
+                    continue
+                if name in RPMDB_ALL:
+                    if member.isfile():
+                        if not 0 < member.size <= MAX_RPMDB:
+                            raise Refusal("RPM DB candidate exceeds bounded metadata budget")
+                        db_stream = archive.extractfile(member)
+                        if db_stream is None:
+                            raise Refusal("Unreadable RPM DB candidate")
+                        raw_db = db_stream.read(MAX_RPMDB + 1)
+                        if len(raw_db) != member.size:
+                            raise Refusal("Truncated RPM DB in signed OCI layer")
+                        entries[name] = {
+                            "kind": "rpmdb", "size": member.size, "content": raw_db
+                        }
+                    elif member.issym():
+                        entries[name] = {"kind": "symlink", "target": _link(name, member.linkname)}
+                    else:
+                        entries.pop(name, None)
                     continue
                 if member.isfile():
                     if member.size <= 0 or member.size > MAX_BOOTC:
@@ -293,12 +323,15 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     header = src.read(4)
                     rest = hashlib.sha256(header)
                     consumed = 4
+                    elf_prefix = bytearray(header)
                     while True:
                         block = src.read(1024 * 1024)
                         if not block:
                             break
                         consumed += len(block)
                         rest.update(block)
+                        if len(elf_prefix) < MAX_ELF_PREFIX:
+                            elf_prefix.extend(block[: MAX_ELF_PREFIX - len(elf_prefix)])
                     if consumed != member.size:
                         raise Refusal("Truncated executable in OCI tar")
                     entries[name] = {
@@ -306,6 +339,7 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                         "elf": header == b"\x7fELF",
                         "size": member.size,
                         "sha256": rest.hexdigest(),
+                        "elfPrefix": bytes(elf_prefix),
                     }
                 elif member.issym():
                     entries[name] = {"kind": "symlink", "target": _link(name, member.linkname)}
@@ -427,6 +461,14 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
             raise Refusal("Excessive bootc symbolic links")
     if unresolved and not matched:
         raise InsufficientEvidence("Image bootc path exists but cannot be resolved safely")
+    package = {"status": "BOOTC_PACKAGE_BINDING_UNPROVEN", "reason": "No ELF owner"}
+    if matched:
+        direct = entries.get("usr/bin/bootc")
+        if direct is not None and direct.get("kind") == "file" and direct.get("elf"):
+            package = bind_rpm(entries, direct)
+        else:
+            package["reason"] = "Actual bootc path is not a direct /usr/bin/bootc ELF"
+    proven = package["status"] == "BOOTC_RPM_IDENTITY_VERIFIED"
     return {
         "status": (
             "BOOTC_PRESENT_ROUTE_UNVERIFIED" if matched else "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
@@ -435,10 +477,15 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
         "manifestDigest": PAYLOAD_DIGEST,
         "configDigest": CONFIG_DIGEST,
         "bootcFiles": matched,
-        "bootcVersion": None,
-        "bootcVersionVerified": False,
+        "bootcVersion": package["rpmPackage"]["version"] if proven else None,
+        "bootcVersionVerified": proven,
+        "bootcRpmIdentity": package,
+        "bootcToFilesystemDocumentedInRpm": (
+            package["rpmPackage"]["toFilesystemManpageDeclared"] if proven else False
+        ),
         "bootcToFilesystemAvailableInBinaryVerified": False,
         "nativeInstallationVerified": False,
+        "stable": False,
         "arch": info["architecture"],
         "os": info["os"],
         "declaredLabels": info["declaredLabels"],
