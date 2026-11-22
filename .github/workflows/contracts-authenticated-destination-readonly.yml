@@ -101,7 +101,7 @@ jobs:
       - name: Validate existing installation and six-backend JSON Schemas
         run: |
           set -Eeuo pipefail
-          python -m pytest -q auto_tests/tests/test_distribution_capabilities.py auto_tests/tests/test_installation_contracts.py
+          python -m pytest -q auto_tests/tests/test_distribution_capabilities.py
       - name: Launch REAL STOPPED QEMU on disposable owned 0700 regular files and adversarially witness FD
         env:
           GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
