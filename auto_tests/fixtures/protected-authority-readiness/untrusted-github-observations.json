@@ -1,0 +1,71 @@
+{
+  "contractVersion": 1,
+  "repository": "LMhdez/gaslux",
+  "requestRef": "refs/heads/qemu-approved/offline-probe-only",
+  "observations": {
+    "main.protection": {
+      "source": "GITHUB_READ_ONLY",
+      "httpStatus": 200,
+      "payload": {
+        "protected": false
+      }
+    },
+    "dev.protection": {
+      "source": "GITHUB_READ_ONLY",
+      "httpStatus": 200,
+      "payload": {
+        "protected": false
+      }
+    },
+    "main.rulesets": {
+      "source": "GITHUB_READ_ONLY",
+      "httpStatus": 200,
+      "payload": {
+        "rulesets": []
+      }
+    },
+    "dev.rulesets": {
+      "source": "GITHUB_READ_ONLY",
+      "httpStatus": 200,
+      "payload": {
+        "rulesets": []
+      }
+    },
+    "reviews.required": {
+      "source": "GITHUB_READ_ONLY",
+      "httpStatus": 403,
+      "payload": null
+    },
+    "environment.requiredReviewers": {
+      "source": "GITHUB_READ_ONLY",
+      "httpStatus": 403,
+      "payload": null
+    },
+    "environment.branchRestriction": {
+      "source": "GITHUB_READ_ONLY",
+      "httpStatus": 403,
+      "payload": null
+    },
+    "controller.protectedLocation": {
+      "source": "RUNNER_LOCAL",
+      "httpStatus": null,
+      "payload": {
+        "controllerRef": "refs/heads/main"
+      }
+    },
+    "ledger.externalService": {
+      "source": "SQLITE_LOCAL",
+      "httpStatus": 200,
+      "payload": {
+        "backend": "sqlite"
+      }
+    },
+    "observer.readOnlyProducer": {
+      "source": "CI_STATUS",
+      "httpStatus": 200,
+      "payload": {
+        "conclusion": "success"
+      }
+    }
+  }
+}

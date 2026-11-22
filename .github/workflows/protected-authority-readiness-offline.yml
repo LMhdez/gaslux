@@ -1,0 +1,131 @@
+name: Protected authority readiness OFFLINE diagnostic (BLOCKED; no QEMU)
+
+on:
+  push:
+    branches:
+      - integration/protected-authority-readiness-deny-only-20261122
+    paths:
+      - 'auto_tests/tools/protected_authority_readiness_offline.py'
+      - 'auto_tests/tests/test_protected_authority_readiness_offline.py'
+      - 'auto_tests/fixtures/protected-authority-readiness/**'
+      - 'schemas/protected-authority-readiness-v1.schema.json'
+      - 'docs/PROTECTED_AUTHORITY_READINESS_OFFLINE.md'
+      - '.github/workflows/protected-authority-readiness-offline.yml'
+  pull_request:
+    paths:
+      - 'auto_tests/tools/protected_authority_readiness_offline.py'
+      - 'auto_tests/tests/test_protected_authority_readiness_offline.py'
+      - 'auto_tests/fixtures/protected-authority-readiness/**'
+      - 'schemas/protected-authority-readiness-v1.schema.json'
+      - 'docs/PROTECTED_AUTHORITY_READINESS_OFFLINE.md'
+      - '.github/workflows/protected-authority-readiness-offline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  static-denial-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GASLUX_READINESS_PIN_ROOT: ${{ github.workspace }}/.readiness-pins
+    steps:
+      - name: Checkout untrusted integration tests only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch pinned PR 275 trigger contracts (NEVER launch)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 1a6446b408c78386e720f8d2b1f2063c1d3f7db1
+          path: .readiness-pins/trigger
+          persist-credentials: false
+      - name: Fetch pinned PR 285 SQLite v3 offline model and regressions
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: fda13b8a2a48d8e5f00c3f9be306499d85e0d336
+          path: .readiness-pins/ledger
+          persist-credentials: false
+      - name: Fetch pinned PR 267 no-writer tests and source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: .readiness-pins/safety
+          persist-credentials: false
+      - name: Fetch pinned PR 294 read-only HOST producer (do not execute)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9
+          path: .readiness-pins/observer
+          persist-credentials: false
+      - name: Check exact immutable upstream HEADs and clean trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in \
+            trigger:1a6446b408c78386e720f8d2b1f2063c1d3f7db1 \
+            ledger:fda13b8a2a48d8e5f00c3f9be306499d85e0d336 \
+            safety:0be04192acd542646a5b6cd952e01620379edf5d \
+            observer:e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9; do
+            name="${spec%%:*}"
+            expected="${spec#*:}"
+            root="$GASLUX_READINESS_PIN_ROOT/$name"
+            test "$(git -C "$root" rev-parse HEAD)" = "$expected"
+            test -z "$(git -C "$root" status --porcelain)"
+          done
+          test -f "$GASLUX_READINESS_PIN_ROOT/trigger/auto_tests/tools/observer_gpt_qemu_one_shot.py"
+          test -f "$GASLUX_READINESS_PIN_ROOT/ledger/schemas/observer-one-shot-grant-v2.schema.json"
+          test -f "$GASLUX_READINESS_PIN_ROOT/safety/assets/live/libertix_prewrite_no_writer.py"
+          test -f "$GASLUX_READINESS_PIN_ROOT/observer/auto_tests/installer_observer/host_qemu_fd_evidence.py"
+      - name: Install only static/offline test dependencies
+        run: python3 -m pip install 'pytest==9.0.2' 'jsonschema==4.25.1' 'ruff==0.13.3' 'pyyaml==6.0.2'
+      - name: Validate schema and enforce CI static read-only scope
+        shell: bash
+        run: |
+          python3 -m json.tool schemas/protected-authority-readiness-v1.schema.json > /dev/null
+          python3 -m json.tool auto_tests/fixtures/protected-authority-readiness/untrusted-github-observations.json > /dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import yaml
+          from jsonschema import Draft202012Validator
+          schema = json.loads(Path('schemas/protected-authority-readiness-v1.schema.json').read_text())
+          fixture = json.loads(
+              Path('auto_tests/fixtures/protected-authority-readiness/untrusted-github-observations.json').read_text()
+          )
+          Draft202012Validator.check_schema(schema)
+          Draft202012Validator(schema).validate(fixture)
+          raw = Path('.github/workflows/protected-authority-readiness-offline.yml').read_text()
+          wf = yaml.load(raw, Loader=yaml.BaseLoader)
+          assert set(wf['on']) == {'push', 'pull_request'}
+          assert wf['permissions'] == {'contents': 'read'}
+          assert set(wf['jobs']) == {'static-denial-only'}
+          assert 'workflow_dispatch' not in raw
+          for step in wf['jobs']['static-denial-only']['steps']:
+              command = step.get('run', '')
+              assert 'qemu-system-' not in command
+              assert 'qemu-img ' not in command
+              assert 'grub-install' not in command
+              assert 'diskpart ' not in command
+          print('SCHEMA_ONLY: no controller or QEMU operational authority')
+          PY
+      - name: Ruff, format and Python compilation of new gate
+        run: |
+          python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
+          python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
+          python3 -m compileall -q auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
+      - name: Actual pinned PR 275 trigger and exact Git-parent tests (synthetic)
+        run: python3 -m pytest -q "$GASLUX_READINESS_PIN_ROOT/trigger/auto_tests/tests/test_observer_gpt_qemu_one_shot.py"
+      - name: Actual pinned PR 285 SQLite v3 offline adversarial tests
+        shell: bash
+        run: |
+          cd "$GASLUX_READINESS_PIN_ROOT/ledger"
+          python3 -W error::ResourceWarning -m unittest discover -s auto_tests/tests -p test_observer_one_shot_ledger_offline.py -v
+      - name: Actual pinned PR 267 no-writer regressions
+        run: python3 -m pytest -q "$GASLUX_READINESS_PIN_ROOT/safety/auto_tests/tests/test_prewrite_no_writer.py"
+      - name: Adversarial readiness gate must remain BLOCKED_TRUST_ROOT
+        run: python3 -m pytest -q auto_tests/tests/test_protected_authority_readiness_offline.py
