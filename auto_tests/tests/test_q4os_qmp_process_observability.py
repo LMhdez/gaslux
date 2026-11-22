@@ -314,7 +314,8 @@ import socket,sys
 s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
 s.bind(sys.argv[1]);s.listen(1)
 c,_=s.accept();c.settimeout(2)
-c.sendall(b'{"QMP":{"version":{}}}\\r\\n')
+# Deliberately send no greeting: the supervisor must reject by SO_PEERCRED
+# without requiring a protocol response or transmitting QMP commands.
 try:
     result=c.recv(512)
 except (OSError, TimeoutError):
