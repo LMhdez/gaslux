@@ -24,7 +24,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install pytest
-        run: python -m pip install 'pytest>=9,<10'
+      - name: Install pinned pytest and Ruff
+        run: python -m pip install 'pytest==9.0.2' 'ruff==0.13.3'
+      - name: Compile, lint and check semantic test formatting
+        run: |
+          python -m compileall -q assets/live/libertix_disk_identity_gate.py auto_tests/tests/test_disk_identity_gate.py auto_tests/tests/test_disk_identity_snapshot_semantics.py
+          python -m ruff check --config auto_tests/pyproject.toml assets/live/libertix_disk_identity_gate.py auto_tests/tests/test_disk_identity_snapshot_semantics.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tests/test_disk_identity_snapshot_semantics.py
       - name: Verify read-only GPT identity and adversarial cases
         run: python -m pytest -q auto_tests/tests/test_disk_identity_gate.py auto_tests/tests/test_disk_identity_snapshot_semantics.py
