@@ -352,7 +352,7 @@ def canonical_inventory_path(path: object) -> bool:
         and path.startswith("/")
         and not path.startswith("//")
         and not path.endswith("/")
-        and "\\x00" not in path
+        and "\0" not in path
         and "\\" not in path
         and all(component not in ("", ".", "..") for component in path[1:].split("/"))
     )
