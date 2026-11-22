@@ -26,7 +26,11 @@ from auto_tests.installer_observer.qemu_local_disk_witness import (
     QemuDiskRefused,
     QemuLocalDiskWitness,
 )
-from auto_tests.tests.test_observer_qemu_real_disk_readonly import (
+# Reuse, not copy, the exact pinned dev QEMU supervisor test helpers.
+# Candidate auto_tests is a different package root from observer-dev.
+DEV_ROOT = Path(os.environ.get("GITHUB_WORKSPACE", "/nonexistent")) / "observer-dev"
+sys.path.insert(0, str(DEV_ROOT / "auto_tests" / "tests"))
+from test_observer_qemu_real_disk_readonly import (  # noqa: E402
     load, make_qcow, pins_for, shutdown, start_qemu,
 )
 
