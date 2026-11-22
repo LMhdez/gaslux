@@ -50,7 +50,7 @@ def _stat_identity(st: os.stat_result) -> tuple[int, int, int, int, int]:
 def _pin(fd: int, path: Path, workspace: Path) -> os.stat_result:
     require(type(fd) is int and fd >= 0, "FOREIGN_FD")
     require(
-        type(path) is Path
+        type(path) is type(Path())
         and path.is_absolute()
         and path.parent == workspace
         and not path.is_symlink(),
