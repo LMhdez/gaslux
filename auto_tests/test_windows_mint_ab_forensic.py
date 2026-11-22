@@ -895,7 +895,8 @@ class MintAbForensicContracts(unittest.TestCase):
             with self.subTest(duplicate=dup, interrupted=interrupted):
                 guest = FixtureGuest(duplicate=dup, interrupted=interrupted)
                 with patch.dict(
-                    sys.modules, {"guestfs": types.SimpleNamespace(GuestFS=lambda guest=guest, **_: guest)}
+                    sys.modules,
+                    {"guestfs": types.SimpleNamespace(GuestFS=lambda guest=guest, **_: guest)},
                 ):
                     report = forensic.guest_ro_inventory(
                         Path("synthetic-guestfs-only.qcow2"),
