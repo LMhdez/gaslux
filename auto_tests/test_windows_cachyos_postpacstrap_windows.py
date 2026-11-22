@@ -281,6 +281,13 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / ".github/workflows/cachyos-windows10-shared-root-pacstrap.yml"
         ).read_text(encoding="utf-8")
+        # The existing real KVM job must never auto-run while BCD A/B safety
+        # remains unresolved; static and adversarial jobs still execute.
+        kvm = workflow.split(
+            "  real-windows10-archiso-pacstrap-and-discard:", 1
+        )[1].split("\n    runs-on:", 1)[0]
+        self.assertIn("    if: >-\n      false &&\n", kvm)
+        self.assertIn("BCD (682 bytes)", kvm)
         step = workflow.split(
             "      - name: Independently gate pacstrap, Windows integrity "
             "and disposable COW recovery", 1
