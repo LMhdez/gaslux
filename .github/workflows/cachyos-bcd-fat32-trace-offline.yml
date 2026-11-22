@@ -44,7 +44,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           s = Path('.github/workflows/cachyos-bcd-fat32-trace-offline.yml').read_text()
-          for forbidden in ('qemu-system-x86_64', 'workflow_dispatch:', 'pacstrap ',
+          # Build forbidden keywords so the guard never trips over itself.
+          for forbidden in ('qemu' + '-system-x86_64',
+                            'workflow' + '_dispatch:', 'pac' + 'strap ',
                             'efibootmgr', 'GASLUX_WINDOWS_KVM_CONSENT',
                             'guestfs --rw', 'swtpm socket', 'windows Setup'):
               assert forbidden not in s, forbidden
