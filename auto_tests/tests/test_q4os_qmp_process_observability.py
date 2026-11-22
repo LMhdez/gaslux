@@ -1218,3 +1218,97 @@ s.close()
     assert report["installationAuthorized"] is False
     assert report["diskWritesAuthorized"] is False
     assert sleeper.poll() is not None
+
+
+
+def test_safety_cleanup_foreign_pidfd_never_signals_other_live_child():
+    """RED against HEAD 1106085: foreign pidfd must never signal its owner."""
+    a = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(1.0)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    b = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(20)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    foreign_fd = None
+    try:
+        assert a.poll() is None and b.poll() is None
+        foreign_fd = os.pidfd_open(b.pid)
+        assert witness._cleanup(a, foreign_fd) is False
+        assert b.poll() is None, "foreign child B MUST NOT receive SIGTERM/SIGKILL"
+    finally:
+        if foreign_fd is not None:
+            os.close(foreign_fd)
+        for owned in (a, b):
+            if owned.poll() is None:
+                owned.terminate()
+            owned.wait(timeout=5)
+
+
+def test_safety_synthetic_foreign_pidfd_factory_has_zero_foreign_signals(lab):
+    """The full synthetic entrypoint may refuse but must never harm B."""
+    work, code, vars_path, image, iso, answer = lab
+    a = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(1.0)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    b = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(20)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        assert a.poll() is None and b.poll() is None
+        report = witness._run_lab_synthetic(
+            work,
+            code,
+            vars_path,
+            image,
+            iso,
+            answer,
+            "tcg",
+            synthetic_child=a,
+            pidfd_factory=lambda _pid: os.pidfd_open(b.pid),
+            connect_seconds=0.02,
+        )
+        assert report["decision"] == "refuse"
+        assert report["qemuSpawned"] is False
+        assert report["qmpSendKeyAcknowledged"] is False
+        assert report["cleanupVerified"] is False
+        assert b.poll() is None, "foreign pidfd must never terminate B"
+    finally:
+        for owned in (a, b):
+            if owned.poll() is None:
+                owned.terminate()
+            owned.wait(timeout=5)
+
+
+def test_safety_cleanup_matching_real_pidfd_reaps_owned_child():
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(20)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    pidfd = os.pidfd_open(child.pid)
+    try:
+        assert witness._cleanup(child, pidfd) is True
+        assert child.poll() is not None
+    finally:
+        os.close(pidfd)
+        if child.poll() is None:
+            child.terminate()
+        child.wait(timeout=5)
