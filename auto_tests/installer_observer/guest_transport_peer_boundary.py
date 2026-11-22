@@ -244,8 +244,7 @@ class LocalTransportWitness:
                     "assurance": "LOCALLY_MEASURED",
                 },
                 "sessionContext": {
-                    key: {"value": value, "assurance": "CLAIMED"}
-                    for key, value in expected.items()
+                    key: {"value": value, "assurance": "CLAIMED"} for key, value in expected.items()
                 },
                 "guestChannelAuthenticated": False,
                 "guestProcessAuthenticated": False,
