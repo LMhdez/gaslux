@@ -62,3 +62,31 @@ jobs:
           export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
           python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
           python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_ab_forensic.py
+      - name: Synthetic QCOW2 arm isolation (no Windows, no guest boot)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          python3 - <<'PY'
+          import pathlib, subprocess, tempfile
+          def run(args):
+              return subprocess.run(args, check=True, capture_output=True)
+          with tempfile.TemporaryDirectory(prefix="gaslux-f01-f02-test-", dir="/home/runner/work/_temp") as tmp:
+              root = pathlib.Path(tmp)
+              source, ref, a, b = (root/name for name in
+                  ("source.qcow2", "reference.qcow2", "arm-a.qcow2", "arm-b.qcow2"))
+              run(["qemu-img", "create", "-f", "qcow2", str(source), "32M"])
+              for src, dst in ((source, ref), (ref, a), (ref, b)):
+                  run(["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2", "-c", str(src), str(dst)])
+                  run(["qemu-img", "compare", "-f", "qcow2", "-F", "qcow2", str(ref if src==ref else src), str(dst)])
+              assert len({p.stat().st_ino for p in (ref,a,b)}) == 3
+              run(["qemu-io", "-f", "qcow2", "-c", "write -P 0x77 16777216 4096", str(a)])
+              mismatch = subprocess.run(["qemu-img","compare","-f","qcow2","-F","qcow2",str(ref),str(a)],capture_output=True)
+              assert mismatch.returncode == 1, "A alteration was not independently detected"
+              run(["qemu-img","compare","-f","qcow2","-F","qcow2",str(ref),str(b)])
+              run(["qemu-img","convert","-f","qcow2","-O","qcow2","-c",str(ref),str(root/"arm-a-restored.qcow2")])
+              run(["qemu-img","compare","-f","qcow2","-F","qcow2",str(ref),str(root/"arm-a-restored.qcow2")])
+          print("PASS: small isolated QCOW2 A modification, B/reference preserved, A recovered")
+          print("NO real Windows, Mint, BIOS/UEFI guest boot or production rollback")
+          PY
