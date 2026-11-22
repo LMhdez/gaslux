@@ -279,6 +279,18 @@ def firmware_pair() -> tuple[Path, Path]:
     raise LabRefusal("OVMF_PAIR_NOT_FOUND")
 
 
+def verify_qcow2_contract(info: dict) -> None:
+    """Require the expected owned backing-free image geometry before spawn."""
+    require(
+        info.get("format") == "qcow2"
+        and info.get("virtual-size") == SIZE
+        and info.get("cluster-size") == 65536
+        and not info.get("backing-filename")
+        and not info.get("full-backing-filename"),
+        "QCOW2_GEOMETRY_OR_BACKING_INVALID",
+    )
+
+
 def make_resources(work: Path) -> tuple[dict[str, Path], dict]:
     code_src, vars_src = firmware_pair()
     paths = {name: work / name for name in ("code.fd", "vars.fd", "disk.qcow2", "synthetic.iso")}
@@ -297,13 +309,7 @@ def make_resources(work: Path) -> tuple[dict[str, Path], dict]:
             [QEMU_IMG, "info", "--output=json", str(paths["disk.qcow2"])], timeout=15
         )
     )
-    require(
-        info.get("format") == "qcow2"
-        and info.get("virtual-size") == SIZE
-        and not info.get("backing-filename")
-        and not info.get("full-backing-filename"),
-        "QCOW2_GEOMETRY_OR_BACKING_INVALID",
-    )
+    verify_qcow2_contract(info)
     for path in paths.values():
         path.chmod(0o600)
     meta = {
@@ -416,6 +422,46 @@ def args_for(
     return args
 
 
+def verify_public_deny(work: Path, paths: dict[str, Path]) -> dict:
+    """No public run_lab process, media write, or factory side effect."""
+    import q4os_win10_qmp_supervisor as operational
+
+    require(not operational.QEMU_FD_BACKING_VERIFIED, "PRODUCTION_GATE_OPEN")
+    before = {name: sha256(path) for name, path in paths.items()}
+    called = []
+
+    def forbidden_factory(*_args, **_kwargs):
+        called.append(True)
+        raise LabRefusal("UNAUTHORIZED_FACTORY_CALLED")
+
+    for injection in ({}, {"popen_factory": forbidden_factory}, {"pidfd_factory": forbidden_factory}):
+        result = operational.run_lab(
+            work,
+            paths["code.fd"],
+            paths["vars.fd"],
+            paths["disk.qcow2"],
+            paths["synthetic.iso"],
+            paths["answer.iso"],
+            "tcg",
+            **injection,
+        )
+        require(
+            result["decision"] == "refuse"
+            and result["qemuSpawned"] is False
+            and result["qmpSendKeyAcknowledged"] is False
+            and result["diskWritesAuthorized"] is False
+            and result["installationAuthorized"] is False,
+            "PUBLIC_GATE_NOT_DENIED",
+        )
+    require(not called, "UNAUTHORIZED_FACTORY_CALLED")
+    require(
+        all(sha256(paths[name]) == digest for name, digest in before.items()),
+        "PUBLIC_GATE_MUTATED_MEDIA",
+    )
+    require(not (work / "windows10-qemu-process.log").exists(), "PUBLIC_GATE_CREATED_LOG")
+    return {"verified": True, "rejectedCalls": 3, "factoryInvoked": False}
+
+
 def scenario(root: Path, mode: str, rename: bool) -> dict:
     work = root / mode
     work.mkdir(mode=0o700)
@@ -448,6 +494,9 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
     }
     stderr = work / "private-qemu-stderr.log"
     try:
+        if mode == "pr_shared":
+            report["publicGate"] = verify_public_deny(work, paths)
+            report["publicGateRefused"] = report["publicGate"]["verified"]
         for name, path in paths.items():
             fds[name] = pinned(path, name in ("vars.fd", "disk.qcow2"))
         # QEMU fdsets select descriptors by requested access mode. Supply
@@ -728,7 +777,29 @@ def negative_cases(root: Path) -> dict:
     backed_info = json.loads(
         subprocess.check_output([QEMU_IMG, "info", "--output=json", str(backed)], timeout=15)
     )
-    result["foreignBackingRejected"] = bool(backed_info.get("backing-filename"))
+    try:
+        verify_qcow2_contract(backed_info)
+    except LabRefusal:
+        result["foreignBackingRejected"] = True
+    else:
+        result["foreignBackingRejected"] = False
+    wrong_geometry = work / "wrong-geometry.qcow2"
+    subprocess.run(
+        [QEMU_IMG, "create", "-f", "qcow2", str(wrong_geometry), "32M"],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=15,
+    )
+    wrong_info = json.loads(
+        subprocess.check_output([QEMU_IMG, "info", "--output=json", str(wrong_geometry)], timeout=15)
+    )
+    try:
+        verify_qcow2_contract(wrong_info)
+    except LabRefusal:
+        result["wrongGeometryRejected"] = True
+    else:
+        result["wrongGeometryRejected"] = False
     try:
         subprocess.Popen(
             [str(work / "not-an-executable")],
@@ -782,6 +853,7 @@ def negative_cases(root: Path) -> dict:
                 "wrongFdRejected",
                 "closedFdRejectedByQemu",
                 "foreignBackingRejected",
+                "wrongGeometryRejected",
                 "spawnFailureDetected",
                 "noQmpTimeoutRefused",
             )
