@@ -1,5 +1,7 @@
 # Q4OS — ONE-SHOT backend dossier
 
+> **Atualização de navegação (22-11-2026):** este dossier mantém a análise histórica de 19-11. Revalidar HEADs, PRs/merges, media e artefactos antes de usar as propostas. Ver [histórico e instruções por agente](../AGENT_HISTORICAL_PLAYBOOK.md), [índice GitHub Actions/VM](../CI_VM_EVIDENCE_INDEX.md) e [contratos partilhados](SHARED_CONTRACTS.md). Propostas antigas de criação de branch/PR não substituem a regra atual de reutilização e consolidação; testes QEMU descartáveis têm autorização delimitada em [AGENTS](../../AGENTS.md).
+
 **Revisão:** 2026-11-19. **Maturidade:** EXPERIMENTAL / PENDENTE: não autorizado para catálogo estável. Ver [contratos gerais](SHARED_CONTRACTS.md). **Não usar este documento como autorização de escrita.**
 
 **Nota de integração 2026-11-21:** os mapas, evidências, schema e workflow ligados neste dossier permanecem no commit de investigação da PR #258. Não fazem parte desta extração documental para `dev`; os links estão fixados ao SHA original e não atestam execução em `dev`.
@@ -11,7 +13,7 @@ Teste QMP teclado com Windows DVD bloqueado no prompt não demonstra Windows Set
 - [Origem oficial/media](https://q4os.org/downloads1.html) — versão/release: **não fixada no catálogo estável**. [DOCUMENTADO como endereço de referência; revalidar disponibilidade, conteúdo e assinatura na data da execução.]
 - [Documentação upstream](https://q4os.org/dqa014.html) — instruções gerais, não aprovação de boot sem USB. [DOCUMENTADO; verificar versão, data e parâmetros antes de automatizar.]
 - [Configuração Gaslux main](https://github.com/LMhdez/gaslux/blob/main/release-config.json) — não contém esta distribuição. [IMPLEMENTADO]
-- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [Issue de estabilidade #3](https://github.com/LMhdez/gaslux/issues/3) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
+- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [matriz multidistro](../MULTIDISTRO_PLAN.md) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
 - PRs/threads experimentais relacionadas: [#59](https://github.com/LMhdez/gaslux/pull/59), [#207](https://github.com/LMhdez/gaslux/pull/207), [#210](https://github.com/LMhdez/gaslux/pull/210), [#220](https://github.com/LMhdez/gaslux/pull/220), [#226](https://github.com/LMhdez/gaslux/pull/226). **Consultar HEAD, estado de merge, logs e branches antes de reutilizar.**
 - Evidência histórica de CI para contexto: [Actions](https://github.com/LMhdez/gaslux/actions/runs/44476677560); a existência ou êxito do workflow não certifica todas as etapas. [PENDENTE: rever job e artefactos exactos.]
 
