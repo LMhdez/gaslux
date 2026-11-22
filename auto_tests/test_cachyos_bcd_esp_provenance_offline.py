@@ -9,7 +9,6 @@ import binascii
 import hashlib
 import os
 from pathlib import Path
-import shutil
 import stat
 import struct
 import sys
@@ -123,8 +122,16 @@ class EspSourceOfflineTests(unittest.TestCase):
         self.assertNotIn("path", repr(report).lower())
 
     def test_wrong_disk_identical_esp_offset_rejected(self):
+        # Sparse 128-GiB *virtual* file. Never copy all logical zeroes:
+        # copyfile may physically allocate 128 GiB on a hosted runner.
         second = Path(self.temp.name) / "second.raw"
-        shutil.copyfile(self.path, second)
+        with second.open("xb") as disk:
+            disk.truncate(gpt.VIRTUAL_BYTES)
+            disk.write(self.front)
+            disk.seek(gpt.VIRTUAL_BYTES - gpt.WINDOW_BYTES)
+            disk.write(self.back)
+            disk.seek(ESP_LBA * 512)
+            disk.write(self.fat)
         second.chmod(0o400)
         with os.fdopen(os.open(second, os.O_RDONLY | os.O_CLOEXEC |
                               os.O_NOFOLLOW), "rb", closefd=True) as cloned:
