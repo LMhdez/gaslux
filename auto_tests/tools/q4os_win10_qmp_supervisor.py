@@ -67,22 +67,24 @@ def _require(condition: bool, code: str) -> None:
         raise StartupRefusal(code)
 
 
-def _private_dir(work: Path) -> None:
+def _private_dir(work: Path) -> os.stat_result:
     _require(work.is_absolute() and not work.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
     st = work.stat()
     _require(
         stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o077,
         "QEMU_STARTUP_UNCLASSIFIED",
     )
+    return st
 
 
-def _owned_file(path: Path, work: Path) -> None:
+def _owned_file(path: Path, work: Path) -> os.stat_result:
     _require(path.parent == work and not path.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
     st = path.lstat()
     _require(
         stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid() and st.st_nlink == 1,
         "QEMU_STARTUP_UNCLASSIFIED",
     )
+    return st
 
 
 def _pin_file(
@@ -225,13 +227,13 @@ def _qemu_args(
     iso: Path,
     answer: Path,
     accelerator: str,
-    pinned: dict[str, int] | None = None,
+    pinned: dict[str, int],
 ) -> list[str]:
     _require(accelerator in ("kvm", "tcg"), "QEMU_STARTUP_UNCLASSIFIED")
     accel, cpu = ("kvm", "host") if accelerator == "kvm" else ("tcg,thread=multi", "max")
 
-    def media(name: str, raw: Path) -> str:
-        return f"/proc/self/fd/{pinned[name]}" if pinned is not None else str(raw)
+    def media(name: str) -> str:
+        return f"/proc/self/fd/{pinned[name]}"
 
     return [
         QEMU,
@@ -261,21 +263,21 @@ def _qemu_args(
         "-qmp",
         "unix:" + str(work / "q4os-win10-qmp.sock") + ",server=on,wait=off",
         "-drive",
-        "if=pflash,format=raw,unit=0,readonly=on,file=" + media("code", code),
+        "if=pflash,format=raw,unit=0,readonly=on,file=" + media("code"),
         "-drive",
-        "if=pflash,format=raw,unit=1,file=" + media("vars", vars_path),
+        "if=pflash,format=raw,unit=1,file=" + media("vars"),
         "-device",
         "ich9-ahci,id=sata",
         "-drive",
-        "if=none,id=system,file=" + media("image", image) + ",format=qcow2,cache=writeback",
+        "if=none,id=system,file=" + media("image") + ",format=qcow2,cache=writeback",
         "-device",
         "ide-hd,drive=system,bus=sata.0,bootindex=2",
         "-drive",
-        "if=none,id=install,file=" + media("iso", iso) + ",format=raw,media=cdrom,readonly=on",
+        "if=none,id=install,file=" + media("iso") + ",format=raw,media=cdrom,readonly=on",
         "-device",
         "ide-cd,drive=install,bus=sata.1,bootindex=1",
         "-drive",
-        "if=none,id=answer,file=" + media("answer", answer) + ",format=raw,media=cdrom,readonly=on",
+        "if=none,id=answer,file=" + media("answer") + ",format=raw,media=cdrom,readonly=on",
         "-device",
         "ide-cd,drive=answer,bus=sata.2,bootindex=3",
     ]
@@ -346,15 +348,14 @@ def run_lab(
     pinned: dict[str, int] = {}
     work_fd = None
     try:
-        _private_dir(work)
+        dir_identity = _private_dir(work)
         _require(
             hasattr(os, "pidfd_open") and hasattr(signal, "pidfd_send_signal"),
             "QEMU_STARTUP_UNCLASSIFIED",
         )
         expected = {}
         for name, path in (("vars", vars_path), ("image", image), ("iso", iso), ("answer", answer)):
-            _owned_file(path, work)
-            expected[name] = path.lstat()
+            expected[name] = _owned_file(path, work)
         _require(code.is_file() and not code.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
         code_stat = code.lstat()
         _require(
@@ -364,7 +365,9 @@ def run_lab(
         work_stat = os.fstat(work_fd)
         path_stat = work.stat()
         _require(
-            (work_stat.st_dev, work_stat.st_ino) == (path_stat.st_dev, path_stat.st_ino)
+            (work_stat.st_dev, work_stat.st_ino)
+            == (path_stat.st_dev, path_stat.st_ino)
+            == (dir_identity.st_dev, dir_identity.st_ino)
             and work_stat.st_uid == os.getuid()
             and not work_stat.st_mode & 0o077,
             "QEMU_STARTUP_UNCLASSIFIED",
