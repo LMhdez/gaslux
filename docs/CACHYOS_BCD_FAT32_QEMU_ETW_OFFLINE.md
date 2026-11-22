@@ -18,6 +18,70 @@ remains the release gate. Human Safety review is mandatory.
 swtpm states, passwords, keys or original ETW payload into a public PR.**
 Only minimal bounded offsets, counts, digests and synthetic fixtures belong here.
 
+## Experimental ESP source/descriptor provenance — synthetic RAW only
+
+`cachyos_bcd_esp_provenance_offline.py` adds a **deny-only** test oracle
+for synthetic, 128-GiB sparse **RAW** regular files, not Windows/QCOW2.
+
+Input is an already-open, `O_RDONLY` file descriptor, its pathname, and an
+explicit controller claim containing transaction/checkpoint IDs, disk size,
+512-byte sector geometry, GPT disk GUID, ESP PARTUUID and exact LBA range,
+SHA-256 of primary+backup GPT windows and the full ESP, plus pinned
+`st_dev/st_ino/st_nlink/st_size/st_mtime_ns/st_ctime_ns`. The claim is
+**not** cryptographically authenticated by this tool.
+
+The reader rejects symlinks/hardlinks, wrong owner/mode, write-capable
+descriptors, file/path replacements, divergent inode/metadata, invalid PMBR,
+primary/backup GPT CRCs, mirrored GPT mismatches, unexpected fifth/sixth
+partitions, wrong disk GUID/PARTUUID and incorrect ESP offsets or hashes.
+It reuses `windows_cachyos_qcow2_gpt_readonly.header_at()` and
+`part_array()` from the existing lab, and `map_bcd_fat32()` without
+implementing another FAT32 parser. Two ESP byte reads and two GPT-window
+reads must agree; the last `fstat/lstat` must still match the pinned
+descriptor. SHA-256 is computed over **captured bytes**, not a supplied hash
+alone. No path or source byte content appears in the result.
+
+Its result `SYNTHETIC_RAW_FD_MEASURED_DENY_ONLY` supports
+`twoPassEspBytesEqual=true` and
+`primaryBackupGptConsistent=true` for the supplied synthetic fixture.
+It always has `historicalEspProvenanceAuthenticated=false`,
+`qemuBlkNodeToDiskAuthenticated=false` and
+`productionStorageWritesAuthorized=false`.
+A writable file can be modified and restored between reads; **double
+readback cannot prove snapshot immutability or absence of intermediate
+writes**. Thus this is a structural/readback test, not a signed replay-safe
+source attestation.
+
+**QCOW2 must not be passed to a raw descriptor reader.** `pread(fd,
+LBA*512)` on a QCOW2 container is *not* a guest-sector read. A future
+read-only QCOW2 capture requires an independently frozen and verified QEMU
+virtual block graph backed by pinned regular FDs, source/overlay/backing
+hashes, a read-only sector extraction API, and a signed transaction/nonce
+with external ownership proof. A path or self-declared SHA is insufficient.
+
+The current `dev` branch exposes reusable HOST-only
+`auto_tests/installer_observer/host_fd_boundary.py`: `process_seal()`
+measures PID generation, command/executable identity; `_execute()`
+allowlists `qmp_capabilities` and `query-block`. Both remain host
+measurements, not a complete QEMU block-node-to-open-FD binding. This
+experimental PR **does not vendor or fork** the HOST/FD module from `dev`.
+The branch and commit must be reconciled by the Integrator before reuse.
+
+`evaluate_untrusted_qemu_claim()` separately rejects malformed claim
+shape, ambiguous QEMU process count, changed PID generation/executable,
+substituted inode, changed backing SHA, missing/mismatched trace digest and
+ambiguous QMP node labels. Even a perfect synthetic claim returns
+`QEMU_PROCESS_FD_CONSISTENT_BLK_POINTER_UNBOUND` and
+`qemuBlkNodeToDiskAuthenticated=false` because runtime `blk 0x...`
+pointers are not externally authenticated by QMP node names or /proc PID.
+No provenance is established by matching LBA offsets on two disks.
+
+**Trust boundary still open:** independent signed host transaction → pinned
+snapshot/overlay/backing FDs → QMP block node identity → QEMU trace
+runtime `blk` pointer. A verified /proc-FD inventory plus QMP node name
+does not establish the final pointer link by itself. Process tokens may
+be reused across QEMU instances and traces can lack timestamps.
+
 ## FAT32 mapping algorithm
 
 - Interpret the ESP as an exact bounded read-only byte sequence; require
