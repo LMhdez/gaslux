@@ -178,6 +178,23 @@ def _assert_overlay_backing(
         raise ValueError("overlay backing identity/geometry differs from pinned baseline")
 
 
+def _require_corrupt_image_rejected(path: Path, *, qemu_img: str) -> None:
+    """An invalid QCOW2 auto-detected as RAW is also a rejected QCOW2.
+
+    qemu-img info may exit successfully when random bytes are detected as RAW.
+    Exit code zero is never a substitute for verifying the expected format.
+    """
+    result = subprocess.run(
+        [qemu_img, "info", "--output=json", str(path)],
+        capture_output=True, timeout=30, check=False
+    )
+    if result.returncode != 0:
+        return
+    metadata = json.loads(result.stdout)
+    if not isinstance(metadata, dict) or metadata.get("format") == "qcow2":
+        raise ValueError("corrupt fixture was accepted as QCOW2")
+
+
 def prove_restore_fixture(
     parent: Path, ovmf_vars: Path, *,
     qemu_img: str = "qemu-img", qemu_io: str = "qemu-io"
@@ -255,12 +272,7 @@ def prove_restore_fixture(
         _owned_regular(overlay, work)
         overlay.unlink()
         overlay.write_bytes(b"not-a-qcow2")
-        damaged = subprocess.run(
-            [qemu_img, "info", "--output=json", str(overlay)],
-            capture_output=True, timeout=30, check=False
-        )
-        if damaged.returncode == 0:
-            raise ValueError("corrupt overlay was accepted")
+        _require_corrupt_image_rejected(overlay, qemu_img=qemu_img)
         _owned_regular(overlay, work)
         overlay.unlink()
 
@@ -285,12 +297,7 @@ def prove_restore_fixture(
             raise ValueError("symlink swap was accepted")
         incomplete = work / "interrupted.qcow2"
         incomplete.write_bytes(b"QFI\xfb" + bytes(32))
-        partial = subprocess.run(
-            [qemu_img, "info", "--output=json", str(incomplete)],
-            capture_output=True, timeout=30, check=False
-        )
-        if partial.returncode == 0:
-            raise ValueError("interrupted incomplete overlay was accepted")
+        _require_corrupt_image_rejected(incomplete, qemu_img=qemu_img)
         if plan(available_bytes=0)["status"] != "BLOCKED_STORAGE":
             raise ValueError("insufficient capacity incorrectly accepted")
         return {
