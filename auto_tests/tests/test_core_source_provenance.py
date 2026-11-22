@@ -7,12 +7,60 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from test_core import settings
 
+from app.config import Settings
 from app.errors import WorkflowError
 from app.services.common import ResultBuilder
 from app.services.validation import ValidationService
 
+
+
+def _settings(**overrides: object) -> Settings:
+    """Standalone fake laboratory configuration; all addresses are reserved examples."""
+
+    values: dict[str, object] = {
+        "main_ssh_host": "192.0.2.10",
+        "main_ssh_user": "test",
+        "main_ssh_password": "example",
+        "windows_ssh_password": "example",
+        "samba_unc": r"\\192.0.2.10\share",
+        "samba_username": "test",
+        "samba_password": "example",
+        "build_vm_host": "192.0.2.11",
+        "build_vm_user": "test",
+        "build_vm_password": "example",
+        "ssh_known_hosts": "/tmp/gaslux-test-known-hosts",
+        "filepool_base_url": "http://192.0.2.12:8000/filepool",
+        "development_static_ipv4_prefix_length": 24,
+        "development_static_ipv4_gateway": "192.0.2.1",
+        "development_dns_servers": ("192.0.2.53",),
+        "repository_url": "https://github.com/LMhdez/gaslux.git",
+        "smb_root": "/srv/gaslux-test",
+        "allowed_smb_roots": ("/srv/gaslux-test",),
+        "allowed_proxmox_vmids": (501,),
+        "llm_api_url": "http://192.0.2.13:8000/v1",
+        "llm_api_key": "example",
+        "llm_model": "example",
+        "proxmox_url": "https://192.0.2.14:8006",
+        "proxmox_token_id": "test@pve!fake",
+        "proxmox_token_secret": "example",
+        "vms": (
+            {
+                "name": "vm2",
+                "host": "192.0.2.15",
+                "os": "Windows 10 UEFI",
+                "vnc": "192.0.2.14:11",
+                "screen_width": 1280,
+                "screen_height": 800,
+                "vmid": 501,
+                "firmware": "uefi",
+                "automation_enabled": True,
+            },
+        ),
+        "_env_file": None,
+    }
+    values.update(overrides)
+    return Settings(**values)
 
 def _checkout(tmp_path: Path, origin: str) -> tuple[Path, str]:
     root = tmp_path / "checkout"
@@ -55,7 +103,7 @@ def _checkout(tmp_path: Path, origin: str) -> tuple[Path, str]:
 )
 def test_gaslux_source_rejects_foreign_remote_config(origin: str) -> None:
     with pytest.raises(ValidationError, match="Gaslux"):
-        settings(repository_url=origin)
+        _settings(repository_url=origin)
 
 
 def test_gaslux_source_has_no_inherited_published_endpoint() -> None:
