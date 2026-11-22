@@ -63,25 +63,39 @@ def _qemu_with_guest(workspace: Path, overlay: Path, image: dict) -> subprocess.
     assert (workspace / "guest-peer.sock").exists() is False
     argv = [
         QEMU,
-        "-machine", "q35,accel=tcg",
-        "-m", "384",
+        "-machine",
+        "q35,accel=tcg",
+        "-m",
+        "384",
         "-nodefaults",
         "-no-user-config",
         "-no-reboot",
-        "-display", "none",
-        "-monitor", "none",
-        "-nic", "none",
-        "-serial", f"file:{workspace / 'kernel-serial.log'}",
-        "-kernel", str(image["kernel"]),
-        "-initrd", str(image["initrd"]),
-        "-append", "console=ttyS0,115200 loglevel=4 panic=1 rdinit=/init",
-        "-qmp", f"unix:{workspace / 'monitor.sock'},server=on,wait=off",
-        "-drive", f"file={overlay},format=qcow2,if=none,id=disk0,readonly=on",
-        "-device", "virtio-blk-pci,drive=disk0",
+        "-display",
+        "none",
+        "-monitor",
+        "none",
+        "-nic",
+        "none",
+        "-serial",
+        f"file:{workspace / 'kernel-serial.log'}",
+        "-kernel",
+        str(image["kernel"]),
+        "-initrd",
+        str(image["initrd"]),
+        "-append",
+        "console=ttyS0,115200 loglevel=4 panic=1 rdinit=/init",
+        "-qmp",
+        f"unix:{workspace / 'monitor.sock'},server=on,wait=off",
+        "-drive",
+        f"file={overlay},format=qcow2,if=none,id=disk0,readonly=on",
+        "-device",
+        "virtio-blk-pci,drive=disk0",
         "-chardev",
         f"socket,id=gp0,path={workspace / 'guest-peer.sock'},server=on,wait=off",
-        "-device", "virtio-serial-pci",
-        "-device", "virtserialport,chardev=gp0,name=gaslux.observer",
+        "-device",
+        "virtio-serial-pci",
+        "-device",
+        "virtserialport,chardev=gp0,name=gaslux.observer",
     ]
     mask = os.umask(0o077)
     try:
@@ -208,9 +222,7 @@ def real_guest(tmp_path_factory, pinned):
                 QemuLocalDiskWitness(
                     replace(
                         pins,
-                        process=replace(
-                            pins.process, start_ticks=pins.process.start_ticks + 1
-                        ),
+                        process=replace(pins.process, start_ticks=pins.process.start_ticks + 1),
                     )
                 )
             serial = folder / "kernel-serial.log"

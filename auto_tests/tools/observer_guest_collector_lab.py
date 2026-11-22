@@ -172,17 +172,14 @@ def build_guest(workspace: Path) -> dict:
                 shutil.copyfile(src, destination)
             used.append(src)
     loads = "".join(
-        f"/bin/busybox insmod /modules/{i:03d}.ko || exit {20+i}\n"
-        for i in range(len(used))
+        f"/bin/busybox insmod /modules/{i:03d}.ko || exit {20 + i}\n" for i in range(len(used))
     )
     entry = stage / "init"
     entry.write_text(INIT_HEADER + loads + INIT_END, encoding="ascii")
     entry.chmod(0o700)
     cpio = workspace / "initrd.cpio"
     with cpio.open("xb") as output:
-        source = subprocess.Popen(
-            ["find", ".", "-print0"], cwd=stage, stdout=subprocess.PIPE
-        )
+        source = subprocess.Popen(["find", ".", "-print0"], cwd=stage, stdout=subprocess.PIPE)
         assert source.stdout is not None
         try:
             result = subprocess.run(
@@ -288,9 +285,7 @@ class LabLedger:
         )
         self.db.execute("BEGIN IMMEDIATE")
         try:
-            self.db.execute(
-                "INSERT INTO consumed(nonce,session) VALUES (?,?)", (nonce, session)
-            )
+            self.db.execute("INSERT INTO consumed(nonce,session) VALUES (?,?)", (nonce, session))
             self.db.execute("COMMIT")
         except sqlite3.IntegrityError as exc:
             self.db.execute("ROLLBACK")
