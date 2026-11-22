@@ -388,10 +388,7 @@ def test_workflow_is_strictly_synthetic_no_qemu_launch():
             )
             assert "qemu-system" not in step["run"]
             assert "libguestfs" not in step["run"]
-    assert any(
-        "test_observer_host_fd_evidence.py" in step.get("run", "")
-        for step in steps
-    )
+    assert any("test_observer_host_fd_evidence.py" in step.get("run", "") for step in steps)
 
 
 def test_synthetic_example_is_explicitly_not_authentic():
