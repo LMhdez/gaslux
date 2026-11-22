@@ -182,3 +182,15 @@ em `test_authenticated_destination_readonly.py`, incluindo checkpoint alias
 no contrato integral <=512 MiB. Os testes de escala NÃO substituem os testes
 de conteúdo ou a revisão Safety. Branch de qualificação separada da PR #337;
 CI do HEAD de escala por comprovar antes de qualquer integração.
+
+
+### CI de escala — execução GREEN no código exato
+
+A [Action #45034223975](https://github.com/LMhdez/gaslux/actions/runs/45034223975)
+terminou **SUCCESS** no commit de implementação
+`049f1799a7296e3891dabd8be869cf4de3eb5c85`: 12 novos testes de
+metadados, suites QEMU parado, #327 BZD-DEST-01, #267 e regressões HOST/FD,
+Ruff e compileall. [Documentação #45034226613](https://github.com/LMhdez/gaslux/actions/runs/45034226613)
+também passou. A documentação acrescentada depois deste commit necessita da
+própria validação exact-head; não confundir testes de RAW esparso com
+Windows genuíno, hash de 128 GiB ou checkpoint/rollback.

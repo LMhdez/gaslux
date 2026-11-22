@@ -130,3 +130,15 @@ A proposta de metadados de 128 GiB é uma branch dependente, test-only,
 sem hash integral ou checkpoint, e não altera a classificação #337.
 A CI da branch e a revisão Safety devem ser validadas no HEAD exato
 antes de qualquer merge. QEMU anterior foi **stopped**, sem guest/Windows.
+
+
+- [PR #342](https://github.com/LMhdez/gaslux/pull/342) implementa uma
+  sonda read-only apenas de metadados até 128 GiB, com hash integral <=512 MiB
+  ainda bloqueante para o RAW grande. A Action [#45034223975](https://github.com/LMhdez/gaslux/actions/runs/45034223975)
+  foi **SUCCESS** no commit `049f1799a7296e3891dabd8be869cf4de3eb5c85`:
+  12 testes novos com RAW sintético esparso 128 GiB e QCOW2 genuíno criado
+  por `qemu-img`, além de QEMU parado, #327/#267 e HOST/FD. [Docs #45034226613](https://github.com/LMhdez/gaslux/actions/runs/45034226613)
+  também **SUCCESS**. Sem Windows real, hashing 128 GiB, checkpoint
+  autenticado, Guest ou permissão de escrita. A PR permanece Draft até
+  auditoria independente Safety; os checks deste HEAD de documentação
+  continuam a precisar da respetiva execução.
