@@ -82,7 +82,7 @@ jobs:
           bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
 
   backend_research:
-    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: vars.GASLUX_AUTONOMY_PAUSED != 'true' && github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     strategy:
