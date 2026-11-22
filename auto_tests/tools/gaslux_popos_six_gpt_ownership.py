@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -136,7 +137,14 @@ class SafeWorkspace:
     def inspect(self) -> None:
         self.check_directories()
         observed = set(os.listdir(self.work_fd))
-        need(observed <= NAMES, "REFUSE_IDENTITY_MISMATCH: foreign lab resource name")
+        need(
+            all(
+                name in NAMES
+                or re.fullmatch(r"readback-protected-esp-canary-[0-9a-f]{32}\.tmp", name)
+                for name in observed
+            ),
+            "REFUSE_IDENTITY_MISMATCH: foreign lab resource name",
+        )
         for name in observed:
             descriptor = os.open(
                 name, os.O_RDONLY | os.O_NONBLOCK | O_NOFOLLOW, dir_fd=self.work_fd

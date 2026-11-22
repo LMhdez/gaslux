@@ -167,7 +167,7 @@ def verify_sfdisk_gpt(path: Path) -> dict:
 
 def verify_esp_canary(base: Path, expected_hash: str, work: Path) -> None:
     # Read protected simulated ESP via mtools without any write to disk image.
-    output = work / "readback-protected-esp-canary.tmp"
+    output = work / ("readback-protected-esp-canary-" + uuid.uuid4().hex + ".tmp")
     need(
         not output.exists() and not output.is_symlink(),
         "REFUSE_IDENTITY_MISMATCH: foreign ESP readback resource",
@@ -186,8 +186,10 @@ def verify_esp_canary(base: Path, expected_hash: str, work: Path) -> None:
             "REFUSE_OUT_OF_WRITESET: protected ESP file changed",
         )
     finally:
+        # Deliberately retain the private readback until hosted-runner teardown.
+        # A same-UID process could otherwise swap a pathname before unlinkat.
         if output.exists():
-            regular(output).unlink()
+            regular(output)
 
 
 def verify_fs_types(base: Path) -> dict:
@@ -294,8 +296,11 @@ def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
             need(type(row["offset"]) is int and row["offset"] >= 0,
                  "REFUSE_RECOVERY_UNPROVEN: invalid extent offset")
         if "present" in row:
-            need(type(row["present"]) is bool,
-                 "REFUSE_RECOVERY_UNPROVEN: invalid present flag")
+            need(
+                type(row["present"]) is bool
+                and not (row["present"] is False and row["data"] is True),
+                "REFUSE_RECOVERY_UNPROVEN: contradictory present/data extent",
+            )
         cursor += length
     if require_full:
         need(cursor == SIZE, "REFUSE_RECOVERY_UNPROVEN: incomplete QCOW2 map")
@@ -432,7 +437,8 @@ def prepare(work: Path, template: Path) -> dict:
     command("mmd", "-i", esp_image, "::/EFI/Microsoft")
     command("mcopy", "-i", esp_image, str(marker), PROTECTED_ESP_FILE)
     file_hash = sha(marker)
-    marker.unlink()
+    # Retain marker rather than risk deleting a swapped same-UID pathname.
+    regular(marker)
     entries = []
     for p in PARTS[1:4]:
         entries.append(
