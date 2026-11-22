@@ -169,8 +169,12 @@ def test_candidate_matches_stable_catalog_field_names(tmp_path, monkeypatch):
     stable = json.loads((repo / "release-config.json").read_text(encoding="utf-8"))
     example = stable["distributions"][0]
     fields = (
-        "id", "name", "isoInstaller", "isoInstallerFileName",
-        "isoInstallerSha256", "isoInstallerSizeBytes",
+        "id",
+        "name",
+        "isoInstaller",
+        "isoInstallerFileName",
+        "isoInstallerSha256",
+        "isoInstallerSizeBytes",
     )
     for field in fields:
         assert field in example and field in candidate
@@ -185,7 +189,6 @@ def test_public_q4os_checksum_is_literal_pinned_and_not_publisher_signature():
     )
     assert readiness.SIGNED_RELEASE_METADATA_VERIFIED is False
     assert not hasattr(provenance, "sign") and not hasattr(provenance, "authorize_live_boot")
-
 
 
 def test_provenance_schema_rejects_forged_signatures_and_unsigned_catalog():
