@@ -83,6 +83,11 @@ def assess_prewrite_gap(
     disk.commit() may rewrite GPT even for a 'reuse' or '--test' request.
     Untrusted self-asserted input cannot establish a native installer hook.
     """
+    # Fail on a partial document before older strict helpers index its fields.
+    require(
+        type(plan) is dict and type(plan.get("partitions")) is list,
+        "REFUSE_POP_PREWRITE: partial native partition plan",
+    )
     # Reuse previous strict six-GPT/Windows ownership and recovery-shaped
     # checks; do not reimplement partition offsets or a GPT parser.
     proposal = propose_native_write_set(
