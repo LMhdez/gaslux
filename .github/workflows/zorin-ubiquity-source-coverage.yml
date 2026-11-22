@@ -2,7 +2,7 @@ name: Zorin 18.1 Ubiquity source provenance (read-only)
 on:
   push:
     branches:
-      - test/zorin-ubiquity-source-gap-20261122
+      - test/zorin-ubiquity-first-writer-20261122
 
 permissions:
   contents: read
@@ -58,6 +58,9 @@ jobs:
           test "$(git -C canonical-safety rev-parse HEAD)" = d5eb20114df34a778ada1af1f6f4f6bff0c49845
           python3 -m pip install --break-system-packages --no-input 'jsonschema>=4.20,<5' 'ruff>=0.10,<0.18' 'pytest>=8,<9'
           python3 -m compileall -q auto_tests/tools/zorin_ubiquity_source_coverage.py auto_tests/test_zorin_ubiquity_source_coverage.py
+          python3 -m compileall -q auto_tests/tools/zorin_ubiquity_first_writer_evidence.py auto_tests/test_zorin_ubiquity_first_writer_evidence.py
+          ruff check --select E4,E7,E9,F auto_tests/tools/zorin_ubiquity_first_writer_evidence.py auto_tests/test_zorin_ubiquity_first_writer_evidence.py
+          ruff format --check auto_tests/tools/zorin_ubiquity_first_writer_evidence.py auto_tests/test_zorin_ubiquity_first_writer_evidence.py
           ruff check --select E4,E7,E9,F auto_tests/tools/zorin_ubiquity_source_coverage.py auto_tests/test_zorin_ubiquity_source_coverage.py
           ruff format --check auto_tests/tools/zorin_ubiquity_source_coverage.py auto_tests/test_zorin_ubiquity_source_coverage.py
           python3 - <<'PY'
@@ -71,6 +74,7 @@ jobs:
           print("PASS: reused JSON Schemas, no new generic contracts")
           PY
           python3 -m unittest discover -s auto_tests -p test_zorin_ubiquity_source_coverage.py -v
+          python3 -m unittest discover -s auto_tests -p test_zorin_ubiquity_first_writer_evidence.py -v
           python3 -m unittest discover -s auto_tests -p test_zorin_ubiquity_precommit_boundary.py -v
           python3 -m unittest discover -s auto_tests -p test_zorin_ubiquity_handoff_readonly.py -v
           python3 -m unittest discover -s auto_tests -p test_zorin_native_ubiquity_map.py -v
@@ -188,6 +192,34 @@ jobs:
           assert report["productionStorageWritesAuthorized"] is False
           print("PASS: six ISO-authenticated bodies, two non-regular/unavailable partman scripts, no first-writer claim")
           PY
+          python3 auto_tests/tools/zorin_ubiquity_first_writer_evidence.py \
+            --artifact-zip "$RUNNER_TEMP/zorin-source-pinned/original-map.zip" \
+            --iso "$RUNNER_TEMP/zorin-source-pinned/zorin.iso" \
+            --mounted "$mountdir" \
+            --out zorin-target-source-evidence/first-writer-static-calls.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("zorin-target-source-evidence/first-writer-static-calls.json")
+          result = json.loads(p.read_text())
+          assert result["decision"] == "ROUTE_B"
+          assert result["authorization"] == "DENY_NO_WRITER"
+          assert len(result["sourceFilesAuthenticated"]) == 6
+          assert all(result[k] is False for k in (
+              "firstPersistentWriteVerified",
+              "precommitNonMutatingVerified",
+              "completeCallGraphVerified",
+              "allEffectsAuthenticated",
+              "runtimeCallPathVerified",
+              "diskWritesAuthorized",
+              "nativeInstallerInvoked",
+              "stable",
+          ))
+          for path in ("lib/partman/lib/commit.sh", "lib/partman/lib/resize.sh"):
+              assert result["shellInodeMetadata"][path]["type"] != "REGULAR_HASH_MATCHED"
+              assert result["shellInodeMetadata"][path].get("targetProvenanceAuthenticated") is not True
+          print("PASS: source-authenticated six-file AST plus read-only non-following partman inode inspection")
+          PY
           sudo umount "$mountdir"
           mounted=0
           echo 'SOURCES: only static calls from verified bytes, no proven first write, action graph, dry-run or writer.' >> "$GITHUB_STEP_SUMMARY"
@@ -196,6 +228,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: zorin-source-eight-modules-readonly
-          path: zorin-target-source-evidence/pinned-source-static-edges.json
+          path: |
+            zorin-target-source-evidence/pinned-source-static-edges.json
+            zorin-target-source-evidence/first-writer-static-calls.json
           if-no-files-found: error
           retention-days: 7
