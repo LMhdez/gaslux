@@ -300,8 +300,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
-          import hashlib, json
+          import hashlib, json, sys
           from pathlib import Path
+          # The audit executes from the repository root in a fresh Python process.
+          # Resolve the existing tools directory before importing the real
+          # Windows COM1 verifier (independent of earlier unit-test sys.path).
+          sys.path.insert(0, str((Path.cwd() / "auto_tests/tools").resolve(strict=True)))
           root = Path("windows-x64-tcg-evidence")
           profile = "win10_22h2_en_us_x64"
           report = json.loads((root / (profile + "-result.json")).read_text())
