@@ -212,3 +212,70 @@ def test_official_sha_matches_existing_dev_workflow_and_not_stable_catalog():
     assert readiness.UPSTREAM_SHA256 in workflow
     assert readiness.ISO_NAME in workflow
     assert "q4os" not in {item["id"] for item in catalog["distributions"]}
+
+
+
+def test_manifest_schema_rejects_false_guest_and_release_authority():
+    import jsonschema
+
+    repo = Path(__file__).resolve().parents[2]
+    schema = json.loads(
+        (repo / "schemas/gaslux-q4os-native-live-readiness.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    jsonschema.Draft202012Validator.check_schema(schema)
+    doc = readiness.readiness_manifest()
+    jsonschema.validate(doc, schema)
+    assert doc["gates"]["liveBootAuthorized"] is False
+    assert doc["gates"]["stable"] is False
+
+    forged = json.loads(json.dumps(doc))
+    forged["guest"]["kernelBooted"] = True
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(forged, schema)
+    forged = json.loads(json.dumps(doc))
+    forged["gates"]["QEMU_FD_BACKING_VERIFIED"] = True
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(forged, schema)
+    forged = json.loads(json.dumps(doc))
+    forged["source"]["signedGasluxCatalogVerified"] = True
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(forged, schema)
+    forged = json.loads(json.dumps(doc))
+    forged["decision"] = "ALLOW"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(forged, schema)
+
+
+def test_schema_does_not_allow_self_referential_fake_media_observation():
+    import jsonschema
+
+    repo = Path(__file__).resolve().parents[2]
+    schema = json.loads(
+        (repo / "schemas/gaslux-q4os-native-live-readiness.schema.json").read_text()
+    )
+    forged = readiness.readiness_manifest()
+    forged["iso"]["sha256MatchedThisRun"] = True
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(forged, schema)
+    forged = readiness.readiness_manifest()
+    forged["evidenceLevel"] = "MEDIA_HASH_ONLY"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(forged, schema)
+
+
+def test_private_source_directory_requires_owned_absolute_path(source):
+    target, _data = source
+    with pytest.raises(readiness.MediaRefusal, match="ISO_SOURCE_NAME_INVALID"):
+        readiness.measure_official_iso(Path(readiness.ISO_NAME))
+    with pytest.raises(readiness.MediaRefusal, match="ISO_SOURCE_NAME_INVALID"):
+        readiness.measure_official_iso(target)
+
+
+def test_untrusted_hash_format_never_bypasses_fd_validation(source):
+    target, _data = source
+    with pytest.raises(readiness.MediaRefusal, match="ISO_FD_INVALID"):
+        measurement(target, "0" * 63)
+    with pytest.raises(readiness.MediaRefusal, match="ISO_FD_INVALID"):
+        measurement(target, "Z" * 64)
