@@ -36,3 +36,10 @@ A PR created using the workflow `GITHUB_TOKEN` may not itself trigger pull_reque
 **Prerequisites:** the GitHub Actions setting allowing workflow-created PRs was demonstrated in the earlier isolated bot PR #367. The trusted `main` clock from PR #371 and the model developer in `dev` must remain operational. PR #374 fixed stale source SHA in Windows acceptance. Do not merge this Integrator merely because the Python mock tests pass; validate exact PR HEAD and operational trial first.
 
 Generated-by: GPT-6.
+
+## Event-driven continuation on trusted model completion
+
+The Integrator also listens to GitHub's `workflow_run: completed` notification for the first-party **Gaslux autonomous GitHub agents** workflow, restricted to `main`. It only selects work if the producer has `conclusion=success`, `head_branch=main` and the correct repository origin. The privileged Integrator independently parses and checks the originating GitHub event JSON again, including producer name, origin and trusted trigger type; a different or failed workflow cannot grant merge authority. This avoids having to wait until the next hourly slot after a successful bot Draft PR. The minute-53 schedule remains a fallback.
+
+The job still performs its own read-only source/PR selection, complete Windows WPF build + MSTest on the exact immutable candidate, and a final privileged dev-only merge gate. A GitHub event notification is not an approval, and cannot bypass either acceptance step.
+
