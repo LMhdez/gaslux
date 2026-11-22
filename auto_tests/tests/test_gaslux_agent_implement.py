@@ -17,16 +17,30 @@ SPEC.loader.exec_module(agent)
 class AgentImplementationTests(unittest.TestCase):
     def setUp(self):
         self.original_path = ROOT / "Installation/WindowsKeyboardLayout.cs"
-        self.source = self.original_path.read_text()
+        self.live_source = self.original_path.read_text()
+        # Candidate tests always start from a reusable missing-feature fixture,
+        # including after earlier autonomous product PRs have been merged.
+        import re
+        self.source = re.sub(
+            r'^[ \t]*\{ "00000816", Mapping\("pt"\) \},\n',
+            '', self.live_source, flags=re.MULTILINE)
+        self.source = re.sub(
+            r'^[ \t]*\{ "00000416", Mapping\("br"\) \},\n',
+            '', self.source, flags=re.MULTILINE)
         self.missions = json.loads((ROOT / "docs/autonomy/agent_missions.json").read_text())
         self.pt = next(x for x in self.missions["tasks"] if x["role"] == "mint")
         self.br = next(x for x in self.missions["tasks"] if x["role"] == "zorin")
 
     def test_real_missing_product_feature(self):
-        self.assertNotIn('"00000816"', self.source)
-        self.assertNotIn('"00000416"', self.source)
+        # The live repository evolves; a previously merged mapping must not
+        # cause the autonomous Supervisor's own tests to fail forever.
         p = agent.plan()
-        self.assertEqual(p["task"]["id"], "MINT-PT-KEYBOARD-01")
+        if '"00000816"' not in self.live_source:
+            self.assertEqual(p["task"]["id"], "MINT-PT-KEYBOARD-01")
+        elif '"00000416"' not in self.live_source:
+            self.assertEqual(p["task"]["id"], "ZORIN-BR-KEYBOARD-01")
+        else:
+            self.assertEqual(p["status"], "idle")
 
     def test_mint_candidate_accepted_only_one_line(self):
         updated = agent.propose(self.source, self.pt, '{ "00000816", Mapping("pt") },')
