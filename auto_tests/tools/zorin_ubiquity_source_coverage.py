@@ -80,7 +80,7 @@ def sha(raw: bytes) -> str:
 
 def open_pinned_archive(path: Path) -> dict:
     """Read one regular, non-linked ZIP; validate the *full* historical bytes."""
-    insist(type(path) is Path, "E_UNTRUSTED_ARCHIVE_PATH")
+    insist(isinstance(path, Path), "E_UNTRUSTED_ARCHIVE_PATH")
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     except OSError as exc:
