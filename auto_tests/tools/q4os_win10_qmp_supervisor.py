@@ -271,6 +271,9 @@ def _await_qmp(
     seconds: float = 15,
     interval: float = 0.05,
 ) -> _BoundQmpSession:
+    # Neither a synthetic child nor a direct helper call can authorize guest
+    # protocol input while operational QEMU FD backing remains unverified.
+    _require(QEMU_FD_BACKING_VERIFIED, "QEMU_STARTUP_UNCLASSIFIED")
     deadline = time.monotonic() + seconds
     refused = False
     while time.monotonic() < deadline:
@@ -534,8 +537,10 @@ def _run_lab_impl(
             if synthetic_log_data:
                 output.write(synthetic_log_data)
                 output.flush()
-        report["qemuSpawned"] = True
-        report["qemuPidRecorded"] = True
+        # Synthetic processes, including genuine pre-existing Python children,
+        # have NOT been spawned by the operational QEMU supervisor.
+        report["qemuSpawned"] = synthetic_child is None
+        report["qemuPidRecorded"] = synthetic_child is None
         if process.poll() is not None:
             raise StartupRefusal("QEMU_EARLY_EXIT")
         birth = _birth_identity(process.pid)
@@ -554,6 +559,12 @@ def _run_lab_impl(
         # Synthetic fixtures must never register a child as operational.
         if synthetic_child is None:
             _register_owned_child(process, pidfd, birth)
+        # The synthetic path is diagnostic-only. Never open QMP or input a
+        # guest key, including when imported and called directly.
+        _require(
+            synthetic_child is None and QEMU_FD_BACKING_VERIFIED,
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
         session = _await_qmp(
             process,
             pidfd,
