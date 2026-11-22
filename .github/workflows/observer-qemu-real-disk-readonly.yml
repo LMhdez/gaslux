@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - test/observer-qemu-real-disk-fd-readonly-20261122
+      - test/observer-qemu-guest-peer-origin-deny-20261122
     paths:
       - '.github/workflows/observer-qemu-real-disk-readonly.yml'
       - 'auto_tests/installer_observer/qemu_local_disk_witness.py'
       - 'auto_tests/tests/test_observer_qemu_real_disk_readonly.py'
       - 'docs/OBSERVER_QEMU_REAL_DISK_FD_READONLY.md'
+      - 'docs/CI_VM_EVIDENCE_INDEX.md'
   pull_request:
     branches:
       - dev
@@ -17,6 +19,7 @@ on:
       - 'auto_tests/installer_observer/qemu_local_disk_witness.py'
       - 'auto_tests/tests/test_observer_qemu_real_disk_readonly.py'
       - 'docs/OBSERVER_QEMU_REAL_DISK_FD_READONLY.md'
+      - 'docs/CI_VM_EVIDENCE_INDEX.md'
 
 permissions:
   contents: read
@@ -93,6 +96,40 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pytest -q -s auto_tests/tests/test_observer_qemu_real_disk_readonly.py
+      - name: Verify runner-owned peer provenance manifest and SHA-256 — GUEST DENIED
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True) / "gaslux-observer-guest-peer"
+          manifest = root / "manifest.json"
+          checksum = root / "manifest.sha256"
+          assert root.is_dir() and not root.is_symlink()
+          payload = manifest.read_bytes()
+          assert len(payload) < 4096
+          expected = checksum.read_text(encoding="ascii").split()
+          assert expected == [hashlib.sha256(payload).hexdigest(), "manifest.json"]
+          data = json.loads(payload)
+          assert data["schema"] == "gaslux-observer-qemu-host-peer-v1"
+          assert data["status"] == "BLOCKED_TRUST_ROOT"
+          assert data["classification"] == "NOT_INDEPENDENT"
+          assert data["qemuPid"] == data["peerPid"] and data["qemuPid"] > 1
+          assert data["guestBooted"] is False
+          assert data["guestObservationsReceived"] == 0
+          assert data["peerProvenance"] == data["qmpPayloadProvenance"] == "CLAIMED"
+          assert data["qemuProcessReaped"] is True
+          for key in (
+              "guestChannelAuthenticated", "collectorAuthenticated",
+              "replayProtected", "diskWriteAuthorized",
+              "productionInstallationAuthorized", "rollbackProven", "stable"
+          ):
+              assert data[key] is False, key
+          print("HOST_PEER_MANIFEST_VERIFIED_ONLY_NO_GUEST_AUTH")
+          PY
       - name: Retain prior F-01 F-02 F-03 and integrated peer regressions
         run: |
           set -Eeuo pipefail
@@ -100,6 +137,16 @@ jobs:
             auto_tests/tests/test_observer_host_fd_safety_fixes.py \
             auto_tests/tests/test_observer_host_fd_dev_integration.py \
             auto_tests/tests/test_guest_transport_peer_boundary.py
+      - name: Upload bounded runner-only host-peer provenance manifest (NOT ATTESTED)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-observer-qemu-host-peer-no-guest
+          path: |
+            ${{ runner.temp }}/gaslux-observer-guest-peer/*.json
+            ${{ runner.temp }}/gaslux-observer-guest-peer/*.sha256
+          retention-days: 7
+          if-no-files-found: warn
       - name: Verify all source checksums and checkout refs after QEMU exit
         shell: bash
         run: |

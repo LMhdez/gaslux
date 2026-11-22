@@ -87,3 +87,55 @@ Successful local witness classification:
 
 The GitHub Actions CI is **not** an operational permit. Do not merge
 before diff-scoped independent Safety review and Integrator reconciliation.
+
+## 22 November 2026 — QEMU-owned virtio-serial HOST socket; guest provenance negative
+
+[PR #325](https://github.com/LMhdez/gaslux/pull/325) was merged at
+`8e68a475d6397ba8fef2e0f9f83758545e202a5f`; its 19 real stopped
+QEMU adversarial tests prove a local QEMU process has a read-only FD for
+a specific disposable RAW/QCOW2 host file. They do **not** prove a guest
+collector. The #294 and #321 historical branches remain closed, #259
+is not imported.
+
+The next **test-only** experiment reuses that supervisor, #319
+`host_fd_boundary.py` and `guest_transport_peer_boundary.py`. QEMU starts
+with an additional private host AF_UNIX socket configured as a
+`virtserialport` chardev, but **-S keeps the CPUs paused**. The host
+connects, and the kernel `SO_PEERCRED` of that socket identifies the
+QEMU **host process**, never a guest process. The independent QEMU
+disk-FD witness and local peer witness can therefore both pass while
+`guestChannelAuthenticated=false`.
+
+This is a decisive negative counterexample to treating a QEMU-owned
+socket as guest provenance: **no guest operating system, guest collector,
+guest bytes or authenticated observations exist in this scenario**.
+The second sample and in-memory same-witness replay check cannot
+authenticate older data; another witness may re-observe the same
+claimed session and report only local kernel identity. This is
+explicitly **not** durable replay protection.
+
+The same disposable GitHub Actions workflow now tests a missing
+guest endpoint, a fake host-side socket, an interrupted endpoint,
+a different concurrent QEMU, altered collector/transaction/provenance
+claims, injected authorization flags, and attempted replay. All
+guest and writer verdicts remain negative. The host-only JSON
+manifest and SHA-256 are **untrusted runner-generated diagnostics**,
+not an external signature or attestation. The manifest must state
+`guestBooted=false` and `guestObservationsReceived=0`.
+
+Required next trust boundary remains a protected host-to-guest
+provenance protocol with independently delivered/verified collector
+and guest execution identity, a protected persistent challenge
+ledger and independent policy approval; attaching virtio-serial
+hardware or querying QMP is not enough.
+
+No QGA, SSH, guest commands, installer, partition operations, or
+Windows/physical disk writes were added by this experiment.
+
+### Verified runner evidence (2026-11-22, 14:02 UTC)
+
+The first complete [GitHub Action #45030470016](https://github.com/LMhdez/gaslux/actions/runs/45030470016) finished **SUCCESS** at exact candidate HEAD `131f330691b299679a46461616b5e7fa115de882`: 28 real QEMU / Guest Peer tests plus 57 inherited Observer tests, **85/85 PASS**, Ruff, format, compileall and exact pinned #267/#286 source checks. Both the real QEMU disk-FD and local SO_PEERCRED paths ran; the chardev peer was QEMU PID 3293 and had a real host socket descriptor. QEMU was reaped. No guest boot occurred.
+
+[Artifact #14757198793](https://github.com/LMhdez/gaslux/actions/runs/45030470016/artifacts/14757198793) contains the bounded `manifest.json` and local `manifest.sha256`, SHA-256-checked by CI before upload. The artifact ZIP digest was `7f4a4098961b442e95c32637653b9fdb243a7f471b164f20881833c5337ab3b4`; neither the ZIP digest nor the self-hashed manifest provides independent attestation. The manifest explicitly records `guestBooted=false`, `guestObservationsReceived=0`, `guestChannelAuthenticated=false`, `collectorAuthenticated=false`, `replayProtected=false`, `diskWriteAuthorized=false`, `rollbackProven=false`, and `stable=false`.
+
+The real host endpoint is a **negative control**: authenticating its Linux host peer by SO_PEERCRED and the image's QEMU host FD is **not** a guest collector observation. A host process could otherwise impersonate guest origin. Operational installation, replay authorization and Windows recovery remain blocked. Independently Safety-review the new differential before any integration.
