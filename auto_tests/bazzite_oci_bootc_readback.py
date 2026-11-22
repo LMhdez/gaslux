@@ -216,7 +216,10 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     header = src.read(4)
                     rest = hashlib.sha256(header)
                     consumed = 4
-                    for block in iter(lambda: src.read(1024 * 1024), b""):
+                    while True:
+                        block = src.read(1024 * 1024)
+                        if not block:
+                            break
                         consumed += len(block)
                         rest.update(block)
                     if consumed != member.size:
@@ -238,7 +241,10 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
 
 
 def _request(url: str, token: str | None = None):
-    headers = {"Accept": ", ".join(sorted(MANIFEST_TYPES)), "User-Agent": "gaslux-oci-bootc-readback/1"}
+    headers = {
+        "Accept": ", ".join(sorted(MANIFEST_TYPES)),
+        "User-Agent": "gaslux-oci-bootc-readback/1",
+    }
     if token:
         headers["Authorization"] = "Bearer " + token
     return urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60)
@@ -281,19 +287,20 @@ def download_registry() -> dict:
             budget = {"members": 0, "expanded": 0}
             for index, desc in enumerate(descriptors):
                 layer = directory / f"layer-{index}.tar.gz"
-                with _request(base + "blobs/" + desc["digest"], token) as response:
-                    with layer.open("xb") as output:
-                        measured = hashlib.sha256()
-                        size = 0
-                        while True:
-                            block = response.read(1024 * 1024)
-                            if not block:
-                                break
-                            size += len(block)
-                            if size > desc["size"] or size > MAX_LAYER:
-                                raise Refusal("Layer network transfer exceeded announced size")
-                            measured.update(block)
-                            output.write(block)
+                with _request(base + "blobs/" + desc["digest"], token) as response, layer.open(
+                    "xb"
+                ) as output:
+                    measured = hashlib.sha256()
+                    size = 0
+                    while True:
+                        block = response.read(1024 * 1024)
+                        if not block:
+                            break
+                        size += len(block)
+                        if size > desc["size"] or size > MAX_LAYER:
+                            raise Refusal("Layer network transfer exceeded announced size")
+                        measured.update(block)
+                        output.write(block)
                 if size != desc["size"] or "sha256:" + measured.hexdigest() != desc["digest"]:
                     raise Refusal("OCI layer substituted during registry transfer")
                 with layer.open("rb") as source:
@@ -335,7 +342,9 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
     if unresolved and not matched:
         raise Refusal("Image bootc path exists but cannot be resolved safely")
     return {
-        "status": "BOOTC_PRESENT_ROUTE_UNVERIFIED" if matched else "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE",
+        "status": (
+            "BOOTC_PRESENT_ROUTE_UNVERIFIED" if matched else "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
+        ),
         "image": PINNED,
         "manifestDigest": PAYLOAD_DIGEST,
         "configDigest": CONFIG_DIGEST,

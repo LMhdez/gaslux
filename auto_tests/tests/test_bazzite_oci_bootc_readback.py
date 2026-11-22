@@ -18,7 +18,6 @@ from bazzite_oci_bootc_readback import (  # noqa: E402
     MAX_LAYER,
     NO_WRITE,
     Refusal,
-    _path,
     digest_bytes,
     finish,
     scan_layer,
@@ -162,7 +161,9 @@ def test_real_elf_header_observed_but_never_authorizes_execution():
     data = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"\0" * 40})
     state, budget = scan(data)
     desc = [{"digest": digest_bytes(data), "size": len(data)}]
-    decision = finish(state, desc, budget, {"architecture": "amd64", "os": "linux", "declaredLabels": {}})
+    decision = finish(
+        state, desc, budget, {"architecture": "amd64", "os": "linux", "declaredLabels": {}}
+    )
     assert decision["status"] == "BOOTC_PRESENT_ROUTE_UNVERIFIED"
     assert decision["bootcVersion"] is None
     assert decision["bootcToFilesystemAvailableInBinaryVerified"] is False
