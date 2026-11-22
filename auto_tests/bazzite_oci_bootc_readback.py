@@ -16,7 +16,10 @@ import re
 import tarfile
 import tempfile
 import urllib.request
+from contextlib import ExitStack
 from pathlib import Path
+
+import zstandard as zstd
 
 from bazzite_iso_public_readback import CONFIG_DIGEST, PAYLOAD_DIGEST, PAYLOAD_IMAGE
 
@@ -27,10 +30,12 @@ MANIFEST_TYPES = frozenset(
         "application/vnd.docker.distribution.manifest.v2+json",
     }
 )
+ZSTD_LAYER = "application/vnd.oci.image.layer.v1.tar+zstd"
 LAYER_TYPES = frozenset(
     {
         "application/vnd.oci.image.layer.v1.tar+gzip",
         "application/vnd.docker.image.rootfs.diff.tar.gzip",
+        ZSTD_LAYER,
     }
 )
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -189,7 +194,16 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
         raise Refusal("OCI layer digest or size mismatch")
     file.seek(0)
     try:
-        with tarfile.open(fileobj=file, mode="r|gz") as archive:
+        with ExitStack() as stack:
+            if descriptor.get("mediaType") == ZSTD_LAYER:
+                reader = stack.enter_context(
+                    zstd.ZstdDecompressor(max_window_size=128 * 1024 * 1024).stream_reader(file)
+                )
+                mode = "r|"
+            else:
+                reader = file
+                mode = "r|gz"
+            archive = stack.enter_context(tarfile.open(fileobj=reader, mode=mode))
             count = 0
             for member in archive:
                 count += 1
@@ -251,7 +265,7 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     entries[name] = {"kind": "hardlink", "target": target}
                 else:
                     entries.pop(name, None)
-    except (tarfile.TarError, EOFError, OSError) as exc:
+    except (tarfile.TarError, EOFError, OSError, zstd.ZstdError) as exc:
         raise Refusal("Invalid or unsupported OCI layer tar") from exc
 
 
