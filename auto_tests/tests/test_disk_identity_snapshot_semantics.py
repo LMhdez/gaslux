@@ -126,6 +126,8 @@ def test_duplicate_slot_with_distinct_guid_rejected():
     value["partitions"].append(other)
     with pytest.raises(gate.DiskIdentityError):
         gate.assert_snapshot_matches(value, value)
+
+
 def test_large_slot_number_never_emitted_by_gpt_reader():
     value = snapshot()
     value["partitions"][0]["number"] = 4097
@@ -148,7 +150,7 @@ def test_four_kib_sectors_from_actual_fd_gpt_reader(tmp_path):
     image = bytearray(sector * sectors)
     image[446 + 4] = 0xEE
     struct.pack_into("<II", image, 446 + 8, 1, sectors - 1)
-    image[510:512] = b"\\x55\\xaa"
+    image[510:512] = b"\x55\xaa"
     entries = bytearray(128 * 128)
     entries[:16] = uuid.UUID(TYPE).bytes_le
     entries[16:32] = uuid.UUID(PART).bytes_le
