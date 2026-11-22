@@ -534,9 +534,7 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             "bytes": answer.stat().st_size,
             "sha256": sha256(answer),
         }
-    qmp_path = work / (
-        "q4os-win10-qmp.sock" if mode in ("pr_argv", "pr_shared") else "qmp.sock"
-    )
+    qmp_path = work / ("q4os-win10-qmp.sock" if mode in ("pr_argv", "pr_shared") else "qmp.sock")
     fds = {}
     readonly_fds = {}
     child = None
