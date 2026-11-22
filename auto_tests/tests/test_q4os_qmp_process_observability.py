@@ -1127,7 +1127,6 @@ def test_r03_dangling_symlink_report_is_bounded_refusal(monkeypatch, tmp_path, c
     assert not target.exists()
 
 
-
 @pytest.mark.parametrize("runner_name", ["_run_lab_impl", "_run_lab_synthetic"])
 def test_r02_real_unix_socket_never_receives_synthetic_qmp(monkeypatch, lab, runner_name):
     """Existing Python child plus same-UID UNIX QMP server; zero commands."""
