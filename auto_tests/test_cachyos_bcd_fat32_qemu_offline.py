@@ -70,7 +70,7 @@ def make_fat32(*, fragmented: bool = False) -> bytes:
     """Create a spec-shaped >=65,525-cluster FAT32 ESP, never an installed disk."""
     volume = bytearray(TOTAL_SECTORS * fat.SECTOR)
     boot = bytearray(512)
-    boot[:3] = b"\\xeb\\x58\\x90"
+    boot[:3] = b"\xeb\x58\x90"
     p16(boot, 11, 512)
     boot[13] = 1
     p16(boot, 14, RESERVED)
@@ -80,7 +80,7 @@ def make_fat32(*, fragmented: bool = False) -> bytes:
     p32(boot, 44, 2)
     p16(boot, 48, 1)
     p16(boot, 50, 6)
-    boot[510:512] = b"\\x55\\xaa"
+    boot[510:512] = b"\x55\xaa"
     volume[:512] = boot
     volume[6 * 512:7 * 512] = boot
     fsinfo = bytearray(512)
@@ -239,7 +239,7 @@ class Fat32OfflineTests(unittest.TestCase):
             str(bcd) + " bytes 512 flags 0x0",
             "qcow2_writev_done_req co 0xdd ret 0",
         ]
-        raw = ("\\n".join(rows) + "\\n").encode("ascii")
+        raw = ("\n".join(rows) + "\n").encode("ascii")
         parsed = trace.parse_qemu_trace(raw)
         synthetic = {
             "scope": "SYNTHETIC_FIXTURE_ONLY",
@@ -271,20 +271,20 @@ class Fat32OfflineTests(unittest.TestCase):
         self.assertFalse(no_identity["qemuBlkNodeToDiskAuthenticated"])
 
     def test_trace_invalid_offset_malformed_line_and_missing_newline(self):
-        good = b"blk_co_pwritev blk 0x1 bs 0x2 offset 1024 bytes 512 flags 0x0\\n"
+        good = b"blk_co_pwritev blk 0x1 bs 0x2 offset 1024 bytes 512 flags 0x0\n"
         for sample in (
             good[:-1],
-            b"blk_co_pwritev blk 0x1 bs 0x2 offset -1 bytes 512 flags 0x0\\n",
-            b"blk_co_pwritev blk 0x1 bs 0x2 offset 0 bytes 0 flags 0x0\\n",
-            b"blk_co_pwritev blk 0x1 bs 0x2 offset 0 bytes 99999999 flags 0x0\\n",
-            b"not_a_qemu_event something\\n",
+            b"blk_co_pwritev blk 0x1 bs 0x2 offset -1 bytes 512 flags 0x0\n",
+            b"blk_co_pwritev blk 0x1 bs 0x2 offset 0 bytes 0 flags 0x0\n",
+            b"blk_co_pwritev blk 0x1 bs 0x2 offset 0 bytes 99999999 flags 0x0\n",
+            b"not_a_qemu_event something\n",
         ):
             with self.subTest(raw=sample[:50]):
                 with self.assertRaises(trace.QemuTraceError):
                     trace.parse_qemu_trace(sample)
 
     def test_untrusted_node_binding_rejected_and_timestamps_absent(self):
-        raw = b"blk_co_pwritev blk 0x1 bs 0x2 offset 1048576 bytes 512 flags 0x0\\n"
+        raw = b"blk_co_pwritev blk 0x1 bs 0x2 offset 1048576 bytes 512 flags 0x0\n"
         parsed = trace.parse_qemu_trace(raw)
         self.assertFalse(parsed["timestampsPresent"])
         with self.assertRaisesRegex(trace.QemuTraceError, "binding"):
@@ -307,7 +307,7 @@ class Fat32OfflineTests(unittest.TestCase):
         bad = copy.deepcopy(m)
         bad["espStartLba"] += 1
         p = trace.parse_qemu_trace(
-            b"blk_co_pwritev blk 0x1 bs 0x2 offset 1048576 bytes 512 flags 0x0\\n")
+            b"blk_co_pwritev blk 0x1 bs 0x2 offset 1048576 bytes 512 flags 0x0\n")
         with self.assertRaisesRegex(trace.QemuTraceError, "geometry"):
             trace.correlate_qemu_writes(
                 p, disk_bytes=DISK_BYTES,
