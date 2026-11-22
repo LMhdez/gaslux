@@ -35,6 +35,13 @@ jobs:
           ref: ca68de69992a8e95f9abd6367bab5458437cbfa7
           path: dev-pinned
           persist-credentials: false
+      - name: Checkout original Observer PR #294 for RED import proof (EXACT SHA)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9
+          path: original294-pinned
+          persist-credentials: false
       - name: Checkout GPT FD parser and tests from PR #286 (EXACT SHA)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -59,6 +66,8 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=no)"
           test "$(git -C dev-pinned rev-parse HEAD)" = ca68de69992a8e95f9abd6367bab5458437cbfa7
           test -z "$(git -C dev-pinned status --porcelain)"
+          test "$(git -C original294-pinned rev-parse HEAD)" = e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9
+          test -z "$(git -C original294-pinned status --porcelain)"
           test "$(git -C gptfd-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
           test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
           test -z "$(git -C gptfd-pinned status --porcelain)"
@@ -135,6 +144,7 @@ jobs:
       - name: Import HOST diagnostics into an isolated clean dev package in a fresh interpreter
         env:
           GASLUX_PINNED_DEV_ROOT: ${{ github.workspace }}/dev-pinned
+          GASLUX_ORIGINAL_294_ROOT: ${{ github.workspace }}/original294-pinned
         run: python3 -m pytest -q auto_tests/tests/test_observer_host_import_boundary.py
       - name: Verify evidence-only synthetic artifact hash (no images)
         shell: bash
@@ -164,6 +174,8 @@ jobs:
           set -Eeuo pipefail
           test "$(git -C dev-pinned rev-parse HEAD)" = ca68de69992a8e95f9abd6367bab5458437cbfa7
           test -z "$(git -C dev-pinned status --porcelain)"
+          test "$(git -C original294-pinned rev-parse HEAD)" = e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9
+          test -z "$(git -C original294-pinned status --porcelain)"
           test "$(git -C gptfd-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
           test "$(git -C safety-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
           test -z "$(git -C gptfd-pinned status --porcelain)"

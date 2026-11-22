@@ -169,3 +169,28 @@ print("OPERATIONAL_PATH_DENIED")
     p = _isolated(staged_dev, code)
     assert p.returncode == 0, p.stdout + p.stderr
     assert "OPERATIONAL_PATH_DENIED" in p.stdout
+
+
+def test_original_294_import_dependency_fails_in_clean_dev(staged_dev):
+    """Real previous blob fails without lab_identity; corrected blob does not."""
+    original_root = Path(os.environ["GASLUX_ORIGINAL_294_ROOT"]).resolve(strict=True)
+    sha = subprocess.check_output(
+        ["git", "-C", str(original_root), "rev-parse", "HEAD"], text=True
+    ).strip()
+    assert sha == "e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9"
+    assert not subprocess.check_output(
+        ["git", "-C", str(original_root), "status", "--porcelain"], text=True
+    )
+    original = original_root / "auto_tests/installer_observer/host_qemu_fd_evidence.py"
+    target = staged_dev / "auto_tests/installer_observer/host_qemu_fd_evidence.py"
+    shutil.copy2(original, target)
+    p = _isolated(
+        staged_dev,
+        "from auto_tests.installer_observer import host_qemu_fd_evidence",
+    )
+    assert p.returncode != 0
+    assert "ModuleNotFoundError" in p.stderr
+    assert "lab_identity" in p.stderr
+    assert not subprocess.check_output(
+        ["git", "-C", str(original_root), "status", "--porcelain"], text=True
+    )
