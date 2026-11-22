@@ -1,0 +1,79 @@
+name: Safety Mint M-278 FD-GREEN independent original A-E
+
+on:
+  push:
+    branches:
+      - safety/mint-m278-fd-green-independent-20261122
+  pull_request:
+    paths:
+      - auto_tests/test_mint_m278_real_regression.py
+      - .github/workflows/safety-mint-m278-fd-green.yml
+
+permissions:
+  contents: read
+
+jobs:
+  independent-original-red-suite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 7c6b5d83d73dc633c3f45556b273eb156633d078
+          path: original-safety-red
+          persist-credentials: false
+      - name: Assert original RED suite unchanged and corrected parent SHA
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C original-safety-red rev-parse HEAD)" = 7c6b5d83d73dc633c3f45556b273eb156633d078
+          git fetch --no-tags --depth=8 origin 902d61b0b9ebf7d477c78bcfc9ad2a626b1460b7
+          git merge-base --is-ancestor 902d61b0b9ebf7d477c78bcfc9ad2a626b1460b7 HEAD
+          test "$(git hash-object auto_tests/test_mint_m278_real_regression.py)" = 797b13e079fefd58f0fc83ac00bf159a7f70dd32
+          cmp -s original-safety-red/auto_tests/test_mint_m278_real_regression.py auto_tests/test_mint_m278_real_regression.py
+      - name: Run independent original A-E real-module regression unchanged
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p test_mint_m278_real_regression.py -v
+      - name: Retest real FD acquisition race, short-read, EIO, ownership and F-03 phase cases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_f03_toctou.py -v
+      - name: Recheck Mint F-01 F-02 F-03 adjacent regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for suite in \
+            test_windows_mint_ab_forensic.py \
+            test_windows_mint_ab_checkpoint.py \
+            test_windows_mint_ab_capacity.py \
+            test_windows_mint_ab_synthetic.py \
+            test_windows_mint_ab_infrastructure.py; do
+            python3 -m unittest discover -s auto_tests -p "$suite" -v
+          done
+      - name: Compose exact PR330 read-only RCA without touching any branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags --depth=1 origin bccba7a2e61039e0efabf02d212dbb78b522d5a0
+          test "$(git rev-parse FETCH_HEAD)" = bccba7a2e61039e0efabf02d212dbb78b522d5a0
+          git show FETCH_HEAD:auto_tests/test_windows_mint_ab_offset_rca.py > auto_tests/test_windows_mint_ab_offset_rca.py
+          git show FETCH_HEAD:auto_tests/test_windows_mint_ab_checkpoint.py > auto_tests/test_windows_mint_ab_checkpoint.py
+          git show FETCH_HEAD:auto_tests/tools/windows_mint_ab_offset_rca.py > auto_tests/tools/windows_mint_ab_offset_rca.py
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_offset_rca.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_checkpoint.py -v
+      - name: Static lint and compilation on real module and unchanged Safety suite
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m compileall -q auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_mint_m278_real_regression.py auto_tests/test_windows_mint_f03_toctou.py
+          python3 -m pip install --target "$RUNNER_TEMP/m278-ruff" --no-deps ruff==0.15.20
+          PYTHONPATH="$RUNNER_TEMP/m278-ruff" python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
+          PYTHONPATH="$RUNNER_TEMP/m278-ruff" python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
