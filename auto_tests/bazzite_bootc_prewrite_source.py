@@ -183,7 +183,12 @@ def analyze_source(root: Path) -> dict:
     )
     _require_fragments(
         composefs_update,
-        ("pub(crate) async fn do_upgrade(", "write_composefs_state(", "composefs_gc(", "apply_upgrade("),
+        (
+            "pub(crate) async fn do_upgrade(",
+            "write_composefs_state(",
+            "composefs_gc(",
+            "apply_upgrade(",
+        ),
         "COMPOSEFS_UPDATE",
     )
 
@@ -198,7 +203,10 @@ def analyze_source(root: Path) -> dict:
         "upstreamTagSignatureVerifiedByGaslux": False,
         "sourceToBazziteElfCryptographicBindingVerified": False,
         "bootcRuntimePathObserved": False,
-        "updateSourceBranchesIdentified": ["ostree.staged_deployment", "composefs.staged_state_and_gc"],
+        "updateSourceBranchesIdentified": [
+            "ostree.staged_deployment",
+            "composefs.staged_state_and_gc",
+        ],
         "updateRuntimeAndBootSafetyVerified": False,
         "firstPotentialPersistentOperations": [
             {
