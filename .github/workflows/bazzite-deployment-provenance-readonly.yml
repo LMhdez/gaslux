@@ -1,6 +1,7 @@
 name: Bazzite pinned OCI to deployment provenance boundary (deny only)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - test/bazzite-native-route-readback-20261122
