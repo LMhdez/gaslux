@@ -114,3 +114,16 @@ a read-only backing RAW GPT, a caller-hash-checked checkpoint and explicit
 no-writer refusals. They do NOT prove guest boot, effective overlay GPT,
 independent QEMU backend mapping, third-party source or transaction signature,
 Windows recovery, rollback or any production authority.
+
+## Additional bounded checkpoint receipt guard
+
+The diagnostic checkpoint is JSON, not a filesystem image or a Windows
+recovery volume. The real module now rejects an open checkpoint FD whose
+measured file size exceeds **64 KiB before parsing**, even if the caller
+updates its claimed SHA-256 to match the oversized file. This prevents
+unbounded JSON memory consumption in the diagnostic reader.
+
+The added twelfth real-QEMU test supplies that matching claimed hash and
+requires `CHECKPOINT_SIZE_EXCEEDS_LIMIT`. The earlier 11-test results remain
+historical evidence for the preceding module HEAD; they are **not** a
+substitute for CI on the new checkpoint-bound candidate.
