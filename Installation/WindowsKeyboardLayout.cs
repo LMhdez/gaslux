@@ -49,6 +49,7 @@ namespace Libertix.Installation
                 { "00000809", Mapping("gb") },
                 { "00000816", Mapping("pt") },
                 { "0000040C", Mapping("fr") },
+                { "00000416", Mapping("br") },
                 { "0000080C", Mapping("be") },
                 { "00000C0C", Mapping("ca", "fr-legacy") },
                 { "00001009", Mapping("ca") },
