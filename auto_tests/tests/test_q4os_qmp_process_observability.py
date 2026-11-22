@@ -632,3 +632,150 @@ def test_r03_legacy_cli_never_leaks_arbitrary_boot_reason(monkeypatch, tmp_path,
     assert "SECRET_SENTINEL" not in result + output
     assert "reason" in result
     assert "QEMU_TOKEN" not in result
+
+
+def test_r01_lowlevel_qmp_has_no_unbound_command_path(tmp_path):
+    """Real AF_UNIX socket, zero bytes before and after a forged guard."""
+    import socket
+
+    from q4os_win10_qmp_boot import Qmp
+
+    root = tmp_path / "private"
+    root.mkdir(mode=0o700)
+    sockpath = root / "qmp.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(sockpath))
+    server.listen(1)
+    qmp = Qmp(sockpath, negotiate=False)
+    accepted, _ = server.accept()
+
+    class Forged:
+        channel = qmp
+
+        def verify(self):
+            return None
+
+    try:
+        for operation in (
+            lambda: qmp.command("qmp_capabilities", "untrusted"),
+            qmp.negotiate_protocol,
+            qmp.send_key_once,
+        ):
+            with pytest.raises(BootRefusal, match="qmp_supervisor_required"):
+                operation()
+        qmp._bound_session = Forged()  # adversarial direct attribute mutation
+        with pytest.raises(BootRefusal, match="qmp_supervisor_required"):
+            qmp.send_key_once()
+        accepted.settimeout(0.1)
+        with pytest.raises(socket.timeout):
+            accepted.recv(1)
+    finally:
+        qmp.close()
+        accepted.close()
+        server.close()
+
+
+@pytest.mark.parametrize("factory", [subprocess.Popen, lambda *_a, **_k: object()])
+def test_r02_public_factory_is_not_spawn_authority(lab, factory):
+    work, code, vars_path, image, iso, answer = lab
+    before = set(work.iterdir())
+    report = witness.run_lab(
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        "kvm",
+        popen_factory=factory,
+        pidfd_factory=lambda _pid: os.open(os.devnull, os.O_RDONLY),
+    )
+    assert report["decision"] == "refuse"
+    assert report["qemuSpawned"] is False
+    assert before == set(work.iterdir())
+
+
+def test_r02_direct_internal_core_without_child_has_no_spawn(monkeypatch, lab):
+    work, code, vars_path, image, iso, answer = lab
+    events = []
+
+    def forbidden(*_args, **_kwargs):
+        events.append("spawn")
+        raise AssertionError("never start process when contract is unverified")
+
+    monkeypatch.setattr(witness.subprocess, "Popen", forbidden)
+    report = witness._run_lab_impl(
+        work, code, vars_path, image, iso, answer, "kvm",
+    )
+    assert report["qemuSpawned"] is False
+    assert report["decision"] == "refuse"
+    assert events == []
+
+
+def test_r02_public_cli_refuses_without_spawn_even_with_host_claims(monkeypatch, tmp_path):
+    import json
+
+    run_id = "987654"
+    work = tmp_path / ("gaslux-win10-" + run_id)
+    work.mkdir(mode=0o700)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("RUNNER_ENVIRONMENT", "github-hosted")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "LMhdez/gaslux")
+    monkeypatch.setenv("RUNNER_OS", "Linux")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("GITHUB_RUN_ID", run_id)
+    events = []
+
+    def forbidden(*_args, **_kwargs):
+        events.append("spawn")
+        raise AssertionError("CLI cannot launch any process")
+
+    monkeypatch.setattr(witness.subprocess, "Popen", forbidden)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "q4os_win10_qmp_supervisor.py",
+            "--work", str(work),
+            "--code", str(tmp_path / "synthetic-code"),
+            "--vars", str(work / "vars.fd"),
+            "--image", str(work / "disk.qcow2"),
+            "--iso", str(work / "synthetic.iso"),
+            "--answer", str(work / "answer.iso"),
+            "--accel", "tcg",
+        ],
+    )
+    assert witness.main() == 1
+    report = json.loads((work / "q4os-win10-uefi-dvd-boot.json").read_text())
+    assert report["reasonCode"] == "QEMU_STARTUP_UNCLASSIFIED"
+    assert report["qemuSpawned"] is False
+    assert events == []
+
+
+def test_r03_unexpected_exception_stays_redacted_in_legacy_cli(
+    monkeypatch, tmp_path, capsys
+):
+    import q4os_win10_qmp_boot as boot
+
+    root = tmp_path / "private"
+    root.mkdir(mode=0o700)
+    report = root / "report.json"
+
+    def unexpected(*_args, **_kwargs):
+        raise RuntimeError("SECRET_SENTINEL /tmp/private password")
+
+    monkeypatch.setattr(boot, "supervise", unexpected)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "q4os_win10_qmp_boot.py",
+            "--qmp", str(root / "qmp.sock"),
+            "--serial", str(root / "serial.log"),
+            "--disk", str(root / "synthetic.qcow2"),
+            "--report", str(report),
+        ],
+    )
+    assert boot.main() == 1
+    assert '"QEMU_STARTUP_UNCLASSIFIED"' in report.read_text()
+    assert "SECRET_SENTINEL" not in report.read_text() + capsys.readouterr().out
