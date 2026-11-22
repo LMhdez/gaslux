@@ -44,12 +44,16 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           s = Path('.github/workflows/cachyos-bcd-fat32-trace-offline.yml').read_text()
-          # Build forbidden keywords so the guard never trips over itself.
-          for forbidden in ('qemu' + '-system-x86_64',
-                            'workflow' + '_dispatch:', 'pac' + 'strap ',
+          # Strip only this self-test's here-document; inspect every other
+          # workflow line, including all actual executable steps.
+          open_mark = "          python3 - <<'PY'\\n"
+          close_mark = "\\n          PY\\n"
+          assert s.count(open_mark) == 1 and s.count(close_mark) == 1
+          executable = s.split(open_mark, 1)[0] + s.split(close_mark, 1)[1]
+          for forbidden in ('qemu-system-x86_64', 'workflow_dispatch:', 'pacstrap ',
                             'efibootmgr', 'GASLUX_WINDOWS_KVM_CONSENT',
                             'guestfs --rw', 'swtpm socket', 'windows Setup'):
-              assert forbidden not in s, forbidden
+              assert forbidden not in executable, forbidden
           print('OFFLINE_ONLY: no guest execution step or VM consents')
           PY
       - name: Run FAT32 and QEMU trace adversarial fixtures
