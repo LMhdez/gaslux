@@ -150,6 +150,8 @@ def test_spec_requires_exact_nvr_and_patch_review():
     )
     result = analyze_spec(template)
     assert result["patchesDeclared"] == []
+    fedora_packit = template.replace("Release: 1%{?dist}", "Release: %{autorelease}")
+    assert analyze_spec(fedora_packit)["requiresPatchReview"] is False
     assert result["specAloneProvesNoSourceMutations"] is False
     result = analyze_spec(template + "Patch0: 0001-delete-windows-efi.patch\n")
     assert result["requiresPatchReview"]
