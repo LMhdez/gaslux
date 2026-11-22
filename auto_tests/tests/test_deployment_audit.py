@@ -220,16 +220,41 @@ def test_cachyos_manual_missing_module_source_refuses_audit(
         audit.run_audit()
 
 
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "# removed module import",
+        "# Import-Module -Name $module -Force -ErrorAction Stop",
+        "<#\nImport-Module -Name $module -Force -ErrorAction Stop\n#>",
+        '$text = "Import-Module -Name $module -Force -ErrorAction Stop"',
+        "$text = @'\nImport-Module -Name $module -Force -ErrorAction Stop\n'@",
+    ],
+)
 def test_cachyos_manual_module_import_is_required(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, replacement: str
 ) -> None:
     rules, _ = run_with(
         monkeypatch,
         LAB_TOOL,
         "Import-Module -Name $module -Force -ErrorAction Stop",
-        "# removed module import",
+        replacement,
     )
     assert ("source-only-module-not-imported", LAB_TOOL) in rules
+
+
+def test_cachyos_manual_unterminated_here_string_refuses_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_read = audit.read
+
+    def patched_read(path: str) -> str:
+        if path == LAB_TOOL:
+            return original_read(path) + "\n$text = @'\nnever closed\n"
+        return original_read(path)
+
+    monkeypatch.setattr(audit, "read", patched_read)
+    with pytest.raises(audit.AuditStructureError, match="here-string"):
+        audit.run_audit()
 
 
 def test_cachyos_source_only_exemption_does_not_hide_a_production_entry(
