@@ -377,7 +377,9 @@ class SafeWorkspace:
                     if failure is None:
                         failure = exc
             if failure is not None:
-                raise Refusal("REFUSE_SNAPSHOT_DIVERGED: export descriptor close failed") from failure
+                raise Refusal(
+                    "REFUSE_SNAPSHOT_DIVERGED: export descriptor close failed"
+                ) from failure
 
 
 def run(work: Path, evidence: Path, template: Path) -> None:
