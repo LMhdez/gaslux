@@ -136,6 +136,7 @@ def _process_snapshot(pid: int) -> ProcessSeal:
 
 def _kernel_sample(conn: socket.socket) -> tuple[tuple[int, int], ProcessSeal, tuple[int, int]]:
     """Only fstat/getsockopt/procfs/poll: never read or write guest data."""
+    _require(type(conn) is socket.socket, "UNTRUSTED_SOCKET_WRAPPER")
     _require(
         os.name == "posix" and hasattr(socket, "SO_PEERCRED") and hasattr(socket, "SO_DOMAIN"),
         "KERNEL_PEER_UNAVAILABLE",
@@ -179,6 +180,7 @@ class LocalTransportWitness:
     """
 
     def __init__(self, conn: socket.socket, pins: LocalSessionPins):
+        _require(type(self) is LocalTransportWitness, "UNTRUSTED_WITNESS_OVERRIDE")
         _require(type(pins) is LocalSessionPins, "INVALID_UNTRUSTED_PINS")
         self._pins = pins
         self._conn = conn
