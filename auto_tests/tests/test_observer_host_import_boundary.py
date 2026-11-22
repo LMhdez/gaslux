@@ -58,9 +58,10 @@ def staged_dev(tmp_path):
         set(MODULES) | {"__init__.py"}
     )
     yield stage
-    assert subprocess.check_output(
-        ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
-    ).strip() == DEV_SHA
+    assert (
+        subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+        == DEV_SHA
+    )
     assert not subprocess.check_output(
         ["git", "-C", str(source), "status", "--porcelain"], text=True
     )
