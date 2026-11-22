@@ -1,0 +1,133 @@
+name: Observer kernel peer / local transport binding - offline deny-only (NO QEMU)
+
+on:
+  push:
+    branches:
+      - integration/observer-host-fd-offline-dev-20261122
+    paths:
+      - 'auto_tests/installer_observer/guest_transport_peer_boundary.py'
+      - 'auto_tests/tests/test_guest_transport_peer_boundary.py'
+      - 'auto_tests/installer_observer/host_fd_boundary.py'
+      - 'auto_tests/tests/test_observer_host_fd_safety_fixes.py'
+      - '.github/workflows/observer-local-peer-session-offline.yml'
+      - 'docs/OBSERVER_LOCAL_PEER_TRUST_BOUNDARY.md'
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - 'auto_tests/installer_observer/guest_transport_peer_boundary.py'
+      - 'auto_tests/tests/test_guest_transport_peer_boundary.py'
+      - 'auto_tests/installer_observer/host_fd_boundary.py'
+      - 'auto_tests/tests/test_observer_host_fd_safety_fixes.py'
+      - '.github/workflows/observer-local-peer-session-offline.yml'
+      - 'docs/OBSERVER_LOCAL_PEER_TRUST_BOUNDARY.md'
+
+permissions:
+  contents: read
+
+jobs:
+  kernel-peer-deny-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout tested branch without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Checkout Observer #312 minimal HOST boundary EXACT SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 2ec6c97cbd72a52349e0efdcdf3a75b0d120fa64
+          path: observer312-pinned
+          persist-credentials: false
+      - name: Checkout Bazzite #280 unmodified guest refusal EXACT SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 8d5e8c11d9e86bf66f0902d099ff4393f86b71b2
+          path: bazzite280-pinned
+          persist-credentials: false
+      - name: Checkout GPT FD #286 EXACT SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 9aed36cfdb8c09a461dc38811c326c54180273de
+          path: gptfd286-pinned
+          persist-credentials: false
+      - name: Checkout Safety #267 no-writer EXACT SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: safety267-pinned
+          persist-credentials: false
+      - name: Verify all immutable source pins and inherited HOST boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = "LMhdez/gaslux"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C observer312-pinned rev-parse HEAD)" = 2ec6c97cbd72a52349e0efdcdf3a75b0d120fa64
+          test "$(git -C bazzite280-pinned rev-parse HEAD)" = 8d5e8c11d9e86bf66f0902d099ff4393f86b71b2
+          test "$(git -C gptfd286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          cmp auto_tests/installer_observer/host_fd_boundary.py observer312-pinned/auto_tests/installer_observer/host_fd_boundary.py
+          for directory in . observer312-pinned bazzite280-pinned gptfd286-pinned safety267-pinned; do
+            test -z "$(git -C "$directory" status --porcelain --untracked-files=no)"
+          done
+      - name: Install only offline Python test and lint tools
+        run: |
+          python3 -m pip install 'pytest==9.0.2' 'ruff==0.13.3' 'jsonschema>=4,<5' \
+            'pyyaml>=6,<7' 'pillow>=11,<13' 'cryptography>=50,<51' 'rfc8785>=0.1.4,<1'
+      - name: Run compileall and Ruff checks on new code and tests
+        run: |
+          python3 -m compileall -q \
+            auto_tests/installer_observer/guest_transport_peer_boundary.py \
+            auto_tests/tests/test_guest_transport_peer_boundary.py
+          python3 -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/installer_observer/guest_transport_peer_boundary.py \
+            auto_tests/tests/test_guest_transport_peer_boundary.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml \
+            auto_tests/installer_observer/guest_transport_peer_boundary.py \
+            auto_tests/tests/test_guest_transport_peer_boundary.py
+          python3 -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/installer_observer/guest_transport_peer_boundary.py \
+            auto_tests/tests/test_guest_transport_peer_boundary.py
+      - name: Real Linux disposable AF_UNIX peer and FD substitutions - NO GUEST
+        run: python3 -m pytest -q auto_tests/tests/test_guest_transport_peer_boundary.py
+      - name: Retain F-01 F-02 F-03 source regressions from #294
+        run: python3 -m pytest -q auto_tests/tests/test_observer_host_fd_safety_fixes.py
+      - name: Re-run exact Bazzite #280 refusal contracts - no installer
+        run: python3 -m pytest -q bazzite280-pinned/auto_tests/tests/test_bazzite_iso45_guest_inspection_contract.py
+      - name: Retain canonical GPT FD #286 checks
+        run: python3 -m pytest -q gptfd286-pinned/auto_tests/tests/test_disk_identity_gate.py
+      - name: Retain Safety no-writer #267 checks
+        run: python3 -m pytest -q safety267-pinned/auto_tests/tests/test_prewrite_no_writer.py
+      - name: Check retained source refs after all tests and forbid QEMU jobs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C observer312-pinned rev-parse HEAD)" = 2ec6c97cbd72a52349e0efdcdf3a75b0d120fa64
+          test "$(git -C bazzite280-pinned rev-parse HEAD)" = 8d5e8c11d9e86bf66f0902d099ff4393f86b71b2
+          test "$(git -C gptfd286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          cmp auto_tests/installer_observer/host_fd_boundary.py observer312-pinned/auto_tests/installer_observer/host_fd_boundary.py
+          for directory in . observer312-pinned bazzite280-pinned gptfd286-pinned safety267-pinned; do
+            test -z "$(git -C "$directory" status --porcelain --untracked-files=no)"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+          path = Path(".github/workflows/observer-local-peer-session-offline.yml")
+          workflow = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+          assert set(workflow["on"]) == {"push", "pull_request"}
+          assert set(workflow["jobs"]) == {"kernel-peer-deny-only"}
+          assert workflow["permissions"] == {"contents": "read"}
+          commands = "\n".join(
+              step.get("run", "") for step in workflow["jobs"]["kernel-peer-deny-only"]["steps"][:-1]
+          )
+          for forbidden in ("qemu-system-", "guestfish ", "guestmount ", "parted ", "sfdisk ", "mkfs."):
+              assert forbidden not in commands, forbidden
+          PY
