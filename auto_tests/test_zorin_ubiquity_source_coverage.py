@@ -3,6 +3,7 @@
 No installer or ISO scripts are run. Negative cases mutate a PRIVATE copy
 and must never be promoted into an authenticated call graph or write grant.
 """
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -54,8 +55,10 @@ class ZorinSourceCoverageTests(unittest.TestCase):
         from zorin_ubiquity_source_coverage import sha
 
         self.assertEqual(sha(self.original.read_bytes()), ARTIFACT_SHA256)
-        self.assertEqual(self.actual_map["isoSha256"],
-                         "44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5")
+        self.assertEqual(
+            self.actual_map["isoSha256"],
+            "44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5",
+        )
         self.assertEqual(self.actual_map["authorization"], "DENY_NO_WRITER")
 
     def test_only_static_source_metadata_in_original_artifact(self):
@@ -147,8 +150,11 @@ class ZorinSourceCoverageTests(unittest.TestCase):
 
     def test_false_complete_action_graph_is_never_accepted(self):
         for field in (
-            "completeActionGraph", "dryRunVerified", "firstWriteLocated",
-            "writerFenceActive", "precommitFullyObserved"
+            "completeActionGraph",
+            "dryRunVerified",
+            "firstWriteLocated",
+            "writerFenceActive",
+            "precommitFullyObserved",
         ):
             with self.subTest(field=field):
                 self.rejects(
@@ -177,8 +183,13 @@ class ZorinSourceCoverageTests(unittest.TestCase):
 
     def test_incomplete_source_set_does_not_grant_permission(self):
         partial = report_gap(self.actual_map)
-        for name in ("productionStorageWritesAuthorized", "windowsEspWriteAuthorized",
-                     "sameDiskDualBootVerified", "windowsInPlaceRollbackProven", "stable"):
+        for name in (
+            "productionStorageWritesAuthorized",
+            "windowsEspWriteAuthorized",
+            "sameDiskDualBootVerified",
+            "windowsInPlaceRollbackProven",
+            "stable",
+        ):
             with self.subTest(field=name):
                 self.assertIs(partial[name], False)
 
