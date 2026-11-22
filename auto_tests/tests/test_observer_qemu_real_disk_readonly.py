@@ -6,9 +6,7 @@ Safety #267 and canonical GPT FD #286 are imported from exact pinned trees.
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
-import json
 import os
 import shutil
 import socket
@@ -23,7 +21,6 @@ import pytest
 
 from auto_tests.installer_observer.host_fd_boundary import process_seal
 from auto_tests.installer_observer.host_qemu_fd_evidence import (
-    HostEvidenceRefused,
     HostPins,
     borrowed_readonly_proc_fd,
     correlate_qmp_fd,
@@ -57,8 +54,13 @@ def pinned():
     root267 = Path(os.environ["GASLUX_QEMU_PIN267_ROOT"]).resolve(strict=True)
     root286 = Path(os.environ["GASLUX_QEMU_PIN286_ROOT"]).resolve(strict=True)
     for root, sha in ((root267, PIN267), (root286, PIN286)):
-        assert subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip() == sha
-        assert not subprocess.check_output(["git", "-C", str(root), "status", "--porcelain"], text=True)
+        observed = subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+        ).strip()
+        assert observed == sha
+        assert not subprocess.check_output(
+            ["git", "-C", str(root), "status", "--porcelain"], text=True
+        )
     gate = load(
         "libertix_disk_identity_gate",
         root286 / "assets/live/libertix_disk_identity_gate.py",

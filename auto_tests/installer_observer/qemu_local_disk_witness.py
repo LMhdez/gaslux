@@ -242,20 +242,6 @@ class QemuLocalDiskWitness:
             "SELECTED_IMAGE_IDENTITY_DIVERGED",
         )
         self._fd_number = self._remote_file_fd(st)
-        host_pin = HostPins(
-            p.process,
-            "0" * 64,
-            p.transaction_id,
-            p.vm_label,
-            "claim-only",
-            p.qmp_device,
-            "claim-only",
-            self._fd_number,
-            p.media_path,
-            p.media_dev,
-            p.media_inode,
-            p.media_size,
-        )
         with borrowed_readonly_proc_fd(
             p.process.pid,
             self._fd_number,
