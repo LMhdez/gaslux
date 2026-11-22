@@ -1,10 +1,9 @@
-"""Deterministic BEFORE-FIX TOCTOU reproduction using disposable synthetic GPT bytes.
+"""FD-bound GPT regression tests on disposable synthetic RAW fixtures.
 
-The fixture and pinned Safety #265 GPT reader are reused without modification.
-These tests reproduce the original race, then require fail-closed refusal
-in the mitigation commit. They do not authorize any installation.
+The real canonical Safety #307 inspect_gpt_fd implementation is used unchanged.
+Race hooks change physical fixture inodes/bytes but NEVER mock GPT results or
+bypass a second vulnerable pathname opening.
 """
-
 from __future__ import annotations
 
 import os
@@ -15,16 +14,14 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
 
+import libertix_disk_identity_gate as safety
 import test_zorin_synthetic_writeset as fixture
 import zorin_synthetic_writeset as verifier
-import libertix_disk_identity_gate as safety
 
 
-class DescriptorPathToctouBeforeFix(unittest.TestCase):
+class DescriptorPathToctouAfterFix(unittest.TestCase):
     def setUp(self):
-        self.case = fixture.ZorinSyntheticWriteSetTests(
-            "test_no_change_cannot_claim_gpt_fd_binding"
-        )
+        self.case = fixture.ZorinSyntheticWriteSetTests("test_no_change_passes_with_canonical_fd_binding")
         self.case.setUp()
         self.addCleanup(self.case.doCleanups)
         self.root = self.case.root
@@ -35,11 +32,11 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
         }
         self.swaps = []
 
-    def replace_regular(self, name, *, foreign_partuuid=False, protected_change=True):
+    def replace_regular(self, name, *, protected_change=True):
+        """Swap to a different inode with valid, same-identity GPT bytes."""
         path = self.root / name
         replacement = self.root / ("foreign-" + name)
-        new_guid = "8a98e4fc-37fa-4b34-8017-52d7e4bff9d1" if foreign_partuuid else fixture.ROOT_GUID
-        raw = bytearray(fixture.generated_valid_gpt(root_guid=new_guid))
+        raw = bytearray(fixture.generated_valid_gpt())
         if protected_change:
             raw[fixture.PARTS[2][1] * fixture.SECTOR + 90] ^= 0xAF
         replacement.write_bytes(raw)
@@ -48,122 +45,193 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
         self.assertNotEqual(path.stat().st_ino, self.original_inodes[name])
         self.swaps.append(name)
 
-    def expect_binding_refusal(self, name):
+    def expect_source_race(self, name):
         with self.assertRaises(verifier.WriteSetRefused) as caught:
             verifier.verify_private_synthetic(self.root, self.policy)
-        self.assertEqual(caught.exception.code, "E_GPT_FD_BINDING_REQUIRED")
+        self.assertEqual(caught.exception.code, "E_SOURCE_RACE")
         self.assertIn(name, self.swaps)
 
-    def test_control_no_swap_requires_safety_fd_api(self):
-        with self.assertRaises(verifier.WriteSetRefused) as caught:
-            verifier.verify_private_synthetic(self.root, self.policy)
-        self.assertEqual(caught.exception.code, "E_GPT_FD_BINDING_REQUIRED")
+    def test_control_no_swap_passes_without_write_authority(self):
+        result = verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertEqual(result["result"], "SYNTHETIC_NO_CHANGE")
+        self.assertEqual(result["authorization"], "DENY_NO_WRITER")
+        self.assertFalse(result["productionWriteAuthorized"])
 
-    def test_baseline_regular_swap_before_gpt_is_refused(self):
-        original = verifier.read_gpt
+    def test_canonical_gpt_reader_never_reopens_raw_path(self):
+        original_open = os.open
+        counts = {name: 0 for name in self.original_inodes}
 
-        def change(root, name, policy):
-            if name == "baseline.raw":
-                self.replace_regular(name)
-            return original(root, name, policy)
+        def audit_open(path, flags, *args, **kwargs):
+            for name in counts:
+                if isinstance(path, (str, os.PathLike)) and Path(path) == self.root / name:
+                    counts[name] += 1
+                    self.assertEqual(counts[name], 1, "RAW path reopened after owned_fd")
+            return original_open(path, flags, *args, **kwargs)
 
-        with patch.object(verifier, "read_gpt", side_effect=change):
-            self.expect_binding_refusal("baseline.raw")
+        with patch.object(safety.os, "open", side_effect=audit_open):
+            result = verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertEqual(result["result"], "SYNTHETIC_NO_CHANGE")
+        self.assertEqual(set(counts.values()), {1})
 
-    def test_trial_regular_swap_before_gpt_is_refused(self):
-        original = verifier.read_gpt
-
-        def change(root, name, policy):
-            if name == "trial.raw":
-                self.replace_regular(name)
-            return original(root, name, policy)
-
-        with patch.object(verifier, "read_gpt", side_effect=change):
-            self.expect_binding_refusal("trial.raw")
-
-    def test_trial_replaced_at_actual_safety_os_open_is_refused(self):
-        original_read = verifier.read_gpt
-        system_open = os.open
-
-        def read_with_open_race(root, name, policy):
-            if name != "trial.raw":
-                return original_read(root, name, policy)
-
-            def intercept(path, flags, *args, **kwargs):
-                if Path(path) == self.root / "trial.raw":
-                    self.replace_regular("trial.raw")
-                return system_open(path, flags, *args, **kwargs)
-
-            with patch.object(safety.os, "open", side_effect=intercept):
-                return original_read(root, name, policy)
-
-        with patch.object(verifier, "read_gpt", side_effect=read_with_open_race):
-            self.expect_binding_refusal("trial.raw")
-
-    def test_checkpoint_path_swap_after_original_descriptor_is_refused(self):
+    def test_baseline_swapped_after_owned_fd_is_refused(self):
         original = verifier.owned_fd
 
         def change(root, name, maximum):
-            fd, stat_result = original(root, name, maximum)
-            if name == "checkpoint.raw":
+            fd, st = original(root, name, maximum)
+            if name == "baseline.raw":
                 self.replace_regular(name)
-            return fd, stat_result
+            return fd, st
 
         with patch.object(verifier, "owned_fd", side_effect=change):
-            self.expect_binding_refusal("checkpoint.raw")
+            self.expect_source_race("baseline.raw")
 
-    def test_path_replaced_between_gpt_and_byte_comparison_is_refused(self):
+    def test_trial_swapped_after_owned_fd_is_refused(self):
+        original = verifier.owned_fd
+
+        def change(root, name, maximum):
+            fd, st = original(root, name, maximum)
+            if name == "trial.raw":
+                self.replace_regular(name)
+            return fd, st
+
+        with patch.object(verifier, "owned_fd", side_effect=change):
+            self.expect_source_race("trial.raw")
+
+    def test_checkpoint_swapped_after_owned_fd_is_refused(self):
+        original = verifier.owned_fd
+
+        def change(root, name, maximum):
+            fd, st = original(root, name, maximum)
+            if name == "checkpoint.raw":
+                self.replace_regular(name)
+            return fd, st
+
+        with patch.object(verifier, "owned_fd", side_effect=change):
+            self.expect_source_race("checkpoint.raw")
+
+    def test_swapped_before_real_gpt_inspection_is_refused(self):
+        original = verifier.read_gpt
+        target = self.original_inodes["trial.raw"]
+
+        def intercept(fd, policy):
+            if os.fstat(fd).st_ino == target:
+                self.replace_regular("trial.raw")
+            # Calls the REAL Safety #307 inspect_gpt_fd; no fake result.
+            return original(fd, policy)
+
+        with patch.object(verifier, "read_gpt", side_effect=intercept):
+            self.expect_source_race("trial.raw")
+
+    def test_swap_during_canonical_os_dup_is_refused(self):
+        """Change pathname exactly as canonical GPT reader duplicates pinned fd."""
+        original_dup = os.dup
+        target = self.original_inodes["trial.raw"]
+
+        def intercept(fd):
+            if os.fstat(fd).st_ino == target and not self.swaps:
+                self.replace_regular("trial.raw")
+            return original_dup(fd)
+
+        with patch.object(safety.os, "dup", side_effect=intercept):
+            self.expect_source_race("trial.raw")
+
+    def test_swap_between_gpt_and_raw_comparison_is_refused(self):
         original = verifier.compare_raw
 
-        def change(a, b, policy):
+        def intercept(baseline_fd, trial_fd, policy):
             self.replace_regular("trial.raw")
-            return original(a, b, policy)
+            return original(baseline_fd, trial_fd, policy)
 
-        with patch.object(verifier, "compare_raw", side_effect=change):
-            self.expect_binding_refusal("trial.raw")
+        with patch.object(verifier, "compare_raw", side_effect=intercept):
+            self.expect_source_race("trial.raw")
 
-    def test_foreign_partuuid_gpt_is_refused(self):
+    def test_same_guid_regular_swap_is_refused(self):
         original = verifier.read_gpt
+        target = self.original_inodes["trial.raw"]
 
-        def change(root, name, policy):
-            if name == "trial.raw":
-                self.replace_regular(name, foreign_partuuid=True)
-            return original(root, name, policy)
+        def intercept(fd, policy):
+            if os.fstat(fd).st_ino == target:
+                self.replace_regular("trial.raw", protected_change=False)
+            return original(fd, policy)
 
-        with patch.object(verifier, "read_gpt", side_effect=change):
-            with self.assertRaises(verifier.WriteSetRefused) as caught:
-                verifier.verify_private_synthetic(self.root, self.policy)
+        with patch.object(verifier, "read_gpt", side_effect=intercept):
+            self.expect_source_race("trial.raw")
+
+    def test_foreign_partuuid_valid_gpt_in_place_is_refused(self):
+        (self.root / "trial.raw").write_bytes(
+            fixture.generated_valid_gpt(root_guid="8a98e4fc-37fa-4b34-8017-52d7e4bff9d1")
+        )
+        with self.assertRaises(verifier.WriteSetRefused) as caught:
+            verifier.verify_private_synthetic(self.root, self.policy)
         self.assertEqual(caught.exception.code, "E_PARTUUID_CHANGED")
 
-    def test_symlink_after_owned_descriptor_is_refused(self):
+    def test_symlink_after_owned_fd_is_refused(self):
         original = verifier.read_gpt
+        target = self.original_inodes["trial.raw"]
 
-        def change(root, name, policy):
-            if name == "trial.raw":
-                os.replace(self.root / name, self.root / "original-trial.raw")
-                (self.root / name).symlink_to("original-trial.raw")
-            return original(root, name, policy)
+        def intercept(fd, policy):
+            if os.fstat(fd).st_ino == target:
+                os.replace(self.root / "trial.raw", self.root / "original-trial.raw")
+                (self.root / "trial.raw").symlink_to("original-trial.raw")
+                self.swaps.append("trial.raw")
+            return original(fd, policy)
 
-        with patch.object(verifier, "read_gpt", side_effect=change):
-            with self.assertRaises(verifier.WriteSetRefused) as caught:
-                verifier.verify_private_synthetic(self.root, self.policy)
-        self.assertEqual(caught.exception.code, "E_GPT_INVALID")
+        with patch.object(verifier, "read_gpt", side_effect=intercept):
+            self.expect_source_race("trial.raw")
 
-    def test_hardlink_replacement_before_gpt_is_refused(self):
+    def test_hardlink_after_owned_fd_is_refused(self):
         original = verifier.read_gpt
+        target = self.original_inodes["trial.raw"]
 
-        def change(root, name, policy):
-            if name == "trial.raw":
+        def intercept(fd, policy):
+            if os.fstat(fd).st_ino == target:
                 foreign = self.root / "foreign-valid.raw"
                 foreign.write_bytes(fixture.generated_valid_gpt())
-                os.replace(self.root / name, self.root / "original-trial.raw")
-                os.link(foreign, self.root / name)
+                os.replace(self.root / "trial.raw", self.root / "original-trial.raw")
+                os.link(foreign, self.root / "trial.raw")
                 self.swaps.append("trial.raw")
-                self.assertEqual((self.root / name).stat().st_nlink, 2)
-            return original(root, name, policy)
+                self.assertEqual((self.root / "trial.raw").stat().st_nlink, 2)
+            return original(fd, policy)
 
-        with patch.object(verifier, "read_gpt", side_effect=change):
-            self.expect_binding_refusal("trial.raw")
+        with patch.object(verifier, "read_gpt", side_effect=intercept):
+            self.expect_source_race("trial.raw")
+
+    def test_closed_descriptor_has_explicit_refusal(self):
+        original = verifier.read_gpt
+        target = self.original_inodes["trial.raw"]
+        closed = False
+
+        def intercept(fd, policy):
+            nonlocal closed
+            if os.fstat(fd).st_ino == target and not closed:
+                closed = True
+                os.close(fd)
+            return original(fd, policy)
+
+        with patch.object(verifier, "read_gpt", side_effect=intercept):
+            with self.assertRaises(verifier.WriteSetRefused) as caught:
+                verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertTrue(closed)
+        self.assertEqual(caught.exception.code, "E_GPT_INVALID")
+
+    def test_primary_gpt_in_place_during_fd_inspection_is_refused(self):
+        system_pread = os.pread
+        target = self.original_inodes["trial.raw"]
+        changed = False
+
+        def intercept(fd, length, offset):
+            nonlocal changed
+            result = system_pread(fd, length, offset)
+            if not changed and offset == fixture.SECTOR and os.fstat(fd).st_ino == target:
+                changed = True
+                self.case.mutate("trial.raw", fixture.SECTOR + 60)
+            return result
+
+        with patch.object(safety.os, "pread", side_effect=intercept):
+            with self.assertRaises(verifier.WriteSetRefused) as caught:
+                verifier.verify_private_synthetic(self.root, self.policy)
+        self.assertTrue(changed)
+        self.assertEqual(caught.exception.code, "E_GPT_INVALID")
 
     def test_esp_entry_swap_between_stat_and_open_is_refused(self):
         system_open = os.open
@@ -221,9 +289,6 @@ class DescriptorPathToctouBeforeFix(unittest.TestCase):
         self.assertEqual(caught.exception.code, "E_ESP_RACE")
 
     def test_esp_open_dirfd_does_not_follow_replaced_pathname(self):
-        # A rename AFTER opening the pinned directory may not redirect
-        # the scanner to the replacement tree. The final name binding
-        # check must still refuse the transient mutation.
         system_scandir = os.scandir
         target = self.root / "esp-trial/EFI/Microsoft/Boot"
         original_inode = target.stat().st_ino
