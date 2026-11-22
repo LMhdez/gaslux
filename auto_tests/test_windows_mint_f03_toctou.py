@@ -2,6 +2,7 @@
 
 All files are owned private synthetic evidence. No QEMU guest or Windows disk.
 """
+
 from __future__ import annotations
 
 import errno
@@ -45,11 +46,14 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
         paths = {}
         for key, filename in forensic.F03_PREDECESSOR_FILES[phase].items():
             record = (
-                {"schema": "gaslux-mint-ab-capacity-v1", "result": "PASS",
-                 "githubRunId": self.RUN, "sourceCommit": self.COMMIT}
+                {
+                    "schema": "gaslux-mint-ab-capacity-v1",
+                    "result": "PASS",
+                    "githubRunId": self.RUN,
+                    "sourceCommit": self.COMMIT,
+                }
                 if key == "earlyCapacity"
-                else {"transactionId": self.TRANSACTION, "result": "PASS",
-                      "sentinel": "A"}
+                else {"transactionId": self.TRANSACTION, "result": "PASS", "sentinel": "A"}
             )
             content = (json.dumps(record, sort_keys=True) + "\n").encode("utf-8")
             target = self.evidence / filename
@@ -61,7 +65,8 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
 
     def _check(self, phase, hashes):
         return forensic.authenticated_predecessor_status(
-            phase=phase, evidence=self.evidence,
+            phase=phase,
+            evidence=self.evidence,
             transaction_id=self.TRANSACTION,
             supplied_sha256=hashes,
         )
@@ -116,8 +121,13 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                         target.rename(target.with_suffix(".moved"))
                         foreign = self.evidence / "foreign-payload.json"
                         foreign.write_bytes(
-                            json.dumps({"transactionId": self.TRANSACTION,
-                                        "result": "PASS", "sentinel": "B"}).encode()
+                            json.dumps(
+                                {
+                                    "transactionId": self.TRANSACTION,
+                                    "result": "PASS",
+                                    "sentinel": "B",
+                                }
+                            ).encode()
                         )
                         if attack == "symlink":
                             target.symlink_to(foreign)
@@ -166,8 +176,9 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
             if name == target.name and not changed:
                 changed = True
                 target.rename(target.with_suffix(".moved"))
-                target.write_bytes(b'{"transactionId":"' + self.TRANSACTION.encode()
-                                   + b'","result":"PASS"}')
+                target.write_bytes(
+                    b'{"transactionId":"' + self.TRANSACTION.encode() + b'","result":"PASS"}'
+                )
             return fd
 
         with patch.object(forensic.os, "open", side_effect=attack_open):
@@ -196,8 +207,7 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                 p.unlink()
 
     def test_g_early_capacity_foreign_run_and_commit_refused(self):
-        for field, wrong in (("githubRunId", "another-run"),
-                             ("sourceCommit", "b" * 40)):
+        for field, wrong in (("githubRunId", "another-run"), ("sourceCommit", "b" * 40)):
             hashes, paths = self._make_phase()
             source = paths["earlyCapacity"]
             data = json.loads(source.read_bytes())
@@ -225,28 +235,52 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                         info = original_fstat(fd)
                         if info.st_ino != inode:
                             return info
-                        return types.SimpleNamespace(**{
-                            key: getattr(info, key) + (1 if key == "st_uid" else 0)
-                            for key in ("st_mode", "st_uid", "st_dev", "st_ino",
-                                        "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
-                        })
+                        return types.SimpleNamespace(
+                            **{
+                                key: getattr(info, key) + (1 if key == "st_uid" else 0)
+                                for key in (
+                                    "st_mode",
+                                    "st_uid",
+                                    "st_dev",
+                                    "st_ino",
+                                    "st_nlink",
+                                    "st_size",
+                                    "st_mtime_ns",
+                                    "st_ctime_ns",
+                                )
+                            }
+                        )
                 else:
+
                     def wrong_inode(
                         name, *args, original_stat=original_stat, target=target, **kwargs
                     ):
                         info = original_stat(name, *args, **kwargs)
                         if name != target.name or kwargs.get("dir_fd") is None:
                             return info
-                        return types.SimpleNamespace(**{
-                            key: getattr(info, key) + (1 if key == "st_ino" else 0)
-                            for key in ("st_mode", "st_uid", "st_dev", "st_ino",
-                                        "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
-                        })
+                        return types.SimpleNamespace(
+                            **{
+                                key: getattr(info, key) + (1 if key == "st_ino" else 0)
+                                for key in (
+                                    "st_mode",
+                                    "st_uid",
+                                    "st_dev",
+                                    "st_ino",
+                                    "st_nlink",
+                                    "st_size",
+                                    "st_mtime_ns",
+                                    "st_ctime_ns",
+                                )
+                            }
+                        )
+
                 with (
                     patch.object(forensic.os, "fstat", side_effect=wrong_uid)
-                    if fault == "uid" else patch.object(forensic, "re", wraps=forensic.re),
+                    if fault == "uid"
+                    else patch.object(forensic, "re", wraps=forensic.re),
                     patch.object(forensic.os, "stat", side_effect=wrong_inode)
-                    if fault == "inode" else patch.object(forensic, "re", wraps=forensic.re),
+                    if fault == "inode"
+                    else patch.object(forensic, "re", wraps=forensic.re),
                 ):
                     self._assert_denied("before_windows_a", hashes, "checkpoint")
                 for item in self.evidence.iterdir():
