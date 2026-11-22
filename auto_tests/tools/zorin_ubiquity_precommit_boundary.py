@@ -5,6 +5,7 @@ Reuses the #333 handoff and canonical Safety #307 GPT/FD check. The #264
 source map establishes file provenance and static token references, NOT an
 authenticated graph, mutation ordering, or a non-mutating dry-run interface.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -106,12 +107,10 @@ def validate_static_code_map(code_map_bytes: bytes | None) -> bool:
         and report["outsideLinuxTargetWriteSetAuthenticated"] is False
         and report["efiAndNvramPreservationVerified"] is False
         and all(
-            item["runtimeBehaviorVerified"] is False
-            for item in report["capabilities"].values()
+            item["runtimeBehaviorVerified"] is False for item in report["capabilities"].values()
         )
         and all(
-            item["observedWrites"] is False
-            for item in report["potentialWriteSurfaces"].values()
+            item["observedWrites"] is False for item in report["potentialWriteSurfaces"].values()
         )
         and "lib/partman/lib/commit.sh" in report["unreadablePaths"]
         and "lib/partman/lib/resize.sh" in report["unreadablePaths"]
@@ -198,9 +197,7 @@ def classify_zorin_precommit(
     candidate: dict | None = None,
 ) -> PrecommitDecision:
     """A valid #333 proposal always classifies ROUTE_B/deny, never install."""
-    handoff = validate_ubiquity_handoff(
-        proposal, shared_plan, expected_gpt, readonly_disk_fd
-    )
+    handoff = validate_ubiquity_handoff(proposal, shared_plan, expected_gpt, readonly_disk_fd)
     if not handoff["structurallyValidReadOnlyProposal"]:
         _deny("E_PARTIAL_PRECOMMIT_OBSERVATION")
     map_validated = validate_static_code_map(code_map_bytes)
