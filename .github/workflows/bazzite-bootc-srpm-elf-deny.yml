@@ -151,6 +151,9 @@ jobs:
           rpm2cpio source-evidence/bootc-1.17.1-1.fc45.src.rpm \
             | cpio --quiet -i --to-stdout "$source" > source-evidence/bootc-1.17.1.tar.zstd
           sha256sum source-evidence/bootc-1.17.1.tar.zstd > source-evidence/source-tar-sha256.txt
+          # Effective Fedora SPEC fields come from extracted SRPM; do not guess macros.
+          grep -Ei '^(Name|Version|Release|Source[0-9]*|Patch[0-9]*):' source-evidence/bootc.spec \
+            | tee source-evidence/srpm-spec-fields.txt
           python - <<'PY'
           import sys
           from pathlib import Path
@@ -185,6 +188,7 @@ jobs:
             source-evidence/signature-state.txt
             source-evidence/members.txt
             source-evidence/patch-members.txt
+            source-evidence/srpm-spec-fields.txt
             source-evidence/source-tar-sha256.txt
             source-evidence/compared-rust-git-blobs.txt
             source-evidence/probe-sha256.txt
