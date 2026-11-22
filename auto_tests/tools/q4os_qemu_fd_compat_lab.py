@@ -434,7 +434,8 @@ def verify_public_deny(work: Path, paths: dict[str, Path]) -> dict:
         called.append(True)
         raise LabRefusal("UNAUTHORIZED_FACTORY_CALLED")
 
-    for injection in ({}, {"popen_factory": forbidden_factory}, {"pidfd_factory": forbidden_factory}):
+    scenarios = ({}, {"popen_factory": forbidden_factory}, {"pidfd_factory": forbidden_factory})
+    for injection in scenarios:
         result = operational.run_lab(
             work,
             paths["code.fd"],
@@ -866,7 +867,9 @@ def negative_cases(root: Path) -> dict:
         timeout=15,
     )
     wrong_info = json.loads(
-        subprocess.check_output([QEMU_IMG, "info", "--output=json", str(wrong_geometry)], timeout=15)
+        subprocess.check_output(
+            [QEMU_IMG, "info", "--output=json", str(wrong_geometry)], timeout=15
+        )
     )
     try:
         verify_qcow2_contract(wrong_info)
