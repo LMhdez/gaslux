@@ -95,11 +95,15 @@ def _kernel_and_modules() -> tuple[Path, str, dict[str, str]]:
         package = dpkg.split(":", 1)[0]
         version = _run("dpkg-query", "-W", "-f=${Version}", package).stdout.decode()
         if package and version:
-            return kernel, release, {
-                "package": package,
-                "packageVersion": version,
-                "kernelSha256": hashlib.sha256(kernel.read_bytes()).hexdigest(),
-            }
+            return (
+                kernel,
+                release,
+                {
+                    "package": package,
+                    "packageVersion": version,
+                    "kernelSha256": hashlib.sha256(kernel.read_bytes()).hexdigest(),
+                },
+            )
     raise RuntimeError("NO_DPKG_MANAGED_LINUX_KERNEL_WITH_MODULES")
 
 
@@ -160,15 +164,19 @@ def _initrd(folder: Path) -> tuple[Path, Path, dict[str, object]]:
     finally:
         assert find.wait(timeout=5) == 0
     image.write_bytes(gzip.compress(archive, compresslevel=3, mtime=0))
-    return kernel, image, {
-        **provenance,
-        "kernelRelease": release,
-        "busyboxSha256": hashlib.sha256(busybox.read_bytes()).hexdigest(),
-        "collectorSourceSha256": COLLECTOR_SHA,
-        "collectorDeliveredSha256": hashlib.sha256(collector.encode("ascii")).hexdigest(),
-        "moduleSha256": module_hashes,
-        "initrdSha256": hashlib.sha256(image.read_bytes()).hexdigest(),
-    }
+    return (
+        kernel,
+        image,
+        {
+            **provenance,
+            "kernelRelease": release,
+            "busyboxSha256": hashlib.sha256(busybox.read_bytes()).hexdigest(),
+            "collectorSourceSha256": COLLECTOR_SHA,
+            "collectorDeliveredSha256": hashlib.sha256(collector.encode("ascii")).hexdigest(),
+            "moduleSha256": module_hashes,
+            "initrdSha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+        },
+    )
 
 
 def _local_host_peer(conn: socket.socket, qemu, challenge: CollectorChallenge) -> dict:
@@ -202,6 +210,7 @@ def _resume_for_lab(qmp: Path) -> None:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
         conn.settimeout(5)
         conn.connect(str(qmp))
+
         def read() -> dict:
             buffer = bytearray()
             while len(buffer) < 16384:
@@ -212,6 +221,7 @@ def _resume_for_lab(qmp: Path) -> None:
                 if char == b"\n":
                     return json.loads(buffer)
             raise RuntimeError("QMP_TOO_LARGE")
+
         assert "QMP" in read()
         conn.sendall(b'{"execute":"qmp_capabilities"}\n')
         assert "return" in read()
@@ -255,7 +265,9 @@ def test_real_guest_boot_collector_challenge_via_virtio_serial(workspace, pinned
     challenge = _challenge()
     ledger.issue(challenge)
     child = start_qemu(
-        workspace, overlay, "qcow2",
+        workspace,
+        overlay,
+        "qcow2",
         guest_peer_endpoint=True,
         guest_kernel=kernel,
         guest_initrd=initrd,
@@ -324,9 +336,15 @@ def test_real_guest_boot_collector_challenge_via_virtio_serial(workspace, pinned
 @pytest.mark.parametrize(
     "name",
     [
-        "OLD_NONCE_REPLAY", "WRONG_VM_SESSION", "COLLECTOR_HASH_MISMATCH",
-        "TRUNCATED_RESPONSE", "FORGED_GUEST_CLAIMS", "UNISSUED_NONCE",
-        "COUNTER_INVALID", "HOST_PROXY_SPOOF", "WRONG_DISK_FD",
+        "OLD_NONCE_REPLAY",
+        "WRONG_VM_SESSION",
+        "COLLECTOR_HASH_MISMATCH",
+        "TRUNCATED_RESPONSE",
+        "FORGED_GUEST_CLAIMS",
+        "UNISSUED_NONCE",
+        "COUNTER_INVALID",
+        "HOST_PROXY_SPOOF",
+        "WRONG_DISK_FD",
     ],
 )
 def test_guest_origin_adversarial_protocol_denied(tmp_path, name):

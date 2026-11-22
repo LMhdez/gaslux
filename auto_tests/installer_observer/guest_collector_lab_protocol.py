@@ -65,8 +65,10 @@ def response_bytes(
 
 def read_frame(conn: socket.socket, *, max_bytes: int = _MAX_FRAME) -> bytes:
     """Bounded actual socket acquisition; no guest-origin inference."""
-    _check(type(conn) is socket.socket and type(max_bytes) is int and 32 <= max_bytes <= 512,
-           "INVALID_TRANSPORT")
+    _check(
+        type(conn) is socket.socket and type(max_bytes) is int and 32 <= max_bytes <= 512,
+        "INVALID_TRANSPORT",
+    )
     payload = bytearray()
     try:
         while len(payload) <= max_bytes:
@@ -128,7 +130,8 @@ class LabChallengeLedger:
         _check(type(path) is Path and path.is_absolute(), "INVALID_LEDGER_PATH")
         parent = path.parent
         _check(
-            parent.is_dir() and not parent.is_symlink()
+            parent.is_dir()
+            and not parent.is_symlink()
             and parent.stat().st_uid == os.getuid()
             and parent.stat().st_mode & 0o077 == 0
             and not path.is_symlink(),
@@ -138,16 +141,23 @@ class LabChallengeLedger:
         try:
             fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
             st = os.fstat(fd)
-            _check(stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid()
-                   and st.st_mode & 0o077 == 0 and st.st_nlink == 1, "LEDGER_OWNERSHIP_INVALID")
+            _check(
+                stat.S_ISREG(st.st_mode)
+                and st.st_uid == os.getuid()
+                and st.st_mode & 0o077 == 0
+                and st.st_nlink == 1,
+                "LEDGER_OWNERSHIP_INVALID",
+            )
             os.close(fd)
             fd = -1
             self._path = path
             with self._connect() as db:
-                db.execute("CREATE TABLE IF NOT EXISTS challenges ("
-                           "session TEXT NOT NULL, nonce TEXT NOT NULL, collector TEXT NOT NULL,"
-                           " used INTEGER NOT NULL CHECK(used IN (0,1)),"
-                           " PRIMARY KEY(session, nonce))")
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS challenges ("
+                    "session TEXT NOT NULL, nonce TEXT NOT NULL, collector TEXT NOT NULL,"
+                    " used INTEGER NOT NULL CHECK(used IN (0,1)),"
+                    " PRIMARY KEY(session, nonce))"
+                )
         finally:
             if fd >= 0:
                 os.close(fd)
@@ -164,10 +174,17 @@ class LabChallengeLedger:
             try:
                 db.execute("BEGIN IMMEDIATE")
                 # Session cannot be reused with a different nonce in this lab.
-                _check(db.execute("SELECT count(*) FROM challenges WHERE session=?",
-                                  (challenge.session,)).fetchone()[0] == 0, "SESSION_REUSED")
-                db.execute("INSERT INTO challenges VALUES(?,?,?,0)",
-                           (challenge.session, challenge.nonce, challenge.collector_sha256))
+                _check(
+                    db.execute(
+                        "SELECT count(*) FROM challenges WHERE session=?", (challenge.session,)
+                    ).fetchone()[0]
+                    == 0,
+                    "SESSION_REUSED",
+                )
+                db.execute(
+                    "INSERT INTO challenges VALUES(?,?,?,0)",
+                    (challenge.session, challenge.nonce, challenge.collector_sha256),
+                )
                 db.commit()
             except sqlite3.IntegrityError as exc:
                 db.rollback()
@@ -185,8 +202,12 @@ class LabChallengeLedger:
             ).rowcount
             _check(changed == 1, "OLD_NONCE_REPLAY_OR_UNISSUED")
             db.commit()
-        return {**record, "localLabLedgerConsumed": True, "replayProtected": False,
-                "externalLedgerAuthenticated": False}
+        return {
+            **record,
+            "localLabLedgerConsumed": True,
+            "replayProtected": False,
+            "externalLedgerAuthenticated": False,
+        }
 
     def count_used(self) -> int:
         with self._connect() as db:
