@@ -235,3 +235,30 @@ def test_invalid_squashfs_member_refusal_does_not_emit_private_path(capsys):
     with pytest.raises(provenance.InspectRefusal):
         provenance._bounded_unsquashfs(private, "../etc/shadow")
     assert "SECRET_SENTINEL_ABC" not in "".join(capsys.readouterr())
+
+
+
+def test_experimental_iso_candidate_pins_measured_size_without_forging_signature():
+    repo = Path(__file__).resolve().parents[2]
+    candidate = json.loads(
+        (repo / "auto_tests/fixtures/q4os_6_10_r2_unsigned_catalog_candidate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert candidate["artifactType"] == "UNSIGNED_EXPERIMENTAL_CATALOG_CANDIDATE"
+    assert candidate["candidateOnly"] is True
+    assert candidate["productionEligible"] is False
+    assert candidate["signed"] is False
+    assert candidate["stable"] is False
+    assert candidate["iso"]["sha256"] == readiness.UPSTREAM_SHA256
+    assert candidate["iso"]["sizeBytes"] == 1851392000
+    assert candidate["iso"]["publisherSignatureValidated"] is False
+    assert candidate["iso"]["publisherKeyFingerprint"] is None
+    assert candidate["iso"]["detachedSignatureFile"] is None
+    assert candidate["catalogCompatibleFields"]["isoInstallerSizeBytes"] == 1851392000
+    assert candidate["catalogCompatibleFields"]["isoInstallerSha256"] == readiness.UPSTREAM_SHA256
+    assert candidate["trust"]["catalogPromotionAllowed"] is False
+    assert candidate["trust"]["publisherSignedRelease"] is False
+    assert candidate["trust"]["authenticatedGasluxCatalog"] is False
+    catalog = json.loads((repo / "release-config.json").read_text(encoding="utf-8"))
+    assert "q4os" not in {item["id"] for item in catalog["distributions"]}
