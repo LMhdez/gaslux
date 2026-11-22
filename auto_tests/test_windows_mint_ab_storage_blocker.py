@@ -8,7 +8,6 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -46,14 +45,16 @@ def free_fs(available_bytes: int) -> SimpleNamespace:
 
 class AConservativeAandBBudget(unittest.TestCase):
     def test_historical_shortfall_reproduced_exactly_without_sparse_discount(self):
-        with tempfile.TemporaryDirectory() as root:
-            with patch.object(
+        with (
+            tempfile.TemporaryDirectory() as root,
+            patch.object(
                 cap.os, "statvfs", return_value=free_fs(HISTORICAL_AVAILABLE_BYTES),
-            ):
-                proof = cap.measure_capacity(
-                    directory=Path(root), phase="early",
-                    full_allocated_bytes=HISTORICAL_FULL_BOUND,
-                )
+            ),
+        ):
+            proof = cap.measure_capacity(
+                directory=Path(root), phase="early",
+                full_allocated_bytes=HISTORICAL_FULL_BOUND,
+            )
         self.assertEqual(proof["minimumFreeBytesRequired"], 867_710_795_776)
         self.assertEqual(proof["capacityShortfallBytes"], 772_903_108_608)
         self.assertEqual(proof["result"], "BLOCKED_CAPACITY")
@@ -206,9 +207,11 @@ class BRealSmallQcow2Restore(unittest.TestCase):
             destination.write_bytes(b"owned-incomplete-restore-temp")
             raise OSError(errno.ENOSPC, "injected synthetic ENOSPC")
 
-        with patch.object(cp, "standalone", side_effect=fail_with_partial):
-            with self.assertRaises(OSError) as raised:
-                self.restore()
+        with (
+            patch.object(cp, "standalone", side_effect=fail_with_partial),
+            self.assertRaises(OSError) as raised,
+        ):
+            self.restore()
         self.assertEqual(raised.exception.errno, errno.ENOSPC)
         self.assertEqual((self.digest(self.ref), self.digest(self.arm)), (old_ref, old_arm))
         self.assertEqual(temp.read_bytes(), b"owned-incomplete-restore-temp")
@@ -227,9 +230,11 @@ class BRealSmallQcow2Restore(unittest.TestCase):
             temp.write_bytes(b"owned-aborted-conversion")
             raise KeyboardInterrupt("injected interruption")
 
-        with patch.object(cp, "standalone", side_effect=interrupt_convert):
-            with self.assertRaises(KeyboardInterrupt):
-                self.restore()
+        with (
+            patch.object(cp, "standalone", side_effect=interrupt_convert),
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            self.restore()
         self.assertEqual((self.digest(self.ref), self.digest(self.arm)), (old_ref, old_arm))
         self.assertTrue(temp.exists())
         self.assertFalse((self.root / "checkpoint.json").exists())
@@ -247,9 +252,11 @@ class BRealSmallQcow2Restore(unittest.TestCase):
             destination.chmod(0o600)
             return self.digest(destination)
 
-        with patch.object(cp, "standalone", side_effect=wrong_convert):
-            with self.assertRaises(subprocess.CalledProcessError):
-                self.restore()
+        with (
+            patch.object(cp, "standalone", side_effect=wrong_convert),
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            self.restore()
         self.assertTrue(temp.exists())
         self.assertEqual((self.digest(self.ref), self.digest(self.arm)), (old_ref, old_arm))
         self.assertFalse((self.root / "checkpoint.json").exists())
