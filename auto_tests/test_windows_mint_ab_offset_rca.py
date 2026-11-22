@@ -1,4 +1,5 @@
 """Non-destructive ESP and Recovery block-offset RCA, private synthetic fixtures."""
+
 from __future__ import annotations
 
 import hashlib
@@ -26,15 +27,19 @@ class OffsetRcaTests(unittest.TestCase):
         report = rca.analyze_partition_windows(
             lambda count, pos: base[pos : pos + count],
             lambda count, pos: changed[pos : pos + count],
-            partition_bytes=len(base), disk_start_byte=2048 * 512,
+            partition_bytes=len(base),
+            disk_start_byte=2048 * 512,
             expected_before_sha256=sha(base),
             expected_after_sha256=sha(changed),
         )
         self.assertEqual(report["changedWindowCount"], 1)
-        self.assertEqual(report["listedChangedWindows"][0]["partitionRelativeByteOffset"],
-                         rca.CHUNK_BYTES)
-        self.assertEqual(report["listedChangedWindows"][0]["diskAbsoluteByteOffset"],
-                         2048 * 512 + rca.CHUNK_BYTES)
+        self.assertEqual(
+            report["listedChangedWindows"][0]["partitionRelativeByteOffset"], rca.CHUNK_BYTES
+        )
+        self.assertEqual(
+            report["listedChangedWindows"][0]["diskAbsoluteByteOffset"],
+            2048 * 512 + rca.CHUNK_BYTES,
+        )
         self.assertFalse(report["writerAttributionProven"])
         self.assertFalse(report["byteExactOffsetsProven"])
         self.assertTrue(report["offsetMapComplete"])
@@ -47,16 +52,15 @@ class OffsetRcaTests(unittest.TestCase):
                 self.assertRaisesRegex(rca.OffsetRcaError, "BLOCKED_EVIDENCE"),
             ):
                 rca.analyze_partition_windows(
-                        lambda n, pos, fault=fault: blob[
-                            pos : pos + n - (1 if fault == "partial" else 0)
-                        ],
-                        lambda n, pos: blob[pos : pos + n],
-                        partition_bytes=len(blob) - (1 if fault == "bad_size" else 0),
-                        disk_start_byte=0,
-                        expected_before_sha256=sha(blob),
-                        expected_after_sha256=("f" * 64 if fault == "bad_digest"
-                                               else sha(blob)),
-                    )
+                    lambda n, pos, fault=fault: blob[
+                        pos : pos + n - (1 if fault == "partial" else 0)
+                    ],
+                    lambda n, pos: blob[pos : pos + n],
+                    partition_bytes=len(blob) - (1 if fault == "bad_size" else 0),
+                    disk_start_byte=0,
+                    expected_before_sha256=sha(blob),
+                    expected_after_sha256=("f" * 64 if fault == "bad_digest" else sha(blob)),
+                )
 
     def _owned_lab(self, root: str):
         workspace = Path(root)
@@ -94,8 +98,11 @@ class OffsetRcaTests(unittest.TestCase):
         esp_after = b"0" * rca.CHUNK_BYTES + b"1" * rca.CHUNK_BYTES
         rec_after = b"2" * (2 * rca.CHUNK_BYTES)
         return {
-            "directory": directory, "evidence": evidence, "reference": reference,
-            "arm": arm, "geometry": geometry,
+            "directory": directory,
+            "evidence": evidence,
+            "reference": reference,
+            "arm": arm,
+            "geometry": geometry,
             "first": {1: base, 4: base},
             "second": {1: esp_after, 4: rec_after},
             "before_hashes": [sha(base), "a" * 64, "b" * 64, sha(base)],
@@ -141,15 +148,19 @@ class OffsetRcaTests(unittest.TestCase):
 
         instances = [MockGuest(lab["first"]), MockGuest(lab["second"])]
         with (
-            patch.dict(sys.modules, {"guestfs": types.SimpleNamespace(
-                GuestFS=lambda **_: instances.pop(0))}),
+            patch.dict(
+                sys.modules,
+                {"guestfs": types.SimpleNamespace(GuestFS=lambda **_: instances.pop(0))},
+            ),
             patch.object(rca, "assert_detached_from_processes"),
             patch.object(rca, "image_info"),
             patch.object(rca, "gpt_manifest", return_value=lab["geometry"]),
         ):
             return rca.compare_owned_ab_protected_offsets(
-                directory=lab["directory"], reference=lab["reference"],
-                observed=lab["arm"], evidence=lab["evidence"],
+                directory=lab["directory"],
+                reference=lab["reference"],
+                observed=lab["arm"],
+                evidence=lab["evidence"],
                 manifest_name="mint-ab-offset-arm-a-control.json",
                 transaction_id="test-offset-transaction",
                 expected_gpt=lab["geometry"],
@@ -169,19 +180,20 @@ class OffsetRcaTests(unittest.TestCase):
                 report["partitions"]["esp"]["listedChangedWindows"][0]["diskAbsoluteByteOffset"],
                 2048 * 512 + rca.CHUNK_BYTES,
             )
-            self.assertEqual(
-                [sha(p.read_bytes()) for p in (lab["reference"], lab["arm"])], before)
+            self.assertEqual([sha(p.read_bytes()) for p in (lab["reference"], lab["arm"])], before)
             self.assertEqual(
                 json.loads((lab["evidence"] / "mint-ab-offset-arm-a-control.json").read_text())[
-                    "windowsOrMintWriterAttribution"], "UNKNOWN")
+                    "windowsOrMintWriterAttribution"
+                ],
+                "UNKNOWN",
+            )
 
     def test_partial_libguestfs_read_does_not_publish_completed_offset_map(self):
         with tempfile.TemporaryDirectory() as root:
             lab = self._owned_lab(root)
             with self.assertRaisesRegex(rca.OffsetRcaError, "partial"):
                 self._scan(lab, corrupt=True)
-            self.assertFalse(
-                (lab["evidence"] / "mint-ab-offset-arm-a-control.json").exists())
+            self.assertFalse((lab["evidence"] / "mint-ab-offset-arm-a-control.json").exists())
 
     def test_device_path_and_unsafe_output_refused_before_guestfs(self):
         with tempfile.TemporaryDirectory() as root:
@@ -195,14 +207,16 @@ class OffsetRcaTests(unittest.TestCase):
                     self.assertRaisesRegex(rca.OffsetRcaError, "BLOCKED_EVIDENCE"),
                 ):
                     rca.compare_owned_ab_protected_offsets(
-                            directory=directory, reference=Path("/dev/sda"),
-                            observed=lab["arm"], evidence=lab["evidence"],
-                            manifest_name=manifest,
-                            transaction_id="test-offset-transaction",
-                            expected_gpt=lab["geometry"],
-                            before_partition_sha256=lab["before_hashes"],
-                            after_partition_sha256=lab["after_hashes"],
-                        )
+                        directory=directory,
+                        reference=Path("/dev/sda"),
+                        observed=lab["arm"],
+                        evidence=lab["evidence"],
+                        manifest_name=manifest,
+                        transaction_id="test-offset-transaction",
+                        expected_gpt=lab["geometry"],
+                        before_partition_sha256=lab["before_hashes"],
+                        after_partition_sha256=lab["after_hashes"],
+                    )
 
 
 if __name__ == "__main__":
