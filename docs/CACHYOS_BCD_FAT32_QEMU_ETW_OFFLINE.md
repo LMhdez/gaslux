@@ -31,9 +31,14 @@ SHA-256 of primary+backup GPT windows and the full ESP, plus pinned
 **not** cryptographically authenticated by this tool.
 
 The reader rejects symlinks/hardlinks, wrong owner/mode, write-capable
-descriptors, file/path replacements, divergent inode/metadata, invalid PMBR,
+or `O_PATH` descriptors, file/path replacements, divergent inode/metadata, invalid PMBR,
 primary/backup GPT CRCs, mirrored GPT mismatches, unexpected fifth/sixth
 partitions, wrong disk GUID/PARTUUID and incorrect ESP offsets or hashes.
+On Linux, `O_PATH` reports `(F_GETFL & O_ACCMODE) == O_RDONLY` but cannot
+be read using `pread`; the descriptor preflight must explicitly deny
+`O_PATH` before any measurement (regression included). This was corrected
+after the synthetic 85-test report; rerun and verify exact-HEAD CI.
+
 It reuses `windows_cachyos_qcow2_gpt_readonly.header_at()` and
 `part_array()` from the existing lab, and `map_bcd_fat32()` without
 implementing another FAT32 parser. Two ESP byte reads and two GPT-window
