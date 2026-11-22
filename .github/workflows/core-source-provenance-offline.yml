@@ -68,9 +68,14 @@ jobs:
       - name: Existing .NET Framework contract tests
         shell: pwsh
         run: |
-          dotnet test .\Libertix.Tests\Libertix.Tests.csproj -c Release --no-restore
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vstest = (& $vswhere -latest -find 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe' | Select-Object -First 1)
+          if (!$vstest) { throw 'Visual Studio vstest.console missing' }
+          & $vstest '.\Libertix.Tests\bin\Release\Libertix.Tests.dll' '/Logger:console;verbosity=normal'
           if ($LASTEXITCODE -ne 0) { throw "C# contract tests failed: $LASTEXITCODE" }
       - name: Existing PowerShell Pester suite
+        if: always()
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
