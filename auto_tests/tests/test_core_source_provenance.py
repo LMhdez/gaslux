@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from test_core import settings
 
 from app.errors import WorkflowError
 from app.services.common import ResultBuilder
 from app.services.validation import ValidationService
-from test_core import settings
 
 
 def _checkout(tmp_path: Path, origin: str) -> tuple[Path, str]:
