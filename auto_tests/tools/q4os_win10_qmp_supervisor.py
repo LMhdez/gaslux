@@ -70,6 +70,20 @@ def _socket_identity(path: Path, work: Path) -> tuple[int, int] | None:
     return st.st_dev, st.st_ino
 
 
+def _birth_identity(pid: int) -> tuple[int, int]:
+    """Require a live direct child and pin kernel start ticks before pidfd_open."""
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        fields = raw[raw.rfind(")") + 2 :].split()
+        _require(len(fields) >= 20, "QEMU_STARTUP_UNCLASSIFIED")
+        _require(fields[0] != "Z", "QEMU_EARLY_EXIT")
+        parent_pid = int(fields[1])
+        _require(parent_pid == os.getpid(), "QEMU_STARTUP_UNCLASSIFIED")
+        return parent_pid, int(fields[19])
+    except (OSError, ValueError, IndexError) as exc:
+        raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from exc
+
+
 def _witness(process: subprocess.Popen, pidfd: int) -> None:
     _require(pidfd >= 0 and process.pid > 0, "QEMU_STARTUP_UNCLASSIFIED")
     _require(process.poll() is None, "QEMU_EARLY_EXIT")
@@ -282,6 +296,9 @@ def run_lab(
             raise StartupRefusal("QEMU_SPAWN_FAILED") from None
         report["qemuSpawned"] = True
         report["qemuPidRecorded"] = True
+        if process.poll() is not None:
+            raise StartupRefusal("QEMU_EARLY_EXIT")
+        birth = _birth_identity(process.pid)
         fd_factory = pidfd_factory or os.pidfd_open
         try:
             pidfd = fd_factory(process.pid)
@@ -289,6 +306,11 @@ def run_lab(
             if process.poll() is not None:
                 raise StartupRefusal("QEMU_EARLY_EXIT") from None
             raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from None
+        # Fail without signalling if a PID was recycled between spawn and pidfd.
+        if process.poll() is not None or _birth_identity(process.pid) != birth:
+            os.close(pidfd)
+            pidfd = None
+            raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED")
         channel, identity = _await_qmp(
             process,
             pidfd,
