@@ -15,17 +15,18 @@ Mutation cases accepting invalid snapshots are failures.
 
 | Family | Executed tests on #267 | Missing authenticated contract |
 |---|---|---|
-| A DESTINATION_SWAP | Altered GUID, disk size and PARTUUID deny | Swapping QCOW2 path/inode/backing after signing identical JSON: strict XFAIL |
-| B FD_ALIAS | No real backend-FD correlation in #267 | Two FDs/path aliases associated with different objects: strict XFAIL |
+| A DESTINATION_SWAP | Altered GUID, disk size and PARTUUID deny | Swapping QCOW2 path/inode/backing after signing identical JSON: known-gap test (no binding) |
+| B FD_ALIAS | No real backend-FD correlation in #267 | Two FDs/path aliases associated with different objects: known-gap test (no binding) |
 | C GPT_GEOMETRY_MISMATCH | Wrong disk GUID, sector, disk size and partition offset deny | Complete raw GPT/PMBR readback through pinned FD prior to writer |
-| D CHECKPOINT_TAMPERING | Foreign owned region denies | Actual durable checkpoint bytes, transaction and independent restoration: strict XFAIL |
-| E GUEST_EVIDENCE_SPOOF | Invalid MAC or wrong VM/source denies | A guest channel independently authenticated against VM/process: strict XFAIL |
+| D CHECKPOINT_TAMPERING | Foreign owned region denies | Actual durable checkpoint bytes, transaction and independent restoration: known-gap test (no binding) |
+| E GUEST_EVIDENCE_SPOOF | Invalid MAC or wrong VM/source denies | A guest channel independently authenticated against VM/process: known-gap test (no binding) |
 
-**XFAIL(strict=True) is not PASS, not DENY, and not implementation completion.**
-It deliberately captures an unmet contract: on the current gate, the altered
-outside-world destination/checkpoint/guest provenance cannot be supplied.
-On an eventual shared contract, replace those markers with exercised real
-observations and assert explicit denial. A validator that simply denies every
+**A passing known-gap test is NOT an operational DENY test.**
+It verifies that the existing no-writer gate cannot receive the relevant
+actual destination/checkpoint/guest evidence and does not claim to validate it.
+The test suite deliberately distinguishes real DENY regressions from
+positive detection of missing interfaces. Integrator 2 must replace the
+known-gap checks with exercised authenticated evidence and explicit DENY. A validator that simply denies every
 input does NOT satisfy this suite because the positive `ACCEPT_NO_WRITER`
 fixture must still pass, although this never grants writing.
 
