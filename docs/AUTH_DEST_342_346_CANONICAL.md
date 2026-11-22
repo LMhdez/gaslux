@@ -94,3 +94,26 @@ differential review, including future findings on #346. Do not close
 decision and preservation proof. A green QEMU run cannot certify
 Windows dual boot, source provenance, independent checkpoint identity,
 QEMU backend→FD binding, guest collector origin, rollback or stability.
+
+## Exact implementation CI (2026-11-22 UTC)
+
+The composition code HEAD `72106b2dfe4d38612ea37cdc8b0618a33298fa9e`
+has two independent GitHub Action executions:
+[push #45037589606](https://github.com/LMhdez/gaslux/actions/runs/45037589606)
+and [PR #45037640437](https://github.com/LMhdez/gaslux/actions/runs/45037640437),
+**both SUCCESS at the same exact SHA**. These runs include:
+- New #346 canonical QEMU-stopped/128GiB sparse RAW GPT, QCOW2 header,
+  checkpoint capacity-estimate, final allocation-block, truncated backing,
+  SHA-incomplete and spoofed checkpoint/guest cases;
+- Full original #342 12-case metadata probe suite executed without
+  modifying its checkout at `986ccf6d5ee11427e969022f6b8b5d5f48ec16c3`;
+- Exact original #337 independent D-337-01 short-pread, EOF and EIO oracle,
+  existing #337 small full-SHA positive, #327 BZD-DEST-01, #267 typed-plan
+  no-writer, HOST/FD, six-distribution schema, Ruff and compileall.
+
+These results certify **test-owned, local HOST evidence only**.
+They do not grant write, guest command, independent quota, Windows restore,
+whole RAW 128GiB authenticity, dual boot or release authority. No real
+Windows checkpoint or root-of-trust was supplied. A fresh Safety verdict
+for this composition remains pending; the prior #346 APPROVED_OFFLINE_DENY_ONLY
+is applicable only to its exact earlier SHA.

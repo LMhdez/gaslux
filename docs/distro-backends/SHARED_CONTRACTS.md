@@ -142,3 +142,24 @@ trust boundaries: [AUTH_DEST_128G_READONLY](../AUTH_DEST_128G_READONLY.md).
 **SUCCESS** at `6a94093271610dbd2ff908c2b8692e332e1585a1`.
 No production write, guest boot, Windows restoration, ESP/BCD/WinRE,
 firmware changes, full RAW hash or release/stability authority.
+
+## 2026-11-22 — canonical #342/#346 composition (experimental DENY-ONLY)
+
+[Draft PR #356](https://github.com/LMhdez/gaslux/pull/356) selects the
+stronger #346 `assess_sparse_128g_readonly` as its **sole proposed**
+large-sparse read-only contract. After examining #342, only its unique
+32-byte QCOW2 version/capacity checks, `statvfs` full-checkpoint
+capacity *estimate*, and final allocated-block remeasurement were
+added. `probe_destination_scale_metadata` from #342 is **not imported**
+or duplicated, and the newer #337 D-337-01 full-SHA guard and RED
+tests are preserved. Both earlier PRs remain open Draft; no merge.
+
+[Actions #45037589606](https://github.com/LMhdez/gaslux/actions/runs/45037589606)
+and [#45037640437](https://github.com/LMhdez/gaslux/actions/runs/45037640437)
+**SUCCESS on composition code HEAD `72106b2dfe4d38612ea37cdc8b0618a33298fa9e`**,
+including unchanged #342 historical tests and current #346 actual
+stopped-QEMU 128GiB/GPT/checkpoint negatives, #337 D-337-01,
+#327/#267/HOST-FD, schema, Ruff. Even structurally valid 128GiB
+resources raise `FULL_BACKING_HASH_NOT_COMPLETED` and deny writes.
+No genuine Windows backing, independent guest, rollback or stable claim.
+See [comparison and limits](../AUTH_DEST_342_346_CANONICAL.md).

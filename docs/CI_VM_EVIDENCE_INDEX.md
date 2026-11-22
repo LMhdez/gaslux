@@ -142,3 +142,22 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   `rollbackProven=false`, `sameDiskDualBootVerified=false`,
   `stable=false`.
   See [resource and trust contract](AUTH_DEST_128G_READONLY.md).
+
+## 2026-11-22 — 128GiB #342+#346 canonical deny-only reconciliation
+
+- [PR #356](https://github.com/LMhdez/gaslux/pull/356),
+  code HEAD `72106b2dfe4d38612ea37cdc8b0618a33298fa9e`,
+  [CI push #45037589606](https://github.com/LMhdez/gaslux/actions/runs/45037589606)
+  and [CI PR #45037640437](https://github.com/LMhdez/gaslux/actions/runs/45037640437)
+  **SUCCESS on exact code SHA**.
+- The historical #342 metadata-probe test suite ran from its own
+  immutable source checkout, alongside #346's actual paused-QEMU,
+  sparse 128GiB pinned-FD/GPT/checkpoint contracts and newly
+  imported-only-by-behavior 32-byte QCOW2 header, checkpoint-space estimate,
+  and final allocated-block verification. No duplicate runtime API.
+- Independent upstream #337 D-337-01 digest regressions, #327 BZD,
+  #267 no-writer and HOST/FD tests passed. Entire 128 GiB RAW was
+  **not** hashed, original Windows checkpoint was not authenticated,
+  and QEMU internal backend or guest provenance remain unproven.
+  `DENY_NO_WRITER` stays invariant. Documentation-only changes
+  after this tested code SHA require separate exact-head checks.
