@@ -308,8 +308,9 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     continue
                 if name in RPMDB_ALL:
                     if member.isfile():
-                        if member.size <= 0:
-                            raise Refusal("Zero-byte RPM DB candidate")
+                        if member.size == 0:
+                            entries[name] = {"kind": "rpmdb_empty", "size": 0}
+                            continue
                         if member.size > MAX_RPMDB:
                             entries[name] = {"kind": "rpmdb_oversize", "size": member.size}
                             continue

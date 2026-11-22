@@ -224,6 +224,8 @@ def bind_rpm(overlay: dict, bootc_file: dict) -> dict:
     for path in sorted(RPMDB_PATHS):
         item = overlay.get(path)
         if item is not None:
+            if item.get("kind") == "rpmdb_empty":
+                continue
             if item.get("kind") == "rpmdb_oversize":
                 return {
                     **unproven,

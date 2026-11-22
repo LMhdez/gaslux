@@ -367,3 +367,35 @@ def test_oversize_signed_rpm_db_never_raises_install_authority(monkeypatch):
     assert output["bootcRpmIdentity"]["status"] == "BOOTC_PACKAGE_BINDING_UNPROVEN"
     assert output["bootcRpmIdentity"]["rpmdbSizeBytes"] == len(oversized)
     assert all(output[flag] is False for flag in NO_WRITE)
+
+
+def test_zero_byte_rpm_placeholder_is_not_a_database_or_authority():
+    elf = elf_fixture()
+    db = sqlite_db(rpm_header_fixture(digest=hashlib.sha256(elf).hexdigest()))
+    overlay, budgets, descs = apply(
+        [
+            layer(
+                {
+                    "usr/bin/bootc": elf,
+                    "usr/share/rpm/rpmdb.sqlite": b"",
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite": db,
+                }
+            )
+        ]
+    )
+    output = result(overlay, budgets, descs)
+    assert output["rpmDbFinalCandidateSizes"]["usr/share/rpm/rpmdb.sqlite"] == 0
+    assert output["bootcRpmIdentity"]["status"] == "BOOTC_RPM_IDENTITY_VERIFIED"
+    assert output["bootcToFilesystemAvailableInBinaryVerified"] is False
+    assert all(output[key] is False for key in NO_WRITE)
+
+
+def test_only_empty_rpmdb_keeps_binding_unproven():
+    elf = elf_fixture()
+    overlay, budgets, descs = apply(
+        [layer({"usr/bin/bootc": elf, "usr/share/rpm/rpmdb.sqlite": b""})]
+    )
+    output = result(overlay, budgets, descs)
+    assert output["bootcRpmIdentity"]["status"] == "BOOTC_PACKAGE_BINDING_UNPROVEN"
+    assert output["bootcVersion"] is None
+    assert all(output[key] is False for key in NO_WRITE)
