@@ -129,17 +129,24 @@ def build_guest(workspace: Path) -> dict:
         and workspace.stat().st_mode & 0o077 == 0,
         "LAB_WORKSPACE_OWNERSHIP_INVALID",
     )
-    versions = sorted(
-        p.name.removeprefix("vmlinuz-")
-        for p in Path("/boot").glob("vmlinuz-*")
-        if (Path("/lib/modules") / p.name.removeprefix("vmlinuz-")).is_dir()
-        and p.is_file()
-        and os.access(p, os.R_OK)
+    # The runner's APT kernel files are root-readable only; privileged,
+    # fixed CI setup copies one package-owned kernel into RUNNER_TEMP.
+    # Runtime Observer/guest code never uses sudo or changes /boot modes.
+    version = os.environ.get("GASLUX_GUEST_KERNEL_VERSION", "")
+    kernel = Path(os.environ.get("GASLUX_GUEST_KERNEL_PATH", "/invalid-kernel"))
+    temp = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+    require(
+        bool(re.fullmatch(r"[0-9A-Za-z.+_-]{1,96}", version))
+        and kernel.parent == temp
+        and kernel.name == "gaslux-owned-test-kernel"
+        and kernel.is_file()
+        and not kernel.is_symlink()
+        and kernel.stat().st_uid == os.getuid()
+        and kernel.stat().st_mode & 0o077 == 0
+        and os.access(kernel, os.R_OK)
+        and (Path("/lib/modules") / version).is_dir(),
+        "RUNNER_PACKAGE_KERNEL_NOT_AUTHORIZED",
     )
-    require(bool(versions), "READABLE_APT_SIGNED_GUEST_KERNEL_NOT_AVAILABLE")
-    version = versions[-1]
-    kernel = Path("/boot") / ("vmlinuz-" + version)
-    require(kernel.is_file(), "KERNEL_NOT_REGULAR")
     busybox = Path("/bin/busybox")
     require(busybox.is_file(), "BUSYBOX_STATIC_NOT_INSTALLED")
     stage = workspace / "initrd-root"
