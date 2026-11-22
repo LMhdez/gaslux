@@ -257,6 +257,52 @@ def test_cachyos_manual_unterminated_here_string_refuses_audit(
         audit.run_audit()
 
 
+@pytest.mark.parametrize("quote", ["'", '"'], ids=["single-quoted", "double-quoted"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["LF", "CRLF"])
+def test_cachyos_indented_here_string_closer_must_fail_closed(
+    monkeypatch: pytest.MonkeyPatch, quote: str, newline: str
+) -> None:
+    """Windows PowerShell 5.1 forbids indentation before a here-string closer."""
+
+    original_read = audit.read
+    original_import = "Import-Module -Name $module -Force -ErrorAction Stop"
+    pseudo_closer = f"$text = @{quote}{newline}  {quote}@{newline}{original_import}"
+
+    def patched_read(path: str) -> str:
+        if path == LAB_TOOL:
+            original = original_read(path)
+            assert original_import in original
+            # Preserve the real Join-Path reference to isolate the lexer defect.
+            return original.replace(original_import, pseudo_closer, 1)
+        return original_read(path)
+
+    monkeypatch.setattr(audit, "read", patched_read)
+    with pytest.raises(audit.AuditStructureError, match="here-string"):
+        audit.run_audit()
+
+
+@pytest.mark.parametrize("quote", ["'", '"'], ids=["single-quoted", "double-quoted"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["LF", "CRLF"])
+def test_cachyos_valid_here_string_import_is_not_executable(
+    monkeypatch: pytest.MonkeyPatch, quote: str, newline: str
+) -> None:
+    original_import = "Import-Module -Name $module -Force -ErrorAction Stop"
+    replacement = f"$text = @{quote}{newline}{original_import}{newline}{quote}@"
+    rules, _ = run_with(monkeypatch, LAB_TOOL, original_import, replacement)
+    assert ("source-only-module-not-imported", LAB_TOOL) in rules
+
+
+@pytest.mark.parametrize("quote", ["'", '"'], ids=["single-quoted", "double-quoted"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["LF", "CRLF"])
+def test_cachyos_active_import_after_valid_here_string_is_accepted(
+    monkeypatch: pytest.MonkeyPatch, quote: str, newline: str
+) -> None:
+    original_import = "Import-Module -Name $module -Force -ErrorAction Stop"
+    replacement = f"$text = @{quote}{newline}test data{newline}{quote}@{newline}{original_import}"
+    rules, _ = run_with(monkeypatch, LAB_TOOL, original_import, replacement)
+    assert ("source-only-module-not-imported", LAB_TOOL) not in rules
+
+
 def test_cachyos_source_only_exemption_does_not_hide_a_production_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
