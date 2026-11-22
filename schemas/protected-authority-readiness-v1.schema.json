@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/dev/schemas/protected-authority-readiness-v1.schema.json",
+  "title": "Protected Authority Readiness v1 — untrusted read-only diagnostic observations; no authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "repository",
+    "requestRef",
+    "observations"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": 1
+    },
+    "repository": {
+      "const": "LMhdez/gaslux"
+    },
+    "requestRef": {
+      "type": "string",
+      "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,180}$"
+    },
+    "observations": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "enum": [
+          "main.protection",
+          "dev.protection",
+          "main.rulesets",
+          "dev.rulesets",
+          "reviews.required",
+          "reviews.selfApprovalExcluded",
+          "requester.branchIsolation",
+          "environment.requiredReviewers",
+          "environment.branchRestriction",
+          "controller.protectedLocation",
+          "controller.immutableWorkflow",
+          "controller.tokenPermissions",
+          "commit.preparationExact",
+          "commit.authorizationExact",
+          "ledger.externalService",
+          "ledger.globalUniqueness",
+          "ledger.consumeAtomic",
+          "ledger.rollbackResistant",
+          "ledger.independentRevocation",
+          "coordinator.freshChallenge",
+          "observer.independentAttestation",
+          "safety.noWriter",
+          "observer.readOnlyProducer"
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/observation"
+      }
+    }
+  },
+  "$defs": {
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "httpStatus",
+        "payload"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "GITHUB_READ_ONLY",
+            "EXTERNAL_UNVERIFIED",
+            "RUNNER_LOCAL",
+            "PR_COMMENT",
+            "CI_STATUS",
+            "SQLITE_LOCAL"
+          ]
+        },
+        "httpStatus": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 100,
+          "maximum": 599
+        },
+        "payload": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "maxProperties": 40
+        }
+      }
+    }
+  }
+}
