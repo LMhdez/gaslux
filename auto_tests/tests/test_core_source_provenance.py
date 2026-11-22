@@ -60,6 +60,7 @@ def _settings(**overrides: object) -> Settings:
     values.update(overrides)
     return Settings(**values)
 
+
 def _checkout(tmp_path: Path, origin: str) -> tuple[Path, str]:
     root = tmp_path / "checkout"
     root.mkdir()
