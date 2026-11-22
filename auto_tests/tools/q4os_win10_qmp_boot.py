@@ -96,8 +96,15 @@ class Qmp:
         self._bound_session = session
 
     def _require_authenticated(self) -> None:
-        require(self._bound_session is not None, "qmp_supervisor_required")
-        self._bound_session.verify()
+        # Never trust a caller's injected verify() callback or mutated member.
+        from q4os_win10_qmp_supervisor import _BoundQmpSession
+
+        session = self._bound_session
+        require(
+            type(session) is _BoundQmpSession and session.channel is self,
+            "qmp_supervisor_required",
+        )
+        session.verify()
 
     def negotiate_protocol(self) -> None:
         """Require a verified process-bound session before any QMP command."""
