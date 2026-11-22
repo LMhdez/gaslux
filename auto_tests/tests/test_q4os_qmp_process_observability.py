@@ -333,6 +333,9 @@ c.close();s.close()
             time.sleep(0.01)
         assert sock.exists()
         fd = os.pidfd_open(monitor.pid)
+        # This separate test exercises SO_PEERCRED with a simulated
+        # supervisor. It must not manufacture operational QMP authority.
+        monkeypatch.setattr(witness, "_verify_session_authority", lambda _session: None)
         monkeypatch.setattr(
             witness,
             "_witness",
@@ -896,3 +899,53 @@ c.close();s.close()
     # No command, including send-key, may ever reach an unowned peer.
     if record.exists():
         assert record.read_bytes() == b""
+
+
+
+def test_r01_kernel_pidfd_binding_and_fd_substitution_real_children():
+    """Actual Linux fdinfo, pidfd readiness, no QEMU, no mocked verifier."""
+    first = subprocess.Popen(
+        [sys.executable, "-c", "import time;time.sleep(15)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    second = subprocess.Popen(
+        [sys.executable, "-c", "import time;time.sleep(15)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    first_fd = os.pidfd_open(first.pid)
+    other_fd = os.pidfd_open(second.pid)
+    regular_fd = os.open(os.devnull, os.O_RDONLY)
+    try:
+        assert witness.QEMU_FD_BACKING_VERIFIED is False
+        assert witness._pidfd_target(first_fd, first.pid) is None
+        with pytest.raises(witness.StartupRefusal, match="QEMU_STARTUP_UNCLASSIFIED"):
+            witness._pidfd_target(regular_fd, first.pid)
+        with pytest.raises(witness.StartupRefusal, match="QEMU_STARTUP_UNCLASSIFIED"):
+            witness._pidfd_target(other_fd, first.pid)
+        # Simulate fd-number reuse after the validated pidfd was closed.
+        reused_fd = os.dup(regular_fd)
+        os.dup2(reused_fd, first_fd)
+        os.close(reused_fd)
+        with pytest.raises(witness.StartupRefusal, match="QEMU_STARTUP_UNCLASSIFIED"):
+            witness._pidfd_target(first_fd, first.pid)
+        # Even an original genuine pidfd is no longer proof of a *live*
+        # process after the corresponding child has exited.
+        second.terminate()
+        second.wait(timeout=5)
+        with pytest.raises(witness.StartupRefusal):
+            witness._pidfd_target(other_fd, second.pid)
+        with pytest.raises(witness.StartupRefusal):
+            witness._birth_identity(second.pid)
+    finally:
+        for fd in (first_fd, other_fd, regular_fd):
+            os.close(fd)
+        for child in (first, second):
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=5)
