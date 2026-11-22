@@ -15,8 +15,13 @@ from pathlib import Path
 
 from windows_cachyos_qcow2_gpt_readonly import VIRTUAL_BYTES
 from windows_mint_ab_checkpoint import (
-    AB_DIR, ARMS, REFERENCE, assert_detached_from_processes,
-    file_guard, image_info, sha256_file,
+    AB_DIR,
+    ARMS,
+    REFERENCE,
+    assert_detached_from_processes,
+    file_guard,
+    image_info,
+    sha256_file,
 )
 from windows_mint_ab_forensic import gpt_manifest, write_manifest
 
