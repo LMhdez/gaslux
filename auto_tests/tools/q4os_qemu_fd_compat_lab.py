@@ -5,6 +5,7 @@ The guest is permanently stopped (-S), QMP is limited to read-only queries,
 and all drive files are freshly created within one private runner directory.
 This is evidence about QEMU FD reopening, not Windows/native installation.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -75,8 +76,9 @@ def birth(pid: int) -> tuple[int, int]:
 def assert_pidfd(pidfd: int, pid: int, original_birth: tuple[int, int]) -> None:
     require(os.readlink(f"/proc/self/fd/{pidfd}") == "anon_inode:[pidfd]", "PIDFD_TYPE")
     info = Path(f"/proc/self/fdinfo/{pidfd}").read_text()
-    target = next((line.split(":", 1)[1].strip() for line in info.splitlines()
-                   if line.startswith("Pid:")), "")
+    target = next(
+        (line.split(":", 1)[1].strip() for line in info.splitlines() if line.startswith("Pid:")), ""
+    )
     require(target == str(pid), "PIDFD_FOREIGN")
     require(birth(pid) == original_birth, "PROCESS_BIRTH_CHANGED")
     poll = select.poll()
@@ -97,8 +99,9 @@ def group_members(pgid: int) -> list[int]:
     return result
 
 
-def close_process(child: subprocess.Popen | None, pidfd: int | None,
-                  start: tuple[int, int] | None) -> dict:
+def close_process(
+    child: subprocess.Popen | None, pidfd: int | None, start: tuple[int, int] | None
+) -> dict:
     evidence = {"directReaped": child is None, "descendantsAbsent": child is None}
     try:
         if child is not None:
@@ -123,16 +126,18 @@ def close_process(child: subprocess.Popen | None, pidfd: int | None,
     return evidence
 
 
-def qmp_readonly(child: subprocess.Popen, path: Path,
-                 original_birth: tuple[int, int], pidfd: int) -> tuple[dict, socket.socket]:
+def qmp_readonly(
+    child: subprocess.Popen, path: Path, original_birth: tuple[int, int], pidfd: int
+) -> tuple[dict, socket.socket]:
     deadline = time.monotonic() + 12
     while not path.exists() and time.monotonic() < deadline:
         require(child.poll() is None, "QEMU_EARLY_EXIT")
         time.sleep(0.04)
     require(path.exists(), "QMP_SOCKET_TIMEOUT")
     observed = path.lstat()
-    require(stat.S_ISSOCK(observed.st_mode) and observed.st_uid == os.getuid(),
-            "QMP_SOCKET_UNTRUSTED")
+    require(
+        stat.S_ISSOCK(observed.st_mode) and observed.st_uid == os.getuid(), "QMP_SOCKET_UNTRUSTED"
+    )
     channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     channel.settimeout(4)
     try:
@@ -140,8 +145,10 @@ def qmp_readonly(child: subprocess.Popen, path: Path,
         peer = struct.unpack("3i", channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
         require(peer[0] == child.pid and peer[1] == os.getuid(), "QMP_PEER_FOREIGN")
         current = path.lstat()
-        require((current.st_dev, current.st_ino) == (observed.st_dev, observed.st_ino),
-                "QMP_SOCKET_REPLACED")
+        require(
+            (current.st_dev, current.st_ino) == (observed.st_dev, observed.st_ino),
+            "QMP_SOCKET_REPLACED",
+        )
         stream = channel.makefile("rb")
 
         def line() -> dict:
@@ -157,8 +164,10 @@ def qmp_readonly(child: subprocess.Popen, path: Path,
             require(name in ALLOWED_QMP, "QMP_COMMAND_FORBIDDEN")
             assert_pidfd(pidfd, child.pid, original_birth)
             now = path.lstat()
-            require((now.st_dev, now.st_ino) == (observed.st_dev, observed.st_ino),
-                    "QMP_SOCKET_REPLACED")
+            require(
+                (now.st_dev, now.st_ino) == (observed.st_dev, observed.st_ino),
+                "QMP_SOCKET_REPLACED",
+            )
             channel.sendall(json.dumps({"execute": name, "id": name}).encode() + b"\n")
             transcript["queries"].append(name)
             for _ in range(6):
@@ -189,8 +198,7 @@ def qmp_readonly(child: subprocess.Popen, path: Path,
 
 
 def fd_inventory(pid: int, roles: dict[str, int]) -> dict[str, int]:
-    targets = {name: (os.fstat(fd).st_dev, os.fstat(fd).st_ino)
-               for name, fd in roles.items()}
+    targets = {name: (os.fstat(fd).st_dev, os.fstat(fd).st_ino) for name, fd in roles.items()}
     matched = {name: 0 for name in roles}
     for item in Path(f"/proc/{pid}/fd").iterdir():
         try:
@@ -215,33 +223,71 @@ def firmware_pair() -> tuple[Path, Path]:
 
 def make_resources(work: Path) -> tuple[dict[str, Path], dict]:
     code_src, vars_src = firmware_pair()
-    paths = {name: work / name for name in
-             ("code.fd", "vars.fd", "disk.qcow2", "synthetic.iso")}
+    paths = {name: work / name for name in ("code.fd", "vars.fd", "disk.qcow2", "synthetic.iso")}
     shutil.copyfile(code_src, paths["code.fd"])
     shutil.copyfile(vars_src, paths["vars.fd"])
     paths["synthetic.iso"].write_bytes(b"GASLUX_SYNTHETIC_NOT_BOOTABLE" + b"\0" * 4096)
-    subprocess.run([QEMU_IMG, "create", "-f", "qcow2", str(paths["disk.qcow2"]),
-                    "64M"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   timeout=20)
-    info = json.loads(subprocess.check_output(
-        [QEMU_IMG, "info", "--output=json", str(paths["disk.qcow2"])], timeout=15))
-    require(info.get("format") == "qcow2" and info.get("virtual-size") == SIZE
-            and not info.get("backing-filename") and not info.get("full-backing-filename"),
-            "QCOW2_GEOMETRY_OR_BACKING_INVALID")
+    subprocess.run(
+        [QEMU_IMG, "create", "-f", "qcow2", str(paths["disk.qcow2"]), "64M"],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=20,
+    )
+    info = json.loads(
+        subprocess.check_output(
+            [QEMU_IMG, "info", "--output=json", str(paths["disk.qcow2"])], timeout=15
+        )
+    )
+    require(
+        info.get("format") == "qcow2"
+        and info.get("virtual-size") == SIZE
+        and not info.get("backing-filename")
+        and not info.get("full-backing-filename"),
+        "QCOW2_GEOMETRY_OR_BACKING_INVALID",
+    )
     for path in paths.values():
         path.chmod(0o600)
-    meta = {"virtualBytes": info["virtual-size"], "clusterBytes": info.get("cluster-size"),
-            "format": "qcow2", "backingPresent": False,
-            "resources": {name: {"bytes": path.stat().st_size, "sha256": sha256(path)}
-                          for name, path in paths.items()}}
+    meta = {
+        "virtualBytes": info["virtual-size"],
+        "clusterBytes": info.get("cluster-size"),
+        "format": "qcow2",
+        "backingPresent": False,
+        "resources": {
+            name: {"bytes": path.stat().st_size, "sha256": sha256(path)}
+            for name, path in paths.items()
+        },
+    }
     return paths, meta
 
 
 def args_for(mode: str, sock: Path, fds: dict[str, int]) -> list[str]:
-    args = [QEMU, "-machine", "q35", "-accel", "tcg", "-cpu", "max", "-smp", "1",
-            "-m", "128", "-S", "-nodefaults", "-no-reboot", "-display", "none",
-            "-serial", "none", "-monitor", "none", "-net", "none",
-            "-qmp", f"unix:{sock},server=on,wait=off"]
+    args = [
+        QEMU,
+        "-machine",
+        "q35",
+        "-accel",
+        "tcg",
+        "-cpu",
+        "max",
+        "-smp",
+        "1",
+        "-m",
+        "128",
+        "-S",
+        "-nodefaults",
+        "-no-reboot",
+        "-display",
+        "none",
+        "-serial",
+        "none",
+        "-monitor",
+        "none",
+        "-net",
+        "none",
+        "-qmp",
+        f"unix:{sock},server=on,wait=off",
+    ]
     backing = {}
     for index, (name, fd) in enumerate(fds.items(), start=1):
         if mode == "fdset":
@@ -249,15 +295,22 @@ def args_for(mode: str, sock: Path, fds: dict[str, int]) -> list[str]:
             backing[name] = f"/dev/fdset/{index}"
         else:
             backing[name] = f"/proc/self/fd/{fd}"
-    args += ["-drive", f"if=pflash,format=raw,unit=0,readonly=on,file={backing['code.fd']}",
-             "-drive", f"if=pflash,format=raw,unit=1,file={backing['vars.fd']}",
-             "-device", "ich9-ahci,id=sata",
-             "-drive", f"if=none,id=system,format=qcow2,file={backing['disk.qcow2']}",
-             "-device", "ide-hd,drive=system,bus=sata.0",
-             "-drive",
-             "if=none,id=install,format=raw,media=cdrom,readonly=on,"
-             f"file={backing['synthetic.iso']}",
-             "-device", "ide-cd,drive=install,bus=sata.1"]
+    args += [
+        "-drive",
+        f"if=pflash,format=raw,unit=0,readonly=on,file={backing['code.fd']}",
+        "-drive",
+        f"if=pflash,format=raw,unit=1,file={backing['vars.fd']}",
+        "-device",
+        "ich9-ahci,id=sata",
+        "-drive",
+        f"if=none,id=system,format=qcow2,file={backing['disk.qcow2']}",
+        "-device",
+        "ide-hd,drive=system,bus=sata.0",
+        "-drive",
+        f"if=none,id=install,format=raw,media=cdrom,readonly=on,file={backing['synthetic.iso']}",
+        "-device",
+        "ide-cd,drive=install,bus=sata.1",
+    ]
     return args
 
 
@@ -270,27 +323,40 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
     pidfd = None
     start = None
     channel = None
-    report: dict = {"mode": mode, "renameAfterPin": rename, "geometry": geometry,
-                    "success": False, "qemuBooted": False}
+    report: dict = {
+        "mode": mode,
+        "renameAfterPin": rename,
+        "geometry": geometry,
+        "success": False,
+        "qemuBooted": False,
+    }
     stderr = work / "private-qemu-stderr.log"
     try:
         for name, path in paths.items():
             fds[name] = pinned(path, name in ("vars.fd", "disk.qcow2"))
-        original = {name: (os.fstat(fd).st_dev, os.fstat(fd).st_ino, sha256_fd(fd))
-                    for name, fd in fds.items()}
+        original = {
+            name: (os.fstat(fd).st_dev, os.fstat(fd).st_ino, sha256_fd(fd))
+            for name, fd in fds.items()
+        }
         if rename:
             disk = paths["disk.qcow2"]
             disk.rename(work / "retained-owned-disk.qcow2")
             disk.write_bytes(b"FOREIGN_SENTINEL_UNMODIFIED")
             foreign_hash = sha256(disk)
-            require(os.fstat(fds["disk.qcow2"]).st_ino == original["disk.qcow2"][1],
-                    "RENAME_PIN_BROKEN")
+            require(
+                os.fstat(fds["disk.qcow2"]).st_ino == original["disk.qcow2"][1], "RENAME_PIN_BROKEN"
+            )
             report["renameForeignUnchanged"] = False
         with stderr.open("xb") as error_output:
-            child = subprocess.Popen(args_for(mode, work / "qmp.sock", fds),
-                                     cwd=work, start_new_session=True,
-                                     pass_fds=tuple(fds.values()), stdin=subprocess.DEVNULL,
-                                     stdout=subprocess.DEVNULL, stderr=error_output)
+            child = subprocess.Popen(
+                args_for(mode, work / "qmp.sock", fds),
+                cwd=work,
+                start_new_session=True,
+                pass_fds=tuple(fds.values()),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=error_output,
+            )
         start = birth(child.pid)
         require(start[1] == child.pid, "PROCESS_GROUP_NOT_OWNED")
         pidfd = os.pidfd_open(child.pid)
@@ -316,8 +382,10 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
         report["qmp"] = transcript
         report["openedOwnedInodes"] = fd_inventory(child.pid, fds)
         for name, fd in fds.items():
-            require((os.fstat(fd).st_dev, os.fstat(fd).st_ino) == original[name][:2],
-                    "FD_PIN_IDENTITY_CHANGED")
+            require(
+                (os.fstat(fd).st_dev, os.fstat(fd).st_ino) == original[name][:2],
+                "FD_PIN_IDENTITY_CHANGED",
+            )
         if rename:
             report["renameForeignUnchanged"] = sha256(paths["disk.qcow2"]) == foreign_hash
             require(report["renameForeignUnchanged"], "FOREIGN_DISK_MODIFIED")
@@ -330,16 +398,24 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
         # Reject the swapped pathname without issuing further QMP commands.
         try:
             observed = socket_path.lstat()
-            require(stat.S_ISSOCK(observed.st_mode) and
-                    (observed.st_dev, observed.st_ino) == (identity.st_dev, identity.st_ino),
-                    "SOCKET_SWAP_REJECTED")
+            require(
+                stat.S_ISSOCK(observed.st_mode)
+                and (observed.st_dev, observed.st_ino) == (identity.st_dev, identity.st_ino),
+                "SOCKET_SWAP_REJECTED",
+            )
         except LabRefusal as exc:
             require(str(exc) == "SOCKET_SWAP_REJECTED", "SOCKET_SWAP_REASON")
             report["socketSwapRejected"] = True
         require(tuple(transcript["queries"]) == before_queries, "QMP_SENT_AFTER_SWAP")
         report["success"] = True
-    except (LabRefusal, OSError, ValueError, subprocess.SubprocessError, KeyError,
-            json.JSONDecodeError) as exc:
+    except (
+        LabRefusal,
+        OSError,
+        ValueError,
+        subprocess.SubprocessError,
+        KeyError,
+        json.JSONDecodeError,
+    ) as exc:
         report["refusal"] = str(exc) if isinstance(exc, LabRefusal) else "QEMU_STARTUP_FAILED"
         if child is not None:
             report["earlyExitCode"] = child.poll()
@@ -349,24 +425,34 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
         try:
             report["cleanup"] = close_process(child, pidfd, start)
         except (LabRefusal, OSError, subprocess.SubprocessError) as exc:
-            report["cleanup"] = {"directReaped": False, "descendantsAbsent": False,
-                                 "reason": str(exc) if isinstance(exc, LabRefusal)
-                                 else "CLEANUP_FAILED"}
+            report["cleanup"] = {
+                "directReaped": False,
+                "descendantsAbsent": False,
+                "reason": str(exc) if isinstance(exc, LabRefusal) else "CLEANUP_FAILED",
+            }
         for fd in fds.values():
             os.close(fd)
-        report["postHash"] = {name: sha256(path) for name, path in paths.items()
-                              if path.is_file() and not path.is_symlink()}
+        report["postHash"] = {
+            name: sha256(path)
+            for name, path in paths.items()
+            if path.is_file() and not path.is_symlink()
+        }
         if rename:
             report["pinnedDiskAfter"] = sha256(work / "retained-owned-disk.qcow2")
         # Quiescent guest: OVMF VARS must never change unexpectedly.
-        report["varsUnchanged"] = (report["postHash"]["vars.fd"] ==
-                                   geometry["resources"]["vars.fd"]["sha256"])
-        report["codeUnchanged"] = (report["postHash"]["code.fd"] ==
-                                   geometry["resources"]["code.fd"]["sha256"])
-        report["success"] = (report["success"] and report["varsUnchanged"]
-                             and report["codeUnchanged"] and
-                             report["cleanup"].get("directReaped") is True and
-                             report["cleanup"].get("descendantsAbsent") is True)
+        report["varsUnchanged"] = (
+            report["postHash"]["vars.fd"] == geometry["resources"]["vars.fd"]["sha256"]
+        )
+        report["codeUnchanged"] = (
+            report["postHash"]["code.fd"] == geometry["resources"]["code.fd"]["sha256"]
+        )
+        report["success"] = (
+            report["success"]
+            and report["varsUnchanged"]
+            and report["codeUnchanged"]
+            and report["cleanup"].get("directReaped") is True
+            and report["cleanup"].get("descendantsAbsent") is True
+        )
     return report
 
 
@@ -390,12 +476,32 @@ def negative_cases(root: Path) -> dict:
         os.close(fd)
     # A genuinely closed FD should be rejected by QEMU, not silently reused.
     invalid_fd = 99999
-    args = [QEMU, "-machine", "q35", "-accel", "tcg", "-S", "-nodefaults",
-            "-display", "none", "-monitor", "none", "-net", "none",
-            "-drive", f"if=none,id=closed,format=raw,file=/proc/self/fd/{invalid_fd}"]
-    done = subprocess.run(args, cwd=work, stdin=subprocess.DEVNULL,
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                          timeout=15, check=False)
+    args = [
+        QEMU,
+        "-machine",
+        "q35",
+        "-accel",
+        "tcg",
+        "-S",
+        "-nodefaults",
+        "-display",
+        "none",
+        "-monitor",
+        "none",
+        "-net",
+        "none",
+        "-drive",
+        f"if=none,id=closed,format=raw,file=/proc/self/fd/{invalid_fd}",
+    ]
+    done = subprocess.run(
+        args,
+        cwd=work,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=15,
+        check=False,
+    )
     result["closedFdRejectedByQemu"] = done.returncode != 0
     # A live, paused QEMU without a QMP listener must not be mistaken for QMP.
     timeout_process = None
@@ -403,50 +509,85 @@ def negative_cases(root: Path) -> dict:
     timeout_birth = None
     try:
         timeout_process = subprocess.Popen(
-            [QEMU, "-machine", "q35", "-accel", "tcg", "-S", "-nodefaults",
-             "-display", "none", "-monitor", "none", "-net", "none"],
-            cwd=work, start_new_session=True, stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            [
+                QEMU,
+                "-machine",
+                "q35",
+                "-accel",
+                "tcg",
+                "-S",
+                "-nodefaults",
+                "-display",
+                "none",
+                "-monitor",
+                "none",
+                "-net",
+                "none",
+            ],
+            cwd=work,
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         timeout_birth = birth(timeout_process.pid)
         timeout_pidfd = os.pidfd_open(timeout_process.pid)
         assert_pidfd(timeout_pidfd, timeout_process.pid, timeout_birth)
         time.sleep(0.25)
-        result["noQmpTimeoutRefused"] = (timeout_process.poll() is None and
-                                         not (work / "missing-qmp.sock").exists())
+        result["noQmpTimeoutRefused"] = (
+            timeout_process.poll() is None and not (work / "missing-qmp.sock").exists()
+        )
     finally:
-        result["timeoutCleanup"] = close_process(timeout_process, timeout_pidfd,
-                                                 timeout_birth)
-    require(all(result[key] for key in ("varsMutationDetected", "wrongFdRejected",
-                                         "closedFdRejectedByQemu",
-                                         "noQmpTimeoutRefused")), "NEGATIVE_CASE_FAILED")
-    require(result["timeoutCleanup"]["directReaped"] and
-            result["timeoutCleanup"]["descendantsAbsent"], "TIMEOUT_CLEANUP_FAILED")
+        result["timeoutCleanup"] = close_process(timeout_process, timeout_pidfd, timeout_birth)
+    require(
+        all(
+            result[key]
+            for key in (
+                "varsMutationDetected",
+                "wrongFdRejected",
+                "closedFdRejectedByQemu",
+                "noQmpTimeoutRefused",
+            )
+        ),
+        "NEGATIVE_CASE_FAILED",
+    )
+    require(
+        result["timeoutCleanup"]["directReaped"] and result["timeoutCleanup"]["descendantsAbsent"],
+        "TIMEOUT_CLEANUP_FAILED",
+    )
     return result
 
 
 def main() -> int:
-    if not (os.environ.get("GITHUB_ACTIONS") == "true"
-            and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
-            and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
-            and os.geteuid() != 0):
+    if not (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and os.geteuid() != 0
+    ):
         print("Q4OS_FD_LAB=ENVIRONMENT_DENIED")
         return 2
     evidence_dir = Path(os.environ["GASLUX_Q4OS_FD_EVIDENCE"])
     evidence_dir.mkdir(mode=0o700)
     root = Path(tempfile.mkdtemp(prefix="q4os-fd-", dir=os.environ["RUNNER_TEMP"]))
     report: dict = {
-        "schemaVersion": 1, "fixtureOnly": True,
+        "schemaVersion": 1,
+        "fixtureOnly": True,
         "head": os.environ.get("GITHUB_SHA", ""),
         "utc": datetime.now(UTC).isoformat(),
-        "qemuBooted": False, "guestOsUsed": False,
-        "windowsSetupVerified": False, "calamaresExecuted": False,
+        "qemuBooted": False,
+        "guestOsUsed": False,
+        "windowsSetupVerified": False,
+        "calamaresExecuted": False,
         "productionStorageWritesAuthorized": False,
         "q4osNativeInstallationVerified": False,
-        "windowsInPlaceRollbackProven": False, "stable": False,
+        "windowsInPlaceRollbackProven": False,
+        "stable": False,
         "qemuVersion": subprocess.check_output([QEMU, "--version"], timeout=5)
-                       .decode("utf-8", "replace").splitlines()[0][:120],
+        .decode("utf-8", "replace")
+        .splitlines()[0][:120],
         "argsContract": "q35 tcg 1vCPU 128MiB -S -nodefaults pflash code/vars "
-                        "qcow2 synthetic-cdrom QMP-readonly; no guest input",
+        "qcow2 synthetic-cdrom QMP-readonly; no guest input",
         "scenarios": {},
     }
     try:
@@ -463,8 +604,7 @@ def main() -> int:
         (evidence_dir / "q4os-fd-evidence.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
-    print("GASLUX_Q4OS_FD_COMPATIBILITY=" +
-          ("PASS" if report["compatible"] else "DENY"))
+    print("GASLUX_Q4OS_FD_COMPATIBILITY=" + ("PASS" if report["compatible"] else "DENY"))
     return 0 if report["compatible"] else 1
 
 
