@@ -50,8 +50,18 @@ def _pins_for_file(path: Path, fd_number: int) -> HostPins:
     )
     st = path.stat()
     return HostPins(
-        seal, "a" * 64, "synthetic-tx", "synthetic-vm", "synthetic-challenge",
-        "disk0", "synthetic-serial", fd_number, path, st.st_dev, st.st_ino, st.st_size,
+        seal,
+        "a" * 64,
+        "synthetic-tx",
+        "synthetic-vm",
+        "synthetic-challenge",
+        "disk0",
+        "synthetic-serial",
+        fd_number,
+        path,
+        st.st_dev,
+        st.st_ino,
+        st.st_size,
     )
 
 
@@ -68,8 +78,12 @@ def test_real_readonly_fd_proves_only_local_measurement(tmp_path):
         assert evidence["readMethod"] == "proc-fd-reopened-readonly-pread"
         assert all(v is not True for k, v in evidence.items() if "Authorized" in k)
         with borrowed_readonly_proc_fd(
-            os.getpid(), source.fileno(), image, expected_dev=pins.expected_dev,
-            expected_inode=pins.expected_inode, expected_size=pins.expected_size,
+            os.getpid(),
+            source.fileno(),
+            image,
+            expected_dev=pins.expected_dev,
+            expected_inode=pins.expected_inode,
+            expected_size=pins.expected_size,
             expected_start_ticks=pins.process.start_ticks,
         ) as fd:
             assert os.pread(fd, 9, 0) == b"synthetic"
@@ -135,8 +149,13 @@ print("HOST_FD_READONLY_IMPORT")
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
     result = subprocess.run(
-        [sys.executable, "-c", script], cwd=ROOT, env=env,
-        capture_output=True, text=True, check=False, timeout=15,
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "HOST_FD_READONLY_IMPORT" in result.stdout
@@ -153,9 +172,15 @@ def test_no_transitive_operational_imports_and_no_writer_calls():
             elif isinstance(node, ast.ImportFrom):
                 imports.append(node.module or "")
         for forbidden in (
-            "lab_identity", "state_machine", "gpt_lab_provenance",
-            "gpt_readonly_producer", "remote_verifier", "transport_vnc",
-            "controller_lease", "subprocess", "libguestfs",
+            "lab_identity",
+            "state_machine",
+            "gpt_lab_provenance",
+            "gpt_readonly_producer",
+            "remote_verifier",
+            "transport_vnc",
+            "controller_lease",
+            "subprocess",
+            "libguestfs",
         ):
             assert all(not name.endswith(forbidden) for name in imports)
         for node in ast.walk(tree):
@@ -183,19 +208,35 @@ def test_no_qemu_or_guest_or_external_approval_from_synthetic_claims(tmp_path):
     path = tmp_path / "fake.raw"
     fake = ProcessSeal(os.getpid(), os.geteuid(), 100, "x", 1, 1)
     pins = HostPins(
-        fake, "a" * 64, "synthetic-tx", "synthetic-vm", "synthetic-challenge",
-        "disk0", "synthetic-serial", 4, path.absolute(), 1, 2, 1024 * 1024,
+        fake,
+        "a" * 64,
+        "synthetic-tx",
+        "synthetic-vm",
+        "synthetic-challenge",
+        "disk0",
+        "synthetic-serial",
+        4,
+        path.absolute(),
+        1,
+        2,
+        1024 * 1024,
     )
     context = declared_context(pins)
     assert all(item["assurance"] == "CLAIMED" for item in context.values())
-    qmp_claims = [{
-        "device": "disk0", "inserted": {
-            "file": str(pins.media_path), "ro": True,
-            "image": {"filename": str(pins.media_path), "format": "raw"},
-        },
-    }]
+    qmp_claims = [
+        {
+            "device": "disk0",
+            "inserted": {
+                "file": str(pins.media_path),
+                "ro": True,
+                "image": {"filename": str(pins.media_path), "format": "raw"},
+            },
+        }
+    ]
     result = correlate_qmp_fd(
-        pins, {"fileDev": 1, "fileInode": 2, "fileSizeBytes": 1024 * 1024}, qmp_claims,
+        pins,
+        {"fileDev": 1, "fileInode": 2, "fileSizeBytes": 1024 * 1024},
+        qmp_claims,
     )
     assert result["claimedQmpFdConsistency"] is True
     for key in ("localQmpFdConsistency", "deviceFdAssociationProven", "vmDiskBindingProven"):
@@ -212,8 +253,18 @@ def test_absent_gpt_verifier_cannot_promote_synthetic_file(tmp_path):
     fake = ProcessSeal(os.getpid(), os.geteuid(), 100, "x", 1, 1)
     path = (tmp_path / "absent.raw").absolute()
     pins = HostPins(
-        fake, "a" * 64, "synthetic-tx", "synthetic-vm", "synthetic-challenge",
-        "disk0", "synthetic-serial", 4, path, 1, 2, 1024 * 1024,
+        fake,
+        "a" * 64,
+        "synthetic-tx",
+        "synthetic-vm",
+        "synthetic-challenge",
+        "disk0",
+        "synthetic-serial",
+        4,
+        path,
+        1,
+        2,
+        1024 * 1024,
     )
     with pytest.raises((HostBoundaryRefused, HostEvidenceRefused)):
         observe_host_qemu(pins, gpt_fd_gate=None, qmp_blocks=[])
