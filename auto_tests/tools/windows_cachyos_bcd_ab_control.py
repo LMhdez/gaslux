@@ -112,6 +112,53 @@ def _copy_owned(source: Path, target: Path, mode: int) -> os.stat_result:
         raise
 
 
+# A byte-for-byte copy of a sparse QCOW2 allocates up to st_size bytes,
+# not the QCOW2 guest's virtual-size and not the source's st_blocks * 512.
+# Reserve additional space for the Windows guest, TPM and bounded witnesses;
+# this is a minimum safety preflight, not proof of external disk quota.
+AB_MIN_FREE_RESERVE_BYTES = 8 * 1024**3
+
+
+def preflight_ab_clone_capacity(
+    folder: Path, disk: os.stat_result, vars_file: os.stat_result,
+) -> dict[str, Any]:
+    """Read-only fail-closed A/B clone capacity check before any file creation.
+
+    Only f_bavail (blocks available to this user) is relevant: f_bfree
+    includes filesystem-reserved space. The clone copies all apparent source
+    bytes; a sparse source's st_blocks would undercount physical allocation.
+    """
+    directory = folder.lstat()
+    require(stat.S_ISDIR(directory.st_mode)
+            and directory.st_dev == disk.st_dev == vars_file.st_dev,
+            "A/B sources and clone directory must share the same filesystem")
+    require(disk.st_size > 0 and vars_file.st_size > 0,
+            "A/B checkpoint sources must be nonempty")
+    try:
+        volume = os.statvfs(folder)
+    except OSError as error:
+        raise BcdAbControlError("A/B physical free-space measurement unavailable") from error
+    block_bytes = volume.f_frsize
+    require(block_bytes > 0 and volume.f_blocks > 0
+            and 0 <= volume.f_bavail <= volume.f_bfree <= volume.f_blocks,
+            "A/B physical free-space metadata is invalid")
+    available_bytes = block_bytes * volume.f_bavail
+    clone_bytes = disk.st_size + vars_file.st_size
+    reserve_bytes = AB_MIN_FREE_RESERVE_BYTES + (clone_bytes + 7) // 8
+    required_bytes = clone_bytes + reserve_bytes
+    require(available_bytes >= required_bytes,
+            "A/B physical free space insufficient before clone creation")
+    return {
+        "method": "statvfs.f_bavail",
+        "sourceApparentBytesToMaterialize": clone_bytes,
+        "requiredFreeBytesBeforeClone": required_bytes,
+        "availableFreeBytesBeforeClone": available_bytes,
+        "reservedBytesForGuestAndWitnesses": reserve_bytes,
+        "filesystemQuotaIndependentlyProven": False,
+        "checkpointInPlaceRecoveryProven": False,
+    }
+
+
 def prepare_matched_checkpoint_clones(
     folder: Path,
 ) -> tuple[Path, Path, str, str]:
@@ -130,6 +177,8 @@ def prepare_matched_checkpoint_clones(
     ]
     require(all(stat.S_IMODE(st.st_mode) == 0o600 for st in original),
             "A/B checkpoint source permissions must be 0600")
+    # Do not create a control clone before checking *physical*, usable space.
+    preflight_ab_clone_capacity(folder, original[0], original[1])
     for target in (disk_a, vars_a):
         require(not target.exists() and not target.is_symlink(),
                 "refusing reused A/B clone target")
@@ -453,6 +502,10 @@ def run_windows_only_bcd_control(
             and stat.S_IMODE(base.stat().st_mode) == 0o400,
             "A/B checkpoint permissions are unsafe")
 
+    capacity_preflight = preflight_ab_clone_capacity(
+        folder, overlay_b.lstat(), vars_b.lstat(),
+    )
+
     base_before = sha256_file(base)
     base_identity = qcow2_file_identity(base)
     nvram_before = sha256_file(nvram)
@@ -586,6 +639,7 @@ def run_windows_only_bcd_control(
 
     report: dict[str, Any] = {
         "controlArm": "Windows-only",
+        "physicalCloneCapacityPreflight": capacity_preflight,
         "treatmentArm": "CachyOS Archiso/pacstrap then Windows",
         "controlWindowsBootVerified": True,
         "controlWindowsSerialSha256": boot.get("fourthGuestSerialSha256"),
