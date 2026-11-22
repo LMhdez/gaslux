@@ -125,6 +125,8 @@ def supervise(
     prompt_seconds: float = 90,
     progress_seconds: float = 600,
     tick: float = 0.05,
+    qmp_channel: Qmp | None = None,
+    process_guard=None,
 ) -> dict:
     """Require prompt, exactly one QMP key acknowledgement, then QCOW2 activity.
 
@@ -142,31 +144,38 @@ def supervise(
     )
     _private(disk_path, "disk")
     connect_deadline = time.monotonic() + connect_seconds
-    qmp = None
-    while time.monotonic() < connect_deadline:
-        try:
-            qmp = Qmp(socket_path)
-            break
-        except (FileNotFoundError, ConnectionRefusedError):
-            time.sleep(tick)
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            raise BootRefusal("qmp_unavailable_or_malformed") from exc
+    qmp = qmp_channel
+    if qmp is None:
+        while time.monotonic() < connect_deadline:
+            try:
+                qmp = Qmp(socket_path)
+                break
+            except (FileNotFoundError, ConnectionRefusedError):
+                time.sleep(tick)
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                raise BootRefusal("qmp_unavailable_or_malformed") from exc
     require(qmp is not None, "qmp_socket_unavailable")
     try:
         deadline = time.monotonic() + prompt_seconds
         while time.monotonic() < deadline:
+            if process_guard is not None:
+                process_guard()
             serial = _serial_text(serial_path)
             error = _boot_error(serial)
             require(error is None, error or "unknown_boot_error")
             if PROMPT in serial:
                 # Never issue another key during Windows Setup or later reboots.
                 size_before_key = disk_path.stat().st_size
+                if process_guard is not None:
+                    process_guard()
                 try:
                     qmp.send_key_once()
                 except (OSError, ValueError, BootRefusal) as exc:
                     raise BootRefusal("qmp_send_key_failed") from exc
                 deadline_progress = time.monotonic() + progress_seconds
                 while time.monotonic() < deadline_progress:
+                    if process_guard is not None:
+                        process_guard()
                     serial = _serial_text(serial_path)
                     error = _boot_error(serial)
                     require(error is None, error or "unknown_boot_error")
