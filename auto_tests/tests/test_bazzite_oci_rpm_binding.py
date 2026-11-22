@@ -16,10 +16,16 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "auto_tests"))
 from bazzite_oci_bootc_readback import (  # noqa: E402
-    NO_WRITE, digest_bytes, finish, scan_layer,
+    NO_WRITE,
+    digest_bytes,
+    finish,
+    scan_layer,
 )
 from bazzite_oci_rpm_binding import (  # noqa: E402
-    RPM_HEADER_MAGIC, RPMDB_PATHS, PackageUnproven, bind_rpm, elf_build_id,
+    RPM_HEADER_MAGIC,
+    RPMDB_PATHS,
+    PackageUnproven,
+    elf_build_id,
     rpm_header,
 )
 
@@ -151,7 +157,9 @@ def test_rpm_database_and_exact_elf_byte_binding_green():
     assert all(output[flag] is False for flag in NO_WRITE)
 
 
-@pytest.mark.parametrize("scenario", ["missing", "truncated", "foreign", "wrong-hash", "fake-version"])
+@pytest.mark.parametrize(
+    "scenario", ["missing", "truncated", "foreign", "wrong-hash", "fake-version"]
+)
 def test_missing_forged_and_malformed_rpm_binding_refused(scenario):
     elf = elf_fixture()
     good_sha = hashlib.sha256(elf).hexdigest()

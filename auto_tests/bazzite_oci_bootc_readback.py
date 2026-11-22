@@ -26,7 +26,6 @@ from bazzite_oci_rpm_binding import (
     MAX_ELF_PREFIX,
     MAX_RPMDB,
     RPMDB_ALL,
-    RPMDB_PATHS,
     bind_rpm,
 )
 
