@@ -146,8 +146,7 @@ def test_missing_fields_and_extra_provenance_never_promote():
 
 def test_spec_requires_exact_nvr_and_patch_review():
     template = (
-        "Name: bootc\nVersion: 1.17.1\nRelease: 1%{?dist}\n"
-        "%prep\n%autosetup -p1 -a1\n%build\n"
+        "Name: bootc\nVersion: 1.17.1\nRelease: 1%{?dist}\n%prep\n%autosetup -p1 -a1\n%build\n"
     )
     result = analyze_spec(template)
     assert result["patchesDeclared"] == []
