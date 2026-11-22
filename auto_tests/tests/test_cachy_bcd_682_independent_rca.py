@@ -5,6 +5,7 @@ from a pinned checkout. Synthetic byte fixtures never establish process identity
 The additional context gate is TEST-ONLY: Integrator 3 must authenticate its
 inputs before it can be used to reason about genuine Windows A/B captures.
 """
+
 from __future__ import annotations
 
 import copy
@@ -208,10 +209,15 @@ def test_claimed_writer_flags_are_not_cryptographic_provenance():
         writerAuthenticatedB=True,
         sourceAuthenticated=True,
     )
-    assert _check_matched_context(case, require_writer=True) == "STRUCTURAL_AB_ONLY_NOT_CAUSAL"
+    assert (
+        _check_matched_context(case, require_writer=True)
+        == "STRUCTURAL_AB_ONLY_NOT_CAUSAL"
+    )
 
 
-@pytest.mark.parametrize("field", ["changedByteCount", "prebootBcdSha256", "approvedMutation"])
+@pytest.mark.parametrize(
+    "field", ["changedByteCount", "prebootBcdSha256", "approvedMutation"]
+)
 def test_malformed_or_promoted_real_bcd_evidence_refused(field):
     control, _ = _matched()
     if field == "changedByteCount":
