@@ -23,9 +23,10 @@ from gaslux_popos_distinst_prewrite_gap import (  # noqa: E402
     UPSTREAM_SOURCE_COMMIT,
     assess_prewrite_gap,
 )
-from test_windows10_popos_native_write_set import lab_fixture  # noqa: E402
 from windows10_popos_native_write_set import _digest  # noqa: E402
 from windows_x64_installed_gpt_ro_audit import DiskAuditError  # noqa: E402
+
+from test_windows10_popos_native_write_set import lab_fixture  # noqa: E402
 
 
 def fixture() -> tuple[list, dict]:
@@ -33,15 +34,17 @@ def fixture() -> tuple[list, dict]:
     before, after, plan, media, guest, tx, checkpoint, operations = values
     media["isoSha256"] = ISO_SHA256
     media["distinstSha256"] = ELF_SHA256
-    tx["handoffSha256"] = _digest({
-        "before": before,
-        "after": after,
-        "plan": plan,
-        "media": media,
-        "guest": guest,
-        "checkpoint": checkpoint,
-        "transactionId": tx["transactionId"],
-    })
+    tx["handoffSha256"] = _digest(
+        {
+            "before": before,
+            "after": after,
+            "plan": plan,
+            "media": media,
+            "guest": guest,
+            "checkpoint": checkpoint,
+            "transactionId": tx["transactionId"],
+        }
+    )
     request = {
         "operation": "read-only-observation",
         "transactionId": tx["transactionId"],
@@ -79,17 +82,22 @@ class PopDistinstPrewriteGapTests(unittest.TestCase):
         result = self.assess()
         self.assertEqual(result["decision"], "DENY_NO_WRITER")
         self.assertEqual(result["transactionId"], self.request["transactionId"])
-        self.assertEqual(result["firstPotentialPersistentDiskStep"],
-                         "Installer::partition -> disk.commit")
+        self.assertEqual(
+            result["firstPotentialPersistentDiskStep"], "Installer::partition -> disk.commit"
+        )
         self.assertFalse(result["nativeTestFlagIsReadOnly"])
         self.assertFalse(result["completeNativeWriteSetAvailableBeforeMutation"])
         self.assertFalse(result["sourceToInstalledElfCorrespondenceVerified"])
         self.assertFalse(result["nativeBootloaderVerifiedForPinnedElf"])
         for key in (
-            "observationComplete", "distinstExecutionAuthorized",
-            "windowsWriterAuthorized", "productionInstallationAuthorized",
-            "sameDiskDualBootVerified", "windowsInPlaceRollbackProven",
-            "releaseEligible", "stable",
+            "observationComplete",
+            "distinstExecutionAuthorized",
+            "windowsWriterAuthorized",
+            "productionInstallationAuthorized",
+            "sameDiskDualBootVerified",
+            "windowsInPlaceRollbackProven",
+            "releaseEligible",
+            "stable",
         ):
             self.assertIs(result[key], False, key)
         self.assertNotIn("argv", result)
@@ -206,9 +214,16 @@ class PopDistinstPrewriteGapTests(unittest.TestCase):
 
     def test_no_process_shell_or_block_device_from_new_classifier(self) -> None:
         source = (TOOLS / "gaslux_popos_distinst_prewrite_gap.py").read_text()
-        for forbidden in ("subprocess.run(", "subprocess.Popen(",
-                          "os.system(", "os.open(", "distinst --test",
-                          "mkfs.fat ", "mkfs.ext4 ", "os.exec"):
+        for forbidden in (
+            "subprocess.run(",
+            "subprocess.Popen(",
+            "os.system(",
+            "os.open(",
+            "distinst --test",
+            "mkfs.fat ",
+            "mkfs.ext4 ",
+            "os.exec",
+        ):
             self.assertNotIn(forbidden, source)
 
 
