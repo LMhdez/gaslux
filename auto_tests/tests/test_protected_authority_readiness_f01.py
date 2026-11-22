@@ -1,4 +1,5 @@
 """F-01 adversarial contract: imports the real #295 readiness module, no mocks."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -64,9 +65,7 @@ def build(control: str, payload: dict) -> dict:
 def valid_schema(report: dict) -> bool:
     definition = json.loads(SCHEMA.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(definition)
-    Draft202012Validator(
-        definition, format_checker=FormatChecker()
-    ).validate(report)
+    Draft202012Validator(definition, format_checker=FormatChecker()).validate(report)
     return True
 
 
@@ -75,10 +74,7 @@ def blocked(output: dict) -> None:
     assert output["readOnlyDiagnostic"] is True
     assert len(output["controls"]) == 23
     assert set(output["controls"]) == set(gate.CONTROLS)
-    assert all(
-        value["status"] == "NOT_VERIFIABLE"
-        for value in output["controls"].values()
-    )
+    assert all(value["status"] == "NOT_VERIFIABLE" for value in output["controls"].values())
     assert set(output["capabilities"]) == set(gate.CAPABILITY_NAMES)
     assert len(output["capabilities"]) == 7
     assert all(value is False for value in output["capabilities"].values())
@@ -91,9 +87,7 @@ def test_schema_accepts_json_backend_but_fails_closed(control, backend):
     assert valid_schema(data)
     result = gate.assess_readiness(data)
     blocked(result)
-    assert result["controls"][control]["reason"] == (
-        "LEDGER_BACKEND_FIELD_INVALID_OR_UNVERIFIABLE"
-    )
+    assert result["controls"][control]["reason"] == ("LEDGER_BACKEND_FIELD_INVALID_OR_UNVERIFIABLE")
 
 
 @pytest.mark.parametrize("control", LEDGER_CONTROLS)
@@ -112,9 +106,7 @@ def test_backend_absent_is_explicitly_unverifiable(control):
     assert valid_schema(data)
     result = gate.assess_readiness(data)
     blocked(result)
-    assert result["controls"][control]["reason"] == (
-        "LEDGER_BACKEND_FIELD_INVALID_OR_UNVERIFIABLE"
-    )
+    assert result["controls"][control]["reason"] == ("LEDGER_BACKEND_FIELD_INVALID_OR_UNVERIFIABLE")
 
 
 @pytest.mark.parametrize("control", LEDGER_CONTROLS)
