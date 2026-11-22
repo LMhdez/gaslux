@@ -1,0 +1,64 @@
+name: Observer 258-259 subset integration (read-only)
+on:
+  push:
+    branches:
+      - integration/observer-258-259-validation-20261120
+  pull_request:
+    paths:
+      - 'auto_tests/installer_observer/**'
+      - 'auto_tests/tests/test_observer_controller_lease.py'
+      - 'docs/distro-backends/SHARED_CONTRACTS.md'
+      - '.github/workflows/observer-258-259-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  observer-lease-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated test dependencies
+        run: python -m pip install 'pytest>=8,<10' 'pillow>=11,<13' 'ruff>=0.8,<1' 'jsonschema>=4,<5'
+      - name: Compile imported observer modules
+        run: python -m compileall -q auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/controller_lease.py auto_tests/tests/test_observer_controller_lease.py
+      - name: Ruff lint
+        run: python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/controller_lease.py auto_tests/tests/test_observer_controller_lease.py
+      - name: Ruff format validation
+        run: python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/lab_identity.py auto_tests/installer_observer/controller_lease.py auto_tests/tests/test_observer_controller_lease.py
+      - name: Run controller ownership and negative contracts
+        run: python -m pytest -q auto_tests/tests/test_observer_controller_lease.py
+      - name: Validate distribution JSON schemas
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+          for path in sorted(Path("schemas").glob("*.schema.json")):
+              Draft202012Validator.check_schema(json.loads(path.read_text(encoding="utf-8")))
+          PY
+      - name: Enforce experimental non-writer boundary
+        env:
+          INTEGRATION_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import os
+          changed = subprocess.check_output(["git", "diff", "--name-only", "90b044ba435b2b4b4db6c5813ca4698b37e4a555", os.environ["INTEGRATION_HEAD"]], text=True).splitlines()
+          print("Integrated files relative to pinned dev:", repr(changed))
+          forbidden = ("release-config.json", "Installation/", "Scripts/", "assets/live/", "Pages/")
+          if any(p == forbidden[0] or p.startswith(forbidden[1:]) for p in changed):
+              raise SystemExit("Production writer or release surface modified")
+          text = Path("auto_tests/installer_observer/controller_lease.py").read_text(encoding="utf-8")
+          for marker in ("LOCK_EX | fcntl.LOCK_NB", "os.O_NOFOLLOW", "process_seal(self.expected.pid)", "raise Refusal"):
+              if marker not in text:
+                  raise SystemExit(f"Missing expected refusal mechanism: {marker}")
+          print("No changes to production writer/release surface; lease gates present")
+          PY
