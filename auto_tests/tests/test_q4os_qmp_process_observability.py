@@ -130,6 +130,13 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
             raise OSError("refuse unsafe termination")
 
         monkeypatch.setattr(witness.signal, "pidfd_send_signal", signal_fails)
+    else:
+
+        def fake_pidfd_signal(_fd, sig):
+            # No real process is signalled: only the simulated child exits.
+            holder["process"].returncode = -sig
+
+        monkeypatch.setattr(witness.signal, "pidfd_send_signal", fake_pidfd_signal)
 
     report = witness.run_lab(
         work,
