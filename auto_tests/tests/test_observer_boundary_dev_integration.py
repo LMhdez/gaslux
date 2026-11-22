@@ -108,7 +108,7 @@ def test_declared_provenance_cannot_be_promoted_to_attestation():
 @pytest.mark.parametrize("invalid", (True, False, 0, 1, "4102"))
 def test_noncanonical_process_identity_is_rejected(invalid):
     peer = PeerIdentity(2201, invalid, 99001)
-    with pytest.raises(Refusal, match="Invalid simulation fixture"):
+    with pytest.raises(Refusal, match="invalid simulation fixture"):
         ObservationBoundaryModel(
             peer=peer,
             session_id=str(uuid.uuid4()),
