@@ -33,7 +33,7 @@ def header(*, backing: bool = False, version: int = 3) -> bytes:
     struct.pack_into(">Q", data, 24, 64 * 1024 * 1024)
     if backing:
         struct.pack_into(">QI", data, 8, 512, len(b"base.qcow2"))
-        data[512:512 + len(b"base.qcow2")] = b"base.qcow2"
+        data[512 : 512 + len(b"base.qcow2")] = b"base.qcow2"
     if version == 3:
         struct.pack_into(">I", data, 100, 104)
     return bytes(data)
@@ -145,9 +145,7 @@ def test_b_backing_swap_is_refused_before_guest_or_efi_read(tmp_path):
         ("backing", "base-swapped.qcow2", "QCOW2_BACKING_SWAP_OR_UNVERIFIED_CHAIN"),
     ],
 )
-def test_c_to_j_negative_claims_always_fail_closed(
-    local_fd, case, replacement, expected
-):
+def test_c_to_j_negative_claims_always_fail_closed(local_fd, case, replacement, expected):
     measured = inspect_qcow2_fd(local_fd[0])
     value = claim(measured)
     value[case] = replacement

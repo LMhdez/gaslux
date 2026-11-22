@@ -106,8 +106,11 @@ def inspect_qcow2_fd(fd: int) -> dict:
         _require(backing_len == 0 and backing_offset == 0, "QCOW2_BACKING_UNVERIFIED")
         _require(head_len <= 1 << bits, "QCOW2_HEADER_LARGER_THAN_CLUSTER")
         _require(
-            all(struct.unpack_from(">Q", header, pos)[0] < before.st_size
-                for pos in (40, 48) if struct.unpack_from(">Q", header, pos)[0] != 0),
+            all(
+                struct.unpack_from(">Q", header, pos)[0] < before.st_size
+                for pos in (40, 48)
+                if struct.unpack_from(">Q", header, pos)[0] != 0
+            ),
             "QCOW2_INTERNAL_TABLE_OUTSIDE_IMAGE",
         )
         _require(before.st_size <= MAX_HASH_READ, "QCOW2_HASH_BUDGET_EXCEEDED")
@@ -207,8 +210,10 @@ def assess(
         or any(
             (observed_fd.get(local) != pins[pinned])
             for local, pinned in (
-                ("fdDev", "dev"), ("fdInode", "inode"),
-                ("fileSizeBytes", "sizeBytes"), ("qcow2Sha256", "sha256")
+                ("fdDev", "dev"),
+                ("fdInode", "inode"),
+                ("fileSizeBytes", "sizeBytes"),
+                ("qcow2Sha256", "sha256"),
             )
         )
     ):
@@ -228,9 +233,7 @@ def assess(
             result["reason"] = reason
             return result
     result["locallyMeasuredQcow2Sha256"] = observed_fd["qcow2Sha256"]
-    result["reason"] = (
-        "UNAUTHENTICATED_CLAIMS_CANNOT_PROVE_GPT_BTRFS_OSTREE_RPM_EFI_OR_INSTALLER"
-    )
+    result["reason"] = "UNAUTHENTICATED_CLAIMS_CANNOT_PROVE_GPT_BTRFS_OSTREE_RPM_EFI_OR_INSTALLER"
     return result
 
 
