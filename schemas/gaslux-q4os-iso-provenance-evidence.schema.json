@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Q4OS 6.10 r2 unsigned ISO provenance",
+  "description": "Read-only byte inspection; this cannot certify signature, QEMU or production eligibility.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "purpose",
+    "decision",
+    "release",
+    "architecture",
+    "media",
+    "inspection",
+    "publisherSignatureVerified",
+    "publisherSigningKeyTrusted",
+    "gasluxCatalogSignatureVerified",
+    "isoFdBoundToQemu",
+    "guestBooted",
+    "installationAuthorized",
+    "candidateCatalogFieldsUnsigned",
+    "blockers"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "purpose": {
+      "const": "Q4OS_OFFLINE_ISO_PROVENANCE_READBACK"
+    },
+    "decision": {
+      "const": "DENY"
+    },
+    "release": {
+      "const": "6.10-r2"
+    },
+    "architecture": {
+      "const": "x86_64"
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filename",
+        "sha256",
+        "sizeBytes",
+        "fdReadOnlyPinnedDuringMeasurement",
+        "qemuFdBound"
+      ],
+      "properties": {
+        "filename": {
+          "const": "q4os-6.10-x64.r2.iso"
+        },
+        "sha256": {
+          "const": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1500000001,
+          "maximum": 2999999999
+        },
+        "fdReadOnlyPinnedDuringMeasurement": {
+          "const": true
+        },
+        "qemuFdBound": {
+          "const": false
+        }
+      }
+    },
+    "inspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "debianOsReleaseId",
+        "debianVersionId",
+        "q4osVersion",
+        "nativeInstaller",
+        "calamaresSequenceVerified",
+        "installEFIFallback",
+        "kernelEntries",
+        "initrdEntries"
+      ],
+      "properties": {
+        "debianOsReleaseId": {
+          "const": "debian"
+        },
+        "debianVersionId": {
+          "const": "13"
+        },
+        "q4osVersion": {
+          "type": "string",
+          "pattern": "^6\\.10-deb13u[0-9]+$"
+        },
+        "nativeInstaller": {
+          "const": "Calamares"
+        },
+        "calamaresSequenceVerified": {
+          "const": true
+        },
+        "installEFIFallback": {
+          "type": "boolean"
+        },
+        "kernelEntries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^vmlinuz[^/]*$"
+          }
+        },
+        "initrdEntries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(initrd|initramfs)[^/]*$"
+          }
+        }
+      }
+    },
+    "publisherSignatureVerified": {
+      "const": false
+    },
+    "publisherSigningKeyTrusted": {
+      "const": false
+    },
+    "gasluxCatalogSignatureVerified": {
+      "const": false
+    },
+    "isoFdBoundToQemu": {
+      "const": false
+    },
+    "guestBooted": {
+      "const": false
+    },
+    "installationAuthorized": {
+      "const": false
+    },
+    "candidateCatalogFieldsUnsigned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "isoInstaller",
+        "isoInstallerFileName",
+        "isoInstallerSha256",
+        "isoInstallerSizeBytes",
+        "backend",
+        "experimental",
+        "signed",
+        "productionEligible"
+      ],
+      "properties": {
+        "id": {
+          "const": "q4os"
+        },
+        "name": {
+          "const": "Q4OS Andromeda 6.10 x64 r2 (EXPERIMENTAL)"
+        },
+        "isoInstaller": {
+          "const": "https://downloads.sourceforge.net/project/q4os/stable/q4os-6.10-x64.r2.iso"
+        },
+        "isoInstallerFileName": {
+          "const": "q4os-6.10-x64.r2.iso"
+        },
+        "isoInstallerSha256": {
+          "const": "1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d"
+        },
+        "isoInstallerSizeBytes": {
+          "type": "integer",
+          "minimum": 1500000001,
+          "maximum": 2999999999
+        },
+        "backend": {
+          "const": "q4os-native"
+        },
+        "experimental": {
+          "const": true
+        },
+        "signed": {
+          "const": false
+        },
+        "productionEligible": {
+          "const": false
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 5,
+      "items": {
+        "enum": [
+          "UPSTREAM_ISO_SIGNATURE_NOT_VERIFIED",
+          "PUBLISHER_RELEASE_SIGNING_KEY_NOT_TRUSTED",
+          "SIGNED_GASLUX_EXPERIMENTAL_CATALOG_MISSING",
+          "SAFETY_REAUDIT_PENDING",
+          "ISO_TO_QEMU_FD_NOT_ATTESTED"
+        ]
+      }
+    }
+  }
+}
