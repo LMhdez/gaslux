@@ -433,10 +433,13 @@ class SixGptNegativeTests(unittest.TestCase):
             work.mkdir(mode=0o700)
             evidence.mkdir(mode=0o700)
             target = work / "incomplete-create.raw"
-            with patch(
-                "gaslux_popos_reuse_snapshot_gate.os.ftruncate",
-                side_effect=OSError(errno.ENOSPC, "synthetic no space"),
-            ), self.assertRaises(OSError):
+            with (
+                patch(
+                    "gaslux_popos_reuse_snapshot_gate.os.ftruncate",
+                    side_effect=OSError(errno.ENOSPC, "synthetic no space"),
+                ),
+                self.assertRaises(OSError),
+            ):
                 new_file(target, 8192)
             if target.exists():
                 target.rename(work / "original-partial.raw")
