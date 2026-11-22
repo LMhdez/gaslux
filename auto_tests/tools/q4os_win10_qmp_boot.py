@@ -25,28 +25,29 @@ MAX_SERIAL_BYTES = 512 * 1024
 DISK_GROWTH_BYTES = 4 * 1024 * 1024
 # Finite, disclosure-safe diagnostic output only. This CLI has NO authority
 # to create a supervisor session or send keyboard input by itself.
-BOOT_REASON_CODES = frozenset({
-    "qmp_supervisor_required",
-    "qmp_socket_unavailable",
-    "invalid_qmp_greeting",
-    "invalid_qmp_version",
-    "qmp_send_key_failed",
-    "qmp_is_not_socket",
-    "nonprivate_lab_directory",
-    "unsafe_serial_path",
-    "unsafe_disk_path",
-    "dvd_prompt_not_detected",
-    "uefi_shell_detected",
-    "uefi_boot_timeout",
-    "no_disk_progress_after_dvd_key",
-    "QEMU_STARTUP_UNCLASSIFIED",
-})
+BOOT_REASON_CODES = frozenset(
+    {
+        "qmp_supervisor_required",
+        "qmp_socket_unavailable",
+        "invalid_qmp_greeting",
+        "invalid_qmp_version",
+        "qmp_send_key_failed",
+        "qmp_is_not_socket",
+        "nonprivate_lab_directory",
+        "unsafe_serial_path",
+        "unsafe_disk_path",
+        "dvd_prompt_not_detected",
+        "uefi_shell_detected",
+        "uefi_boot_timeout",
+        "no_disk_progress_after_dvd_key",
+        "QEMU_STARTUP_UNCLASSIFIED",
+    }
+)
 
 
 def _safe_reason(exc: Exception) -> str:
     value = str(exc) if isinstance(exc, BootRefusal) else ""
     return value if value in BOOT_REASON_CODES else "QEMU_STARTUP_UNCLASSIFIED"
-
 
 
 class BootRefusal(RuntimeError):
@@ -197,9 +198,7 @@ def supervise(
     from q4os_win10_qmp_supervisor import _BoundQmpSession
 
     require(
-        qmp_channel is None
-        and process_guard is None
-        and type(qmp_session) is _BoundQmpSession,
+        qmp_channel is None and process_guard is None and type(qmp_session) is _BoundQmpSession,
         "qmp_supervisor_required",
     )
     qmp_session.verify()
