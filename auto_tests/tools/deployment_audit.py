@@ -131,6 +131,15 @@ ENTRY_POINTS = {
     ],
 }
 
+# Explicit source-checkout-only laboratory tools, never WPF installation entry
+# points. Each dependency is checked against the source checkout using the same
+# PowerShell reference parser as deployed scripts. Do not add unrelated tools here.
+SOURCE_ONLY_LAB_TOOLS = {
+    "Scripts/libertix-cachyos-windows-evidence.ps1": (
+        "Scripts/modules/Gaslux.CachyosWindowsEvidence.psm1",
+    ),
+}
+
 # Only this script uses $Root for its own deployment folder; elsewhere the name
 # is an ordinary parameter and says nothing about the layout.
 SCRIPTS_WITH_LAYOUT_ROOT_VARIABLE = {"Scripts/libertix-recovery-guard.ps1"}
@@ -876,6 +885,8 @@ def entry_points(layouts: dict[str, Layout], findings: list[Finding]) -> dict[st
     for script in sorted(
         path.relative_to(REPO).as_posix() for path in (REPO / "Scripts").glob("*.ps1")
     ):
+        if script in SOURCE_ONLY_LAB_TOOLS:
+            continue  # checked separately as source-only, not a deployed entry point
         if script not in started_sources:
             findings.append(
                 Finding(
@@ -886,6 +897,159 @@ def entry_points(layouts: dict[str, Layout], findings: list[Finding]) -> dict[st
                 )
             )
     return entries
+
+
+def powershell_executable_code(source: str) -> str:
+    """Mask comments, quoted strings and here-strings without executing PowerShell.
+
+    Only unquoted command text is admitted as import evidence. Unknown or
+    unterminated lexical constructs fail closed rather than treating data or
+    comments as executable code. Newlines are preserved for line anchoring.
+    """
+
+    code = list(source)
+
+    def mask(start: int, end: int) -> None:
+        for offset in range(start, end):
+            if source[offset] not in "\r\n":
+                code[offset] = " "
+
+    index = 0
+    while index < len(source):
+        start = index
+        if source.startswith("<#", index):
+            depth = 1
+            index += 2
+            while index < len(source) and depth:
+                if source.startswith("<#", index):
+                    depth += 1
+                    index += 2
+                elif source.startswith("#>", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            if depth:
+                raise AuditStructureError("unterminated PowerShell block comment")
+            mask(start, index)
+            continue
+        if source.startswith("#>", index):
+            raise AuditStructureError("unmatched PowerShell block comment terminator")
+        if source[index] == "#":
+            end = source.find("\n", index)
+            index = len(source) if end < 0 else end
+            mask(start, index)
+            continue
+        if source.startswith(("@'", '@"'), index):
+            quote = source[index + 1]
+            newline = re.match(r"\r?\n", source[index + 2 :])
+            if newline is None:
+                raise AuditStructureError("unrecognized PowerShell here-string opener")
+            # Windows PowerShell 5.1 requires column-zero, exact closing markers.
+            terminator = re.compile(rf"(?m)^{re.escape(quote + '@')}\r?$")
+            closing = terminator.search(source, index + 2 + newline.end())
+            if closing is None:
+                raise AuditStructureError("unterminated PowerShell here-string")
+            index = closing.end()
+            mask(start, index)
+            continue
+        if source[index] in ("'", '"'):
+            quote = source[index]
+            index += 1
+            while index < len(source):
+                if source[index] == chr(96):
+                    if index + 1 >= len(source):
+                        raise AuditStructureError("unclosed PowerShell string escape")
+                    index += 2
+                elif source.startswith(quote * 2, index):
+                    index += 2
+                elif source[index] == quote:
+                    index += 1
+                    break
+                else:
+                    index += 1
+            else:
+                raise AuditStructureError("unterminated PowerShell quoted string")
+            mask(start, index)
+            continue
+        index += 1
+    return "".join(code)
+
+
+def audit_source_only_lab_tools(layouts: dict[str, Layout], findings: list[Finding]) -> list[str]:
+    """Check explicit checkout-only scripts without granting deployment authority."""
+
+    notes = []
+    for tool, dependencies in SOURCE_ONLY_LAB_TOOLS.items():
+        tool_text = read(tool)
+        if any(tool in layout.files.values() for layout in layouts.values()):
+            findings.append(
+                Finding(
+                    "source-only-deployed",
+                    tool,
+                    "a manual laboratory tool has entered a production deployment layout",
+                )
+            )
+
+        # An explicit source layout is not included among the WPF-installed layouts.
+        # It records only the known tool and its declared dependencies.
+        tool_key = layout_key(Path(tool).name)
+        files = {tool_key: tool}
+        dependency_keys = set()
+        for dependency in dependencies:
+            if not dependency.startswith("Scripts/modules/") or not dependency.endswith(".psm1"):
+                raise AuditStructureError(f"{tool}: invalid source-only module {dependency}")
+            read(dependency)  # no silent exemption for missing module files
+            key = layout_key(Path(dependency).relative_to("Scripts").as_posix())
+            files[key] = dependency
+            dependency_keys.add(key)
+            if any(dependency in layout.files.values() for layout in layouts.values()):
+                findings.append(
+                    Finding(
+                        "source-only-deployed",
+                        dependency,
+                        "a laboratory-only module has entered a production layout",
+                    )
+                )
+        lab_layout = Layout("source-only-lab", "source checkout only; never deployed", files)
+        referenced = set()
+        for reference in script_references(tool, findings, "source-only-lab"):
+            target = resolve(lab_layout, tool_key, reference)
+            if target not in files:
+                findings.append(
+                    Finding(
+                        "source-only-missing-reference",
+                        f"{tool}:{reference.line}",
+                        f"{reference.child} does not resolve to a declared source-only module",
+                    )
+                )
+            else:
+                referenced.add(target)
+        for missing in sorted(dependency_keys - referenced):
+            findings.append(
+                Finding(
+                    "source-only-module-unreferenced",
+                    tool,
+                    f"required laboratory dependency {files[missing]} is no longer referenced",
+                )
+            )
+        # A literal substring is insufficient: commented/quoted imports are data.
+        active_code = powershell_executable_code(tool_text)
+        active_import = re.search(
+            r"(?im)^[ \t]*Import-Module[ \t]+-Name[ \t]+\$module"
+            r"[ \t]+-Force[ \t]+-ErrorAction[ \t]+Stop(?=[ \t]*(?:;|$))",
+            active_code,
+        )
+        if active_import is None:
+            findings.append(
+                Finding(
+                    "source-only-module-not-imported",
+                    tool,
+                    "the manual tool no longer imports its checked laboratory module",
+                )
+            )
+        notes.append(f"{tool}: source-only manual lab tool; dependencies validated")
+    return notes
 
 
 def audit_references(layouts: dict[str, Layout], findings: list[Finding]) -> list[str]:
@@ -1072,6 +1236,7 @@ def run_audit() -> tuple[dict[str, Layout], list[Finding], list[str]]:
     }
     apply_protection(layouts, findings)
     notes = audit_references(layouts, findings)
+    notes.extend(audit_source_only_lab_tools(layouts, findings))
     audit_stale_exceptions(layouts, findings)
     audit_required_lists(layouts, findings)
     return layouts, findings, notes

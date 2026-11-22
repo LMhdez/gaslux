@@ -1,0 +1,95 @@
+name: Core Gaslux source provenance (offline)
+
+on:
+  push:
+    branches:
+      - core/mint-wpf-vm-recovery-20261122
+    paths:
+      - 'auto_tests/app/config.py'
+      - 'auto_tests/app/services/source_tree.py'
+      - 'auto_tests/app/services/automation.py'
+      - 'auto_tests/app/services/validation.py'
+      - 'auto_tests/tests/test_core_source_provenance.py'
+      - 'auto_tests/tools/deployment_audit.py'
+      - 'auto_tests/tests/test_deployment_audit.py'
+      - '.github/workflows/core-source-provenance-offline.yml'
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - 'auto_tests/app/config.py'
+      - 'auto_tests/app/services/source_tree.py'
+      - 'auto_tests/app/services/automation.py'
+      - 'auto_tests/app/services/validation.py'
+      - 'auto_tests/tests/test_core_source_provenance.py'
+      - 'auto_tests/tools/deployment_audit.py'
+      - 'auto_tests/tests/test_deployment_audit.py'
+      - '.github/workflows/core-source-provenance-offline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-identity-offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install existing test-service dependencies
+        run: |
+          python3 -m venv .core-venv
+          .core-venv/bin/python -m pip install -e ./auto_tests 'pytest==9.0.2' 'ruff==0.15.20' 'Twisted[tls]>=24,<26' 'pyOpenSSL==26.4.0'
+      - name: Check Python source and tests
+        run: |
+          .core-venv/bin/python -m compileall -q auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/automation.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
+          .core-venv/bin/python -m ruff check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/automation.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
+          .core-venv/bin/python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/automation.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
+      - name: Provenance regressions (no VM access)
+        run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_core_source_provenance.py
+      - name: Auditor regression tests
+        run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_deployment_audit.py
+      - name: Inherited deployment audit
+        run: cd auto_tests && ../.core-venv/bin/python -m tools.deployment_audit
+      - name: Inherited core and signed-release unit tests
+        if: always()
+        run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_core.py auto_tests/tests/test_published_release.py
+
+  windows-wpf-build:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Restore and build inherited WPF solution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (!(Test-Path -LiteralPath $vswhere)) { throw 'vswhere missing on Windows build runner' }
+          $msbuild = (& $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1)
+          if (!$msbuild) { throw 'MSBuild missing on Windows build runner' }
+          & $msbuild .\Libertix.sln /restore /m /p:Configuration=Release '/p:Platform=Any CPU'
+          if ($LASTEXITCODE -ne 0) { throw "WPF solution build failed: $LASTEXITCODE" }
+      - name: Existing .NET Framework contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vstest = (& $vswhere -latest -find 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe' | Select-Object -First 1)
+          if (!$vstest) { throw 'Visual Studio vstest.console missing' }
+          & $vstest '.\Libertix.Tests\bin\Release\Libertix.Tests.dll' '/Logger:console;verbosity=normal'
+          if ($LASTEXITCODE -ne 0) { throw "C# contract tests failed: $LASTEXITCODE" }
+      - name: Existing PowerShell Pester suite
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 5.7.1 -Force
+          $outcome = Invoke-Pester -Path .\PowerShell.Tests -PassThru
+          if ($outcome.FailedCount -gt 0 -or $outcome.PassedCount -eq 0) {
+            throw "Pester tests failed or none ran"
+          }
