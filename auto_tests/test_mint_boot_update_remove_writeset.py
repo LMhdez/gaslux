@@ -111,9 +111,11 @@ class ReadonlyMintBootWriteSet(unittest.TestCase):
             {"firmware": "bios", "operation": "update", "preferred_active": True},
             {"firmware": "uefi", "operation": "update", "preferred_active": "false"},
         ):
-            with self.subTest(kwargs=kwargs):
-                with self.assertRaises(audit.BootWriteSetError):
-                    audit.classify_write_set(**kwargs)
+            with (
+                self.subTest(kwargs=kwargs),
+                self.assertRaises(audit.BootWriteSetError),
+            ):
+                audit.classify_write_set(**kwargs)
 
 
 class ReadonlyEspTargets(unittest.TestCase):
@@ -192,9 +194,11 @@ class ReadonlyEspTargets(unittest.TestCase):
             "/etc/hosts",
             "EFI/BOOT/BOOTX64.EFI/../../Windows",
         ):
-            with self.subTest(path=name):
-                with self.assertRaisesRegex(audit.BootWriteSetError, "unrecognized"):
-                    audit.inspect_esp_file(self.esp, name)
+            with (
+                self.subTest(path=name),
+                self.assertRaisesRegex(audit.BootWriteSetError, "unrecognized"),
+            ):
+                audit.inspect_esp_file(self.esp, name)
 
     def test_missing_loader_or_untrusted_transaction_is_fail_closed(self):
         (self.esp / "EFI/Microsoft/Boot/bootmgfw.efi").unlink()
