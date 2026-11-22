@@ -201,17 +201,22 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
             )
             return original_run(command, **kwargs)
 
-        with (
-            SafeWorkspace(self.work, self.evidence) as workspace,
-            patch(
+        for name in (
+            "pop-six-transaction.json",
+            "filesystem-fsck-before.json",
+            "filesystem-fsck-after.json",
+        ):
+            (self.work / name).write_bytes(b'{"synthetic":true}\n')
+        with SafeWorkspace(self.work, self.evidence) as workspace:
+            snapshot = workspace.capture_evidence()
+            with patch(
                 "gaslux_popos_six_gpt_process_boundary.subprocess.run",
                 side_effect=attack,
-            ),
-        ):
-            result = measure_pinned_evidence(workspace, self.name)
-            self.assertFalse(result["productionInstallationAuthorized"])
-            with self.assertRaises(FileExistsError):
-                workspace.export()
+            ):
+                result = measure_pinned_evidence(workspace, self.name)
+                self.assertFalse(result["productionInstallationAuthorized"])
+                with self.assertRaises(FileExistsError):
+                    workspace.export(snapshot)
         self.assertEqual(foreign.read_bytes(), b"FOREIGN OUTPUT")
 
     def test_no_mutable_output_or_qcow2_backing_interface(self):
