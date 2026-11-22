@@ -14,6 +14,8 @@ Before changing disk, firmware, recovery, catalog, or installation logic, read:
 - docs/RELEASES.md — signing and release gates
 - docs/UEFI_BOOTNEXT_BOOTORDER.md — firmware recovery
 - docs/MULTIDISTRO_PLAN.md — expansion matrix, phases and acceptance tests
+- docs/AGENT_HISTORICAL_PLAYBOOK.md — researched November 2026 PR/commit history, evidence taxonomy and operational rules for Orchestrator, Integrator, Safety, Observer and backends
+- docs/CI_VM_EVIDENCE_INDEX.md — GitHub Actions/QEMU labs on dev and historical PR branches; distinguish actual guest boot from offline contracts
 
 ## Delegated multiagent engineering and integration
 
