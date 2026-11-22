@@ -53,17 +53,30 @@ export PATH=/bin
 for module in /modules/*.ko; do
     if [ -f "$module" ]; then /bin/busybox insmod "$module" || true; fi
 done
+port=""
 i=0
-while [ ! -c /dev/vport0p1 ] && [ "$i" -lt 100 ]; do
+while [ -z "$port" ] && [ "$i" -lt 100 ]; do
+    for candidate in /dev/vport*; do
+        if [ -c "$candidate" ]; then
+            namepath="/sys/class/virtio-ports/${candidate##*/}/name"
+            if [ -f "$namepath" ] &&
+                [ "$(/bin/busybox cat "$namepath")" = "gaslux.observer" ]; then
+                port="$candidate"
+                break
+            fi
+        fi
+    done
     /bin/busybox sleep 0.1
     i=$((i + 1))
 done
-if [ ! -c /dev/vport0p1 ]; then
+if [ -z "$port" ]; then
     echo GASLUX_GUEST_COLLECTOR_NO_PORT >/dev/console
+    /bin/busybox ls -l /dev/vport* /sys/class/virtio-ports >/dev/console 2>&1
+    /bin/busybox cat /proc/modules >/dev/console
     exec /bin/busybox sleep 60
 fi
 echo GASLUX_GUEST_COLLECTOR_EXECUTED >/dev/console
-exec 3<>/dev/vport0p1
+exec 3<>"$port"
 IFS= read -r challenge <&3
 set -- $(echo "$challenge" | /bin/busybox tr '|' ' ')
 if [ "$#" -ne 3 ] || [ "$1" != "GASLUX-COLLECTOR-LAB-1" ]; then
