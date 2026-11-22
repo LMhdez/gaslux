@@ -2,7 +2,7 @@ name: Gaslux autonomous GitHub agents
 
 on:
   schedule:
-    - cron: '37 * * * *'
+    - cron: '37 * * * *' # GitHub default-branch scheduler, one dispatch per hour
   workflow_dispatch:
     inputs:
       role:
