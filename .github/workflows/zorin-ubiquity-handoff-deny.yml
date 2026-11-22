@@ -1,0 +1,107 @@
+name: Zorin Ubiquity native handoff DENY-only
+on:
+  push:
+    branches:
+      - test/zorin-ubiquity-handoff-deny-20261122
+  pull_request:
+    paths:
+      - 'auto_tests/tools/zorin_ubiquity_handoff_readonly.py'
+      - 'auto_tests/test_zorin_ubiquity_handoff_readonly.py'
+      - 'schemas/zorin-ubiquity-handoff-readonly.schema.json'
+      - '.github/workflows/zorin-ubiquity-handoff-deny.yml'
+permissions:
+  contents: read
+concurrency:
+  group: zorin-ubiquity-handoff-deny-20261122
+  cancel-in-progress: false
+jobs:
+  readonly-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source branch (no persisted credentials)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Import canonical Safety #307 unmodified (never reimplement GPT)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: LMhdez/gaslux
+          ref: d5eb20114df34a778ada1af1f6f4f6bff0c49845
+          path: canonical-safety
+          persist-credentials: false
+          sparse-checkout: |
+            assets/live/libertix_disk_identity_gate.py
+          sparse-checkout-cone-mode: false
+      - name: Static checks, real synthetic GPT bytes and relevant Mint/Zorin regressions
+        shell: bash
+        env:
+          PYTHONPATH: canonical-safety/assets/live:auto_tests/tools
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C canonical-safety rev-parse HEAD)" = d5eb20114df34a778ada1af1f6f4f6bff0c49845
+          python3 -m pip install --break-system-packages --no-input 'jsonschema>=4.20,<5' 'ruff>=0.10,<0.18' 'pytest>=8,<9'
+          python3 -m compileall -q auto_tests/tools/zorin_ubiquity_handoff_readonly.py auto_tests/test_zorin_ubiquity_handoff_readonly.py
+          ruff check --select E4,E7,E9,F auto_tests/tools/zorin_ubiquity_handoff_readonly.py auto_tests/test_zorin_ubiquity_handoff_readonly.py
+          ruff format --check auto_tests/tools/zorin_ubiquity_handoff_readonly.py auto_tests/test_zorin_ubiquity_handoff_readonly.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+          schema = json.loads(Path("schemas/zorin-ubiquity-handoff-readonly.schema.json").read_text())
+          Draft202012Validator.check_schema(schema)
+          assert schema["properties"]["authorization"]["const"] == "DENY_NO_WRITER"
+          assert schema["properties"]["productionStorageWritesAuthorized"]["const"] is False
+          print("PASS: schema Draft 2020-12 and non-authorizing flags")
+          PY
+          python3 -m unittest discover -s auto_tests -p test_zorin_ubiquity_handoff_readonly.py -v
+          python3 -m unittest discover -s auto_tests -p test_zorin_native_ubiquity_map.py -v
+          python3 -m unittest discover -s auto_tests -p test_zorin_native_installer_discovery.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_zorin_cow_boot_evidence.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_cow_boot_evidence.py -v
+          echo 'DENY_NO_WRITER: synthetic GPT file only; no QEMU, native installer, Windows disk, EFI/BCD/WinRE/NVRAM write or real rollback.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish bounded SHA-256 manifest of source and tests only
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -m 700 -p handoff-evidence
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          paths = [
+              "auto_tests/tools/zorin_ubiquity_handoff_readonly.py",
+              "auto_tests/test_zorin_ubiquity_handoff_readonly.py",
+              "schemas/zorin-ubiquity-handoff-readonly.schema.json",
+              "docs/ZORIN_UBIQUITY_HANDOFF_READONLY.md",
+              "canonical-safety/assets/live/libertix_disk_identity_gate.py",
+          ]
+          digest = {p: hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths}
+          result = {
+              "headSha": os.environ["GITHUB_SHA"],
+              "sourceSha256": digest,
+              "authorization": "DENY_NO_WRITER",
+              "nativeInstallerInvoked": False,
+              "productionStorageWritesAuthorized": False,
+              "windowsEspWriteAuthorized": False,
+              "sameDiskDualBootVerified": False,
+              "windowsInPlaceRollbackProven": False,
+              "stable": False,
+              "qemuExecuted": False,
+              "physicalDiskUsed": False,
+          }
+          Path("handoff-evidence/source-manifest.json").write_text(
+              json.dumps(result, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Upload only non-sensitive text evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-ubiquity-handoff-deny-text
+          path: handoff-evidence/source-manifest.json
+          if-no-files-found: error
+          retention-days: 7
