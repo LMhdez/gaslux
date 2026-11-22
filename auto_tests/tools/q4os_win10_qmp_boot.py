@@ -324,8 +324,7 @@ def _write_report_exclusive(path: Path, qmp_path: Path, report: dict) -> bool:
         final_named = os.stat(path.name, dir_fd=dirfd, follow_symlinks=False)
         if not (
             os.fstat(fd).st_nlink == 1
-            and (final_parent.st_dev, final_parent.st_ino)
-            == (directory.st_dev, directory.st_ino)
+            and (final_parent.st_dev, final_parent.st_ino) == (directory.st_dev, directory.st_ino)
             and (final_named.st_dev, final_named.st_ino) == (own.st_dev, own.st_ino)
         ):
             return False
