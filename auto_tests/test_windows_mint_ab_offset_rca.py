@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import stat
 import sys
 import tempfile
 import types
@@ -44,10 +42,12 @@ class OffsetRcaTests(unittest.TestCase):
     def test_incomplete_read_or_wrong_digest_never_passes(self):
         blob = b"a" * rca.CHUNK_BYTES
         for fault in ("partial", "bad_digest", "bad_size"):
-            with self.subTest(fault=fault):
-                with self.assertRaisesRegex(rca.OffsetRcaError, "BLOCKED_EVIDENCE"):
-                    rca.analyze_partition_windows(
-                        lambda n, pos: blob[pos : pos + n - (1 if fault == "partial" else 0)],
+            with (
+                self.subTest(fault=fault),
+                self.assertRaisesRegex(rca.OffsetRcaError, "BLOCKED_EVIDENCE"),
+            ):
+                rca.analyze_partition_windows(
+                        lambda n, pos, fault=fault: blob[pos : pos + n - (1 if fault == "partial" else 0)],
                         lambda n, pos: blob[pos : pos + n],
                         partition_bytes=len(blob) - (1 if fault == "bad_size" else 0),
                         disk_start_byte=0,
@@ -188,9 +188,11 @@ class OffsetRcaTests(unittest.TestCase):
                 (Path("/dev"), "mint-ab-offset-arm-a-control.json"),
                 (lab["directory"], "../escape.json"),
             ):
-                with self.subTest(directory=str(directory), manifest=manifest):
-                    with self.assertRaisesRegex(rca.OffsetRcaError, "BLOCKED_EVIDENCE"):
-                        rca.compare_owned_ab_protected_offsets(
+                with (
+                    self.subTest(directory=str(directory), manifest=manifest),
+                    self.assertRaisesRegex(rca.OffsetRcaError, "BLOCKED_EVIDENCE"),
+                ):
+                    rca.compare_owned_ab_protected_offsets(
                             directory=directory, reference=Path("/dev/sda"),
                             observed=lab["arm"], evidence=lab["evidence"],
                             manifest_name=manifest,
