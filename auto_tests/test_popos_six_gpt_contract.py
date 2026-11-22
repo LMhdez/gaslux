@@ -423,6 +423,7 @@ class SixGptNegativeTests(unittest.TestCase):
 
     def test_safety_f01_enospc_partial_file_retained_without_cleanup_delete(self):
         import errno
+
         import gaslux_popos_six_gpt_ownership as owner
 
         with tempfile.TemporaryDirectory() as folder:
@@ -435,9 +436,8 @@ class SixGptNegativeTests(unittest.TestCase):
             with patch(
                 "gaslux_popos_reuse_snapshot_gate.os.ftruncate",
                 side_effect=OSError(errno.ENOSPC, "synthetic no space"),
-            ):
-                with self.assertRaises(OSError):
-                    new_file(target, 8192)
+            ), self.assertRaises(OSError):
+                new_file(target, 8192)
             if target.exists():
                 target.rename(work / "original-partial.raw")
             target.write_bytes(b"foreign transaction after ENOSPC")
