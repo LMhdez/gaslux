@@ -344,3 +344,20 @@ def test_path_hints_never_claim_rpm_package_binding_or_authority():
     assert output["bootcRpmIdentity"]["status"] == "BOOTC_PACKAGE_BINDING_UNPROVEN"
     assert output["bootcVersionVerified"] is False
     assert all(output[key] is False for key in NO_WRITE)
+
+
+def test_oversize_signed_rpm_db_never_raises_install_authority(monkeypatch):
+    import bazzite_oci_bootc_readback as inspector
+
+    elf = elf_fixture()
+    oversized = b"SQLite format 3\x00" + b"X" * 256
+    monkeypatch.setattr(inspector, "MAX_RPMDB", 128)
+    overlay, budgets, descriptors = apply([layer({
+        "usr/bin/bootc": elf,
+        "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite": oversized,
+    })])
+    output = result(overlay, budgets, descriptors)
+    assert output["status"] == "BOOTC_PRESENT_ROUTE_UNVERIFIED"
+    assert output["bootcRpmIdentity"]["status"] == "BOOTC_PACKAGE_BINDING_UNPROVEN"
+    assert output["bootcRpmIdentity"]["rpmdbSizeBytes"] == len(oversized)
+    assert all(output[flag] is False for flag in NO_WRITE)

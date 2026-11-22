@@ -24,7 +24,7 @@ RPMDB_SIDECARS = frozenset(
     path + suffix for path in RPMDB_PATHS for suffix in ("-wal", "-shm", "-journal")
 )
 RPMDB_ALL = RPMDB_PATHS | RPMDB_SIDECARS
-MAX_RPMDB = 192 * 1024 * 1024
+MAX_RPMDB = 512 * 1024 * 1024
 MAX_RPM_HEADER = 16 * 1024 * 1024
 MAX_PACKAGES = 25000
 MAX_ARRAY = 200000
@@ -224,6 +224,12 @@ def bind_rpm(overlay: dict, bootc_file: dict) -> dict:
     for path in sorted(RPMDB_PATHS):
         item = overlay.get(path)
         if item is not None:
+            if item.get("kind") == "rpmdb_oversize":
+                return {
+                    **unproven,
+                    "reason": "RPM DB exceeds bounded host-only inspection budget",
+                    "rpmdbSizeBytes": item.get("size"),
+                }
             if item.get("kind") != "rpmdb" or not isinstance(item.get("content"), bytes):
                 return {**unproven, "reason": "RPM DB path not a regular bounded file"}
             files.append((path, item["content"]))

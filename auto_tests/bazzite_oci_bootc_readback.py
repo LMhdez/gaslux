@@ -308,8 +308,11 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     continue
                 if name in RPMDB_ALL:
                     if member.isfile():
-                        if not 0 < member.size <= MAX_RPMDB:
-                            raise Refusal("RPM DB candidate exceeds bounded metadata budget")
+                        if member.size <= 0:
+                            raise Refusal("Zero-byte RPM DB candidate")
+                        if member.size > MAX_RPMDB:
+                            entries[name] = {"kind": "rpmdb_oversize", "size": member.size}
+                            continue
                         db_stream = archive.extractfile(member)
                         if db_stream is None:
                             raise Refusal("Unreadable RPM DB candidate")
@@ -504,6 +507,11 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
         "bootcRpmIdentity": package,
         **elf_metadata,
         "rpmDbPathHintsObserved": sorted(budgets.get("rpmDbPathHints", set())),
+        "rpmDbFinalCandidateSizes": {
+            path: entries[path]["size"]
+            for path in sorted(entries)
+            if path in RPMDB_ALL and "size" in entries[path]
+        },
         "bootcToFilesystemDocumentedInRpm": (
             package["rpmPackage"]["toFilesystemManpageDeclared"] if proven else False
         ),
