@@ -41,7 +41,7 @@ jobs:
       - name: Validate, compile and run direct adversarial tests
         run: |
           python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/__init__.py auto_tests/installer_observer/evidence.py auto_tests/tests/test_observer_readonly_evidence_subset.py
-          python3 -m ruff format --diff --check --config auto_tests/pyproject.toml auto_tests/installer_observer/__init__.py auto_tests/installer_observer/evidence.py auto_tests/tests/test_observer_readonly_evidence_subset.py
+          python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/__init__.py auto_tests/installer_observer/evidence.py auto_tests/tests/test_observer_readonly_evidence_subset.py
           python3 -m compileall -q auto_tests/installer_observer auto_tests/tests/test_observer_readonly_evidence_subset.py
           python3 -m unittest discover -s auto_tests/tests -p test_observer_readonly_evidence_subset.py -v
       - name: Confirm tracked checkout unchanged after tests
