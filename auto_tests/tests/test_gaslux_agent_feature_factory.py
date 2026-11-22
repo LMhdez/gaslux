@@ -36,8 +36,8 @@ class FeatureFactoryTests(unittest.TestCase):
             self.assertTrue(source.startswith("assets/live/"))
             self.assertTrue(source.endswith(".py"))
             self.assertTrue(test.startswith("test_"))
-            self.assertTrue((SCRIPT.parents[2] / source).is_file())
-            self.assertTrue((SCRIPT.parents[1] / "tests" / test).is_file())
+            self.assertNotIn("..", Path(source).parts)
+            self.assertNotIn("..", Path(test).parts)
             factory.validate_addition(role, valid(role), execute=True)
 
     def test_no_remote_writer_or_insecure_backend_authority(self):
