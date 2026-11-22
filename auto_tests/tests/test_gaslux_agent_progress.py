@@ -140,5 +140,32 @@ class ProgressTests(unittest.TestCase):
         self.assertIn("          persist-credentials: false", clock)
 
 
+    def test_schedules_exist_and_are_staggered_without_hour_boundary(self):
+        # A YAML cron change can prompt GitHub to refresh its registration,
+        # but this is not proof the GitHub-side scheduler is enabled.
+        import re
+        workflows = Path(__file__).resolve().parents[2] / ".github/workflows"
+        names = ("gaslux-agent-clock.yml", "gaslux-agent-feature-factory.yml",
+                 "gaslux-agent-integrator.yml", "gaslux-agent-lifecycle-research.yml")
+        primary_minutes = []
+        for name in names:
+            source = (workflows / name).read_text(encoding="utf-8")
+            self.assertIn("  schedule:", source)
+            self.assertIn("  workflow_dispatch:", source)
+            crons = re.findall(r"- cron: '([^']+)'", source)
+            self.assertTrue(crons, name)
+            for expression in crons:
+                fields = expression.split()
+                self.assertEqual(len(fields), 5, expression)
+                self.assertTrue(all(0 <= int(x) < 60 for x in fields[0].split(",")))
+            ticks = tuple(int(x) for x in crons[0].split()[0].split(","))
+            self.assertNotIn(0, ticks)
+            self.assertEqual(len(ticks), len(set(ticks)))
+            primary_minutes.append(set(ticks))
+        for i, ticks in enumerate(primary_minutes):
+            for other in primary_minutes[i + 1:]:
+                self.assertFalse(ticks.intersection(other))
+
+
 if __name__ == "__main__":
     unittest.main()
