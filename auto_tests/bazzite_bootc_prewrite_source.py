@@ -74,6 +74,7 @@ def _read_source(path: Path, expected_git_blob: str) -> tuple[str, dict]:
 
         def identity(st):
             return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
         if identity(before) != identity(after):
             raise Refusal("UPSTREAM_SOURCE_CHANGED_DURING_READ")
         raw = bytes(raw)
