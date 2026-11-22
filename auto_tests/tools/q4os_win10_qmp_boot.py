@@ -80,7 +80,7 @@ class Qmp:
         try:
             self.socket.connect(str(path))
             self.stream = self.socket.makefile("rb")
-         except (OSError, ValueError, KeyError, BootRefusal):
+        except (OSError, ValueError, KeyError, BootRefusal):
             self.close()
             raise
 
