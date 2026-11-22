@@ -218,6 +218,50 @@ class ZorinCowBootEvidenceTests(unittest.TestCase):
             validator.validate_mint_cow_boot_evidence(
                 self.directory, PROFILE, distribution="zorin")
 
+    def test_rejects_unproven_recovery_update_and_native_installer_claims(self):
+        forbidden = (
+            "nativeInstallerInvoked",
+            "nativeInstallerVerified",
+            "nativeBootloaderVerified",
+            "windowsBcdVerified",
+            "windowsWinreVerified",
+            "windowsRecoveryVerified",
+            "kernelPackageUpdateVerified",
+            "bootloaderUpdateVerified",
+            "postUpdateZorinBootVerified",
+            "postUpdateWindowsBootVerified",
+            "rollbackRestorationVerified",
+            "windowsRollbackVerified",
+        )
+        for field in forbidden:
+            with self.subTest(field=field, source="proof"):
+                self.proof[field] = True
+                self._write_evidence()
+                with self.assertRaisesRegex(
+                    validator.MintBootEvidenceError, "overstates an unverified capability"
+                ):
+                    validator.validate_mint_cow_boot_evidence(
+                        self.directory, PROFILE, distribution="zorin"
+                    )
+                self.proof.pop(field)
+            with self.subTest(field=field, source="report"):
+                self._write_evidence()
+                report_path = self.directory / f"{PROFILE}-result.json"
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                report[field] = True
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                with self.assertRaisesRegex(
+                    validator.MintBootEvidenceError, "overstates an unverified capability"
+                ):
+                    validator.validate_mint_cow_boot_evidence(
+                        self.directory, PROFILE, distribution="zorin"
+                    )
+        self._write_evidence()
+        result = validator.validate_mint_cow_boot_evidence(
+            self.directory, PROFILE, distribution="zorin"
+        )
+        self.assertFalse(result["rollbackVerified"])
+
     def _replace_serial(self, serial):
         serial_path = self.directory / "zorin-same-windows-cow-serial.log"
         serial_path.write_bytes(serial)
