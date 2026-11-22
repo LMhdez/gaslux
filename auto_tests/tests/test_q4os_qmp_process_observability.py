@@ -955,7 +955,6 @@ def test_r01_kernel_pidfd_binding_and_fd_substitution_real_children():
             child.wait(timeout=5)
 
 
-
 def test_r01_post_authentication_socket_swap_denies_send_key(monkeypatch, tmp_path):
     """OS socket peer and inode are rechecked after initially verified connect."""
     import socket
@@ -989,9 +988,7 @@ def test_r01_post_authentication_socket_swap_denies_send_key(monkeypatch, tmp_pa
         original_inode = witness._socket_identity(sock, work)
         qmp = Qmp(sock, negotiate=False)
         peer, _ = owned.accept()
-        session = witness._BoundQmpSession(
-            qmp, SyntheticOwner(), -1, sock, work, original_inode
-        )
+        session = witness._BoundQmpSession(qmp, SyntheticOwner(), -1, sock, work, original_inode)
         qmp.bind_verified_session(session)
         session.verify()
         sock.unlink()
