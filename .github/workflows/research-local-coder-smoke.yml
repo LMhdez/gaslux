@@ -2,10 +2,6 @@ name: Research - Local Coder CPU Smoke
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/research-local-coder-smoke.yml
-      - auto_tests/tools/local_coder_agent_benchmark.py
 
 permissions: {}
 

@@ -1,10 +1,6 @@
 name: Research - Model Authored JSON Patch Repair
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/research-model-authored-patches.yml
-      - auto_tests/tools/structured_coder_probe.py
   workflow_dispatch:
 
 permissions:

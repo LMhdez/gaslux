@@ -2,6 +2,14 @@
 
 Repository `LMhdez/gaslux`; initial verified `dev` at `8e68a475d6397ba8fef2e0f9f83758545e202a5f`. This research is Draft PR #363, **not** an autonomous coding service already deployed to `dev` or `main`.
 
+## Integration scope decision — 2026-11-22 (updated on this branch)
+
+This PR's **current merge candidate is read-only/nonprivileged only**. Privileged automatic Draft PR publishers are **NOT** included in this integration. Their original code and historical evidence were preserved at branch `research/local-coder-publisher-safety-hold-20261122` (HEAD `85af89dc896d90b7f8875ce6559fcd911bea79b1`) for separate independent adversarial review. The active workflows have `permissions: contents: read` or `permissions: {}` and no write token. They can produce read-only artifacts but cannot create PRs, push commits, merge or change boot/disk/install code.
+
+The two experimental multi-model benchmarks are now **manual `workflow_dispatch` only**. Prior failing model-quality results remain documented below and are not repackaged as passing checks. The bounded deterministic logging recovery and bounded Qwen3.5 9B Observer ranking candidate remain triggered by scoped `pull_request` and `dev` pushes, but produce only evidence/artifacts. This is **NOT** a continuously autonomous programmer or automated publication service. Scheduled running requires separate default-branch policy decisions and is NOT enabled.
+
+After a successful exact-head CI and policy review, this read-only slice may be integrated into `dev`. The sections below preserve historical design/evidence, including now-**quarantined** publisher descriptions, and must not be interpreted as current write authority.
+
 ## Evidence classification
 
 - [#45044956114](https://github.com/LMhdez/gaslux/actions/runs/45044956114), HEAD `30b954110195349c0d09f42fc945a76a9b0b6336`: **SUCCESS**. Local CPU Qwen2.5-Coder 1.5B/3B each passed 6/6 simple mathematical expression tests. Sample inference times 2.07/2.88 s respectively, not runner startup/throughput.
