@@ -223,19 +223,18 @@ class SixGptNegativeTests(unittest.TestCase):
             evidence.mkdir(mode=0o700)
             with patch.dict(
                 os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
-            ):
-                with owner.SafeWorkspace(work, evidence) as guard:
-                    (work / lab.PLAN_NAME).write_text("owned")
+            ), owner.SafeWorkspace(work, evidence) as guard:
+                (work / lab.PLAN_NAME).write_text("owned")
+                guard.inspect()
+                old = parent / "moved-original"
+                work.rename(old)
+                work.mkdir(mode=0o700)
+                foreign = work / "foreign-private.txt"
+                foreign.write_text("KEEP ME")
+                with self.assertRaisesRegex(Refusal, "directory replaced"):
                     guard.inspect()
-                    old = parent / "moved-original"
-                    work.rename(old)
-                    work.mkdir(mode=0o700)
-                    foreign = work / "foreign-private.txt"
-                    foreign.write_text("KEEP ME")
-                    with self.assertRaisesRegex(Refusal, "directory replaced"):
-                        guard.inspect()
-                    self.assertEqual(foreign.read_text(), "KEEP ME")
-                    self.assertTrue((old / lab.PLAN_NAME).exists())
+                self.assertEqual(foreign.read_text(), "KEEP ME")
+                self.assertTrue((old / lab.PLAN_NAME).exists())
             self.assertEqual(foreign.read_text(), "KEEP ME")
 
     def test_f01_inode_symlink_hardlink_reuse_and_partial_creation(self):
@@ -261,21 +260,24 @@ class SixGptNegativeTests(unittest.TestCase):
                     self.assertEqual(child.read_bytes(), b"replacement")
                 child.unlink()
                 child.symlink_to(work / lab.PLAN_NAME)
-                with self.assertRaises((Refusal, OSError)):
-                    with owner.SafeWorkspace(work, evidence):
-                        pass
+                with self.assertRaises((Refusal, OSError)), owner.SafeWorkspace(work, evidence):
+                    pass
                 child.unlink()
                 child.write_bytes(b"private")
                 os.link(child, work / lab.PLAN_NAME)
-                with self.assertRaisesRegex(Refusal, "symlink/hardlink"):
-                    with owner.SafeWorkspace(work, evidence):
-                        pass
+                with (
+                    self.assertRaisesRegex(Refusal, "symlink/hardlink"),
+                    owner.SafeWorkspace(work, evidence),
+                ):
+                    pass
                 (work / lab.PLAN_NAME).unlink()
                 child.unlink()
                 # An incomplete run cannot export partial evidence or clean up.
-                with owner.SafeWorkspace(work, evidence) as guard:
-                    with self.assertRaisesRegex(Refusal, "missing proof"):
-                        guard.export()
+                with (
+                    owner.SafeWorkspace(work, evidence) as guard,
+                    self.assertRaisesRegex(Refusal, "missing proof"),
+                ):
+                    guard.export()
                 self.assertTrue(work.is_dir())
 
     def test_f01_enospc_fails_without_unlink(self):
@@ -291,13 +293,12 @@ class SixGptNegativeTests(unittest.TestCase):
                 (work / name).write_text('{"synthetic":true}')
             with patch.dict(
                 os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
-            ):
-                with owner.SafeWorkspace(work, evidence) as guard:
-                    with (
-                        patch.object(owner.os, "write", side_effect=OSError(errno.ENOSPC, "full")),
-                        self.assertRaises(OSError),
-                    ):
-                        guard.export()
+            ), owner.SafeWorkspace(work, evidence) as guard:
+                with (
+                    patch.object(owner.os, "write", side_effect=OSError(errno.ENOSPC, "full")),
+                    self.assertRaises(OSError),
+                ):
+                    guard.export()
             for name in owner.EVIDENCE:
                 self.assertEqual((work / name).read_text(), '{"synthetic":true}')
 
@@ -318,7 +319,9 @@ class SixGptNegativeTests(unittest.TestCase):
                         patch.object(lab, "child_owned_extents", side_effect=error),
                         self.assertRaises(type(error)),
                     ):
-                        lab.verify_injected_fault(child, Path(directory) / "base", offset, 4096, pin)
+                        lab.verify_injected_fault(
+                            child, Path(directory) / "base", offset, 4096, pin
+                        )
                 with (
                     patch.object(
                         lab, "child_owned_extents",
@@ -353,7 +356,10 @@ class SixGptNegativeTests(unittest.TestCase):
                 lab.ensure_empty_child(child, base)
             zero_child = folder / "zero.qcow2"
             subprocess.run(
-                ["qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(base), str(zero_child)],
+                [
+                    "qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b",
+                    str(base), str(zero_child),
+                ],
                 check=True, capture_output=True,
             )
             subprocess.run(
