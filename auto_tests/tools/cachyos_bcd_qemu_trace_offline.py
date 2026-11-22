@@ -46,7 +46,7 @@ def _overlap(a: int, n: int, b: int, m: int) -> int:
 
 def parse_qemu_trace(trace: bytes) -> dict[str, Any]:
     require(type(trace) is bytes and 0 < len(trace) <= MAX_TRACE_BYTES
-            and trace.endswith(b"\\n") and b"\\x00" not in trace,
+            and trace.endswith(b"\n") and b"\x00" not in trace,
             "invalid, truncated or oversized QEMU simple trace")
     try:
         lines = trace.decode("ascii").splitlines()
