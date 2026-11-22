@@ -372,9 +372,7 @@ def test_differential_a_schema_and_python_both_reject(
         "nonce-reused-in-memory",
     ],
 )
-def test_differential_b_python_relationships_not_schema_authority(
-    iso45_schema_validator, attack
-):
+def test_differential_b_python_relationships_not_schema_authority(iso45_schema_validator, attack):
     proposal = sample()
     previously_seen = frozenset()
     if attack == "host-guest-vm":
@@ -410,9 +408,7 @@ def test_differential_b_python_relationships_not_schema_authority(
 
 
 @pytest.mark.parametrize("pid", [2, 4321])
-def test_differential_c_valid_proposal_permanently_refused(
-    iso45_schema_validator, pid, tmp_path
-):
+def test_differential_c_valid_proposal_permanently_refused(iso45_schema_validator, pid, tmp_path):
     proposal = sample()
     proposal["run"]["qemuPid"] = pid
     proposal["installer"]["pid"] = pid
