@@ -36,3 +36,7 @@ The trusted publisher must independently re-fetch `dev` head and source content,
 5. Only a vetted, independently reviewed PR may merge into `dev`. The supervisor loops to the next task on the following schedule.
 
 This pilot is an incremental product implementation workflow, **not a general-purpose self-developing agent already proven to build Gaslux end-to-end**. Windows + Mint real guest installation and rollback remain separate, unproven acceptance gates.
+
+## First native scheduler execution — 2026-11-22 UTC
+
+[Action #45058019123](https://github.com/LMhdez/gaslux/actions/runs/45058019123), main SHA `055e825c74e23740126155f824062965e25db080`, **FAILED CLOSED** in the model implementation job. The Supervisor actually chose a missing Mint Portuguese keyboard mapping on dev `66c4bb77cdaa8ce5d2c52a34d2fb859742f655cc`. Ollama and the pinned Qwen3.5 9B model installed successfully. The local model produced a malformed first answer, then a semantically correct mapping `{ "00000816", Mapping("pt") }` missing its C# dictionary comma. Strict validation rejected both; no code was published and Safety/Windows/publisher jobs were correctly skipped. The bounded correction accepts **only** an absent terminal comma on an otherwise exactly allowlisted mapping; no broader code authority is granted. New negative tests reject multiline/side-effect outputs. This is a real product feature task, not a seeded regression or proof of Linux installation.
