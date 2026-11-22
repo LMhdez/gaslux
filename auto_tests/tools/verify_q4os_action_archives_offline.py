@@ -48,15 +48,20 @@ def _pin_manifest(path: Path) -> dict:
 
 
 def _name(name: str) -> bool:
-    """Strictly canonical two-component member, not filesystem path interpretation."""
+    """Bounded canonical ZIP names, including original nested native-hooks files."""
     parts = name.split("/")
+    devices = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    devices.update(f"{prefix}{n}" for prefix in ("COM", "LPT") for n in range(1, 10))
     return (
-        len(parts) == 2
+        2 <= len(parts) <= 8
         and parts[0] in ("evidence", "calamares-inspect")
-        and SAFE_NAME.fullmatch(parts[1]) is not None
-        and parts[1] not in (".", "..")
-        and not parts[1].endswith(".")
-        and parts[1].split(".")[0].upper() not in {"CON", "PRN", "AUX", "NUL"}
+        and all(
+            SAFE_NAME.fullmatch(part) is not None
+            and part not in (".", "..")
+            and not part.endswith(".")
+            and part.split(".")[0].upper() not in devices
+            for part in parts[1:]
+        )
     )
 
 
@@ -133,10 +138,21 @@ def _check_zip(binary: bytes, expected: dict, run: dict, aid: int) -> None:
                 total += entry.file_size
                 require(total <= MAX_TOTAL, "ZIP expansion budget exceeded")
                 if name not in required:
-                    require(name.startswith("calamares-inspect/"), "Unexpected evidence member")
-                    continue  # Historical inspection extras are inside pinned whole-ZIP SHA.
+                    # Original ZIPs contain optional evidence text/log/config records
+                    # and nested inspection hooks. Their exact bytes are pinned by the
+                    # whole-ZIP digest, never by untrusted metadata alone.
+                    require(
+                        name.startswith("calamares-inspect/")
+                        or (
+                            name.startswith("evidence/")
+                            and not name.lower().endswith(".png")
+                        ),
+                        "Unexpected evidence member",
+                    )
                 raw = archive.read(entry)
                 require(len(raw) == entry.file_size, "ZIP member length mismatch")
+                if name not in required:
+                    continue  # Decompression/CRC checked; ZIP SHA pins optional bytes.
                 short = name.removeprefix("evidence/")
                 require(
                     digest(raw) == (reports[short] if short in reports else expected_png[short]),
