@@ -103,6 +103,7 @@ jobs:
         run: python -m pytest -q auto_tests/tests/test_observer_guest_collector_origin.py -k 'not test_real_guest_boot_collector_challenge_via_virtio_serial'
       - name: Boot REAL QEMU Linux guest and read-only collector via virtio-serial
         env:
+          GASLUX_QEMU_NO_GUEST: '0'
           GASLUX_QEMU_PIN267_ROOT: '${{ github.workspace }}/safety267-pinned'
           GASLUX_QEMU_PIN286_ROOT: '${{ github.workspace }}/gpt286-pinned'
         run: python -m pytest -q -s auto_tests/tests/test_observer_guest_collector_origin.py -k test_real_guest_boot_collector_challenge_via_virtio_serial

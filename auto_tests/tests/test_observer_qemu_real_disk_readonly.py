@@ -143,7 +143,6 @@ def start_qemu(
     guest_kernel: Path | None = None,
     guest_initrd: Path | None = None,
 ) -> subprocess.Popen:
-    assert os.environ["GASLUX_QEMU_NO_GUEST"] == "1"
     assert os.environ["GITHUB_ACTIONS"] == "true"
     assert os.environ["RUNNER_ENVIRONMENT"] == "github-hosted"
     assert str(media.parent) == str(folder)
@@ -153,6 +152,7 @@ def start_qemu(
     qmp = folder / "monitor.sock"
     assert not qmp.exists()
     boot_guest = guest_kernel is not None or guest_initrd is not None
+    assert os.environ["GASLUX_QEMU_NO_GUEST"] == ("0" if boot_guest else "1")
     if boot_guest:
         assert os.environ["GASLUX_QEMU_GUEST_LAB_CONSENT"] == "1"
         assert guest_peer_endpoint and isinstance(guest_kernel, Path)
