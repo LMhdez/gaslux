@@ -1,0 +1,142 @@
+name: Gaslux Observer - local AI candidate (Draft PR only)
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-ai-observer-rank.yml
+      - auto_tests/tools/ai_rank_candidate.py
+      - auto_tests/tools/ai_rank_publisher.py
+  push:
+    branches: [dev]
+    paths:
+      - auto_tests/tools/rank_capture_changes.py
+      - .github/workflows/gaslux-ai-observer-rank.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaslux-ai-observer-rank-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unprivileged-candidate:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == 'LMhdez/gaslux')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      proposed: ${{ steps.generate.outputs.proposed }}
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+      GASLUX_PROBE_MODEL: qwen3.5:9b
+      GASLUX_RANK_SIMULATE: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+    steps:
+      - name: Checkout disposable source with no persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'dev' }}
+          persist-credentials: false
+      - name: Early test, skip inference if source already green
+        id: baseline
+        shell: bash
+        run: |
+          set +e
+          python3 -B auto_tests/tools/ai_rank_candidate.py --preflight
+          code=$?
+          set -e
+          if [[ "$code" == 0 ]]; then
+            echo needs_model=false >> "$GITHUB_OUTPUT"
+          elif [[ "$code" == 2 ]]; then
+            echo needs_model=true >> "$GITHUB_OUTPUT"
+          else
+            exit "$code"
+          fi
+      - name: Install verified Ollama version only for a failing test
+        if: steps.baseline.outputs.needs_model == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh \
+            -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
+          (ollama serve > /tmp/ollama-worker.log 2>&1 &)
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:11434/api/version > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/ollama-worker.log
+          exit 1
+      - name: Pull and verify pinned model identity
+        if: steps.baseline.outputs.needs_model == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 650 ollama pull "$GASLUX_PROBE_MODEL"
+          python3 - <<'PY'
+          import json
+          import urllib.request
+          response = json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/tags', timeout=15))
+          entry = next((m for m in response['models'] if m['name'] == 'qwen3.5:9b'), None)
+          expected = '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          if entry is None or entry.get('digest') != expected:
+              raise SystemExit('Unrecognized model digest; fail closed')
+          print('Pinned model sha256 verified:', expected)
+          PY
+      - name: Generate and test exactly one scoped AI patch
+        if: steps.baseline.outputs.needs_model == 'true'
+        id: generate
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 650 python3 -B auto_tests/tools/ai_rank_candidate.py
+          if [[ -f evidence/ai-rank-candidate.py ]]; then
+            echo proposed=true >> "$GITHUB_OUTPUT"
+          else
+            echo proposed=false >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload RED/GREEN evidence and proposed diff
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-ai-rank-candidate
+          path: evidence/ai-rank*
+          if-no-files-found: warn
+          retention-days: 7
+
+  publisher:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.event_name != 'pull_request' &&
+      needs.unprivileged-candidate.outputs.proposed == 'true'
+    needs: unprivileged-candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Trusted dev publisher code; no persistent credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Read-only download of tested worker evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-ai-rank-candidate
+          path: evidence/
+      - name: Revalidate allowed diff and exact dev SHA; create Draft PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          timeout 120 python3 -I auto_tests/tools/ai_rank_publisher.py
