@@ -95,3 +95,25 @@ Após essa execução foram adicionados recusa explícita `O_PATH` e um teste ad
 
 
 Para contratos base e critérios de estabilidade, ver [histórico/guia de agentes](AGENT_HISTORICAL_PLAYBOOK.md), [ARCHITECTURE](ARCHITECTURE.md), [issues CachyOS #3](https://github.com/LMhdez/gaslux/issues/3) e [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
+
+## 2026-11-22 — read-only destination cross-backend contract (PR #337)
+
+- [PR #337](https://github.com/LMhdez/gaslux/pull/337) adds host-only
+  `assess_authenticated_destination` with actual QEMU pidfd/procfd
+  observations, held QCOW2/backing/checkpoint read-only FDs, checked SHA-256,
+  canonical RAW backing GPT parser and *unchanged*, pinned #267 no-writer gate.
+- [Actions #45032388422](https://github.com/LMhdez/gaslux/actions/runs/45032388422)
+  and [#45032391998](https://github.com/LMhdez/gaslux/actions/runs/45032391998)
+  **SUCCESS** on core HEAD `d2e382a60120d09a0b225e4188309f48f0315845`:
+  private QEMU stopped before guest boot; 11 destination attack/positive
+  cases, #327 BZD-DEST-01 suite and #267/HOST-FD/QEMU regressions;
+  Ruff + compileall passed.
+- [CachyOS recovery #45032392005](https://github.com/LMhdez/gaslux/actions/runs/45032392005)
+  and [Windows recovery #45032392037](https://github.com/LMhdez/gaslux/actions/runs/45032392037)
+  **SUCCESS** on the same HEAD. All are contract/fixture
+  runs, **not** Windows/Linux boot, dual boot, in-place recovery or rollback.
+- Properties: local FD and backing GPT **PROVEN locally**; caller plan, source
+  and write-set ownership **CLAIMED**; independent backend/FD, effective
+  QCOW2 guest GPT and checkpoint authenticity **UNPROVEN**;
+  Guest channel, write and installation authority **DENIED**.
+  No release or stability claim.

@@ -89,3 +89,31 @@ Ao primeiro dado contraditório, STOP antes de escrita; indicar campo, valor esp
 ### Regras de recuperação comprovável versus descarte COW
 O descarte de um overlay QCOW2 sem mutar a base demonstra que **a base ficou protegida** no laboratório; não demonstra uma compensação in-place de ESP, GPT/EBR ou WinRE após escritas reais sobre o Windows. Estas são provas com níveis diferentes. Exigir antes de autorizar escrita em VM um journal transaccional dos **intervalos exactos**, snapshots, hashes e mecanismo de compensação para esse sistema; comparar EFI/MBR/BCD/WinRE, encriptação e boots Windows de verdade na fase final. Não inferir resistência a power-cut de simples `SIGTERM` ou saída voluntária.
 
+## 2026-11-22 — AUTHENTICATED-DESTINATION-01 (read-only host QEMU FD composition)
+
+[PR Draft #337](https://github.com/LMhdez/gaslux/pull/337) joins existing
+#325 Observer ProcessSeal/QemuLocalDiskWitness/QMP read-only diagnostics,
+canonical GPT `inspect_gpt_fd` and the SHA-pinned #267 no-writer decision.
+New module `auto_tests/installer_observer/authenticated_destination.py`
+examines actual private QCOW2, backing RAW and checkpoint **open FDs**,
+file identity/size/mtime/ctime, bounded SHA-256, QCOW2 backing configuration
+from `qemu-img info`, raw GPT primary/backup and declared transaction,
+owned extents and checkpoint. Nine attack classes (plus RAW/checkpoint alias
+tests) exercise real disposable files and a stopped QEMU. They reject
+destination rename/replacement, foreign FDs, backing swap, GPT geometry
+mismatch, transaction/ownership mismatch, altered checkpoint and fabricated
+guest provenance. A structurally valid fixture returns
+`READONLY_STRUCTURE_OBSERVED` and `DENY_NO_WRITER` **only**.
+
+**Exact CI:** [#45032388422](https://github.com/LMhdez/gaslux/actions/runs/45032388422)
+and [#45032391998](https://github.com/LMhdez/gaslux/actions/runs/45032391998)
+SUCCESS on `d2e382a60120d09a0b225e4188309f48f0315845`;
+[Windows fixture #45032392037](https://github.com/LMhdez/gaslux/actions/runs/45032392037)
+and [CachyOS fixture #45032392005](https://github.com/LMhdez/gaslux/actions/runs/45032392005)
+also SUCCESS at that HEAD. Host-only observer, test-owned temporary regular
+files, **no guest launch**, guest-authentication, installer, disk writer,
+boot or in-place rollback. QMP consistency **does not** independently bind
+the internal QEMU backend pointer to the original FD. The QCOW2 backing
+RAW GPT is **not** the guest-visible GPT. Checkpoint bytes/hash are not
+proof of Windows recovery. ISO/OCI signed provenance remains per-backend.
+See [detailed property matrix](../AUTHENTICATED_DESTINATION_READONLY.md).

@@ -95,3 +95,22 @@ Before a writer, Safety/Observer must prove external plan authority,
 the original QEMU backend-FD association, effective guest GPT,
 independent collector origin/freshness, checkpoint provenance,
 Windows recovery and rollback; do not use this module as a writer gate.
+
+## Exact-head real QEMU and Safety regression execution (2026-11-22)
+
+[Actions #45032388422](https://github.com/LMhdez/gaslux/actions/runs/45032388422)
+and [#45032391998](https://github.com/LMhdez/gaslux/actions/runs/45032391998)
+**SUCCESS** on implementation HEAD `d2e382a60120d09a0b225e4188309f48f0315845`.
+The new 11-test real-QEMU destination suite passed both the valid no-writer
+case and all invalid mutation cases; the original QEMU/FD witness suite,
+#327 BZD-DEST-01 original 16-case suite, #267 no-writer 22-case suite and
+integrated HOST/FD tests also completed successfully. Python compileall,
+Ruff lint and format passed. [Windows recovery fixture CI #45032392037](https://github.com/LMhdez/gaslux/actions/runs/45032392037)
+and [CachyOS recovery contract CI #45032392005](https://github.com/LMhdez/gaslux/actions/runs/45032392005)
+also completed SUCCESS on the same HEAD.
+
+These CI runs prove only *local test-owned stopped-QEMU FD observations*,
+a read-only backing RAW GPT, a caller-hash-checked checkpoint and explicit
+no-writer refusals. They do NOT prove guest boot, effective overlay GPT,
+independent QEMU backend mapping, third-party source or transaction signature,
+Windows recovery, rollback or any production authority.
