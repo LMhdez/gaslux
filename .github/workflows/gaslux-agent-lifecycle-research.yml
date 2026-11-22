@@ -2,8 +2,8 @@ name: GASLUX-LIFECYCLE - autonomous multi-distro read-only research
 
 on:
   schedule:
-    - cron: '13,43 * * * *' # every 30 minutes
-    - cron: '29 3 * * *' # daily official Mint live-guest attempt
+    - cron: '16,46 * * * *' # staggered 30-minute refresh
+    - cron: '31 3 * * *' # daily official Mint live-guest attempt
   workflow_dispatch:
     inputs:
       mint_live_boot:
