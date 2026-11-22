@@ -1,0 +1,189 @@
+name: Zorin RAW GPT FD-bound Safety 307 integration (synthetic only)
+on:
+  push:
+    branches:
+      - audit/zorin-fd-toctou-20261121
+    paths:
+      - '.github/workflows/zorin-fd-toctou-diagnostic.yml'
+      - 'auto_tests/test_zorin_fd_toctou_repro.py'
+      - 'auto_tests/tools/zorin_synthetic_writeset.py'
+      - 'docs/ZORIN_FD_TOCTOU_AUDIT.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zorin-fd-toctou-diagnostic-20261121
+  cancel-in-progress: false
+jobs:
+  synthetic-race-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout test-only Zorin audit branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Import the unchanged and pinned Safety GPT reader
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: LMhdez/gaslux
+          ref: d5eb20114df34a778ada1af1f6f4f6bff0c49845
+          path: safety307
+          persist-credentials: false
+          sparse-checkout: |
+            assets/live/libertix_disk_identity_gate.py
+            auto_tests/tests/test_disk_identity_gate.py
+          sparse-checkout-cone-mode: false
+      - name: Verify pinned reader, Python, Ruff, reproduce interleavings
+        shell: bash
+        env:
+          PYTHONPATH: safety307/assets/live
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C safety307 rev-parse HEAD)" = d5eb20114df34a778ada1af1f6f4f6bff0c49845
+          test -f safety307/assets/live/libertix_disk_identity_gate.py
+          test -f safety307/auto_tests/tests/test_disk_identity_gate.py
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("auto_tests/tools/zorin_synthetic_writeset.py").read_text()
+          canonical = Path("safety307/assets/live/libertix_disk_identity_gate.py").read_text()
+          assert "def inspect_gpt_fd(fd: int, *, logical_sector_size: int)" in canonical
+          assert "inspect_gpt_fd(fd, logical_sector_size=policy.sector_bytes)" in source
+          assert "inspect_gpt_image(root / name" not in source
+          assert "E_GPT_FD_BINDING_REQUIRED" not in source
+          PY
+          python3 -m pip install --break-system-packages --no-input 'jsonschema>=4.20,<5' 'ruff>=0.10,<0.18' 'pytest>=8,<9'
+          python3 -m compileall -q auto_tests/test_zorin_fd_toctou_repro.py auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py
+          ruff check --select E4,E7,E9,F auto_tests/test_zorin_fd_toctou_repro.py auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py
+          ruff format --check --diff auto_tests/test_zorin_fd_toctou_repro.py auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py
+          python3 -m pytest -q safety307/auto_tests/tests/test_disk_identity_gate.py
+          python3 -m unittest discover -s auto_tests -p test_zorin_fd_toctou_repro.py -v
+          python3 -m unittest discover -s auto_tests -p test_zorin_synthetic_writeset.py -v
+          for suite in test_zorin_native_installer_discovery.py test_zorin_native_ubiquity_map.py test_zorin_native_live_observer.py test_zorin_official_iso_installer_inventory.py test_windows_mint_overlay_root.py test_windows_mint_cow_boot_evidence.py test_windows_zorin_cow_boot_evidence.py test_zorin_qmp_powerdown.py test_zorin_shutdown_witness.py test_windows_x64_two_stage_boot.py; do
+            python3 -m unittest discover -s auto_tests -p "$suite" -v
+          done
+          echo 'FD-BOUND: canonical Safety #307 GPT FD reader; synthetic-only, no native installation, QEMU, Windows disks or writer authorization.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Emit bounded SHA-256 and non-authorizing race evidence
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -m 700 -p zorin-fd-toctou-evidence
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          files = [
+              "auto_tests/tools/zorin_synthetic_writeset.py",
+              "auto_tests/test_zorin_synthetic_writeset.py",
+              "auto_tests/test_zorin_fd_toctou_repro.py",
+              "schemas/zorin-synthetic-writeset-v1.schema.json",
+              "safety307/assets/live/libertix_disk_identity_gate.py",
+              "docs/ZORIN_FD_TOCTOU_AUDIT.md",
+          ]
+          hashes = {}
+          for path in files:
+              with Path(path).open("rb") as stream:
+                  hashes[path] = hashlib.file_digest(stream, "sha256").hexdigest()
+          result = {
+              "schemaVersion": 1,
+              "headSha": os.environ["GITHUB_SHA"],
+              "sourceSha256": hashes,
+              "safetyReaderCommit": "d5eb20114df34a778ada1af1f6f4f6bff0c49845",
+              "beforeFixReproduction": {
+                  "runId": 44907293085,
+                  "headSha": "ce52f44a48d0397dc3caeffae0f311c5babbba28",
+                  "reproducedUnsafeSyntheticClassification": True,
+                  "testCases": 11
+              },
+              "afterFixTests": {
+                  "race": 25,
+                  "synthetic": 32,
+                  "existingRegressions": 140,
+                  "canonicalSafetyFD": 25,
+                  "total": 222,
+                  "passed": True
+              },
+              "currentDecision": "SYNTHETIC_NO_CHANGE_IF_ALL_FD_CHECKS_PASS",
+              "authorization": "DENY_NO_WRITER",
+              "syntheticOnly": True,
+              "transactionOwned": False,
+              "externalAttestationVerified": False,
+              "windowsRollbackVerified": False,
+              "nativeInstallerInvoked": False,
+              "guestOrPhysicalDiskUsed": False,
+              "qemuExecuted": False,
+              "stable": False,
+          }
+          Path("zorin-fd-toctou-evidence/descriptor-race-evidence.json").write_text(
+              json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+      - name: Archive text-only SHA-256 evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zorin-fd-toctou-audit-text-only
+          path: zorin-fd-toctou-evidence/descriptor-race-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+
+  clean-dev-zorin-subset:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact Zorin source commit (read-only)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          path: source281
+      - name: Checkout clean dev exact baseline, without Zorin experimental ancestry
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: LMhdez/gaslux
+          ref: 8e68a475d6397ba8fef2e0f9f83758545e202a5f
+          persist-credentials: false
+          path: clean-dev
+      - name: Stage only eight read-only Zorin files and verify canonical dev API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C source281 rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C clean-dev rev-parse HEAD)" = 8e68a475d6397ba8fef2e0f9f83758545e202a5f
+          test -f clean-dev/assets/live/libertix_disk_identity_gate.py
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          source = Path("clean-dev/assets/live/libertix_disk_identity_gate.py")
+          module = ast.parse(source.read_text(encoding="utf-8"))
+          names = {n.name for n in module.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+          assert {"inspect_gpt_fd", "assert_snapshot_matches"}.issubset(names)
+          files = (
+              ".github/workflows/zorin-synthetic-writeset.yml",
+              ".github/workflows/zorin-fd-toctou-diagnostic.yml",
+              "auto_tests/tools/zorin_synthetic_writeset.py",
+              "auto_tests/test_zorin_synthetic_writeset.py",
+              "auto_tests/test_zorin_fd_toctou_repro.py",
+              "schemas/zorin-synthetic-writeset-v1.schema.json",
+              "docs/ZORIN_SYNTHETIC_WRITESET.md",
+              "docs/ZORIN_FD_TOCTOU_AUDIT.md",
+          )
+          for item in files:
+              src, dest = Path("source281") / item, Path("clean-dev") / item
+              assert src.is_file(), item
+              assert not dest.exists(), "clean dev unexpectedly contains " + item
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              dest.write_bytes(src.read_bytes())
+          assert len(files) == 8
+          PY
+          cd clean-dev
+          PYTHONPATH="$PWD/assets/live" python3 -c 'from libertix_disk_identity_gate import inspect_gpt_fd; assert callable(inspect_gpt_fd)'
+          python3 -m pip install --break-system-packages --no-input 'jsonschema>=4.20,<5' 'ruff>=0.10,<0.18' 'pytest>=8,<9'
+          python3 -m compileall -q auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py auto_tests/test_zorin_fd_toctou_repro.py
+          ruff check --select E4,E7,E9,F auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py auto_tests/test_zorin_fd_toctou_repro.py
+          ruff format --check auto_tests/tools/zorin_synthetic_writeset.py auto_tests/test_zorin_synthetic_writeset.py auto_tests/test_zorin_fd_toctou_repro.py
+          PYTHONPATH="$PWD/assets/live" python3 -m unittest discover -s auto_tests -p test_zorin_synthetic_writeset.py -v
+          PYTHONPATH="$PWD/assets/live" python3 -m unittest discover -s auto_tests -p test_zorin_fd_toctou_repro.py -v
+          PYTHONPATH="$PWD/assets/live" python3 -m pytest -q auto_tests/tests/test_disk_identity_gate.py
+          echo "Zorin read-only eight-file subset imported into clean dev; no #264 controller, no QEMU and no writer." >> "$GITHUB_STEP_SUMMARY"

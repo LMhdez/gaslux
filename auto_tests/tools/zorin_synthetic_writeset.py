@@ -2,7 +2,7 @@
 """Read-only byte-diff verifier for SMALL, private, synthetic Zorin GPT fixtures.
 
 Never grants a write permission. The GPT parser is imported, unchanged, from
-Safety #265. Missing that pinned external dependency is a hard failure.
+Safety #307 (merged into dev). Missing the pinned FD API is a hard failure.
 This is not an independent attestation, an installer fence, or Windows rollback.
 """
 
@@ -19,7 +19,7 @@ import stat
 from jsonschema import Draft202012Validator
 from libertix_disk_identity_gate import (
     DiskIdentityError,
-    inspect_gpt_image,
+    inspect_gpt_fd,
     assert_snapshot_matches,
 )
 
@@ -175,8 +175,8 @@ def owned_fd(root: Path, name: str, max_bytes: int):
         try:
             got = os.fstat(fd)
             insist(
-                (got.st_dev, got.st_ino, got.st_size, got.st_mtime_ns)
-                == (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns),
+                (got.st_dev, got.st_ino, got.st_size, got.st_mtime_ns, got.st_ctime_ns)
+                == (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns),
                 "E_SOURCE_RACE",
             )
         except Exception:
@@ -193,68 +193,150 @@ def digest_fd(fd: int, size: int) -> str:
     h = hashlib.sha256()
     for offset in range(0, size, BLOCK):
         length = min(BLOCK, size - offset)
-        content = os.pread(fd, length, offset)
+        try:
+            content = os.pread(fd, length, offset)
+        except OSError as exc:
+            raise WriteSetRefused("E_SOURCE_RACE") from exc
         insist(len(content) == length, "E_TRUNCATED_SOURCE")
         h.update(content)
     return h.hexdigest()
 
 
 def close_guard(fd: int, original: os.stat_result) -> None:
-    now = os.fstat(fd)
+    try:
+        now = os.fstat(fd)
+    except OSError as exc:
+        raise WriteSetRefused("E_SOURCE_RACE") from exc
     insist(
-        (now.st_dev, now.st_ino, now.st_size, now.st_mtime_ns)
-        == (original.st_dev, original.st_ino, original.st_size, original.st_mtime_ns),
+        (now.st_dev, now.st_ino, now.st_size, now.st_mtime_ns, now.st_ctime_ns, now.st_nlink)
+        == (
+            original.st_dev,
+            original.st_ino,
+            original.st_size,
+            original.st_mtime_ns,
+            original.st_ctime_ns,
+            original.st_nlink,
+        ),
         "E_SOURCE_RACE",
     )
 
 
 def tree_digest(root: Path, folder: str) -> str:
-    base = root / folder
-    insist(
-        not base.is_symlink() and base.is_dir() and base.lstat().st_uid == os.getuid(), "E_ESP_TREE"
-    )
-    inventory = []
+    """Digest a synthetic EFI directory via pinned dirfds, not reopened paths.
 
-    def descend(directory: Path, prefix: str) -> None:
-        insist(len(inventory) <= 128, "E_ESP_TREE_OVERSIZE")
-        for entry in sorted(os.scandir(directory), key=lambda x: x.name):
+    This binds scanned children to their opened parent directory inode.
+    It is NOT FAT32 verification or an independently attested source.
+    """
+    insist(folder in ("esp-base", "esp-trial"), "E_ESP_PATH")
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY
+    inventory = []
+    root_fd = -1
+    base_fd = -1
+
+    def identity(st: os.stat_result) -> tuple[int, int, int]:
+        return st.st_dev, st.st_ino, st.st_mode
+
+    def walk(directory_fd: int, prefix: str) -> None:
+        before = os.fstat(directory_fd)
+        with os.scandir(directory_fd) as iterator:
+            names = sorted(entry.name for entry in iterator)
+        insist(len(inventory) + len(names) <= 128, "E_ESP_TREE_OVERSIZE")
+        for name in names:
             insist(
-                re.fullmatch(r"[A-Za-z0-9_.+-]{1,80}", entry.name) is not None
-                and entry.name not in (".", ".."),
+                re.fullmatch(r"[A-Za-z0-9_.+-]{1,80}", name) is not None
+                and name not in (".", ".."),
                 "E_ESP_PATH",
             )
-            relative = prefix + entry.name
-            st = entry.stat(follow_symlinks=False)
-            insist(st.st_uid == os.getuid() and st.st_dev == root.stat().st_dev, "E_ESP_FOREIGN")
+            relative = prefix + name
+            st = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            insist(st.st_uid == os.getuid() and st.st_dev == before.st_dev, "E_ESP_FOREIGN")
             if stat.S_ISDIR(st.st_mode):
-                descend(Path(entry.path), relative + "/")
-                continue
-            insist(
-                stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and st.st_size <= 1024 * 1024,
-                "E_ESP_FOREIGN",
-            )
-            fd = os.open(entry.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-            try:
-                f = os.fstat(fd)
+                child_fd = os.open(name, flags, dir_fd=directory_fd)
+                try:
+                    child = os.fstat(child_fd)
+                    insist(identity(child) == identity(st), "E_ESP_RACE")
+                    walk(child_fd, relative + "/")
+                    insist(
+                        identity(os.stat(name, dir_fd=directory_fd, follow_symlinks=False))
+                        == identity(st),
+                        "E_ESP_RACE",
+                    )
+                finally:
+                    os.close(child_fd)
+            else:
                 insist(
-                    (f.st_dev, f.st_ino, f.st_size) == (st.st_dev, st.st_ino, st.st_size),
-                    "E_ESP_RACE",
+                    stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and st.st_size <= 1024 * 1024,
+                    "E_ESP_FOREIGN",
                 )
-                inventory.append((relative, digest_fd(fd, st.st_size)))
-                close_guard(fd, st)
-            finally:
-                os.close(fd)
+                fd = os.open(
+                    name,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=directory_fd,
+                )
+                try:
+                    current = os.fstat(fd)
+                    insist(
+                        (current.st_dev, current.st_ino, current.st_size)
+                        == (st.st_dev, st.st_ino, st.st_size),
+                        "E_ESP_RACE",
+                    )
+                    inventory.append((relative, digest_fd(fd, st.st_size)))
+                    close_guard(fd, st)
+                    after = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                    insist(
+                        (after.st_dev, after.st_ino, after.st_size)
+                        == (st.st_dev, st.st_ino, st.st_size),
+                        "E_ESP_RACE",
+                    )
+                finally:
+                    os.close(fd)
+        after_directory = os.fstat(directory_fd)
+        insist(
+            identity(before) == identity(after_directory)
+            and before.st_mtime_ns == after_directory.st_mtime_ns,
+            "E_ESP_RACE",
+        )
 
-    descend(base, "")
-    insist(len(inventory) <= 128, "E_ESP_TREE_OVERSIZE")
-    return hashlib.sha256(
-        json.dumps(inventory, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    ).hexdigest()
-
-
-def read_gpt(root: Path, name: str, policy: SyntheticPolicy) -> dict:
     try:
-        return inspect_gpt_image(root / name, logical_sector_size=policy.sector_bytes)
+        root_fd = os.open(root, flags)
+        first_root = os.fstat(root_fd)
+        insist(
+            stat.S_ISDIR(first_root.st_mode) and first_root.st_uid == os.getuid(),
+            "E_ESP_TREE",
+        )
+        before_base = os.stat(folder, dir_fd=root_fd, follow_symlinks=False)
+        insist(
+            stat.S_ISDIR(before_base.st_mode)
+            and before_base.st_uid == os.getuid()
+            and before_base.st_dev == first_root.st_dev,
+            "E_ESP_TREE",
+        )
+        base_fd = os.open(folder, flags, dir_fd=root_fd)
+        insist(identity(os.fstat(base_fd)) == identity(before_base), "E_ESP_RACE")
+        walk(base_fd, "")
+        insist(
+            identity(os.stat(folder, dir_fd=root_fd, follow_symlinks=False))
+            == identity(before_base),
+            "E_ESP_RACE",
+        )
+        insist(identity(os.fstat(root_fd)) == identity(first_root), "E_ESP_RACE")
+        insist(len(inventory) <= 128, "E_ESP_TREE_OVERSIZE")
+        return hashlib.sha256(
+            json.dumps(inventory, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).hexdigest()
+    except OSError as exc:
+        raise WriteSetRefused("E_ESP_RACE") from exc
+    finally:
+        if base_fd >= 0:
+            os.close(base_fd)
+        if root_fd >= 0:
+            os.close(root_fd)
+
+
+def read_gpt(fd: int, policy: SyntheticPolicy) -> dict:
+    """Canonical Safety #307 reader on the same pinned FD used by byte-diff."""
+    try:
+        return inspect_gpt_fd(fd, logical_sector_size=policy.sector_bytes)
     except (DiskIdentityError, OSError, ValueError) as exc:
         raise WriteSetRefused("E_GPT_INVALID") from exc
 
@@ -264,8 +346,11 @@ def compare_raw(a: int, b: int, policy: SyntheticPolicy) -> int:
     linux = policy.linux
     for offset in range(0, policy.disk_bytes, BLOCK):
         length = min(BLOCK, policy.disk_bytes - offset)
-        old = os.pread(a, length, offset)
-        new = os.pread(b, length, offset)
+        try:
+            old = os.pread(a, length, offset)
+            new = os.pread(b, length, offset)
+        except OSError as exc:
+            raise WriteSetRefused("E_SOURCE_RACE") from exc
         insist(len(old) == length and len(new) == length, "E_TRUNCATED_SOURCE")
         if old == new:
             continue
@@ -348,8 +433,8 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
         )
         insist(tree_digest(root, "esp-base") == policy.esp_sha256, "E_ESP_BASE_CHANGED")
         insist(tree_digest(root, "esp-trial") == policy.esp_sha256, "E_ESP_FILES_CHANGED")
-        start = read_gpt(root, "baseline.raw", policy)
-        end = read_gpt(root, "trial.raw", policy)
+        start = read_gpt(fds["baseline.raw"][0], policy)
+        end = read_gpt(fds["trial.raw"][0], policy)
         try:
             assert_snapshot_matches(policy.expected_disk, start)
         except DiskIdentityError as exc:
@@ -386,6 +471,22 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
         )
         for fd, original in fds.values():
             close_guard(fd, original)
+        # Final path identity is a supplemental fail-closed rename detector,
+        # NOT the source of GPT evidence: all GPT/hash/diff reads used pinned FDs.
+        # Rename-and-restore or concurrent writes remain outside an externally
+        # authenticated immutable snapshot and cannot authorize installation.
+        for name in ("baseline.raw", "trial.raw", "checkpoint.raw"):
+            try:
+                linked = (root / name).lstat()
+            except OSError as exc:
+                raise WriteSetRefused("E_SOURCE_RACE") from exc
+            initial = fds[name][1]
+            insist(
+                stat.S_ISREG(linked.st_mode)
+                and (linked.st_dev, linked.st_ino, linked.st_size, linked.st_nlink)
+                == (initial.st_dev, initial.st_ino, initial.st_size, initial.st_nlink),
+                "E_SOURCE_RACE",
+            )
         return {
             "result": "SYNTHETIC_ONLY_WITHIN_ROOT" if changed else "SYNTHETIC_NO_CHANGE",
             "changedLinuxBytes": changed,
@@ -396,9 +497,15 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
             "windowsRollbackVerified": False,
             "productionWriteAuthorized": False,
         }
+
     finally:
         for fd, _ in fds.values():
-            os.close(fd)
+            try:
+                os.close(fd)
+            except OSError:
+                # A concurrently invalidated test FD is already a refusal;
+                # do not replace the explicit result with raw EBADF here.
+                pass
 
 
 def load_policy(root: Path) -> dict:
