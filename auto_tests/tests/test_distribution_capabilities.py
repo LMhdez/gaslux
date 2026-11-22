@@ -229,3 +229,43 @@ def test_v2_generator_excludes_unreleased_entries_from_main(tmp_path):
     assert [d["id"] for d in main["distributions"]] == ["zorin"]
     assert [d["id"] for d in dev["distributions"]] == ["mint", "zorin"]
     assert all(d["capabilities"]["status"] == "released" for d in main["distributions"])
+
+# Cross-language JSON type boundary: bool is a subclass of int in Python.
+# C# and PowerShell deserialize version as an integer; do not grant a
+# capability when Python sees JSON true in place of protocol version 1.
+@pytest.mark.parametrize(
+    ("distribution_id", "os_release_id", "backend", "source", "secure_boot", "bios", "uefi", "layouts"),
+    [
+        ("mint", "linuxmint", "debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub", ["bios/mbr", "uefi/gpt"]),
+        ("zorin", "zorin", "debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub", ["bios/mbr", "uefi/gpt"]),
+        ("cachyos", "cachyos", "archiso-cachyos", "archiso", "unsupported", "grub", "grub", ["uefi/gpt"]),
+        ("popos", "pop", "system76", "pop-live", "unsupported", "grub", "systemd-boot", ["uefi/gpt"]),
+        ("q4os", "q4os", "q4os-native", "q4os-native-iso", "unsupported", "grub", "grub", ["uefi/gpt"]),
+        ("bazzite", "bazzite", "fedora-atomic", "fedora-atomic-iso", "manual-enrollment", "none", "grub", ["uefi/gpt"]),
+    ],
+)
+@pytest.mark.parametrize("bad_version", [True, False, 1.0, "1", None])
+def test_capability_version_is_exact_integer_across_live_and_release_generator(
+    distribution_id, os_release_id, backend, source, secure_boot, bios, uefi, layouts, bad_version
+):
+    live = load_helper()
+    path = ROOT / "iso-tools/generate-release-metadata.py"
+    spec = importlib.util.spec_from_file_location("gaslux_generator_version_type_test", path)
+    assert spec is not None and spec.loader is not None
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    schema = json.loads(
+        (ROOT / "schemas/distribution-capabilities.schema.json").read_text(encoding="utf-8")
+    )
+    status = "released" if distribution_id in {"mint", "zorin"} else "lab-only"
+    cap = capability(backend, source, secure_boot, bios, uefi, status, layouts)
+    Draft202012Validator(schema).validate(cap)
+    assert live.validate_capabilities(distribution_id, os_release_id, cap) == (status == "released")
+    generator.validate_distribution_capability(distribution_id, os_release_id, cap)
+    cap["version"] = bad_version
+    if type(bad_version) is bool:
+        assert not Draft202012Validator(schema).is_valid(cap)
+    with pytest.raises(live.CapabilityError, match="shape"):
+        live.validate_capabilities(distribution_id, os_release_id, cap)
+    with pytest.raises(ValueError, match="shape/version"):
+        generator.validate_distribution_capability(distribution_id, os_release_id, cap)
