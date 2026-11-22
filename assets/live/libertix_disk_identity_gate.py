@@ -121,7 +121,7 @@ def inspect_gpt_fd(fd: int, *, logical_sector_size: int) -> dict:
                                    attributes=attributes))
         sorted_parts = sorted(partitions, key=lambda p: p["offsetBytes"])
         require(all(a["offsetBytes"] + a["sizeBytes"] <= b["offsetBytes"]
-                    for a, b in zip(sorted_parts, sorted_parts[1:])),
+                    for a, b in zip(sorted_parts, sorted_parts[1:], strict=False)),
                 "overlapping partitions")
         require(len({p["partGuid"] for p in partitions}) == len(partitions),
                 "duplicate partition GUID")
@@ -219,6 +219,6 @@ def assert_snapshot_matches(expected: dict, observed: dict) -> None:
             guids.add(part["partGuid"])
             spans.append((part["offsetBytes"], part["offsetBytes"] + part["sizeBytes"]))
         spans.sort()
-        require(all(a[1] <= b[0] for a, b in zip(spans, spans[1:])),
+        require(all(a[1] <= b[0] for a, b in zip(spans, spans[1:], strict=False)),
                 "overlapping partitions")
     require(expected == observed, "disk identity or partition geometry changed")
