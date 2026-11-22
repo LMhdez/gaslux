@@ -262,3 +262,57 @@ def test_archive_module_has_no_controller_or_network_imports():
         if isinstance(node, ast.ImportFrom):
             assert (node.module or "").split(".")[-1] not in banned
     assert "send_key" not in source
+
+
+def test_four_archives_with_historical_nested_hooks_and_optional_evidence(
+    tmp_path, monkeypatch
+):
+    """The original ZIPs contain 13 nested hooks and 15 extra evidence files."""
+    manifest_path, zip_dir, metadata_dir, manifest = fixture(tmp_path, monkeypatch)
+    extras = [
+        "evidence/evidence.sha256",
+        "evidence/gpt-audit.txt",
+        "evidence/grub.cfg",
+        "evidence/qemu.rc",
+        "evidence/serial.log",
+    ] + [f"evidence/ocr-trace-{i}.txt" for i in range(10)]
+    nested = [
+        f"calamares-inspect/native-hooks/hook-{i}.sha256" for i in range(13)
+    ]
+    for item in manifest["archives"]:
+        aid = item["artifactId"]
+        path = zip_dir / f"{aid}.zip"
+        with zipfile.ZipFile(io.BytesIO(path.read_bytes())) as original:
+            members = [(entry.filename, original.read(entry)) for entry in original.infolist()]
+        members.extend((name, b"pinned-optional") for name in (*extras, *nested))
+        binary = archive(members)
+        path.write_bytes(binary)
+        item["archiveSha256"] = digest(binary)
+        metadata = metadata_dir / f"{aid}.json"
+        doc = json.loads(metadata.read_text())
+        doc["digest"] = "sha256:" + item["archiveSha256"]
+        metadata.write_text(json.dumps(doc))
+    manifest_path.write_bytes(canonical(manifest))
+    monkeypatch.setattr(verifier, "MANIFEST_SHA", digest(canonical(manifest)))
+    result = verifier.validate_archives(manifest_path, zip_dir, metadata_dir)
+    assert result["artifactIds"] == list(verifier.ARTIFACTS)
+    assert (result["screenshots"], result["transitions"]) == (40, 36)
+    assert result["externalProvenance"] == "EXTERNAL_PROVENANCE_UNPROVEN"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "calamares-inspect/native-hooks/../bad.txt",
+        "calamares-inspect/native-hooks//empty.txt",
+        "calamares-inspect/native-hooks/bad\\\\evil.txt",
+        "calamares-inspect/CON/unsafe.txt",
+        "evidence/unknown.png",
+        "outside/native-hooks/payload",
+    ],
+)
+def test_nested_member_name_refusals(name):
+    if name == "evidence/unknown.png":
+        assert verifier._name(name)
+    else:
+        assert not verifier._name(name)
