@@ -1,0 +1,130 @@
+name: Research - Local Coder CPU Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/research-local-coder-smoke.yml
+
+permissions: {}
+
+concurrency:
+  group: research-local-coder-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu-smoke:
+    if: github.repository == 'LMhdez/gaslux'
+    name: CPU smoke ${{ matrix.model }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [qwen2.5-coder:1.5b, qwen2.5-coder:3b]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      MODEL: ${{ matrix.model }}
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    steps:
+      - name: Record runner resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          nproc
+          free -h
+          df -h .
+      - name: Install local CPU inference (experimental, unpinned upstream installer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error https://ollama.com/install.sh -o /tmp/ollama-install.sh
+          sh /tmp/ollama-install.sh
+          ollama --version
+          (ollama serve > /tmp/ollama-serve.log 2>&1 &)
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:11434/api/version >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/ollama-serve.log
+          exit 1
+      - name: Pull selected model
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 600 ollama pull "$MODEL"
+          ollama list
+      - name: Bounded code task and safe deterministic checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 - <<'PY'
+          import ast
+          import json
+          import os
+          import pathlib
+          import resource
+          import time
+          import urllib.request
+
+          model = os.environ["MODEL"]
+          task = ("Return ONLY a single Python expression, no markdown, no explanation. "
+                  "Variables a and b are integers. Compute a squared plus b squared. "
+                  "Do not call functions or import modules.")
+          body = {"model": model, "prompt": task, "stream": False,
+                  "options": {"temperature": 0, "num_predict": 96, "num_ctx": 1024}}
+          t0 = time.monotonic()
+          result = {"model": model, "task": "sum-of-squares-expression",
+                    "passed": False, "tests": 0}
+          try:
+              request = urllib.request.Request(
+                  "http://127.0.0.1:11434/api/generate",
+                  data=json.dumps(body).encode(),
+                  headers={"Content-Type": "application/json"},
+              )
+              with urllib.request.urlopen(request, timeout=480) as response:
+                  generated = json.load(response)
+              expression = generated.get("response", "").strip()
+              result["response"] = expression[:400]
+              result["eval_count"] = generated.get("eval_count")
+              result["eval_duration_ns"] = generated.get("eval_duration")
+              result["total_duration_ns"] = generated.get("total_duration")
+              syntax = ast.parse(expression, mode="eval")
+              allowed = (ast.Expression, ast.BinOp, ast.Add, ast.Mult, ast.Name, ast.Load, ast.Constant)
+              if any(not isinstance(node, allowed) for node in ast.walk(syntax)):
+                  raise ValueError("model output violates restricted expression grammar")
+              if any(isinstance(node, ast.Name) and node.id not in {"a", "b"} for node in ast.walk(syntax)):
+                  raise ValueError("unexpected variable in output")
+              if any(isinstance(node, ast.Constant) and (type(node.value) is not int or abs(node.value)>100) for node in ast.walk(syntax)):
+                  raise ValueError("unexpected constant")
+              code = compile(syntax, "<model-expression>", "eval")
+              pairs = [(0,0),(1,2),(-3,4),(11,-7),(-10,-10),(100,200)]
+              for a,b in pairs:
+                  actual = eval(code, {"__builtins__": {}}, {"a": a, "b": b})
+                  if actual != a*a+b*b:
+                      raise AssertionError(f"incorrect for a={a}, b={b}")
+                  result["tests"] += 1
+              result["passed"] = True
+          except Exception as exc:
+              result["error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
+          finally:
+              result["wall_seconds"] = round(time.monotonic()-t0, 3)
+              result["peak_rss_kib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+              path = pathlib.Path("evidence") / (model.replace(":", "-") + ".json")
+              path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+              print(json.dumps(result, indent=2, sort_keys=True))
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+                  output.write(f"### {model}\n\nPass: {result['passed']} | Tests: {result['tests']} | Wall: {result['wall_seconds']}s\n")
+              if not result["passed"]:
+                  raise SystemExit(1)
+          PY
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-coder-cpu-${{ strategy.job-index }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
