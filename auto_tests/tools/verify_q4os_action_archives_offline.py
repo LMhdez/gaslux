@@ -119,6 +119,7 @@ def _check_zip(binary: bytes, expected: dict, run: dict, aid: int) -> None:
                 total += entry.file_size
                 require(total <= MAX_TOTAL, "ZIP expansion budget exceeded")
                 if name not in required:
+                    require(name.startswith("calamares-inspect/"), "Unexpected evidence member")
                     continue  # Historical inspection extras are inside pinned whole-ZIP SHA.
                 raw = archive.read(entry)
                 require(len(raw) == entry.file_size, "ZIP member length mismatch")
