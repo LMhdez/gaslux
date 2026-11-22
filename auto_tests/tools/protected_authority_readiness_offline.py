@@ -114,7 +114,10 @@ def _reason(control: str, entry: dict[str, Any] | None) -> str:
     if control == "controller.tokenPermissions":
         return "RUNNER_TOKEN_CANNOT_ATTEST_ADMINISTRATIVE_PROTECTION"
     if control.startswith("ledger."):
-        if payload.get("backend") in {"sqlite", "local-file", "runner-memory"}:
+        backend = payload.get("backend")
+        if type(backend) is not str:
+            return "LEDGER_BACKEND_FIELD_INVALID_OR_UNVERIFIABLE"
+        if backend in {"sqlite", "local-file", "runner-memory"}:
             return "LOCAL_LEDGER_NOT_EXTERNALLY_ROLLBACK_RESISTANT"
         if payload.get("snapshotRestored") is True:
             return "LEDGER_SNAPSHOT_ROLLBACK_UNFENCED"

@@ -118,9 +118,10 @@ jobs:
           PY
       - name: Ruff, format and Python compilation of new gate
         run: |
-          python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
-          python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
-          python3 -m compileall -q auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
+          python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_f01.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_f01.py || true
+          python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_f01.py
+          python3 -m compileall -q auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_f01.py
       - name: Actual pinned PR 275 trigger and exact Git-parent tests (synthetic)
         shell: bash
         run: |
@@ -135,7 +136,7 @@ jobs:
         run: python3 -m pytest -q "$GASLUX_READINESS_PIN_ROOT/safety/auto_tests/tests/test_prewrite_no_writer.py"
       - name: Adversarial readiness gate must remain BLOCKED_TRUST_ROOT
         run: python3 -m pytest -q auto_tests/tests/test_protected_authority_readiness_offline.py
-      - name: F-01 original module and schema-accepted JSON types (RED before fix)
+      - name: F-01 real module and schema-accepted JSON types (GREEN after fix)
         run: python3 -m pytest -q auto_tests/tests/test_protected_authority_readiness_f01.py
       - name: Verify all four pinned checkouts AFTER tests (tracked bytes, index, HEAD)
         if: ${{ always() }}
