@@ -6,8 +6,8 @@ a claim of installation, dual boot, upgrade, removal or recovery.
 
 ## Native schedule
 
-- Every six hours, execute six independently reported distro agents: Mint, Zorin,
-  CachyOS, Pop!_OS, Q4OS and Bazzite.
+- Every 30 minutes, execute six independently reported distro agents: Mint,
+  Zorin, CachyOS, Pop!_OS, Q4OS and Bazzite.
 - Read the current `dev` acceptance matrix and independently review the goal
   supervisor's fail-closed policy.
 - Re-run applicable actual repository contract tests under separate ephemeral
@@ -15,7 +15,7 @@ a claim of installation, dual boot, upgrade, removal or recovery.
   the earliest missing platform/gate for that distro.
 - Measure the available GitHub runner capacity for a disposable 60-GiB sparse
   Windows/Mint VM target. Capacity measurements never authorize a disk writer.
-- Once per week, download the official SHA-256-pinned Mint 22.3 ISO and attempt
+- Once per day, download the official SHA-256-pinned Mint 22.3 ISO and attempt
   to boot its real Linux kernel and serial login in a private QEMU/OVMF guest.
   Logs are saved as evidence; ISO and guest disk images are never uploaded.
 
