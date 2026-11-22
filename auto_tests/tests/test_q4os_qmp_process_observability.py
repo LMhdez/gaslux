@@ -1007,7 +1007,6 @@ def test_r01_post_authentication_socket_swap_denies_send_key(monkeypatch, tmp_pa
         foreign.close()
 
 
-
 def test_r02_fabricated_synthetic_child_never_claims_qemu_spawn(lab):
     work, code, vars_path, image, iso, answer = lab
 
