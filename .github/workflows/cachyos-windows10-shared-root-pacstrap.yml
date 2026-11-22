@@ -29,6 +29,7 @@ on:
       - auto_tests/test_windows_cachyos_bcd_ab_control.py
       - auto_tests/tools/windows_cachyos_checkpoint_readiness.py
       - auto_tests/test_windows_cachyos_checkpoint_readiness.py
+      - docs/distro-backends/evidence/CACHY_WIN10_CHECKPOINT_READINESS_20261122.md
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -68,6 +69,7 @@ on:
       - auto_tests/test_windows_cachyos_bcd_ab_control.py
       - auto_tests/tools/windows_cachyos_checkpoint_readiness.py
       - auto_tests/test_windows_cachyos_checkpoint_readiness.py
+      - docs/distro-backends/evidence/CACHY_WIN10_CHECKPOINT_READINESS_20261122.md
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
