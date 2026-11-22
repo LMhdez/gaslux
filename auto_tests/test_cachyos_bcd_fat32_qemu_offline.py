@@ -281,7 +281,7 @@ class Fat32OfflineTests(unittest.TestCase):
         size = bcd_disk + 64 - first_fat
         raw = (
             "blk_co_pwritev blk 0xa1 bs 0xbb offset " +
-            str(first_fat) + " bytes " + str(size) + " flags 0x0\\n"
+            str(first_fat) + " bytes " + str(size) + " flags 0x0\n"
         ).encode("ascii")
         parsed = trace.parse_qemu_trace(raw)
         result = trace.correlate_qemu_writes(
