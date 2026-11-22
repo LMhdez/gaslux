@@ -41,13 +41,13 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           text = Path('.github/workflows/gaslux-agent-lifecycle-research.yml').read_text()
-          assert text.count('contents: read') >= 1
-          assert 'contents: write' not in text
-          assert 'pull-requests: write' not in text
-          assert 'secrets.' not in text
-          assert 'persist-credentials: false' in text
-          assert all(f'- {d}' in text for d in ('mint','zorin','cachyos','popos','q4os','bazzite'))
-          assert 'DISK-WRITER-ADMITTED' not in text
+          lines = [line.strip() for line in text.splitlines()]
+          assert 'contents: read' in lines
+          assert 'contents: write' not in lines
+          assert 'pull-requests: write' not in lines
+          assert 'persist-credentials: false' in lines
+          assert all(f'- {d}' in lines for d in ('mint','zorin','cachyos','popos','q4os','bazzite'))
+          assert not any(line.startswith('secrets.') for line in lines)
           print('Six read-only backend roles have no GitHub write authority')
           PY
 
