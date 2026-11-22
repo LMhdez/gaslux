@@ -10,13 +10,15 @@ import sys
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "auto_tests/tools"))
 
-from q4os_win10_qmp_boot import BootRefusal, supervise  # noqa: E402
+import q4os_win10_qmp_supervisor as witness  # noqa: E402
+from q4os_win10_qmp_boot import BootRefusal, Qmp, supervise  # noqa: E402
 
 
 class FakeQemu:
@@ -89,17 +91,50 @@ def lab(tmp_path):
 
 
 def run(lab, **overrides):
+    """Protocol fixture: synthetic peer verified by OS PID, binary witness mocked.
+
+    The fixture never exercises an autonomous boot/QMP entrypoint. Only
+    _witness (the QEMU-executable check) is replaced for this thread-local
+    fake QMP server; SO_PEERCRED and inode checks run against real sockets.
+    """
     qmp, serial, disk = lab
-    return supervise(
-        qmp,
-        serial,
-        disk,
-        connect_seconds=0.25,
-        prompt_seconds=0.25,
-        progress_seconds=0.25,
-        tick=0.01,
-        **overrides,
-    )
+    if qmp.parent.stat().st_mode & 0o077:
+        raise BootRefusal("nonprivate_lab_directory")
+    if not qmp.exists():
+        raise BootRefusal("qmp_socket_unavailable")
+
+    class SyntheticOwner:
+        pid = os.getpid()
+
+        def poll(self):
+            return None
+
+    with patch.object(witness, "_witness", lambda *_args: None):
+        channel = Qmp(qmp, negotiate=False)
+        session = witness._BoundQmpSession(
+            channel,
+            SyntheticOwner(),
+            -1,
+            qmp,
+            qmp.parent,
+            witness._socket_identity(qmp, qmp.parent),
+        )
+        try:
+            channel.bind_verified_session(session)
+            channel.negotiate_protocol()
+            return supervise(
+                qmp,
+                serial,
+                disk,
+                connect_seconds=0.25,
+                prompt_seconds=0.25,
+                progress_seconds=0.25,
+                tick=0.01,
+                qmp_session=session,
+                **overrides,
+            )
+        finally:
+            channel.close()
 
 
 def test_prompt_detected_key_acknowledged_progress_observed_once(lab):
