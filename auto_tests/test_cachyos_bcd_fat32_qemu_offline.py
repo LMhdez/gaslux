@@ -158,6 +158,30 @@ class Fat32OfflineTests(unittest.TestCase):
         self.assertEqual([e["cluster"] for e in m["bcdDataExtents"]],
                          [6,15,7,16,8,17,9,18])
 
+    def test_valid_dot_and_root_parent_entries_are_ignored(self):
+        # Native mkfs.fat/mtools directories contain . and .. records.
+        # '..' may refer to root using cluster zero; it is not file data.
+        b = bytearray(self.contiguous)
+        base = cluster_sector(3) * 512
+        b[base + 64:base + 96] = short_entry(
+            ".          ", 3, directory=True)
+        b[base + 96:base + 128] = short_entry(
+            "..         ", 0, directory=True)
+        result = mapping(bytes(b))
+        self.assertEqual(result["bcdSizeBytes"], 4096)
+
+    def test_dot_entry_wrong_own_cluster_or_foreign_zero_rejected(self):
+        b = bytearray(self.contiguous)
+        base = cluster_sector(3) * 512
+        b[base + 64:base + 96] = short_entry(
+            ".          ", 0, directory=True)
+        with self.assertRaises(fat.Fat32MapError):
+            mapping(bytes(b))
+        b[base + 64:base + 96] = short_entry(
+            "FOREIGN    ", 0, directory=True)
+        with self.assertRaisesRegex(fat.Fat32MapError, "cluster"):
+            mapping(bytes(b))
+
     def test_fat_cycle_fails_closed(self):
         b = bytearray(self.contiguous)
         for start in (RESERVED, RESERVED + FAT_SECTORS):
