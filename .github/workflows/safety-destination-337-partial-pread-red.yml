@@ -1,0 +1,29 @@
+name: Safety Destination #337 independent partial-pread RED (NO QEMU)
+
+on:
+  push:
+    branches:
+      - safety/destination-337-partial-pread-red-20261122
+
+permissions:
+  contents: read
+
+jobs:
+  partial-pread-fd-hash:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate baseline exact #337 module blob and original Safety test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git hash-object auto_tests/installer_observer/authenticated_destination.py)" = 133909a2cdcc7b6f4d8f19c3e013ca2717ff0fb4
+          python3 -m compileall -q auto_tests/installer_observer/authenticated_destination.py auto_tests/test_destination_337_partial_pread_red.py
+      - name: Reproduce short-positive-pread false FD hash on unchanged real helper
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p test_destination_337_partial_pread_red.py -v
