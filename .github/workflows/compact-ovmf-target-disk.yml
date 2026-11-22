@@ -8,6 +8,8 @@ on:
       - auto_tests/tests/test_compact_ovmf_target.py
       - auto_tests/tools/compact_qcow2_quota_lab.py
       - auto_tests/tests/test_compact_qcow2_quota_lab.py
+      - auto_tests/tools/compact_fullscale_quota_lab.py
+      - auto_tests/tests/test_compact_fullscale_quota_lab.py
       - docs/COMPACT_VM_INSTALL_LAB.md
   push:
     branches: [dev]
@@ -107,6 +109,44 @@ jobs:
           assert data["disk_writes_to_host_devices"] == 0
           print("QUOTA_FIXTURE_VERIFIED: only 384-MiB private image, not guest admission")
           PY
+      - name: Unit tests for full-size preallocated quota and independent host reserve
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_compact_fullscale_quota_lab.py -v
+      - name: Attempt real 60-GiB physically reserved quota (no guest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B auto_tests/tools/compact_fullscale_quota_lab.py \
+            --workspace "$RUNNER_TEMP" --preflight-only \
+            --report evidence/compact-fullscale-readiness.json || status=$?
+          if [[ "${status:-0}" == 2 ]]; then
+            echo '::warning::60-GiB physical quota blocked by independent host storage reserve'
+            exit 0
+          fi
+          test "${status:-0}" = 0
+          timeout --kill-after=20s 480s python3 -B auto_tests/tools/compact_fullscale_quota_lab.py \
+            --workspace "$RUNNER_TEMP" --report evidence/compact-fullscale-quota.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path('evidence/compact-fullscale-quota.json').read_text())
+          assert obj['status'] == 'PRIVATE_60GIB_QUOTA_AND_QCOW2_VERIFIED'
+          for field in ('exact_private_loop_mount_verified',
+                        'same_size_60gib_backing_overlay_chain_verified',
+                        'qemu_io_actual_overlay_write_verified',
+                        'baseline_integrity_and_reset_verified'):
+              assert obj[field] is True, field
+          assert obj['private_quota_exact_file_bytes'] == 60 * 1024**3
+          assert obj['physical_preallocation_proven_bytes'] >= 60 * 1024**3 * 99 // 100
+          for denied in ('real_windows_media_verified', 'windows_guest_booted',
+                         'mint_guest_installed', 'dual_boot_verified',
+                         'guest_writer_admitted', 'windows_recovery_verified'):
+              assert obj[denied] is False, denied
+          print('FULLSIZE_QUOTA_FILE_VERIFIED: 60-GiB physical reservation, no guest')
+          PY
+
       - name: Erase only owned, private temporary guest image
         if: always()
         shell: bash
@@ -138,5 +178,7 @@ jobs:
           path: |
             evidence/compact-ovmf-target.json
             evidence/compact-qcow2-quota-fixture.json
+            evidence/compact-fullscale-readiness.json
+            evidence/compact-fullscale-quota.json
           if-no-files-found: warn
           retention-days: 14
