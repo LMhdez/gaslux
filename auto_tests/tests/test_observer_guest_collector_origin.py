@@ -330,8 +330,8 @@ def test_real_guest_boot_collector_challenge_via_virtio_serial(workspace, pinned
                 _wait_marker(serial, b"GASLUX_GUEST_RESPONSE_EMITTED", child)
                 with pytest.raises(GuestCollectorDenied, match="OLD_NONCE_REPLAY_OR_UNISSUED"):
                     ledger.consume(challenge, reply)
-        shutdown(child)
-        assert host.assert_stopped()["qemuProcessReaped"] is True
+            shutdown(child)
+            assert host.assert_stopped()["qemuProcessReaped"] is True
     finally:
         shutdown(child)
     assert report is not None and ledger.count_used() == 1
