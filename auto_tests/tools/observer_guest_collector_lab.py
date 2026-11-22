@@ -43,6 +43,7 @@ def digest(path: Path) -> str:
 # passed as $1; challenge is two inert fields, never a command.
 COLLECTOR = r"""#!/bin/busybox sh
 echo GASLUX_COLLECTOR_EXECUTED_TEST >/dev/console
+/bin/busybox cat /proc/version >/dev/console
 PORT="$1"
 set -- $(/bin/busybox sha256sum /collector.sh)
 HASH="$1"
