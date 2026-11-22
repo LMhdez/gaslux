@@ -65,16 +65,80 @@ class TrustedPublisherTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pub.validate(item, self.original, self.changed)
 
-    def test_stale_dev_denied_before_publishing(self):
+    def test_stale_dev_with_product_change_is_rejected(self):
+        def fake_api(method, route, body=None, missing_ok=False):
+            if route == "/git/ref/heads/dev":
+                return {"object": {"sha": "a" * 40}}
+            if route.startswith("/contents/"):
+                return {"content": base64.b64encode(self.original).decode()}
+            if route.startswith("/compare/"):
+                return {"status": "ahead", "behind_by": 0, "ahead_by": 1,
+                        "total_commits": 1, "files": [
+                            {"filename": "Installation/InstallationEngine.cs", "status": "modified"}]}
+            raise AssertionError(route)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "report.json").write_text(json.dumps(self.report))
             (root / "candidate.cs").write_bytes(self.changed)
-            with patch.object(pub, "ARTIFACT", root), patch.object(pub, "request") as api:
-                api.return_value = {"object": {"sha": "a" * 40}}
-                with self.assertRaisesRegex(RuntimeError, "stale"):
+            with patch.object(pub, "ARTIFACT", root), patch.object(pub, "request", side_effect=fake_api):
+                with self.assertRaisesRegex(RuntimeError, "product or agent-sensitive"):
                     pub.verify_evidence()
-                self.assertEqual(api.call_count, 1)
+
+    def test_nonproduct_docs_dev_advance_admitted_only_with_same_source(self):
+        def fake_api(method, route, body=None, missing_ok=False):
+            if route == "/git/ref/heads/dev":
+                return {"object": {"sha": "a" * 40}}
+            if route.startswith("/contents/"):
+                return {"content": base64.b64encode(self.original).decode()}
+            if route.startswith("/compare/"):
+                return {"status": "ahead", "behind_by": 0, "ahead_by": 25,
+                        "total_commits": 25, "files": [
+                            {"filename": "docs/distro-backends/SHARED_CONTRACTS.md", "status": "modified"},
+                            {"filename": "auto_tests/installer_observer/authenticated_destination.py", "status": "added"},
+                            {"filename": ".github/workflows/contracts-authenticated-destination-readonly.yml", "status": "added"},
+                        ]}
+            raise AssertionError(route)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "report.json").write_text(json.dumps(self.report))
+            (root / "candidate.cs").write_bytes(self.changed)
+            with patch.object(pub, "ARTIFACT", root), patch.object(pub, "request", side_effect=fake_api):
+                report, candidate, task, role = pub.verify_evidence()
+                self.assertEqual(report["effective_base_commit"], "a" * 40)
+                self.assertEqual(report["base_commit"], "f" * 40)
+                self.assertEqual(candidate, self.changed)
+                self.assertEqual((task, role), ("MINT-PT-KEYBOARD-01", "mint"))
+
+    def test_nonproduct_claim_with_modified_csharp_source_is_rejected(self):
+        def fake_api(method, route, body=None, missing_ok=False):
+            if route == "/git/ref/heads/dev":
+                return {"object": {"sha": "a" * 40}}
+            if route.startswith("/contents/"):
+                blob = self.changed if route.endswith("a" * 40) else self.original
+                return {"content": base64.b64encode(blob).decode()}
+            if route.startswith("/compare/"):
+                return {"status": "ahead", "behind_by": 0, "ahead_by": 1,
+                        "total_commits": 1,
+                        "files": [{"filename": "docs/README.md", "status": "modified"}]}
+            raise AssertionError(route)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "report.json").write_text(json.dumps(self.report))
+            (root / "candidate.cs").write_bytes(self.changed)
+            with patch.object(pub, "ARTIFACT", root), patch.object(pub, "request", side_effect=fake_api):
+                with self.assertRaisesRegex(RuntimeError, "C# source changed"):
+                    pub.verify_evidence()
+
+    def test_agent_runtime_or_workflow_change_blocks_source_reuse(self):
+        for file in ("auto_tests/tools/gaslux_agent_implement.py",
+                     ".github/workflows/gaslux-agent-builder.yml",
+                     "Libertix.csproj"):
+            with self.subTest(file=file), patch.object(pub, "request",
+                 return_value={"status": "ahead", "behind_by": 0, "ahead_by": 1,
+                               "total_commits": 1,
+                               "files": [{"filename": file, "status": "modified"}]}):
+                with self.assertRaisesRegex(RuntimeError, "product or agent-sensitive"):
+                    pub.admit_nonproduct_dev_advance("f" * 40, "a" * 40)
 
     def test_workflow_cannot_publish_on_pr_or_dev(self):
         for event, ref in (("pull_request", "refs/pull/1/merge"),

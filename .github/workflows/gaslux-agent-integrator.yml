@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: '53 * * * *'
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Gaslux autonomous GitHub agents"]
+    types: [completed]
+    branches: [main]
   push:
     branches: [main]
     paths:
@@ -40,7 +44,11 @@ jobs:
       github.repository == 'LMhdez/gaslux' &&
       (github.event_name == 'schedule' ||
        github.event_name == 'workflow_dispatch' ||
-       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == 'LMhdez/gaslux'))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

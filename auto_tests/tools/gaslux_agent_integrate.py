@@ -5,6 +5,7 @@ import argparse
 import base64
 import json
 import os
+from pathlib import Path
 import re
 import urllib.error
 import urllib.request
@@ -152,8 +153,21 @@ def select() -> dict:
 def merge(number: int, expected: str) -> dict:
     if os.getenv("GITHUB_REPOSITORY") != REPO or os.getenv("GITHUB_REF") != "refs/heads/main":
         raise RuntimeError("Trusted default branch only")
-    if os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push"):
+    event_name = os.getenv("GITHUB_EVENT_NAME")
+    if event_name not in ("schedule", "workflow_dispatch", "push", "workflow_run"):
         raise RuntimeError("Untrusted event")
+    if event_name == "workflow_run":
+        event_path = os.getenv("GITHUB_EVENT_PATH", "")
+        if not event_path:
+            raise RuntimeError("Missing workflow completion provenance")
+        evt = json.loads(Path(event_path).read_text(encoding="utf-8"))
+        runner = evt.get("workflow_run", {})
+        if (runner.get("name") != "Gaslux autonomous GitHub agents"
+            or runner.get("conclusion") != "success"
+            or runner.get("head_branch") != "main"
+            or runner.get("head_repository", {}).get("full_name") != REPO
+            or runner.get("event") not in ("push", "schedule", "workflow_dispatch")):
+            raise RuntimeError("Untrusted workflow completion provenance")
     if os.getenv("GASLUX_WINDOWS_ACCEPTANCE") != "success":
         raise RuntimeError("No exact-HEAD Windows build and tests in this run")
     checked = inspect(number, expected)
