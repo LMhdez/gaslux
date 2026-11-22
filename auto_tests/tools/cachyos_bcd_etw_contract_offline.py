@@ -3,7 +3,7 @@
 
 This does not collect ETW, open Windows devices or claim a process wrote BCD.
 ETW FileIO and DiskIO contain different identifiers; matching an IRP pointer
-is a candidate, not a proof of file->physical sector->writer identity.
+is only a token coincidence, not a file/disk/process attribution.
 """
 from __future__ import annotations
 
@@ -133,30 +133,28 @@ def normalize_etw_fixture(document: dict[str, Any]) -> dict[str, Any]:
                     "DiskIoWrite needs bounded offset and disk number if present")
             disk_writes.append(event)
 
-    candidates = 0
-    for file_io in writes:
-        ts, pid = file_io.get("timestampNs"), file_io.get("pid")
-        obj, irp = file_io["fileObject"], file_io.get("irp")
-        if ts is None or pid is None or irp is None:
-            continue
-        # FileObject can be reused. Accept only one earlier name assertion.
-        names = [(t, is_bcd) for t, is_bcd in named_files.get(obj, [])
-                 if t >= 0 and t <= ts]
-        if len(names) != 1 or not names[0][1]:
-            continue
-        starts = [t for t in process_start.get(pid, []) if t <= ts]
-        stops = [t for t in process_stop.get(pid, []) if t >= ts]
-        if len(starts) != 1 or len(stops) != 1:
-            continue
-        disk_match = [
-            event for event in disk_writes
-            if event.get("timestampNs") is not None
-            and event.get("irp") == irp
-            and event.get("diskOffset") is not None
-            and starts[0] <= event["timestampNs"] <= stops[0]
-        ]
-        if len(disk_match) == 1:
-            candidates += 1
+    # ETW exporter v1 does not attest process generations, FileObject
+    # lifetimes, IRP non-reuse, FileIO→DiskIO latency or QEMU clock
+    # calibration. Never label an IRP token equality a plausible write.
+    #
+    # Retain the *positive* observation as an explicitly non-causal
+    # count of IRP identifier coincidences, where exactly one FileIoWrite
+    # and one DiskIoWrite present the same token in this one export.
+    # This intentionally makes NO statement about event ordering, PID,
+    # whether the FileObject is BCD, disk identity or the writer.
+    file_irps = Counter(
+        event["irp"] for event in writes
+        if event.get("irp") is not None
+    )
+    disk_irps = Counter(
+        event["irp"] for event in disk_writes
+        if event.get("irp") is not None
+    )
+    shared_identifier_only = sum(
+        1 for token, count in file_irps.items()
+        if count == 1 and disk_irps[token] == 1
+    )
+    candidates = 0  # Deprecated v1 field; no validated causal candidates.
 
     complete_session = (
         session["lostEvents"] == session["lostBuffers"] == 0
@@ -175,6 +173,9 @@ def normalize_etw_fixture(document: dict[str, Any]) -> dict[str, Any]:
         "qemuDiskNodeAuthenticated": False,
         "diskNumberBoundToGptIdentity": False,
         "plausibleIrpLifetimeMatches": candidates,
+        "plausibleIrpLifetimeMatchesDeprecated": True,
+        "sharedIrpIdentifierCoincidences": shared_identifier_only,
+        "sharedIrpIdentifierSemantics": "UNORDERED_TOKEN_EQUALITY_ONLY_NOT_CAUSAL",
         "processAttributionProven": False,
         "approvedMutation": False,
         "productionStorageWritesAuthorized": False,
