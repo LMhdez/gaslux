@@ -899,6 +899,82 @@ def entry_points(layouts: dict[str, Layout], findings: list[Finding]) -> dict[st
     return entries
 
 
+def powershell_executable_code(source: str) -> str:
+    """Mask comments, quoted strings and here-strings without executing PowerShell.
+
+    Only unquoted command text is admitted as import evidence. Unknown or
+    unterminated lexical constructs fail closed rather than treating data or
+    comments as executable code. Newlines are preserved for line anchoring.
+    """
+
+    code = list(source)
+
+    def mask(start: int, end: int) -> None:
+        for offset in range(start, end):
+            if source[offset] not in "\r\n":
+                code[offset] = " "
+
+    index = 0
+    while index < len(source):
+        start = index
+        if source.startswith("<#", index):
+            depth = 1
+            index += 2
+            while index < len(source) and depth:
+                if source.startswith("<#", index):
+                    depth += 1
+                    index += 2
+                elif source.startswith("#>", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            if depth:
+                raise AuditStructureError("unterminated PowerShell block comment")
+            mask(start, index)
+            continue
+        if source.startswith("#>", index):
+            raise AuditStructureError("unmatched PowerShell block comment terminator")
+        if source[index] == "#":
+            end = source.find("\n", index)
+            index = len(source) if end < 0 else end
+            mask(start, index)
+            continue
+        if source.startswith(("@'", '@"'), index):
+            quote = source[index + 1]
+            newline = re.match(r"\r?\n", source[index + 2 :])
+            if newline is None:
+                raise AuditStructureError("unrecognized PowerShell here-string opener")
+            terminator = re.compile(rf"(?m)^[ \t]*{re.escape(quote + '@')}[ \t]*\r?$")
+            closing = terminator.search(source, index + 2 + newline.end())
+            if closing is None:
+                raise AuditStructureError("unterminated PowerShell here-string")
+            index = closing.end()
+            mask(start, index)
+            continue
+        if source[index] in ("'", '"'):
+            quote = source[index]
+            index += 1
+            while index < len(source):
+                if source[index] == chr(96):
+                    if index + 1 >= len(source):
+                        raise AuditStructureError("unclosed PowerShell string escape")
+                    index += 2
+                elif source.startswith(quote * 2, index):
+                    index += 2
+                elif source[index] == quote:
+                    index += 1
+                    break
+                else:
+                    index += 1
+            else:
+                raise AuditStructureError("unterminated PowerShell quoted string")
+            mask(start, index)
+            continue
+        index += 1
+    return "".join(code)
+
+
 def audit_source_only_lab_tools(layouts: dict[str, Layout], findings: list[Finding]) -> list[str]:
     """Check explicit checkout-only scripts without granting deployment authority."""
 
@@ -956,7 +1032,14 @@ def audit_source_only_lab_tools(layouts: dict[str, Layout], findings: list[Findi
                     f"required laboratory dependency {files[missing]} is no longer referenced",
                 )
             )
-        if "Import-Module -Name $module -Force -ErrorAction Stop" not in tool_text:
+        # A literal substring is insufficient: commented/quoted imports are data.
+        active_code = powershell_executable_code(tool_text)
+        active_import = re.search(
+            r"(?im)^[ \t]*Import-Module[ \t]+-Name[ \t]+\$module"
+            r"[ \t]+-Force[ \t]+-ErrorAction[ \t]+Stop(?=[ \t]*(?:;|$))",
+            active_code,
+        )
+        if active_import is None:
             findings.append(
                 Finding(
                     "source-only-module-not-imported",
