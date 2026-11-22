@@ -366,3 +366,103 @@ def test_legacy_digest_eio_refused(tmp_path, monkeypatch):
         monkeypatch.setattr(small.os, "pread", faulty)
         with pytest.raises(small.DestinationRefused, match="FD_READ_FAILED"):
             small._digest(stream.fileno(), hashlib.sha256(b"x" * 1024).hexdigest())
+
+def _real_disposable_qemu_info(monkeypatch, code, *arguments):
+    """Keep all Popen process-group kwargs when injecting a real Python child."""
+    popen = subprocess.Popen
+    started = []
+
+    def launch(_command, **kwargs):
+        child = popen([sys.executable, "-c", code, *arguments], **kwargs)
+        started.append(child)
+        return child
+
+    monkeypatch.setattr(large.subprocess, "Popen", launch)
+    return started
+
+
+def test_qemu_info_reaps_orphaned_pipe_descendant(tmp_path, monkeypatch):
+    """SAFETY2-346-01: an exited launcher cannot abandon a pipe-owning child."""
+    import time
+
+    pidfile = tmp_path / "descendant.pid"
+    program = (
+        "import pathlib, subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-c', "
+        "'import time; time.sleep(20)'], stdin=subprocess.DEVNULL, "
+        "stdout=sys.stdout, stderr=subprocess.DEVNULL)\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(child.pid))\n"
+    )
+    started = _real_disposable_qemu_info(monkeypatch, program, str(pidfile))
+    source = tmp_path / "readonly.bin"
+    source.write_bytes(b"read-only")
+    descendant_pid = None
+    try:
+        with source.open("rb") as image:
+            with pytest.raises(large.LargeDestinationRefused, match="QEMU_INFO_TIMEOUT"):
+                large._bounded_info(
+                    image.fileno(),
+                    large.LargeReadOnlyBudget(known_quota_bytes=64 * 1024**2),
+                    time.monotonic() + 1,
+                )
+        assert len(started) == 1 and started[0].poll() is not None
+        assert pidfile.exists()
+        descendant_pid = int(pidfile.read_text(encoding="utf-8"))
+        with pytest.raises(ProcessLookupError):
+            os.kill(descendant_pid, 0)
+    finally:
+        if descendant_pid is None and pidfile.exists():
+            descendant_pid = int(pidfile.read_text(encoding="utf-8"))
+        if descendant_pid is not None:
+            try:
+                os.kill(descendant_pid, 9)
+            except ProcessLookupError:
+                pass
+
+
+@pytest.mark.parametrize(
+    "program, expected",
+    [
+        ("import sys; sys.stdout.write('[{}, {}]')", None),
+        ("import sys; sys.stdout.write('invalid json')", "QEMU_INFO_INVALID_JSON"),
+        (
+            "import sys, time; sys.stdout.write('Z'*70000); "
+            "sys.stdout.flush(); time.sleep(10)",
+            "QEMU_INFO_OUTPUT_LIMIT",
+        ),
+    ],
+)
+def test_qemu_info_status_and_unrelated_session_survives(tmp_path, monkeypatch, program, expected):
+    import time
+
+    # Distinct independently owned process group must never receive our SIGKILL.
+    unrelated = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(10)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    started = _real_disposable_qemu_info(monkeypatch, program)
+    source = tmp_path / "readonly.bin"
+    source.write_bytes(b"read-only")
+    try:
+        with source.open("rb") as image:
+            if expected is None:
+                assert large._bounded_info(
+                    image.fileno(),
+                    large.LargeReadOnlyBudget(known_quota_bytes=64 * 1024**2),
+                    time.monotonic() + 3,
+                ) == [{}, {}]
+            else:
+                with pytest.raises(large.LargeDestinationRefused, match=expected):
+                    large._bounded_info(
+                        image.fileno(),
+                        large.LargeReadOnlyBudget(known_quota_bytes=64 * 1024**2),
+                        time.monotonic() + 3,
+                    )
+        assert len(started) == 1 and started[0].poll() is not None
+        assert unrelated.poll() is None
+    finally:
+        unrelated.kill()
+        unrelated.wait(timeout=3)
