@@ -242,7 +242,14 @@ def real_guest(tmp_path_factory, _pinned):
                 peer = LocalTransportWitness(conn, peer_pins)
                 # Genuine peer of QEMU is still a HOST process, not a guest PID.
                 conn.sendall(f"GASLUX_CHAL_V1|{session}|{nonce}\n".encode("ascii"))
-                message = bounded_line(conn)
+                try:
+                    message = bounded_line(conn)
+                except CollectorLabDenied:
+                    # Output only bounded disposable kernel/UART diagnostics.
+                    # This is not an authenticated guest transcript.
+                    tail = serial.read_bytes()[-8192:].decode("utf-8", errors="replace")
+                    print("GASLUX_TEST_ONLY_GUEST_SERIAL_TAIL " + repr(tail), flush=True)
+                    raise
                 observed = validate(message, session, nonce, str(image["collectorSha256"]))
                 local = peer.finish(_claims(peer_pins))
                 assert local["peer"]["pid"] == child.pid
