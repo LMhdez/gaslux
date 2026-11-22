@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import struct
 import subprocess
 import time
@@ -403,6 +404,80 @@ F03_PREDECESSOR_FILES = {
 }
 
 
+# Bound the bytes per manifest and all reads from one pinned file descriptor.
+# This eliminates the SHA-vs-JSON pathname reopen race (M-278-01).
+F03_PREDECESSOR_MAX_BYTES = 2_000_000
+F03_PREDECESSOR_READ_CHUNK = 64 * 1024
+F03_FILE_IDENTITY_FIELDS = (
+    "st_dev",
+    "st_ino",
+    "st_mode",
+    "st_uid",
+    "st_nlink",
+    "st_size",
+    "st_mtime_ns",
+    "st_ctime_ns",
+)
+
+
+def _same_predecessor_identity(before, after) -> bool:
+    return all(getattr(before, key) == getattr(after, key) for key in F03_FILE_IDENTITY_FIELDS)
+
+
+def _pinned_predecessor_bytes(directory_fd: int, filename: str) -> tuple[bytes | None, str | None]:
+    """Read one owned predecessor from ONE O_NOFOLLOW fd, never a second path.
+
+    Validate fstat before and after the bounded read and check that the
+    directory entry still identifies that fd. This detects observed concurrent
+    changes, not all possible same-UID concurrent attacks.
+    """
+    require(
+        isinstance(filename, str)
+        and filename
+        in {name for items in F03_PREDECESSOR_FILES.values() for name in items.values()},
+        "F-03: unrecognized predecessor filename",
+    )
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        fd = os.open(filename, flags, dir_fd=directory_fd)
+    except OSError:
+        return None, "missing_or_foreign_predecessor"
+    try:
+        try:
+            before = os.fstat(fd)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.getuid()
+                or before.st_nlink != 1
+            ):
+                return None, "missing_or_foreign_predecessor"
+            if before.st_size < 1 or before.st_size > F03_PREDECESSOR_MAX_BYTES:
+                return None, "oversized_or_empty_predecessor"
+            payload = bytearray()
+            while len(payload) < before.st_size:
+                count = min(F03_PREDECESSOR_READ_CHUNK, before.st_size - len(payload))
+                piece = os.read(fd, count)
+                if not piece:
+                    return None, "predecessor_short_read"
+                if len(piece) > count:
+                    return None, "predecessor_invalid_read"
+                payload.extend(piece)
+            # Detect any bytes appended beyond the pinned fstat size.
+            if os.read(fd, 1):
+                return None, "predecessor_changed_during_read"
+            after = os.fstat(fd)
+            if not _same_predecessor_identity(before, after):
+                return None, "predecessor_changed_during_read"
+            current = os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+            if not _same_predecessor_identity(before, current) or not stat.S_ISREG(current.st_mode):
+                return None, "predecessor_path_identity_changed"
+            return bytes(payload), None
+        except OSError:
+            return None, "predecessor_read_or_identity_error"
+    finally:
+        os.close(fd)
+
+
 def authenticated_predecessor_status(
     *,
     phase: str,
@@ -410,61 +485,93 @@ def authenticated_predecessor_status(
     transaction_id: str,
     supplied_sha256: dict,
 ) -> tuple[dict, list]:
-    """Recheck owned predecessor files and their transaction, not just caller hashes.
+    """Hash and interpret EXACT SAME pinned bytes for each previous F-03 gate.
 
-    The early capacity file predates checkpoint creation and is instead bound to
-    the same GitHub run/commit. Any missing, foreign, replaced or corrupt
-    predecessor is reported without importing its untrusted contents.
+    The early capacity record precedes checkpoint creation and is authenticated
+    by the GitHub run and source commit instead of a transactionId.
     """
     expected = F03_PREDECESSOR_FILES[phase]
     require(
         isinstance(supplied_sha256, dict) and set(supplied_sha256) == set(expected),
         "F-03: ambiguous predecessor references",
     )
-    status, problems = {}, []
-    for key, filename in expected.items():
-        path = evidence / filename
-        issue = None
-        digest = supplied_sha256[key]
-        if not isinstance(digest, str) or re.fullmatch(r"[a-f0-9]{64}", digest) is None:
-            issue = "invalid_expected_sha256"
-        elif (
-            path.parent != evidence
-            or not path.is_file()
-            or path.is_symlink()
-            or path.stat().st_nlink != 1
-            or path.stat().st_uid != os.getuid()
-        ):
-            issue = "missing_or_foreign_predecessor"
-        elif path.stat().st_size > 2_000_000:
-            issue = "oversized_predecessor"
-        else:
-            actual = sha256_file(path)
-            if actual != digest:
-                issue = "predecessor_sha256_mismatch"
+    require(
+        isinstance(evidence, Path)
+        and evidence.is_absolute()
+        and evidence.resolve() == evidence
+        and evidence.name not in ("", ".", ".."),
+        "F-03: untrusted evidence directory path",
+    )
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        directory_fd = os.open(evidence, flags)
+    except OSError as exc:
+        raise ForensicError("F-03: cannot pin expected evidence directory") from exc
+    try:
+        directory_before = os.fstat(directory_fd)
+        try:
+            directory_path = os.stat(evidence, follow_symlinks=False)
+        except OSError as exc:
+            raise ForensicError("F-03: evidence directory identity unavailable") from exc
+        require(
+            stat.S_ISDIR(directory_before.st_mode)
+            and directory_before.st_uid == os.getuid()
+            and (stat.S_IMODE(directory_before.st_mode) & 0o077) == 0
+            and directory_before.st_dev == directory_path.st_dev
+            and directory_before.st_ino == directory_path.st_ino
+            and stat.S_ISDIR(directory_path.st_mode),
+            "F-03: unowned or replaced private evidence directory",
+        )
+        status, problems = {}, []
+        for key, filename in expected.items():
+            issue = None
+            digest = supplied_sha256[key]
+            if not isinstance(digest, str) or re.fullmatch(r"[a-f0-9]{64}", digest) is None:
+                issue = "invalid_expected_sha256"
             else:
-                try:
-                    record = json.loads(path.read_bytes())
-                except (OSError, UnicodeError, ValueError):
-                    record = None
-                if not isinstance(record, dict):
-                    issue = "invalid_predecessor_json"
-                elif key == "earlyCapacity":
-                    if not (
-                        record.get("schema") == "gaslux-mint-ab-capacity-v1"
-                        and record.get("result") == "PASS"
-                        and record.get("githubRunId") == os.environ.get("GITHUB_RUN_ID")
-                        and record.get("sourceCommit") == os.environ.get("GITHUB_SHA")
-                    ):
-                        issue = "foreign_preflight_run"
-                elif record.get("transactionId") != transaction_id:
-                    issue = "foreign_predecessor_transaction"
-                elif record.get("result") not in (None, "PASS"):
-                    issue = "previous_gate_not_passed"
-        status[key] = {"file": filename, "sha256Matched": issue is None}
-        if issue is not None:
-            problems.append({"predecessor": key, "issue": issue})
-    return status, problems
+                payload, issue = _pinned_predecessor_bytes(directory_fd, filename)
+                if issue is None:
+                    if hashlib.sha256(payload).hexdigest() != digest:
+                        issue = "predecessor_sha256_mismatch"
+                    else:
+                        try:
+                            record = json.loads(payload.decode("utf-8"))
+                        except (UnicodeError, ValueError):
+                            record = None
+                        if not isinstance(record, dict):
+                            issue = "invalid_predecessor_json"
+                        elif key == "earlyCapacity":
+                            if not (
+                                record.get("schema") == "gaslux-mint-ab-capacity-v1"
+                                and record.get("result") == "PASS"
+                                and record.get("githubRunId") == os.environ.get("GITHUB_RUN_ID")
+                                and record.get("sourceCommit") == os.environ.get("GITHUB_SHA")
+                            ):
+                                issue = "foreign_preflight_run"
+                        elif record.get("transactionId") != transaction_id:
+                            issue = "foreign_predecessor_transaction"
+                        elif record.get("result") not in (None, "PASS"):
+                            issue = "previous_gate_not_passed"
+            status[key] = {"file": filename, "sha256Matched": issue is None}
+            if issue is not None:
+                problems.append({"predecessor": key, "issue": issue})
+        # A renamed/replaced evidence directory must not authorize continuation.
+        try:
+            directory_after = os.fstat(directory_fd)
+            final_path = os.stat(evidence, follow_symlinks=False)
+        except OSError as exc:
+            raise ForensicError("F-03: evidence directory changed during audit") from exc
+        require(
+            directory_before.st_dev == directory_after.st_dev == final_path.st_dev
+            and directory_before.st_ino == directory_after.st_ino == final_path.st_ino
+            and directory_before.st_uid == directory_after.st_uid == final_path.st_uid
+            and stat.S_ISDIR(final_path.st_mode)
+            and (stat.S_IMODE(final_path.st_mode) & 0o077) == 0,
+            "F-03: private evidence directory changed during audit",
+        )
+        return status, problems
+    finally:
+        os.close(directory_fd)
 
 
 def require_complete_forensic_inventories(
