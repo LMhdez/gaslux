@@ -34,17 +34,27 @@ SOURCE_BLOBS = {
 }
 # Explicit narrow scope: existing transaction/plan are *shaped* but not
 # independently authenticated by this function. No source/ELF trust upgrade.
-REQUEST_FIELDS = frozenset({
-    "operation", "transactionId", "diskGuid",
-    "sourceCommitObserved", "sourceMatchesInstalledElf",
-    "completePrewriteProposalFromNativeInstaller",
-    "preflightToCommitIdentityProven", "nativeBootloaderAuthenticated",
-    "installerAlreadyInvoked", "efiVariablesWritable",
-    "windowsBootManagerModificationAllowed",
-    "signedManifestFingerprint",
-    "isoBuild", "isoSha256", "distinstElfSha256",
-    "backingParentSha256", "stageCheckpointSha256",
-})
+REQUEST_FIELDS = frozenset(
+    {
+        "operation",
+        "transactionId",
+        "diskGuid",
+        "sourceCommitObserved",
+        "sourceMatchesInstalledElf",
+        "completePrewriteProposalFromNativeInstaller",
+        "preflightToCommitIdentityProven",
+        "nativeBootloaderAuthenticated",
+        "installerAlreadyInvoked",
+        "efiVariablesWritable",
+        "windowsBootManagerModificationAllowed",
+        "signedManifestFingerprint",
+        "isoBuild",
+        "isoSha256",
+        "distinstElfSha256",
+        "backingParentSha256",
+        "stageCheckpointSha256",
+    }
+)
 
 DENIED = (
     "native-source-to-ELF-correspondence-unverified",
@@ -76,8 +86,14 @@ def assess_prewrite_gap(
     # Reuse previous strict six-GPT/Windows ownership and recovery-shaped
     # checks; do not reimplement partition offsets or a GPT parser.
     proposal = propose_native_write_set(
-        before, after, plan, media, guest, transaction,
-        checkpoint, requested_operations,
+        before,
+        after,
+        plan,
+        media,
+        guest,
+        transaction,
+        checkpoint,
+        requested_operations,
     )
     require(
         type(request) is dict and set(request) == REQUEST_FIELDS,
@@ -113,14 +129,17 @@ def assess_prewrite_gap(
         "REFUSE_POP_PREWRITE: attempted elevation of unverified native capability",
     )
     require(
-        proposal["bootloader"] == {
+        proposal["bootloader"]
+        == {
             "name": "systemd-boot",
             "partitionIndex": 5,
             "efiVariablesWritable": False,
             "windowsEspWritable": False,
         }
-        and proposal["forbiddenEfiPaths"] == [
-            "EFI/Microsoft", "EFI/Boot/bootmgfw.efi",
+        and proposal["forbiddenEfiPaths"]
+        == [
+            "EFI/Microsoft",
+            "EFI/Boot/bootmgfw.efi",
         ]
         and "disk-commit" in proposal["forbiddenOperations"]
         and proposal["diskCommitSideEffectsConfined"] is False
