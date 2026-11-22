@@ -93,7 +93,9 @@ def validate_metadata(
     declared = _obj(manifest.get("config"), "OCI config descriptor")
     if manifest.get("schemaVersion") != 2:
         raise Refusal("Unsupported pinned OCI schemaVersion")
-    if manifest.get("mediaType") not in MANIFEST_TYPES:
+    # Docker schema2 manifests can omit the top-level mediaType. The exact
+    # manifest bytes must still match the immutable signed SHA-256 above.
+    if manifest.get("mediaType") is not None and manifest["mediaType"] not in MANIFEST_TYPES:
         raise Refusal(
             "Unsupported pinned manifest mediaType: " + str(manifest.get("mediaType"))[:128]
         )

@@ -81,6 +81,27 @@ def scan(data: bytes, state=None, budget=None):
     return state, budget
 
 
+def test_authenticated_format_without_top_level_media_type_supported():
+    manifest, _config, _a, b = sample_metadata()
+    del manifest["mediaType"]
+    a = json.dumps(manifest).encode()
+    descriptors, info = validate_metadata(
+        a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
+    )
+    assert len(descriptors) == 1
+    assert info["architecture"] == "amd64"
+
+
+def test_unknown_top_level_media_type_remains_refused():
+    manifest, _config, _a, b = sample_metadata()
+    manifest["mediaType"] = "application/x-unsafe-container"
+    a = json.dumps(manifest).encode()
+    with pytest.raises(Refusal, match="manifest mediaType"):
+        validate_metadata(
+            a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
+        )
+
+
 def test_synthetic_oci_manifest_and_config_chained():
     descriptors, info = verified_meta()
     assert len(descriptors) == 1
