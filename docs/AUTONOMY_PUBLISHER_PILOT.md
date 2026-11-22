@@ -31,3 +31,13 @@ The project target is autonomous development toward complete safe Windows-to-Lin
 A moved `dev` SHA, wrong artifact digest, missing independently witnessed RED/GREEN status, wrong model, simulated run, unexpected path/diff, existing proposal branch or insufficient GitHub token permissions must never produce an accepted PR. The required GitHub setting allowing Actions-created PRs is **unverified**, so no live publication success is claimed.
 
 The previous, more broadly permissive publisher remains quarantined on `research/local-coder-publisher-safety-hold-20261122`. The code in this pilot is independently written with tighter one-line constraints, but the technical review is still pending.
+
+## Live isolated lab evidence — 2026-11-22 UTC
+
+- [GitHub Actions #45051774631](https://github.com/LMhdez/gaslux/actions/runs/45051774631) executed on disposable branch `autonomy/lab-ai-rank-publisher-20261122`, HEAD `0904bc5c3703a37ddacacd502c7ca7a3f44fcbb0`; deliberately inserted the `reverse=False` regression **only on that lab branch**, not `dev`.
+- **Worker: SUCCESS.** Qwen3.5 9B produced the expected correction and passed the focused RED→GREEN assertions. The no-network privileged publisher adversarial tests also passed.
+- **Publisher: FAILED at GitHub POST `/pulls` with HTTP 403.** Earlier API calls successfully created the bot branch `bot/ai-rank-repair-0904bc5c3703`, commit `daaf342877024e4d14bc5456cbe23deddd0d9470`, containing exactly one Python line change. The 403 confirms a GitHub-token authorization blocker; whether caused by the repository's Actions PR-creation setting or another permission must be verified separately, not guessed.
+- [Lab Draft PR #366](https://github.com/LMhdez/gaslux/pull/366) was created using the **connected maintainer GitHub integration**, *not* the workflow, to independently inspect the bot branch diff; it showed only `reverse=False` → `reverse=True`. It was then **CLOSED UNMERGED**. This does not demonstrate automated PR publication.
+- The publisher pilot is updated to clean up its **own exact bot branch** after a failed PR API call, but only when the ref still points at the commit this job created. This new failure-path logic requires another exact-head CI run and Safety review.
+- **Activation remains blocked** until the GitHub Actions PR-writing permission is resolved, full non-mocked publication succeeds in the isolated lab, and an independent Safety assessment approves the tokened job. No privileged publisher was merged into `dev`.
+

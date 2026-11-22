@@ -93,7 +93,7 @@ class DraftPublisherTests(unittest.TestCase):
                     publisher.main()
                 remote.assert_not_called()
 
-    def run_mock_publish(self, current_sha=None, source=None):
+    def run_mock_publish(self, current_sha=None, source=None, post_forbidden=False):
         current_sha = current_sha or self.head
         source = source or self.bad
         calls = []
@@ -110,10 +110,17 @@ class DraftPublisherTests(unittest.TestCase):
                 wrapped = "\n".join(encoded[i:i+60] for i in range(0, len(encoded), 60))
                 return {"content": wrapped, "sha": "blob-sha"}
             if method == "GET" and route.startswith("/git/ref/heads/bot/"):
+                # The first lookup is absent; a second one occurs on cleanup.
+                if post_forbidden and sum(1 for m, p, _ in calls if m == "GET" and p == route) > 1:
+                    return {"object": {"sha": "b" * 40}}
                 return None
             if method == "POST" and route == "/pulls":
+                if post_forbidden:
+                    raise RuntimeError("GitHub POST /pulls returned HTTP 403")
                 return {"html_url": "https://github.com/LMhdez/gaslux/pull/999"}
-            if method in ("POST", "PUT"):
+            if method == "PUT":
+                return {"commit": {"sha": "b" * 40}}
+            if method in ("POST", "DELETE"):
                 return {"ok": True}
             raise AssertionError((method, route))
 
@@ -134,7 +141,7 @@ class DraftPublisherTests(unittest.TestCase):
                     "GH_TOKEN": "fake-token-not-used",
                 }
             ):
-                if current_sha != self.head or source != self.bad:
+                if current_sha != self.head or source != self.bad or post_forbidden:
                     with self.assertRaises((ValueError, RuntimeError)):
                         publisher.main()
                 else:
@@ -150,6 +157,12 @@ class DraftPublisherTests(unittest.TestCase):
         self.assertEqual(mutations[2][1], "/pulls")
         self.assertTrue(mutations[2][2]["draft"])
         self.assertEqual(mutations[2][2]["base"], "autonomy/lab-ai-rank-publisher-20261122")
+
+    def test_permission_denial_deletes_only_own_orphan_branch(self):
+        calls = self.run_mock_publish(post_forbidden=True)
+        mutations = [(m, p) for m, p, _ in calls if m in ("POST", "PUT", "DELETE")]
+        self.assertEqual([m for m, _ in mutations], ["POST", "PUT", "POST", "DELETE"])
+        self.assertTrue(mutations[-1][1].startswith("/git/refs/heads/bot/"))
 
     def test_changed_dev_base_blocks_all_mutations(self):
         calls = self.run_mock_publish(current_sha="b" * 40)
