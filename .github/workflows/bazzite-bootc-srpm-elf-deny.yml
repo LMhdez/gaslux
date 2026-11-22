@@ -1,0 +1,165 @@
+name: Bazzite Fedora bootc SRPM ELF source binding (DENY only)
+
+on:
+  push:
+    branches:
+      - test/bazzite-bootc-srpm-elf-binding-deny-20261122
+  pull_request:
+    paths:
+      - auto_tests/bazzite_bootc_srpm_elf_gate.py
+      - auto_tests/tests/test_bazzite_bootc_srpm_elf_gate.py
+      - .github/workflows/bazzite-bootc-srpm-elf-deny.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-no-writer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run real Bazzite prewrite gate negatives, lint and compile
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff
+          python -m pytest -q auto_tests/tests/test_bazzite_bootc_srpm_elf_gate.py auto_tests/tests/test_bazzite_bootc_prewrite_source.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_bootc_srpm_elf_gate.py auto_tests/tests/test_bazzite_bootc_srpm_elf_gate.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_bootc_srpm_elf_gate.py auto_tests/tests/test_bazzite_bootc_srpm_elf_gate.py
+          python -m compileall -q auto_tests/bazzite_bootc_srpm_elf_gate.py auto_tests/tests/test_bazzite_bootc_srpm_elf_gate.py
+          python auto_tests/bazzite_bootc_srpm_elf_gate.py > source-elf-decision.json || rc=$?
+          test "${rc:-0}" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path("source-elf-decision.json").read_text())
+          assert d["decision"]=="SOURCE_ELF_UNPROVEN"
+          assert d["authorization"]=="DENY_NO_WRITER"
+          assert d["srpmSha256Verified"] is False
+          assert not d["windowsEspWriteAuthorized"]
+          PY
+          sha256sum source-elf-decision.json > source-elf-decision-sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bazzite-srpm-elf-deny-only
+          path: |
+            source-elf-decision.json
+            source-elf-decision-sha256.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+  fedora-official-srpm-readback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Checkout pinned upstream 1.17.1 for identity comparison only
+        uses: actions/checkout@v4
+        with:
+          repository: bootc-dev/bootc
+          ref: d01e723ae9480fa53aa9db09a7eff0439548e9f6
+          path: pinned-bootc
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Fetch source RPM and validate Fedora 45 official OpenPGP signature (no install)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rpm cpio zstd
+          mkdir -p source-evidence
+          curl --fail --show-error --silent --location --retry 2 --max-time 120 --max-filesize 67108864 \
+            'https://kojipkgs.fedoraproject.org/packages/bootc/1.17.1/1.fc45/src/bootc-1.17.1-1.fc45.src.rpm' \
+            --output source-evidence/bootc-1.17.1-1.fc45.src.rpm
+          curl --fail --show-error --silent --location --retry 2 --max-time 45 --max-filesize 2097152 \
+            'https://fedoraproject.org/fedora.gpg' --output source-evidence/fedora.gpg
+          mkdir -m 700 source-evidence/gnupg
+          gpg --batch --homedir source-evidence/gnupg --import source-evidence/fedora.gpg >/dev/null 2>&1
+          export EXPECTED_FPR=4F50A6114CD5C6976A7F1179655A4B02F577861E
+          gpg --batch --homedir source-evidence/gnupg --with-colons --fingerprint \
+            | grep -Fx "fpr:::::::::${EXPECTED_FPR}:"
+          gpg --batch --homedir source-evidence/gnupg --export "$EXPECTED_FPR" \
+            > source-evidence/fedora45-only.gpg
+          mkdir source-evidence/rpmdb
+          rpm --dbpath "$PWD/source-evidence/rpmdb" --initdb
+          rpm --dbpath "$PWD/source-evidence/rpmdb" --import source-evidence/fedora45-only.gpg
+          rpmkeys --dbpath "$PWD/source-evidence/rpmdb" -Kv \
+            source-evidence/bootc-1.17.1-1.fc45.src.rpm | tee source-evidence/signature.txt
+          rpm -qp --qf '%{NAME} %{VERSION} %{RELEASE} %{ARCH}\n' \
+            source-evidence/bootc-1.17.1-1.fc45.src.rpm \
+            > source-evidence/nevra.txt
+          grep -Fx 'bootc 1.17.1 1.fc45 src' source-evidence/nevra.txt
+          sha256sum source-evidence/bootc-1.17.1-1.fc45.src.rpm \
+            > source-evidence/srpm-sha256.txt
+          rpm2cpio source-evidence/bootc-1.17.1-1.fc45.src.rpm \
+            | cpio --quiet -it > source-evidence/members.txt
+          python - <<'PY'
+          from pathlib import Path
+          members=Path("source-evidence/members.txt").read_text().splitlines()
+          for suffix, key in [("/bootc.spec","spec"), ("/bootc-1.17.1.tar.zstd","source")]:
+              matches=[p for p in members if p.lstrip("./")==suffix.lstrip("/")]
+              if len(matches)!=1:
+                  raise SystemExit(f"SRPM_MEMBER_AMBIGUOUS:{key}:{matches}")
+              Path(f"source-evidence/{key}-member.txt").write_text(matches[0])
+          Path("source-evidence/patch-members.txt").write_text(
+              "\n".join(p for p in members if p.endswith((".patch", ".diff"))) + "\n"
+          )
+          PY
+          spec="$(cat source-evidence/spec-member.txt)"
+          source="$(cat source-evidence/source-member.txt)"
+          rpm2cpio source-evidence/bootc-1.17.1-1.fc45.src.rpm \
+            | cpio --quiet -i --to-stdout "$spec" > source-evidence/bootc.spec
+          rpm2cpio source-evidence/bootc-1.17.1-1.fc45.src.rpm \
+            | cpio --quiet -i --to-stdout "$source" > source-evidence/bootc-1.17.1.tar.zstd
+          sha256sum source-evidence/bootc-1.17.1.tar.zstd > source-evidence/source-tar-sha256.txt
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,"auto_tests")
+          from bazzite_bootc_srpm_elf_gate import analyze_spec
+          spec=Path("source-evidence/bootc.spec").read_text()
+          d=analyze_spec(spec)
+          assert not d["requiresPatchReview"], d
+          assert Path("source-evidence/patch-members.txt").read_text().strip()==""
+          print("SIGNED_SRPM_SPEC_NO_DECLARED_PATCH_FILES_BUT_ELF_UNPROVEN")
+          PY
+          # Compare actual packaged source Rust paths against Git commit; no extraction to disk.
+          for src in crates/lib/src/install.rs crates/lib/src/bootloader.rs; do
+            expected="$(git -C pinned-bootc hash-object "$src")"
+            packaged="$(tar -I zstd -xOf source-evidence/bootc-1.17.1.tar.zstd "bootc-1.17.1/$src" | git hash-object --stdin)"
+            test "$expected" = "$packaged"
+            printf '%s %s\n' "$src" "$packaged" >> source-evidence/compared-rust-git-blobs.txt
+          done
+          echo SOURCE_ELF_UNPROVEN_DENY_NO_WRITER > source-evidence/verdict.txt
+          sha256sum source-evidence/bootc.spec source-evidence/members.txt source-evidence/compared-rust-git-blobs.txt \
+            > source-evidence/probe-sha256.txt
+      - name: Publish read-only metadata and source hashes; never binary/SRPM bytes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-official-srpm-source-readback
+          path: |
+            source-evidence/nevra.txt
+            source-evidence/srpm-sha256.txt
+            source-evidence/signature.txt
+            source-evidence/members.txt
+            source-evidence/patch-members.txt
+            source-evidence/source-tar-sha256.txt
+            source-evidence/compared-rust-git-blobs.txt
+            source-evidence/probe-sha256.txt
+            source-evidence/verdict.txt
+          if-no-files-found: warn
+          retention-days: 14
