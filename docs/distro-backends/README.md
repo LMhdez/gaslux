@@ -1,6 +1,8 @@
 # Backends de distribuição — investigação operacional
 Revisão: **2026-11-19**. Base de integração: **dev**; `main` mantém apenas Mint/Zorin no catálogo estável. Etiquetas: DOCUMENTADO (upstream), IMPLEMENTADO (código), COMPROVADO (teste real identificável), PENDENTE, BLOQUEADO. Ver [contratos partilhados](SHARED_CONTRACTS.md). Nenhuma linha desta matriz autoriza escrita real.
 
+> **Nota de atualização de 22-11-2026:** o quadro seguinte conserva o instantâneo histórico de 19-11. Para saber que PRs posteriores foram integradas/fechadas e quais os laboratórios GitHub Actions efetivos, consultar o [histórico e manual operacional dos agentes](../AGENT_HISTORICAL_PLAYBOOK.md) e o [índice CI/VM](../CI_VM_EVIDENCE_INDEX.md), depois revalidar HEADs e resultados no GitHub. A [issue #3](https://github.com/LMhdez/gaslux/issues/3) cobre os critérios CachyOS e a [issue #254](https://github.com/LMhdez/gaslux/issues/254) os gates Bazzite; nenhuma é prova de estabilidade de outras distribuições. As autorizações limitadas para testes em discos virtuais descartáveis do Actions estão em [AGENTS](../../AGENTS.md) e [AI_POLICY](../../AI_POLICY.md), sem acesso a discos reais.
+
 | Backend | Firmware/tabela no Gaslux | Bootloader/instalador | Estado verificado e bloqueios | Próxima prova |
 |---|---|---|---|---|
 | [Linux Mint](MINT.md) | BIOS/MBR e UEFI/GPT: caminhos de infraestrutura em main; conformidade fim-a-fim ainda exige provas por cenário | GRUB BIOS ou GRUB EFI com shim assinado onde o firmware/ISO o suportem; instalador Ubuntu/Mint integrado na edição ISO; identificar binário e versão exacta na imagem fixada antes de declarar unattended | PENDENTE: sem sequência fim-a-fim e rollback comprovados | Verificar ISO, executar cadeia VM controlada |
