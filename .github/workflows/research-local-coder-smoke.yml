@@ -66,6 +66,7 @@ jobs:
           import os
           import pathlib
           import resource
+          import re
           import time
           import urllib.request
 
@@ -91,8 +92,14 @@ jobs:
               result["eval_count"] = generated.get("eval_count")
               result["eval_duration_ns"] = generated.get("eval_duration")
               result["total_duration_ns"] = generated.get("total_duration")
+              # Accept a single fenced expression; still reject arbitrary code.
+              fenced = re.fullmatch(r"```(?:python)?\\s*\
+(.*?)\
+```", expression, flags=re.DOTALL | re.IGNORECASE)
+              if fenced:
+                  expression = fenced.group(1).strip()
               syntax = ast.parse(expression, mode="eval")
-              allowed = (ast.Expression, ast.BinOp, ast.Add, ast.Mult, ast.Name, ast.Load, ast.Constant)
+              allowed = (ast.Expression, ast.BinOp, ast.Add, ast.Mult, ast.Pow, ast.Name, ast.Load, ast.Constant)
               if any(not isinstance(node, allowed) for node in ast.walk(syntax)):
                   raise ValueError("model output violates restricted expression grammar")
               if any(isinstance(node, ast.Name) and node.id not in {"a", "b"} for node in ast.walk(syntax)):
