@@ -139,3 +139,47 @@ The first complete [GitHub Action #45030470016](https://github.com/LMhdez/gaslux
 [Artifact #14757198793](https://github.com/LMhdez/gaslux/actions/runs/45030470016/artifacts/14757198793) contains the bounded `manifest.json` and local `manifest.sha256`, SHA-256-checked by CI before upload. The artifact ZIP digest was `7f4a4098961b442e95c32637653b9fdb243a7f471b164f20881833c5337ab3b4`; neither the ZIP digest nor the self-hashed manifest provides independent attestation. The manifest explicitly records `guestBooted=false`, `guestObservationsReceived=0`, `guestChannelAuthenticated=false`, `collectorAuthenticated=false`, `replayProtected=false`, `diskWriteAuthorized=false`, `rollbackProven=false`, and `stable=false`.
 
 The real host endpoint is a **negative control**: authenticating its Linux host peer by SO_PEERCRED and the image's QEMU host FD is **not** a guest collector observation. A host process could otherwise impersonate guest origin. Operational installation, replay authorization and Windows recovery remain blocked. Independently Safety-review the new differential before any integration.
+
+## GUEST-COLLECTOR-ORIGIN-01 — minimal Linux test boot (2026-11-22)
+
+This *experimental, deny-only* next lab adds a **real booted Linux kernel**
+and a fixed collector inside a private gzip-compressed initramfs. It does not
+start Bazzite, Anaconda, Ubiquity, Calamares, Windows, production disks or a
+general-purpose guest-agent shell.
+
+The CI runner obtains an Ubuntu APT repository-signed `linux-image-virtual`
+kernel and `busybox-static`; the initramfs generator copies only the pinned
+runner bytes required for the fixed collector, /init and the virtio-serial
+kernel modules. Runtime SHA-256 and installed package versions are recorded
+in the untrusted evidence manifest. Those hashes prove repeatable comparison
+of local bytes, **not** an external guest trust root.
+
+The original #325/#331 QEMU HOST/FD witnesses observe the same process and
+QCOW2 backing. A separate guest serial UART must report an actual Linux
+kernel, init execution and collector execution. The fixed collector reads
+one bounded non-executable challenge over the existing virtio-serial device
+and writes one bounded report containing session UUID, external nonce,
+its computed /collector.sh SHA, boot ID and counter 1.
+
+Host validates the exact report schema/nonce/hash/counter and atomically
+consumes the challenge in a local SQLite ledger with synchronous FULL. A
+new ledger handle must refuse the same nonce on a repeat; tampering with
+session, collector hash or claims and disconnect/truncation must also fail.
+The ledger is host-controlled: **replayProtectedAgainstCompromisedHost=false**.
+
+The mandatory report distinguishes:
+- `guestCollectorExecutedObserved`: actual UART boot marker from QEMU lab;
+- `guestMessageReceived`: bounded virtio-serial response received on HOST;
+- `hostQemuPeerAuthenticated`: SO_PEERCRED matching the HOST QEMU process;
+- `guestOriginIndependentlyAttested=false`: guest-provided claims are not a
+  cryptographic proof of execution identity or independent provenance.
+
+Positive lab outcomes, if demonstrated by exact-HEAD QEMU CI, still require
+`status=BLOCKED_TRUST_ROOT`, `NOT_INDEPENDENT` and
+`guestChannelAuthenticated=false`, `diskWriteAuthorized=false`,
+`productionInstallationAuthorized=false`, `rollbackProven=false`,
+`stable=false`. The QEMU virtual disk remains read-only and test-owned.
+
+Until a CI success on the precise PR HEAD exists, this section describes
+a **candidate experiment, not a proven guest boot**. No independent
+Anaconda identity, protected challenge issuer or Windows recovery follows.
