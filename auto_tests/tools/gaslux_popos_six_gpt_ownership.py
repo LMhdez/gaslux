@@ -4,6 +4,7 @@
 No deletion: POSIX unlinkat cannot atomically assert inode identity in the
 presence of hostile same-UID rename/link races. Runner disposal owns cleanup.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,16 +43,18 @@ def export_evidence(work: Path, evidence: Path, pinned: tuple[int, int]) -> None
                 if (current.st_dev, current.st_ino) != pinned:
                     raise OwnershipRefusal("REFUSE_IDENTITY_MISMATCH: directory renamed")
                 try:
-                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
-                                 dir_fd=directory)
+                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory)
                 except FileNotFoundError:
                     continue
                 try:
                     st = os.fstat(fd)
                     linked = os.stat(name, dir_fd=directory, follow_symlinks=False)
-                    if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or
-                        (st.st_dev, st.st_ino) != (linked.st_dev, linked.st_ino) or
-                        st.st_size > 2_000_000):
+                    if (
+                        not stat.S_ISREG(st.st_mode)
+                        or st.st_nlink != 1
+                        or (st.st_dev, st.st_ino) != (linked.st_dev, linked.st_ino)
+                        or st.st_size > 2_000_000
+                    ):
                         raise OwnershipRefusal("REFUSE_IDENTITY_MISMATCH: foreign evidence")
                     data = bytearray()
                     while len(data) <= 2_000_000:
@@ -62,8 +65,11 @@ def export_evidence(work: Path, evidence: Path, pinned: tuple[int, int]) -> None
                     if len(data) != st.st_size or len(data) > 2_000_000:
                         raise OwnershipRefusal("REFUSE_IDENTITY_MISMATCH: evidence changed")
                     # Export only: no deletion of any resource.
-                    out = os.open(evidence / name, os.O_WRONLY | os.O_CREAT |
-                                  os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+                    out = os.open(
+                        evidence / name,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                        0o600,
+                    )
                     with os.fdopen(out, "wb") as dest:
                         dest.write(data)
                         dest.flush()
