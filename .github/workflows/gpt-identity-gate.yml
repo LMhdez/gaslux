@@ -1,0 +1,29 @@
+name: GPT disk identity safety gate
+
+on:
+  push:
+    branches:
+      - integration/gpt-fd-pinned-readonly-dev-20261122
+      - dev
+  pull_request:
+    paths:
+      - 'assets/live/libertix_disk_identity_gate.py'
+      - 'auto_tests/tests/test_disk_identity_gate.py'
+      - '.github/workflows/gpt-identity-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  gpt-identity-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pytest
+        run: python -m pip install 'pytest>=9,<10'
+      - name: Verify read-only GPT identity and adversarial cases
+        run: python -m pytest -q auto_tests/tests/test_disk_identity_gate.py
