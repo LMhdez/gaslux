@@ -128,3 +128,10 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 **Interrupção obrigatória:** qualquer geometria, hash, conta, firma/assinatura, Secure Boot, propriedade, WinRE/BCD ou estado de recuperação não comprovado; Windows sem boot validado; tentativa de usar disco físico; parâmetros, caminhos de ISO ou opções unattended desconhecidos.
 
 **Provas de conclusão:** SHA commit, PR, workflow/run, artefactos e respectivos SHA-256, cadeia de assinatura upstream, serial/GUID/offsets, pré/pós Windows BCD/WinRE/EFI/MBR, arranques Linux e Windows pós-instalação e pós-update, remoção, rollback e relatório independente. **Nunca declarar estável sem a matriz completa.**
+
+
+## Actualização de reconciliação da evidência (2026-11-22 UTC)
+
+A [PR #277](https://github.com/LMhdez/gaslux/pull/277) foi encerrada sem merge; a [PR #281](https://github.com/LMhdez/gaslux/pull/281) continua draft, HEAD `79264bd147f5d3e71de59b0f126e5906cfafa52e` e depende historicamente de #277 → #264. A [CI #45021477864](https://github.com/LMhdez/gaslux/actions/runs/45021477864) demonstrou que oito ficheiros sintéticos podem ser copiados para o `dev` `8e68a475d6397ba8fef2e0f9f83758545e202a5f` e testados com o reader canónico #307, sem incorporar o backend experimental #264. A branch `integration/zorin-277-281-fd-nowriter-dev-20261122` isola esta evidência; é uma contribuição de diagnóstico, **não** autorização de escrita. A instalação Zorin, dual boot, actualização, recuperação Windows e estabilidade requerem provas E2E separadas.
+
+**Nota de HEAD (22-11-2026 13:55 UTC):** a branch #281 avançou para `a26c0cda741323f0d4457aa662daa85279e726e5` após a execução `45021477864` no commit `79264bd147f5d3e71de59b0f126e5906cfafa52e`. Os quatro ficheiros operacionais (verificador, dois testes e schema) mantiveram exatamente os mesmos Git blob SHAs nesta mudança; a documentação evoluiu. A CI `45021477864` não deve ser atribuída a `a26c0cda` sem check próprio.

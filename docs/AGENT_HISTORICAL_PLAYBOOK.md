@@ -140,3 +140,14 @@ A [PR #294](https://github.com/LMhdez/gaslux/pull/294) foi **encerrada sem merge
 - [Plano de arquitetura/rollback](ARCHITECTURE.md) e [matriz multidistro](MULTIDISTRO_PLAN.md).
 - [Critérios CachyOS #3](https://github.com/LMhdez/gaslux/issues/3), [Windows 11 #71](https://github.com/LMhdez/gaslux/issues/71), [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
 - [Guias técnicos por backend](distro-backends/README.md), [contratos partilhados](distro-backends/SHARED_CONTRACTS.md).
+
+
+## Atualização de integração — 2026-11-22 UTC, Lane 1
+
+- A [PR #294](https://github.com/LMhdez/gaslux/pull/294) está **fechada sem merge** (`e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9`). O HOST/FD e testes adversariais equivalentes foram isolados em [#319](https://github.com/LMhdez/gaslux/pull/319) (merged `b57bbf97057a154beeb744bcbeef710687d520b4`) e a compatibilidade/replay histórico em [#312](https://github.com/LMhdez/gaslux/pull/312) (merged `e382cad6760ad71df03bebf463f435f682a07508`). Não trazer a ancestralidade de #294 nem o controller #259.
+- [#321](https://github.com/LMhdez/gaslux/pull/321) continua fechada sem merge; a sessão Local Peer reutilizável está representada na integração #319. Não eliminar a branch histórica sem confirmar commits exclusivos e dependências ativas.
+- [#322](https://github.com/LMhdez/gaslux/pull/322) integrada no commit `a1131a1581726f34f7df3371333df8d725d7a085`; Safety GPT S-01 permanece um contrato deny-only.
+- [#325](https://github.com/LMhdez/gaslux/pull/325) integrada em `dev` como `8e68a475d6397ba8fef2e0f9f83758545e202a5f`. Os oito checks pós-merge terminaram com sucesso; QEMU HOST/FD apenas, `BLOCKED_TRUST_ROOT`, sem guest autenticado, escrita ou rollback Windows.
+- [#277](https://github.com/LMhdez/gaslux/pull/277) fechada sem merge; [#281](https://github.com/LMhdez/gaslux/pull/281) ainda draft e empilhada sobre #277 → [#264](https://github.com/LMhdez/gaslux/pull/264). O HEAD #281 `79264bd147f5d3e71de59b0f126e5906cfafa52e` passou a verificação de extração isolada [#45021477864](https://github.com/LMhdez/gaslux/actions/runs/45021477864). Criada branch de reconciliação `integration/zorin-277-281-fd-nowriter-dev-20261122` sobre o `dev` acima, apenas para testes e diagnóstico sintético, sem #264; Safety e CI no novo HEAD são requisitos para merge.
+
+**Nota de HEAD (22-11-2026 13:55 UTC):** a branch #281 avançou para `a26c0cda741323f0d4457aa662daa85279e726e5` após a execução `45021477864` no commit `79264bd147f5d3e71de59b0f126e5906cfafa52e`. Os quatro ficheiros operacionais (verificador, dois testes e schema) mantiveram exatamente os mesmos Git blob SHAs nesta mudança; a documentação evoluiu. A CI `45021477864` não deve ser atribuída a `a26c0cda` sem check próprio.

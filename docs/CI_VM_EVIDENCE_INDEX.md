@@ -95,3 +95,11 @@ Após essa execução foram adicionados recusa explícita `O_PATH` e um teste ad
 
 
 Para contratos base e critérios de estabilidade, ver [histórico/guia de agentes](AGENT_HISTORICAL_PLAYBOOK.md), [ARCHITECTURE](ARCHITECTURE.md), [issues CachyOS #3](https://github.com/LMhdez/gaslux/issues/3) e [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
+
+
+## Evidência de integração 22-11-2026 — Observer e Zorin
+
+- Observer [#325](https://github.com/LMhdez/gaslux/pull/325), merge `8e68a475d6397ba8fef2e0f9f83758545e202a5f`: [Actions pós-merge 45029499886](https://github.com/LMhdez/gaslux/actions/runs/45029499886), [45029499910](https://github.com/LMhdez/gaslux/actions/runs/45029499910) e restantes verificações de Safety/contratos concluíram com sucesso no merge. O teste de QEMU parado no HEAD candidato `ea36c73215974827fbe5d8e3621217790ab2700f` foi [45022341631](https://github.com/LMhdez/gaslux/actions/runs/45022341631), com observação do processo e FD read-only, **não** guest boot/autenticidade, instalação, dual boot ou rollback.
+- Zorin [#281](https://github.com/LMhdez/gaslux/pull/281) HEAD `79264bd147f5d3e71de59b0f126e5906cfafa52e`, [Actions #45021477864](https://github.com/LMhdez/gaslux/actions/runs/45021477864): `synthetic-race-replay` e `clean-dev-zorin-subset` aprovados. O segundo copiou oito ficheiros de diagnóstico e executou suites contra a API Safety #307 no `dev` `8e68a475d6397ba8fef2e0f9f83758545e202a5f`, sem QEMU. Este resultado **não** certifica a nova branch `integration/zorin-277-281-fd-nowriter-dev-20261122` até à sua própria CI; requer revisão Safety para integrar, não promove Zorin a novo nível E2E.
+
+**Nota de HEAD (22-11-2026 13:55 UTC):** a branch #281 avançou para `a26c0cda741323f0d4457aa662daa85279e726e5` após a execução `45021477864` no commit `79264bd147f5d3e71de59b0f126e5906cfafa52e`. Os quatro ficheiros operacionais (verificador, dois testes e schema) mantiveram exatamente os mesmos Git blob SHAs nesta mudança; a documentação evoluiu. A CI `45021477864` não deve ser atribuída a `a26c0cda` sem check próprio.
