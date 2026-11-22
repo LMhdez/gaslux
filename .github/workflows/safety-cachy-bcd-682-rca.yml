@@ -45,5 +45,5 @@ jobs:
           set -Eeuo pipefail
           python -m compileall -q auto_tests/tests/test_cachy_bcd_682_independent_rca.py
           python -m ruff check --isolated auto_tests/tests/test_cachy_bcd_682_independent_rca.py
-          python -m ruff format --diff --isolated auto_tests/tests/test_cachy_bcd_682_independent_rca.py
+          python -m ruff format --check --isolated auto_tests/tests/test_cachy_bcd_682_independent_rca.py
           python -m pytest -q auto_tests/tests/test_cachy_bcd_682_independent_rca.py
