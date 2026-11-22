@@ -11,7 +11,6 @@ import json
 import os
 import socket
 import subprocess
-import time
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -30,8 +29,8 @@ from auto_tests.installer_observer.qemu_local_disk_witness import (
 from auto_tests.tests.test_observer_qemu_real_disk_readonly import (
     make_qcow,
     make_raw,
+    pinned as _pinned,
     pins_for,
-    pinned,
     shutdown,
     wait_qmp,
 )
@@ -201,7 +200,12 @@ def real_guest(tmp_path_factory, pinned):
                 QemuLocalDiskWitness(replace(pins, media_inode=pins.media_inode + 1))
             with pytest.raises(QemuDiskRefused):
                 QemuLocalDiskWitness(
-                    replace(pins, process=replace(pins.process, start_ticks=pins.process.start_ticks + 1))
+                    replace(
+                        pins,
+                        process=replace(
+                            pins.process, start_ticks=pins.process.start_ticks + 1
+                        ),
+                    )
                 )
             serial = folder / "kernel-serial.log"
             bootlog = await_boot(serial, child, "GASLUX_COLLECTOR_READY_TEST")
@@ -210,7 +214,12 @@ def real_guest(tmp_path_factory, pinned):
                 conn.settimeout(15)
                 conn.connect(str(folder / "guest-peer.sock"))
                 peer_pins = _peer_pins(
-                    conn, pins, session, nonce, image["collectorSha256"], original_chain["overlaySha256"]
+                    conn,
+                    pins,
+                    session,
+                    nonce,
+                    image["collectorSha256"],
+                    original_chain["overlaySha256"],
                 )
                 peer = LocalTransportWitness(conn, peer_pins)
                 # Genuine peer of QEMU is still a HOST process, not a guest PID.
@@ -223,7 +232,12 @@ def real_guest(tmp_path_factory, pinned):
                 # Genuine fake host proxy cannot claim the pinned QEMU ProcessSeal.
                 with socket.socketpair() as (fake, other):
                     forged = _peer_pins(
-                        fake, pins, session, nonce, image["collectorSha256"], original_chain["overlaySha256"]
+                        fake,
+                        pins,
+                        session,
+                        nonce,
+                        image["collectorSha256"],
+                        original_chain["overlaySha256"],
                     )
                     with pytest.raises(TransportBoundaryRefused):
                         LocalTransportWitness(fake, forged)

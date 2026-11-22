@@ -199,9 +199,12 @@ def build_guest(workspace: Path) -> dict:
             source.stdout.close()
             require(source.wait(timeout=5) == 0, "CPIO_INPUT_FAILED")
     initrd = workspace / "initrd.cpio.gz"
-    with cpio.open("rb") as source, initrd.open("xb") as target:
-        with gzip.GzipFile(fileobj=target, mode="wb", mtime=0) as out:
-            shutil.copyfileobj(source, out)
+    with (
+        cpio.open("rb") as source,
+        initrd.open("xb") as target,
+        gzip.GzipFile(fileobj=target, mode="wb", mtime=0) as out,
+    ):
+        shutil.copyfileobj(source, out)
     package_format = "$" + "{Package}=$" + "{Version}"
     return {
         "kernel": kernel,
@@ -248,7 +251,10 @@ def validate(payload: bytes, session: str, nonce: str, collector_sha: str) -> di
     require(len(components) == 6 and components[0] == "GASLUX_REPORT_V1", "RESPONSE_SCHEMA")
     _, sid, observed_nonce, observed_hash, boot_id, count = components
     require(UID.fullmatch(sid) is not None and sid == session, "WRONG_VM_SESSION")
-    require(HEX.fullmatch(observed_nonce) is not None and observed_nonce == nonce, "OLD_NONCE_REPLAY")
+    require(
+        HEX.fullmatch(observed_nonce) is not None and observed_nonce == nonce,
+        "OLD_NONCE_REPLAY",
+    )
     require(
         HEX.fullmatch(observed_hash) is not None and observed_hash == collector_sha,
         "COLLECTOR_HASH_MISMATCH",
@@ -276,7 +282,10 @@ class LabLedger:
         )
 
     def consume(self, session: str, nonce: str) -> None:
-        require(UID.fullmatch(session) is not None and HEX.fullmatch(nonce) is not None, "INVALID_CHALLENGE")
+        require(
+            UID.fullmatch(session) is not None and HEX.fullmatch(nonce) is not None,
+            "INVALID_CHALLENGE",
+        )
         self.db.execute("BEGIN IMMEDIATE")
         try:
             self.db.execute(
@@ -305,7 +314,10 @@ def await_boot(serial: Path, process, marker: str, *, seconds: int = 120) -> byt
             if marker.encode() in data:
                 require(b"Linux version " in data, "LINUX_KERNEL_BOOT_NOT_OBSERVED")
                 require(b"GASLUX_GUEST_INIT_EXECUTED_TEST" in data, "GUEST_INIT_NOT_OBSERVED")
-                require(b"GASLUX_COLLECTOR_EXECUTED_TEST" in data, "COLLECTOR_EXECUTION_NOT_OBSERVED")
+                require(
+                    b"GASLUX_COLLECTOR_EXECUTED_TEST" in data,
+                    "COLLECTOR_EXECUTION_NOT_OBSERVED",
+                )
                 return data
         time.sleep(0.15)
     raise CollectorLabDenied("GUEST_BOOT_TIMEOUT")
