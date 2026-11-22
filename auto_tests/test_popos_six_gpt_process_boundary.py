@@ -178,6 +178,43 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
             ):
                 measure_pinned_evidence(workspace, self.name)
 
+
+    def test_same_uid_output_collision_preserves_foreign_evidence(self):
+        for name in (
+            "pop-six-transaction.json",
+            "filesystem-fsck-before.json",
+            "filesystem-fsck-after.json",
+        ):
+            (self.work / name).write_bytes(b"owned fixture\n")
+        foreign = self.evidence / "pop-six-transaction.json"
+        original_run = subprocess.run
+
+        def attack(command, **kwargs):
+            program = (
+                "import os,sys;"
+                "fd=os.open(sys.argv[1],os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600);"
+                "os.write(fd,b'FOREIGN OUTPUT');os.close(fd)"
+            )
+            original_run(
+                [sys.executable, "-c", program, str(foreign)],
+                check=True,
+                timeout=10,
+            )
+            return original_run(command, **kwargs)
+
+        with (
+            SafeWorkspace(self.work, self.evidence) as workspace,
+            patch(
+                "gaslux_popos_six_gpt_process_boundary.subprocess.run",
+                side_effect=attack,
+            ),
+        ):
+            result = measure_pinned_evidence(workspace, self.name)
+            self.assertFalse(result["productionInstallationAuthorized"])
+            with self.assertRaises(FileExistsError):
+                workspace.export()
+        self.assertEqual(foreign.read_bytes(), b"FOREIGN OUTPUT")
+
     def test_no_mutable_output_or_qcow2_backing_interface(self):
         self.assertIn("qemu-img", UNISOLATED_EXTERNAL_COMMANDS)
         self.assertIn("qemu-io", UNISOLATED_EXTERNAL_COMMANDS)
