@@ -9,6 +9,7 @@ witness. All observations and output are bounded and redact free-form text.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -336,10 +337,8 @@ def _write_report_exclusive(path: Path, qmp_path: Path, report: dict) -> bool:
     finally:
         for owned_fd in (fd, dirfd):
             if owned_fd is not None:
-                try:
+                with contextlib.suppress(OSError):
                     os.close(owned_fd)
-                except OSError:
-                    pass
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -373,7 +372,11 @@ def main() -> int:
     if not _write_report_exclusive(args.report, args.qmp, report):
         print("GASLUX_Q4OS_DVD_BOOT_DECISION=refuse")
         return 1
-    decision = "dvd_key_sent_once" if exit_code == 0 and report["decision"] == "dvd_key_sent_once" else "refuse"
+    decision = (
+        "dvd_key_sent_once"
+        if exit_code == 0 and report["decision"] == "dvd_key_sent_once"
+        else "refuse"
+    )
     print("GASLUX_Q4OS_DVD_BOOT_DECISION=" + decision)
     return exit_code
 
