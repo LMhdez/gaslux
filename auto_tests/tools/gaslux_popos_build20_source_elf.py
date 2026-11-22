@@ -148,10 +148,10 @@ def inspect_build20_extraction(
     status: Path,
     workspace: Path,
 ) -> dict:
-    """Only after hosted runner downloaded *and GPG-verified* the exact ISO.
+    """Inspect read-only extraction bytes; this function DOES NOT verify GPG.
 
-    The script trusts the narrow workflow extraction origin; it does not
-    authenticate same-UID adversaries or prove the source of any ELF.
+    It checks ISO/ELF hashes against previously pinned values, without
+    authenticating the extraction process, same-UID adversaries, or source.
     """
     runner = os.environ.get("RUNNER_TEMP", "")
     need(
