@@ -91,7 +91,8 @@ def verify_read_only_fsck(work: Path, phase: str) -> dict:
             }
         finally:
             if image.exists():
-                regular(image, length=p.count * SECTOR).unlink()
+                # No pathname unlink: leave the owned sparse extraction for runner teardown.
+                regular(image, length=p.count * SECTOR)
     need(
         verify_fs_types(base) == plan["filesystems"],
         "REFUSE_RECOVERY_UNPROVEN: filesystem type identity changed",
