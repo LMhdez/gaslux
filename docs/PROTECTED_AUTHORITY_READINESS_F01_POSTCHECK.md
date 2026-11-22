@@ -42,3 +42,16 @@ Untracked Python bytecode caches are **not** treated as edits to tracked source.
 The new tests and CI cover offline type safety and integrity checks. Neither a passing job nor intact checkouts proves branch protection or required human review, independent Authority A/B, immutable controller, durable external ledger, trusted clock/nonce, real QEMU capture, Windows rollback, dual boot or disk recoverability. The seven capability flags remain false.
 
 **No QEMU, no VM guest, no writer, no disk/ESP/BCD/WinRE/NVRAM mutation, no repository administration, no merge.** Revision requires independent GASLUX-SAFETY review and human responsibility according to `AI_POLICY.md`.
+
+
+## CI confirmation — 2026-11-22
+
+The final published PR head is `356782acf8b62a107a5a73a1febe66424627ef9f`.
+
+- [Final offline diagnostic #44972417908](https://github.com/LMhdez/gaslux/actions/runs/44972417908): **SUCCESS** on this exact HEAD. The job passed schema JSON parsing, workflow deny-only assertions, Ruff lint, Ruff format, Python compilation, all regression suites, and the post-test pin checks.
+- The preceding [#44972298429](https://github.com/LMhdez/gaslux/actions/runs/44972298429) failed only at `ruff format --check`: the new F-01 test had one formatting difference. The subsequent formatting correction is present in the final HEAD; the exact-HEAD run above passed.
+- Test suites in the final run: original #275 trigger regressions (42), #285 ledger regressions (43), #267 no-writer regressions (22), #295 readiness regressions (38), and the new F-01 adversarial matrix (140 cases).
+- The final post-test step emitted `POST_TEST_PIN_OK` for all four pinned #275/#285/#267/#294 checkouts, including expected commit SHA, clean tracked state and executable Git blob identity.
+- No artifact was emitted by #44972417908. This is expected for the offline deny-only diagnostic; it does not generate a guest, disk image or installation evidence.
+
+This confirms the offline type-refusal and post-test checkout-integrity contracts only. It does **not** establish an independent protected trust root, branch protection, external durable ledger, QEMU capture, Windows recovery, dual boot or disk recoverability. The PR remains draft pending independent GASLUX-SAFETY re-audit and human review.
