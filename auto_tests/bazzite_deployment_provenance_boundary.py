@@ -227,7 +227,8 @@ def main() -> None:
         decision["reason"] = f"Cannot safely read pinned evidence: {exc}"[:240]
     args.output.write_text(json.dumps(decision, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     print(decision["decision"])
-    raise SystemExit(2 if decision["decision"] == "SOURCE_ARTIFACT_MATCHED_DEPLOYMENT_UNPROVEN" else 3)
+    valid_source = decision["decision"] == "SOURCE_ARTIFACT_MATCHED_DEPLOYMENT_UNPROVEN"
+    raise SystemExit(2 if valid_source else 3)
 
 
 if __name__ == "__main__":
