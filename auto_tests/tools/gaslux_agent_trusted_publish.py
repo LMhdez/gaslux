@@ -46,7 +46,7 @@ def validate(report: dict, original: bytes, candidate: bytes) -> tuple[str, str]
         or report.get("status") != "candidate_green" or report.get("candidate_valid") is not True
         or not SHA40.fullmatch(str(report.get("base_commit", "")))
         or not SHA64.fullmatch(str(report.get("source_sha256", "")))
-        or not SHA64.fullmatch(str(report.get("candidate_sha256", ""))):
+        or not SHA64.fullmatch(str(report.get("candidate_sha256", "")))):
         raise ValueError("Missing or mismatched model/source/test evidence")
     attempts = report.get("attempts", [])
     if not isinstance(attempts, list) or len(attempts) not in (1, 2) or attempts[-1].get("passed") is not True:
