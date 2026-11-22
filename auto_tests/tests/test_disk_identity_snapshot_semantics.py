@@ -4,8 +4,10 @@ These negative fixtures exercise a read-only boundary; they are not boot or
 rollback evidence, and never authorize storage writes.
 """
 import importlib.util
-from pathlib import Path
+import struct
 import uuid
+import zlib
+from pathlib import Path
 
 import pytest
 
@@ -124,3 +126,52 @@ def test_duplicate_slot_with_distinct_guid_rejected():
     value["partitions"].append(other)
     with pytest.raises(gate.DiskIdentityError):
         gate.assert_snapshot_matches(value, value)
+def test_large_slot_number_never_emitted_by_gpt_reader():
+    value = snapshot()
+    value["partitions"][0]["number"] = 4097
+    with pytest.raises(gate.DiskIdentityError):
+        gate.assert_snapshot_matches(value, value)
+
+
+def test_too_small_disk_never_emitted_by_gpt_reader():
+    value = snapshot()
+    value["sizeBytes"] = 67 * 512
+    value["partitions"][0]["sizeBytes"] = 512
+    with pytest.raises(gate.DiskIdentityError):
+        gate.assert_snapshot_matches(value, value)
+
+
+def test_four_kib_sectors_from_actual_fd_gpt_reader(tmp_path):
+    """Exercise the real CRC-checked GPT reader, not only hand-built dictionaries."""
+    sector = 4096
+    sectors = 4096
+    image = bytearray(sector * sectors)
+    image[446 + 4] = 0xEE
+    struct.pack_into("<II", image, 446 + 8, 1, sectors - 1)
+    image[510:512] = b"\\x55\\xaa"
+    entries = bytearray(128 * 128)
+    entries[:16] = uuid.UUID(TYPE).bytes_le
+    entries[16:32] = uuid.UUID(PART).bytes_le
+    struct.pack_into("<QQQ", entries, 32, 64, 1023, 0)
+    entries_crc = zlib.crc32(entries)
+    for lba in (2, sectors - 5):
+        image[lba * sector:lba * sector + len(entries)] = entries
+
+    def header(current, alternate, array_lba):
+        raw = bytearray(sector)
+        raw[:8] = b"EFI PART"
+        struct.pack_into("<IIII", raw, 8, 0x10000, 92, 0, 0)
+        struct.pack_into("<QQQQ", raw, 24, current, alternate, 34, sectors - 6)
+        raw[56:72] = uuid.UUID(DISK).bytes_le
+        struct.pack_into("<QIII", raw, 72, array_lba, 128, 128, entries_crc)
+        struct.pack_into("<I", raw, 16, zlib.crc32(raw[:92]))
+        return raw
+
+    image[sector:2 * sector] = header(1, sectors - 1, 2)
+    image[(sectors - 1) * sector:] = header(sectors - 1, 1, sectors - 5)
+    path = tmp_path / "synthetic-4k-gpt.img"
+    path.write_bytes(image)
+    actual = gate.inspect_gpt_image(path, logical_sector_size=sector)
+    assert actual["logicalSectorSizeBytes"] == sector
+    assert actual["partitions"][0]["offsetBytes"] == 64 * sector
+    gate.assert_snapshot_matches(actual, actual)

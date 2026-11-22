@@ -176,7 +176,8 @@ def assert_snapshot_matches(expected: dict, observed: dict) -> None:
                 disk["logicalSectorSizeBytes"] in (512, 4096), "invalid geometry")
         require(type(disk["partitions"]) is list, "partition inventory absent")
         sector = disk["logicalSectorSizeBytes"]
-        require(disk["sizeBytes"] % sector == 0, "unaligned disk geometry")
+        require(disk["sizeBytes"] % sector == 0 and
+                disk["sizeBytes"] >= 68 * sector, "invalid aligned GPT disk geometry")
         try:
             disk_guid = str(uuid.UUID(disk["partitionTableId"][4:]))
         except (ValueError, AttributeError) as error:
@@ -190,13 +191,20 @@ def assert_snapshot_matches(expected: dict, observed: dict) -> None:
             require(type(part) is dict and set(part) == pk, "incomplete partition")
             require(all(type(part[k]) is int for k in
                         ("number", "offsetBytes", "sizeBytes", "attributes")) and
-                    part["number"] > 0 and part["offsetBytes"] > 0 and
+                    1 <= part["number"] <= 4096 and part["offsetBytes"] > 0 and
                     part["sizeBytes"] > 0 and 0 <= part["attributes"] < 2**64,
                     "invalid partition geometry")
+            # Any GPT layout accepted by inspect_gpt_fd has a primary
+            # header at LBA 1, a primary array starting at >= LBA 2,
+            # a backup array before the final header, and at least
+            # one partition-entry sector on each end. Exact
+            # first/last usable LBAs need the original GPT headers.
             require(part["offsetBytes"] % sector == 0 and
                     part["sizeBytes"] % sector == 0 and
-                    part["offsetBytes"] + part["sizeBytes"] <= disk["sizeBytes"],
-                    "partition outside aligned disk bounds")
+                    part["offsetBytes"] >= 3 * sector and
+                    part["offsetBytes"] + part["sizeBytes"] <=
+                    disk["sizeBytes"] - 2 * sector,
+                    "partition intersects mandatory GPT reserved LBAs")
             for key in ("typeGuid", "partGuid"):
                 require(type(part[key]) is str, "invalid partition GUID")
                 try:
