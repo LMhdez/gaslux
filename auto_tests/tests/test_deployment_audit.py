@@ -174,6 +174,7 @@ def test_an_unknown_source_shape_stops_the_audit(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(audit.AuditStructureError):
         audit.run_audit()
 
+
 LAB_TOOL = "Scripts/libertix-cachyos-windows-evidence.ps1"
 LAB_MODULE = "Scripts/modules/Gaslux.CachyosWindowsEvidence.psm1"
 
@@ -181,9 +182,7 @@ LAB_MODULE = "Scripts/modules/Gaslux.CachyosWindowsEvidence.psm1"
 def test_cachyos_manual_evidence_is_checked_but_not_deployed() -> None:
     layouts, findings, notes = audit.run_audit()
 
-    assert not any(
-        item.rule == "undeclared-entry" and item.where == LAB_TOOL for item in findings
-    )
+    assert not any(item.rule == "undeclared-entry" and item.where == LAB_TOOL for item in findings)
     assert not any(
         source in {LAB_TOOL, LAB_MODULE}
         for layout in layouts.values()
@@ -245,4 +244,3 @@ def test_cachyos_source_only_exemption_does_not_hide_a_production_entry(
     assert ("undeclared-entry", "Scripts/libertix-disk-image.ps1") in {
         (finding.rule, finding.where) for finding in findings
     }
-
