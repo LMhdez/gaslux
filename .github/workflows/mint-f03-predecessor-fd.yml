@@ -95,25 +95,3 @@ jobs:
           export PYTHONPATH="$RUNNER_TEMP/gaslux-m27801-ruff"
           python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
           python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
-      - name: Emit Ruff 0.15.20 source-only formatting on style failure
-        if: failure()
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test -d "$RUNNER_TEMP/gaslux-m27801-ruff" || exit 0
-          export PYTHONPATH="$RUNNER_TEMP/gaslux-m27801-ruff"
-          python3 -m ruff format auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
-          python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
-          python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          for file in (
-              Path("auto_tests/tools/windows_mint_ab_forensic.py"),
-              Path("auto_tests/test_windows_mint_f03_toctou.py"),
-          ):
-              print("GASLUX_M27801_RUFF_SOURCE=" + json.dumps({
-                  "path": str(file),
-                  "source": file.read_text(encoding="utf-8"),
-              }, ensure_ascii=True))
-          PY
