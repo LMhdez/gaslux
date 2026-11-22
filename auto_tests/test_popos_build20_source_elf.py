@@ -33,6 +33,11 @@ class PackageStatusTests(unittest.TestCase):
         self.assertFalse(info["signedBuildinfoVerified"])
         self.assertFalse(info["sourceBuildEnvironmentReproduced"])
 
+    def test_numeric_build_epoch_is_not_git_sha_candidate(self) -> None:
+        status = STATUS.replace(b"~24.04~143114f", b"~24.04")
+        info = audit.parse_dpkg_status(status)
+        self.assertEqual(info["versionGitSuffixCandidates"], [])
+
     def test_new_source_commit_postdates_old_iso(self) -> None:
         self.assertGreater(audit.SOURCE_COMMITTED_UTC, audit.BUILD20_EARLIEST_PUBLIC_REFERENCE_UTC)
 
