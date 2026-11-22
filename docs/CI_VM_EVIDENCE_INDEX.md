@@ -10,6 +10,17 @@ A atualização deve trazer data UTC, SHA exato, PR e URL da execução, tipo de
 
 Não voltar a executar QEMU apenas para mudar a data de documentação. A atualização é obrigatória nos eventos relevantes, **não um monitorizador autónomo**. Consultar [AGENTS.md](../AGENTS.md), [AI_POLICY.md](../AI_POLICY.md) e o [manual histórico](AGENT_HISTORICAL_PLAYBOOK.md).
 
+### Core / PR #361 — proveniência do laboratório, sem VM (22-11-2026)
+
+[PR #361](https://github.com/LMhdez/gaslux/pull/361), branch `core/mint-wpf-vm-recovery-20261122`, introduz exclusivamente o workflow de contrato [core-source-provenance-offline.yml](../.github/workflows/core-source-provenance-offline.yml) nessa branch (não integrado em `dev`). Dois jobs: runner Ubuntu para origem Git e testes Python; runner `windows-2022` para build WPF, .NET e Pester. Classificação **CONTRACT / STATIC** — runner Windows não é um Windows 10 convidado instalado. Não executa QEMU-system, Proxmox, instalação Mint, GPT/ESP/BCD/WinRE, desinstalação ou recuperação.
+
+- **RED real de contrato:** [Actions #45041672878](https://github.com/LMhdez/gaslux/actions/runs/45041672878), commit `9244960c58f7f9262bbb0b2645c1db998c992fd4`: 7/7 casos adversariais falharam conforme esperado, ao aceitarem origens upstream/falsas, endpoint publicado errado, ou tentarem SSH sem identificar previamente o checkout local.
+- **GREEN parcial de proveniência:** [Actions #45041964939](https://github.com/LMhdez/gaslux/actions/runs/45041964939), commit `988d09ef0336debb06b0a1e7a6ff3a6fd5667e09`: 7/7 testes, Ruff e compileall aprovados. Não valida repositório remoto independente nem bytes do worktree por atestação externa.
+- **Validação herdada separada:** [Actions #45042241970](https://github.com/LMhdez/gaslux/actions/runs/45042241970), commit `c74a84518fe3398f2397a1c3d2f9c9aa981a4200`: 242/242 testes `test_core.py` e `test_published_release.py` aprovados; `deployment_audit` reportou **FAIL**, `undeclared-entry` em `Scripts/libertix-cachyos-windows-evidence.ps1`, presente no baseline de `dev` e não modificado pela PR.
+- **Windows build:** [Actions #45042303433](https://github.com/LMhdez/gaslux/actions/runs/45042303433), commit `28d4bb5cc3190ac045d9a29b25d4d370226f592c`: MSBuild `Libertix.sln` e teste C# pelo VS VSTest concluídos; Pester `pwsh` teve **790 PASS / 7 FAIL** por APIs incompatíveis no runner. [Reexecução #45042543201](https://github.com/LMhdez/gaslux/actions/runs/45042543201), commit `c2ddb1aac24b017eb21a9c4806442177e5c86621`: Pester mudou para Windows PowerShell 5.1; verificar conclusão no HEAD antes de validar.
+
+**Limite operacional:** `BLOCKED_ENVIRONMENT` — não foi disponibilizada VM Windows 10 UEFI/GPT exclusiva, snapshot `clean2`, disco descartável isolado e recuperação demonstrada. Não existe prova de `INSTALLED_GUEST`, `SHARED_DISK_DUAL_BOOT` ou `RECOVERY`; nenhuma mutação de disco físico. A PR permanece Draft e não promove backends.
+
 ## 1. O que os resultados significam
 
 | Categoria | O que a CI precisa demonstrar | O que NÃO demonstra |
