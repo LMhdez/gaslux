@@ -189,8 +189,7 @@ class SixGptNegativeTests(unittest.TestCase):
             "virtio_blk_handle_write sector 3188736 nsectors 0",
             "virtio_blk_handle_write sector 3188736 nsectors 1\n"
             "virtio_blk_handle_write sector 5285888",
-            "virtio_blk_handle_write sector 3188736 nsectors 1\n"
-            "unknown 3",
+            "virtio_blk_handle_write sector 3188736 nsectors 1\nunknown 3",
             "virtio_blk_handle_write sector 3188736 nsectors 1\n"
             "virtio_blk_handle_write_zeroes sector 5285888 nsectors 1",
             "virtio_blk_handle_write sector 3188736 nsectors 1\n"
@@ -200,9 +199,7 @@ class SixGptNegativeTests(unittest.TestCase):
                 c.audit_qemu_trace(trace)
         # A syntactically valid, fully fabricated producer string is never
         # promoted to independently observed / bound evidence.
-        forged = c.audit_qemu_trace(
-            "vda virtio_blk_handle_write sector 3188736 nsectors 1"
-        )
+        forged = c.audit_qemu_trace("vda virtio_blk_handle_write sector 3188736 nsectors 1")
         self.assertEqual(forged["traceClassification"], "PARSED_UNTRUSTED")
         for key in (
             "traceProvenanceAuthenticated",
@@ -221,9 +218,12 @@ class SixGptNegativeTests(unittest.TestCase):
             work = Path(tempfile.mkdtemp(prefix="gaslux-pop-six-gpt-", dir=parent))
             evidence = workspace / "pop-six-gpt-evidence"
             evidence.mkdir(mode=0o700)
-            with patch.dict(
-                os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
-            ), owner.SafeWorkspace(work, evidence) as guard:
+            with (
+                patch.dict(
+                    os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
+                ),
+                owner.SafeWorkspace(work, evidence) as guard,
+            ):
                 (work / lab.PLAN_NAME).write_text("owned")
                 guard.inspect()
                 old = parent / "moved-original"
@@ -325,7 +325,8 @@ class SixGptNegativeTests(unittest.TestCase):
                         )
                 with (
                     patch.object(
-                        lab, "child_owned_extents",
+                        lab,
+                        "child_owned_extents",
                         return_value=[{"start": offset, "length": 4096, "data": True}],
                     ),
                     patch.object(lab, "command", side_effect=Refusal("qemu-io read failed")),
@@ -346,26 +347,37 @@ class SixGptNegativeTests(unittest.TestCase):
             child = folder / "clean.qcow2"
             subprocess.run(
                 ["qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(base), str(child)],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
             lab.ensure_empty_child(child, base)
             subprocess.run(
                 ["qemu-io", "-f", "qcow2", "-c", "write -P 0x5a 3188736 4096", str(child)],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
             with self.assertRaisesRegex(Refusal, "owned extents"):
                 lab.ensure_empty_child(child, base)
             zero_child = folder / "zero.qcow2"
             subprocess.run(
                 [
-                    "qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b",
-                    str(base), str(zero_child),
+                    "qemu-img",
+                    "create",
+                    "-f",
+                    "qcow2",
+                    "-F",
+                    "raw",
+                    "-b",
+                    str(base),
+                    str(zero_child),
                 ],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
             subprocess.run(
                 ["qemu-io", "-f", "qcow2", "-c", "write -z 3188736 4096", str(zero_child)],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
             with self.assertRaisesRegex(Refusal, "owned extents"):
                 lab.ensure_empty_child(zero_child, base)
@@ -373,11 +385,9 @@ class SixGptNegativeTests(unittest.TestCase):
                 lab.ensure_empty_child(zero_child, folder / "wrong.raw")
 
     def test_safety_f04_zero_overlay_and_invalid_map(self):
-        valid = {"start": 0, "length": c.SIZE, "depth": 1,
-                 "data": False, "zero": False}
+        valid = {"start": 0, "length": c.SIZE, "depth": 1, "data": False, "zero": False}
         self.assertEqual(lab.parse_qcow_map(json.dumps([valid])), [valid])
-        zero = {"start": 0, "length": 4096, "depth": 0,
-                "data": False, "zero": True}
+        zero = {"start": 0, "length": 4096, "depth": 0, "data": False, "zero": True}
         for bad in (
             [zero],
             [{**valid, "unknown": True}],
@@ -387,14 +397,26 @@ class SixGptNegativeTests(unittest.TestCase):
         ):
             with self.subTest(map=bad), self.assertRaises(Refusal):
                 lab.parse_qcow_map(json.dumps(bad))
-        with patch.object(lab, "chain"), patch.object(
-            lab, "command",
-            return_value=json.dumps([
-                zero,
-                {"start": 4096, "length": c.SIZE - 4096,
-                 "depth": 1, "data": False, "zero": False},
-            ]),
-        ), self.assertRaisesRegex(Refusal, "owned extents"):
+        with (
+            patch.object(lab, "chain"),
+            patch.object(
+                lab,
+                "command",
+                return_value=json.dumps(
+                    [
+                        zero,
+                        {
+                            "start": 4096,
+                            "length": c.SIZE - 4096,
+                            "depth": 1,
+                            "data": False,
+                            "zero": False,
+                        },
+                    ]
+                ),
+            ),
+            self.assertRaisesRegex(Refusal, "owned extents"),
+        ):
             lab.ensure_empty_child(Path("/tmp/child"), Path("/tmp/base"))
 
     def test_valid_plan_is_permanently_no_writer(self):

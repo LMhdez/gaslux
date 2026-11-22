@@ -241,9 +241,7 @@ class PinnedResource:
         try:
             item = os.fstat(self.fd)
             need(
-                stat.S_ISREG(item.st_mode)
-                and item.st_uid == os.geteuid()
-                and item.st_nlink == 1,
+                stat.S_ISREG(item.st_mode) and item.st_uid == os.geteuid() and item.st_nlink == 1,
                 "REFUSE_IDENTITY_MISMATCH: foreign injected resource",
             )
             self.identity = (item.st_dev, item.st_ino)
@@ -278,23 +276,32 @@ def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
         rows = json.loads(raw)
     except (ValueError, TypeError) as exc:
         raise Refusal("REFUSE_RECOVERY_UNPROVEN: malformed qemu-img JSON") from exc
-    need(isinstance(rows, list) and bool(rows),
-         "REFUSE_RECOVERY_UNPROVEN: absent qemu-img map")
+    need(isinstance(rows, list) and bool(rows), "REFUSE_RECOVERY_UNPROVEN: absent qemu-img map")
     cursor = 0
     allowed = {"start", "length", "depth", "data", "zero", "offset", "present"}
     for row in rows:
-        need(isinstance(row, dict) and {"start", "length", "depth", "data", "zero"} <= row.keys()
-             and row.keys() <= allowed,
-             "REFUSE_RECOVERY_UNPROVEN: unknown/incomplete extent")
+        need(
+            isinstance(row, dict)
+            and {"start", "length", "depth", "data", "zero"} <= row.keys()
+            and row.keys() <= allowed,
+            "REFUSE_RECOVERY_UNPROVEN: unknown/incomplete extent",
+        )
         start, length, depth = (row[k] for k in ("start", "length", "depth"))
-        need(all(type(v) is int for v in (start, length, depth))
-             and type(row["data"]) is bool and type(row["zero"]) is bool
-             and start == cursor and length > 0 and depth >= 0
-             and start + length <= SIZE,
-             "REFUSE_RECOVERY_UNPROVEN: inconsistent extent geometry")
+        need(
+            all(type(v) is int for v in (start, length, depth))
+            and type(row["data"]) is bool
+            and type(row["zero"]) is bool
+            and start == cursor
+            and length > 0
+            and depth >= 0
+            and start + length <= SIZE,
+            "REFUSE_RECOVERY_UNPROVEN: inconsistent extent geometry",
+        )
         if "offset" in row:
-            need(type(row["offset"]) is int and row["offset"] >= 0,
-                 "REFUSE_RECOVERY_UNPROVEN: invalid extent offset")
+            need(
+                type(row["offset"]) is int and row["offset"] >= 0,
+                "REFUSE_RECOVERY_UNPROVEN: invalid extent offset",
+            )
         if "present" in row:
             need(
                 type(row["present"]) is bool
@@ -312,15 +319,15 @@ def child_owned_extents(child: Path, base: Path) -> list[dict]:
     rows = parse_qcow_map(command("qemu-img", "map", "--output=json", str(child), timeout=120))
     # depth=0 data=false zero=true is an allocated overlay mask, not empty.
     return [
-        r
-        for r in rows
-        if r["depth"] == 0 and (r["data"] or r["zero"] or r.get("present") is True)
+        r for r in rows if r["depth"] == 0 and (r["data"] or r["zero"] or r.get("present") is True)
     ]
 
 
 def ensure_empty_child(child: Path, base: Path) -> None:
-    need(not child_owned_extents(child, base),
-         "REFUSE_RECOVERY_UNPROVEN: synthetic child contains owned extents")
+    need(
+        not child_owned_extents(child, base),
+        "REFUSE_RECOVERY_UNPROVEN: synthetic child contains owned extents",
+    )
 
 
 def verify_injected_fault(
@@ -351,8 +358,13 @@ def verify_injected_fault(
     # Tool failure, timeout, invalid JSON or substitution must propagate as
     # Refusal/subprocess error; ONLY successful content read can raise typed detection.
     command(
-        "qemu-io", "-f", "qcow2", "-c",
-        f"read -P 0x5a {offset} {length}", str(child), timeout=120,
+        "qemu-io",
+        "-f",
+        "qcow2",
+        "-c",
+        f"read -P 0x5a {offset} {length}",
+        str(child),
+        timeout=120,
     )
     pin.verify()
     raise ProtectedFaultDetected("synthetic protected interval and bytes observed")
@@ -617,8 +629,7 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
             os.fsync(f.fileno())
         vars_pin.verify()
         need(
-            os.pread(vars_pin.fd, len(b"GASLUX-SIX-OVMF-FAULT"), 2048)
-            == b"GASLUX-SIX-OVMF-FAULT"
+            os.pread(vars_pin.fd, len(b"GASLUX-SIX-OVMF-FAULT"), 2048) == b"GASLUX-SIX-OVMF-FAULT"
             and sha(broken_vars) != plan["ovmfTemplateSha256"],
             "REFUSE_RECOVERY_UNPROVEN: OVMF fault injection ineffective",
         )

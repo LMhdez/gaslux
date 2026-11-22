@@ -54,21 +54,25 @@ jobs:
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/test_popos_six_gpt_contract.py || true
           ruff check \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --diff \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --check \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/test_popos_six_gpt_contract.py
           # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
           export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
@@ -90,6 +94,8 @@ jobs:
           PY
           bash -n auto_tests/tools/gaslux_popos_reuse_full_install_guest.sh
           bash -n auto_tests/tools/gaslux_popos_reuse_full_firstboot_vm.sh
+          shellcheck -S error auto_tests/tools/gaslux_popos_reuse_full_install_guest.sh
+          shellcheck -S error auto_tests/tools/gaslux_popos_reuse_full_firstboot_vm.sh
           echo 'No modified Bash; historical Bash syntax checked. No QEMU or Windows.' >> "$GITHUB_STEP_SUMMARY"
 
   disposable-six-gpt-checkpoint-only:
