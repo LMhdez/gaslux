@@ -1,7 +1,6 @@
-# Contributing to Libertix
+# Contributing to Gaslux
 
-This document is a map, not a rulebook. Start here to find where things live and where to look
-next; the documents it links to are the actual authority on each topic.
+Gaslux extends Libertix. This document maps the existing codebase, contributor workflow and the authoritative contracts. The safety and recovery rules are mandatory even when implementation and review are delegated to agents.
 
 - **AI-assisted contributions** — [`AI_POLICY.md`](AI_POLICY.md)
 - **The safety contract** (plan, state machine, rollback guarantees) — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
@@ -62,11 +61,9 @@ the architecture diagram in `README.md`), plus the tooling that builds, tests, a
 
 ## Workflow
 
-- Development happens on the `dev` branch; `main` tracks stable releases.
-- Sign off commits (`git commit -s`). CI flags commits without the trailer as a warning, but does
-  not block on it — `AI_POLICY.md` recommends the sign-off rather than requiring it, and a human
-  reviewer judges each pull request.
-- The pull request template lists the AI-assistance commit-trailer convention from `AI_POLICY.md`
-  (`Assisted-by:` / `Generated-by:`, never `Co-authored-by:` for a tool).
-- Run the checks in `README.md`'s Tests section (`ruff`, `pytest`, ShellCheck, PSScriptAnalyzer,
-  Pester, the WPF build) before opening a PR — CI runs the same commands.
+- Develop on a dedicated branch, normally targeting `dev` or a documented dependent branch. `main` tracks stable releases; never merge all of `dev` into `main` simply to deliver a documentation-only change.
+- AI-assisted and entirely human contributions are both welcome. An authorized agent may implement changes, respond to technical review threads, submit evidence, and perform explicitly delegated integration and branch/PR cleanup. Review findings must be checked against code and reproducible evidence rather than treated as automatically valid based on who produced them. Manual human approval is not required for every routine action; the maintainer remains accountable for delegation, release gates and high-risk authorization. See [AI_POLICY.md](AI_POLICY.md).
+- Revalidate the actual GitHub HEAD and dependency graph before editing or merging. Prefer scoped PRs; preserve unique commits, test artifacts, audit findings and existing safety protections during consolidation.
+- Sign off commits (`git commit -s`) when you can truthfully attest to the contribution under the repository's DCO guidance; never forge a person's sign-off. Identify AI participation truthfully with `Assisted-by:` or `Generated-by:` when applicable, not a human `Co-authored-by:` trailer.
+- Run checks appropriate to the files and risks changed (the `README.md` Tests section covers `ruff`, `pytest`, ShellCheck, PSScriptAnalyzer, Pester and WPF builds). Record the tests actually executed and CI results on the exact commit. Documentation-only changes need scoped document validation; operational changes require their relevant test gates.
+- Disk, boot, recovery and production-release actions require the separately defined authority and end-to-end evidence from [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [AGENTS.md](AGENTS.md). Repository merge rights alone never authorize a disk write, physical-hardware experiment or stable-backend promotion.
