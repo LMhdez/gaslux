@@ -107,9 +107,7 @@ def test_partial_no_plan_and_ambiguous_guids_rejected():
 
 def test_git_blob_framing_uses_nul_not_literal_backslash_zero():
     content = b"actual upstream pinned source bytes"
-    expected = hashlib.sha1(
-        b"blob 35\0" + content, usedforsecurity=False
-    ).hexdigest()
+    expected = hashlib.sha1(b"blob 35\0" + content, usedforsecurity=False).hexdigest()
     assert len(content) == 35
     assert git_blob_id(content) == expected
 
@@ -150,14 +148,14 @@ def test_reader_refuses_unbounded_and_empty_sources(tmp_path):
 
 def test_dangerous_upstream_call_chain_anchor_must_remain():
     actual = (
-        'fn clean_esp_bootloader_dirs(efidir: &Dir) {'
+        "fn clean_esp_bootloader_dirs(efidir: &Dir) {"
         'for name in ["EFI", "loader"] {'
-        'remove_dir_no_xdev(efidir, name, false);'
-        '} }'
+        "remove_dir_no_xdev(efidir, name, false);"
+        "} }"
     )
     _require_fragments(
         actual,
-        ('fn clean_esp_bootloader_dirs(', 'for name in ["EFI", "loader"]', "remove_dir_no_xdev("),
+        ("fn clean_esp_bootloader_dirs(", 'for name in ["EFI", "loader"]', "remove_dir_no_xdev("),
         "ESP",
     )
     replaced = actual.replace('["EFI", "loader"]', '["EFI/BOOT"]')
