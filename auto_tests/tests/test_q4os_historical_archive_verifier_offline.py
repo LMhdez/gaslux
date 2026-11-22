@@ -264,9 +264,7 @@ def test_archive_module_has_no_controller_or_network_imports():
     assert "send_key" not in source
 
 
-def test_four_archives_with_historical_nested_hooks_and_optional_evidence(
-    tmp_path, monkeypatch
-):
+def test_four_archives_with_historical_nested_hooks_and_optional_evidence(tmp_path, monkeypatch):
     """The original ZIPs contain 13 nested hooks and 15 extra evidence files."""
     manifest_path, zip_dir, metadata_dir, manifest = fixture(tmp_path, monkeypatch)
     extras = [
@@ -276,9 +274,7 @@ def test_four_archives_with_historical_nested_hooks_and_optional_evidence(
         "evidence/qemu.rc",
         "evidence/serial.log",
     ] + [f"evidence/ocr-trace-{i}.txt" for i in range(10)]
-    nested = [
-        f"calamares-inspect/native-hooks/hook-{i}.sha256" for i in range(13)
-    ]
+    nested = [f"calamares-inspect/native-hooks/hook-{i}.sha256" for i in range(13)]
     for item in manifest["archives"]:
         aid = item["artifactId"]
         path = zip_dir / f"{aid}.zip"
