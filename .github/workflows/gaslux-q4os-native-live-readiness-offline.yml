@@ -56,6 +56,9 @@ jobs:
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/tools/q4os_native_live_boot_readiness.py \
             auto_tests/tests/test_q4os_native_live_boot_readiness.py
+          python -m ruff format --diff --config auto_tests/pyproject.toml \
+            auto_tests/tools/q4os_native_live_boot_readiness.py \
+            auto_tests/tests/test_q4os_native_live_boot_readiness.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/tools/q4os_native_live_boot_readiness.py \
             auto_tests/tests/test_q4os_native_live_boot_readiness.py
