@@ -161,7 +161,46 @@ class SixGptNegativeTests(unittest.TestCase):
         )
         self.assertEqual(valid["observedBytes"], 12288)
         self.assertFalse(valid["observationComplete"])
+        self.assertFalse(valid["observedWritesConfinedToOwnedPopPartitions"])
+        self.assertEqual(valid["traceClassification"], "PARSED_UNTRUSTED")
         self.assertFalse(valid["productionInstallationAuthorized"])
+
+    def test_safety_f02_multiple_devices_and_concatenated_events(self):
+        for trace in (
+            "vda virtio_blk_handle_write sector 3188736 nsectors 1\n"
+            "vdb virtio_blk_handle_write sector 5285888 nsectors 1",
+            "virtio_blk_handle_write sector 64 nsectors 1 "
+            "virtio_blk_handle_write sector 3188736 nsectors 1",
+            "virtio_blk_handle_discard sector 3188736 nsectors 1",
+            "virtio_blk_handle_write sector -1 nsectors 1",
+            "virtio_blk_handle_write sector 3188736 nsectors 1 trailing",
+        ):
+            with self.subTest(trace=trace), self.assertRaises(Refusal):
+                c.audit_qemu_trace(trace)
+
+    def test_safety_f04_zero_overlay_and_invalid_map(self):
+        valid = {"start": 0, "length": c.SIZE, "depth": 1,
+                 "data": False, "zero": False}
+        self.assertEqual(lab.parse_qcow_map(json.dumps([valid])), [valid])
+        zero = {"start": 0, "length": 4096, "depth": 0,
+                "data": False, "zero": True}
+        for bad in (
+            [zero],
+            [{**valid, "unknown": True}],
+            [{**valid, "length": 4096}],
+            [{**valid, "start": -1}],
+        ):
+            with self.subTest(map=bad), self.assertRaises(Refusal):
+                lab.parse_qcow_map(json.dumps(bad))
+        with patch.object(lab, "chain"), patch.object(
+            lab, "command",
+            return_value=json.dumps([
+                zero,
+                {"start": 4096, "length": c.SIZE - 4096,
+                 "depth": 1, "data": False, "zero": False},
+            ]),
+        ), self.assertRaisesRegex(Refusal, "owned extents"):
+            lab.ensure_empty_child(Path("/tmp/child"), Path("/tmp/base"))
 
     def test_valid_plan_is_permanently_no_writer(self):
         plan = sample_plan()
@@ -266,7 +305,7 @@ class SixGptNegativeTests(unittest.TestCase):
             ):
                 lab.ensure_empty_child(Path("/tmp/foreign"), Path("/tmp/base"))
         runner_source = (TOOLS / "gaslux_popos_six_gpt_lab.py").read_text()
-        self.assertIn("ensure_empty_child(fault, base)", runner_source)
+        self.assertIn("verify_injected_fault(fault, base,", runner_source)
         self.assertIn("regular(fault, write=True).unlink()", runner_source)
         self.assertIn('sha(base) == plan["backingSha256"]', runner_source)
         self.assertIn("verify_canaries(base, plan, work)", runner_source)

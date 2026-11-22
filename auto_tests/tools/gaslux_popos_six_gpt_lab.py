@@ -226,13 +226,63 @@ def verify_canaries(base: Path, plan: dict, work: Path) -> None:
     verify_esp_canary(base, plan["protectedEspFileSha256"], work)
 
 
-def ensure_empty_child(child: Path, base: Path) -> None:
+class ProtectedFaultDetected(Exception):
+    """A specific owned QCOW2 extent was independently proven allocated."""
+
+
+def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
+    try:
+        rows = json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        raise Refusal("REFUSE_RECOVERY_UNPROVEN: malformed qemu-img JSON") from exc
+    need(isinstance(rows, list) and bool(rows),
+         "REFUSE_RECOVERY_UNPROVEN: absent qemu-img map")
+    cursor = 0
+    allowed = {"start", "length", "depth", "data", "zero", "offset", "present"}
+    for row in rows:
+        need(isinstance(row, dict) and {"start", "length", "depth", "data", "zero"} <= row.keys()
+             and row.keys() <= allowed,
+             "REFUSE_RECOVERY_UNPROVEN: unknown/incomplete extent")
+        start, length, depth = (row[k] for k in ("start", "length", "depth"))
+        need(all(type(v) is int for v in (start, length, depth))
+             and type(row["data"]) is bool and type(row["zero"]) is bool
+             and start == cursor and length > 0 and depth >= 0
+             and start + length <= SIZE,
+             "REFUSE_RECOVERY_UNPROVEN: inconsistent extent geometry")
+        if "offset" in row:
+            need(type(row["offset"]) is int and row["offset"] >= 0,
+                 "REFUSE_RECOVERY_UNPROVEN: invalid extent offset")
+        if "present" in row:
+            need(type(row["present"]) is bool,
+                 "REFUSE_RECOVERY_UNPROVEN: invalid present flag")
+        cursor += length
+    if require_full:
+        need(cursor == SIZE, "REFUSE_RECOVERY_UNPROVEN: incomplete QCOW2 map")
+    return rows
+
+
+def child_owned_extents(child: Path, base: Path) -> list[dict]:
     chain(child, base)
-    extents = json.loads(command("qemu-img", "map", "--output=json", str(child), timeout=120))
-    need(
-        not any(x.get("depth") == 0 and x.get("data") for x in extents),
-        "REFUSE_RECOVERY_UNPROVEN: synthetic child contains foreign allocations",
-    )
+    rows = parse_qcow_map(command("qemu-img", "map", "--output=json", str(child), timeout=120))
+    # depth=0 data=false zero=true is an allocated overlay mask, not empty.
+    return [r for r in rows if r["depth"] == 0 and
+            (r["data"] or r["zero"] or r.get("present") is True)]
+
+
+def ensure_empty_child(child: Path, base: Path) -> None:
+    need(not child_owned_extents(child, base),
+         "REFUSE_RECOVERY_UNPROVEN: synthetic child contains owned extents")
+
+
+def verify_injected_fault(child: Path, base: Path, offset: int, length: int) -> None:
+    need(type(offset) is int and type(length) is int and
+         offset >= 0 and length == 4096 and offset + length <= SIZE,
+         "REFUSE_RECOVERY_UNPROVEN: invalid injected interval")
+    owned = child_owned_extents(child, base)
+    need(any(r["start"] <= offset and r["start"] + r["length"] >= offset + length
+             and r["data"] is True for r in owned),
+         "REFUSE_RECOVERY_UNPROVEN: injected write not materialized")
+    raise ProtectedFaultDetected("independent protected child allocation observed")
 
 
 def private_ovmf_copy(template: Path, out: Path) -> str:
@@ -452,17 +502,16 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
     base = regular(work / BASE_NAME, length=SIZE)
     fault = work / "fault-injected-child.qcow2"
     make_child(fault, base)
+    sector = PARTS[2].start + 4096  # protected SIMULATED data partition
+    ensure_empty_child(fault, base)
+    command("qemu-io", "-f", "qcow2", "-c", f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
     try:
-        sector = PARTS[2].start + 4096  # protected SIMULATED data partition
-        command("qemu-io", "-f", "qcow2", "-c", f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
-        try:
-            ensure_empty_child(fault, base)
-        except Refusal:
-            pass
-        else:
-            raise Refusal("REFUSE_RECOVERY_UNPROVEN: injected fault not detected")
-    finally:
-        regular(fault, write=True).unlink()
+        verify_injected_fault(fault, base, sector * SECTOR, 4096)
+    except ProtectedFaultDetected:
+        pass
+    else:
+        raise Refusal("REFUSE_RECOVERY_UNPROVEN: injected fault not detected")
+    regular(fault, write=True).unlink()
     need(not fault.exists(), "REFUSE_RECOVERY_UNPROVEN: foreign overlay retained")
     make_child(fault, base)
     ensure_empty_child(fault, base)
