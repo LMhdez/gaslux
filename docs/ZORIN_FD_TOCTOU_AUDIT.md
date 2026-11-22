@@ -180,3 +180,79 @@ independent Safety review and current-head CI is required for merge.
 `DENY_NO_WRITER`, `syntheticOnly=true`,
 `nativeInstallerInvoked=false`, `windowsRollbackVerified=false`,
 `sameDiskDualBootVerified=false`, `stable=false` remain in force.
+
+
+## Targeted negative coverage and latest clean-dev replay (2026-11-22)
+
+Current PR #281 is still draft and based on the historical #277 feature
+branch. PR #277 is now CLOSED WITHOUT MERGE. PR #264 remains draft; its
+original Windows COW/rootfs ancestry MUST NOT be included in a dev merge.
+
+A minimal eight-file clean-dev composition was repeated against exact
+dev commit 8e68a475d6397ba8fef2e0f9f83758545e202a5f. The
+current canonical dev GPT reader's Git blob was verified as
+e82a401d5a160bfb5ca232b9a820417347dfc22a.
+This is a different exact blob from the original #307 merge blob
+e599e532fe3cc1139c1833f27035c668c73e6926, but both expose
+inspect_gpt_fd and are independently executed by the respective CI jobs.
+No parser is copied into the Zorin branch.
+
+Eight further tests use actual synthetic bytes or metadata to reject:
+- primary-GPT short reads through canonical inspect_gpt_fd;
+- incomplete raw comparison reads after the GPT inspection;
+- declared 4096-byte sector geometry applied to 512-byte GPT bytes;
+- conflicting disk size in the typed plan;
+- a matching-hash receipt with foreign provenance;
+- foreign backend ownership GASLUX-CACHYOS-ROOT;
+- primary GPT mutation after initial inspection and before full raw diff;
+- a late protected-sector mutation detected by final FD metadata checks.
+
+The authenticated RAW descriptor remains the source for GPT,
+SHA-256, byte comparison and final fstat. No code authorizes a
+transition from a diagnostic result to a writer.
+
+[Actions #45029817921](https://github.com/LMhdez/gaslux/actions/runs/45029817921)
+SUCCESS at SHA 5dccccc6cebf9b5a57b4ac8db2807954454b745d:
+- Main pinned-#307 replay: 25 TOCTOU, 32 synthetic write-set and
+  140 Mint/Zorin/Windows tests, plus 25 canonical Safety tests;
+  222/222 with Python compileall, Ruff lint/format, JSON Schema checks.
+- Clean dev eight-file subset: 25 TOCTOU + 32 write-set checks,
+  and canonical Safety pytest, compileall and Ruff. No installation.
+- All file changes remained inside the existing Zorin experimental
+  branch. No edits to production Debian/Ubuntu, Safety, Observer,
+  signed catalog, physical disks or real Windows artifacts.
+
+### Production integration boundary (explicitly NOT closed)
+
+A review of CURRENT dev's assets/live/libertix-install-main.sh,
+Git blob f176249b0744905c2cc431869555837813b2ce2c,
+shows production uses resolve_target_disk_from_manifest() before
+operations such as blockdev --getss "$DISK", parted -s "$DISK"
+resizepart, wipefs on "$NEW_PART", and firmware-specific GRUB/EFI
+operations. It has its own target identity, geometry and recovery
+validators. Those checks MUST NOT be treated as equivalent to
+this synthetic FD-bound proof. No production installation code was
+changed here, and no new production defect is asserted solely from
+these path references.
+
+The authoritative plan validator
+assets/live/libertix-installation-plan.py (current dev)
+records disk unique ID, GPT table ID, total bytes, logical sector
+bytes, partition offsets and transaction context. Plan validation
+and runtime destination stability, however, are separate
+trust boundaries. Host/guest identity, post-prepare geometry,
+independent ownership and checkpoint recovery require coordinated
+Integrator-2 and Safety audit before any real writer.
+
+In particular, a real device pathname or a later geometry probe
+must NOT be taken as a proof that a writer operates on the exact
+device object previously authenticated by the synthetic RAW reader.
+That scope remains DENY_NO_WRITER and is outside this PR's authority.
+
+### Reconciliation advice
+
+Integrator should create a clean dev-based branch and select ONLY
+the eight inventoried no-writer Zorin files, then confirm the current
+canonical GPT reader identity, CI, independent Safety review and
+dependency statuses. Do not retarget/merge the current stacked
+#281 ancestry blindly; do not merge #264 to acquire these tests.
