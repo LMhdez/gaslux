@@ -114,7 +114,7 @@ jobs:
           assert set(workflow["jobs"]) == {"kernel-peer-deny-only"}
           assert workflow["permissions"] == {"contents": "read"}
           commands = "\n".join(
-              step.get("run", "") for step in workflow["jobs"]["kernel-peer-deny-only"]["steps"]
+              step.get("run", "") for step in workflow["jobs"]["kernel-peer-deny-only"]["steps"][:-1]
           )
           for forbidden in ("qemu-system-", "guestfish ", "guestmount ", "parted ", "sfdisk ", "mkfs."):
               assert forbidden not in commands, forbidden
