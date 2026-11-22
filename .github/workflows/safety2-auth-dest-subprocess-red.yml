@@ -38,6 +38,38 @@ jobs:
         run: python -m pip install --disable-pip-version-check 'pytest==9.0.2'
       - name: Compile independent test without modifying producer
         run: python -m compileall -q auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py
+      - name: Checkout exact safety 267 and GPT FD 286 dependencies
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: safety267-pinned
+          persist-credentials: false
+      - name: Checkout exact GPT FD 286 parser fixture
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 9aed36cfdb8c09a461dc38811c326c54180273de
+          path: gpt286-pinned
+          persist-credentials: false
+      - name: Install original QEMU paused and GPT tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils gdisk
+          test -x /usr/bin/qemu-system-x86_64
+          test -x /usr/bin/qemu-img
+      - name: Replay unchanged inherited 337 and original 346 QEMU adversarial tests
+        env:
+          GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
+          GASLUX_QEMU_PIN286_ROOT: ${{ github.workspace }}/gpt286-pinned
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test "$(git -C gpt286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          python -m pytest -q auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/tests/test_auth_dest_128g_readonly.py
       - name: GREEN negative cases using actual subprocess pipes
         run: python -m pytest -q auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py -k 'not test_red'
       - name: RED confirm orphan cleanup failure reproducibly
