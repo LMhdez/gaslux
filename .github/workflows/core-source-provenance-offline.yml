@@ -32,13 +32,13 @@ jobs:
         with:
           persist-credentials: false
       - name: Install existing test-service dependencies
-        run: python3 -m pip install -e ./auto_tests 'pytest==9.0.2' 'ruff==0.15.20'
-      - name: Diagnose Ruff import ordering during RED setup
-        run: python3 -m ruff check --fix --diff --config auto_tests/pyproject.toml auto_tests/tests/test_core_source_provenance.py || true
+        run: |
+          python3 -m venv .core-venv
+          .core-venv/bin/python -m pip install -e ./auto_tests 'pytest==9.0.2' 'ruff==0.15.20' 'Twisted[tls]>=24,<26' 'pyOpenSSL>=25,<26'
       - name: Check Python source and tests
         run: |
-          python3 -m compileall -q auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py
-          python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py
-          python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py
+          .core-venv/bin/python -m compileall -q auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py
+          .core-venv/bin/python -m ruff check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py
+          .core-venv/bin/python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py
       - name: Provenance regressions (no VM access)
-        run: python3 -m pytest -q auto_tests/tests/test_core_source_provenance.py
+        run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_core_source_provenance.py
