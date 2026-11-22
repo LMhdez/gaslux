@@ -1,0 +1,119 @@
+name: Q4OS native live ISO read-only readiness (NO QEMU, NO BOOT)
+
+on:
+  push:
+    branches: [test/q4os-native-live-readiness-20261122]
+    paths:
+      - '.github/workflows/gaslux-q4os-native-live-readiness-offline.yml'
+      - 'auto_tests/tools/q4os_native_live_boot_readiness.py'
+      - 'auto_tests/tests/test_q4os_native_live_boot_readiness.py'
+      - 'schemas/gaslux-q4os-native-live-readiness.schema.json'
+      - 'docs/Q4OS_NATIVE_LIVE_BOOT_READINESS.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: q4os-native-readiness-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  readonly-iso-source-only:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/test/q4os-native-live-readiness-20261122'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Verify isolated exact HEAD and preserve the operational gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          grep -Fxq 'QEMU_FD_BACKING_VERIFIED = False' \
+            auto_tests/tools/q4os_win10_qmp_supervisor.py
+          grep -Fxq 'SIGNED_RELEASE_METADATA_VERIFIED = False' \
+            auto_tests/tools/q4os_native_live_boot_readiness.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install static and Python test tooling only
+        run: python -m pip install 'pytest>=9,<10' 'ruff>=0.8,<1' 'jsonschema>=4,<5' 'PyYAML>=6,<7'
+      - name: Compile, Ruff and validate YAML
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q \
+            auto_tests/tools/q4os_native_live_boot_readiness.py \
+            auto_tests/tests/test_q4os_native_live_boot_readiness.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tools/q4os_native_live_boot_readiness.py \
+            auto_tests/tests/test_q4os_native_live_boot_readiness.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tools/q4os_native_live_boot_readiness.py \
+            auto_tests/tests/test_q4os_native_live_boot_readiness.py
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+          workflow = Path(".github/workflows/gaslux-q4os-native-live-readiness-offline.yml")
+          body = workflow.read_text(encoding="utf-8")
+          loaded = yaml.safe_load(body)
+          assert isinstance(loaded, dict) and len(loaded["jobs"]) == 1
+          assert "workflow_" + "dispatch:" not in body
+          assert "permissions:\n  contents: read" in body
+          PY
+      - name: Native source read-only, FD hostile tests and schemas
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q \
+            auto_tests/tests/test_q4os_native_live_boot_readiness.py \
+            auto_tests/tests/test_q4os_native_preflight.py \
+            auto_tests/tests/test_q4os_readonly_boundary.py
+      - name: Publish strictly DENY-only source-to-boot readiness JSON
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/tools/q4os_native_live_boot_readiness.py \
+            > "$RUNNER_TEMP/q4os-native-readiness.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import jsonschema
+          report = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "q4os-native-readiness.json").read_text()
+          )
+          schema = json.loads(
+              Path("schemas/gaslux-q4os-native-live-readiness.schema.json").read_text()
+          )
+          jsonschema.Draft202012Validator.check_schema(schema)
+          jsonschema.validate(report, schema)
+          assert report["decision"] == "DENY"
+          assert report["evidenceLevel"] == "SOURCE_REFERENCE_ONLY"
+          assert report["iso"]["observed"] is None
+          assert not any(report["runtimeBindings"].values())
+          assert not any(report["guest"].values())
+          assert report["gates"]["liveBootAuthorized"] is False
+          assert report["gates"]["QEMU_FD_BACKING_VERIFIED"] is False
+          assert report["gates"]["productionStorageWritesAuthorized"] is False
+          print("Q4OS_NATIVE_LIVE_READINESS=DENY_ONLY_VERIFIED")
+          print("Q4OS_ISO_BYTES_RECHECKED_THIS_RUN=false")
+          print("Q4OS_GUEST_BOOTED=false")
+          PY
+          git diff --exit-code
+      - name: Retain bounded readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4os-native-live-readiness-deny-only
+          path: ${{ runner.temp }}/q4os-native-readiness.json
+          if-no-files-found: warn
+          retention-days: 7
