@@ -48,10 +48,22 @@ def validate(old: str, new: str) -> None:
     before, after = old.splitlines(keepends=True), new.splitlines(keepends=True)
     if len(before) != len(after) or old == new or len(new) > 10000:
         raise ValueError("Candidate size or line count outside contract")
-    differences = [(a, b) for a, b in zip(before, after) if a != b]
+    differences = [(i, a, b) for i, (a, b) in enumerate(zip(before, after)) if a != b]
     if len(differences) != 1:
         raise ValueError("Only one changed line is authorized")
-    oldline, newline = differences[0]
+    index, oldline, newline = differences[0]
+    def function_return_line(source: str) -> int:
+        module = ast.parse(source)
+        function = [node for node in module.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "ranked_changes"]
+        if len(function) != 1:
+            raise ValueError("Unexpected target function layout")
+        statements = [node for node in ast.walk(function[0]) if isinstance(node, ast.Return)]
+        if len(statements) != 1:
+            raise ValueError("Ambiguous ranking return")
+        return statements[0].lineno
+    if index + 1 != function_return_line(old) or index + 1 != function_return_line(new):
+        raise ValueError("Changed line is not the ranking return statement")
     if not oldline.strip().startswith("return sorted(changes,"):
         raise ValueError("Original line outside ranking scope")
     if not newline.strip().startswith("return sorted(changes,"):
