@@ -25,7 +25,7 @@ jobs:
       PYTHONUNBUFFERED: '1'
       GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
       GASLUX_QEMU_PIN286_ROOT: ${{ github.workspace }}/gpt286-pinned
-      GASLUX_CACHY_EVIDENCE_OUT: ${{ runner.temp }}/cachyos-qemu-esp-safe-evidence.json
+      GASLUX_CACHY_EVIDENCE_OUT: ${{ github.workspace }}/cachyos-qemu-esp-safe-evidence.json
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -124,7 +124,7 @@ jobs:
               assert d[key] is False, key
           assert p.stat().st_size < 8192
           PY
-          cd "$RUNNER_TEMP"
+          cd "$GITHUB_WORKSPACE"
           sha256sum cachyos-qemu-esp-safe-evidence.json > cachyos-qemu-esp-safe-evidence.json.sha256
           sha256sum -c cachyos-qemu-esp-safe-evidence.json.sha256
           echo 'Paused real QEMU only. Synthetic FAT32, fake Windows loader. No guest or writes.' >> "$GITHUB_STEP_SUMMARY"
@@ -135,5 +135,5 @@ jobs:
           retention-days: 3
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/cachyos-qemu-esp-safe-evidence.json
-            ${{ runner.temp }}/cachyos-qemu-esp-safe-evidence.json.sha256
+            ${{ github.workspace }}/cachyos-qemu-esp-safe-evidence.json
+            ${{ github.workspace }}/cachyos-qemu-esp-safe-evidence.json.sha256
