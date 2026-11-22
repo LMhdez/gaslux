@@ -267,8 +267,7 @@ def static_shell_references(source: bytes, path: str) -> dict:
     Tokens in conditions, strings and functions are not established calls;
     shell evaluation, sourced files and external executables remain opaque.
     """
-    deny(type(source) is bytes and 0 < len(source) <= 512 * 1024,
-         "E_PARTMAN_SHELL_SOURCE_BOUNDS")
+    deny(type(source) is bytes and 0 < len(source) <= 512 * 1024, "E_PARTMAN_SHELL_SOURCE_BOUNDS")
     try:
         lines = source.decode("utf-8", "strict").splitlines()
     except UnicodeDecodeError as exc:
@@ -281,17 +280,19 @@ def static_shell_references(source: bytes, path: str) -> dict:
             continue
         match_source = re.match(r"^(?:\.|source)\s+([^\s;|&]+)", stripped)
         if match_source:
-            sourced.append({"line": i, "expression": match_source.group(1),
-                            "targetFileAuthenticated": False})
+            sourced.append(
+                {"line": i, "expression": match_source.group(1), "targetFileAuthenticated": False}
+            )
         for found in SHELL_EFFECT_NAMES.finditer(stripped):
-            references.append({
-                "line": i,
-                "token": found.group(0),
-                "basis": "STATIC_SHELL_TOKEN_NOT_EXECUTION",
-                "runtimeReachabilityProven": False,
-            })
-    deny(len(references) <= MAX_SHELL_REFERENCES,
-         "E_PARTMAN_SHELL_STATIC_COVERAGE_TRUNCATED")
+            references.append(
+                {
+                    "line": i,
+                    "token": found.group(0),
+                    "basis": "STATIC_SHELL_TOKEN_NOT_EXECUTION",
+                    "runtimeReachabilityProven": False,
+                }
+            )
+    deny(len(references) <= MAX_SHELL_REFERENCES, "E_PARTMAN_SHELL_STATIC_COVERAGE_TRUNCATED")
     return {
         "path": path,
         "lineCount": len(lines),
@@ -353,8 +354,7 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
             }
     else:
         shell_sources = {
-            path: {"status": "ALIAS_NOT_AUTHENTICATED"}
-            for path in PARTMAN_ALTERNATE_CANDIDATES
+            path: {"status": "ALIAS_NOT_AUTHENTICATED"} for path in PARTMAN_ALTERNATE_CANDIDATES
         }
     result = {
         "kind": "ZORIN_UBIQUITY_FIRST_WRITER_STATIC_SOURCE_EVIDENCE",
