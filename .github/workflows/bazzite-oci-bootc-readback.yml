@@ -1,0 +1,149 @@
+name: Bazzite signed OCI bootc host-only inspection
+
+on:
+  push:
+    branches:
+      - test/bazzite-native-route-readback-20261122
+    paths:
+      - auto_tests/bazzite_oci_bootc_readback.py
+      - auto_tests/tests/test_bazzite_oci_bootc_readback.py
+      - .github/workflows/bazzite-oci-bootc-readback.yml
+  pull_request:
+    paths:
+      - auto_tests/bazzite_oci_bootc_readback.py
+      - auto_tests/tests/test_bazzite_oci_bootc_readback.py
+      - .github/workflows/bazzite-oci-bootc-readback.yml
+
+permissions:
+  contents: read
+  attestations: read
+  packages: read
+
+concurrency:
+  group: bazzite-oci-bootc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run OCI layer adversarial tests and existing #262 refusal regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff jsonschema
+          python -m pytest -q \
+            auto_tests/tests/test_bazzite_oci_bootc_readback.py \
+            auto_tests/tests/test_bazzite_anaconda_write_set_gate.py \
+            auto_tests/tests/test_bazzite_iso45_passive_gate.py \
+            auto_tests/tests/test_bazzite_live_channel_boundary.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_oci_bootc_readback.py \
+            auto_tests/tests/test_bazzite_oci_bootc_readback.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_oci_bootc_readback.py \
+            auto_tests/tests/test_bazzite_oci_bootc_readback.py
+          python -m compileall -q \
+            auto_tests/bazzite_oci_bootc_readback.py \
+            auto_tests/tests/test_bazzite_oci_bootc_readback.py
+      - name: Run exact #280 offline guest contract tests without executing guest
+        uses: actions/checkout@v4
+        with:
+          ref: 8d5e8c11d9e86bf66f0902d099ff4393f86b71b2
+          path: bazzite-contract-280
+          persist-credentials: false
+      - name: Verify pinned #280 tests and JSON Schema
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q \
+            bazzite-contract-280/auto_tests/tests/test_bazzite_iso45_guest_inspection_contract.py
+          python - <<'PY'
+          import json
+          from jsonschema import Draft202012Validator
+          from pathlib import Path
+          source = Path('bazzite-contract-280/schemas/bazzite_iso45_guest_inspection_contract_v1.schema.json')
+          Draft202012Validator.check_schema(json.loads(source.read_text()))
+          print('PASS: exact #280 offline schema, no guest channel authority')
+          PY
+
+  pinned-oci-host-readback:
+    needs: offline-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned upstream Cosign verifier (trusted host)
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        with:
+          cosign-release: 'v3.1.3'
+      - name: Reverify immutable upstream OCI Cosign and GitHub SLSA attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          IMAGE='ghcr.io/ublue-os/bazzite@sha256:492f83c738838861464685aed341783c2ea2266c82a9f19f0c867fd301783fd4'
+          python --version > host-tools.txt
+          cosign version >> host-tools.txt
+          gh --version >> host-tools.txt
+          if ! cosign verify --key assets/live/bazzite_cosign_20261120.pub \
+            "$IMAGE" > cosign-signed-oci.json; then
+            printf '%s\n' '{"status":"REFUSED_UNAUTHENTICATED_OCI","reason":"immutable OCI cosign signature verification failed"}' \
+              > bazzite-bootc-oci-readback.json
+            exit 2
+          fi
+          if ! gh attestation verify "oci://$IMAGE" --repo ublue-os/bazzite \
+            > github-slsa-oci-verification.txt; then
+            printf '%s\n' '{"status":"REFUSED_UNAUTHENTICATED_OCI","reason":"immutable OCI SLSA verification failed"}' \
+              > bazzite-bootc-oci-readback.json
+            exit 2
+          fi
+          sha256sum cosign-signed-oci.json github-slsa-oci-verification.txt \
+            host-tools.txt > provenance-evidence-sha256.txt
+          echo 'PASS: signed/attested pinned OCI digest, no installer execution'
+      - name: Inspect bounded immutable OCI registry manifest/config/all layers without extraction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rc=0
+          python auto_tests/bazzite_oci_bootc_readback.py \
+            --output bazzite-bootc-oci-readback.json || rc=$?
+          test "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("bazzite-bootc-oci-readback.json").read_text())
+          assert result["status"] in (
+              "BOOTC_PRESENT_ROUTE_UNVERIFIED", "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
+          )
+          assert result["installationAuthorized"] is False
+          assert result["partitionWriteAuthorized"] is False
+          assert result["windowsEspWriteAuthorized"] is False
+          assert result["guestCommandChannelAuthorized"] is False
+          assert result["nativeInstallationVerified"] is False
+          print("PASS: bounded OCI readback, deny-only:", result["status"])
+          PY
+      - name: Publish limited non-executable OCI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-bootc-oci-host-readback
+          path: |
+            host-tools.txt
+            provenance-evidence-sha256.txt
+            bazzite-bootc-oci-readback.json
+          if-no-files-found: warn
+          retention-days: 14
