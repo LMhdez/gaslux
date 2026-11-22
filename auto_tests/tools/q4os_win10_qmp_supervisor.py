@@ -24,26 +24,30 @@ from q4os_win10_qmp_boot import BootRefusal, Qmp, supervise
 
 QEMU = "/usr/bin/qemu-system-x86_64"
 EARLY_EXIT_DETAIL = "QEMU_EARLY_EXIT_UNCLASSIFIED"
-REASON_CODES = frozenset({
-    "QEMU_SPAWN_FAILED",
-    "QEMU_EARLY_EXIT",
-    "QEMU_QMP_SOCKET_TIMEOUT",
-    "QEMU_QMP_SOCKET_INVALID",
-    "QEMU_QMP_CONNECTION_REFUSED",
-    "QEMU_QMP_HANDSHAKE_FAILED",
-    "QEMU_QMP_NOT_RUNNING",
-    "QEMU_PROCESS_CLEANUP_FAILED",
-    "QEMU_STARTUP_UNCLASSIFIED",
-})
-DETAIL_CODES = frozenset({
-    EARLY_EXIT_DETAIL,
-    "QEMU_KVM_INITIALIZATION_FAILED",
-    "QEMU_HOST_MEMORY_UNAVAILABLE",
-    "QEMU_SATA_BUS_NOT_FOUND",
-    "QEMU_DEVICE_OPTION_UNSUPPORTED",
-    "QEMU_FILE_ACCESS_DENIED",
-    "QEMU_MEDIA_OPEN_FAILED",
-})
+REASON_CODES = frozenset(
+    {
+        "QEMU_SPAWN_FAILED",
+        "QEMU_EARLY_EXIT",
+        "QEMU_QMP_SOCKET_TIMEOUT",
+        "QEMU_QMP_SOCKET_INVALID",
+        "QEMU_QMP_CONNECTION_REFUSED",
+        "QEMU_QMP_HANDSHAKE_FAILED",
+        "QEMU_QMP_NOT_RUNNING",
+        "QEMU_PROCESS_CLEANUP_FAILED",
+        "QEMU_STARTUP_UNCLASSIFIED",
+    }
+)
+DETAIL_CODES = frozenset(
+    {
+        EARLY_EXIT_DETAIL,
+        "QEMU_KVM_INITIALIZATION_FAILED",
+        "QEMU_HOST_MEMORY_UNAVAILABLE",
+        "QEMU_SATA_BUS_NOT_FOUND",
+        "QEMU_DEVICE_OPTION_UNSUPPORTED",
+        "QEMU_FILE_ACCESS_DENIED",
+        "QEMU_MEDIA_OPEN_FAILED",
+    }
+)
 # QEMU /proc/self/fd drive-argument compatibility has not been proven in a
 # separately authorized VM test. Consequently the production spawn is blocked.
 # popen_factory is for offline, injected synthetic process tests ONLY.
@@ -81,8 +85,9 @@ def _owned_file(path: Path, work: Path) -> None:
     )
 
 
-def _pin_file(path: Path, expected: os.stat_result, *, dirfd: int | None = None,
-              writable: bool = False) -> int:
+def _pin_file(
+    path: Path, expected: os.stat_result, *, dirfd: int | None = None, writable: bool = False
+) -> int:
     """Pin the exact initially validated inode, refusing symlinks/hardlinks.
 
     The child later receives /proc/self/fd/N with pass_fds; no drive media path
@@ -90,8 +95,7 @@ def _pin_file(path: Path, expected: os.stat_result, *, dirfd: int | None = None,
     """
     flags = (os.O_RDWR if writable else os.O_RDONLY) | os.O_NOFOLLOW | os.O_CLOEXEC
     try:
-        fd = os.open(path.name if dirfd is not None else path, flags,
-                     dir_fd=dirfd)
+        fd = os.open(path.name if dirfd is not None else path, flags, dir_fd=dirfd)
     except OSError:
         raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from None
     try:
@@ -225,8 +229,10 @@ def _qemu_args(
 ) -> list[str]:
     _require(accelerator in ("kvm", "tcg"), "QEMU_STARTUP_UNCLASSIFIED")
     accel, cpu = ("kvm", "host") if accelerator == "kvm" else ("tcg,thread=multi", "max")
+
     def media(name: str, raw: Path) -> str:
         return f"/proc/self/fd/{pinned[name]}" if pinned is not None else str(raw)
+
     return [
         QEMU,
         "-no-user-config",
@@ -346,14 +352,14 @@ def run_lab(
             "QEMU_STARTUP_UNCLASSIFIED",
         )
         expected = {}
-        for name, path in (("vars", vars_path), ("image", image),
-                           ("iso", iso), ("answer", answer)):
+        for name, path in (("vars", vars_path), ("image", image), ("iso", iso), ("answer", answer)):
             _owned_file(path, work)
             expected[name] = path.lstat()
         _require(code.is_file() and not code.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
         code_stat = code.lstat()
-        _require(stat.S_ISREG(code_stat.st_mode) and code_stat.st_nlink == 1,
-                 "QEMU_STARTUP_UNCLASSIFIED")
+        _require(
+            stat.S_ISREG(code_stat.st_mode) and code_stat.st_nlink == 1, "QEMU_STARTUP_UNCLASSIFIED"
+        )
         work_fd = os.open(work, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         work_stat = os.fstat(work_fd)
         path_stat = work.stat()
@@ -363,10 +369,10 @@ def run_lab(
             and not work_stat.st_mode & 0o077,
             "QEMU_STARTUP_UNCLASSIFIED",
         )
-        for name, path in (("vars", vars_path), ("image", image),
-                           ("iso", iso), ("answer", answer)):
-            pinned[name] = _pin_file(path, expected[name], dirfd=work_fd,
-                                     writable=name in ("vars", "image"))
+        for name, path in (("vars", vars_path), ("image", image), ("iso", iso), ("answer", answer)):
+            pinned[name] = _pin_file(
+                path, expected[name], dirfd=work_fd, writable=name in ("vars", "image")
+            )
         pinned["code"] = _pin_file(code, code_stat)
         qmp_path = work / "q4os-win10-qmp.sock"
         _require(_socket_identity(qmp_path, work) is None, "QEMU_QMP_SOCKET_INVALID")
@@ -476,8 +482,7 @@ def run_lab(
                             base = os.fstat(output.fileno())
                             observed = os.fstat(source.fileno())
                             _require(
-                                (observed.st_dev, observed.st_ino)
-                                == (base.st_dev, base.st_ino),
+                                (observed.st_dev, observed.st_ino) == (base.st_dev, base.st_ino),
                                 "QEMU_STARTUP_UNCLASSIFIED",
                             )
                             detail = classify_qemu_error(source.read(min(size, 32768)))
