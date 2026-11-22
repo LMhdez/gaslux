@@ -18,6 +18,7 @@ import sys
 import uuid
 from pathlib import Path
 
+from gaslux_popos_gpt_fd_boundary import PinnedSixGpt, inspect_owned_six_gpt
 from gaslux_popos_reuse_snapshot_gate import (
     Refusal,
     chain,
@@ -25,12 +26,10 @@ from gaslux_popos_reuse_snapshot_gate import (
     make_child,
     need,
     new_file,
-    region_hash,
     regular,
     sha,
     system_ovmf_template,
 )
-from gaslux_popos_gpt_fd_boundary import PinnedSixGpt, inspect_owned_six_gpt
 from gaslux_popos_six_gpt_contract import (
     BOOLEANS,
     CONSENT,
@@ -414,7 +413,10 @@ def prepare(work: Path, template: Path) -> dict:
                 str(p.count // 2),
                 timeout=600,
             )
-            need(verify_fd_gpt(base, pinned=pinned) == baseline, "REFUSE_OUT_OF_WRITESET: FAT32 changed GPT")
+            need(
+            verify_fd_gpt(base, pinned=pinned) == baseline,
+            "REFUSE_OUT_OF_WRITESET: FAT32 changed GPT",
+        )
         root = PARTS[5]
         command(
             "mkfs.ext4",
@@ -430,7 +432,10 @@ def prepare(work: Path, template: Path) -> dict:
             str(root.count // 8),
             timeout=600,
         )
-        need(verify_fd_gpt(base, pinned=pinned) == baseline, "REFUSE_OUT_OF_WRITESET: ext4 changed GPT")
+        need(
+            verify_fd_gpt(base, pinned=pinned) == baseline,
+            "REFUSE_OUT_OF_WRITESET: ext4 changed GPT",
+        )
         # Protected ESP contains a SIMULATED canary, not a Windows bootloader.
         marker = work / "synthetic-esp-marker.tmp"
         with os.fdopen(
