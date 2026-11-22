@@ -136,3 +136,10 @@ A execução final após atualização documental deve confirmar novamente HEAD/
 **Testes negativos:** permanecem incluídos a recusa QEMU de FD fechado, alteração externa de pathname/socket, backing externo, pidfd de terceiro, PID diferente, pidfd obsoleto, QMP ausente e falha de spawn. Casos de QMP greeting/versão/capabilities maliciosos continuam avaliados na suite QMP offline, não como servidores QEMU genuínos. Nenhum `send-key`, `cont`, OS guest ou instalador foi executado.
 
 **Gates:** `QEMU_FD_BACKING_VERIFIED=false` (inalterado), `productionStorageWritesAuthorized=false`, `q4osNativeInstallationVerified=false`, `sameDiskDualBootVerified=false`, `windowsInPlaceRollbackProven=false`, `releaseEligible=false`, `stable=false`. Nenhuma conclusão de instalação Q4OS, boot Windows/Linux ou rollback deve resultar destas provas.
+
+
+## Subsequent Q4OS-RUNLAB-BOUNDARY-01 evidence (22 November 2026)
+
+The original four QEMU/FD compatibility cases above remain historical, exact-SHA evidence from PR #318. A **separate, stacked and read-only** diagnostic on branch `test/q4os-runlab-readonly-boundary-20261122` now exercises the actual supervisor's `_birth_identity`, `_pidfd_target`, `_witness`, `_peer`, `_socket_identity` and `_cleanup` as well as the existing `_qemu_args`. It uses the actual legacy connect-only `Qmp` transport, but **not its operational session issuance or input commands**. This is a new property beyond the original four cases, not a rerun of those cases.
+
+See [Q4OS_RUNLAB_READONLY_BOUNDARY.md](Q4OS_RUNLAB_READONLY_BOUNDARY.md) for the direct comparison with `run_lab()`, actual QEMU and FD evidence, public gate denial, negative peer/pidfd/backing/geometry cases and limits. The fully operational `run_lab()` remains blocked by `QEMU_FD_BACKING_VERIFIED=false`. This new experiment does not prove Q4OS live boot, native installation or Windows rollback.
