@@ -42,6 +42,7 @@ jobs:
   select:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
       (github.event_name == 'schedule' ||
        github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
@@ -148,12 +149,16 @@ jobs:
       - name: Revalidate PR, current dev, exact diff, ancestry and Safety; merge only dev
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_WINDOWS_ACCEPTANCE: success
           PR: ${{ needs.select.outputs.number }}
           HEAD_SHA: ${{ needs.select.outputs.head }}
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${GASLUX_AUTONOMY_PAUSED,,}" == "true" ]]; then
+            echo "::error::GASLUX_AUTONOMY_PAUSED blocks PR ready and merge"; exit 1
+          fi
           python3 -I auto_tests/tools/gaslux_agent_integrate.py verify \
             --pr "$PR" --head "$HEAD_SHA" > /tmp/gaslux-premerge-check.json
           if [[ "$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" == 'true' ]]; then
