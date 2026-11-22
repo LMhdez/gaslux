@@ -12,6 +12,12 @@ Revisão: **2026-11-19**. Base de integração: **dev**; `main` mantém apenas M
 | [Bazzite](BAZZITE.md) | APENAS UEFI/GPT no Gaslux; BIOS/MBR BLOQUEADO antes de escrita; Secure Boot que requeira MOK manual BLOQUEADO | cadeia Fedora Atomic e deployment ostree/rpm-ostree; implementação EFI e política Secure Boot exigem comprovação da ISO exacta; instalação Fedora Atomic conforme ISO oficial (Anaconda/fluxo atomic comprovado por release), não copiar squashfs | PENDENTE: sem sequência fim-a-fim e rollback comprovados | Verificar ISO, executar cadeia VM controlada |
 | [Q4OS](Q4OS.md) | BIOS/MBR e UEFI/GPT a provar para mídia/versão; sem provas de end-to-end | GRUB BIOS/EFI conforme a ISO e instalação nativa; rever actualizações e localização exacta da instalação; Calamares SE estiver realmente na ISO verificada, caso contrário instalador nativo que a edição efectivamente forneça | PENDENTE: sem sequência fim-a-fim e rollback comprovados | Verificar ISO, executar cadeia VM controlada |
 
+## Documentação viva — responsabilidade por backend
+
+Em cada mudança relevante (ISO/proveniência, capacidades, código, finding Safety, boot/rollback, CI/VM, merge, fecho de PR ou gate), o agente do backend mantém o dossier correspondente atualizado **na própria tarefa**, com data UTC, HEAD, URL da evidência e limites. Safety/Observer atualizam os contratos de confiança e o Integrador verifica os links e o estado pós-merge. O Prompt Engineer deve consultar sempre [o manual histórico](../AGENT_HISTORICAL_PLAYBOOK.md), [o índice de GitHub Actions/VM](../CI_VM_EVIDENCE_INDEX.md) e o GitHub atual antes de emitir instruções.
+
+A matriz de 19-11-2026 abaixo é um instantâneo preservado: juntar notas de atualização em vez de reescrever provas antigas. Não converter CI offline em instalação real nem criar PRs/branches redundantes para manter documentação.
+
 ## Hierarquia das fontes
 1. `release-config.json` **main**: apenas Mint 22.3/Zorin 18.1, com ISO, tamanho e SHA fixados; os valores aqui transcritos não substituem a validação do catálogo assinado.
 2. [Arquitectura](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [Plano multidistro](https://github.com/LMhdez/gaslux/blob/dev/docs/MULTIDISTRO_PLAN.md), [AGENTS](https://github.com/LMhdez/gaslux/blob/dev/AGENTS.md), [política IA](https://github.com/LMhdez/gaslux/blob/dev/AI_POLICY.md), [issue #3](https://github.com/LMhdez/gaslux/issues/3), [PR #7](https://github.com/LMhdez/gaslux/pull/7).

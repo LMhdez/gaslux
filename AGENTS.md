@@ -17,6 +17,21 @@ Before changing disk, firmware, recovery, catalog, or installation logic, read:
 - docs/AGENT_HISTORICAL_PLAYBOOK.md — researched November 2026 PR/commit history, evidence taxonomy and operational rules for Orchestrator, Integrator, Safety, Observer and backends
 - docs/CI_VM_EVIDENCE_INDEX.md — GitHub Actions/QEMU labs on dev and historical PR branches; distinguish actual guest boot from offline contracts
 
+## Continuous, mandatory documentation maintenance
+
+**Every Gaslux agent (Orchestrator/Prompt Engineer, Backend, Safety, Integrator and Observer) must keep the relevant project documentation up to date as part of normal work.** Before each substantive task, recheck live GitHub `dev`/`main` heads, PR/branch/issue states, code, checks and Actions artifacts; reports, timestamps and old HEADs are only historical leads.
+
+**On every material change, update the affected docs in the same task**: merge/close/supersede, branch deletion, backend capabilities or ISO/trust change, new CI/VM evidence, an opened/resolved safety finding, changed Observer authority, update or recovery proof, or new release gate. Preserve dated historical snapshots and append accurately dated current evidence rather than rewriting the past.
+
+- **Orchestrator / Prompt Engineer:** verify the relevant PR chain before every new prompt; correct stale assumptions and task dependencies.
+- **Backend:** maintain the appropriate `docs/distro-backends/<DISTRO>.md` and shared contracts when real implementation, media identity, boot evidence or limitations change.
+- **Safety:** maintain exact-SHA findings, adverse tests, conclusions and unresolved Windows/recovery gates.
+- **Observer:** keep HOST/FD/QMP, local-peer and guest trust boundaries and evidence levels accurately separated.
+- **Integrator:** after every merge/closure/cleanup, reconcile the historic PR graph and [agent playbook](docs/AGENT_HISTORICAL_PLAYBOOK.md), [CI/VM evidence index](docs/CI_VM_EVIDENCE_INDEX.md), the affected backend dossier, and source PR references; start from older stacks.
+- **All:** label the observation time (UTC), exact source SHA/PR/Actions link, result and limits. Verify relative links and avoid creating additional branches/PRs solely for documentary maintenance.
+
+**Definition of done:** when a task changes a documented fact, publish and verify its corresponding docs update before declaring completion. If blocked by a concurrent HEAD or permissions, disclose the stale file and specific blocker. Do not rerun costly QEMU experiments merely to refresh a date. This is **event-driven upkeep while agents act**, not an assertion of autonomous unattended updates; do not claim a scheduled updater exists without an implemented workflow. Safety gates, stable catalog release gates and physical-disk permissions are unchanged.
+
 ## Delegated multiagent engineering and integration
 
 Gaslux uses orchestrated agents for implementation, adversarial safety audits, evidence verification, PR review, forensic investigation and integration. Authorized agents may open/update PRs, answer review threads, run approved checks, fix defects, reconcile stacked branches and, when expressly delegated, merge vetted work or close proven-redundant PRs. Human oversight is **substantive and risk-based**, not a mandatory manual response or approval click for every operation.

@@ -2,6 +2,14 @@
 
 > Revisão: 2026-11-22 UTC. **Este documento é um índice histórico e um procedimento de trabalho, não um certificado de estabilidade.** As referências de PR, HEAD, CI e integração mudam rapidamente; consultar novamente o GitHub antes de agir. A política executável e de segurança continua em [AGENTS.md](../AGENTS.md), [AI_POLICY.md](../AI_POLICY.md), [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRIBUTING.md](../CONTRIBUTING.md) e nos schemas.
 
+## Manter permanentemente atualizado
+
+**O instantâneo de 22-11-2026 é histórico e não é o estado vivo do Gaslux.** Antes de cada missão, consultar novamente `dev`/`main`, PRs abertas/fechadas/merged, branches, issues, commits, workflows e execuções no HEAD exato. Sempre que surgir evidência nova, mudança de código/capacidade, finding, merge ou fecho, corrigir as referências afetadas **na mesma intervenção**, preservando a cronologia original e acrescentando a data UTC e os SHAs/URLs das provas.
+
+Responsáveis: Orquestrador/Prompt Engineer corrige instruções e dependências antigas; Backend mantém o seu dossier e provas de instalação/boot; Safety regista findings e regressões; Observer mantém os limites de proveniência HOST/guest; Integrador atualiza relações entre PRs, integração real em `dev`, fechos e o [índice de testes VM](CI_VM_EVIDENCE_INDEX.md). Não manter PRs já merged como pendentes nem reabrir tarefas históricas demonstradas.
+
+**Critério de conclusão:** se uma decisão alterou o estado documentado, atualizar e verificar o documento antes de declarar sucesso; quando não se alterou nenhuma conclusão, uma revalidação não exige reescrita artificial. Se faltar capacidade ou acesso, indicar o ficheiro desatualizado e o bloqueio concreto. Não inventar uma atualização automática agendada: este dever é executado pelos agentes em cada evento relevante. Ver [AGENTS.md](../AGENTS.md) e [AI_POLICY.md](../AI_POLICY.md).
+
 ## 1. Como interpretar a história
 
 As PRs documentam hipóteses, código, testes e revisões em pontos diferentes de uma cadeia. **PR fechada não significa integrada**, PR merged para uma branch experimental não significa integrada em dev, CI verde não significa guest boot e boot Linux não significa dual boot Windows recuperável. Verificar sempre os campos state, merged, base.ref, head.sha, merge_commit_sha, checks e artefactos do HEAD exato.

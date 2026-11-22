@@ -29,6 +29,12 @@ Distinguish three kinds of authority:
 
 Generic authorization to "proceed", "continue" or "make stable" allows the next **safe engineering step** within existing permissions, not the disabling of gates or an unbounded production installation. An agent must fail closed when authority, evidence or target identity is ambiguous.
 
+### Always-current documentation responsibility
+
+Every authorized Orchestrator, Backend, Safety, Integrator and Observer agent is responsible for continuously maintaining the **relevant** documentation when verified facts change. Refresh applicable GitHub PR/branch/issue heads, CI/VM results, source commits, evidence and dependencies before action; reconcile `AGENTS.md`, `docs/AGENT_HISTORICAL_PLAYBOOK.md`, `docs/CI_VM_EVIDENCE_INDEX.md`, the distribution dossiers and Safety/Observer contract docs with the verified change in the same task.
+
+Preserve dated historical snapshots; record a dated correction or evidence update rather than erasing history. A green job cannot silently promote offline evidence to guest boot, real dual boot or rollback. Document exact SHAs, URLs, outcomes, gates and limits. Avoid redundant PRs, branches or VM reruns only for cosmetic freshness. **This is mandatory event-driven maintenance, not an automatic background-monitoring guarantee.**
+
 ## 3. Multiagent operating model
 
 Gaslux may employ specialist agents (for example: backend owners, Windows safety, read-only observer, independent auditor, integrator and orchestrator). Role names express responsibilities, not trustworthiness or elevated privileges.
