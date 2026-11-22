@@ -126,8 +126,8 @@ def grub_source_readiness(repo: Path) -> dict[str, Any]:
         encoding="utf-8")
     require("pacman sudo networkmanager grub efibootmgr os-prober" in stage
             and "pacstrap -K" in stage
-            and "--no-nvram" in (repo / "assets/live/cachyos-uefi-lab.py").
-            read_text(encoding="utf-8"), "REVISED_GRUB_INSTALL_SOURCE")
+            and "--no-nvram" in (repo / "assets/live/cachyos-uefi-lab.py").read_text(
+                encoding="utf-8"), "REVISED_GRUB_INSTALL_SOURCE")
     return {
         "status": "GRUB_VERSION_AND_SIGNED_BINARIES_UNPINNED",
         "sourceGitBlobs": pins,
