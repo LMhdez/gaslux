@@ -227,7 +227,48 @@ def verify_canaries(base: Path, plan: dict, work: Path) -> None:
 
 
 class ProtectedFaultDetected(Exception):
-    """A specific owned QCOW2 extent was independently proven allocated."""
+    """Typed synthetic detection after an owned interval and bytes were verified."""
+
+
+class PinnedResource:
+    """Hold a no-follow fd and refuse path/inode substitutions; NEVER unlink."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            item = os.fstat(self.fd)
+            need(
+                stat.S_ISREG(item.st_mode)
+                and item.st_uid == os.geteuid()
+                and item.st_nlink == 1,
+                "REFUSE_IDENTITY_MISMATCH: foreign injected resource",
+            )
+            self.identity = (item.st_dev, item.st_ino)
+            self.verify()
+        except BaseException:
+            os.close(self.fd)
+            raise
+
+    def verify(self) -> None:
+        item = os.fstat(self.fd)
+        current = os.stat(self.path, follow_symlinks=False)
+        need(
+            (item.st_dev, item.st_ino) == self.identity
+            and (current.st_dev, current.st_ino) == self.identity
+            and stat.S_ISREG(current.st_mode)
+            and current.st_nlink == 1,
+            "REFUSE_IDENTITY_MISMATCH: injected child/VARS inode replaced",
+        )
+
+    def close(self) -> None:
+        os.close(self.fd)
+
+    def __enter__(self) -> PinnedResource:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
 
 
 def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
@@ -265,8 +306,11 @@ def child_owned_extents(child: Path, base: Path) -> list[dict]:
     chain(child, base)
     rows = parse_qcow_map(command("qemu-img", "map", "--output=json", str(child), timeout=120))
     # depth=0 data=false zero=true is an allocated overlay mask, not empty.
-    return [r for r in rows if r["depth"] == 0 and
-            (r["data"] or r["zero"] or r.get("present") is True)]
+    return [
+        r
+        for r in rows
+        if r["depth"] == 0 and (r["data"] or r["zero"] or r.get("present") is True)
+    ]
 
 
 def ensure_empty_child(child: Path, base: Path) -> None:
@@ -274,15 +318,39 @@ def ensure_empty_child(child: Path, base: Path) -> None:
          "REFUSE_RECOVERY_UNPROVEN: synthetic child contains owned extents")
 
 
-def verify_injected_fault(child: Path, base: Path, offset: int, length: int) -> None:
-    need(type(offset) is int and type(length) is int and
-         offset >= 0 and length == 4096 and offset + length <= SIZE,
-         "REFUSE_RECOVERY_UNPROVEN: invalid injected interval")
+def verify_injected_fault(
+    child: Path, base: Path, offset: int, length: int, pin: PinnedResource
+) -> None:
+    """Detect only a demonstrated 0x5a injection in the SAME pinned QCOW2."""
+    need(
+        type(offset) is int
+        and type(length) is int
+        and offset >= 0
+        and length == 4096
+        and offset + length <= SIZE,
+        "REFUSE_RECOVERY_UNPROVEN: invalid injected interval",
+    )
+    pin.verify()
     owned = child_owned_extents(child, base)
-    need(any(r["start"] <= offset and r["start"] + r["length"] >= offset + length
-             and r["data"] is True for r in owned),
-         "REFUSE_RECOVERY_UNPROVEN: injected write not materialized")
-    raise ProtectedFaultDetected("independent protected child allocation observed")
+    pin.verify()
+    need(
+        any(
+            r["start"] <= offset
+            and r["start"] + r["length"] >= offset + length
+            and r["data"] is True
+            for r in owned
+        ),
+        "REFUSE_RECOVERY_UNPROVEN: injected write not materialized",
+    )
+    # Verify the actual injected bytes using qemu-io, not just a map extent.
+    # Tool failure, timeout, invalid JSON or substitution must propagate as
+    # Refusal/subprocess error; ONLY successful content read can raise typed detection.
+    command(
+        "qemu-io", "-f", "qcow2", "-c",
+        f"read -P 0x5a {offset} {length}", str(child), timeout=120,
+    )
+    pin.verify()
+    raise ProtectedFaultDetected("synthetic protected interval and bytes observed")
 
 
 def private_ovmf_copy(template: Path, out: Path) -> str:
@@ -503,39 +571,59 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
     fault = work / "fault-injected-child.qcow2"
     make_child(fault, base)
     sector = PARTS[2].start + 4096  # protected SIMULATED data partition
+    offset = sector * SECTOR
     ensure_empty_child(fault, base)
-    command("qemu-io", "-f", "qcow2", "-c", f"write -P 0x5a {sector * SECTOR} 4096", str(fault))
-    try:
-        verify_injected_fault(fault, base, sector * SECTOR, 4096)
-    except ProtectedFaultDetected:
-        pass
-    else:
-        raise Refusal("REFUSE_RECOVERY_UNPROVEN: injected fault not detected")
-    regular(fault, write=True).unlink()
-    need(not fault.exists(), "REFUSE_RECOVERY_UNPROVEN: foreign overlay retained")
-    make_child(fault, base)
-    ensure_empty_child(fault, base)
-    regular(fault, write=True).unlink()
+    with PinnedResource(fault) as child_pin:
+        child_pin.verify()
+        command("qemu-io", "-f", "qcow2", "-c", f"write -P 0x5a {offset} 4096", str(fault))
+        child_pin.verify()
+        # Revalidate the parent and transaction, not just qemu-img's map.
+        need(
+            read_plan(work)["manifestSha256"] == plan["manifestSha256"]
+            and sha(base) == plan["backingSha256"],
+            "REFUSE_RECOVERY_UNPROVEN: backing or transaction changed",
+        )
+        try:
+            verify_injected_fault(fault, base, offset, 4096, child_pin)
+        except ProtectedFaultDetected:
+            child_pin.verify()
+        else:
+            raise Refusal("REFUSE_RECOVERY_UNPROVEN: injected fault not detected")
+    # No pathname unlink: the fault overlay is abandoned in the ephemeral
+    # runner workspace. Rebuild on a *different exclusively new pathname*.
+    rebuilt = work / "fault-rebuilt-child.qcow2"
+    make_child(rebuilt, base)
+    with PinnedResource(rebuilt) as rebuilt_pin:
+        ensure_empty_child(rebuilt, base)
+        rebuilt_pin.verify()
     # Independent disposable fault-injected VARS. Never overwrite reference.
     template = system_ovmf_template(template)
     broken_vars = work / "fault-injected-vars.fd"
     private_ovmf_copy(template, broken_vars)
-    with broken_vars.open("r+b") as f:
-        f.seek(2048)
-        f.write(b"GASLUX-SIX-OVMF-FAULT")
-        f.flush()
-        os.fsync(f.fileno())
-    need(
-        sha(broken_vars) != plan["ovmfTemplateSha256"],
-        "REFUSE_RECOVERY_UNPROVEN: OVMF fault injection ineffective",
-    )
-    broken_vars.unlink()
-    private_ovmf_copy(template, broken_vars)
-    need(
-        sha(broken_vars) == plan["ovmfTemplateSha256"],
-        "REFUSE_RECOVERY_UNPROVEN: private VARS not restored",
-    )
-    regular(broken_vars).unlink()
+    with PinnedResource(broken_vars) as vars_pin:
+        with broken_vars.open("r+b") as f:
+            f.seek(2048)
+            need(
+                f.write(b"GASLUX-SIX-OVMF-FAULT") == len(b"GASLUX-SIX-OVMF-FAULT"),
+                "REFUSE_RECOVERY_UNPROVEN: short VARS fault",
+            )
+            f.flush()
+            os.fsync(f.fileno())
+        vars_pin.verify()
+        need(
+            os.pread(vars_pin.fd, len(b"GASLUX-SIX-OVMF-FAULT"), 2048)
+            == b"GASLUX-SIX-OVMF-FAULT"
+            and sha(broken_vars) != plan["ovmfTemplateSha256"],
+            "REFUSE_RECOVERY_UNPROVEN: OVMF fault injection ineffective",
+        )
+    restored_vars = work / "fault-restored-vars.fd"
+    private_ovmf_copy(template, restored_vars)
+    with PinnedResource(restored_vars) as restored_pin:
+        need(
+            sha(restored_vars) == plan["ovmfTemplateSha256"],
+            "REFUSE_RECOVERY_UNPROVEN: private VARS not restored",
+        )
+        restored_pin.verify()
     verified = verify_checkpoint(work, template)
     proof = {
         "schemaVersion": 1,
@@ -543,7 +631,7 @@ def rehearse_recovery(work: Path, template: Path) -> dict:
         "transactionId": plan["transactionId"],
         "manifestSha256": plan["manifestSha256"],
         "independentProtectedFaultDetected": True,
-        "ownedFaultChildDiscarded": True,
+        "ownedFaultChildDiscarded": True,  # logically abandoned, physically retained on runner
         "ownedFaultChildReconstructedEmpty": True,
         "backingAndProtectedRegionsRestoredByteExact": True,
         "gptAndPartuuidRestored": True,
