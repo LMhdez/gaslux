@@ -79,10 +79,7 @@ class LargeReadOnlyBudget:
             _require(type(value) is int and low <= value <= high, "INVALID_RESOURCE_LIMIT")
         _require(
             self.known_quota_bytes is None
-            or (
-                type(self.known_quota_bytes) is int
-                and 0 < self.known_quota_bytes <= 1024**5
-            ),
+            or (type(self.known_quota_bytes) is int and 0 < self.known_quota_bytes <= 1024**5),
             "INVALID_QUOTA_CLAIM",
         )
 
@@ -262,8 +259,7 @@ def assess_sparse_128g_readonly(
     )
     _require(type(expected_gpt) is dict, "GPT_EXPECTATION_MISSING")
     _require(
-        backing_path != pins.media_path
-        and checkpoint_path not in (pins.media_path, backing_path),
+        backing_path != pins.media_path and checkpoint_path not in (pins.media_path, backing_path),
         "RESOURCE_ALIAS",
     )
     deadline = time.monotonic() + budget.max_seconds
@@ -297,8 +293,7 @@ def assess_sparse_128g_readonly(
             and raw_blocks <= budget.max_raw_allocated_bytes
             and sum((overlay_blocks, raw_blocks, receipt_blocks))
             <= budget.max_total_allocated_bytes
-            and sum((overlay_blocks, raw_blocks, receipt_blocks))
-            <= budget.known_quota_bytes,
+            and sum((overlay_blocks, raw_blocks, receipt_blocks)) <= budget.known_quota_bytes,
             "ALLOCATION_BUDGET_EXCEEDED",
         )
         vfs = os.statvfs(workspace)
@@ -310,9 +305,7 @@ def assess_sparse_128g_readonly(
         _require(raw_st.st_size == MAX_LARGE_VIRTUAL_BYTES, "NOT_128G_BACKING_GEOMETRY")
         _require(_read_exact(qcow2_fd, 0, 4, deadline) == b"QFI\xfb", "QCOW2_MAGIC_INVALID")
         with QemuLocalDiskWitness(pins) as witness:
-            overlay_hash = _small_full_digest(
-                qcow2_fd, expected_overlay_sha256, budget, deadline
-            )
+            overlay_hash = _small_full_digest(qcow2_fd, expected_overlay_sha256, budget, deadline)
             _elapsed(deadline)
             chain = _bounded_info(qcow2_fd, budget, deadline)
             image, parent = chain
@@ -364,7 +357,8 @@ def assess_sparse_128g_readonly(
                 raise LargeDestinationRefused("CHECKPOINT_INVALID_JSON") from exc
             _require(
                 type(checkpoint) is dict
-                and set(checkpoint) == {
+                and set(checkpoint)
+                == {
                     "schemaVersion",
                     "transactionId",
                     "virtualBytes",
@@ -400,7 +394,12 @@ def assess_sparse_128g_readonly(
                 )
             _elapsed(deadline)
     except (
-        OSError, DiskIdentityError, QemuDiskRefused, DestinationRefused, KeyError, TypeError
+        OSError,
+        DiskIdentityError,
+        QemuDiskRefused,
+        DestinationRefused,
+        KeyError,
+        TypeError,
     ) as exc:
         if isinstance(exc, LargeDestinationRefused):
             raise
