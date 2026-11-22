@@ -40,3 +40,12 @@ A suite \`test_zorin_ubiquity_handoff_readonly.py\` constrói exclusivamente um 
 Próxima intervenção segura: obter uma representação read-only e verificável da configuração efetiva proposta por Ubiquity, caso exista, e demonstrar os seus limites face aos processos partman/GRUB numa VM *sem escritor*. Se Ubiquity não expuser o grafo de ações confiável, usar o backend Debian/Ubuntu existente como alternativa após auditoria, não permitir tentativa de instalação desprotegida.
 
 **Classificação:** \`nativeInstallerInvoked=false\`; \`productionStorageWritesAuthorized=false\`; \`windowsEspWriteAuthorized=false\`; \`sameDiskDualBootVerified=false\`; \`windowsInPlaceRollbackProven=false\`; \`stable=false\`.
+
+
+## Validação executada (22-11-2026 UTC)
+
+[Actions #45031497831](https://github.com/LMhdez/gaslux/actions/runs/45031497831), HEAD \`2724ab65dc3f2a9a1a456501fcb853ffb272c3ee\`, **SUCCESS**. O job \`readonly-contract\` concluiu Ruff lint/format, compileall, validação JSON Schema Draft 2020-12, teste da GPT sintética por FD e cinco suites, num total de **95 testes**: 25 handoff, 21 mapa Ubiquity, 13 discovery, 25 Zorin Windows COW (contratos offline) e 11 Mint Windows COW (contratos offline). Incluiu manifesto textual com hashes SHA-256 dos ficheiros, sem exportar qualquer imagem.
+
+A primeira execução do novo workflow falhou devido a um import de teste não utilizado e formatação; a execução seguinte revelou um grupo adicional na expressão regular GPT do novo schema. Todos esses defeitos foram corrigidos antes da execução acima. Nenhuma falha foi contornada através de redução dos testes ou alteração do leitor Safety.
+
+Esta CI **não executou** o instalador Ubiquity, QEMU, Windows ou um rollback real; não revalida por si só o conteúdo da ISO e não autentica a proveniência do plano ou da operação partman. A classificação permanece \`DENY_NO_WRITER\`.
