@@ -2,8 +2,10 @@
 from __future__ import annotations
 import base64
 import importlib.util
+import json
 import os
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -175,6 +177,46 @@ class IntegratorContractTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "default branch"):
                 integ.merge(123, self.head)
             api.assert_not_called()
+
+    def test_untrusted_workflow_completion_blocks_without_network(self):
+        payload = {"workflow_run": {
+            "name": "Unrelated workflow", "conclusion": "success",
+            "head_branch": "main", "head_repository": {"full_name": integ.REPO},
+            "event": "push",
+        }}
+        with tempfile.TemporaryDirectory() as tmp:
+            event_path = Path(tmp) / "event.json"
+            event_path.write_text(json.dumps(payload))
+            with patch.dict(os.environ, {
+                "GITHUB_REPOSITORY": integ.REPO,
+                "GITHUB_REF": "refs/heads/main",
+                "GITHUB_EVENT_NAME": "workflow_run",
+                "GITHUB_EVENT_PATH": str(event_path),
+                "GASLUX_WINDOWS_ACCEPTANCE": "success",
+            }), patch.object(integ, "api") as api:
+                with self.assertRaisesRegex(RuntimeError, "provenance"):
+                    integ.merge(123, self.head)
+                api.assert_not_called()
+
+    def test_verified_successful_producer_event_is_admissible(self):
+        payload = {"workflow_run": {
+            "name": "Gaslux autonomous GitHub agents", "conclusion": "success",
+            "head_branch": "main", "head_repository": {"full_name": integ.REPO},
+            "event": "push",
+        }}
+        with tempfile.TemporaryDirectory() as tmp:
+            event_path = Path(tmp) / "event.json"
+            event_path.write_text(json.dumps(payload))
+            with patch.dict(os.environ, {
+                "GITHUB_REPOSITORY": integ.REPO,
+                "GITHUB_REF": "refs/heads/main",
+                "GITHUB_EVENT_NAME": "workflow_run",
+                "GITHUB_EVENT_PATH": str(event_path),
+                "GASLUX_WINDOWS_ACCEPTANCE": "success",
+            }), patch.object(integ, "api", side_effect=self.api):
+                result = integ.merge(123, self.head)
+        self.assertEqual(result["status"], "merged")
+        self.assertEqual(sum(m == "PUT" for m, _, _ in self.calls), 1)
 
     def test_no_windows_validation_means_no_merge(self):
         with patch.dict(os.environ, {
