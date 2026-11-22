@@ -2,11 +2,15 @@ name: Q4OS disposable QEMU FD/PFLASH compatibility (paused guest only)
 
 on:
   push:
-    branches: [fix/q4os-qmp-legacy-factory-error-boundary-20261122]
+    branches:
+      - fix/q4os-qmp-legacy-factory-error-boundary-20261122
+      - test/q4os-runlab-readonly-boundary-20261122
     paths:
       - '.github/workflows/gaslux-q4os-qemu-fd-compatibility.yml'
       - 'auto_tests/tools/q4os_qemu_fd_compat_lab.py'
+      - 'auto_tests/tests/test_q4os_readonly_boundary.py'
       - 'docs/Q4OS_QEMU_FD_COMPATIBILITY.md'
+      - 'docs/Q4OS_RUNLAB_READONLY_BOUNDARY.md'
 
 permissions:
   contents: read
@@ -20,7 +24,8 @@ jobs:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/fix/q4os-qmp-legacy-factory-error-boundary-20261122'
+      (github.ref == 'refs/heads/fix/q4os-qmp-legacy-factory-error-boundary-20261122' ||
+       github.ref == 'refs/heads/test/q4os-runlab-readonly-boundary-20261122')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -68,6 +73,7 @@ jobs:
             auto_tests/tools/q4os_qemu_fd_compat_lab.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/tools/q4os_qemu_fd_compat_lab.py
+          python -m pytest -q auto_tests/tests/test_q4os_readonly_boundary.py
           python - <<'PY'
           from pathlib import Path
           import yaml

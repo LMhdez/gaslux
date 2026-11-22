@@ -334,3 +334,14 @@ keyboard/users/bootloader/package modules, full GUI/exec sequencing,
 and a Windows 10/11 dual-boot recovery simulation. Do not declare
 a full Calamares installation by observing the previous
 `unsquashfs` + `systemd` guest tests.
+
+
+## Q4OS read-only run_lab supervision boundary — 22 November 2026
+
+An independent QEMU 8.2.2 CI experiment on the stacked [PR #318](https://github.com/LMhdez/gaslux/pull/318) already demonstrated genuine OVMF/QCOW2/FD and existing operational `_qemu_args()` under `-S` with no guest OS. The incremental [Q4OS-RUNLAB-BOUNDARY-01](Q4OS_RUNLAB_READONLY_BOUNDARY.md) work intentionally **does not set `QEMU_FD_BACKING_VERIFIED=true`**, or invoke the operational `run_lab()` to spawn QEMU.
+
+The new private read-only diagnostic reuses the actual Q4OS `_birth_identity`, `_pidfd_target`, `_witness`, `_peer`, `_socket_identity` and `_cleanup` with the connect-only QMP transport and an independent allowlist of read-only queries. It reuses the same stopped-guest launcher and synthesizes only media belonging to the disposable CI runner. It denies public `run_lab()` with injected factories before any side effect, unknown QCOW2 geometry/backing, unauthorized pidfd, and false QMP peer. A kernel pidfd check on each QMP query does not authorize the QMP command path intended to send DVD keyboard input.
+
+The shared HOST/FD `ProcessSeal` from current `dev` is not a dependency of historical stacked #318; importing or copying it as an independent authority would require an Integrator-composed and reaudited contract. No ProcessSeal clone or replacement Observer controller is added. See the separate document for exact CI SHA, resource hashes, four-way contrast and remaining trust boundary.
+
+**Next genuine live boot only after Safety approval:** authenticate the exact native Q4OS 6.10 x64 r2 ISO bytes and release/catalogue trust (historical upstream SHA-256 already recorded above), bind firmware/boot device and process provenance to a disposable QCOW2, prove live guest kernel and userspace on the *same authenticated VM*, then separately review Calamares. Historical upstream checksum alone does not authorize an installation or count as a signed Gaslux catalogue. All production/storage/release/stability gates remain false.

@@ -128,8 +128,13 @@ def close_process(
 
 
 def qmp_readonly(
-    child: subprocess.Popen, path: Path, original_birth: tuple[int, int], pidfd: int
-) -> tuple[dict, socket.socket]:
+    child: subprocess.Popen,
+    path: Path,
+    original_birth: tuple[int, int],
+    pidfd: int,
+    *,
+    use_supervisor: bool = False,
+) -> tuple[dict, object]:
     deadline = time.monotonic() + 12
     while not path.exists() and time.monotonic() < deadline:
         require(child.poll() is None, "QEMU_EARLY_EXIT")
@@ -139,10 +144,35 @@ def qmp_readonly(
     require(
         stat.S_ISSOCK(observed.st_mode) and observed.st_uid == os.getuid(), "QMP_SOCKET_UNTRUSTED"
     )
-    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    channel.settimeout(4)
+    # The shared path uses the *real* production connect-only Qmp transport.
+    # Its operational negotiate_protocol/command methods remain unavailable:
+    # no _BoundQmpSession can be issued while the global gate is false.
+    operational = None
+    transport = None
+    if use_supervisor:
+        import q4os_win10_qmp_supervisor as operational
+        from q4os_win10_qmp_boot import Qmp
+
+        require(not operational.QEMU_FD_BACKING_VERIFIED, "PRODUCTION_GATE_OPEN")
+        require(operational._birth_identity(child.pid)[1] == original_birth[0], "BIRTH_MISMATCH")
+        transport = Qmp(path, negotiate=False)
+        channel = transport.socket
+        stream = transport.stream
+    else:
+        channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        channel.settimeout(4)
+        stream = None
     try:
-        channel.connect(str(path))
+        if transport is None:
+            channel.connect(str(path))
+        if operational is not None:
+            operational._witness(child, pidfd)
+            operational._peer(transport, child)
+            require(
+                operational._socket_identity(path, path.parent)
+                == (observed.st_dev, observed.st_ino),
+                "QMP_SOCKET_REPLACED",
+            )
         peer = struct.unpack("3i", channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
         require(peer[0] == child.pid and peer[1] == os.getuid(), "QMP_PEER_FOREIGN")
         current = path.lstat()
@@ -150,7 +180,8 @@ def qmp_readonly(
             (current.st_dev, current.st_ino) == (observed.st_dev, observed.st_ino),
             "QMP_SOCKET_REPLACED",
         )
-        stream = channel.makefile("rb")
+        if stream is None:
+            stream = channel.makefile("rb")
 
         def line() -> dict:
             value = json.loads(stream.readline(65536))
@@ -159,11 +190,34 @@ def qmp_readonly(
 
         greeting = line()
         require(isinstance(greeting.get("QMP"), dict), "QMP_GREETING_INVALID")
-        transcript: dict = {"peerPidBound": True, "queries": [], "greetingVerified": True}
+        transcript: dict = {
+            "peerPidBound": True,
+            "queries": [],
+            "greetingVerified": True,
+            "supervisorConnectOnlyVerified": operational is not None,
+            "supervisorPeerVerified": operational is not None,
+            "sharedAuthorityIssued": False,
+        }
 
         def command(name: str) -> dict:
             require(name in ALLOWED_QMP, "QMP_COMMAND_FORBIDDEN")
             assert_pidfd(pidfd, child.pid, original_birth)
+            if operational is not None:
+                # Exactly the same process, PID, pidfd and local QMP-peer
+                # witnesses used by the operational supervisor, but no
+                # session issuance, guest commands, or production authority.
+                operational._witness(child, pidfd)
+                require(
+                    operational._birth_identity(child.pid)[1] == original_birth[0],
+                    "BIRTH_MISMATCH",
+                )
+                operational._peer(transport, child)
+                require(
+                    operational._socket_identity(path, path.parent)
+                    == (observed.st_dev, observed.st_ino),
+                    "QMP_SOCKET_REPLACED",
+                )
+                transcript["sharedWitnessChecks"] = transcript.get("sharedWitnessChecks", 0) + 1
             now = path.lstat()
             require(
                 (now.st_dev, now.st_ino) == (observed.st_dev, observed.st_ino),
@@ -192,9 +246,12 @@ def qmp_readonly(
             if str(exc) != "QMP_QUERY_REJECTED":
                 raise
             transcript["fdSetsVisible"] = None
-        return transcript, channel
+        return transcript, transport if transport is not None else channel
     except Exception:
-        channel.close()
+        if transport is not None:
+            transport.close()
+        else:
+            channel.close()
         raise
 
 
@@ -222,6 +279,18 @@ def firmware_pair() -> tuple[Path, Path]:
     raise LabRefusal("OVMF_PAIR_NOT_FOUND")
 
 
+def verify_qcow2_contract(info: dict) -> None:
+    """Require the expected owned backing-free image geometry before spawn."""
+    require(
+        info.get("format") == "qcow2"
+        and info.get("virtual-size") == SIZE
+        and info.get("cluster-size") == 65536
+        and not info.get("backing-filename")
+        and not info.get("full-backing-filename"),
+        "QCOW2_GEOMETRY_OR_BACKING_INVALID",
+    )
+
+
 def make_resources(work: Path) -> tuple[dict[str, Path], dict]:
     code_src, vars_src = firmware_pair()
     paths = {name: work / name for name in ("code.fd", "vars.fd", "disk.qcow2", "synthetic.iso")}
@@ -240,13 +309,7 @@ def make_resources(work: Path) -> tuple[dict[str, Path], dict]:
             [QEMU_IMG, "info", "--output=json", str(paths["disk.qcow2"])], timeout=15
         )
     )
-    require(
-        info.get("format") == "qcow2"
-        and info.get("virtual-size") == SIZE
-        and not info.get("backing-filename")
-        and not info.get("full-backing-filename"),
-        "QCOW2_GEOMETRY_OR_BACKING_INVALID",
-    )
+    verify_qcow2_contract(info)
     for path in paths.values():
         path.chmod(0o600)
     meta = {
@@ -269,7 +332,7 @@ def args_for(
     readonly_fds: dict[str, int],
     paths: dict[str, Path],
 ) -> list[str]:
-    if mode == "pr_argv":
+    if mode in ("pr_argv", "pr_shared"):
         # Reuse the REAL PR #318 argument builder, never operational run_lab.
         # Production gate stays false; ONLY the independent stopped-guest
         # laboratory is allowed to launch a process.
@@ -359,11 +422,110 @@ def args_for(
     return args
 
 
+def verify_public_deny(work: Path, paths: dict[str, Path]) -> dict:
+    """No public run_lab process, media write, or factory side effect."""
+    import q4os_win10_qmp_supervisor as operational
+
+    require(not operational.QEMU_FD_BACKING_VERIFIED, "PRODUCTION_GATE_OPEN")
+    before = {name: sha256(path) for name, path in paths.items()}
+    called = []
+
+    def forbidden_factory(*_args, **_kwargs):
+        called.append(True)
+        raise LabRefusal("UNAUTHORIZED_FACTORY_CALLED")
+
+    scenarios = ({}, {"popen_factory": forbidden_factory}, {"pidfd_factory": forbidden_factory})
+    for injection in scenarios:
+        result = operational.run_lab(
+            work,
+            paths["code.fd"],
+            paths["vars.fd"],
+            paths["disk.qcow2"],
+            paths["synthetic.iso"],
+            paths["answer.iso"],
+            "tcg",
+            **injection,
+        )
+        require(
+            result["decision"] == "refuse"
+            and result["qemuSpawned"] is False
+            and result["qmpSendKeyAcknowledged"] is False
+            and result["diskWritesAuthorized"] is False
+            and result["installationAuthorized"] is False,
+            "PUBLIC_GATE_NOT_DENIED",
+        )
+    require(not called, "UNAUTHORIZED_FACTORY_CALLED")
+    require(
+        all(sha256(paths[name]) == digest for name, digest in before.items()),
+        "PUBLIC_GATE_MUTATED_MEDIA",
+    )
+    require(not (work / "windows10-qemu-process.log").exists(), "PUBLIC_GATE_CREATED_LOG")
+    return {"verified": True, "rejectedCalls": 3, "factoryInvoked": False}
+
+
+def verify_foreign_qmp_peer(work: Path, child: subprocess.Popen) -> dict:
+    """A foreign same-UID UNIX peer must receive no QMP commands."""
+    import q4os_win10_qmp_supervisor as operational
+    from q4os_win10_qmp_boot import Qmp
+
+    path = work / "foreign-peer.sock"
+    transcript = work / "foreign-qmp-bytes.bin"
+    script = """
+import socket,sys
+from pathlib import Path
+server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+server.bind(sys.argv[1]); server.listen(1); server.settimeout(4)
+data=b''
+try:
+    client,_=server.accept()
+    client.settimeout(2)
+    try: data=client.recv(4096)
+    except (socket.timeout,OSError): pass
+    client.close()
+except socket.timeout: pass
+Path(sys.argv[2]).write_bytes(data)
+server.close()
+"""
+    peer = subprocess.Popen(
+        [sys.executable, "-u", "-c", script, str(path), str(transcript)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    peer_fd = None
+    peer_birth = None
+    rejected = False
+    try:
+        peer_birth = birth(peer.pid)
+        peer_fd = os.pidfd_open(peer.pid)
+        deadline = time.monotonic() + 4
+        while not path.exists() and time.monotonic() < deadline:
+            require(peer.poll() is None, "FOREIGN_QMP_EARLY_EXIT")
+            time.sleep(0.01)
+        require(path.exists(), "FOREIGN_QMP_NOT_READY")
+        transport = Qmp(path, negotiate=False)
+        try:
+            try:
+                operational._peer(transport, child)
+            except operational.StartupRefusal:
+                rejected = True
+            else:
+                raise LabRefusal("FOREIGN_QMP_PEER_ACCEPTED")
+        finally:
+            transport.close()
+    finally:
+        cleanup = close_process(peer, peer_fd, peer_birth)
+    require(cleanup["directReaped"] and cleanup["descendantsAbsent"], "FOREIGN_PEER_CLEANUP")
+    require(rejected and transcript.read_bytes() == b"", "FOREIGN_QMP_COMMAND_SENT")
+    return {"foreignPeerRejected": True, "zeroQmpBytes": True, "ownPeerReaped": True}
+
+
 def scenario(root: Path, mode: str, rename: bool) -> dict:
     work = root / mode
     work.mkdir(mode=0o700)
     paths, geometry = make_resources(work)
-    if mode == "pr_argv":
+    if mode in ("pr_argv", "pr_shared"):
         answer = work / "answer.iso"
         answer.write_bytes(b"GASLUX_SYNTHETIC_ANSWER_NOT_BOOTABLE" + bytes(512))
         answer.chmod(0o600)
@@ -372,7 +534,7 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             "bytes": answer.stat().st_size,
             "sha256": sha256(answer),
         }
-    qmp_path = work / ("q4os-win10-qmp.sock" if mode == "pr_argv" else "qmp.sock")
+    qmp_path = work / ("q4os-win10-qmp.sock" if mode in ("pr_argv", "pr_shared") else "qmp.sock")
     fds = {}
     readonly_fds = {}
     child = None
@@ -389,6 +551,9 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
     }
     stderr = work / "private-qemu-stderr.log"
     try:
+        if mode == "pr_shared":
+            report["publicGate"] = verify_public_deny(work, paths)
+            report["publicGateRefused"] = report["publicGate"]["verified"]
         for name, path in paths.items():
             fds[name] = pinned(path, name in ("vars.fd", "disk.qcow2"))
         # QEMU fdsets select descriptors by requested access mode. Supply
@@ -466,10 +631,28 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
                 report["foreignRealPidfdRejected"] = True
             else:
                 raise LabRefusal("FOREIGN_REAL_PIDFD_ACCEPTED")
+            if mode == "pr_shared":
+                import q4os_win10_qmp_supervisor as operational
+
+                try:
+                    operational._pidfd_target(other_fd, child.pid)
+                except operational.StartupRefusal:
+                    report["supervisorForeignPidfdRejected"] = True
+                else:
+                    raise LabRefusal("FOREIGN_PIDFD_ACCEPTED")
+                # Reproduce the Safety R-02-CLEANUP-01 attempt against
+                # the real QEMU child and an unrelated real Python pidfd.
+                require(operational._cleanup(child, other_fd) is False, "FOREIGN_CLEANUP_ACCEPTED")
+                require(child.poll() is None and other.poll() is None, "FOREIGN_PROCESS_SIGNALED")
+                report["supervisorForeignCleanupDenied"] = True
         finally:
             report["foreignPidfdCleanup"] = close_process(other, other_fd, other_birth)
         require(report["foreignPidfdCleanup"]["directReaped"], "FOREIGN_CHILD_NOT_REAPED")
-        transcript, channel = qmp_readonly(child, qmp_path, start, pidfd)
+        if mode == "pr_shared":
+            report["foreignQmpPeer"] = verify_foreign_qmp_peer(work, child)
+        transcript, channel = qmp_readonly(
+            child, qmp_path, start, pidfd, use_supervisor=(mode == "pr_shared")
+        )
         report["qmp"] = transcript
         report["openedOwnedInodes"] = fd_inventory(child.pid, fds)
         for name, fd in fds.items():
@@ -516,7 +699,24 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
         if pidfd is not None:
             stale_pidfd = os.dup(pidfd)
         try:
-            report["cleanup"] = close_process(child, pidfd, start)
+            if mode == "pr_shared" and child is not None:
+                import q4os_win10_qmp_supervisor as operational
+
+                # This is the actual production cleanup method, invoked
+                # solely on the direct child we created and its kernel pidfd.
+                # It is not an alternative operational process launcher.
+                supervisor_cleaned = operational._cleanup(child, pidfd)
+                report["supervisorCleanupVerified"] = supervisor_cleaned
+                require(supervisor_cleaned, "SUPERVISOR_CLEANUP_FAILED")
+                pgid = start[1] if start else -1
+                report["cleanup"] = {
+                    "directReaped": child.poll() is not None,
+                    "descendantsAbsent": pgid > 0 and not group_members(pgid),
+                    "exitCode": child.returncode,
+                }
+                os.close(pidfd)
+            else:
+                report["cleanup"] = close_process(child, pidfd, start)
         except (LabRefusal, OSError, subprocess.SubprocessError) as exc:
             report["cleanup"] = {
                 "directReaped": False,
@@ -570,6 +770,8 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             and report["codeUnchanged"]
             and report["qcowUnchanged"]
             and report.get("stalePidfdRejected") is True
+            and (mode != "pr_shared" or report.get("supervisorCleanupVerified") is True)
+            and (mode != "pr_shared" or report.get("publicGateRefused") is True)
             and report["cleanup"].get("directReaped") is True
             and report["cleanup"].get("descendantsAbsent") is True
         )
@@ -648,7 +850,31 @@ def negative_cases(root: Path) -> dict:
     backed_info = json.loads(
         subprocess.check_output([QEMU_IMG, "info", "--output=json", str(backed)], timeout=15)
     )
-    result["foreignBackingRejected"] = bool(backed_info.get("backing-filename"))
+    try:
+        verify_qcow2_contract(backed_info)
+    except LabRefusal:
+        result["foreignBackingRejected"] = True
+    else:
+        result["foreignBackingRejected"] = False
+    wrong_geometry = work / "wrong-geometry.qcow2"
+    subprocess.run(
+        [QEMU_IMG, "create", "-f", "qcow2", str(wrong_geometry), "32M"],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=15,
+    )
+    wrong_info = json.loads(
+        subprocess.check_output(
+            [QEMU_IMG, "info", "--output=json", str(wrong_geometry)], timeout=15
+        )
+    )
+    try:
+        verify_qcow2_contract(wrong_info)
+    except LabRefusal:
+        result["wrongGeometryRejected"] = True
+    else:
+        result["wrongGeometryRejected"] = False
     try:
         subprocess.Popen(
             [str(work / "not-an-executable")],
@@ -702,6 +928,7 @@ def negative_cases(root: Path) -> dict:
                 "wrongFdRejected",
                 "closedFdRejectedByQemu",
                 "foreignBackingRejected",
+                "wrongGeometryRejected",
                 "spawnFailureDetected",
                 "noQmpTimeoutRefused",
             )
@@ -755,14 +982,22 @@ def main() -> int:
         "scenarios": {},
     }
     try:
-        report["scenarios"]["proc"] = scenario(root, "proc", True)
-        report["scenarios"]["fdset"] = scenario(root, "fdset", False)
-        report["scenarios"]["hybrid"] = scenario(root, "hybrid", False)
-        report["scenarios"]["pr_argv"] = scenario(root, "pr_argv", False)
-        report["negative"] = negative_cases(root)
-        report["compatible"] = all(
-            report["scenarios"][name]["success"] for name in ("proc", "fdset", "hybrid", "pr_argv")
-        )
+        if os.environ.get("GITHUB_REF") == "refs/heads/test/q4os-runlab-readonly-boundary-20261122":
+            # Do not repeat the four previous stopped-QEMU scenarios in CI.
+            report["scenarios"]["pr_shared"] = scenario(root, "pr_shared", True)
+            report["negative"] = negative_cases(root)
+            report["diagnosticOnly"] = True
+            report["compatible"] = report["scenarios"]["pr_shared"]["success"]
+        else:
+            report["scenarios"]["proc"] = scenario(root, "proc", True)
+            report["scenarios"]["fdset"] = scenario(root, "fdset", False)
+            report["scenarios"]["hybrid"] = scenario(root, "hybrid", False)
+            report["scenarios"]["pr_argv"] = scenario(root, "pr_argv", False)
+            report["negative"] = negative_cases(root)
+            report["compatible"] = all(
+                report["scenarios"][name]["success"]
+                for name in ("proc", "fdset", "hybrid", "pr_argv")
+            )
     except Exception as exc:
         report["compatible"] = False
         report["unexpectedErrorType"] = type(exc).__name__[:50]
