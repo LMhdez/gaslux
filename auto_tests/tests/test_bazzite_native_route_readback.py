@@ -108,9 +108,7 @@ def test_valid_source_cli_always_returns_exit_2(official):
     script = ROOT / "auto_tests" / "bazzite_native_route_readback.py"
     args = [sys.executable, str(script), "--sources-dir", str(official)]
     for _ in range(2):
-        call = subprocess.run(
-            args, capture_output=True, text=True, check=False, timeout=10
-        )
+        call = subprocess.run(args, capture_output=True, text=True, check=False, timeout=10)
         assert call.returncode == 2
         report = json.loads(call.stdout)
         assert all(report[key] is False for key in NO_WRITE)
@@ -120,7 +118,10 @@ def test_invalid_source_cli_exit_3(tmp_path):
     script = ROOT / "auto_tests" / "bazzite_native_route_readback.py"
     call = subprocess.run(
         [sys.executable, str(script), "--sources-dir", str(tmp_path)],
-        capture_output=True, text=True, check=False, timeout=10,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
     )
     assert call.returncode == 3
     assert "REFUSED_SOURCE" in call.stderr
