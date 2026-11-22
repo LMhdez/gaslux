@@ -171,7 +171,7 @@ class GrubUefiEffectsOfflineTests(unittest.TestCase):
         for key in ("gptPrimarySha256", "gptBackupSha256", "pmbrSha256"):
             with self.subTest(key=key):
                 def change(_, b):
-                    b[key] = SHA_C
+                    b[key] = SHA_A if b[key] != SHA_A else SHA_B
                 self.assert_violation(self.diff(change), "GPT_OR_PMBR_CHANGED")
 
     def test_changed_sector_beyond_esp_rejected_as_effect(self):
