@@ -27,7 +27,7 @@ BUILD20_EARLIEST_PUBLIC_REFERENCE_UTC = "2025-10-10T03:39:24Z"
 BUILD20_REFERENCE = "https://github.com/pop-os/pop/issues/3612"
 MAX_STATUS_BYTES = 16 * 1024 * 1024
 MAX_BINARY_BYTES = 128 * 1024 * 1024
-GIT_SUFFIX = re.compile(r"[0-9a-f]{7,12}\\Z")
+GIT_SUFFIX = re.compile(r"[0-9a-f]{7,12}\Z")
 VERSION = re.compile(r"[0-9A-Za-z.+:~_-]{1,160}\Z")
 
 
