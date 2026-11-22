@@ -157,6 +157,10 @@ def main() -> int:
                 if not SIMULATE:
                     CANDIDATE.write_text(deterministic)
                 return 0
+        if os.environ.get("GASLUX_AGENT_DETERMINISTIC_ONLY") == "1":
+            report["repair_strategy"] = "no_safe_deterministic_repair"
+            report["status"] = "unsupported_regression"
+            return 1
         report["repair_strategy"] = "model_attempts"
         prompt = (
             "Fix ONE missing Python statement in the following Gaslux logging function. "
