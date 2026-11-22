@@ -2,11 +2,15 @@ name: Q4OS QMP process observability offline only (NO QEMU-system)
 
 on:
   push:
-    branches: [fix/q4os-qmp-process-observability-20261122]
+    branches:
+      - fix/q4os-qmp-process-observability-20261122
+      - test/q4os-runlab-readonly-boundary-20261122
     paths:
       - '.github/workflows/gaslux-q4os-qmp-offline.yml'
       - 'auto_tests/tools/q4os_win10_qmp_supervisor.py'
       - 'auto_tests/tests/test_q4os_qmp_process_observability.py'
+      - 'auto_tests/tools/q4os_qemu_fd_compat_lab.py'
+      - 'docs/Q4OS_RUNLAB_READONLY_BOUNDARY.md'
   pull_request:
     paths:
       - '.github/workflows/gaslux-q4os-qmp-offline.yml'
@@ -59,12 +63,14 @@ jobs:
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/tools/q4os_win10_qmp_boot.py \
             auto_tests/tools/q4os_win10_qmp_supervisor.py \
+            auto_tests/tools/q4os_qemu_fd_compat_lab.py \
             auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py \
             auto_tests/tests/test_q4os_win10_qmp_boot.py \
             auto_tests/tests/test_q4os_qmp_process_observability.py
           python -m ruff format --diff --config auto_tests/pyproject.toml \
             auto_tests/tools/q4os_win10_qmp_boot.py \
             auto_tests/tools/q4os_win10_qmp_supervisor.py \
+            auto_tests/tools/q4os_qemu_fd_compat_lab.py \
             auto_tests/tests/test_q4os_win10_qmp_boot.py \
             auto_tests/tests/test_q4os_qmp_process_observability.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
