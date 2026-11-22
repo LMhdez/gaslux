@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import io
 import json
-import os
 import re
 import stat
 import struct
@@ -76,7 +75,10 @@ def _png(data: bytes) -> None:
             require(kind == b"IHDR" and size == 13, "PNG IHDR absent")
             width, height = struct.unpack(">II", payload[:8])
             require((width, height) == (1280, 800), "Unexpected PNG resolution")
-            require(payload[10:13] == b"\x00\x00\x00", "Unsupported PNG compression/filter/interlace")
+            require(
+                payload[10:13] == b"\x00\x00\x00",
+                "Unsupported PNG compression/filter/interlace",
+            )
         if kind == b"IEND":
             require(size == 0 and end == len(data), "Nonterminal PNG IEND")
             seen.append(kind)
@@ -124,8 +126,10 @@ def _check_zip(binary: bytes, expected: dict, run: dict, aid: int) -> None:
                 raw = archive.read(entry)
                 require(len(raw) == entry.file_size, "ZIP member length mismatch")
                 short = name.removeprefix("evidence/")
-                require(digest(raw) == (reports[short] if short in reports else expected_png[short]),
-                        "Pinned report/screenshot mismatch")
+                require(
+                    digest(raw) == (reports[short] if short in reports else expected_png[short]),
+                    "Pinned report/screenshot mismatch",
+                )
                 if short in expected_png:
                     _png(raw)
     except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, RuntimeError, zlib.error) as exc:
@@ -190,7 +194,7 @@ def main() -> int:
         print(json.dumps(validate_archives(args.manifest, args.zip_dir, args.metadata_dir),
                          sort_keys=True))
         return 0
-    except (Refusal, OSError, TypeError, KeyError, IndexError, OverflowError) as exc:
+    except (Refusal, OSError, TypeError, KeyError, IndexError, OverflowError):
         # Never reflect attacker-supplied paths, ZIP filenames or raw exception strings.
         print(json.dumps({"decision": "REFUSE_Q4OS_ARCHIVE_PROVENANCE",
                           "externalProvenance": "EXTERNAL_PROVENANCE_UNPROVEN",
