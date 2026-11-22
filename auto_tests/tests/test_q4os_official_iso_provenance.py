@@ -175,3 +175,50 @@ def test_public_q4os_checksum_is_literal_pinned_and_not_publisher_signature():
     )
     assert readiness.SIGNED_RELEASE_METADATA_VERIFIED is False
     assert not hasattr(provenance, "sign") and not hasattr(provenance, "authorize_live_boot")
+
+
+
+def test_provenance_schema_rejects_forged_signatures_and_unsigned_catalog():
+    import jsonschema
+
+    repo = Path(__file__).resolve().parents[2]
+    schema = json.loads(
+        (repo / "schemas/gaslux-q4os-iso-provenance-evidence.schema.json").read_text()
+    )
+    jsonschema.Draft202012Validator.check_schema(schema)
+    media = {
+        "sha256": readiness.UPSTREAM_SHA256,
+        "sizeBytes": 1_910_000_000,
+        "fdReadOnlyPinnedDuringMeasurement": True,
+        "qemuFdBound": False,
+    }
+    original_measure = provenance.readiness.measure_official_iso
+    original_inspect = provenance.inspect_mounted_native_iso
+    try:
+        provenance.readiness.measure_official_iso = lambda _p: dict(media)
+        provenance.inspect_mounted_native_iso = lambda _p: inspect()
+        report = provenance.report_for_inspection(Path("/test.iso"), Path("/mount"))
+    finally:
+        provenance.readiness.measure_official_iso = original_measure
+        provenance.inspect_mounted_native_iso = original_inspect
+    jsonschema.validate(report, schema)
+    for field in ("publisherSignatureVerified", "gasluxCatalogSignatureVerified", "guestBooted"):
+        forged = json.loads(json.dumps(report))
+        forged[field] = True
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(forged, schema)
+    forged = json.loads(json.dumps(report))
+    forged["candidateCatalogFieldsUnsigned"]["signed"] = True
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(forged, schema)
+    forged = json.loads(json.dumps(report))
+    forged["media"]["sizeBytes"] = -1
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(forged, schema)
+
+
+def test_invalid_squashfs_member_refusal_does_not_emit_private_path(capsys):
+    private = Path("/private/SECRET_SENTINEL_ABC")
+    with pytest.raises(provenance.InspectRefusal):
+        provenance._bounded_unsquashfs(private, "../etc/shadow")
+    assert "SECRET_SENTINEL_ABC" not in "".join(capsys.readouterr())
