@@ -156,6 +156,24 @@ class IntegratorContractTests(unittest.TestCase):
         self.assertEqual(writes[0][2]["sha"], self.head)
         self.assertEqual(writes[0][2]["merge_method"], "squash")
 
+    def test_windows_acceptance_uses_exact_head_and_prebuilt_tests(self):
+        yaml = (
+            SCRIPT.parents[2] / ".github/workflows/gaslux-agent-integrator.yml"
+        ).read_text()
+        windows = yaml.split("\n  windows_acceptance:\n", 1)[1].split(
+            "\n  trusted_integrator:\n", 1
+        )[0]
+        self.assertIn("needs.select.outputs.head", windows)
+        self.assertIn("git rev-parse HEAD", windows)
+        self.assertIn("msbuild Libertix.sln /restore", windows)
+        self.assertIn("--no-restore --no-build", windows)
+        self.assertIn("windows-2022", windows)
+        self.assertNotIn("contents: write", windows)
+        trusted = yaml.split("\n  trusted_integrator:\n", 1)[1]
+        self.assertIn("needs.windows_acceptance.result == 'success'", trusted)
+        self.assertIn("pull-requests: write", trusted)
+        self.assertIn("github.ref == 'refs/heads/main'", trusted)
+
     def test_unsupported_backends_have_no_merge_grant(self):
         self.pr["head"]["ref"] = "bot/gaslux-cachyos-keyboard-" + self.dev[:12]
         with patch.object(integ, "api", side_effect=self.api):
