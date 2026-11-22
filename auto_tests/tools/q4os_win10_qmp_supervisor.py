@@ -140,26 +140,56 @@ def _await_qmp(
     raise StartupRefusal("QEMU_QMP_SOCKET_TIMEOUT")
 
 
-def _qemu_args(work: Path, code: Path, vars_path: Path, image: Path, iso: Path,
-               answer: Path, accelerator: str) -> list[str]:
+def _qemu_args(
+    work: Path, code: Path, vars_path: Path, image: Path, iso: Path, answer: Path, accelerator: str
+) -> list[str]:
     _require(accelerator in ("kvm", "tcg"), "QEMU_STARTUP_UNCLASSIFIED")
     accel, cpu = ("kvm", "host") if accelerator == "kvm" else ("tcg,thread=multi", "max")
     return [
-        QEMU, "-no-user-config", "-machine", "q35", "-accel", accel,
-        "-cpu", cpu, "-smp", "4", "-m", "6144", "-rtc", "base=utc",
-        "-display", "none", "-vga", "std",
-        "-serial", "file:" + str(work / "windows10-qemu-serial.log"),
-        "-monitor", "none", "-net", "none",
-        "-qmp", "unix:" + str(work / "q4os-win10-qmp.sock") + ",server=on,wait=off",
-        "-drive", "if=pflash,format=raw,unit=0,readonly=on,file=" + str(code),
-        "-drive", "if=pflash,format=raw,unit=1,file=" + str(vars_path),
-        "-device", "ich9-ahci,id=sata",
-        "-drive", "if=none,id=system,file=" + str(image) + ",format=qcow2,cache=writeback",
-        "-device", "ide-hd,drive=system,bus=sata.0,bootindex=2",
-        "-drive", "if=none,id=install,file=" + str(iso) + ",format=raw,media=cdrom,readonly=on",
-        "-device", "ide-cd,drive=install,bus=sata.1,bootindex=1",
-        "-drive", "if=none,id=answer,file=" + str(answer) + ",format=raw,media=cdrom,readonly=on",
-        "-device", "ide-cd,drive=answer,bus=sata.2,bootindex=3",
+        QEMU,
+        "-no-user-config",
+        "-machine",
+        "q35",
+        "-accel",
+        accel,
+        "-cpu",
+        cpu,
+        "-smp",
+        "4",
+        "-m",
+        "6144",
+        "-rtc",
+        "base=utc",
+        "-display",
+        "none",
+        "-vga",
+        "std",
+        "-serial",
+        "file:" + str(work / "windows10-qemu-serial.log"),
+        "-monitor",
+        "none",
+        "-net",
+        "none",
+        "-qmp",
+        "unix:" + str(work / "q4os-win10-qmp.sock") + ",server=on,wait=off",
+        "-drive",
+        "if=pflash,format=raw,unit=0,readonly=on,file=" + str(code),
+        "-drive",
+        "if=pflash,format=raw,unit=1,file=" + str(vars_path),
+        "-device",
+        "ich9-ahci,id=sata",
+        "-drive",
+        "if=none,id=system,file=" + str(image) + ",format=qcow2,cache=writeback",
+        "-device",
+        "ide-hd,drive=system,bus=sata.0,bootindex=2",
+        "-drive",
+        "if=none,id=install,file=" + str(iso) + ",format=raw,media=cdrom,readonly=on",
+        "-device",
+        "ide-cd,drive=install,bus=sata.1,bootindex=1",
+        "-drive",
+        "if=none,id=answer,file=" + str(answer) + ",format=raw,media=cdrom,readonly=on",
+        "-device",
+        "ide-cd,drive=answer,bus=sata.2,bootindex=3",
     ]
 
 
@@ -184,21 +214,40 @@ def _cleanup(process: subprocess.Popen | None, pidfd: int | None) -> bool:
 
 
 def run_lab(
-    work: Path, code: Path, vars_path: Path, image: Path, iso: Path, answer: Path,
-    accelerator: str, *, connect_seconds: float = 15, prompt_seconds: float = 90,
-    progress_seconds: float = 600, wait_seconds: float = 7200,
-    popen_factory=None, pidfd_factory=None,
+    work: Path,
+    code: Path,
+    vars_path: Path,
+    image: Path,
+    iso: Path,
+    answer: Path,
+    accelerator: str,
+    *,
+    connect_seconds: float = 15,
+    prompt_seconds: float = 90,
+    progress_seconds: float = 600,
+    wait_seconds: float = 7200,
+    popen_factory=None,
+    pidfd_factory=None,
 ) -> dict:
     """Observe a direct child and clean up only through its kernel pidfd."""
     report = {
-        "schemaVersion": 1, "decision": "refuse",
-        "reasonCode": "QEMU_STARTUP_UNCLASSIFIED", "qemuSpawned": False,
-        "qemuPidRecorded": False, "qemuExitCode": None, "qemuSignal": None,
-        "qmpSocketState": "ABSENT", "qmpHandshakeVerified": False,
-        "qmpRunningVerified": False, "qmpSendKeyAcknowledged": False,
-        "cleanupVerified": False, "windowsSetupVerified": False,
-        "installationAuthorized": False, "diskWritesAuthorized": False,
-        "rollbackVerified": False, "errorDetailCode": None,
+        "schemaVersion": 1,
+        "decision": "refuse",
+        "reasonCode": "QEMU_STARTUP_UNCLASSIFIED",
+        "qemuSpawned": False,
+        "qemuPidRecorded": False,
+        "qemuExitCode": None,
+        "qemuSignal": None,
+        "qmpSocketState": "ABSENT",
+        "qmpHandshakeVerified": False,
+        "qmpRunningVerified": False,
+        "qmpSendKeyAcknowledged": False,
+        "cleanupVerified": False,
+        "windowsSetupVerified": False,
+        "installationAuthorized": False,
+        "diskWritesAuthorized": False,
+        "rollbackVerified": False,
+        "errorDetailCode": None,
     }
     process = None
     pidfd = None
@@ -222,8 +271,12 @@ def run_lab(
         try:
             factory = popen_factory or subprocess.Popen
             process = factory(
-                args, cwd=work, stdin=subprocess.DEVNULL,
-                stdout=output, stderr=subprocess.STDOUT, start_new_session=True,
+                args,
+                cwd=work,
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
             )
         except OSError:
             raise StartupRefusal("QEMU_SPAWN_FAILED") from None
@@ -237,19 +290,27 @@ def run_lab(
                 raise StartupRefusal("QEMU_EARLY_EXIT") from None
             raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from None
         channel, identity = _await_qmp(
-            process, pidfd, qmp_path, work, report, seconds=connect_seconds,
+            process,
+            pidfd,
+            qmp_path,
+            work,
+            report,
+            seconds=connect_seconds,
         )
 
         def guard() -> None:
             _witness(process, pidfd)
-            _require(_socket_identity(qmp_path, work) == identity,
-                     "QEMU_QMP_SOCKET_INVALID")
+            _require(_socket_identity(qmp_path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
             _peer(channel, process)
 
         try:
             result = supervise(
-                qmp_path, serial, image, prompt_seconds=prompt_seconds,
-                progress_seconds=progress_seconds, qmp_channel=channel,
+                qmp_path,
+                serial,
+                image,
+                prompt_seconds=prompt_seconds,
+                progress_seconds=progress_seconds,
+                qmp_channel=channel,
                 process_guard=guard,
             )
             report["qmpSendKeyAcknowledged"] = result["qmpSendKeyAcknowledged"]
@@ -313,9 +374,9 @@ def main() -> int:
         or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
         or os.environ.get("GITHUB_REPOSITORY") != "LMhdez/gaslux"
         or os.environ.get("RUNNER_OS") != "Linux"
-        or work != Path(os.environ.get("RUNNER_TEMP", "/nonexistent")) / (
-            "gaslux-win10-" + os.environ.get("GITHUB_RUN_ID", "missing")
-        )
+        or work
+        != Path(os.environ.get("RUNNER_TEMP", "/nonexistent"))
+        / ("gaslux-win10-" + os.environ.get("GITHUB_RUN_ID", "missing"))
     ):
         print("GASLUX_Q4OS_DVD_BOOT_DECISION=refuse")
         return 1
