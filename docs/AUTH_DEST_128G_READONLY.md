@@ -115,3 +115,17 @@ parametrized deny-only resource and identity tests, complete small-image
 compileall, and six-backend capability schema contracts. The CI proves
 local lab observation only, not a 128 GiB *Windows* image, complete 128 GiB
 content hash, guest provenance, Windows rollback or installation.
+
+
+## 2026-11-22 — upstream Safety D-337-01 reconciled without modifying #337
+
+At reconciliation time, #337 had advanced to
+`f1e082c37ab58887f942b1e9ab0a841cb4b2b02a` with independent real-code D-337-01
+fix/tests and the existing 64-KiB checkpoint cap. This branch now merges
+that parent commit **without changing the parent ref**. The upstream
+`_digest` complete-byte accounting and Safety test files have priority.
+The separate 128-GiB structural observer remains additive; its own test
+also expects the upstream `FD_READ_FAILED` diagnostic on injected EIO.
+A one-line checkpoint receipt length guard remains unique to this branch.
+Do not claim these inherited upstream Safety fixes are new independent
+work in this scalability PR. #342 remains a separate metadata-only draft.

@@ -364,5 +364,5 @@ def test_legacy_digest_eio_refused(tmp_path, monkeypatch):
             return original(fd, count, offset)
 
         monkeypatch.setattr(small.os, "pread", faulty)
-        with pytest.raises(small.DestinationRefused, match="FD_HASH_IO_FAILED"):
+        with pytest.raises(small.DestinationRefused, match="FD_READ_FAILED"):
             small._digest(stream.fileno(), hashlib.sha256(b"x" * 1024).hexdigest())
