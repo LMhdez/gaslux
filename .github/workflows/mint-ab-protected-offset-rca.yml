@@ -59,24 +59,3 @@ jobs:
           export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
           python3 -m ruff check auto_tests/tools/windows_mint_ab_offset_rca.py auto_tests/test_windows_mint_ab_offset_rca.py
           python3 -m ruff format --check auto_tests/tools/windows_mint_ab_offset_rca.py auto_tests/test_windows_mint_ab_offset_rca.py
-      - name: Render verified Ruff source-only formatting on style failure
-        if: failure()
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          export PYTHONPATH="$RUNNER_TEMP/gaslux-ruff-0.15.20"
-          python3 -m ruff format auto_tests/tools/windows_mint_ab_offset_rca.py auto_tests/test_windows_mint_ab_offset_rca.py
-          python3 -m ruff check auto_tests/tools/windows_mint_ab_offset_rca.py auto_tests/test_windows_mint_ab_offset_rca.py
-          python3 -m ruff format --check auto_tests/tools/windows_mint_ab_offset_rca.py auto_tests/test_windows_mint_ab_offset_rca.py
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          for p in (
-              Path("auto_tests/tools/windows_mint_ab_offset_rca.py"),
-              Path("auto_tests/test_windows_mint_ab_offset_rca.py"),
-          ):
-              print("GASLUX_OFFSET_RUFF_SOURCE=" + json.dumps({
-                  "path": str(p),
-                  "source": p.read_text(encoding="utf-8"),
-              }, ensure_ascii=True))
-          PY
