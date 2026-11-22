@@ -269,3 +269,28 @@ def test_replayed_claim_with_self_asserted_external_attestation_refused(peer):
         witness.finish(forged)
     with pytest.raises(TransportBoundaryRefused):
         witness.finish(claimed(pins))
+
+
+def test_forged_socket_getsockopt_cannot_self_certify_kernel_peer(peer):
+    _, conn, pins = peer
+
+    class ForgedSocket:
+        def fileno(self):
+            return conn.fileno()
+
+        def getsockopt(self, *_args):
+            raise AssertionError("fake getsockopt must never be consulted")
+
+    with pytest.raises(TransportBoundaryRefused, match="UNTRUSTED_SOCKET_WRAPPER"):
+        LocalTransportWitness(ForgedSocket(), pins)
+
+
+def test_subclass_override_cannot_self_certify_local_measurement(peer):
+    _, conn, pins = peer
+
+    class ForgedWitness(LocalTransportWitness):
+        def _checked_sample(self):
+            raise AssertionError("overridden observer must never run")
+
+    with pytest.raises(TransportBoundaryRefused, match="UNTRUSTED_WITNESS_OVERRIDE"):
+        ForgedWitness(conn, pins)
