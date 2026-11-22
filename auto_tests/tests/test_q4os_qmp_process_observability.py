@@ -67,12 +67,14 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
         if mode == "refused":
             raise ConnectionRefusedError()
         if mode in ("greeting", "version", "capabilities", "not_running"):
-            raise BootRefusal({
-                "greeting": "invalid_qmp_greeting",
-                "version": "invalid_qmp_version",
-                "capabilities": "qmp_command_refused_qmp_capabilities",
-                "not_running": "qemu_is_not_running",
-            }[mode])
+            raise BootRefusal(
+                {
+                    "greeting": "invalid_qmp_greeting",
+                    "version": "invalid_qmp_version",
+                    "capabilities": "qmp_command_refused_qmp_capabilities",
+                    "not_running": "qemu_is_not_running",
+                }[mode]
+            )
         if mode == "exit_after_socket":
             holder["process"].returncode = 12
             raise BootRefusal("invalid_qmp_greeting")
@@ -115,22 +117,33 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
     monkeypatch.setattr(witness, "Qmp", fake_qmp)
     monkeypatch.setattr(witness, "supervise", fake_supervise)
     if mode == "spawn":
+
         def spawn_fails(*_args, **_kwargs):
             raise OSError("private path must not appear in report")
+
         factory = spawn_fails
     else:
         factory = Process
     if mode == "cleanup_fail":
+
         def signal_fails(*_args, **_kwargs):
             raise OSError("refuse unsafe termination")
+
         monkeypatch.setattr(witness.signal, "pidfd_send_signal", signal_fails)
 
     report = witness.run_lab(
-        work, code, vars_path, image, iso, answer, "kvm",
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        "kvm",
         popen_factory=factory,
         pidfd_factory=lambda _pid: os.open(os.devnull, os.O_RDONLY),
         connect_seconds=0.2 if mode == "late" else seconds,
-        prompt_seconds=0.02, progress_seconds=0.02,
+        prompt_seconds=0.02,
+        progress_seconds=0.02,
         wait_seconds=0.02,
     )
     assert report["installationAuthorized"] is False
