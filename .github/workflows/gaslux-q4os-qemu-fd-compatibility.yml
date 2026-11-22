@@ -75,8 +75,8 @@ jobs:
           data = yaml.safe_load(p.read_text())
           assert isinstance(data, dict) and len(data["jobs"]) == 1
           txt = p.read_text()
-          assert "workflow_dispatch" not in txt
-          assert "gaslux-q4os-windows-boundary.yml" not in txt
+          assert "workflow_" + "dispatch:" not in txt
+          assert "gaslux-q4os-windows" + "-boundary.yml" not in txt
           assert "permissions:\n  contents: read" in txt
           PY
       - name: Run actual stopped-QEMU FD/procfs and FD-set experiments
