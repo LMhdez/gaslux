@@ -160,6 +160,7 @@ class ReadonlyEspTargets(unittest.TestCase):
         foreign = Path(self.temp.name) / "foreign"
         foreign.mkdir()
         (foreign / "bootmgfw.efi").write_bytes(b"MZ-foreign")
+        (boot / "bootmgfw.efi").unlink()
         boot.rmdir()
         boot.symlink_to(foreign, target_is_directory=True)
         with self.assertRaisesRegex(audit.BootWriteSetError, "symlink"):
