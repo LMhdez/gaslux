@@ -287,3 +287,154 @@ def test_json_schema_fixture_if_library_present():
     data["permissions"]["installationAuthorized"] = True
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(data, schema)
+
+
+# Differential categories: A = schema refusal, B = Python-only relationship
+# refusal after schema acceptance, C = well-formed but permanently deny-only.
+# Neither JSON Schema nor self-consistent hashes provide guest authenticity.
+
+
+@pytest.fixture(scope="module")
+def iso45_schema_validator():
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads(
+        (ROOT / "schemas" / "bazzite_iso45_guest_inspection_contract_v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    jsonschema.Draft202012Validator.check_schema(schema)
+    return jsonschema.Draft202012Validator(schema)
+
+
+@pytest.mark.parametrize(
+    ("name", "path", "replacement"),
+    [
+        ("qemu-pid-zero", ("run", "qemuPid"), 0),
+        ("qemu-pid-one", ("run", "qemuPid"), 1),
+        ("qemu-pid-boolean", ("run", "qemuPid"), True),
+        ("anaconda-pid-zero", ("installer", "pid"), 0),
+        ("anaconda-pid-one", ("installer", "pid"), 1),
+        ("anaconda-pid-boolean", ("installer", "pid"), True),
+        ("qemu-start-boolean", ("run", "qemuStartTicks"), True),
+        ("anaconda-start-boolean", ("installer", "startTicks"), True),
+        ("dbus-elapsed-boolean", ("dbus", "replies", 0, "elapsedMs"), True),
+        ("disk-count-boolean", ("storage", "diskCount"), True),
+        ("schema-version-boolean", ("schemaVersion",), True),
+        ("media-runid-boolean", ("media", "sourceRunId"), True),
+        ("host-vm-prefix", ("run", "hostVmId"), "not-a-gaslux-vm"),
+        ("guest-vm-prefix", ("run", "guestVmId"), "not-a-gaslux-vm"),
+        ("anaconda-version-space", ("installer", "version"), "Anaconda 45"),
+        ("anaconda-version-too-long", ("installer", "version"), "a" * 129),
+        ("missing-getactions-list", ("dbus", "allowlistedMethods"), ["GetDevices"]),
+        ("missing-getactions-reply", ("dbus", "replies", 0, "method"), "GetDevices"),
+        (
+            "forbidden-dbus-method",
+            ("dbus", "allowlistedMethods"),
+            ["GetActions", "GetDevices", "ApplyPartitioning"],
+        ),
+        ("unexpected-dbus-method", ("dbus", "replies", 0, "method"), "SetStorage"),
+        ("truncated-dbus", ("dbus", "replies", 0, "truncated"), True),
+        ("timedout-dbus", ("dbus", "replies", 0, "timedOut"), True),
+        ("extra-permission", ("permissions", "writer"), True),
+        ("false-safety-approval", ("provenance", "safetyApproved"), True),
+        ("false-observer-approval", ("provenance", "observerApproved"), True),
+        ("false-trust-root", ("provenance", "trustRoot"), "runner-local-key"),
+        ("false-independent-proof", ("provenance", "independentlyVerified"), True),
+        ("false-install-authorization", ("permissions", "installationAuthorized"), True),
+        ("false-guest-authority", ("permissions", "guestCommandChannelAuthorized"), True),
+    ],
+)
+def test_differential_a_schema_and_python_both_reject(
+    iso45_schema_validator, name, path, replacement
+):
+    proposal = sample()
+    target = proposal
+    for component in path[:-1]:
+        target = target[component]
+    target[path[-1]] = replacement
+    assert not iso45_schema_validator.is_valid(proposal), name
+    with pytest.raises(Refusal):
+        validate_contract(proposal)
+
+
+@pytest.mark.parametrize(
+    "attack",
+    [
+        "host-guest-vm",
+        "host-guest-guid",
+        "host-guest-partuuid",
+        "host-guest-offset",
+        "collector-hashes",
+        "dbus-response-method-not-declared",
+        "dbus-digest-tampered",
+        "dbus-duplicate-reply",
+        "dbus-utf8-byte-limit",
+        "nonce-reused-in-memory",
+    ],
+)
+def test_differential_b_python_relationships_not_schema_authority(
+    iso45_schema_validator, attack
+):
+    proposal = sample()
+    previously_seen = frozenset()
+    if attack == "host-guest-vm":
+        proposal["run"]["guestVmId"] = "gaslux-bazzite-other"
+    elif attack == "host-guest-guid":
+        proposal["storage"]["guestDisk"]["guid"] = "88888888-2222-4333-8444-555555555555"
+    elif attack == "host-guest-partuuid":
+        proposal["storage"]["guestDisk"]["partitions"][0]["partuuid"] = (
+            "99999999-2222-4333-8444-555555555555"
+        )
+    elif attack == "host-guest-offset":
+        proposal["storage"]["guestDisk"]["partitions"][0]["firstSector"] += 1
+    elif attack == "collector-hashes":
+        proposal["collector"]["guestSha256"] = "1" * 64
+    elif attack == "dbus-response-method-not-declared":
+        proposal["dbus"]["replies"][0]["method"] = "GetFormatData"
+    elif attack == "dbus-digest-tampered":
+        proposal["dbus"]["replies"][0]["sha256"] = "0" * 64
+    elif attack == "dbus-duplicate-reply":
+        proposal["dbus"]["replies"].append(copy.deepcopy(proposal["dbus"]["replies"][0]))
+    elif attack == "dbus-utf8-byte-limit":
+        # JSON Schema maxLength counts code points; Python checks UTF-8 bytes.
+        text = "é" * (1024 * 1024 // 2 + 1)
+        proposal["dbus"]["replies"][0]["text"] = text
+        proposal["dbus"]["replies"][0]["sha256"] = hashlib.sha256(text.encode()).hexdigest()
+    elif attack == "nonce-reused-in-memory":
+        previously_seen = frozenset({proposal["run"]["transaction"]})
+    assert iso45_schema_validator.is_valid(proposal), attack
+    with pytest.raises(Refusal):
+        validate_contract(proposal, seen_transactions=previously_seen)
+
+
+@pytest.mark.parametrize("pid", [2, 4321])
+def test_differential_c_valid_proposal_permanently_refused(
+    iso45_schema_validator, pid, tmp_path
+):
+    proposal = sample()
+    proposal["run"]["qemuPid"] = pid
+    proposal["installer"]["pid"] = pid
+    assert iso45_schema_validator.is_valid(proposal)
+    decision = validate_contract(proposal)
+    assert decision["status"] == "REFUSED_NO_AUTHENTICATED_GUEST_COLLECTOR_CHANNEL"
+    assert decision["contractOnly"] is True
+    assert decision["structuralChecksPassed"] is True
+    assert decision["externallyAuthenticated"] is False
+    assert decision["safetyApproved"] is False
+    assert decision["observerApproved"] is False
+    assert decision["anacondaProcessVerified"] is False
+    assert all(decision[name] is False for name in NO_WRITE)
+    # Two independent CLI invocations of the same nonce: neither receives authority.
+    path = tmp_path / "untrusted-claim.json"
+    path.write_text(json.dumps(proposal), encoding="utf-8")
+    script = ROOT / "auto_tests" / "bazzite_iso45_guest_inspection_contract.py"
+    for _ in range(2):
+        proc = subprocess.run(
+            [sys.executable, str(script), "--proposal", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert proc.returncode == 2
+        assert json.loads(proc.stdout) == decision
