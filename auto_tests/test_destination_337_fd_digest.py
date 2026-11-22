@@ -8,9 +8,9 @@ from __future__ import annotations
 import errno
 import hashlib
 import os
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from auto_tests.installer_observer.authenticated_destination import (
@@ -43,9 +43,8 @@ class FullFdDigestContracts(unittest.TestCase):
                     side_effect=lambda f, n, off: read_override(
                         path, fd, real_read, f, n, off
                     ),
-                ):
-                    with self.assertRaisesRegex(DestinationRefused, reason):
-                        _digest(fd, expected)
+                ), self.assertRaisesRegex(DestinationRefused, reason):
+                    _digest(fd, expected)
             finally:
                 os.close(fd)
 
