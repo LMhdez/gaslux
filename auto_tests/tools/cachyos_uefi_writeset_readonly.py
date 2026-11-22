@@ -100,8 +100,9 @@ def _pinned_sources(repo: Path) -> dict[str, Any]:
             after = path.lstat()
         except OSError as exc:
             raise WriteSetRefused("SOURCE_NOT_READABLE") from exc
-        identity = lambda s: (s.st_dev, s.st_ino, s.st_size,
-                              s.st_mtime_ns, s.st_ctime_ns, s.st_nlink)
+        def identity(s: os.stat_result) -> tuple[int, ...]:
+            return (s.st_dev, s.st_ino, s.st_size,
+                    s.st_mtime_ns, s.st_ctime_ns, s.st_nlink)
         deny(identity(before) == identity(after) and len(content) == before.st_size,
              "SOURCE_CHANGED_DURING_INSPECTION")
         deny(_sha1_git_blob(content) == git_blob, "AUDITED_SOURCE_VERSION_CHANGED")
