@@ -179,9 +179,7 @@ class SixGptNegativeTests(unittest.TestCase):
         ):
             with self.subTest(trace=trace), self.assertRaises(Refusal):
                 c.audit_qemu_trace(trace)
-        parsed = c.audit_qemu_trace(
-            "vda virtio_blk_handle_write sector 3188736 nsectors 1"
-        )
+        parsed = c.audit_qemu_trace("vda virtio_blk_handle_write sector 3188736 nsectors 1")
         self.assertFalse(parsed["observedWritesConfinedToOwnedPopPartitions"])
         self.assertFalse(parsed["traceProvenanceAuthenticated"])
         self.assertFalse(parsed["observationComplete"])
@@ -189,11 +187,12 @@ class SixGptNegativeTests(unittest.TestCase):
     def test_safety_f03_fault_detection_not_tool_failure(self):
         import subprocess
 
-        full = json.dumps([
-            {"start": 0, "length": 4096, "depth": 1, "data": True, "zero": False},
-            {"start": 4096, "length": c.SIZE-4096, "depth": 0,
-             "data": False, "zero": False},
-        ])
+        full = json.dumps(
+            [
+                {"start": 0, "length": 4096, "depth": 1, "data": True, "zero": False},
+                {"start": 4096, "length": c.SIZE - 4096, "depth": 0, "data": False, "zero": False},
+            ]
+        )
         with (
             patch.object(lab, "chain"),
             patch.object(lab, "command", return_value=full),
@@ -211,12 +210,13 @@ class SixGptNegativeTests(unittest.TestCase):
                 self.assertRaises(type(error)),
             ):
                 lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
-        injected = json.dumps([
-            {"start": 0, "length": 8192, "depth": 1, "data": True, "zero": False},
-            {"start": 8192, "length": 4096, "depth": 0, "data": True, "zero": False},
-            {"start": 12288, "length": c.SIZE-12288, "depth": 1,
-             "data": True, "zero": False},
-        ])
+        injected = json.dumps(
+            [
+                {"start": 0, "length": 8192, "depth": 1, "data": True, "zero": False},
+                {"start": 8192, "length": 4096, "depth": 0, "data": True, "zero": False},
+                {"start": 12288, "length": c.SIZE - 12288, "depth": 1, "data": True, "zero": False},
+            ]
+        )
         with (
             patch.object(lab, "chain"),
             patch.object(lab, "command", return_value=injected),
@@ -225,10 +225,10 @@ class SixGptNegativeTests(unittest.TestCase):
             lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
 
     def test_safety_f04_zero_overlay_and_map_validation(self):
-        zero = [{"depth": 0, "data": False, "zero": True, "start": 0,
-                 "length": 4096},
-                {"depth": 1, "data": True, "zero": False, "start": 4096,
-                 "length": c.SIZE-4096}]
+        zero = [
+            {"depth": 0, "data": False, "zero": True, "start": 0, "length": 4096},
+            {"depth": 1, "data": True, "zero": False, "start": 4096, "length": c.SIZE - 4096},
+        ]
         with (
             patch.object(lab, "chain"),
             patch.object(lab, "command", return_value=json.dumps(zero)),
@@ -236,16 +236,28 @@ class SixGptNegativeTests(unittest.TestCase):
         ):
             lab.ensure_empty_child(Path("child"), Path("backing"))
         for malformed in (
-            "{", "[]", '[{"depth":0,"data":false,"zero":true,"start":0,"length":4096}]',
-            json.dumps([{"depth": 1, "data": True, "zero": False, "start": 0,
-                         "length": c.SIZE, "surprise": True}]),
+            "{",
+            "[]",
+            '[{"depth":0,"data":false,"zero":true,"start":0,"length":4096}]',
+            json.dumps(
+                [
+                    {
+                        "depth": 1,
+                        "data": True,
+                        "zero": False,
+                        "start": 0,
+                        "length": c.SIZE,
+                        "surprise": True,
+                    }
+                ]
+            ),
         ):
             with self.subTest(malformed=malformed[:20]), self.assertRaises(Refusal):
                 lab.parse_qcow_map(malformed)
-        empty = [{"start": 0, "length": c.SIZE, "depth": 1,
-                  "data": True, "zero": False}]
-        with patch.object(lab, "chain"), patch.object(
-            lab, "command", return_value=json.dumps(empty)
+        empty = [{"start": 0, "length": c.SIZE, "depth": 1, "data": True, "zero": False}]
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=json.dumps(empty)),
         ):
             lab.ensure_empty_child(Path("child"), Path("backing"))
 

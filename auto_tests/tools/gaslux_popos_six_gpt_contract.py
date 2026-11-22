@@ -276,13 +276,17 @@ def audit_qemu_trace(trace: str) -> dict:
             if match[1]:
                 devices.add(match[1])
             sector, count = int(match[2]), int(match[3])
-            need(sector < COUNT and count <= COUNT - sector,
-                 "REFUSE_OUT_OF_WRITESET: invalid QEMU sector bounds")
+            need(
+                sector < COUNT and count <= COUNT - sector,
+                "REFUSE_OUT_OF_WRITESET: invalid QEMU sector bounds",
+            )
             writes[classify_sector_write(sector, count)] += 1
             bytes_written += count * SECTOR
         elif "pflash_" in line or "system.flash" in line:
-            need(TRACE_FLASH.fullmatch(line) is not None,
-                 "OBSERVATION_INCOMPLETE: malformed firmware event")
+            need(
+                TRACE_FLASH.fullmatch(line) is not None,
+                "OBSERVATION_INCOMPLETE: malformed firmware event",
+            )
             vars_events += 1
         else:
             raise Refusal("OBSERVATION_INCOMPLETE: unknown QEMU trace record")
