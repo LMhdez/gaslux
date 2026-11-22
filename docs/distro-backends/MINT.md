@@ -4,6 +4,8 @@
 
 **Revisão:** 2026-11-19. **Maturidade:** IMPLEMENTADO: entrada no catálogo main e runtime de família Ubuntu; instalação integral em todos os cenários e rollback continuam dependentes de prova real. Ver [contratos gerais](SHARED_CONTRACTS.md). **Não usar este documento como autorização de escrita.**
 
+**Estado Core/proveniência — CORE-361-DEV-INTEGRATION-01 (22-11-2026 UTC):** A [PR #361](https://github.com/LMhdez/gaslux/pull/361) foi integrada em `dev` pelo commit `6129f9cc4b92617d35a4bb5ba47b69c201bbd43a` (HEAD aprovado `302f4f02e2968428bfd4c2e4bbf1d8e15582c0a7`), com F-361-01/F-361-02 **CLOSED** no [parecer Safety non-writer](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082951550). Os 12 blobs aprovados foram preservados e os 9 da #363 não regrediram. [CI pós-merge aplicável](../CI_VM_EVIDENCE_INDEX.md) 6/6 SUCCESS no SHA do merge; proveniência, deployment audit, WPF/C#/Pester da #361 foram validados no HEAD da PR, sem novo rerun específico Core `push dev`. **Esta integração não implica que o instalador Mint tenha sido executado num Windows 10 UEFI/GPT guest**: `clean2`, disco virtual exclusivo, quota e recuperação ainda precisam de admissão. Não há novos writers, alterações `main`/stable ou autorização para discos físicos.
+
 ## 1. Resumo executivo e estado
 Live QEMU e raiz Linux em imagem isolada não provam instalação automática Gaslux nem rollback Windows. O objectivo é uma instalação nativa automatizada ao lado do Windows, com prova independente dos dois boots e recuperação. Compatibilidade upstream não equivale a suporte validado no Gaslux.
 
