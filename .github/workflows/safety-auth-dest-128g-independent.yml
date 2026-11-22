@@ -20,7 +20,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git hash-object auto_tests/installer_observer/large_sparse_destination.py)" = 5eac9642d942e7ecdff2ea14adb654da57dfca6e
-          test "$(git hash-object auto_tests/installer_observer/authenticated_destination.py)" = 328653beca42b5ac006974d014e1bc6da1182e63
+          test "$(git hash-object auto_tests/installer_observer/authenticated_destination.py)" = 727074eec3a02f859e3ac42fbd60d5e4e600864f
           python3 -m compileall -q auto_tests/installer_observer/large_sparse_destination.py auto_tests/test_auth_dest_128g_safety_independent.py
       - name: Exercise actual sparse I/O, quota, FD alias and bounded subprocess
         run: |
