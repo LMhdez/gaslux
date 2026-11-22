@@ -221,7 +221,8 @@ def test_symlink_backing_and_writable_fd_refused(sparse_128g):
             workspace=ws,
         )
     with (
-        overlay.open("rb") as ov, raw.open("r+b") as back,
+        overlay.open("rb") as ov,
+        raw.open("r+b") as back,
         pytest.raises(dest.DestinationRefused, match="FD_ALIAS_OR_WRITABLE_FILE"),
     ):
         dest.probe_destination_scale_metadata(

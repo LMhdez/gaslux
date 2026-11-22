@@ -100,7 +100,6 @@ def _digest(fd: int, expected: str) -> str:
     return actual
 
 
-
 def _allocated_bytes(st: os.stat_result) -> int:
     """Measure resident filesystem blocks, not nominal sparse file length."""
     require(type(st.st_blocks) is int and st.st_blocks >= 0, "SCALE_ALLOCATION_UNAVAILABLE")
@@ -139,9 +138,7 @@ def probe_destination_scale_metadata(
         raise DestinationRefused("SCALE_WORKSPACE") from exc
     require(qcow2_path != backing_path, "ALIASING_DESTINATION_RESOURCES")
     overlay = _pin(qcow2_fd, qcow2_path, workspace)
-    backing = _pin(
-        backing_fd, backing_path, workspace, max_file_bytes=MAX_SCALE_VIRTUAL_BYTES
-    )
+    backing = _pin(backing_fd, backing_path, workspace, max_file_bytes=MAX_SCALE_VIRTUAL_BYTES)
     require(
         overlay.st_size >= 72
         and 68 * 512 <= backing.st_size <= MAX_SCALE_VIRTUAL_BYTES
@@ -166,13 +163,10 @@ def probe_destination_scale_metadata(
     )
     virtual_bytes = int.from_bytes(header[24:32], "big")
     require(
-        68 * 512 <= virtual_bytes <= MAX_SCALE_VIRTUAL_BYTES
-        and virtual_bytes == backing.st_size,
+        68 * 512 <= virtual_bytes <= MAX_SCALE_VIRTUAL_BYTES and virtual_bytes == backing.st_size,
         "SCALE_VIRTUAL_BACKING_MISMATCH",
     )
-    require(
-        stats.f_frsize > 0 and stats.f_bavail >= 0, "SCALE_RESOURCES_UNKNOWN"
-    )
+    require(stats.f_frsize > 0 and stats.f_bavail >= 0, "SCALE_RESOURCES_UNKNOWN")
     free_estimate = stats.f_frsize * stats.f_bavail
     for fd, path, pinned in (
         (qcow2_fd, qcow2_path, overlay),

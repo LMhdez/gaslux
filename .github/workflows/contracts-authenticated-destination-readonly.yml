@@ -80,15 +80,6 @@ jobs:
           for path in . safety267-pinned gpt286-pinned safety327-pinned; do
             test -z "$(git -C "$path" status --porcelain --untracked-files=no)"
           done
-      - name: Install real QEMU and GPT tooling (no libguestfs appliance)
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils gdisk
-          test -x /usr/bin/qemu-system-x86_64
-          test -x /usr/bin/qemu-img
-          test -x /usr/sbin/sgdisk || test -x /usr/bin/sgdisk
       - name: Configure Python lint and offline tests
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -105,6 +96,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pytest -q auto_tests/tests/test_distribution_capabilities.py
+      - name: Install real QEMU and GPT tooling (no libguestfs appliance)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils gdisk
+          test -x /usr/bin/qemu-system-x86_64
+          test -x /usr/bin/qemu-img
+          test -x /usr/sbin/sgdisk || test -x /usr/bin/sgdisk
       - name: Launch REAL STOPPED QEMU on disposable owned 0700 regular files and adversarially witness FD
         env:
           GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
