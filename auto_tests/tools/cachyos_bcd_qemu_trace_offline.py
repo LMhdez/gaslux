@@ -141,25 +141,48 @@ def correlate_qemu_writes(
         overlapped_events += 1
         distinct_offsets.add(off)
         # Block pointers cannot be assigned to a disk by ordering or naming.
+        bcd_ranges: list[dict[str, int]] = []
         if (fixture_ptr is None or rec["blkPointer"] != fixture_ptr
                 or fat32_map is None):
             categories = ["UNMAPPED_ESP_WRITE", "PROCESS_UNATTRIBUTED"]
         else:
+            require(off + n <= disk_bytes,
+                    "fixture-bound block interval exceeds virtual disk")
             data = fat32_map["bcdDataExtents"]
             meta = fat32_map["fat32MetadataExtents"]
-            if any(_overlap(off, n, e["diskOffset"], e["length"]) for e in data):
-                kind = "BCD_DATA_SECTOR_OVERLAP"
-            elif any(_overlap(off, n, e["diskOffset"], e["length"]) for e in meta):
-                kind = "FAT32_METADATA_OVERLAP"
-            else:
-                kind = "ESP_OTHER_SECTOR_OVERLAP"
-            categories = [kind, "PROCESS_UNATTRIBUTED"]
+            hit_data = False
+            for extent in data:
+                touched = _overlap(off, n, extent["diskOffset"], extent["length"])
+                if not touched:
+                    continue
+                hit_data = True
+                left = max(off, extent["diskOffset"])
+                bcd_ranges.append({
+                    "fileOffset": extent["fileOffset"]
+                                  + (left - extent["diskOffset"]),
+                    "length": touched,
+                    "cluster": extent["cluster"],
+                })
+            hit_meta = any(
+                _overlap(off, n, e["diskOffset"], e["length"])
+                for e in meta
+            )
+            categories = []
+            if hit_data:
+                categories.append("BCD_DATA_SECTOR_OVERLAP")
+            if hit_meta:
+                categories.append("FAT32_METADATA_OVERLAP")
+            if not categories:
+                categories.append("ESP_OTHER_SECTOR_OVERLAP")
+            categories.append("PROCESS_UNATTRIBUTED")
         for category in categories:
             counts[category] += 1
         if len(examples) < 64:
             examples.append({
                 "ordinal": rec["ordinal"], "offset": off,
                 "length": n, "categories": categories,
+                "first16BcdFileByteRanges": bcd_ranges[:16],
+                "bcdRangesTruncated": len(bcd_ranges) > 16,
             })
     return {
         "status": ("SYNTHETIC_GEOMETRY_CLASSIFIED_NOT_ATTESTED"
