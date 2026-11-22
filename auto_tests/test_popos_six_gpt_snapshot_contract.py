@@ -56,12 +56,14 @@ def valid_documents() -> dict[str, bytes]:
         "filesystem-fsck-before.json": fsck,
         "filesystem-fsck-after.json": fsck,
     }
-    return {name: (json.dumps(value, sort_keys=True) + "\n").encode()
-            for name, value in objects.items()}
+    return {
+        name: (json.dumps(value, sort_keys=True) + "\n").encode() for name, value in objects.items()
+    }
 
 
-def change_in_place(path: Path, *, old: bytes = b'"manifestSha256": "',
-                    replacement: bytes = b"b") -> None:
+def change_in_place(
+    path: Path, *, old: bytes = b'"manifestSha256": "', replacement: bytes = b"b"
+) -> None:
     with path.open("r+b", buffering=0) as resource:
         data = resource.read()
         pos = data.index(old) + len(old)
@@ -102,15 +104,16 @@ class SnapshotContractTests(unittest.TestCase):
     def test_red_real_old_export_must_not_publish_changed_measurement(self) -> None:
         with owner.SafeWorkspace(self.work, self.evidence) as guard:
             measured = {
-                name: measure_pinned_evidence(guard, name)["sha256"]
-                for name in owner.EVIDENCE
+                name: measure_pinned_evidence(guard, name)["sha256"] for name in owner.EVIDENCE
             }
             path = self.work / "recovery-proof.json"
             before = path.stat()
             change_in_place(path)
             after = path.stat()
-            self.assertEqual((before.st_dev, before.st_ino, before.st_size),
-                             (after.st_dev, after.st_ino, after.st_size))
+            self.assertEqual(
+                (before.st_dev, before.st_ino, before.st_size),
+                (after.st_dev, after.st_ino, after.st_size),
+            )
             try:
                 guard.export()
             except Refusal:
@@ -137,13 +140,11 @@ class SnapshotContractTests(unittest.TestCase):
             for name in owner.EVIDENCE:
                 exported = (self.evidence / name).read_bytes()
                 self.assertEqual(exported, snapshot[name].payload)
-                self.assertEqual(hashlib.sha256(exported).hexdigest(),
-                                 snapshot[name].sha256)
+                self.assertEqual(hashlib.sha256(exported).hexdigest(), snapshot[name].sha256)
             self.assertEqual(
                 (self.evidence / "evidence.sha256").read_bytes(),
                 "".join(
-                    snapshot[name].sha256 + "  " + name + "\n"
-                    for name in sorted(owner.EVIDENCE)
+                    snapshot[name].sha256 + "  " + name + "\n" for name in sorted(owner.EVIDENCE)
                 ).encode("ascii"),
             )
 
@@ -200,22 +201,23 @@ class SnapshotContractTests(unittest.TestCase):
                     elif problem in ("ENOSPC", "EIO"):
                         code = errno.ENOSPC if problem == "ENOSPC" else errno.EIO
                         with (
-                            patch.object(owner.os, "write",
-                                         side_effect=OSError(code, "synthetic")),
+                            patch.object(owner.os, "write", side_effect=OSError(code, "synthetic")),
                             self.assertRaises(OSError),
                         ):
                             guard.export(snapshot)
                     elif problem == "FSYNC":
                         with (
-                            patch.object(owner.os, "fsync",
-                                         side_effect=OSError(errno.EIO, "fsync")),
+                            patch.object(
+                                owner.os, "fsync", side_effect=OSError(errno.EIO, "fsync")
+                            ),
                             self.assertRaises(OSError),
                         ):
                             guard.export(snapshot)
                     else:
                         with (
-                            patch.object(owner.os, "close",
-                                         side_effect=OSError(errno.EIO, "close")),
+                            patch.object(
+                                owner.os, "close", side_effect=OSError(errno.EIO, "close")
+                            ),
                             self.assertRaises(Refusal),
                         ):
                             guard.export(snapshot)
@@ -320,8 +322,7 @@ class SnapshotContractTests(unittest.TestCase):
                 },
             ),
             patch.object(owner.subprocess, "run", side_effect=stub_heavy),
-            patch.object(owner.os, "fsync",
-                         side_effect=OSError(errno.EIO, "injected fsync")),
+            patch.object(owner.os, "fsync", side_effect=OSError(errno.EIO, "injected fsync")),
             contextlib.redirect_stdout(output),
             self.assertRaises(OSError),
         ):
