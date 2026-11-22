@@ -8,6 +8,8 @@ on:
       - .github/workflows/popos-six-gpt-preflight-only.yml
       - auto_tests/tools/gaslux_popos_six_gpt_*
       - auto_tests/test_popos_six_gpt_contract.py
+      - auto_tests/test_popos_six_gpt_process_boundary.py
+      - auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py
       - schemas/popos-six-gpt-lab.schema.json
       - docs/POP_OS_SIX_GPT_SYNTHETIC_LAB.md
   pull_request:
@@ -15,6 +17,8 @@ on:
       - .github/workflows/popos-six-gpt-preflight-only.yml
       - auto_tests/tools/gaslux_popos_six_gpt_*
       - auto_tests/test_popos_six_gpt_contract.py
+      - auto_tests/test_popos_six_gpt_process_boundary.py
+      - auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py
       - schemas/popos-six-gpt-lab.schema.json
       - docs/POP_OS_SIX_GPT_SYNTHETIC_LAB.md
   workflow_dispatch:
@@ -49,34 +53,45 @@ jobs:
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
-            auto_tests/test_popos_six_gpt_contract.py
+            auto_tests/test_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py \
+            auto_tests/test_popos_six_gpt_process_boundary.py
           ruff check --diff \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
-            auto_tests/test_popos_six_gpt_contract.py || true
+            auto_tests/test_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py \
+            auto_tests/test_popos_six_gpt_process_boundary.py || true
           ruff check \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
-            auto_tests/test_popos_six_gpt_contract.py
+            auto_tests/test_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py \
+            auto_tests/test_popos_six_gpt_process_boundary.py
           ruff format --diff \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
-            auto_tests/test_popos_six_gpt_contract.py
+            auto_tests/test_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py \
+            auto_tests/test_popos_six_gpt_process_boundary.py
           ruff format --check \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
-            auto_tests/test_popos_six_gpt_contract.py
+            auto_tests/test_popos_six_gpt_contract.py \
+            auto_tests/tools/gaslux_popos_six_gpt_process_boundary.py \
+            auto_tests/test_popos_six_gpt_process_boundary.py
           # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
           export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
           python3 -m unittest auto_tests.test_popos_six_gpt_contract -v
+          python3 -m unittest auto_tests.test_popos_six_gpt_process_boundary -v
           python3 -m unittest auto_tests.test_popos_reuse_full_contract -v
           python3 -m unittest auto_tests.test_windows10_popos_native_write_set -v
           python3 -m unittest auto_tests.test_windows10_popos_safety_attestation_adapter -v
