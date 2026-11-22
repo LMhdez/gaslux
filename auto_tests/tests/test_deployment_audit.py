@@ -7,7 +7,6 @@ repository files are never modified.
 from __future__ import annotations
 
 import pytest
-
 from tools import deployment_audit as audit
 
 RESULT_SCRIPT = "Scripts/libertix-post-install-result.ps1"
