@@ -41,7 +41,15 @@ def evidence() -> dict:
 class EtwOfflineTests(unittest.TestCase):
     def test_complete_fixture_has_candidate_not_process_attribution(self):
         result = etw.normalize_etw_fixture(evidence())
-        self.assertEqual(result["plausibleIrpLifetimeMatches"], 1)
+        # Positive regression retained as a token coincidence, not a
+        # plausible process/BCD write. Exporter v1 cannot prove lifetimes.
+        self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
+        self.assertTrue(result["plausibleIrpLifetimeMatchesDeprecated"])
+        self.assertEqual(result["sharedIrpIdentifierCoincidences"], 1)
+        self.assertEqual(
+            result["sharedIrpIdentifierSemantics"],
+            "UNORDERED_TOKEN_EQUALITY_ONLY_NOT_CAUSAL",
+        )
         self.assertEqual(result["status"], "PROCESS_ATTRIBUTION_UNPROVEN")
         self.assertTrue(result["sessionCompleteWithinDeclaredWindow"])
         self.assertFalse(result["processAttributionProven"])
@@ -139,9 +147,12 @@ class EtwOfflineTests(unittest.TestCase):
     def test_etw01_red_01_diskio_before_fileio_not_plausible(self):
         fixture = evidence()
         fixture["events"][3]["timestampNs"] = 1250000000
-        self.assertEqual(
-            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
-        )
+        result = etw.normalize_etw_fixture(fixture)
+        self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
+        # A deliberately noncausal identifier coincidence remains visible;
+        # it cannot be mistaken for validated ordering or process identity.
+        self.assertEqual(result["sharedIrpIdentifierCoincidences"], 1)
+        self.assertFalse(result["processAttributionProven"])
 
     def test_etw01_red_02_pid_generation_overlaps_after_fileio(self):
         fixture = evidence()
@@ -158,9 +169,9 @@ class EtwOfflineTests(unittest.TestCase):
             "kind": "FileIoWrite", "timestampNs": 1420000000,
             "fileObject": "0xb456", "pid": 42, "irp": "0xbbb",
         })
-        self.assertEqual(
-            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
-        )
+        result = etw.normalize_etw_fixture(fixture)
+        self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
+        self.assertEqual(result["sharedIrpIdentifierCoincidences"], 0)
 
     def test_etw01_reused_fileobject_later_name_invalidates_lifetime(self):
         fixture = evidence()
@@ -179,9 +190,9 @@ class EtwOfflineTests(unittest.TestCase):
             "irp": "0xbbb", "diskOffset": 1049088,
             "length": 512, "diskNumber": 0,
         })
-        self.assertEqual(
-            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
-        )
+        result = etw.normalize_etw_fixture(fixture)
+        self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
+        self.assertEqual(result["sharedIrpIdentifierCoincidences"], 0)
 
     def test_etw01_stop_before_start_remains_unattributed(self):
         fixture = evidence()
@@ -199,6 +210,13 @@ class EtwOfflineTests(unittest.TestCase):
         self.assertEqual(
             etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
         )
+
+    def test_etw01_unrelated_irp_labels_are_not_counted(self):
+        fixture = evidence()
+        fixture["events"][3]["irp"] = "0xccc"
+        result = etw.normalize_etw_fixture(fixture)
+        self.assertEqual(result["sharedIrpIdentifierCoincidences"], 0)
+        self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
 
     def test_etw01_multiple_process_stops_not_plausible(self):
         fixture = evidence()
@@ -228,9 +246,9 @@ class EtwOfflineTests(unittest.TestCase):
     def test_etw01_event_presentation_order_is_not_clock_proof(self):
         fixture = evidence()
         fixture["events"].reverse()
-        self.assertEqual(
-            etw.normalize_etw_fixture(fixture)["plausibleIrpLifetimeMatches"], 0
-        )
+        result = etw.normalize_etw_fixture(fixture)
+        self.assertEqual(result["plausibleIrpLifetimeMatches"], 0)
+        self.assertEqual(result["sharedIrpIdentifierCoincidences"], 1)
 
     def test_etw01_structural_invalid_not_silent_denial(self):
         fixture = evidence()
