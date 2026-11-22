@@ -111,7 +111,7 @@ jobs:
           set -e
           test "$result" -eq 1
           grep -Fq 'SAFETY2-346-01 RED: descendant is still alive after' "$RUNNER_TEMP/safety2-old-red.log"
-          grep -Fq '1 failed' "$RUNNER_TEMP/safety2-old-red.log"
+          grep -Fq 'FAILED ../safety-oracle/auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py::test_red_timeout_must_reap_descendant_inherited_pipe' "$RUNNER_TEMP/safety2-old-red.log"
           printf '%s\n' 'EXPECTED RED: old immutable #346 source leaked inherited-pipe descendant; test correctly FAILED.' >> "$GITHUB_STEP_SUMMARY"
       - name: B — independent GREEN, exactly the same oracle and corrected producer
         shell: bash
