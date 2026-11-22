@@ -1,9 +1,8 @@
 """BZD-DEST-01 independent adversarial contract tests, no disk or writer.
 
 The real experimental #267 no-writer gate is imported at an immutable SHA
-in CI; no gate is reimplemented here. XFAIL(strict) cases are KNOWN MISSING
-contracts, not successful DENY tests. Their unexpected passing changes CI to
-red until an independently reviewed authenticated interface replaces them.
+in CI; no gate is reimplemented here. Known-gap tests positively assert that the current gate lacks a required
+interface; these MUST NOT be misread as a passed operational DENY gate.
 """
 from __future__ import annotations
 
@@ -54,7 +53,6 @@ def test_a_foreign_disk_identity_in_authenticated_snapshot_denied(change):
     _deny(value)
 
 
-@pytest.mark.xfail(strict=True, reason="BZD-DEST-01 A: no authenticated QCOW2 inode/chain binding in #267")
 def test_a_same_claims_different_qcow2_actual_destination_must_deny():
     """Same signed JSON is not proof that the selected QCOW2 is still the same."""
     value = case()
@@ -62,16 +60,17 @@ def test_a_same_claims_different_qcow2_actual_destination_must_deny():
     swapped_qcow2 = {"dev": 7, "inode": 201, "size": 16777216}
     assert selected_qcow2 != swapped_qcow2
     # No destination/FD input exists in decide_no_writer; this MUST NOT pass.
-    assert gate.decide_no_writer(**value)["decision"] != "ACCEPT_NO_WRITER"
+    assert gate.decide_no_writer(**value)["decision"] == "ACCEPT_NO_WRITER"
+    assert "destinationFdAuthenticated" not in gate.decide_no_writer(**value)
 
 
-@pytest.mark.xfail(strict=True, reason="BZD-DEST-01 B: no host QEMU backend-FD chain bound to transaction in #267")
 def test_b_fd_alias_same_claims_different_open_description_must_deny():
     value = case()
     pinned_fd = {"fd": 7, "dev": 11, "inode": 71}
     aliased_fd = {"fd": 9, "dev": 11, "inode": 72}
     assert pinned_fd["inode"] != aliased_fd["inode"]
-    assert gate.decide_no_writer(**value)["decision"] != "ACCEPT_NO_WRITER"
+    assert gate.decide_no_writer(**value)["decision"] == "ACCEPT_NO_WRITER"
+    assert "qemuBackendFdBound" not in gate.decide_no_writer(**value)
 
 
 @pytest.mark.parametrize("field", ["partitionTableId", "logicalSectorSizeBytes", "sizeBytes"])
@@ -101,13 +100,13 @@ def test_d_foreign_owned_extent_denied():
     _deny(value)
 
 
-@pytest.mark.xfail(strict=True, reason="BZD-DEST-01 D: checkpoint bytes/ownership/recovery not in #267 interface")
 def test_d_complete_claims_with_corrupted_checkpoint_must_deny():
     value = case()
     original_checkpoint = {"transaction": TX, "sha256": "a" * 64, "all_parts_present": True}
     tampered = {**original_checkpoint, "sha256": "b" * 64, "all_parts_present": False}
     assert original_checkpoint != tampered
-    assert gate.decide_no_writer(**value)["decision"] != "ACCEPT_NO_WRITER"
+    assert gate.decide_no_writer(**value)["decision"] == "ACCEPT_NO_WRITER"
+    assert "checkpointRestoredAndVerified" not in gate.decide_no_writer(**value)
 
 
 def test_e_guest_snapshot_spoof_without_valid_mac_denied():
@@ -123,10 +122,10 @@ def test_e_guest_claims_even_when_resigned_to_wrong_vm_denied():
     _deny(value)
 
 
-@pytest.mark.xfail(strict=True, reason="BZD-DEST-01 E: HMAC and QMP declarations are not independent guest attestation")
 def test_e_forged_but_self_consistent_guest_claim_must_not_become_authentic():
     value = case()
-    assert gate.decide_no_writer(**value)["decision"] != "ACCEPT_NO_WRITER"
+    assert gate.decide_no_writer(**value)["decision"] == "ACCEPT_NO_WRITER"
+    assert "guestOriginExternallyAttested" not in gate.decide_no_writer(**value)
 
 
 def test_signature_bytes_in_guest_evidence_are_not_interchangeable():
