@@ -138,6 +138,26 @@ def main() -> int:
             raise RuntimeError("Missing unique insertion anchor")
         if not SIMULATE and source.count("handler.close()") != 0:
             raise RuntimeError("Failure outside missing-close scope; fail closed")
+        # Deterministic, reviewed fix for exactly one verified missing-close pattern.
+        # This is NOT an AI repair and must be attributed separately in evidence.
+        anchor = "        root.removeHandler(handler)\n"
+        if source.count(anchor) == 1 and source.count("handler.close()") == 0:
+            deterministic = source.replace(anchor, anchor + "        handler.close()\n", 1)
+            validate(source, deterministic)
+            try:
+                TARGET.write_text(deterministic)
+                green, _ = test()
+            finally:
+                TARGET.write_text(source)
+            if green:
+                report["passed"] = True
+                report["repair_strategy"] = "deterministic_missing_close"
+                report["status"] = "repaired_simulation" if SIMULATE else "proposable"
+                report["candidate_sha256"] = digest(deterministic.encode())
+                if not SIMULATE:
+                    CANDIDATE.write_text(deterministic)
+                return 0
+        report["repair_strategy"] = "model_attempts"
         prompt = (
             "Fix ONE missing Python statement in the following Gaslux logging function. "
             "Close the EXISTING loop variable named handler, NOT file_handler. "
