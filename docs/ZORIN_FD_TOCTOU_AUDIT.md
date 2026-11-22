@@ -1,114 +1,145 @@
-# GASLUX-ZORIN: descriptor / pathname TOCTOU audit (synthetic only)
+# GASLUX-ZORIN — RAW/GPT FD binding audit and integration
 
-## Reproduced defect BEFORE the mitigation
+**Scope:** disposable *synthetic-only* Zorin RAW/GPT write-set observer. This
+document is not evidence of Zorin installation, disk-write authorization,
+Windows dual boot, BCD/WinRE recovery or in-place rollback.
 
-Dependent stack: Zorin PR #277 (HEAD 7ea97f2c2d4a7f9546ad00ad40719ebc3c498470),
-based on #264. Unmodified Safety #265 reader:
-8ed912c6934c33354b0a814201c7217043bd0197.
+## Identity and dependency history
 
-In auto_tests/tools/zorin_synthetic_writeset.py, verify_private_synthetic()
-opened and authenticated baseline.raw, trial.raw and checkpoint.raw by
-owned_fd(), then called read_gpt(root, name, policy). That function used
-inspect_gpt_image(root / name), which OPENED THE PATH A SECOND TIME. Byte
-comparison, hash and final fstat checks used the original FDs. Therefore
-GPT data and compared bytes could refer to distinct inodes.
+- Zorin [PR #264](https://github.com/LMhdez/gaslux/pull/264):
+  previous synthetic Windows COW/rootfs laboratory, NOT native installation.
+- Zorin [PR #277](https://github.com/LMhdez/gaslux/pull/277):
+  typed no-writer write-set and byte-diff/checkpoint fixtures.
+- Zorin [PR #281](https://github.com/LMhdez/gaslux/pull/281):
+  read-only descriptor TOCTOU diagnosis and FD-binding integration.
+- Previous Safety #265 reader was pinned at
+  SHA 8ed912c6934c33354b0a814201c7217043bd0197.
+  Related #286 was closed without merge.
+- Canonical Safety [PR #307](https://github.com/LMhdez/gaslux/pull/307)
+  merged into dev at SHA d5eb20114df34a778ada1af1f6f4f6bff0c49845.
+  File assets/live/libertix_disk_identity_gate.py has Git blob
+  SHA e599e532fe3cc1139c1833f27035c668c73e6926 at that merge.
 
-The BEFORE-fix reproduction in GitHub Actions #44907293085, on commit
-ce52f44a48d0397dc3caeffae0f311c5babbba28, passed 11 deterministic
-tests, including deliberately asserting unsafe synthetic classifications.
-It demonstrated successful SYNTHETIC_NO_CHANGE returns when a same-size,
-valid-GPT, same-GUID regular file replaced baseline.raw or trial.raw
-before the Safety GPT path open, including exactly at os.open. Swapping
-checkpoint.raw AFTER owned_fd and swapping trial.raw between GPT and byte
-comparison were also accepted, because original pinned FDs still held the
-old content. A same-GPT hardlink was accepted on the reopened path.
-A synthetic ESP directory replacement between scandir and open could
-also produce a matching digest despite a changed directory inode.
+The Zorin audit branch has NO separate copy of the Safety parser. Its
+workflow checks out only the canonical module and canonical test file
+from the pinned #307 merge commit into safety307/ and imports it through
+PYTHONPATH=safety307/assets/live. The workflow checks the exact checkout
+HEAD, the presence of inspect_gpt_fd and the absence of Zorin's former
+path-reopen operation. This avoids integrating unrelated dev commits.
 
-Correct refusals BEFORE fixing were observed for a changed GPT PARTUUID,
-a final symlink substitution rejected by Safety O_NOFOLLOW, and a changed
-EFI leaf between entry.stat and os.open. This matters: not all races were
-exploitable or equally classified.
+## RED — confirmed source identity mismatch
 
-These are real demonstrations of source-identity mismatch in a disposable
-16 MiB synthetic RAW fixture, NOT evidence of exploitation on a guest,
-Windows disk or actual ESP.
+The original #277 verifier used owned_fd() to pin baseline.raw and trial.raw,
+but read_gpt(root, name, policy) delegated to the old Safety
+inspect_gpt_image(root / name), causing a second pathname opening. Hashes
+and full byte-diff remained tied to the first FDs. GPT metadata could
+therefore be measured from a different inode to the one compared.
 
-## Mitigation in the stacked audit branch
+- [Actions #44907293085](https://github.com/LMhdez/gaslux/actions/runs/44907293085),
+  commit ce52f44a48d0397dc3caeffae0f311c5babbba28, reproduced
+  unsafe SYNTHETIC_NO_CHANGE on swapped, same-size, valid-GPT regular
+  source pathnames and hardlinks; 11/11 RED diagnostic tests passed.
+- Correct refusals were observed for changed PARTUUID, final symlink
+  and mutated EFI leaf. Not all swaps caused the same failure.
+- [Actions #44908036329](https://github.com/LMhdez/gaslux/actions/runs/44908036329)
+  made the earlier branch deny-only with E_GPT_FD_BINDING_REQUIRED;
+  184/184 tests passed. That refusal was correct before Safety #307.
 
-1. Preserve the UNMODIFIED Safety parser and all primary/backup GPT CRC,
-   GUID, PARTUUID, offset and partition checks. No second GPT parser.
-2. Keep hash/byte comparison on already-owned FDs and preserve existing
-   negative failure codes. Before publishing a positive result, unconditionally
-   refuse E_GPT_FD_BINDING_REQUIRED, even if every diagnostic check passes.
-   The current Safety API cannot prove that its reopened path names identify
-   the same objects as those authenticated FDs. A final pathname recheck
-   would not solve rename-and-restore (ABA). Therefore NO success
-   classification is emitted until a reviewed Safety FD interface exists.
-3. Anchor the synthetic ESP directory traversal to opened directory FDs:
-   os.scandir(fd), os.stat(name, dir_fd=fd, follow_symlinks=False),
-   os.open(name, ..., dir_fd=fd), cross-check inode/device and inspect
-   via the retained descriptor. Check parent and child directory identity
-   after traversing. This addresses the tested directory/entry reopen
-   race, but does not independently attest any ESP/FAT32.
-4. Retain synthetic-only, no-writer, no external attestation,
-   no Windows-rollback and no native-installer flags. Modify no
-   signed catalogs, production backend, Safety or Observer module.
+RED proves an error in the synthetic tool, NOT exploitation of any
+Windows, physical disk or real ESP.
 
-The positive no-swap and Linux-partition-only cases remain demonstrable
-at the primitive compare_raw() level, but top-level
-verify_private_synthetic() REFUSES E_GPT_FD_BINDING_REQUIRED. A temporary
-refusal is safer than an invalid claim that GPT measurement and raw
-comparison are bound to one file.
+## GREEN — canonical Safety FD integration in PR #281
 
-## Next Safety interface required (PROPOSAL, NOT implemented)
+The Zorin code now imports
+inspect_gpt_fd(fd: int, *, logical_sector_size: int) -> dict
+from the exact pinned Safety #307 source and applies it to the already
+authenticated baseline.raw and trial.raw FDs. Those SAME FDs also support
+baseline/checkpoint SHA-256 verification, assert_snapshot_matches(),
+full compare_raw() byte-diff, subsequent integrity hashes and final
+fstat() identity checks. Checkpoint and OVMF paths are separately
+opened and pinned; the synthetic EFI tree uses dir_fd traversal.
 
-Safety #265 would need a reviewed read-only interface such as:
+The canonical reader duplicates the original FD, uses only pread(),
+enforces read-only regular-file access, validates protective MBR,
+both GPT headers, CRCs, entry arrays, GUID/PARTUUID/geometry, re-reads
+GPT regions and revalidates file identity and timestamps. No Zorin
+GPT parser copy or monkeypatched Safety open is used.
 
-    inspect_gpt_fd(fd: int, *, logical_sector_size: int) -> dict
+Zorin also checks baseline, trial and checkpoint identity (including
+ctime, inode and hardlink count) at the end of verification; a final
+lstat basename check is a supplemental persistent-rename detector,
+NOT proof of the bytes read. Every GPT/RAW measurement uses pinned FDs.
 
-It must operate solely on a validated, duplicated already-open regular
-file descriptor via os.pread, never reopen caller-controlled pathnames.
-No /proc/self/fd symlink trick, monkey-patched os.open, local GPT parser
-copy or pathname before/after checks as an authentication substitute.
-Keep the canonical CRC/PMBR, primary/backup, GUID/PARTUUID and exact
-geometrical validation. Verify FD identity/size before and after.
-Even this API does not prove against arbitrary concurrent in-place writes
-or a malicious data source; immutable backing, external provenance,
-transaction authority, host/guest binding and restored checkpoint remain
-separate Safety requirements.
+Valid synthetic results are restored:
 
-The synthetic ESP directory remains a path inventory surrogate. Actual
-FAT32/EFI, BootOrder, Windows Boot Manager, BCD, WinRE and hardware recovery
-must be tested separately after Safety and Observer approval.
+- SYNTHETIC_NO_CHANGE: no observed byte differences, all checks pass.
+- SYNTHETIC_ONLY_WITHIN_ROOT: changes confined to the owned synthetic
+  Linux-root byte range, all protected areas unchanged.
+- REFUSED: disk/checkpoint/ESP/OVMF corruption, foreign source identity,
+  PARTUUID changes, GPT CRC errors, symlink/hardlink and tested TOCTOU.
 
-## Before/after validation
+Both positive results are DIAGNOSTIC ONLY, NEVER a write authorization.
 
-- BEFORE: Actions #44907293085, SUCCESS 11/11 pre-fix reproduction tests
-  at SHA ce52f44a48d0397dc3caeffae0f311c5babbba28. An unsafe
-  SYNTHETIC_NO_CHANGE was reproduced; green here means the diagnostic
-  reproduced the defect, NOT safety.
-- AFTER: Actions #44907672555, SUCCESS 12/12 adversarial swap refusals
-  at SHA 89d38038128e2c205625f2c73aeb581877b3ffb8.
-- Full post-mitigation CI runs 12 TOCTOU + 32 synthetic + 140
-  Zorin/Mint/Windows regression tests = 184, Python compileall,
-  Ruff check and Ruff format and JSON Schema Draft 2020-12.
-- Original PR #277, Safety #265/#267, Observer #259/#272 remain untouched.
-- All mutations are in disposable temporary private RAW/EFI test files;
-  no QEMU, Ubiquity, GRUB, Windows Setup, physical disk or OS installation.
-
-## Review and status
-
-GASLUX-SAFETY should review the actual reproduced races,
-unconditional admission refusal, dirfd implementation and requested
-descriptor API. This audit cannot close the underlying GPT binding gap
-until Safety publishes that API and independent review passes.
-
+Authorization and schema constraints remain unchanged:
 authorization=DENY_NO_WRITER
 syntheticOnly=true
 transactionOwned=false
 externalAttestationVerified=false
 windowsRollbackVerified=false
 nativeInstallerInvoked=false
+writeOperations=[]
 
-No rollback Windows, native dual boot, P3/P4/P5 or stable status claimed.
+## Adversarial proof and post-integration CI
+
+New deterministic tests swap baseline, trial and checkpoint filenames
+after opening, test a same-GUID valid GPT on another inode, rename
+during real Safety os.dup(), swap between GPT inspection and raw-diff,
+replace sources with symlinks/hardlinks, pass a closed descriptor,
+perform an in-place GPT mutation during the real FD read, and reject a
+valid foreign PARTUUID. Existing fixtures exercise primary/backup CRC
+corruption, protected sectors, canaries, EFI and OVMF modifications,
+and synthetic recovery.
+
+The test that forbids a second RAW pathname open spies on actual
+os.open() while allowing the initial owned_fd opens. Race tests change
+actual temporary bytes/inodes, never fake GPT return values.
+
+[Actions #45020448074](https://github.com/LMhdez/gaslux/actions/runs/45020448074)
+completed SUCCESS with:
+- 17/17 Zorin TOCTOU tests;
+- 32/32 Zorin synthetic write-set/checkpoint tests;
+- 140/140 Zorin/Mint/Windows regression tests;
+- 25/25 canonical Safety #307 FD/identity pytest tests;
+- 214/214 total, Python compileall, Ruff lint and format, plus JSON
+  Schema Draft 2020-12 assertions.
+
+CI uses a GitHub-hosted runner, private temporary synthetic RAW files,
+source hashes and a bounded JSON artifact. No QEMU, installer, Windows
+Setup, GRUB, physical disk or production write operations were run.
+
+## Remaining trust limits
+
+FD binding CLOSES the demonstrated pathname/second-open GPT versus RAW
+identity mismatch. It does NOT make arbitrary concurrent in-place
+mutations impossible. Repeated hashes, GPT rereads and ctime checks
+detect tested races but do not provide immutable backing, a global
+filesystem lock, or protection from adversarial rename-and-restore ABA.
+A basename lstat cannot make a source inherently trustworthy.
+
+The ESP tree is synthetic; it does not validate FAT32, Windows Boot
+Manager, NVRAM, BCD or WinRE. A digest and copy restore are not an
+independently authenticated checkpoint or Windows rollback. Host/guest
+disk mapping, external provenance, signed transaction authority,
+write fencing and independent recovery still require Safety/Observer
+review before ANY native installer write.
+
+Do not promote P3/P4/P5 or claim Windows dual boot or stability.
+
+## Handoff
+
+Request a narrow independent GASLUX-SAFETY DIFFERENTIAL review of the
+Zorin integration to the already-reviewed #307 FD reader and the
+adversarial tests. Do NOT repeat an undirected audit of the canonical
+parser without a new finding. After review, the Integrator may
+reconcile #277 + #281, respecting the current dependency graph and
+branch protections. This PR remains draft; no merge here.
