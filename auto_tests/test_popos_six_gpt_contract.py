@@ -194,37 +194,47 @@ class SixGptNegativeTests(unittest.TestCase):
             {"start": 4096, "length": c.SIZE-4096, "depth": 0,
              "data": False, "zero": False},
         ])
-        with patch.object(lab, "chain"), patch.object(lab, "command", return_value=full):
-            with self.assertRaisesRegex(Refusal, "not materialized"):
-                lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=full),
+            self.assertRaisesRegex(Refusal, "not materialized"),
+        ):
+            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
         for error in (
             Refusal("qemu-img failed"),
             subprocess.TimeoutExpired("qemu-img", 1),
             ValueError("malformed JSON"),
         ):
-            with patch.object(lab, "chain"), patch.object(lab, "command", side_effect=error):
-                with self.assertRaises(type(error)):
-                    lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+            with (
+                patch.object(lab, "chain"),
+                patch.object(lab, "command", side_effect=error),
+                self.assertRaises(type(error)),
+            ):
+                lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
         injected = json.dumps([
             {"start": 0, "length": 8192, "depth": 1, "data": True, "zero": False},
             {"start": 8192, "length": 4096, "depth": 0, "data": True, "zero": False},
             {"start": 12288, "length": c.SIZE-12288, "depth": 1,
              "data": True, "zero": False},
         ])
-        with patch.object(lab, "chain"), patch.object(lab, "command", return_value=injected):
-            with self.assertRaises(lab.ProtectedFaultDetected):
-                lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=injected),
+            self.assertRaises(lab.ProtectedFaultDetected),
+        ):
+            lab.verify_injected_fault(Path("child"), Path("backing"), 8192, 4096)
 
     def test_safety_f04_zero_overlay_and_map_validation(self):
         zero = [{"depth": 0, "data": False, "zero": True, "start": 0,
                  "length": 4096},
                 {"depth": 1, "data": True, "zero": False, "start": 4096,
                  "length": c.SIZE-4096}]
-        with patch.object(lab, "chain"), patch.object(
-            lab, "command", return_value=json.dumps(zero)
+        with (
+            patch.object(lab, "chain"),
+            patch.object(lab, "command", return_value=json.dumps(zero)),
+            self.assertRaisesRegex(Refusal, "owned extents"),
         ):
-            with self.assertRaisesRegex(Refusal, "owned extents"):
-                lab.ensure_empty_child(Path("child"), Path("backing"))
+            lab.ensure_empty_child(Path("child"), Path("backing"))
         for malformed in (
             "{", "[]", '[{"depth":0,"data":false,"zero":true,"start":0,"length":4096}]',
             json.dumps([{"depth": 1, "data": True, "zero": False, "start": 0,
