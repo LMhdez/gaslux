@@ -106,8 +106,8 @@ def map_bcd_fat32(
             and len(volume) == (esp_end_lba - esp_start_lba + 1) * SECTOR,
             "ESP image length does not match authenticated GPT sector geometry")
     boot = volume[:SECTOR]
-    require(boot[:1] in (b"\\xeb", b"\\xe9")
-            and boot[510:512] == b"\\x55\\xaa"
+    require(boot[:1] in (b"\xeb", b"\xe9")
+            and boot[510:512] == b"\x55\xaa"
             and _u16(boot, 11) == SECTOR,
             "invalid FAT32 boot sector/BPB signature")
     spc, reserved, fats = boot[13], _u16(boot, 14), boot[16]
