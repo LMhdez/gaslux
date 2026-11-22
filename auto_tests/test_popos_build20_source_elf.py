@@ -120,6 +120,8 @@ class TinyExtractedFixtureTests(unittest.TestCase):
             "cargoLockOfActualBuildVerified",
             "elfBuildIdSourceBindingVerified",
             "isoGpgVerificationPerformedByWorkflow",
+            "dpkgStatusOriginBoundToPinnedIso",
+            "elfExtractionOriginBoundToPinnedIso",
             "firstPersistentWriteProvenForPinnedElf",
             "firstStateChangeProvenForPinnedElf",
             "distinstExecuted",
@@ -129,6 +131,17 @@ class TinyExtractedFixtureTests(unittest.TestCase):
             "stable",
         ):
             self.assertIs(report[field], False, field)
+
+    def test_foreign_but_valid_dpkg_version_never_authenticates_source(self) -> None:
+        self.status.write_bytes(
+            STATUS.replace(b"0.3.2~1759348000~24.04~143114f", b"9.9~1759348000~24.04~abc123f")
+        )
+        report = self.inspect()
+        self.assertIn("9.9", report["packageMetadata"]["version"])
+        self.assertFalse(report["dpkgStatusOriginBoundToPinnedIso"])
+        self.assertFalse(report["elfExtractionOriginBoundToPinnedIso"])
+        self.assertFalse(report["sourceToElfCorrespondenceVerified"])
+        self.assertEqual(report["result"], "SOURCE_TO_ELF_UNPROVEN")
 
     def test_wrong_elf_hash_refuses(self) -> None:
         self.elf.write_bytes(b"FOREIGN-ELF")
