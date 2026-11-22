@@ -97,9 +97,7 @@ def test_unknown_top_level_media_type_remains_refused():
     manifest["mediaType"] = "application/x-unsafe-container"
     a = json.dumps(manifest).encode()
     with pytest.raises(Refusal, match="manifest mediaType"):
-        validate_metadata(
-            a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
-        )
+        validate_metadata(a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b))
 
 
 def test_synthetic_oci_manifest_and_config_chained():
