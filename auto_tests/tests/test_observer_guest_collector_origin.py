@@ -18,7 +18,6 @@ import socket
 import subprocess
 import time
 import uuid
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -34,18 +33,17 @@ from auto_tests.installer_observer.guest_collector_lab_protocol import (
 from auto_tests.installer_observer.guest_transport_peer_boundary import (
     LocalSessionPins,
     LocalTransportWitness,
-    TransportBoundaryRefused,
 )
 from auto_tests.installer_observer.qemu_local_disk_witness import QemuLocalDiskWitness
 from auto_tests.tests.test_observer_qemu_real_disk_readonly import (
     make_qcow,
     make_raw,
-    pinned,
     pins_for,
     shutdown,
     start_qemu,
-    workspace,
 )
+
+pytest_plugins = ("auto_tests.tests.test_observer_qemu_real_disk_readonly",)
 
 COLLECTOR_SOURCE = """#!/bin/busybox sh
 export PATH=/bin
@@ -88,7 +86,7 @@ def _run(*args: str, **kwargs: object) -> subprocess.CompletedProcess:
 
 
 def _kernel_and_modules() -> tuple[Path, str, dict[str, str]]:
-    kernels = sorted(Path("/boot").glob("vmlinuz-*"), reverse=True)
+    kernels = sorted(Path("/boot").glob("vmlinuz-*-generic"), reverse=True)
     for kernel in kernels:
         release = kernel.name.removeprefix("vmlinuz-")
         if not (Path("/lib/modules") / release).is_dir():
@@ -347,7 +345,9 @@ def test_guest_origin_adversarial_protocol_denied(tmp_path, name):
             state.consume(challenge, legitimate)
     elif name == "WRONG_VM_SESSION":
         with pytest.raises(GuestCollectorDenied, match="WRONG_VM_SESSION"):
-            state.consume(challenge, legitimate.replace(challenge.session.encode(), b"other-session"))
+            state.consume(
+                challenge, legitimate.replace(challenge.session.encode(), b"other-session")
+            )
     elif name == "COLLECTOR_HASH_MISMATCH":
         with pytest.raises(GuestCollectorDenied, match="COLLECTOR_HASH_MISMATCH"):
             state.consume(challenge, legitimate.replace(COLLECTOR_SHA.encode(), b"f" * 64))

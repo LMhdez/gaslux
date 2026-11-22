@@ -12,7 +12,6 @@ import re
 import socket
 import sqlite3
 import stat
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -52,7 +51,9 @@ class CollectorChallenge:
         return f"{_VERSION}|{self.session}|{self.nonce}\n".encode("ascii")
 
 
-def response_bytes(challenge: CollectorChallenge, *, boot_id: str = "labboot", counter: int = 1) -> bytes:
+def response_bytes(
+    challenge: CollectorChallenge, *, boot_id: str = "labboot01", counter: int = 1
+) -> bytes:
     """Construct untrusted guest-like fixture bytes; NOT an attestation."""
     _check(type(boot_id) is str and _SESSION.fullmatch(boot_id) is not None, "BAD_BOOT_ID")
     _check(type(counter) is int and 1 <= counter <= 2147483647, "BAD_COUNTER")
@@ -178,7 +179,8 @@ class LabChallengeLedger:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             changed = db.execute(
-                "UPDATE challenges SET used=1 WHERE session=? AND nonce=? AND collector=? AND used=0",
+                "UPDATE challenges SET used=1 WHERE session=? AND nonce=? "
+                "AND collector=? AND used=0",
                 (challenge.session, challenge.nonce, challenge.collector_sha256),
             ).rowcount
             _check(changed == 1, "OLD_NONCE_REPLAY_OR_UNISSUED")
