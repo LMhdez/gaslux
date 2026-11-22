@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - integration/protected-authority-readiness-deny-only-20261122
+      - fix/protected-readiness-f01-postcheck-20261122
     paths:
       - 'auto_tests/tools/protected_authority_readiness_offline.py'
       - 'auto_tests/tests/test_protected_authority_readiness_offline.py'
+      - 'auto_tests/tests/test_protected_authority_readiness_f01.py'
       - 'auto_tests/fixtures/protected-authority-readiness/**'
       - 'schemas/protected-authority-readiness-v1.schema.json'
       - 'docs/PROTECTED_AUTHORITY_READINESS_OFFLINE.md'
@@ -15,6 +17,7 @@ on:
     paths:
       - 'auto_tests/tools/protected_authority_readiness_offline.py'
       - 'auto_tests/tests/test_protected_authority_readiness_offline.py'
+      - 'auto_tests/tests/test_protected_authority_readiness_f01.py'
       - 'auto_tests/fixtures/protected-authority-readiness/**'
       - 'schemas/protected-authority-readiness-v1.schema.json'
       - 'docs/PROTECTED_AUTHORITY_READINESS_OFFLINE.md'
@@ -132,3 +135,30 @@ jobs:
         run: python3 -m pytest -q "$GASLUX_READINESS_PIN_ROOT/safety/auto_tests/tests/test_prewrite_no_writer.py"
       - name: Adversarial readiness gate must remain BLOCKED_TRUST_ROOT
         run: python3 -m pytest -q auto_tests/tests/test_protected_authority_readiness_offline.py
+      - name: F-01 original module and schema-accepted JSON types (RED before fix)
+        run: python3 -m pytest -q auto_tests/tests/test_protected_authority_readiness_f01.py
+      - name: Verify all four pinned checkouts AFTER tests (tracked bytes, index, HEAD)
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in \
+            trigger:1a6446b408c78386e720f8d2b1f2063c1d3f7db1:auto_tests/tools/observer_gpt_qemu_one_shot.py \
+            ledger:fda13b8a2a48d8e5f00c3f9be306499d85e0d336:auto_tests/tools/observer_one_shot_ledger_offline.py \
+            safety:0be04192acd542646a5b6cd952e01620379edf5d:assets/live/libertix_prewrite_no_writer.py \
+            observer:e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9:auto_tests/installer_observer/host_qemu_fd_evidence.py; do
+            name="${spec%%:*}"
+            rest="${spec#*:}"
+            expected="${rest%%:*}"
+            module="${rest#*:}"
+            root="$GASLUX_READINESS_PIN_ROOT/$name"
+            test "$(git -C "$root" rev-parse HEAD)" = "$expected"
+            git -C "$root" diff --exit-code --quiet
+            git -C "$root" diff --cached --exit-code --quiet
+            test -z "$(git -C "$root" status --porcelain --untracked-files=no)"
+            test -z "$(git -C "$root" ls-files --deleted)"
+            committed_blob="$(git -C "$root" rev-parse "HEAD:$module")"
+            checked_blob="$(git -C "$root" hash-object --path="$module" "$root/$module")"
+            test "$committed_blob" = "$checked_blob"
+            printf 'POST_TEST_PIN_OK %s %s %s\n' "$name" "$expected" "$committed_blob"
+          done
