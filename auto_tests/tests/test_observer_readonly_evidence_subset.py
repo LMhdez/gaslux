@@ -56,8 +56,18 @@ class ObserverEvidenceReadOnlyTests(unittest.TestCase):
             evidence.unseal({"manifest": {}, "sha256": "bad", "authorized": True})
 
     def test_unsafe_basenames_refused(self) -> None:
-        for name in ("../boot", "/tmp/other", "bad\\name", "bad:name", "CON", "COM1",
-                     "LPT9.txt", "x.", "", "white space"):
+        for name in (
+            "../boot",
+            "/tmp/other",
+            "bad\\name",
+            "bad:name",
+            "CON",
+            "COM1",
+            "LPT9.txt",
+            "x.",
+            "",
+            "white space",
+        ):
             with self.subTest(name=name), self.assertRaises(evidence.Refusal):
                 evidence.basename(name)
         self.assertEqual(evidence.basename("evidence-file_1.json"), "evidence-file_1.json")
