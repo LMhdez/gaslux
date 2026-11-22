@@ -368,6 +368,7 @@ def test_legacy_digest_eio_refused(tmp_path, monkeypatch):
         with pytest.raises(small.DestinationRefused, match="FD_READ_FAILED"):
             small._digest(stream.fileno(), hashlib.sha256(b"x" * 1024).hexdigest())
 
+
 def _real_disposable_qemu_info(monkeypatch, code, *arguments):
     """Keep all Popen process-group kwargs when injecting a real Python child."""
     popen = subprocess.Popen
