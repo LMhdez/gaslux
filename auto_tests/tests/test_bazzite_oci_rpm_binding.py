@@ -440,3 +440,41 @@ def test_nonempty_sqlite_wal_still_blocks_package_binding():
     assert output["bootcRpmIdentity"]["status"] == "BOOTC_PACKAGE_BINDING_UNPROVEN"
     assert output["bootcVersionVerified"] is False
     assert all(output[k] is False for k in NO_WRITE)
+
+
+def test_real_sqlite_wal_format_header_immutable_read_only_binding(tmp_path):
+    """RED before immutable host-copy fix: deserialize() raises SQLITE_CANTOPEN."""
+    elf = elf_fixture()
+    digest = hashlib.sha256(elf).hexdigest()
+    db_path = tmp_path / "rpmdb-wal-mode.sqlite"
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        conn.execute("CREATE TABLE Packages(hnum INTEGER PRIMARY KEY, blob BLOB NOT NULL)")
+        conn.execute(
+            "INSERT INTO Packages(blob) VALUES (?)",
+            (sqlite3.Binary(rpm_header_fixture(digest=digest)),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    raw = db_path.read_bytes()
+    assert raw.startswith(b"SQLite format 3\x00")
+    assert raw[18:20] == b"\x02\x02"  # SQLite WAL read/write format numbers
+    overlay, budgets, descs = apply(
+        [
+            layer(
+                {
+                    "usr/bin/bootc": elf,
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite": raw,
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite-wal": b"",
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite-shm": b"\0" * 32768,
+                }
+            )
+        ]
+    )
+    output = result(overlay, budgets, descs)
+    assert output["bootcRpmIdentity"]["status"] == "BOOTC_RPM_IDENTITY_VERIFIED"
+    assert output["bootcRpmIdentity"]["rpmPackage"]["version"] == "1.17.1"
+    assert output["bootcToFilesystemAvailableInBinaryVerified"] is False
+    assert all(output[flag] is False for flag in NO_WRITE)
