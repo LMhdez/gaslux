@@ -143,3 +143,40 @@ adversarial tests. Do NOT repeat an undirected audit of the canonical
 parser without a new finding. After review, the Integrator may
 reconcile #277 + #281, respecting the current dependency graph and
 branch protections. This PR remains draft; no merge here.
+
+
+## Integration: eight-file clean-dev composition (2026-11-22)
+
+The eight-file subset is the five-file #277 synthetic write-set plus the
+three new #281 FD/TOCTOU files (two of #281's five are modifications of
+existing #277 paths). This is a diagnostic proposal, **not a merge into dev**.
+
+At the time of the composition, clean `dev` was pinned to
+`6439377a6a7f9b336ac9d4894b65745b5a0dc5ff`.
+The canonical parser in that dev checkout has Git blob
+`e82a401d5a160bfb5ca232b9a820417347dfc22a`, **not**
+the older pinned #307 parser blob `e599e532fe3cc1139c1833f27035c668c73e6926`.
+The current reader retains `inspect_gpt_fd()`, and this integration test
+exercises its actual code without replacing it. We do not assert bitwise
+equivalence of the two parser versions.
+
+The [clean-dev Action #45021347116](https://github.com/LMhdez/gaslux/actions/runs/45021347116)
+on Zorin HEAD `3079c736b20d35da158784f4bb9267ccdf97e2f5`
+completed **SUCCESS** in both jobs:
+- Existing pinned-#307 replay: 17 TOCTOU, 32 synthetic, 140 shared
+  Zorin/Mint/Windows and 25 Safety regressions (214 total).
+- New `clean-dev-zorin-subset` job: checks out exact clean dev;
+  asserts every selected path is absent from the dev tree before copying
+  precisely eight files from the Zorin PR HEAD; imports the canonical
+  `inspect_gpt_fd` on that dev tree; runs 32 synthetic + 17 TOCTOU +
+  25 canonical Safety pytest tests, plus Ruff lint/format and compileall.
+  All passed. No code, installer, writer or tests from #264 are copied.
+
+The separate checkout is a **synthetic composition test**; it does not
+automatically prove that the stacked Git history of #281 can be merged to
+`dev` without including #264. Do not retarget this stacked PR to dev
+blindly. A minimal dev-based integration path with exact-file selection,
+independent Safety review and current-head CI is required for merge.
+`DENY_NO_WRITER`, `syntheticOnly=true`,
+`nativeInstallerInvoked=false`, `windowsRollbackVerified=false`,
+`sameDiskDualBootVerified=false`, `stable=false` remain in force.
