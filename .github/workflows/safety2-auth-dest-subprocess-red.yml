@@ -12,6 +12,8 @@ jobs:
   independent-subprocess-review:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      GASLUX_QEMU_NO_GUEST: '1'
     steps:
       - name: Checkout test-only audit branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
