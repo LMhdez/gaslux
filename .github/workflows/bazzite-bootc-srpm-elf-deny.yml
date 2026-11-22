@@ -129,7 +129,10 @@ jobs:
           grep -Fx '1' source-evidence/sourcepackage-marker.txt
           cat source-evidence/signature-state.txt
           sha256sum source-evidence/bootc-1.17.1-1.fc45.src.rpm \
-            > source-evidence/srpm-sha256.txt
+            | tee source-evidence/srpm-sha256.txt
+          rpm -qp --qf 'BUILDHOST=%{BUILDHOST}\nBUILDTIME=%{BUILDTIME}\n' \
+            source-evidence/bootc-1.17.1-1.fc45.src.rpm \
+            | tee source-evidence/build-metadata.txt
           rpm2cpio source-evidence/bootc-1.17.1-1.fc45.src.rpm \
             | cpio --quiet -it > source-evidence/members.txt
           python - <<'PY'
@@ -150,7 +153,15 @@ jobs:
             | cpio --quiet -i --to-stdout "$spec" > source-evidence/bootc.spec
           rpm2cpio source-evidence/bootc-1.17.1-1.fc45.src.rpm \
             | cpio --quiet -i --to-stdout "$source" > source-evidence/bootc-1.17.1.tar.zstd
-          sha256sum source-evidence/bootc-1.17.1.tar.zstd > source-evidence/source-tar-sha256.txt
+          sha256sum source-evidence/bootc-1.17.1.tar.zstd \
+            | tee source-evidence/source-tar-sha256.txt
+          if grep -q '^8d06b7b20e6a3fe862275f089a2ac5275ff91151de2e3f0ef090a426292ab3dd ' \
+              source-evidence/source-tar-sha256.txt; then
+            echo UPSTREAM_RELEASE_SOURCE_ARCHIVE_MATCHED > source-evidence/archive-state.txt
+          else
+            echo SOURCE_ARCHIVE_BYTES_DIFFER_FROM_UPSTREAM_RELEASE > source-evidence/archive-state.txt
+          fi
+          cat source-evidence/archive-state.txt
           # Effective Fedora SPEC fields come from extracted SRPM; do not guess macros.
           grep -Ei '^(Name|Version|Release|Source[0-9]*|Patch[0-9]*):' source-evidence/bootc.spec \
             | tee source-evidence/srpm-spec-fields.txt
@@ -172,6 +183,7 @@ jobs:
             test "$expected" = "$packaged"
             printf '%s %s\n' "$src" "$packaged" >> source-evidence/compared-rust-git-blobs.txt
           done
+          cat source-evidence/compared-rust-git-blobs.txt
           echo SOURCE_ELF_UNPROVEN_DENY_NO_WRITER > source-evidence/verdict.txt
           sha256sum source-evidence/bootc.spec source-evidence/members.txt source-evidence/compared-rust-git-blobs.txt \
             > source-evidence/probe-sha256.txt
@@ -184,12 +196,14 @@ jobs:
             source-evidence/nevra.txt
             source-evidence/sourcepackage-marker.txt
             source-evidence/srpm-sha256.txt
+            source-evidence/build-metadata.txt
             source-evidence/signature.txt
             source-evidence/signature-state.txt
             source-evidence/members.txt
             source-evidence/patch-members.txt
             source-evidence/srpm-spec-fields.txt
             source-evidence/source-tar-sha256.txt
+            source-evidence/archive-state.txt
             source-evidence/compared-rust-git-blobs.txt
             source-evidence/probe-sha256.txt
             source-evidence/verdict.txt
