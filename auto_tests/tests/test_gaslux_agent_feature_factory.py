@@ -49,7 +49,7 @@ class FeatureFactoryTests(unittest.TestCase):
                               src.replace("'releaseEligible': False", "'releaseEligible': True"),
                               execute=True)
             self.assertRaises(ValueError, factory.validate_addition, role,
-                              src.replace("not True", "is True"), execute=True)
+                              src.replace("is not True", "is True"), execute=True)
 
     def test_import_i_o_globals_and_other_code_rejected(self):
         source = valid("mint")
