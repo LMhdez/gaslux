@@ -38,6 +38,8 @@ WATCH = re.compile(
 )
 BODIES = tuple(p for p in CORE_SOURCES if not p.endswith(("/commit.sh", "/resize.sh")))
 UNATTESTED_SHELL = ("lib/partman/lib/commit.sh", "lib/partman/lib/resize.sh")
+PARTMAN_PARENT_INODES = ("lib/partman/lib", "lib/partman")
+ALLOWED_METADATA_INODES = frozenset(UNATTESTED_SHELL + PARTMAN_PARENT_INODES)
 MUTABLE_GATES = (
     "firstPersistentWriteVerified",
     "precommitNonMutatingVerified",
@@ -76,7 +78,18 @@ def candidate_calls(data: bytes, path: str) -> dict:
         raise SourceCoverageDenied("E_UNPARSABLE_AUTHENTICATED_PYTHON") from exc
     result: list[dict] = []
     scopes: list[str] = []
+    branch_guards: list[dict] = []
     all_calls = 0
+    module_assignments: list[dict] = []
+    tracked = {"devices", "infifo", "outfifo", "stopfifo", "logfile", "parted_server" }
+    for statement in tree.body:
+        if isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                if isinstance(target, ast.Name) and target.id in tracked:
+                    module_assignments.append(
+                        {"symbol": target.id, "expression": arg_repr(statement.value),
+                         "line": statement.lineno, "basis": "STATIC_ASSIGNMENT_ONLY"}
+                    )
 
     class Scan(ast.NodeVisitor):
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -94,6 +107,19 @@ def candidate_calls(data: bytes, path: str) -> dict:
             self.generic_visit(node)
             scopes.pop()
 
+        def visit_If(self, node: ast.If) -> None:
+            self.visit(node.test)
+            guard = arg_repr(node.test)
+            branch_guards.append({"branch": "if", "expression": guard})
+            for item in node.body:
+                self.visit(item)
+            branch_guards.pop()
+            if node.orelse:
+                branch_guards.append({"branch": "else", "expression": guard})
+                for item in node.orelse:
+                    self.visit(item)
+                branch_guards.pop()
+
         def visit_Call(self, node: ast.Call) -> None:
             nonlocal all_calls
             all_calls += 1
@@ -110,6 +136,8 @@ def candidate_calls(data: bytes, path: str) -> dict:
                         "line": node.lineno,
                         "argumentsStaticExpression": [arg_repr(x) for x in node.args[:4]],
                         "keywords": [x.arg or "**dynamic" for x in node.keywords],
+                        "enclosingIfBranches": branch_guards[:6],
+                        "guardsTruncated": len(branch_guards) > 6,
                         "status": "STATIC_CALLSITE_NOT_EXECUTION",
                     }
                 )
@@ -127,6 +155,7 @@ def candidate_calls(data: bytes, path: str) -> dict:
         "selectedCalls": result,
         "selectedCallCount": len(result),
         "selectedCallsTruncated": False,
+        "moduleAssignments": module_assignments,
         "runtimeReachabilityProven": False,
         "persistentWriteProven": False,
     }
@@ -134,7 +163,7 @@ def candidate_calls(data: bytes, path: str) -> dict:
 
 def lstat_member(rootfs: Path, path: str) -> dict:
     """Equivalent read-only stat of a SquashFS inode; NEVER follow its symlink."""
-    deny(path in UNATTESTED_SHELL, "E_UNEXPECTED_PARTMAN_PATH")
+    deny(path in ALLOWED_METADATA_INODES, "E_UNEXPECTED_PARTMAN_PATH")
     try:
         proc = subprocess.run(
             ["unsquashfs", "-ll", "-processors", "2", str(rootfs), path],
@@ -154,9 +183,13 @@ def lstat_member(rootfs: Path, path: str) -> dict:
             "type": "UNRESOLVED",
             "targetText": None,
             "reason": "NO_SINGLE_REGULAR_INODE_PROVEN",
+            "boundedMetadataPreview": proc.stdout.decode("utf-8", "replace")[:2400],
+            "boundedDiagnostic": proc.stderr.decode("utf-8", "replace")[:500],
         }
     text = proc.stdout.decode("utf-8", "replace")
-    return parse_unsquashfs_lstat(text, path)
+    record = parse_unsquashfs_lstat(text, path)
+    record["boundedMetadataPreview"] = text[:2400]
+    return record
 
 
 def parse_unsquashfs_lstat(text: str, path: str) -> dict:
@@ -236,6 +269,7 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
         )
         calls[path] = candidate_calls(source, path)
     shell = {p: lstat_member(rootfs, p) for p in UNATTESTED_SHELL}
+    parents = {p: lstat_member(rootfs, p) for p in PARTMAN_PARENT_INODES}
     result = {
         "kind": "ZORIN_UBIQUITY_FIRST_WRITER_STATIC_SOURCE_EVIDENCE",
         "isoSha256": old["isoSha256"],
@@ -243,6 +277,7 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
         "sourceHashes": {p: old["sources"][p]["sha256"] for p in BODIES},
         "sourceFilesAuthenticated": list(BODIES),
         "shellInodeMetadata": shell,
+        "parentInodeMetadata": parents,
         "staticCalls": calls,
         "allSixBodiesAstScanned": True,
         "shellSourcesAuthenticated": False,
