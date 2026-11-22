@@ -95,3 +95,22 @@ Após essa execução foram adicionados recusa explícita `O_PATH` e um teste ad
 
 
 Para contratos base e critérios de estabilidade, ver [histórico/guia de agentes](AGENT_HISTORICAL_PLAYBOOK.md), [ARCHITECTURE](ARCHITECTURE.md), [issues CachyOS #3](https://github.com/LMhdez/gaslux/issues/3) e [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
+
+
+## 2026-11-22 — Contracts Lane 2: versão JSON de capacidades por distribuição
+
+- [PR #326](https://github.com/LMhdez/gaslux/pull/326) corrige
+  **apenas** a distinção `true` versus inteiro `1` e restantes tipos
+  não-inteiros na validação Python de `capabilities.version` no emissor
+  de release e no leitor live; inclui matrizes de regressão para os seis
+  perfis, compatibilidade C#/PowerShell e verificação do JSON Schema.
+- [CI #45030061439](https://github.com/LMhdez/gaslux/actions/runs/45030061439)
+  **SUCCESS** em `b4b86c98396ce3f52b7b1afc26b6d68575df6766`:
+  Python contracts/format/lint, build WPF, 340 testes C#,
+  70 Pester. Os dois [CachyOS recovery contracts #45030061372](https://github.com/LMhdez/gaslux/actions/runs/45030061372)
+  e [Windows recovery fixtures #45030061400](https://github.com/LMhdez/gaslux/actions/runs/45030061400)
+  também concluíram SUCCESS no mesmo commit.
+- **Escala de prova:** CI de contratos e fixtures. Nenhum teste QEMU, ISO,
+  instalação nativa, dual boot, rollback Windows nem autoridade operacional.
+  A PR permanece draft; uma CI verde não altera release eligibility.
+
