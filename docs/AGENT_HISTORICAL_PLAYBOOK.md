@@ -98,6 +98,12 @@ Um bom prompt Gaslux especifica: agente e identidade LMHDEZ; missão única; fon
 - UI Q4OS: parar antes de Install; screenshots/OCR e ZIP histórico não provam clique seguro, instalação ou dual boot. Artefactos sintéticos e reais são classes diferentes.
 - Nenhuma leitura/proveniência concederá automaticamente capacidades de guest input, writes, instalação, BootNext ou release.
 
+### CachyOS — aditamento de proveniência ESP/RAW em 22-11-2026
+
+A [PR #314](https://github.com/LMhdez/gaslux/pull/314), empilhada em #279, atingiu o HEAD `a341bd059916a151fa49fb58435a69945e005d5a` com [Action #45020744228](https://github.com/LMhdez/gaslux/actions/runs/45020744228) **SUCCESS (85 testes offline)**. O diferencial de sete commits adicionou contrato de captura por FD RAW sintético, ESP GPT/FAT32 e consistência de claims QEMU, não medição autenticada de QEMU histórico. O parecer ETW-01 `APPROVED_OFFLINE_DENY_ONLY` mantém-se limitado ao HEAD anterior. Um controlo explícito contra Linux `O_PATH` e regressão foram adicionados depois, até `f5efccd50507248ca447fa5883900d951289c551`; **confirmar nova CI e Safety diferencial antes de integração**.
+
+O Orquestrador não deve pedir outro parser FAT32/ETW, repetir ETW-01 ou promover resultados de RAW sintético a proveniência Windows. Próxima prova útil: checkpoint QCOW2 privado/assinado, identidade/geração QEMU, FD e backing, QMP `query-block` e vínculo independente `blk`→disco Windows, ainda deny-only; depois controles A1/A2 antes de B1/B2. Não confundir QEMU host-only com boot Windows.
+
 ## 8. Contrato para cada backend
 
 | Backend | Código/cadeia histórica a investigar | Próxima prova útil, sem repetir o já feito |

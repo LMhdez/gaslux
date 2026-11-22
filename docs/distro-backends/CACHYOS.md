@@ -113,6 +113,14 @@ Não basta existir ISO/hash válido, CI verde, Live boot ou raiz extraída. Requ
 
 ---
 
+## Atualização forense — 22-11-2026, PR #314 (histórico datado)
+
+A [PR #314](https://github.com/LMhdez/gaslux/pull/314) permanece **draft**, empilhada sobre a [#279](https://github.com/LMhdez/gaslux/pull/279). O seu HEAD `a341bd059916a151fa49fb58435a69945e005d5a` passou a [Action #45020744228](https://github.com/LMhdez/gaslux/actions/runs/45020744228): **85/85 testes offline** (16 FAT32/QEMU, 17 ESP/RAW/QEMU, 23 ETW-01, 29 BCD A/B). O parecer ETW-01 `APPROVED_OFFLINE_DENY_ONLY` é anterior e não abrange automaticamente os novos ficheiros.
+
+O contrato criado em `auto_tests/tools/cachyos_bcd_esp_provenance_offline.py` lê apenas um **RAW sintético esparso e descartável** de 128 GiB, com FD já aberto, GPT primária/secundária, ESP FAT32 e mapeamento de clusters BCD. O relatório de claims QEMU não consulta um QEMU real nem demonstra o vínculo `blk`→FD/disco Windows. Nada disto autentica os snapshots históricos QCOW2, atribui causalmente uma escrita ou demonstra rollback. **A1/A2 desarmado; B1/B2 não iniciado; nenhuma autorização de produção.**
+
+Na mesma PR, os commits posteriores `536b08be`, `c3472c1e` e `f5efccd5` acrescentaram recusa explícita de Linux `O_PATH`, regressão e documentação: `F_GETFL & O_ACCMODE == O_RDONLY` não é suficiente porque `O_PATH` devolve também máscara zero. A leitura acabaria em EBADF, mas a recusa deve ocorrer na validação de FD. **O resultado de CI destes novos commits não estava confirmado no momento desta atualização.** A Safety deve rever apenas este diferencial e as fronteiras ESP/RAW/QEMU, sem reabrir ETW-01. Consultar [contrato técnico da PR](https://github.com/LMhdez/gaslux/blob/test/cachyos-bcd-fat32-trace-correlation-20261122/docs/CACHYOS_BCD_FAT32_QEMU_ETW_OFFLINE.md) e o [índice CI/VM](../CI_VM_EVIDENCE_INDEX.md).
+
 ## ONE-SHOT EXECUTION PLAYBOOK
 **Pré-requisitos exactos:** acesso GitHub conta LMHDEZ, HEAD `dev` confirmado, `AI_POLICY.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/distro-backends/SHARED_CONTRACTS.md`, mídia oficial e digest/assinatura validados; runner VM descartável com QEMU/SeaBIOS/OVMF conforme firmware e snapshot recuperável. Sem estes elementos, STOP.
 
