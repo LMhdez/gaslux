@@ -28,7 +28,7 @@ MAX_RPMDB = 512 * 1024 * 1024
 MAX_RPM_HEADER = 16 * 1024 * 1024
 MAX_PACKAGES = 25000
 MAX_ARRAY = 200000
-MAX_ELF_PREFIX = 2 * 1024 * 1024
+MAX_ELF_PREFIX = 32 * 1024 * 1024
 RPM_HEADER_MAGIC = b"\x8e\xad\xe8\x01\x00\x00\x00\x00"
 SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z")
 SAFE_ID = re.compile(r"[A-Za-z0-9_.+~^:-]{1,128}\Z")
@@ -235,8 +235,13 @@ def bind_rpm(overlay: dict, bootc_file: dict) -> dict:
             if item.get("kind") != "rpmdb" or not isinstance(item.get("content"), bytes):
                 return {**unproven, "reason": "RPM DB path not a regular bounded file"}
             files.append((path, item["content"]))
-    if any(path in overlay for path in RPMDB_SIDECARS):
-        return {**unproven, "reason": "RPM DB requires sidecar recovery"}
+    # SQLite -shm is a disposable coordination cache and never supplies committed
+    # transactions. A nonempty -wal or rollback journal is NOT safe to omit.
+    for path in RPMDB_SIDECARS:
+        item = overlay.get(path)
+        if item is not None and path.endswith(("-wal", "-journal")):
+            if item.get("size") != 0:
+                return {**unproven, "reason": "RPM DB has pending WAL/journal bytes"}
     if not files:
         return {**unproven, "reason": "No supported SQLite RPM DB in final OCI"}
     hashes = {hashlib.sha256(raw).hexdigest() for _, raw in files}

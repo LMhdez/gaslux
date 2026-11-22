@@ -399,3 +399,44 @@ def test_only_empty_rpmdb_keeps_binding_unproven():
     assert output["bootcRpmIdentity"]["status"] == "BOOTC_PACKAGE_BINDING_UNPROVEN"
     assert output["bootcVersion"] is None
     assert all(output[key] is False for key in NO_WRITE)
+
+
+def test_derived_sqlite_shm_and_empty_wal_cannot_override_package():
+    elf = elf_fixture()
+    db = sqlite_db(rpm_header_fixture(digest=hashlib.sha256(elf).hexdigest()))
+    overlay, budgets, descs = apply(
+        [
+            layer(
+                {
+                    "usr/bin/bootc": elf,
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite": db,
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite-wal": b"",
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite-shm": b"\0" * 32768,
+                }
+            )
+        ]
+    )
+    output = result(overlay, budgets, descs)
+    assert output["bootcRpmIdentity"]["status"] == "BOOTC_RPM_IDENTITY_VERIFIED"
+    assert output["bootcToFilesystemAvailableInBinaryVerified"] is False
+    assert all(output[k] is False for k in NO_WRITE)
+
+
+def test_nonempty_sqlite_wal_still_blocks_package_binding():
+    elf = elf_fixture()
+    db = sqlite_db(rpm_header_fixture(digest=hashlib.sha256(elf).hexdigest()))
+    overlay, budgets, descs = apply(
+        [
+            layer(
+                {
+                    "usr/bin/bootc": elf,
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite": db,
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite-wal": b"not-replayed",
+                }
+            )
+        ]
+    )
+    output = result(overlay, budgets, descs)
+    assert output["bootcRpmIdentity"]["status"] == "BOOTC_PACKAGE_BINDING_UNPROVEN"
+    assert output["bootcVersionVerified"] is False
+    assert all(output[k] is False for k in NO_WRITE)
