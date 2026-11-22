@@ -291,14 +291,15 @@ class SixGptNegativeTests(unittest.TestCase):
             evidence.mkdir(mode=0o700)
             for name in owner.EVIDENCE:
                 (work / name).write_text('{"synthetic":true}')
-            with patch.dict(
-                os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
-            ), owner.SafeWorkspace(work, evidence) as guard:
-                with (
-                    patch.object(owner.os, "write", side_effect=OSError(errno.ENOSPC, "full")),
-                    self.assertRaises(OSError),
-                ):
-                    guard.export()
+            with (
+                patch.dict(
+                    os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
+                ),
+                owner.SafeWorkspace(work, evidence) as guard,
+                patch.object(owner.os, "write", side_effect=OSError(errno.ENOSPC, "full")),
+                self.assertRaises(OSError),
+            ):
+                guard.export()
             for name in owner.EVIDENCE:
                 self.assertEqual((work / name).read_text(), '{"synthetic":true}')
 
