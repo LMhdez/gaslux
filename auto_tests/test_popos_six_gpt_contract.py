@@ -255,10 +255,20 @@ class SixGptNegativeTests(unittest.TestCase):
             with self.subTest(malformed=malformed[:20]), self.assertRaises(Refusal):
                 lab.parse_qcow_map(malformed)
         with self.assertRaisesRegex(Refusal, "compressed extent"):
-            lab.parse_qcow_map(json.dumps([{
-                "start": 0, "length": c.SIZE, "depth": 1,
-                "data": True, "zero": False, "compressed": True,
-            }]))
+            lab.parse_qcow_map(
+                json.dumps(
+                    [
+                        {
+                            "start": 0,
+                            "length": c.SIZE,
+                            "depth": 1,
+                            "data": True,
+                            "zero": False,
+                            "compressed": True,
+                        }
+                    ]
+                )
+            )
         empty = [{"start": 0, "length": c.SIZE, "depth": 1, "data": True, "zero": False}]
         with (
             patch.object(lab, "chain"),
