@@ -1220,7 +1220,6 @@ s.close()
     assert sleeper.poll() is not None
 
 
-
 def test_safety_cleanup_foreign_pidfd_never_signals_other_live_child():
     """RED against HEAD 1106085: foreign pidfd must never signal its owner."""
     a = subprocess.Popen(
