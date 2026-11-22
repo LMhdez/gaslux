@@ -62,6 +62,23 @@ jobs:
           PYTHONPATH="$RUNNER_TEMP/gaslux-m27801-pytest" python3 -m pytest -q \
             auto_tests/test_windows_mint_f03_toctou.py \
             auto_tests/test_windows_mint_ab_forensic.py
+      - name: Compose fixed F-03 with PR 330 read-only RCA (ephemeral checkout ONLY)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source_commit=bccba7a2e61039e0efabf02d212dbb78b522d5a0
+          git fetch --no-tags --depth=1 origin "$source_commit"
+          test "$(git rev-parse FETCH_HEAD)" = "$source_commit"
+          for path in \
+            auto_tests/tools/windows_mint_ab_offset_rca.py \
+            auto_tests/test_windows_mint_ab_offset_rca.py \
+            auto_tests/test_windows_mint_ab_checkpoint.py; do
+            git show "$source_commit:$path" > "$path"
+          done
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_offset_rca.py -v
+          python3 -m unittest discover -s auto_tests -p test_windows_mint_ab_checkpoint.py -v
+          echo "PASS: PR330 synthetic offset RCA/TPM tests composed with M-278-01 fixed module."
+          echo "No PR330 branch modified, no disk images or guest boots."
       - name: Python compileall
         shell: bash
         run: |
@@ -78,3 +95,25 @@ jobs:
           export PYTHONPATH="$RUNNER_TEMP/gaslux-m27801-ruff"
           python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
           python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
+      - name: Emit Ruff 0.15.20 source-only formatting on style failure
+        if: failure()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -d "$RUNNER_TEMP/gaslux-m27801-ruff" || exit 0
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-m27801-ruff"
+          python3 -m ruff format auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
+          python3 -m ruff check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
+          python3 -m ruff format --check auto_tests/tools/windows_mint_ab_forensic.py auto_tests/test_windows_mint_f03_toctou.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for file in (
+              Path("auto_tests/tools/windows_mint_ab_forensic.py"),
+              Path("auto_tests/test_windows_mint_f03_toctou.py"),
+          ):
+              print("GASLUX_M27801_RUFF_SOURCE=" + json.dumps({
+                  "path": str(file),
+                  "source": file.read_text(encoding="utf-8"),
+              }, ensure_ascii=True))
+          PY
