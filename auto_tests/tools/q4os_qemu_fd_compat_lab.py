@@ -580,17 +580,25 @@ def negative_cases(root: Path) -> dict:
     backed = work / "untrusted-backing.qcow2"
     subprocess.run(
         [
-            QEMU_IMG, "create", "-f", "qcow2", "-F", "raw",
-            "-b", str(raw), str(backed), "64M",
+            QEMU_IMG,
+            "create",
+            "-f",
+            "qcow2",
+            "-F",
+            "raw",
+            "-b",
+            str(raw),
+            str(backed),
+            "64M",
         ],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         timeout=15,
     )
-    backed_info = json.loads(subprocess.check_output(
-        [QEMU_IMG, "info", "--output=json", str(backed)], timeout=15
-    ))
+    backed_info = json.loads(
+        subprocess.check_output([QEMU_IMG, "info", "--output=json", str(backed)], timeout=15)
+    )
     result["foreignBackingRejected"] = bool(backed_info.get("backing-filename"))
     try:
         subprocess.Popen(
