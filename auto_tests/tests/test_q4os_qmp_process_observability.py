@@ -407,8 +407,15 @@ def test_real_python_child_reaped_despite_report_io_fault(monkeypatch, lab, faul
     )
     try:
         report = witness._run_lab_synthetic(
-            work, code, vars_path, image, iso, answer, "kvm",
-            synthetic_child=child, connect_seconds=0.03,
+            work,
+            code,
+            vars_path,
+            image,
+            iso,
+            answer,
+            "kvm",
+            synthetic_child=child,
+            connect_seconds=0.03,
         )
     finally:
         if child.poll() is None:
@@ -440,7 +447,13 @@ def test_symlink_swap_after_initial_validation_refused_before_spawn(monkeypatch,
 
     monkeypatch.setattr(witness, "_pin_file", pin_then_swap)
     report = witness._run_lab_synthetic(
-        work, code, vars_path, image, iso, answer, "kvm",
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        "kvm",
         synthetic_child=object(),
     )
     assert report["decision"] == "refuse"
