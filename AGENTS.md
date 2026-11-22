@@ -10,10 +10,64 @@ Build an optional, verified, USB-free Windows-to-Linux installer that can instal
 
 Before changing disk, firmware, recovery, catalog, or installation logic, read:
 - docs/ARCHITECTURE.md — authoritative runtime/transaction/rollback contract
-- CONTRIBUTING.md and AI_POLICY.md — contributor workflow, human accountability and license
+- CONTRIBUTING.md and AI_POLICY.md — delegated multiagent workflow, accountable authority, evidence and license
 - docs/RELEASES.md — signing and release gates
 - docs/UEFI_BOOTNEXT_BOOTORDER.md — firmware recovery
 - docs/MULTIDISTRO_PLAN.md — expansion matrix, phases and acceptance tests
+- docs/AGENT_HISTORICAL_PLAYBOOK.md — researched November 2026 PR/commit history, evidence taxonomy and operational rules for Orchestrator, Integrator, Safety, Observer and backends
+- docs/CI_VM_EVIDENCE_INDEX.md — GitHub Actions/QEMU labs on dev and historical PR branches; distinguish actual guest boot from offline contracts
+
+## Continuous, mandatory documentation maintenance
+
+**Every Gaslux agent (Orchestrator/Prompt Engineer, Backend, Safety, Integrator and Observer) must keep the relevant project documentation up to date as part of normal work.** Before each substantive task, recheck live GitHub `dev`/`main` heads, PR/branch/issue states, code, checks and Actions artifacts; reports, timestamps and old HEADs are only historical leads.
+
+**On every material change, update the affected docs in the same task**: merge/close/supersede, branch deletion, backend capabilities or ISO/trust change, new CI/VM evidence, an opened/resolved safety finding, changed Observer authority, update or recovery proof, or new release gate. Preserve dated historical snapshots and append accurately dated current evidence rather than rewriting the past.
+
+- **Orchestrator / Prompt Engineer:** verify the relevant PR chain before every new prompt; correct stale assumptions and task dependencies.
+- **Backend:** maintain the appropriate `docs/distro-backends/<DISTRO>.md` and shared contracts when real implementation, media identity, boot evidence or limitations change.
+- **Safety:** maintain exact-SHA findings, adverse tests, conclusions and unresolved Windows/recovery gates.
+- **Observer:** keep HOST/FD/QMP, local-peer and guest trust boundaries and evidence levels accurately separated.
+- **Integrator:** after every merge/closure/cleanup, reconcile the historic PR graph and [agent playbook](docs/AGENT_HISTORICAL_PLAYBOOK.md), [CI/VM evidence index](docs/CI_VM_EVIDENCE_INDEX.md), the affected backend dossier, and source PR references; start from older stacks.
+- **All:** label the observation time (UTC), exact source SHA/PR/Actions link, result and limits. Verify relative links and avoid creating additional branches/PRs solely for documentary maintenance.
+
+**Definition of done:** when a task changes a documented fact, publish and verify its corresponding docs update before declaring completion. If blocked by a concurrent HEAD or permissions, disclose the stale file and specific blocker. Do not rerun costly QEMU experiments merely to refresh a date. This is **event-driven upkeep while agents act**, not an assertion of autonomous unattended updates; do not claim a scheduled updater exists without an implemented workflow. Safety gates, stable catalog release gates and physical-disk permissions are unchanged.
+
+## Delegated multiagent engineering and integration
+
+Gaslux uses orchestrated agents for implementation, adversarial safety audits, evidence verification, PR review, forensic investigation and integration. Authorized agents may open/update PRs, answer review threads, run approved checks, fix defects, reconcile stacked branches and, when expressly delegated, merge vetted work or close proven-redundant PRs. Human oversight is **substantive and risk-based**, not a mandatory manual response or approval click for every operation.
+
+Before acting, recheck GitHub branch/PR HEADs, the actual diff, current checks, dependencies and prior findings. Attribute actions and evidence to the executing agent and authorized account. A different agent name does not prove independent review. When integrating, preserve unique commits, artifacts, unresolved findings and rollback evidence; do not move an unverified experimental backend into the production installer or stable catalog.
+
+### Operational merge rule for delegated integrators (dev only)
+
+A maintainer's explicit delegation to **integrate vetted changes into `dev`** is standing authority for the assigned scope. **Do not request a separate human confirmation, approval click or formal GitHub review for each PR unless an actual GitHub branch protection/ruleset requirement, applicable repository policy, unresolved high-risk finding or separately reserved authority requires it.** Absence of an optional human review is not by itself a blocker. A reproducible independent technical Safety assessment may be documented in a PR comment; do not misrepresent it as a formal GitHub `APPROVE`.
+
+For each delegated integration, **perform the operation rather than stop at `READY_FOR_HUMAN_REVIEW`** when all applicable gates are satisfied:
+
+1. Revalidate the exact PR head, current `dev` head, changed files, dependency chain, mergeability, reviewer findings and all required checks. Prevent concurrent-head races using an exact-head merge precondition.
+2. Confirm evidence appropriate to the risk: successful tests/CI on the exact candidate or validated merge composition; no unresolved safety findings, privilege escalation, new unverified writer/guest authority or accidental stable-catalog exposure. Apply independent technical review when warranted by the change, irrespective of whether formal GitHub approval is required.
+3. Respect **enforced** branch protections, status checks, signed-commit/DCO requirements and repository policies. Never fabricate `Signed-off-by`, an independent approval or a test result; seek only the specific decision genuinely required.
+4. When eligible, merge into `dev` with the permitted method, confirm the resulting commit, inspect post-merge CI and stop additional merges if a required regression fails. Leave `main`, physical disks, release promotion and production installation authority unchanged.
+5. Reconcile historical/stacked PRs first where possible, preserve unique work and evidence, close **proven** duplicates, and delete **proven obsolete** branches only with authenticated permission and dependency checks. Avoid new reconciliation branches/PRs merely to reduce the queue.
+6. Report actual merges, closures, branch deletions and before/after counts with URLs and SHAs. If blocked, state the precise enforced gate or concrete technical finding; continue with other eligible work instead of repeatedly requesting ceremonial approval.
+
+**Green CI alone is not sufficient for a safety-critical merge**; the evidence and authority checks above still apply. This standing delegation applies only to repository integration in `dev` and never grants runtime disk/boot mutation, real-hardware testing or release/stability approval.
+
+### GitHub Actions VM testing: standing authorization
+
+**Agents may create, trigger and rerun GitHub Actions workflows using disposable QEMU virtual machines without a separate human approval for each test run.** This authorization covers SeaBIOS/MBR and OVMF/UEFI guests, KVM if the runner supports it, verified Linux/Windows test media, real guest installation and first boot, virtual GPT/MBR/NTFS/ESP/BCD changes, power-loss fault injection, updates, Windows/Linux dual boot and guest rollback **inside test-owned virtual disk images only**. It is not limited to read-only diagnostics. A workflow's explicit guest-destructive opt-in is sufficient when the controls below are satisfied.
+
+- Use ephemeral, isolated CI runners and fresh **regular-file virtual disks** or known-restorable snapshots; verify exact image ownership, path, hash/geometry/backing where applicable, and recovery baseline before guest writes. Never attach host `/dev/` block devices, physical disks, production partitions, user data or external shared storage as writable guest media.
+- Keep the guest's writable image and test outputs inside an isolated workspace; bound time, size, resources and networking. Avoid leaking credentials: workflow `permissions` should normally be `contents: read`, checkout credentials should not persist, and secrets must not reach untrusted PR guests.
+- Pin and verify the intended ISO/OS media and test-image provenance. Deny absent/wrong images, ambiguous targets, unsupported firmware/layouts, insufficient space or failed snapshot preparation; do not assume nested KVM or Windows VM availability on every runner.
+- Record actual QEMU configuration, boot observations, disk-image identity, pre/post geometry, state/checkpoints, Windows/WinRE/BCD checks when applicable, fault-injection result and rollback evidence. Distinguish live boot, installation, dual boot and in-place Windows recovery; **CI success alone never proves a stable backend**.
+- If a job cannot maintain these boundaries, stop before mutation and report the blocker. GitHub Actions VMs are low-risk when isolated, **not literally risk-free**; do not expose host disks or relax privilege/safety controls.
+
+**Existing coverage is not Mint-only.** Inspect the full workflow set on `dev` **and on the relevant PR/feature branch**, including Linux guest boots (`mint-223-live-ovmf-boot.yml`, `zorin-real-iso-preflight.yml`, `gaslux-q4os-official-iso.yml`); historical/experimental Windows and distro QEMU suites (`windows-x64-two-stage-firstboot.yml`, `cachyos-windows10-shared-root-pacstrap.yml`, `zorin-windows10-cow-firstboot.yml`, `gaslux-q4os-windows10-qcow2.yml`, `q4os-summary-repro-2vm.yml`); and Observer/Safety QEMU (`installer-observer-lab.yml`, `safety-qemu-gpt-host-guest.yml`). These are **examples across different refs, not a claim that all are present or runnable on `dev`**. Workflows with `QEMU` in their title may run offline contracts only; read the exact YAML and invoked scripts before declaring a real guest run. Use existing workflows/VM infrastructure before creating redundant pipelines, and confirm exact-head Actions status and artifacts before claiming results.
+
+The project delegates this bounded CI VM test authority in [AI_POLICY.md](AI_POLICY.md). **No per-run human confirmation is required** when the workflow meets these guards. This does not authorize physical hardware experiments, production disk/boot writes, credential changes, or release/stable promotion.
+
+Repository modification permissions never grant authority to mutate real disks or production boot state. Destructive *guest-only* experiments are permitted under the standing GitHub Actions VM authorization above; real-hardware experiments require separate explicit authorization. See [AI_POLICY.md](AI_POLICY.md) for the authority model and reporting requirements.
 
 ## Non-negotiable safety rules
 
@@ -68,17 +122,4 @@ Keep contracts in sync across Installation/*.cs, Scripts/modules and Scripts/uef
 
 ## Definition of done for every PR
 
-Describe supported and rejected firmware/distro combinations, exact code paths and version-pinned artifacts, threat/rollback model, tests actually executed, links to CI/VM evidence, reproducible remaining blockers, and effect on Mint/Zorin. Mark unverified claims as unverified. Keep incomplete work in draft PRs. Human review remains mandatory under AI_POLICY.md; contributions must respect GPL-3.0, provenance and DCO guidance.
-
-## Mandatory distribution backend dossiers (2026-11-19)
-
-Before implementing, reviewing or integrating a distribution backend, **read its current dossier** under [docs/distro-backends/](docs/distro-backends/README.md) and [SHARED_CONTRACTS.md](docs/distro-backends/SHARED_CONTRACTS.md):
-
-- [Linux Mint](docs/distro-backends/MINT.md)
-- [Zorin OS](docs/distro-backends/ZORIN.md)
-- [CachyOS](docs/distro-backends/CACHYOS.md)
-- [Pop!_OS](docs/distro-backends/POPOS.md)
-- [Bazzite](docs/distro-backends/BAZZITE.md)
-- [Q4OS](docs/distro-backends/Q4OS.md)
-
-Every agent must (1) check current GitHub main/dev/feature HEADs, issues, PRs, workflow runs and evidence; (2) check whether the dossier is still correct against official upstream sources, the pinned ISO and actual Gaslux code; (3) reuse and test existing implementations rather than duplicate them; (4) follow the distro's **ONE-SHOT EXECUTION PLAYBOOK** in safe stages; (5) update the dossier with new facts, exact commit/run/artifact provenance and clear evidence levels; and (6) **never claim stability** from CI fixtures, a Live boot or unverified rollback. If the dossier conflicts with a verified contract in `docs/ARCHITECTURE.md`, stop and resolve it in human review before altering code. Documentation does not override `AI_POLICY.md`, GPL-3.0 or release gates. Unverified instructions, SHA/ISO paths and boot parameters are **PENDENTE**, not permission to guess.
+Describe supported and rejected firmware/distro combinations, exact code paths and version-pinned artifacts, threat/rollback model, tests actually executed, links to CI/VM evidence, reproducible remaining blockers, and effect on Mint/Zorin. Mark unverified claims as unverified. Keep incomplete work in draft PRs. Apply risk-based human oversight and traceable, evidence-based technical review under AI_POLICY.md. An explicitly delegated integrator may merge a vetted PR without per-PR manual approval, but no reviewer or agent may waive safety, release, recovery or physical-disk authorization gates. Contributions must respect GPL-3.0, provenance and DCO guidance.

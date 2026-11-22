@@ -121,13 +121,13 @@ Describe 'Product storage inventory and uninstall boundary' {
             $baseline = Get-Content "$root/storage-before-installation.json" -Raw | ConvertFrom-Json
             $linux = $script:partitions[0][0].PSObject.Copy()
             $linux.Offset = 40GB + 1MB; $linux.Size = 20GB
-            $linux.Guid = 'owned-linux'; $linux.GptType = '{0fc63daf-8483-4772-8e79-3d69d8477de4}'
+            $linux.Guid = '99999999-9999-4999-8999-999999999999'; $linux.PartitionNumber = 3; $linux.GptType = '{0fc63daf-8483-4772-8e79-3d69d8477de4}'
             $script:partitions[0][0].Size = 40GB
             $script:partitions[0] += $linux
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Not -Throw
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } | Should -Throw
             $script:partitions[0][0].Size = 41GB
-            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Throw '*overlaps*'
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Throw '*overlap*'
             $script:partitions[0][0].Size = 40GB
             $linux.GptType = '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Throw '*unexpected partition*'
@@ -168,9 +168,9 @@ Describe 'Product storage inventory and uninstall boundary' {
             $baseline = Get-Content "$root/storage-before-installation.json" -Raw | ConvertFrom-Json
             $script:partitions[0][0].Size = 40GB - 1MB
             $container = $script:partitions[0][0].PSObject.Copy()
-            $container.Offset = 40GB; $container.Size = 20GB + 1MB; $container.MbrType = 15
+            $container.PartitionNumber = 3; $container.Offset = 40GB; $container.Size = 20GB + 1MB; $container.MbrType = 15
             $linux = $container.PSObject.Copy()
-            $linux.Offset = 40GB + 1MB; $linux.Size = 20GB; $linux.MbrType = 131
+            $linux.PartitionNumber = 4; $linux.Offset = 40GB + 1MB; $linux.Size = 20GB; $linux.MbrType = 131
             $script:partitions[0] += @($container, $linux)
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Not -Throw
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } | Should -Throw
@@ -194,12 +194,88 @@ Describe 'Product storage inventory and uninstall boundary' {
             Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root
             $baseline = Get-Content "$root/storage-before-installation.json" -Raw | ConvertFrom-Json
             $linux = $script:partitions[0][0].PSObject.Copy()
-            $linux.Offset = $Offset; $linux.Size = 20GB; $linux.MbrType = 131
+            $linux.PartitionNumber = 3; $linux.Offset = $Offset; $linux.Size = 20GB; $linux.MbrType = 131
             $script:partitions[0][0].Size = $Offset - 1MB
             $script:partitions[0] += $linux
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Not -Throw
             $linux.Offset += 512
             { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline } | Should -Throw '*unexpected partition*'
+        }
+
+        It 'refuses overlapping GPT partitions before publishing recovery evidence' {
+            $script:partitions[0][1].Offset = 60GB
+            { Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root } |
+                Should -Throw '*overlapping GPT partitions*'
+            Test-Path "$root/storage-before-installation.json" | Should -BeFalse
+        }
+
+        It 'refuses duplicate GPT partition GUIDs before publishing recovery evidence' {
+            $script:partitions[0][1].Guid = $script:partitions[0][0].Guid
+            { Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root } |
+                Should -Throw '*duplicate partition GUID*'
+            Test-Path "$root/storage-before-installation.json" | Should -BeFalse
+        }
+
+        It 'refuses a missing GPT partition GUID before publishing recovery evidence' {
+            $script:partitions[0][1].Guid = ''
+            { Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root } |
+                Should -Throw '*invalid partition GUID*'
+            Test-Path "$root/storage-before-installation.json" | Should -BeFalse
+        }
+
+        It 'refuses forged duplicate numbers in the persisted inventory' {
+            Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root
+            $baseline = Get-Content "$root/storage-before-installation.json" -Raw | ConvertFrom-Json
+            $baseline.disks[0].partitions[1].number = 1
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } |
+                Should -Throw '*duplicate partition number*'
+        }
+
+        It 'refuses an aliased number in current partitions but allows unique renumbering' {
+            Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root
+            $baseline = Get-Content "$root/storage-before-installation.json" -Raw | ConvertFrom-Json
+            $script:partitions[0][1].PartitionNumber = 1
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } |
+                Should -Throw '*duplicate partition number*'
+            $script:partitions[0][1].PartitionNumber = 7
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } |
+                Should -Not -Throw
+        }
+
+        It 'refuses an out-of-bounds extent in persisted recovery evidence' {
+            Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root
+            $baseline = Get-Content "$root/storage-before-installation.json" -Raw | ConvertFrom-Json
+            $baseline.disks[0].partitions[1].sizeBytes = 21GB
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } |
+                Should -Throw '*out-of-bounds partition extent*'
+        }
+
+        It 'refuses an unaligned GPT extent in the live observation' {
+            Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root
+            $baseline = Get-Content "$root/storage-before-installation.json" -Raw | ConvertFrom-Json
+            $script:partitions[0][1].Offset += 1
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } |
+                Should -Throw '*out-of-bounds partition extent*'
+        }
+
+        It 'accepts and preserves an existing fifth GPT partition' {
+            $fifth = $script:partitions[0][1].PSObject.Copy()
+            $fifth.PartitionNumber = 5; $fifth.Offset = 63GB; $fifth.Size = 1GB
+            $fifth.Guid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+            $script:partitions[0] += $fifth
+            Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root
+            $baseline = Get-Content "$root/storage-before-installation.json" -Raw | ConvertFrom-Json
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } |
+                Should -Not -Throw
+            $fifth.Size += 1MB
+            { Assert-LibertixStorageBaseline -Plan $plan -Baseline $baseline -Restored } |
+                Should -Throw '*Partition size changed*'
+        }
+
+        It 'refuses unsupported disk geometry before saving the baseline' {
+            $script:disks[0].LogicalSectorSize = 768
+            { Save-LibertixStorageBaseline -Plan $plan -RecoveryRoot $root } | Should -Throw
+            Test-Path "$root/storage-before-installation.json" | Should -BeFalse
         }
     }
 }

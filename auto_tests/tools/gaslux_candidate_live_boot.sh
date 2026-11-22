@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Disposable QEMU/OVMF real live-kernel smoke for Pop!_OS and Q4OS.
-# Real ISO stays read-only on an emulated optical drive. This neither
+# Disposable QEMU/OVMF live-kernel smoke for Pop!_OS, Q4OS, Zorin and Mint.
+# Real ISO stays read-only on an emulated optical or virtio device. This neither
 # installs a target OS nor starts a Windows VM.
 set -Eeuo pipefail
 
 die() { printf '%s\n' "GASLUX_LIVE_BOOT_ERROR: $*" >&2; exit 1; }
-[[ $# -eq 3 ]] || die 'Usage: gaslux_candidate_live_boot.sh popos|q4os ISO PINNED_SHA256'
+[[ $# -eq 3 ]] || die 'Usage: gaslux_candidate_live_boot.sh popos|q4os|zorin|mint ISO PINNED_SHA256'
 distro="$1"
 iso="$(realpath -e "$2")"
 digest="$3"
-[[ "$distro" == popos || "$distro" == q4os ]] || die 'Unknown backend'
+[[ "$distro" == popos || "$distro" == q4os || "$distro" == zorin || "$distro" == mint ]] || die 'Unknown backend'
 [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || die 'Missing pinned sha256'
 [[ -f "$iso" && ! -L "$iso" ]] || die 'Refuse symlink/non-regular ISO'
 printf '%s  %s\n' "$digest" "$iso" | sha256sum -c --status ||
@@ -57,6 +57,30 @@ if [[ "$distro" == popos ]]; then
   kernel="$prefix/vmlinuz.efi"
   initrd="$prefix/initrd.gz"
   boot="boot=casper live-media-path=/$prefix"
+elif [[ "$distro" == zorin || "$distro" == mint ]]; then
+  # The exact kernel/initrd naming varies by Ubuntu/Casper image build.
+  # Discover both only within the verified ISO's top-level casper directory.
+  # Ambiguous or missing candidates fail before creating any VM boot media.
+  [[ -d "$work/iso-root/casper" ]] || die 'Pinned Mint/Zorin ISO has no Casper directory'
+  mapfile -t kernels < <(
+    find -L "$work/iso-root/casper" -mindepth 1 -maxdepth 1 -type f \
+      \( -name vmlinuz -o -name vmlinuz.efi \) -printf '%f\n' | sort
+  )
+  mapfile -t initrds < <(
+    find -L "$work/iso-root/casper" -mindepth 1 -maxdepth 1 -type f \
+      \( -name initrd -o -name initrd.img -o -name initrd.lz -o -name initrd.gz \
+        -o -name initrd.zstd \) \
+      -printf '%f\n' | sort
+  )
+  if [[ "${#kernels[@]}" -ne 1 || "${#initrds[@]}" -ne 1 ]]; then
+    echo 'Pinned Mint/Zorin Casper kernel/initramfs candidates:' >&2
+    find "$work/iso-root/casper" -mindepth 1 -maxdepth 1 \
+      \( -name '*vmlinuz*' -o -name '*initrd*' \) -printf '%f\n' >&2
+    die 'Pinned Mint/Zorin ISO has missing or ambiguous kernel/initramfs files'
+  fi
+  kernel="casper/${kernels[0]}"
+  initrd="casper/${initrds[0]}"
+  boot="boot=casper live-media-path=/casper"
 else
   # Debian/Q4OS native live media uses release-versioned vmlinuz/initrd pairs.
   mapfile -t kernels < <(find "$work/iso-root/live" -mindepth 1 -maxdepth 1 \
@@ -102,6 +126,9 @@ set default=0
 menuentry 'Gaslux $distro real live-kernel lab boot' {
   insmod iso9660
   insmod part_gpt
+  insmod search_fs_file
+  # Capture enumerated GRUB devices if a pinned ISO is not accessible.
+  ls
   search --no-floppy --file --set=source /$kernel
   if [ ! -f (\$source)/$initrd ]; then
     echo 'Pinned guest live initramfs not found'
@@ -125,10 +152,22 @@ mmd -i "$work/efi-part.img" ::/EFI/BOOT
 mcopy -i "$work/efi-part.img" "$work/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
 dd if="$work/efi-part.img" of="$work/efi-disk.img" bs=512 seek=2048 conv=notrunc status=none
 
+# OVMF exposes the owned ESP as virtio. Some hybrid Casper ISOs are not
+# enumerated by stand-alone GRUB when attached through the legacy IDE CD-ROM.
+# Present Mint/Zorin pinned ISO as a second, strictly read-only virtio device
+# while leaving the older Pop/Q4OS lab media modes unchanged.
+iso_drive=(-cdrom "$iso")
+if [[ "$distro" == zorin || "$distro" == mint ]]; then
+  iso_drive=(
+    -drive "if=none,id=labiso,format=raw,readonly=on,file=$iso"
+    -device virtio-blk-pci,drive=labiso,bootindex=2
+  )
+fi
+
 echo "GASLUX_GUEST_DISTRO=$distro"
 echo "GASLUX_GUEST_KERNEL=$kernel"
 echo "GASLUX_GUEST_INITRD=$initrd"
-# No host block devices are attached. ISO is emulated read-only CD-ROM.
+# No host block devices are attached. ISO uses an immutable guest media device.
 timeout --kill-after=5s 320s qemu-system-x86_64 \
   -machine q35,accel=tcg -cpu max -smp 2 -m 4096 \
   -display none -monitor none -no-reboot -net none \
@@ -136,7 +175,7 @@ timeout --kill-after=5s 320s qemu-system-x86_64 \
   -drive if=pflash,format=raw,file="$work/nvram.fd" \
   -drive if=none,id=labefi,format=raw,file="$work/efi-disk.img" \
   -device virtio-blk-pci,drive=labefi,bootindex=1 \
-  -cdrom "$iso" \
+  "${iso_drive[@]}" \
   -boot order=c,menu=off \
   -serial "file:$work/serial.log" &
 guest="$!"

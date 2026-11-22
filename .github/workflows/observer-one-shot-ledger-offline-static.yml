@@ -1,0 +1,67 @@
+name: Observer one-shot OFFLINE contract tests (NEVER QEMU)
+
+on:
+  pull_request:
+    paths:
+      - 'schemas/observer-one-shot-grant-v1.schema.json'
+      - 'schemas/observer-one-shot-grant-v2.schema.json'
+      - 'auto_tests/tools/observer_one_shot_ledger_offline.py'
+      - 'auto_tests/tests/test_observer_one_shot_ledger_offline.py'
+      - 'auto_tests/fixtures/observer-one-shot/**'
+      - 'docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_OFFLINE.md'
+      - 'docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_V2_P01.md'
+      - '.github/workflows/observer-one-shot-ledger-offline-static.yml'
+  push:
+    branches:
+      - 'integration/observer-one-shot-ledger-offline-20261121'
+      - 'integration/observer-sqlite-v3-offline-dev-20261122'
+      - 'dev'
+    paths:
+      - 'schemas/observer-one-shot-grant-v1.schema.json'
+      - 'schemas/observer-one-shot-grant-v2.schema.json'
+      - 'auto_tests/tools/observer_one_shot_ledger_offline.py'
+      - 'auto_tests/tests/test_observer_one_shot_ledger_offline.py'
+      - 'auto_tests/fixtures/observer-one-shot/**'
+      - 'docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_OFFLINE.md'
+      - 'docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_V2_P01.md'
+      - '.github/workflows/observer-one-shot-ledger-offline-static.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contracts-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install pinned contract-only dependencies
+        run: python3 -m pip install 'jsonschema==4.25.1' 'ruff==0.13.3'
+      - name: Validate schema and fixture (no network/guest)
+        run: |
+          python3 -m json.tool schemas/observer-one-shot-grant-v1.schema.json > /dev/null
+          python3 -m json.tool schemas/observer-one-shot-grant-v2.schema.json > /dev/null
+          python3 -m json.tool auto_tests/fixtures/observer-one-shot/valid-grant.json > /dev/null
+          python3 - <<'PY'
+          import json
+          from jsonschema import Draft202012Validator, FormatChecker
+          from pathlib import Path
+          schema = json.loads(Path('schemas/observer-one-shot-grant-v2.schema.json').read_text())
+          legacy = json.loads(Path('schemas/observer-one-shot-grant-v1.schema.json').read_text())
+          fixture = json.loads(Path('auto_tests/fixtures/observer-one-shot/valid-grant.json').read_text())
+          Draft202012Validator.check_schema(schema)
+          Draft202012Validator.check_schema(legacy)
+          Draft202012Validator(schema, format_checker=FormatChecker()).validate(fixture)
+          assert schema["properties"]["contractVersion"]["const"] == 2
+          assert not Draft202012Validator(legacy).is_valid(fixture)
+          PY
+      - name: Ruff lint and format, offline code only
+        run: |
+          python3 -m ruff check --config auto_tests/pyproject.toml auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
+          python3 -m ruff format --check --diff --config auto_tests/pyproject.toml auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
+      - name: Python compileall and adversarial disposable-ledger tests
+        run: |
+          python3 -m compileall -q auto_tests/tools/observer_one_shot_ledger_offline.py auto_tests/tests/test_observer_one_shot_ledger_offline.py
+          python3 -W error::ResourceWarning -m unittest discover -s auto_tests/tests -p test_observer_one_shot_ledger_offline.py -v

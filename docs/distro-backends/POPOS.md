@@ -1,5 +1,7 @@
 # Pop!_OS — ONE-SHOT backend dossier
 
+> **Atualização de navegação (22-11-2026):** este dossier mantém a análise histórica de 19-11. Revalidar HEADs, PRs/merges, media e artefactos antes de usar as propostas. Ver [histórico e instruções por agente](../AGENT_HISTORICAL_PLAYBOOK.md), [índice GitHub Actions/VM](../CI_VM_EVIDENCE_INDEX.md) e [contratos partilhados](SHARED_CONTRACTS.md). Propostas antigas de criação de branch/PR não substituem a regra atual de reutilização e consolidação; testes QEMU descartáveis têm autorização delimitada em [AGENTS](../../AGENTS.md).
+
 **Revisão:** 2026-11-19. **Maturidade:** EXPERIMENTAL / PENDENTE: não autorizado para catálogo estável. Ver [contratos gerais](SHARED_CONTRACTS.md). **Não usar este documento como autorização de escrita.**
 
 ## 1. Resumo executivo e estado
@@ -9,7 +11,7 @@ Arranque Live em overlay QCOW2 readonly não é execução de distinst nem dual 
 - [Origem oficial/media](https://iso.pop-os.org/24.04/amd64/intel/20/pop-os_24.04_amd64_intel_20.iso) — versão/release: **24.04 Intel build 20 experimental em PR #228 (não catálogo)**. [DOCUMENTADO como endereço de referência; revalidar disponibilidade, conteúdo e assinatura na data da execução.]
 - [Documentação upstream](https://support.system76.com/articles/install-pop/) — instruções gerais, não aprovação de boot sem USB. [DOCUMENTADO; verificar versão, data e parâmetros antes de automatizar.]
 - [Configuração Gaslux main](https://github.com/LMhdez/gaslux/blob/main/release-config.json) — não contém esta distribuição. [IMPLEMENTADO]
-- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [Issue de estabilidade #3](https://github.com/LMhdez/gaslux/issues/3) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
+- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [matriz multidistro](../MULTIDISTRO_PLAN.md) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
 - PRs/threads experimentais relacionadas: [#221](https://github.com/LMhdez/gaslux/pull/221), [#223](https://github.com/LMhdez/gaslux/pull/223), [#228](https://github.com/LMhdez/gaslux/pull/228), [#232](https://github.com/LMhdez/gaslux/pull/232). **Consultar HEAD, estado de merge, logs e branches antes de reutilizar.**
 - Evidência histórica de CI para contexto: [Actions](https://github.com/LMhdez/gaslux/actions/runs/44490023468); a existência ou êxito do workflow não certifica todas as etapas. [PENDENTE: rever job e artefactos exactos.]
 

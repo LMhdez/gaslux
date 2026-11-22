@@ -1,6 +1,8 @@
 # Backends de distribuição — investigação operacional
 Revisão: **2026-11-19**. Base de integração: **dev**; `main` mantém apenas Mint/Zorin no catálogo estável. Etiquetas: DOCUMENTADO (upstream), IMPLEMENTADO (código), COMPROVADO (teste real identificável), PENDENTE, BLOQUEADO. Ver [contratos partilhados](SHARED_CONTRACTS.md). Nenhuma linha desta matriz autoriza escrita real.
 
+> **Nota de atualização de 22-11-2026:** o quadro seguinte conserva o instantâneo histórico de 19-11. Para saber que PRs posteriores foram integradas/fechadas e quais os laboratórios GitHub Actions efetivos, consultar o [histórico e manual operacional dos agentes](../AGENT_HISTORICAL_PLAYBOOK.md) e o [índice CI/VM](../CI_VM_EVIDENCE_INDEX.md), depois revalidar HEADs e resultados no GitHub. A [issue #3](https://github.com/LMhdez/gaslux/issues/3) cobre os critérios CachyOS e a [issue #254](https://github.com/LMhdez/gaslux/issues/254) os gates Bazzite; nenhuma é prova de estabilidade de outras distribuições. As autorizações limitadas para testes em discos virtuais descartáveis do Actions estão em [AGENTS](../../AGENTS.md) e [AI_POLICY](../../AI_POLICY.md), sem acesso a discos reais.
+
 | Backend | Firmware/tabela no Gaslux | Bootloader/instalador | Estado verificado e bloqueios | Próxima prova |
 |---|---|---|---|---|
 | [Linux Mint](MINT.md) | BIOS/MBR e UEFI/GPT: caminhos de infraestrutura em main; conformidade fim-a-fim ainda exige provas por cenário | GRUB BIOS ou GRUB EFI com shim assinado onde o firmware/ISO o suportem; instalador Ubuntu/Mint integrado na edição ISO; identificar binário e versão exacta na imagem fixada antes de declarar unattended | PENDENTE: sem sequência fim-a-fim e rollback comprovados | Verificar ISO, executar cadeia VM controlada |
@@ -9,6 +11,12 @@ Revisão: **2026-11-19**. Base de integração: **dev**; `main` mantém apenas M
 | [Pop!_OS](POPOS.md) | UEFI/GPT em ensaios; BIOS/MBR apenas após teste real e confirmação upstream; Secure Boot activo BLOQUEADO sem solução unattended verificada | systemd-boot em UEFI; GRUB em Legacy BIOS quando suportado pela versão exacta; Secure Boot desactivado segundo orientação System76, confirmar por release; System76 distinst e integração nativa Pop; API CLI/config específica requer fonte e artefacto da ISO examinados | PENDENTE: sem sequência fim-a-fim e rollback comprovados | Verificar ISO, executar cadeia VM controlada |
 | [Bazzite](BAZZITE.md) | APENAS UEFI/GPT no Gaslux; BIOS/MBR BLOQUEADO antes de escrita; Secure Boot que requeira MOK manual BLOQUEADO | cadeia Fedora Atomic e deployment ostree/rpm-ostree; implementação EFI e política Secure Boot exigem comprovação da ISO exacta; instalação Fedora Atomic conforme ISO oficial (Anaconda/fluxo atomic comprovado por release), não copiar squashfs | PENDENTE: sem sequência fim-a-fim e rollback comprovados | Verificar ISO, executar cadeia VM controlada |
 | [Q4OS](Q4OS.md) | BIOS/MBR e UEFI/GPT a provar para mídia/versão; sem provas de end-to-end | GRUB BIOS/EFI conforme a ISO e instalação nativa; rever actualizações e localização exacta da instalação; Calamares SE estiver realmente na ISO verificada, caso contrário instalador nativo que a edição efectivamente forneça | PENDENTE: sem sequência fim-a-fim e rollback comprovados | Verificar ISO, executar cadeia VM controlada |
+
+## Documentação viva — responsabilidade por backend
+
+Em cada mudança relevante (ISO/proveniência, capacidades, código, finding Safety, boot/rollback, CI/VM, merge, fecho de PR ou gate), o agente do backend mantém o dossier correspondente atualizado **na própria tarefa**, com data UTC, HEAD, URL da evidência e limites. Safety/Observer atualizam os contratos de confiança e o Integrador verifica os links e o estado pós-merge. O Prompt Engineer deve consultar sempre [o manual histórico](../AGENT_HISTORICAL_PLAYBOOK.md), [o índice de GitHub Actions/VM](../CI_VM_EVIDENCE_INDEX.md) e o GitHub atual antes de emitir instruções.
+
+A matriz de 19-11-2026 abaixo é um instantâneo preservado: juntar notas de atualização em vez de reescrever provas antigas. Não converter CI offline em instalação real nem criar PRs/branches redundantes para manter documentação.
 
 ## Hierarquia das fontes
 1. `release-config.json` **main**: apenas Mint 22.3/Zorin 18.1, com ISO, tamanho e SHA fixados; os valores aqui transcritos não substituem a validação do catálogo assinado.

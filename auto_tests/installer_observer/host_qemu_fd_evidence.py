@@ -144,6 +144,8 @@ def borrowed_readonly_proc_fd(
         "INVALID_PID_OR_FD",
     )
     require(path.is_absolute() and not path.is_symlink(), "UNSAFE_MEDIA_PATH")
+    o_path = getattr(os, "O_PATH", None)
+    require(type(o_path) is int and o_path > 0, "REMOTE_O_PATH_FLAG_UNAVAILABLE")
     proc = Path("/proc") / str(pid)
     fd_path = proc / "fd" / str(fd_number)
     try:
@@ -157,7 +159,10 @@ def borrowed_readonly_proc_fd(
         remote_before = fd_path.stat()
         actual_link = os.readlink(fd_path)
         qemu_flags = _remote_fd_flags(proc, fd_number)
-        require((qemu_flags & os.O_ACCMODE) == os.O_RDONLY, "QEMU_FD_NOT_READONLY")
+        require(
+            (qemu_flags & os.O_ACCMODE) == os.O_RDONLY and not (qemu_flags & o_path),
+            "QEMU_FD_NOT_READONLY",
+        )
         require(
             stat.S_ISREG(before.st_mode)
             and stat.S_ISREG(remote_before.st_mode)
@@ -186,11 +191,11 @@ def borrowed_readonly_proc_fd(
                 "PROCESS_START_TICKS_CHANGED_DURING_CAPTURE",
             )
             # The originally numbered process FD can be dup2() replaced with
-            # O_RDWR on the SAME inode while this reopened local FD stays
+            # O_RDWR or O_PATH on the SAME inode while this reopened local FD stays
             # read-only. Re-read remote fdinfo and reject that substitution.
             final_flags = _remote_fd_flags(proc, fd_number)
             require(
-                (final_flags & os.O_ACCMODE) == os.O_RDONLY,
+                (final_flags & os.O_ACCMODE) == os.O_RDONLY and not (final_flags & o_path),
                 "REMOTE_FD_NOT_READONLY_AT_COMPLETION",
             )
             require(

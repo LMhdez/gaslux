@@ -1,6 +1,10 @@
 # Q4OS — ONE-SHOT backend dossier
 
+> **Atualização de navegação (22-11-2026):** este dossier mantém a análise histórica de 19-11. Revalidar HEADs, PRs/merges, media e artefactos antes de usar as propostas. Ver [histórico e instruções por agente](../AGENT_HISTORICAL_PLAYBOOK.md), [índice GitHub Actions/VM](../CI_VM_EVIDENCE_INDEX.md) e [contratos partilhados](SHARED_CONTRACTS.md). Propostas antigas de criação de branch/PR não substituem a regra atual de reutilização e consolidação; testes QEMU descartáveis têm autorização delimitada em [AGENTS](../../AGENTS.md).
+
 **Revisão:** 2026-11-19. **Maturidade:** EXPERIMENTAL / PENDENTE: não autorizado para catálogo estável. Ver [contratos gerais](SHARED_CONTRACTS.md). **Não usar este documento como autorização de escrita.**
+
+**Nota de integração 2026-11-21:** os mapas, evidências, schema e workflow ligados neste dossier permanecem no commit de investigação da PR #258. Não fazem parte desta extração documental para `dev`; os links estão fixados ao SHA original e não atestam execução em `dev`.
 
 ## 1. Resumo executivo e estado
 Teste QMP teclado com Windows DVD bloqueado no prompt não demonstra Windows Setup; não repetir esperas cegas. O objectivo é uma instalação nativa automatizada ao lado do Windows, com prova independente dos dois boots e recuperação. Compatibilidade upstream não equivale a suporte validado no Gaslux.
@@ -9,7 +13,7 @@ Teste QMP teclado com Windows DVD bloqueado no prompt não demonstra Windows Set
 - [Origem oficial/media](https://q4os.org/downloads1.html) — versão/release: **não fixada no catálogo estável**. [DOCUMENTADO como endereço de referência; revalidar disponibilidade, conteúdo e assinatura na data da execução.]
 - [Documentação upstream](https://q4os.org/dqa014.html) — instruções gerais, não aprovação de boot sem USB. [DOCUMENTADO; verificar versão, data e parâmetros antes de automatizar.]
 - [Configuração Gaslux main](https://github.com/LMhdez/gaslux/blob/main/release-config.json) — não contém esta distribuição. [IMPLEMENTADO]
-- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [Issue de estabilidade #3](https://github.com/LMhdez/gaslux/issues/3) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
+- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [matriz multidistro](../MULTIDISTRO_PLAN.md) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
 - PRs/threads experimentais relacionadas: [#59](https://github.com/LMhdez/gaslux/pull/59), [#207](https://github.com/LMhdez/gaslux/pull/207), [#210](https://github.com/LMhdez/gaslux/pull/210), [#220](https://github.com/LMhdez/gaslux/pull/220), [#226](https://github.com/LMhdez/gaslux/pull/226). **Consultar HEAD, estado de merge, logs e branches antes de reutilizar.**
 - Evidência histórica de CI para contexto: [Actions](https://github.com/LMhdez/gaslux/actions/runs/44476677560); a existência ou êxito do workflow não certifica todas as etapas. [PENDENTE: rever job e artefactos exactos.]
 
@@ -139,12 +143,12 @@ O laboratório **nunca** clica `Install`, `Done`, confirmação de formatação 
 
 **COMPROVADO:** o [workflow original de duas VMs #44641233701](https://github.com/LMhdez/gaslux/actions/runs/44641233701) obteve **9 estados e 8 transições visuais por VM** (sucesso de ambas), no instalador Calamares **`1:3.3.14-deb13.1.3`** realmente presente no SquashFS da ISO oficial Q4OS 6.10 r2. A ISO, com SHA-256 `1df141eaa342bbfd0092791a60f1ae9cf5230e8ebb472f87fcb463203e3eb95d`, mede **1 851 392 000 bytes** nas duas VMs. Não se executou qualquer job Calamares `partition` nem `Install`; só uma imagem GPT inteiramente sintética, descartável e própria foi anexada em QEMU/OVMF.
 
-- [Mapa operacional dos controlos e transições](ui-maps/q4os.json), com estado, ação, coordenada do **lab** e hashes de cada PNG real em ambas as VMs.
-- [Manifesto de evidências](evidence/q4os-manifest.json), estado `two-vm-verified`.
-- [Boot-map e análise dos módulos do instalador da ISO real](boot-maps/q4os.md), incluindo `prompt-install: false`, `installEFIFallback: true` e **paragem obrigatória antes do botão Install**.
+- [Mapa operacional dos controlos e transições](https://github.com/LMhdez/gaslux/blob/9b434a6a2b96b7a02fded73eb2ef66753bddde5d/docs/distro-backends/ui-maps/q4os.json), com estado, ação, coordenada do **lab** e hashes de cada PNG real em ambas as VMs.
+- [Manifesto de evidências](https://github.com/LMhdez/gaslux/blob/9b434a6a2b96b7a02fded73eb2ef66753bddde5d/docs/distro-backends/evidence/q4os-manifest.json), estado `two-vm-verified`.
+- [Boot-map e análise dos módulos do instalador da ISO real](https://github.com/LMhdez/gaslux/blob/9b434a6a2b96b7a02fded73eb2ef66753bddde5d/docs/distro-backends/boot-maps/q4os.md), incluindo `prompt-install: false`, `installEFIFallback: true` e **paragem obrigatória antes do botão Install**.
 - [VM 1, artefacto #14587306682](https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14587306682); [VM 2, artefacto #14586773677](https://github.com/LMhdez/gaslux/actions/runs/44641233701/artifacts/14586773677), com PNGs/relatórios, módulos Calamares extraídos, série e manifestos SHA.
 - [Validação independente #44643805955](https://github.com/LMhdez/gaslux/actions/runs/44643805955), [artefacto #14587637863](https://github.com/LMhdez/gaslux/actions/runs/44643805955/artifacts/14587637863): relê os dois artefactos originais, recalcula SHA, compara as regiões RGB e valida oito transições por VM. Inclui caixas de palavras OCR com confiança (449 e 457 candidatos), **não** identificadores Qt/acessibilidade.
-- [Schemas e testes](../../schemas/distro-ui-map.schema.json) e [workflow de contratos](../../.github/workflows/q4os-ui-contracts.yml) verificam estados, referências de provas e negativas sem criar falsa estabilidade.
+- [Schemas e testes](https://github.com/LMhdez/gaslux/blob/9b434a6a2b96b7a02fded73eb2ef66753bddde5d/schemas/distro-ui-map.schema.json) e [workflow de contratos](https://github.com/LMhdez/gaslux/blob/9b434a6a2b96b7a02fded73eb2ef66753bddde5d/.github/workflows/q4os-ui-contracts.yml) verificam estados, referências de provas e negativas sem criar falsa estabilidade.
 
 **Bloqueio concreto adicional:** as duas VMs do [ensaio #44646209124](https://github.com/LMhdez/gaslux/actions/runs/44646209124) abriram realmente o ecrã **Summary** com conta fictícia em RAM e pararam antes de `Install`, mas a sua validação automática falhou *fail-closed* porque a janela mudou de posição vertical de Users para Summary. Os screenshots originais desse ensaio permitiram identificar novas regiões de Summary e corrigir a validação sem relaxar a identidade visual. **PENDENTE** repetir/confirmar este décimo estado com dois artefactos aceites pelo gate actualizado; não acrescentar um nono passo verificado ao mapa inicial até isso acontecer.
 

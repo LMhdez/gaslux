@@ -1,5 +1,7 @@
 # Linux Mint — ONE-SHOT backend dossier
 
+> **Atualização de navegação (22-11-2026):** este dossier mantém a análise histórica de 19-11. Revalidar HEADs, PRs/merges, media e artefactos antes de usar as propostas. Ver [histórico e instruções por agente](../AGENT_HISTORICAL_PLAYBOOK.md), [índice GitHub Actions/VM](../CI_VM_EVIDENCE_INDEX.md) e [contratos partilhados](SHARED_CONTRACTS.md). Propostas antigas de criação de branch/PR não substituem a regra atual de reutilização e consolidação; testes QEMU descartáveis têm autorização delimitada em [AGENTS](../../AGENTS.md).
+
 **Revisão:** 2026-11-19. **Maturidade:** IMPLEMENTADO: entrada no catálogo main e runtime de família Ubuntu; instalação integral em todos os cenários e rollback continuam dependentes de prova real. Ver [contratos gerais](SHARED_CONTRACTS.md). **Não usar este documento como autorização de escrita.**
 
 ## 1. Resumo executivo e estado
@@ -9,7 +11,7 @@ Live QEMU e raiz Linux em imagem isolada não provam instalação automática Ga
 - [Origem oficial/media](https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso) — versão/release: **22.3 Cinnamon**. [DOCUMENTADO como endereço de referência; revalidar disponibilidade, conteúdo e assinatura na data da execução.]
 - [Documentação upstream](https://linuxmint-installation-guide.readthedocs.io/en/latest/verify.html) — instruções gerais, não aprovação de boot sem USB. [DOCUMENTADO; verificar versão, data e parâmetros antes de automatizar.]
 - [Configuração Gaslux main](https://github.com/LMhdez/gaslux/blob/main/release-config.json) — fonte dos metadados exactos da ISO. [IMPLEMENTADO]
-- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [Issue de estabilidade #3](https://github.com/LMhdez/gaslux/issues/3) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
+- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [contratos de segurança Mint/Zorin](../ARCHITECTURE.md) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
 - PRs/threads experimentais relacionadas: [#167](https://github.com/LMhdez/gaslux/pull/167), [#174](https://github.com/LMhdez/gaslux/pull/174), [#181](https://github.com/LMhdez/gaslux/pull/181), [#197](https://github.com/LMhdez/gaslux/pull/197), [#204](https://github.com/LMhdez/gaslux/pull/204), [#233](https://github.com/LMhdez/gaslux/pull/233). **Consultar HEAD, estado de merge, logs e branches antes de reutilizar.**
 - Evidência histórica de CI para contexto: [Actions](https://github.com/LMhdez/gaslux/actions/runs/44147851503); a existência ou êxito do workflow não certifica todas as etapas. [PENDENTE: rever job e artefactos exactos.]
 

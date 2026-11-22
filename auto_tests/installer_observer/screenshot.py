@@ -14,8 +14,12 @@ IEND = bytes.fromhex("0000000049454e44ae426082")
 
 
 def valid_box(box: Box, size: Size) -> bool:
-    return (len(box) == 4 and all(type(n) is int for n in box)
-            and 0 <= box[0] < box[2] <= size[0] and 0 <= box[1] < box[3] <= size[1])
+    return (
+        len(box) == 4
+        and all(type(n) is int for n in box)
+        and 0 <= box[0] < box[2] <= size[0]
+        and 0 <= box[1] < box[3] <= size[1]
+    )
 
 
 @dataclass(frozen=True)
@@ -30,8 +34,8 @@ class Screenshot:
             raise Refusal("Oversized, truncated or trailing PNG data")
         offset = 8
         while offset < len(png):
-            length = int.from_bytes(png[offset:offset+4], "big")
-            kind = png[offset+4:offset+8]
+            length = int.from_bytes(png[offset : offset + 4], "big")
+            kind = png[offset + 4 : offset + 8]
             offset += length + 12
             if kind == b"IEND":
                 break

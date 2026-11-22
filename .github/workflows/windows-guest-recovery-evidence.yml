@@ -43,15 +43,23 @@ jobs:
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -ErrorAction Stop
-      - name: Parse collector and test read-only helpers; do not probe CI machine
+      - name: Parse recovery inventory module and read-only collectors; run Pester
         shell: pwsh
         run: |
-          $scriptPath = 'auto_tests/app/scripts/windows-guest-recovery-evidence.ps1'
-          $tokens = $null
-          $issues = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path $scriptPath), [ref]$tokens, [ref]$issues
-          ) | Out-Null
-          if ($issues.Count -gt 0) { throw ($issues | Out-String) }
-          $result = Invoke-Pester -Path 'PowerShell.Tests/WindowsGuestRecoveryEvidence.Tests.ps1' -PassThru
-          if ($result.FailedCount -ne 0) { exit 1 }
+          foreach ($scriptPath in @(
+            'auto_tests/app/scripts/windows-guest-recovery-evidence.ps1',
+            'Scripts/modules/Libertix.StorageBaseline.psm1',
+            'PowerShell.Tests/StorageBaseline.Tests.ps1'
+          )) {
+            $tokens = $null
+            $issues = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $scriptPath), [ref]$tokens, [ref]$issues
+            ) | Out-Null
+            if (@($issues).Count -gt 0) { throw ($issues | Out-String) }
+          }
+          $result = Invoke-Pester -Path @(
+            'PowerShell.Tests/WindowsGuestRecoveryEvidence.Tests.ps1',
+            'PowerShell.Tests/StorageBaseline.Tests.ps1'
+          ) -PassThru
+          if ($result.FailedCount -ne 0 -or $result.PassedCount -eq 0) { exit 1 }

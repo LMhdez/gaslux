@@ -36,8 +36,9 @@ def _object(pairs: list[tuple[str, Any]]) -> dict:
 
 def parse(raw: bytes) -> dict:
     try:
-        value = json.loads(raw.decode("utf-8"), object_pairs_hook=_object,
-                           parse_constant=lambda s: _invalid(s))
+        value = json.loads(
+            raw.decode("utf-8"), object_pairs_hook=_object, parse_constant=lambda s: _invalid(s)
+        )
     except (ValueError, RecursionError) as exc:
         raise Refusal(f"Invalid JSON: {exc}") from exc
     if not isinstance(value, dict):
@@ -67,8 +68,12 @@ def _local(path: Path) -> Path:
         raise Refusal("Local paths without traversal required")
     path = path.absolute()
     for part in path.parts[1:]:
-        if (":" in part or "\\" in part or part.endswith((" ", "."))
-                or part.partition(".")[0].upper() in _DEVICES):
+        if (
+            ":" in part
+            or "\\" in part
+            or part.endswith((" ", "."))
+            or part.partition(".")[0].upper() in _DEVICES
+        ):
             raise Refusal("Device, stream or non-canonical path")
     return path
 
@@ -127,7 +132,11 @@ def regular(path: Path, limit: int) -> Iterator[BinaryIO]:
     try:
         with os.fdopen(_open_local(_local(path)), "rb") as stream:
             meta = os.fstat(stream.fileno())
-            if not stat.S_ISREG(meta.st_mode) or meta.st_nlink != 1 or not 0 < meta.st_size <= limit:
+            if (
+                not stat.S_ISREG(meta.st_mode)
+                or meta.st_nlink != 1
+                or not 0 < meta.st_size <= limit
+            ):
                 raise Refusal(f"Not a bounded regular file: {path.name}")
             yield stream
             after = os.fstat(stream.fileno())
