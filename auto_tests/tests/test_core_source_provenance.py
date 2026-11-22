@@ -13,7 +13,6 @@ from app.services.validation import ValidationService
 from pydantic import ValidationError
 
 
-
 def _settings(**overrides: object) -> Settings:
     """Standalone fake laboratory configuration; all addresses are reserved examples."""
 
