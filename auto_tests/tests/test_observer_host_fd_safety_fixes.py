@@ -427,9 +427,7 @@ def test_s319_fdinfo_missing_or_unreadable_is_fail_closed(
 
     monkeypatch.setattr(Path, "read_text", broken_read_text)
     expected = (
-        "REMOTE_FD_FLAGS_MISSING"
-        if bad_fdinfo == "missing_flags"
-        else "PROC_FD_OBSERVATION_FAILED"
+        "REMOTE_FD_FLAGS_MISSING" if bad_fdinfo == "missing_flags" else "PROC_FD_OBSERVATION_FAILED"
     )
     with (
         pytest.raises(HostEvidenceRefused, match=expected),
