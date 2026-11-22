@@ -29,10 +29,12 @@ from auto_tests.installer_observer.qemu_local_disk_witness import (
 from auto_tests.tests.test_observer_qemu_real_disk_readonly import (
     make_qcow,
     make_raw,
-    pinned as _pinned,
     pins_for,
     shutdown,
     wait_qmp,
+)
+from auto_tests.tests.test_observer_qemu_real_disk_readonly import (
+    pinned as _pinned,
 )
 from auto_tests.tools.observer_guest_collector_lab import (
     CollectorLabDenied,
@@ -42,6 +44,10 @@ from auto_tests.tools.observer_guest_collector_lab import (
     build_guest,
     validate,
 )
+
+# The inherited pytest fixture is registered via its original fixture name.
+# This explicit use prevents lint from removing a fixture needed at collection.
+assert _pinned is not None
 
 # Real QEMU is launched by a Linux hosted runner. No guest network, QGA,
 # SSH, serial commands from HOST, install media, partitioning or writable disk.
