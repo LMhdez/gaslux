@@ -50,6 +50,30 @@ jobs:
           assert not any(line.startswith('secrets.') for line in lines)
           print('Six read-only backend roles have no GitHub write authority')
           PY
+      - name: Validate real current-dev research entrypoints before enabling scheduler
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Offline preflight for every backend research job
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_goal_supervisor.py -v
+          python3 -B auto_tests/tools/goal_supervisor.py > /tmp/gaslux-goal.json
+          for pattern in \
+            test_compact_ovmf_target.py \
+            test_gpt_fd_crosscheck_offline_compat.py \
+            test_protected_authority_readiness_offline.py \
+            test_popos_native_preflight.py \
+            test_q4os_native_preflight.py \
+            test_bazzite_atomic_preflight.py \
+            test_bazzite_iso_signature.py; do
+            test -f "auto_tests/tests/$pattern"
+            python3 -B -m unittest discover -s auto_tests/tests -p "$pattern" -v
+          done
+          test -f auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
 
   backend_research:
     if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
