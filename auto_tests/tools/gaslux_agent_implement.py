@@ -72,7 +72,7 @@ def propose(source: str, task: dict, suggestion: str) -> str:
     # A local model may omit the trailing C# dictionary comma despite
     # choosing the correct Windows ID and XKB layout. Normalize *only*
     # this absent punctuation; never rewrite identifiers or function calls.
-    if not isinstance(suggestion, str) or len(suggestion) > 95 or "\\n" in suggestion or "\\r" in suggestion:
+    if not isinstance(suggestion, str) or len(suggestion) > 95 or "\n" in suggestion or "\r" in suggestion:
         raise ValueError("Model produced invalid or multiline statement")
     normalized = suggestion.strip()
     if normalized.endswith("}") and not normalized.endswith("},"):
