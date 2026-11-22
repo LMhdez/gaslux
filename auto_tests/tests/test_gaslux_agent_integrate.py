@@ -45,6 +45,8 @@ class IntegratorContractTests(unittest.TestCase):
             "additions": 1, "deletions": 0, "changes": 1,
         }]
         self.calls = []
+        self.live = self.dev
+        self.changed = []
 
     def api(self, method, path, body=None):
         self.calls.append((method, path, body))
@@ -53,13 +55,16 @@ class IntegratorContractTests(unittest.TestCase):
         if path == "/pulls/123":
             return self.pr
         if path == "/git/ref/heads/dev":
-            return {"object": {"sha": self.dev}}
+            return {"object": {"sha": self.live}}
         if path == "/git/commits/" + self.head:
             return {"parents": [{"sha": self.dev}]}
+        if path == f"/compare/{self.dev}...{self.live}":
+            return {"status": "ahead", "merge_base_commit": {"sha": self.dev},
+                    "ahead_by": 2, "total_commits": 2, "files": self.changed}
         if path == "/pulls/123/files?per_page=100":
             return self.files
         if path.startswith("/contents/"):
-            data = self.old if path.endswith(self.dev) else self.new
+            data = self.old if path.endswith(self.dev) or path.endswith(self.live) else self.new
             return {"encoding": "base64", "content": base64.b64encode(data.encode()).decode()}
         if path == "/pulls/123/reviews?per_page=100":
             return []
@@ -137,14 +142,41 @@ class IntegratorContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "not green"):
                 integ.inspect(123, self.head)
 
-    def test_dev_advancement_blocks_proposal(self):
-        def response(method, route, body=None):
-            if route == "/git/ref/heads/dev":
-                return {"object": {"sha": "c" * 40}}
-            return self.api(method, route, body)
-        with patch.object(integ, "api", side_effect=response):
-            with self.assertRaisesRegex(RuntimeError, "dev moved"):
+    def test_nonproduct_dev_advance_preserves_candidate(self):
+        self.live = "c" * 40
+        self.pr["base"]["sha"] = self.live
+        self.changed = [
+            {"filename": "docs/CI_VM_EVIDENCE_INDEX.md", "status": "modified"},
+            {"filename": "auto_tests/tests/test_auth_dest_128g_readonly.py", "status": "added"},
+            {"filename": ".github/workflows/auth-dest-342-346-canonical.yml", "status": "added"},
+        ]
+        with patch.object(integ, "api", side_effect=self.api):
+            checked = integ.inspect(123, self.head)
+        self.assertEqual(checked["base"], self.live)
+        self.assertEqual(checked["original_base"], self.dev)
+
+    def test_relevant_dev_advance_is_stale_and_skipped(self):
+        self.live = "c" * 40
+        self.pr["base"]["sha"] = self.live
+        self.changed = [{"filename": "Installation/Other.cs", "status": "modified"}]
+        with patch.object(integ, "api", side_effect=self.api):
+            with self.assertRaises(integ.StaleProposal):
                 integ.inspect(123, self.head)
+            self.assertEqual(integ.select(), {"status": "idle"})
+        self.assertFalse(any(method != "GET" for method, _, _ in self.calls))
+
+    def test_sensitive_drift_and_noncanonical_paths_refused(self):
+        self.live = "c" * 40
+        self.pr["base"]["sha"] = self.live
+        self.changed = [{"filename": "auto_tests/tools/gaslux_agent_integrate.py",
+                         "status": "modified"}]
+        with patch.object(integ, "api", side_effect=self.api):
+            with self.assertRaises(integ.StaleProposal):
+                integ.inspect(123, self.head)
+        self.assertFalse(integ.harmless_drift_file({
+            "filename": "../escape.md", "status": "modified"}))
+        self.assertFalse(integ.harmless_drift_file({
+            "filename": "docs/safety.md", "status": "removed"}))
 
     def test_non_direct_parent_blocks_proposal(self):
         def response(method, route, body=None):
@@ -152,7 +184,7 @@ class IntegratorContractTests(unittest.TestCase):
                 return {"parents": [{"sha": "c" * 40}]}
             return self.api(method, route, body)
         with patch.object(integ, "api", side_effect=response):
-            with self.assertRaisesRegex(ValueError, "ancestry"):
+            with self.assertRaisesRegex(ValueError, "original-base"):
                 integ.inspect(123, self.head)
 
     def test_stale_head_rejected_before_any_write(self):
@@ -164,7 +196,7 @@ class IntegratorContractTests(unittest.TestCase):
     def test_dev_moved_denied(self):
         self.pr["base"]["sha"] = "c" * 40
         with patch.object(integ, "api", side_effect=self.api):
-            with self.assertRaises(ValueError):
+            with self.assertRaises(integ.StaleProposal):
                 integ.inspect(123, self.head)
 
     def test_untrusted_event_denied_without_network(self):
@@ -260,6 +292,8 @@ class IntegratorContractTests(unittest.TestCase):
         trusted = yaml.split("\n  trusted_integrator:\n", 1)[1]
         self.assertIn("needs.windows_acceptance.result == 'success'", trusted)
         self.assertIn("pull-requests: write", trusted)
+        self.assertIn("gh pr ready", trusted)
+        self.assertIn("Gaslux Goal Supervisor - read-only progress", yaml)
         self.assertIn("github.ref == 'refs/heads/main'", trusted)
 
     def test_unsupported_backends_have_no_merge_grant(self):

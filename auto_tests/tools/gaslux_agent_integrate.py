@@ -6,6 +6,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import urllib.error
 import urllib.request
@@ -15,6 +16,46 @@ API = "https://api.github.com/repos/" + REPO
 SOURCE = "Installation/WindowsKeyboardLayout.cs"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 BOT = re.compile(r"^bot/gaslux-(mint|zorin)-keyboard-([0-9a-f]{12})$")
+
+class StaleProposal(RuntimeError):
+    """Safe refusal when a relevant dev change needs a fresh model candidate."""
+
+
+def harmless_drift_file(item: dict) -> bool:
+    """Allow only non-build, non-product and non-agent-authority updates."""
+    path = item.get("filename", "")
+    if not isinstance(path, str) or not path or path.startswith("/") or "\\" in path:
+        return False
+    if posixpath.normpath(path) != path or path.startswith("../"):
+        return False
+    previous = item.get("previous_filename")
+    if previous is not None and previous != path:
+        return False
+    if item.get("status") not in ("added", "modified"):
+        return False
+    if path.startswith("docs/") and path.endswith(".md"):
+        return True
+    if path.startswith("auto_tests/") and path.endswith(".py"):
+        return not path.startswith("auto_tests/tools/gaslux_agent_")
+    return path.startswith(".github/workflows/auth-dest-") and path.endswith(".yml")
+
+
+def compatible_advance(original: str, live: str) -> bool:
+    """Require complete, forward-only, path-disjoint dev ancestry."""
+    if original == live:
+        return True
+    if not SHA.fullmatch(original) or not SHA.fullmatch(live):
+        return False
+    diff = api("GET", f"/compare/{original}...{live}")
+    files = diff.get("files")
+    return (
+        diff.get("status") == "ahead"
+        and diff.get("merge_base_commit", {}).get("sha") == original
+        and type(diff.get("ahead_by")) is int and 0 < diff["ahead_by"] <= 100
+        and type(diff.get("total_commits")) is int and 0 < diff["total_commits"] <= 100
+        and isinstance(files, list) and 0 < len(files) < 300
+        and all(isinstance(f, dict) and harmless_drift_file(f) for f in files)
+    )
 TASKS = {
     "mint": ("MINT-PT-KEYBOARD-01", "00000809", "00000816", "pt"),
     "zorin": ("ZORIN-BR-KEYBOARD-01", "0000040C", "00000416", "br"),
@@ -84,21 +125,25 @@ def inspect(number: int, expected: str | None = None) -> dict:
     match = BOT.fullmatch(branch)
     commit, dev = head.get("sha", ""), base.get("sha", "")
     if (pr.get("number") != number or pr.get("state") != "open" or
-        pr.get("draft") is not True or
+        type(pr.get("draft")) is not bool or
         pr.get("user", {}).get("login") != "github-actions[bot]" or
         match is None or
         head.get("repo", {}).get("full_name") != REPO or
         base.get("repo", {}).get("full_name") != REPO or
         base.get("ref") != "dev" or
         not SHA.fullmatch(str(commit)) or not SHA.fullmatch(str(dev)) or
-        match.group(2) != dev[:12] or
         (expected is not None and expected != commit)):
         raise ValueError("Not an approved exact-base GitHub bot Draft PR")
     if api("GET", "/git/ref/heads/dev")["object"]["sha"] != dev:
-        raise RuntimeError("dev moved since proposal; deny")
+        raise StaleProposal("dev changed during selection; retry")
     parents = api("GET", f"/git/commits/{commit}").get("parents", [])
-    if len(parents) != 1 or parents[0].get("sha") != dev:
+    if len(parents) != 1 or not SHA.fullmatch(str(parents[0].get("sha", ""))):
         raise ValueError("Proposal has unexpected ancestry")
+    original = parents[0]["sha"]
+    if match.group(2) != original[:12]:
+        raise ValueError("Proposal original-base identity mismatch")
+    if not compatible_advance(original, dev):
+        raise StaleProposal("relevant dev changes require regenerated candidate")
     files = api("GET", f"/pulls/{number}/files?per_page=100")
     if (not isinstance(files, list) or len(files) != 1 or
         files[0].get("filename") != SOURCE or
@@ -107,8 +152,11 @@ def inspect(number: int, expected: str | None = None) -> dict:
         files[0].get("deletions") != 0 or
         files[0].get("changes") != 1):
         raise ValueError("Candidate diff exceeds one allowed line")
-    if not exact_insert(content_at(dev), content_at(commit), match.group(1)):
+    original_code = content_at(original)
+    if not exact_insert(original_code, content_at(commit), match.group(1)):
         raise ValueError("Candidate source differs from approved exact code")
+    if content_at(dev) != original_code:
+        raise StaleProposal("Windows product mapping source changed in dev")
     reviews = api("GET", f"/pulls/{number}/reviews?per_page=100")
     if not isinstance(reviews, list) or any(
         v.get("state") == "CHANGES_REQUESTED" for v in reviews
@@ -129,8 +177,11 @@ def inspect(number: int, expected: str | None = None) -> dict:
         for v in checks.get("check_runs", [])
     ):
         raise ValueError("An existing candidate-head check is not green")
+    if api("GET", "/git/ref/heads/dev")["object"]["sha"] != dev:
+        raise StaleProposal("dev changed during validation; retry")
     return {
         "number": number, "head": commit, "base": dev,
+        "original_base": original,
         "role": match.group(1), "task": TASKS[match.group(1)][0],
     }
 
@@ -147,7 +198,13 @@ def select() -> dict:
     if not queue:
         return {"status": "idle"}
     queue.sort(key=lambda pr: (pr.get("created_at", ""), pr["number"]))
-    return {"status": "selected", **inspect(queue[0]["number"])}
+    for candidate in queue:
+        try:
+            return {"status": "selected", **inspect(candidate["number"])}
+        except StaleProposal:
+            # Old proposals cannot starve newer compatible work.
+            continue
+    return {"status": "idle"}
 
 
 def merge(number: int, expected: str) -> dict:
@@ -162,17 +219,25 @@ def merge(number: int, expected: str) -> dict:
             raise RuntimeError("Missing workflow completion provenance")
         evt = json.loads(Path(event_path).read_text(encoding="utf-8"))
         runner = evt.get("workflow_run", {})
-        if (runner.get("name") != "Gaslux autonomous GitHub agents"
+        allowed = {
+            ("Gaslux autonomous GitHub agents", "main"),
+            ("Gaslux Goal Supervisor - read-only progress", "dev"),
+        }
+        if ((runner.get("name"), runner.get("head_branch")) not in allowed
             or runner.get("conclusion") != "success"
-            or runner.get("head_branch") != "main"
             or runner.get("head_repository", {}).get("full_name") != REPO
             or runner.get("event") not in ("push", "schedule", "workflow_dispatch")):
             raise RuntimeError("Untrusted workflow completion provenance")
     if os.getenv("GASLUX_WINDOWS_ACCEPTANCE") != "success":
         raise RuntimeError("No exact-HEAD Windows build and tests in this run")
-    checked = inspect(number, expected)
-    if inspect(number, expected) != checked:
-        raise RuntimeError("Proposal changed during validation")
+    try:
+        checked = inspect(number, expected)
+        if inspect(number, expected) != checked:
+            raise StaleProposal("dev changed while confirming candidate")
+    except StaleProposal:
+        return {"status": "retry", "reason": "dev_updated", "pr": number}
+    if api("GET", "/git/ref/heads/dev")["object"]["sha"] != checked["base"]:
+        return {"status": "retry", "reason": "dev_updated", "pr": number}
     result = api("PUT", f"/pulls/{number}/merge", {
         "sha": expected,
         "merge_method": "squash",
