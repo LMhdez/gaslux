@@ -117,3 +117,28 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   QCOW2 guest GPT and checkpoint authenticity **UNPROVEN**;
   Guest channel, write and installation authority **DENIED**.
   No release or stability claim.
+
+
+### DESTINATION-337-CI-AND-SCALE-01 — separação de escalas (22-11-2026)
+
+A [PR #337](https://github.com/LMhdez/gaslux/pull/337) corrigiu a falha
+original `type(path) is Path` no commit
+`d2e382a60120d09a0b225e4188309f48f0315845`, substituindo pela
+classe concreta `type(Path())`. CI [#45032719682](https://github.com/LMhdez/gaslux/actions/runs/45032719682)
+SUCCESS no HEAD documental `829da9e5964e609d3555719d0fea173030aa6506`.
+A proposta de metadados de 128 GiB é uma branch dependente, test-only,
+sem hash integral ou checkpoint, e não altera a classificação #337.
+A CI da branch e a revisão Safety devem ser validadas no HEAD exato
+antes de qualquer merge. QEMU anterior foi **stopped**, sem guest/Windows.
+
+
+- [PR #342](https://github.com/LMhdez/gaslux/pull/342) implementa uma
+  sonda read-only apenas de metadados até 128 GiB, com hash integral <=512 MiB
+  ainda bloqueante para o RAW grande. A Action [#45034223975](https://github.com/LMhdez/gaslux/actions/runs/45034223975)
+  foi **SUCCESS** no commit `049f1799a7296e3891dabd8be869cf4de3eb5c85`:
+  12 testes novos com RAW sintético esparso 128 GiB e QCOW2 genuíno criado
+  por `qemu-img`, além de QEMU parado, #327/#267 e HOST/FD. [Docs #45034226613](https://github.com/LMhdez/gaslux/actions/runs/45034226613)
+  também **SUCCESS**. Sem Windows real, hashing 128 GiB, checkpoint
+  autenticado, Guest ou permissão de escrita. A PR permanece Draft até
+  auditoria independente Safety; os checks deste HEAD de documentação
+  continuam a precisar da respetiva execução.

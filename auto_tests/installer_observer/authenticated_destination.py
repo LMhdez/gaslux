@@ -30,7 +30,9 @@ from .qemu_local_disk_witness import (
     QemuLocalDiskWitness,
 )
 
-MAX_BYTES = 512 * 1024 * 1024
+MAX_BYTES = 512 * 1024 * 1024  # Maximum per-file full SHA-256 work budget.
+MAX_SCALE_VIRTUAL_BYTES = 128 * 1024 * 1024 * 1024  # Metadata-only upper bound.
+QCOW2_HEADER_READ_BYTES = 32
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -47,7 +49,13 @@ def _stat_identity(st: os.stat_result) -> tuple[int, int, int, int, int]:
     return st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns
 
 
-def _pin(fd: int, path: Path, workspace: Path) -> os.stat_result:
+def _pin(
+    fd: int, path: Path, workspace: Path, *, max_file_bytes: int = MAX_BYTES
+) -> os.stat_result:
+    require(
+        type(max_file_bytes) is int and 0 < max_file_bytes <= MAX_SCALE_VIRTUAL_BYTES,
+        "SIZE_BUDGET_INVALID",
+    )
     require(type(fd) is int and fd >= 0, "FOREIGN_FD")
     require(
         type(path) is type(Path())
@@ -67,7 +75,7 @@ def _pin(fd: int, path: Path, workspace: Path) -> os.stat_result:
         and stat.S_ISREG(opened.st_mode)
         and before.st_nlink == opened.st_nlink == 1
         and opened.st_uid == before.st_uid == os.getuid()
-        and 0 < opened.st_size <= MAX_BYTES
+        and 0 < opened.st_size <= max_file_bytes
         and (flags & os.O_ACCMODE) == os.O_RDONLY
         and not (flags & getattr(os, "O_PATH", 0))
         and _stat_identity(before) == _stat_identity(opened),
@@ -79,15 +87,139 @@ def _pin(fd: int, path: Path, workspace: Path) -> os.stat_result:
 def _digest(fd: int, expected: str) -> str:
     require(type(expected) is str and bool(HEX64.fullmatch(expected)), "HASH_PIN_INVALID")
     initial = os.fstat(fd)
+    require(0 < initial.st_size <= MAX_BYTES, "HASH_RESOURCE_LIMIT")
     sha = hashlib.sha256()
     for offset in range(0, initial.st_size, 1024 * 1024):
-        chunk = os.pread(fd, min(1024 * 1024, initial.st_size - offset), offset)
-        require(bool(chunk), "FD_SHORT_READ")
+        want = min(1024 * 1024, initial.st_size - offset)
+        chunk = os.pread(fd, want, offset)
+        require(len(chunk) == want, "FD_SHORT_READ")
         sha.update(chunk)
     require(_stat_identity(initial) == _stat_identity(os.fstat(fd)), "FD_MUTATED_DURING_HASH")
     actual = sha.hexdigest()
     require(actual == expected, "PINNED_HASH_MISMATCH")
     return actual
+
+
+def _allocated_bytes(st: os.stat_result) -> int:
+    """Measure resident filesystem blocks, not nominal sparse file length."""
+    require(type(st.st_blocks) is int and st.st_blocks >= 0, "SCALE_ALLOCATION_UNAVAILABLE")
+    allocated = st.st_blocks * 512
+    require(allocated >= 0, "SCALE_ALLOCATION_UNAVAILABLE")
+    return allocated
+
+
+def probe_destination_scale_metadata(
+    *,
+    qcow2_fd: int,
+    qcow2_path: Path,
+    backing_fd: int,
+    backing_path: Path,
+    workspace: Path,
+) -> dict[str, Any]:
+    """Bounded 128-GiB *metadata* probe; NEVER a destination authentication.
+
+    Reads exactly the 32-byte QCOW2 header from a caller-pinned read-only FD,
+    and measures a separate read-only RAW backing using fstat only. No complete
+    backing hash, guest-visible QCOW2 GPT, checkpoint or QEMU mapping is
+    authenticated. This function cannot authorize any writer.
+    """
+    require(type(workspace) is type(Path()) and workspace.is_absolute(), "SCALE_WORKSPACE")
+    try:
+        ws = workspace.lstat()
+        require(
+            stat.S_ISDIR(ws.st_mode)
+            and not workspace.is_symlink()
+            and workspace.resolve(strict=True) == workspace
+            and ws.st_uid == os.getuid()
+            and (stat.S_IMODE(ws.st_mode) & 0o077) == 0,
+            "SCALE_WORKSPACE",
+        )
+    except OSError as exc:
+        raise DestinationRefused("SCALE_WORKSPACE") from exc
+    require(qcow2_path != backing_path, "ALIASING_DESTINATION_RESOURCES")
+    overlay = _pin(qcow2_fd, qcow2_path, workspace)
+    backing = _pin(backing_fd, backing_path, workspace, max_file_bytes=MAX_SCALE_VIRTUAL_BYTES)
+    require(
+        overlay.st_size >= 72
+        and 68 * 512 <= backing.st_size <= MAX_SCALE_VIRTUAL_BYTES
+        and backing.st_size % 512 == 0,
+        "SCALE_GEOMETRY_INVALID",
+    )
+    overlay_allocated = _allocated_bytes(overlay)
+    backing_allocated = _allocated_bytes(backing)
+    require(
+        overlay_allocated + backing_allocated <= MAX_BYTES,
+        "SCALE_PHYSICAL_BUDGET_EXCEEDED",
+    )
+    try:
+        header = os.pread(qcow2_fd, QCOW2_HEADER_READ_BYTES, 0)
+        stats = os.statvfs(workspace)
+    except OSError as exc:
+        raise DestinationRefused("SCALE_METADATA_READ_FAILED") from exc
+    require(len(header) == QCOW2_HEADER_READ_BYTES, "SCALE_HEADER_SHORT_READ")
+    require(
+        header[:4] == b"QFI\xfb" and int.from_bytes(header[4:8], "big") in (2, 3),
+        "QCOW2_HEADER_INVALID",
+    )
+    virtual_bytes = int.from_bytes(header[24:32], "big")
+    require(
+        68 * 512 <= virtual_bytes <= MAX_SCALE_VIRTUAL_BYTES and virtual_bytes == backing.st_size,
+        "SCALE_VIRTUAL_BACKING_MISMATCH",
+    )
+    require(stats.f_frsize > 0 and stats.f_bavail >= 0, "SCALE_RESOURCES_UNKNOWN")
+    free_estimate = stats.f_frsize * stats.f_bavail
+    for fd, path, pinned in (
+        (qcow2_fd, qcow2_path, overlay),
+        (backing_fd, backing_path, backing),
+    ):
+        try:
+            now = os.fstat(fd)
+            present = path.lstat()
+        except OSError as exc:
+            raise DestinationRefused("SCALE_SOURCE_CHANGED") from exc
+        require(
+            _stat_identity(now) == _stat_identity(present) == _stat_identity(pinned)
+            and _allocated_bytes(now) == _allocated_bytes(pinned),
+            "SCALE_SOURCE_CHANGED",
+        )
+    # A capacity estimate is neither a reservation nor a recovery checkpoint.
+    capacity_insufficient = free_estimate < virtual_bytes
+    return {
+        "status": (
+            "READONLY_SCALE_CAPACITY_INSUFFICIENT"
+            if capacity_insufficient
+            else "READONLY_SCALE_METADATA_ONLY"
+        ),
+        "reasonCode": (
+            "INSUFFICIENT_CHECKPOINT_SPACE"
+            if capacity_insufficient
+            else "FULL_HASH_AND_CHECKPOINT_NOT_VERIFIED"
+        ),
+        "authorization": "DENY_NO_WRITER",
+        "qcow2HeaderBytesRead": QCOW2_HEADER_READ_BYTES,
+        "qcow2FileSizeBytes": overlay.st_size,
+        "qcow2AllocatedBytes": overlay_allocated,
+        "virtualSizeBytes": virtual_bytes,
+        "backingFileSizeBytes": backing.st_size,
+        "backingAllocatedBytes": backing_allocated,
+        "backingIsSparse": backing_allocated < backing.st_size,
+        "fullHashBytesRequired": overlay.st_size + backing.st_size,
+        "fullHashBudgetPerFileBytes": MAX_BYTES,
+        "freeSpaceEstimatedBytes": free_estimate,
+        "fullCheckpointReserveMinimumBytes": virtual_bytes,
+        "checkpointCapacityEstimateSufficient": not capacity_insufficient,
+        "checkpointReserveProven": False,
+        "fullSha256Performed": False,
+        "qcow2BackingChainAuthenticated": False,
+        "qemuBackendFdAssociationProven": False,
+        "guestEffectiveGptProven": False,
+        "windowsRollbackProven": False,
+        "productionStorageWritesAuthorized": False,
+        "guestCommandChannelAuthorized": False,
+        "rollbackProven": False,
+        "sameDiskDualBootVerified": False,
+        "stable": False,
+    }
 
 
 def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

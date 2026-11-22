@@ -127,3 +127,70 @@ The added twelfth real-QEMU test supplies that matching claimed hash and
 requires `CHECKPOINT_SIZE_EXCEEDS_LIMIT`. The earlier 11-test results remain
 historical evidence for the preceding module HEAD; they are **not** a
 substitute for CI on the new checkpoint-bound candidate.
+
+
+## 128 GiB: separação entre metadados e prova integral (2026-11-22)
+
+**Limite integral inalterado:** `MAX_BYTES = 512 MiB` por ficheiro para a
+inspeção autenticada local existente, que faz SHA-256 de todos os bytes de
+QCOW2, RAW e checkpoint. Um backing RAW esparso de 128 GiB tem tamanho
+lógico de 128 GiB, mesmo que o espaço fisicamente alocado no host seja
+pequeno; a função antiga continua a recusar essa dimensão, sem iniciar
+hashing de 128 GiB. `_digest` passa a rejeitar também leituras positivas
+mas curtas, em vez de avançar pelo offset e ignorar bytes omitidos.
+
+**Novo limite separado, estritamente read-only:**
+`probe_destination_scale_metadata` aceita até **128 GiB de dimensão
+virtual e lógica do RAW** apenas para inspecionar os primeiros **32 bytes**
+do cabeçalho QCOW2, identidade de descritores e metadados do filesystem.
+A imagem QCOW2 (ficheiro do host) continua sujeita a 512 MiB de dimensão
+lógica e a soma dos blocos alocados do QCOW2 e RAW (`st_blocks*512`) tem
+limite de 512 MiB. O RAW grande tem de ser um ficheiro regular esparso,
+num workspace absoluto, privado e propriedade do utilizador; os FDs são
+abertos read-only pelo chamador, sem symlinks ou hardlinks. Nenhum ficheiro
+é criado ou modificado por esta sonda; não abre um caminho para aceder a
+outro backing nem executa QEMU. Uma comparação de metadados antes/depois
+não exclui mutação simultânea in-place ou troca ABA.
+
+A classificação **READONLY_SCALE_METADATA_ONLY** só confirma medidas
+locais não autenticadas externamente. O cabeçalho com magic/version/size
+não prova um QCOW2 coerente, `qemu-img --backing-chain` não é executado
+neste modo, não há SHA-256 do RAW/overlay, GPT guest, identificação Windows,
+origem do checkpoint, nem atestação da associação QEMU→FD. A sonda distingue
+explicitamente: dimensão virtual QCOW2, tamanho lógico do ficheiro QCOW2,
+blocos alocados no host, tamanho lógico RAW, blocos RAW alocados, bytes
+efetivamente lidos (=32), bytes necessários para hash integral e estimativa
+livre de `statvfs`. `st_blocks` e `statvfs` são indicadores de recursos,
+**não** reservas duráveis ou prova de propriedade histórica.
+
+Para um checkpoint completo, reporta-se como condição **necessária, mas não
+suficiente**, uma reserva estimada igual à dimensão virtual; espaço livre
+inferior devolve `READONLY_SCALE_CAPACITY_INSUFFICIENT` e
+`INSUFFICIENT_CHECKPOINT_SPACE`. Mesmo com espaço estimado suficiente,
+`checkpointReserveProven=false`, `fullSha256Performed=false` e todos os
+privilegios operacionais ficam falsos. O mínimo de espaço não implica
+recuperação Windows, já que checkpoint, GPT/ESP/BCD/WinRE e reboot não foram
+medidos nem restabelecidos.
+
+A suite `test_authenticated_destination_scale.py` usa um RAW sintético
+esparso de 128 GiB e QCOW2 criado por `qemu-img` numa pasta privada do
+runner descartável. Testa `PosixPath` válido, troca de FD, backing/alias,
+limites de alocação, espaço insuficiente, leitura curta, symlink e recusa de
+writer. **Não utiliza uma instalação Windows real de 128 GiB.** A matriz
+A-J do pedido fica dividida entre esta suite e os testes QEMU/FD anteriores
+em `test_authenticated_destination_readonly.py`, incluindo checkpoint alias
+no contrato integral <=512 MiB. Os testes de escala NÃO substituem os testes
+de conteúdo ou a revisão Safety. Branch de qualificação separada da PR #337;
+CI do HEAD de escala por comprovar antes de qualquer integração.
+
+
+### CI de escala — execução GREEN no código exato
+
+A [Action #45034223975](https://github.com/LMhdez/gaslux/actions/runs/45034223975)
+terminou **SUCCESS** no commit de implementação
+`049f1799a7296e3891dabd8be869cf4de3eb5c85`: 12 novos testes de
+metadados, suites QEMU parado, #327 BZD-DEST-01, #267 e regressões HOST/FD,
+Ruff e compileall. [Documentação #45034226613](https://github.com/LMhdez/gaslux/actions/runs/45034226613)
+também passou. A documentação acrescentada depois deste commit necessita da
+própria validação exact-head; não confundir testes de RAW esparso com
+Windows genuíno, hash de 128 GiB ou checkpoint/rollback.

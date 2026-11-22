@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/contracts-authenticated-destination-readonly-20261122
+      - test/authenticated-destination-128g-metadata-deny-20261122
     paths:
       - '.github/workflows/contracts-authenticated-destination-readonly.yml'
       - 'auto_tests/installer_observer/qemu_local_disk_witness.py'
@@ -11,6 +12,7 @@ on:
       - 'docs/AUTHENTICATED_DESTINATION_READONLY.md'
       - 'auto_tests/installer_observer/authenticated_destination.py'
       - 'auto_tests/tests/test_authenticated_destination_readonly.py'
+      - 'auto_tests/tests/test_authenticated_destination_scale.py'
   pull_request:
     branches:
       - dev
@@ -21,6 +23,7 @@ on:
       - 'docs/AUTHENTICATED_DESTINATION_READONLY.md'
       - 'auto_tests/installer_observer/authenticated_destination.py'
       - 'auto_tests/tests/test_authenticated_destination_readonly.py'
+      - 'auto_tests/tests/test_authenticated_destination_scale.py'
 
 permissions:
   contents: read
@@ -77,15 +80,6 @@ jobs:
           for path in . safety267-pinned gpt286-pinned safety327-pinned; do
             test -z "$(git -C "$path" status --porcelain --untracked-files=no)"
           done
-      - name: Install real QEMU and GPT tooling (no libguestfs appliance)
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils gdisk
-          test -x /usr/bin/qemu-system-x86_64
-          test -x /usr/bin/qemu-img
-          test -x /usr/sbin/sgdisk || test -x /usr/bin/sgdisk
       - name: Configure Python lint and offline tests
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -95,13 +89,22 @@ jobs:
       - name: Syntax, strict Ruff lint and formatting checks
         run: |
           set -Eeuo pipefail
-          python -m compileall -q auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py
-          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py
-          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py
+          python -m compileall -q auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/tests/test_authenticated_destination_scale.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/tests/test_authenticated_destination_scale.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/installer_observer/qemu_local_disk_witness.py auto_tests/tests/test_observer_qemu_real_disk_readonly.py auto_tests/installer_observer/authenticated_destination.py auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/tests/test_authenticated_destination_scale.py
       - name: Validate existing installation and six-backend JSON Schemas
         run: |
           set -Eeuo pipefail
           python -m pytest -q auto_tests/tests/test_distribution_capabilities.py
+      - name: Install real QEMU and GPT tooling (no libguestfs appliance)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils gdisk
+          test -x /usr/bin/qemu-system-x86_64
+          test -x /usr/bin/qemu-img
+          test -x /usr/sbin/sgdisk || test -x /usr/bin/sgdisk
       - name: Launch REAL STOPPED QEMU on disposable owned 0700 regular files and adversarially witness FD
         env:
           GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
@@ -109,6 +112,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pytest -q -s auto_tests/tests/test_authenticated_destination_readonly.py
+          # Actual 128-GiB sparse RAW and real QCOW2, bounded metadata read;
+          # this does not hash 128 GiB, authenticate guest or reserve checkpoint.
+          python -m pytest -q -s auto_tests/tests/test_authenticated_destination_scale.py
           python -m pytest -q -s auto_tests/tests/test_observer_qemu_real_disk_readonly.py
       - name: Replay original BZD-DEST-01 known gaps and #267 real no-writer gate
         env:
