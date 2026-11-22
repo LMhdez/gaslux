@@ -174,3 +174,76 @@ def test_an_unknown_source_shape_stops_the_audit(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(audit.AuditStructureError):
         audit.run_audit()
+
+LAB_TOOL = "Scripts/libertix-cachyos-windows-evidence.ps1"
+LAB_MODULE = "Scripts/modules/Gaslux.CachyosWindowsEvidence.psm1"
+
+
+def test_cachyos_manual_evidence_is_checked_but_not_deployed() -> None:
+    layouts, findings, notes = audit.run_audit()
+
+    assert not any(
+        item.rule == "undeclared-entry" and item.where == LAB_TOOL for item in findings
+    )
+    assert not any(
+        source in {LAB_TOOL, LAB_MODULE}
+        for layout in layouts.values()
+        for source in layout.files.values()
+    )
+    assert any(LAB_TOOL in note and "dependencies validated" in note for note in notes)
+
+
+def test_cachyos_manual_missing_module_reference_is_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rules, _ = run_with(
+        monkeypatch,
+        LAB_TOOL,
+        r"modules\Gaslux.CachyosWindowsEvidence.psm1",
+        r"modules\Missing.CachyosWindowsEvidence.psm1",
+    )
+
+    assert ("source-only-missing-reference", LAB_TOOL) in rules
+    assert ("source-only-module-unreferenced", LAB_TOOL) in rules
+
+
+def test_cachyos_manual_missing_module_source_refuses_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_read = audit.read
+
+    def missing_module(path: str) -> str:
+        if path == LAB_MODULE:
+            raise audit.AuditStructureError("lab-only dependency no longer exists")
+        return original_read(path)
+
+    monkeypatch.setattr(audit, "read", missing_module)
+    with pytest.raises(audit.AuditStructureError, match="lab-only dependency"):
+        audit.run_audit()
+
+
+def test_cachyos_manual_module_import_is_required(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rules, _ = run_with(
+        monkeypatch,
+        LAB_TOOL,
+        "Import-Module -Name $module -Force -ErrorAction Stop",
+        "# removed module import",
+    )
+    assert ("source-only-module-not-imported", LAB_TOOL) in rules
+
+
+def test_cachyos_source_only_exemption_does_not_hide_a_production_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entries = {name: list(values) for name, values in audit.ENTRY_POINTS.items()}
+    entries["application"] = [
+        entry for entry in entries["application"] if "libertix-disk-image.ps1" not in entry[0]
+    ]
+    monkeypatch.setattr(audit, "ENTRY_POINTS", entries)
+    _, findings, _ = audit.run_audit()
+    assert ("undeclared-entry", "Scripts/libertix-disk-image.ps1") in {
+        (finding.rule, finding.where) for finding in findings
+    }
+
