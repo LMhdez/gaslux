@@ -380,7 +380,7 @@ def run_lab(workspace: Path, kernel: Path, collector: Path, output: Path) -> dic
         "-device",
         "virtio-blk-pci,drive=disk0",
         "-chardev",
-        f"socket,id=gp0,path={endpoint},server=on,wait=off",
+        f"socket,id=gp0,path={endpoint},server=on,wait=on",
         "-device",
         "virtio-serial-pci",
         "-device",
@@ -403,9 +403,13 @@ def run_lab(workspace: Path, kernel: Path, collector: Path, output: Path) -> dic
     )
     context = expected_context(image["collectorSha256"])
     ledger = LabNonceLedger(workspace / "nonce-ledger.sqlite")
+    conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        wait_file(qmp, proc)
+        # Chardev wait=on prevents boot until HOST is connected.
         wait_file(endpoint, proc)
+        conn.settimeout(15)
+        conn.connect(str(endpoint))
+        wait_file(qmp, proc)
         wait_file(serial, proc, contains="GASLUX_GUEST_BOOT_READY")
         st = disk.stat()
         qemu = QemuDiskPins(
@@ -423,37 +427,34 @@ def run_lab(workspace: Path, kernel: Path, collector: Path, output: Path) -> dic
         )
         with QemuLocalDiskWitness(qemu) as witness:
             host = witness.finish()
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
-                conn.settimeout(12)
-                conn.connect(str(endpoint))
-                socket_stat = os.fstat(conn.fileno())
-                pins = LocalSessionPins(
-                    process=qemu.process,
-                    transport_dev=socket_stat.st_dev,
-                    transport_inode=socket_stat.st_ino,
-                    session_id=context["session"],
-                    transaction_id=context["transaction"],
-                    host_vm_id=context["vm"],
-                    disk_identity_sha256=initial_hash,
-                    collector_sha256=context["collector"],
-                    challenge=context["nonce"],
-                )
-                peer = LocalTransportWitness(conn, pins).finish(
-                    {
-                        "sessionId": pins.session_id,
-                        "transactionId": pins.transaction_id,
-                        "hostVmId": pins.host_vm_id,
-                        "diskIdentitySha256": pins.disk_identity_sha256,
-                        "collectorSha256": pins.collector_sha256,
-                        "challenge": pins.challenge,
-                        "provenance": "CLAIMED",
-                    }
-                )
-                bound_host(host, peer, proc.pid, st.st_ino)
-                ledger.issue(context["nonce"], context["session"])
-                conn.sendall(challenge_line(context))
-                response = response_line(read_line(conn), context)
-                ledger.consume(context["nonce"], context["session"])
+            socket_stat = os.fstat(conn.fileno())
+            pins = LocalSessionPins(
+                process=qemu.process,
+                transport_dev=socket_stat.st_dev,
+                transport_inode=socket_stat.st_ino,
+                session_id=context["session"],
+                transaction_id=context["transaction"],
+                host_vm_id=context["vm"],
+                disk_identity_sha256=initial_hash,
+                collector_sha256=context["collector"],
+                challenge=context["nonce"],
+            )
+            peer = LocalTransportWitness(conn, pins).finish(
+                {
+                    "sessionId": pins.session_id,
+                    "transactionId": pins.transaction_id,
+                    "hostVmId": pins.host_vm_id,
+                    "diskIdentitySha256": pins.disk_identity_sha256,
+                    "collectorSha256": pins.collector_sha256,
+                    "challenge": pins.challenge,
+                    "provenance": "CLAIMED",
+                }
+            )
+            bound_host(host, peer, proc.pid, st.st_ino)
+            ledger.issue(context["nonce"], context["session"])
+            conn.sendall(challenge_line(context))
+            response = response_line(read_line(conn), context)
+            ledger.consume(context["nonce"], context["session"])
             boot = serial.read_text(errors="replace")
             require(
                 f"GASLUX_COLLECTOR_EXECUTED {response['bootId']}" in boot,
@@ -519,6 +520,7 @@ def run_lab(workspace: Path, kernel: Path, collector: Path, output: Path) -> dic
             )
         raise
     finally:
+        conn.close()
         ledger.close()
         if proc.poll() is None:
             proc.kill()
