@@ -109,7 +109,12 @@ def run(lab, **overrides):
         def poll(self):
             return None
 
-    with patch.object(witness, "_witness", lambda *_args: None):
+    # The protocol-only fixture explicitly replaces issuance; operational
+    # authentication still refuses all unregistered and forged sessions.
+    with (
+        patch.object(witness, "_witness", lambda *_args: None),
+        patch.object(witness, "_verify_session_authority", lambda _session: None),
+    ):
         channel = Qmp(qmp, negotiate=False)
         session = witness._BoundQmpSession(
             channel,
