@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m pip install pytest ruff jsonschema
+          python -m pip install pytest ruff jsonschema zstandard==0.25.0
           python -m pytest -q \
             auto_tests/tests/test_bazzite_oci_bootc_readback.py \
             auto_tests/tests/test_bazzite_anaconda_write_set_gate.py \
@@ -96,7 +96,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           IMAGE='ghcr.io/ublue-os/bazzite@sha256:492f83c738838861464685aed341783c2ea2266c82a9f19f0c867fd301783fd4'
+          python -m pip install zstandard==0.25.0
           python --version > host-tools.txt
+          python -c "import zstandard; print('zstandard', zstandard.__version__)" >> host-tools.txt
           cosign version >> host-tools.txt
           gh --version >> host-tools.txt
           if ! cosign verify --new-bundle-format=false --key assets/live/bazzite_cosign_20261120.pub \
