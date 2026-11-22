@@ -65,6 +65,10 @@ jobs:
           assert d["decision"] == "PREWRITE_UNPROVEN"
           assert d["upstreamGitBlobIdentitiesMatched"] is True
           assert d["sourceToBazziteElfCryptographicBindingVerified"] is False
+          assert d["updateRuntimeAndBootSafetyVerified"] is False
+          assert d["updateSourceBranchesIdentified"] == [
+              "ostree.staged_deployment", "composefs.staged_state_and_gc"
+          ]
           assert any("Windows EFI" in x["scope"] for x in d["firstPotentialPersistentOperations"])
           for key in (
               "installationAuthorized", "partitionWriteAuthorized",
