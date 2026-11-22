@@ -1,0 +1,61 @@
+name: CachyOS GRUB UEFI ESP effects preparation DENY-only
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/cachyos-grub-uefi-esp-effects-offline.yml'
+      - 'auto_tests/tools/cachyos_grub_uefi_effects_offline.py'
+      - 'auto_tests/test_cachyos_grub_uefi_effects_offline.py'
+      - 'docs/CACHYOS_GRUB_UEFI_EFFECTS_PREPARATION.md'
+permissions:
+  contents: read
+concurrency:
+  group: cachy-grub-effects-offline-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  grub-effects-offline-no-grub-no-vm:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'test/cachyos-grub-uefi-esp-effects-deny-only-20261122' &&
+      github.event.pull_request.base.ref == 'test/cachyos-uefi-boot-writeset-deny-only-20261122'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR HEAD without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify exact branch and unchanged installed GRUB source blobs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = 'LMhdez/gaslux'
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git hash-object assets/live/cachyos-stage-target.sh)" = 453f04b0a20ffc475ff3b4fc9614c80dc82515fe
+          test "$(git hash-object assets/live/cachyos-uefi-config.py)" = f5743d5ca1e9d7b33f7ac45713bc24aa0776a2ab
+          test "$(git hash-object assets/live/cachyos-uefi-lab.py)" = 90bd65a2d2df0ce22a83fc9488dcc03f7b64292d
+          test "$(git hash-object auto_tests/tools/cachyos_configure_installed.py)" = 979551dc10adff8ad960642026a395ce18f76f57
+      - name: Python syntax and strict offline-only Ruff
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check ruff==0.14.5
+          python3 -m compileall -q \
+            auto_tests/tools/cachyos_grub_uefi_effects_offline.py \
+            auto_tests/test_cachyos_grub_uefi_effects_offline.py
+          ruff check --select E4,E7,E9,F \
+            auto_tests/tools/cachyos_grub_uefi_effects_offline.py \
+            auto_tests/test_cachyos_grub_uefi_effects_offline.py
+      - name: Run new adversarial synthetic effects and no-delete tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_grub_uefi_effects_offline.py' -v
+          {
+            echo 'CachyOS GRUB package exact version remains UNPINNED.'
+            echo 'Offline synthetic fixtures only; no QEMU, GRUB, ESP, TPM or NVRAM execution.'
+            echo 'Safety approval not present; no writer and no delete operation.'
+          } >> "$GITHUB_STEP_SUMMARY"
