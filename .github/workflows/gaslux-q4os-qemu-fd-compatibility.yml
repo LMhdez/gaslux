@@ -87,6 +87,23 @@ jobs:
           # No imports or invocation of the blocked operational run_lab().
           timeout --signal=INT --kill-after=30s 240s \
             python auto_tests/tools/q4os_qemu_fd_compat_lab.py
+      - name: Print sanitised QEMU/FD readback and SHA-256 evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ["GASLUX_Q4OS_FD_EVIDENCE"]) / "q4os-fd-evidence.json"
+          if path.is_file() and not path.is_symlink():
+              report = json.loads(path.read_text())
+              assert report["fixtureOnly"] and not report["qemuBooted"]
+              print("GASLUX_Q4OS_FD_FORENSIC_READBACK=" + json.dumps(report, sort_keys=True))
+          else:
+              print("GASLUX_Q4OS_FD_FORENSIC_READBACK=ABSENT")
+          PY
       - name: Verify bounded evidence and unchanged operational gate
         if: always()
         shell: bash
