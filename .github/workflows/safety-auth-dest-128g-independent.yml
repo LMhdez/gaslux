@@ -1,0 +1,28 @@
+name: Safety independent 128GiB destination real-module adversarial tests
+
+on:
+  push:
+    branches:
+      - safety/auth-dest-128g-independent-adversarial-20261122
+
+permissions:
+  contents: read
+
+jobs:
+  independent-synthetic-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate real #346 module and parent #337 FD code unchanged
+        run: |
+          set -Eeuo pipefail
+          test "$(git hash-object auto_tests/installer_observer/large_sparse_destination.py)" = 5eac9642d942e7ecdff2ea14adb654da57dfca6e
+          test "$(git hash-object auto_tests/installer_observer/authenticated_destination.py)" = 328653beca42b5ac006974d014e1bc6da1182e63
+          python3 -m compileall -q auto_tests/installer_observer/large_sparse_destination.py auto_tests/test_auth_dest_128g_safety_independent.py
+      - name: Exercise actual sparse I/O, quota, FD alias and bounded subprocess
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p test_auth_dest_128g_safety_independent.py -v
