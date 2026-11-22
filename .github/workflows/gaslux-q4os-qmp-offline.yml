@@ -10,6 +10,7 @@ on:
       - 'auto_tests/tools/q4os_win10_qmp_supervisor.py'
       - 'auto_tests/tests/test_q4os_qmp_process_observability.py'
       - 'auto_tests/tools/q4os_qemu_fd_compat_lab.py'
+      - 'auto_tests/tests/test_q4os_readonly_boundary.py'
       - 'docs/Q4OS_RUNLAB_READONLY_BOUNDARY.md'
   pull_request:
     paths:
@@ -66,18 +67,21 @@ jobs:
             auto_tests/tools/q4os_qemu_fd_compat_lab.py \
             auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py \
             auto_tests/tests/test_q4os_win10_qmp_boot.py \
-            auto_tests/tests/test_q4os_qmp_process_observability.py
+            auto_tests/tests/test_q4os_qmp_process_observability.py \
+            auto_tests/tests/test_q4os_readonly_boundary.py
           python -m ruff format --diff --config auto_tests/pyproject.toml \
             auto_tests/tools/q4os_win10_qmp_boot.py \
             auto_tests/tools/q4os_win10_qmp_supervisor.py \
             auto_tests/tools/q4os_qemu_fd_compat_lab.py \
             auto_tests/tests/test_q4os_win10_qmp_boot.py \
-            auto_tests/tests/test_q4os_qmp_process_observability.py
+            auto_tests/tests/test_q4os_qmp_process_observability.py \
+            auto_tests/tests/test_q4os_readonly_boundary.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/tools/q4os_win10_qmp_boot.py \
             auto_tests/tools/q4os_win10_qmp_supervisor.py \
             auto_tests/tests/test_q4os_win10_qmp_boot.py \
-            auto_tests/tests/test_q4os_qmp_process_observability.py
+            auto_tests/tests/test_q4os_qmp_process_observability.py \
+            auto_tests/tests/test_q4os_readonly_boundary.py
       - name: Validate applicable workflows and Q4OS JSON Schema
         shell: bash
         run: |
@@ -106,6 +110,7 @@ jobs:
             auto_tests/tests/test_q4os_qemu_ovmf_smoke.py \
             auto_tests/tests/test_q4os_safety_adapter.py \
             auto_tests/tests/test_q4os_safety_actual_contract.py \
-            auto_tests/tests/test_q4os_ci_no_mutating_formatter.py
+            auto_tests/tests/test_q4os_ci_no_mutating_formatter.py \
+            auto_tests/tests/test_q4os_readonly_boundary.py
       - name: Assert working tree unmodified
         run: git diff --exit-code
