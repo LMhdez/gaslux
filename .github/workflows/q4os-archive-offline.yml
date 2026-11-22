@@ -9,6 +9,7 @@ on:
       - 'auto_tests/tools/verify_q4os_action_archives_offline.py'
       - 'auto_tests/tests/test_q4os_historical_archive_verifier_offline.py'
       - 'docs/distro-backends/evidence/q4os-manifest.json'
+      - 'docs/distro-backends/evidence/Q4OS_ARCHIVE_OFFLINE_VERIFIER.md'
       - '.github/workflows/q4os-archive-offline.yml'
   pull_request:
     branches:
@@ -17,6 +18,7 @@ on:
       - 'auto_tests/tools/verify_q4os_action_archives_offline.py'
       - 'auto_tests/tests/test_q4os_historical_archive_verifier_offline.py'
       - 'docs/distro-backends/evidence/q4os-manifest.json'
+      - 'docs/distro-backends/evidence/Q4OS_ARCHIVE_OFFLINE_VERIFIER.md'
       - '.github/workflows/q4os-archive-offline.yml'
 
 permissions:
