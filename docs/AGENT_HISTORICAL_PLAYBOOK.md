@@ -129,6 +129,12 @@ Publicar como GASLUX AGENT REPORT: agent_id/role, conta LMHDEZ, data UTC, branch
 
 **Critério de execução:** entregar código validado e/ou um merge/fecho/limpeza efetivos quando houver operação apta e autorizada; ou declarar o menor bloqueio técnico comprovável e passar à próxima tarefa elegível. Nunca alegar que o produto inteiro é estável por uma extração offline ou um guest boot isolado.
 
+
+## Atualização de reconciliação Observer — 22/11/2026
+
+A [PR #294](https://github.com/LMhdez/gaslux/pull/294) foi **encerrada sem merge** às 12:32 UTC, depois da comparação técnica detalhada com a #319 (merge `b57bbf97057a154beeb744bcbeef710687d520b4`) e a #312 (merge `e382cad6760ad71df03bebf463f435f682a07508`). A [prova de cobertura](https://github.com/LMhdez/gaslux/pull/294#issuecomment-7079175900) confirma as 16 funções de teste HOST/FD históricas, os sete testes F-01/F-02/F-03, as importações isoladas e regressões O_PATH no dev. O JSON sintético histórico manteve o blob `f2fd492aa7fb40c60510b2fa0c106eb808ac99a0`. A branch original da #294 e a workflow antiga (SHA `e7941ef3eb26c0cae1a2d7fbe1b3009eb050c5c9`) permanecem recuperáveis; não foram eliminadas. A #325 prossegue como experiência QEMU distinta, com deny-only, sem autorizar guest, disco, rollback ou instalação. A #259 e o controller experimental não foram integrados pela reconciliação.
+
+
 ## Referências de segurança
 
 - [Plano de arquitetura/rollback](ARCHITECTURE.md) e [matriz multidistro](MULTIDISTRO_PLAN.md).
