@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Offline, deny-only Pop/Windows EFI consistency. Untrusted claims, NO boot attestation or disk writes."""
+"""Offline, deny-only Pop/Windows EFI consistency.
+
+Untrusted claims, NO boot attestation or disk writes.
+"""
 from __future__ import annotations
 import re
 
