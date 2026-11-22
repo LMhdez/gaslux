@@ -183,11 +183,8 @@ class PinnedPopGptTests(unittest.TestCase):
                 pin.inspect()
 
     def test_foreign_workspace_fd_refused_before_gpt_parsing(self) -> None:
-        runner = Path(self.temp.name).parent
-        outside = runner / "foreign.raw"
-        with outside.open("xb") as obj:
-            obj.truncate(SIZE)
-        self.addCleanup(lambda: outside.unlink(missing_ok=True))
+        # Never create/remove a foreign pathname outside the owned fixture.
+        outside = self.work.parent / "foreign-raw-not-owned-by-gaslux"
         with self.assertRaises(Refusal):
             lab.verify_fd_gpt(outside)
 
