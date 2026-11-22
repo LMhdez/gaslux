@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import stat
 import sys
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest import mock
@@ -221,6 +222,113 @@ usb_packet_state
         disk.chmod(0o600)
         vars_b.chmod(0o600)
         return folder, disk, vars_b
+
+    @staticmethod
+    def _fake_volume(free_bytes: int, *, frsize: int = 4096):
+        available = free_bytes // frsize
+        return SimpleNamespace(
+            f_frsize=frsize, f_bavail=available,
+            f_bfree=available + 1, f_blocks=available + 2,
+        )
+
+    def test_preflight_uses_physical_bavail_and_apparent_clone_bytes(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            # An actual sparse QCOW2 copy materializes st_size, not st_blocks.
+            with disk.open("r+b") as stream:
+                stream.truncate(4 * 1024 * 1024)
+            stats = (disk.lstat(), vars_b.lstat())
+            self.assertLess(stats[0].st_blocks * 512, stats[0].st_size)
+            clone_bytes = stats[0].st_size + stats[1].st_size
+            required = (clone_bytes + lab.AB_MIN_FREE_RESERVE_BYTES
+                        + (clone_bytes + 7) // 8)
+            with mock.patch.object(
+                lab.os, "statvfs",
+                return_value=self._fake_volume(required + 8192),
+            ):
+                report = lab.preflight_ab_clone_capacity(folder, *stats)
+            self.assertEqual(report["method"], "statvfs.f_bavail")
+            self.assertEqual(report["sourceApparentBytesToMaterialize"], clone_bytes)
+            self.assertEqual(report["requiredFreeBytesBeforeClone"], required)
+            self.assertFalse(report["filesystemQuotaIndependentlyProven"])
+            self.assertFalse(report["checkpointInPlaceRecoveryProven"])
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+
+    def test_insufficient_space_refuses_before_any_clone(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            disk_hash, vars_hash = lab.sha256_file(disk), lab.sha256_file(vars_b)
+            clone_bytes = disk.stat().st_size + vars_b.stat().st_size
+            required = (clone_bytes + lab.AB_MIN_FREE_RESERVE_BYTES
+                        + (clone_bytes + 7) // 8)
+            with mock.patch.object(
+                lab.os, "statvfs",
+                return_value=self._fake_volume(required - 1),
+            ), mock.patch.object(lab, "_copy_owned") as copy:
+                with self.assertRaisesRegex(
+                    lab.BcdAbControlError, "physical free space insufficient"
+                ):
+                    lab.prepare_matched_checkpoint_clones(folder)
+                copy.assert_not_called()
+            self.assertEqual(lab.sha256_file(disk), disk_hash)
+            self.assertEqual(lab.sha256_file(vars_b), vars_hash)
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_VARS).exists())
+
+    def test_reserved_blocks_cannot_satisfy_clone_capacity(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            required = (disk.stat().st_size + vars_b.stat().st_size
+                        + lab.AB_MIN_FREE_RESERVE_BYTES + 4096)
+            blocks = required // 4096 + 2
+            fake = SimpleNamespace(
+                f_frsize=4096, f_bavail=1,
+                f_bfree=blocks, f_blocks=blocks + 1,
+            )
+            with mock.patch.object(lab.os, "statvfs", return_value=fake):
+                with self.assertRaisesRegex(
+                    lab.BcdAbControlError, "physical free space insufficient"
+                ):
+                    lab.prepare_matched_checkpoint_clones(folder)
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+
+    def test_invalid_or_missing_physical_capacity_is_fail_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            for state in (
+                SimpleNamespace(f_frsize=0, f_bavail=12, f_bfree=12,
+                                f_blocks=12),
+                SimpleNamespace(f_frsize=4096, f_bavail=13,
+                                f_bfree=12, f_blocks=12),
+                SimpleNamespace(f_frsize=4096, f_bavail=-1,
+                                f_bfree=12, f_blocks=12),
+            ):
+                with self.subTest(state=state), mock.patch.object(
+                    lab.os, "statvfs", return_value=state,
+                ), self.assertRaisesRegex(
+                    lab.BcdAbControlError, "physical free-space metadata is invalid"
+                ):
+                    lab.prepare_matched_checkpoint_clones(folder)
+            with mock.patch.object(
+                lab.os, "statvfs", side_effect=OSError("quota unavailable"),
+            ), self.assertRaisesRegex(
+                lab.BcdAbControlError, "physical free-space measurement unavailable"
+            ):
+                lab.prepare_matched_checkpoint_clones(folder)
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
+
+    def test_cross_filesystem_source_refused_before_clone(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder, disk, vars_b = self._real_checkpoint(Path(d))
+            st = disk.lstat()
+            foreign = SimpleNamespace(st_dev=st.st_dev + 1, st_size=st.st_size)
+            with mock.patch.object(lab.os, "statvfs") as usage:
+                with self.assertRaisesRegex(
+                    lab.BcdAbControlError, "same filesystem"
+                ):
+                    lab.preflight_ab_clone_capacity(folder, foreign, vars_b.lstat())
+                usage.assert_not_called()
+            self.assertFalse((folder / lab.WINDOWS_CONTROL_OVERLAY).exists())
 
     def test_prepare_real_clones_in_correct_order(self):
         with tempfile.TemporaryDirectory() as d:
