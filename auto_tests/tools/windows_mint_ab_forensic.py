@@ -117,12 +117,18 @@ def guest_ro_inventory(disk: Path, root_uuid: str) -> dict:
                 names = sorted(guest.find("/"))
                 require(len(names) <= 120000, "A/B forensic file inventory exceeded safety bound")
                 contents = {}
+                seen = set()
                 for path in names:
                     absolute = "/" + path.lstrip("/")
                     require(
-                        "\x00" not in absolute and len(absolute) <= 4096,
+                        canonical_inventory_path(absolute),
                         "unsafe guestfs inventory path",
                     )
+                    require(
+                        absolute not in seen,
+                        "duplicate guestfs inventory entry",
+                    )
+                    seen.add(absolute)
                     if guest.is_file(absolute):
                         contents[absolute] = guest.checksum("sha256", absolute)
                 require(bool(contents), "read-only ESP/Recovery file enumeration was empty")
@@ -338,6 +344,20 @@ def write_manifest(directory: Path, name: str, data: dict) -> str:
     return sha256_file(p)
 
 
+def canonical_inventory_path(path: object) -> bool:
+    """Reject aliases and traversal without excluding legitimate Unicode names."""
+    return (
+        isinstance(path, str)
+        and 1 < len(path) <= 4096
+        and path.startswith("/")
+        and not path.startswith("//")
+        and not path.endswith("/")
+        and "\\x00" not in path
+        and "\\" not in path
+        and all(component not in ("", ".", "..") for component in path[1:].split("/"))
+    )
+
+
 # Each forensic stage must have usable per-file ESP and Recovery inventories
 # in addition to the four complete raw-partition SHA-256 values. An unavailable
 # filesystem inventory is NEVER evidence that contents are unchanged.
@@ -361,6 +381,88 @@ F03_EVIDENCE_PHASES = {
 }
 
 
+F03_PREDECESSOR_FILES = {
+    "before_windows_a": {
+        "checkpoint": "mint-ab-checkpoint.json",
+        "earlyCapacity": "mint-ab-capacity-early.json",
+    },
+    "after_windows_a": {
+        "baselineEvidence": "mint-ab-evidence-before-windows-a.json",
+        "afterControlIntegrity": "mint-ab-after-control-gate.json",
+    },
+    "after_mint_b": {
+        "baselineEvidence": "mint-ab-evidence-before-windows-a.json",
+        "afterControlEvidence": "mint-ab-evidence-after-windows-a.json",
+        "control": "mint-ab-control.json",
+        "postMintIntegrity": "mint-ab-after-mint-gate.json",
+    },
+    "after_windows_b": {
+        "afterMintEvidence": "mint-ab-evidence-after-mint-b.json",
+        "postMintIntegrity": "mint-ab-after-mint-gate.json",
+    },
+}
+
+
+def authenticated_predecessor_status(
+    *, phase: str, evidence: Path, transaction_id: str, supplied_sha256: dict,
+) -> tuple[dict, list]:
+    """Recheck owned predecessor files and their transaction, not just caller hashes.
+
+    The early capacity file predates checkpoint creation and is instead bound to
+    the same GitHub run/commit. Any missing, foreign, replaced or corrupt
+    predecessor is reported without importing its untrusted contents.
+    """
+    expected = F03_PREDECESSOR_FILES[phase]
+    require(
+        isinstance(supplied_sha256, dict) and set(supplied_sha256) == set(expected),
+        "F-03: ambiguous predecessor references",
+    )
+    status, problems = {}, []
+    for key, filename in expected.items():
+        path = evidence / filename
+        issue = None
+        digest = supplied_sha256[key]
+        if not isinstance(digest, str) or re.fullmatch(r"[a-f0-9]{64}", digest) is None:
+            issue = "invalid_expected_sha256"
+        elif (
+            path.parent != evidence
+            or not path.is_file()
+            or path.is_symlink()
+            or path.stat().st_nlink != 1
+            or path.stat().st_uid != os.getuid()
+        ):
+            issue = "missing_or_foreign_predecessor"
+        elif path.stat().st_size > 2_000_000:
+            issue = "oversized_predecessor"
+        else:
+            actual = sha256_file(path)
+            if actual != digest:
+                issue = "predecessor_sha256_mismatch"
+            else:
+                try:
+                    record = json.loads(path.read_bytes())
+                except (OSError, UnicodeError, ValueError):
+                    record = None
+                if not isinstance(record, dict):
+                    issue = "invalid_predecessor_json"
+                elif key == "earlyCapacity":
+                    if not (
+                        record.get("schema") == "gaslux-mint-ab-capacity-v1"
+                        and record.get("result") == "PASS"
+                        and record.get("githubRunId") == os.environ.get("GITHUB_RUN_ID")
+                        and record.get("sourceCommit") == os.environ.get("GITHUB_SHA")
+                    ):
+                        issue = "foreign_preflight_run"
+                elif record.get("transactionId") != transaction_id:
+                    issue = "foreign_predecessor_transaction"
+                elif record.get("result") not in (None, "PASS"):
+                    issue = "previous_gate_not_passed"
+        status[key] = {"file": filename, "sha256Matched": issue is None}
+        if issue is not None:
+            problems.append({"predecessor": key, "issue": issue})
+    return status, problems
+
+
 def require_complete_forensic_inventories(
     *,
     phase: str,
@@ -381,19 +483,14 @@ def require_complete_forensic_inventories(
         "F-03: ambiguous A/B evidence sources",
     )
     require(
-        isinstance(transaction_id, str)
-        and bool(transaction_id)
-        and isinstance(preceding_sha256, dict)
-        and bool(preceding_sha256)
-        and len(preceding_sha256) <= 8
-        and all(
-            isinstance(k, str)
-            and re.fullmatch(r"[A-Za-z0-9_]{1,64}", k)
-            and isinstance(v, str)
-            and re.fullmatch(r"[a-f0-9]{64}", v)
-            for k, v in preceding_sha256.items()
-        ),
-        "F-03: missing or invalid prior manifest identity",
+        isinstance(transaction_id, str) and bool(transaction_id),
+        "F-03: missing checkpoint transaction ID",
+    )
+    predecessor_status, predecessor_issues = authenticated_predecessor_status(
+        phase=phase,
+        evidence=evidence,
+        transaction_id=transaction_id,
+        supplied_sha256=preceding_sha256,
     )
 
     resource_status = {}
@@ -411,10 +508,7 @@ def require_complete_forensic_inventories(
                 or not files
                 or len(files) > 120000
                 or not all(
-                    isinstance(name, str)
-                    and name.startswith("/")
-                    and len(name) <= 4096
-                    and "\x00" not in name
+                    canonical_inventory_path(name)
                     and isinstance(digest, str)
                     and re.fullmatch(r"[a-f0-9]{64}", digest)
                     for name, digest in files.items()
@@ -439,7 +533,7 @@ def require_complete_forensic_inventories(
                         ),
                     }
                 )
-    passed = not unavailable
+    passed = not unavailable and not predecessor_issues
     report = {
         "schema": "gaslux-mint-ab-required-inventory-evidence-v1",
         "transactionId": transaction_id,
@@ -448,6 +542,8 @@ def require_complete_forensic_inventories(
         "unavailableResources": unavailable,
         "inventoryStatus": resource_status,
         "precedingManifestSha256": preceding_sha256,
+        "authenticatedPredecessors": predecessor_status,
+        "predecessorIssues": predecessor_issues,
         "continuationAllowedByEvidenceGate": passed,
         # No evidence-only PASS grants permission independently of F-01/F-02,
         # preflight, firmware and checkpoint protections.
@@ -474,6 +570,11 @@ def require_complete_forensic_inventories(
         + ", ".join(
             item["source"] + ":" + item["resource"] + " (" + item["evidenceState"] + ")"
             for item in unavailable
+        )
+        + (
+            " prior:" + ", ".join(i["predecessor"] + "/" + i["issue"]
+                                for i in predecessor_issues)
+            if predecessor_issues else ""
         ),
     )
     return report
