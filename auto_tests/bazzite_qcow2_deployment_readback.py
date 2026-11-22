@@ -16,7 +16,6 @@ import json
 import os
 import stat
 import struct
-from pathlib import Path
 
 from bazzite_deployment_provenance_boundary import BOOTC_SHA256, OCI_MANIFEST
 
@@ -239,12 +238,11 @@ def assess(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    # No --image/path input until a reviewed FD-backed shared authority exists.
-    # Even with a local QCOW2 FD, no execution/installation authority is possible.
-    args.output.write_text(json.dumps(assess(), indent=2, sort_keys=True) + "\n")
-    print("BLOCKED_NO_AUTHENTICATED_DEPLOYMENT_QCOW2")
+    parser.parse_args()
+    # Deliberately stdout-only: accepting a pathname here could overwrite an
+    # unrelated Windows/EFI/physical-disk file if launched with privilege.
+    # No --image, --output, guest or filesystem argument is permitted.
+    print(json.dumps(assess(), indent=2, sort_keys=True))
     return 3
 
 
