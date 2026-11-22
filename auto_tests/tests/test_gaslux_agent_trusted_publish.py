@@ -125,6 +125,22 @@ class TrustedPublisherTests(unittest.TestCase):
         self.assertEqual(writes[-1][2]["base"], "dev")
         self.assertTrue(writes[1][2]["branch"].startswith("bot/gaslux-mint-keyboard-"))
 
+    def test_windows_job_uses_reviewed_worker_sha_across_partial_reruns(self):
+        # Failed-jobs re-run can retry only backend_developer, while prior
+        # supervisor outputs stay unchanged. The Windows job must bind to the
+        # actual artifact SHA that independent Safety validated, never to a
+        # stale supervisor output. Artifacts must live outside checkout.
+        yaml = (SCRIPT.parents[2] / ".github/workflows/gaslux-agent-clock.yml").read_text()
+        start = yaml.index("  windows_wpf_acceptance:")
+        end = yaml.index("\n  integrator_publisher:", start)
+        segment = yaml[start:end]
+        self.assertIn("id: worker_source", segment)
+        self.assertIn("steps.worker_source.outputs.sha", segment)
+        self.assertIn("runner.temp", segment)
+        self.assertIn("git\",\"show\",\"HEAD:Installation/WindowsKeyboardLayout.cs", segment)
+        self.assertIn("report.candidate_sha256", segment)
+        self.assertNotIn("needs.supervisor.outputs.base_sha", segment)
+
     def test_candidate_source_wrong_location_denied(self):
         item = dict(self.report)
         item["target"] = "/dev/sda"

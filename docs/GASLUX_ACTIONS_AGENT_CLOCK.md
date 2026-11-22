@@ -29,3 +29,12 @@ The initial two approved tasks are genuine product features in the shared `Insta
 `python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_trusted_publish.py -v` runs on the workflow PR itself. The worker has a second offline suite `test_gaslux_agent_implement.py`. A live scheduled run is the final operational acceptance gate: selected role, pinned model, genuine product candidate, independent Safety and Windows build, successful bot-created Draft PR. Until a successful run exists, that end-to-end behavior is **not yet demonstrated**.
 
 Generated-by: GPT-6.
+
+
+## Windows acceptance across partial GitHub Actions retries — 2026-11-22 UTC
+
+[First main Actions run #45058019123](https://github.com/LMhdez/gaslux/actions/runs/45058019123) chose real Mint keyboard support. In the first attempt the 9B model missed C# punctuation and failed closed. The safe normalization was merged to `dev` via [PR #373](https://github.com/LMhdez/gaslux/pull/373), commit `55a70a90bdde29d0d41d4592de205013ee61bc16`. A **failed-jobs-only rerun** then succeeded in generating real product code and passed independent Safety review, but the Windows acceptance step failed before compilation with `Artifact/source identity mismatch`: the retained Supervisor output referred to old dev SHA `66c4bb77cdaa8ce5d2c52a34d2fb859742f655cc`, while the rerun developer artifact had used updated SHA `55a70a90bdde29d0d41d4592de205013ee61bc16`. No code or PR was published.
+
+This change keeps the fail-closed identity checks and makes Windows acceptance bind to the *actual independently Safety-reviewed worker artifact's source commit*, even on partial failed-job re-runs. The report SHA is validated as 40 lowercase hex, the original source is checked out by that exact commit, and the committed Git blob plus candidate bytes are hashed against the report before compiling the Windows .NET Framework 4.8 installer. The artifact downloads to `RUNNER_TEMP` outside the checkout workspace so checkout cleaning cannot remove it. If dev subsequently advances, the trusted publisher must still deny stale source, preventing stale Draft PRs.
+
+**Status:** change requires exact-head tests, fresh main workflow execution and successful downstream Windows build before claiming the product agent published a Draft PR. The full Windows+Mint installation/boot/uninstall/rollback remains unverified.

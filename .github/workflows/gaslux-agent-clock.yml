@@ -153,26 +153,57 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout exact dev source commit
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ needs.supervisor.outputs.base_sha }}
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - name: Download Safety-reviewed artifact outside checkout workspace
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: gaslux-role-implementation
-          path: evidence/autonomous-agent/
-      - name: Copy validated candidate into disposable Windows checkout
-        env:
-          BASE_SHA: ${{ needs.supervisor.outputs.base_sha }}
+          path: ${{ runner.temp }}/gaslux-checked-product
+      - name: Select exact worker commit across partial CI retries
+        id: worker_source
         shell: pwsh
         run: |
-          $ErrorActionPreference='Stop'
-          $report=Get-Content evidence/autonomous-agent/report.json -Raw | ConvertFrom-Json
-          if ($report.base_commit -ne $env:BASE_SHA -or $report.target -ne 'Installation/WindowsKeyboardLayout.cs' -or $report.candidate_valid -ne $true) {
+          $ErrorActionPreference = 'Stop'
+          $reportPath = Join-Path $env:RUNNER_TEMP 'gaslux-checked-product/report.json'
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          if ([string]$report.base_commit -cnotmatch '^[0-9a-f]{40}$' -or
+              $report.target -ne 'Installation/WindowsKeyboardLayout.cs' -or
+              $report.candidate_valid -ne $true -or
+              $report.status -ne 'candidate_green') {
+            throw 'Untrusted or malformed worker base identity'
+          }
+          "sha=$($report.base_commit)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Checkout exact source commit independently verified by Safety
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ steps.worker_source.outputs.sha }}
+          persist-credentials: false
+      - name: Validate tracked source blob and candidate before WPF compilation
+        env:
+          BASE_SHA: ${{ steps.worker_source.outputs.sha }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder = Join-Path $env:RUNNER_TEMP 'gaslux-checked-product'
+          $report = Get-Content (Join-Path $folder 'report.json') -Raw | ConvertFrom-Json
+          if ($report.base_commit -ne $env:BASE_SHA -or
+              $report.target -ne 'Installation/WindowsKeyboardLayout.cs' -or
+              $report.candidate_valid -ne $true) {
             throw 'Artifact/source identity mismatch'
           }
-          Copy-Item evidence/autonomous-agent/candidate.cs Installation/WindowsKeyboardLayout.cs -Force
+          $actualHead = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actualHead -ne $env:BASE_SHA) {
+            throw 'Checkout commit differs from source evidence'
+          }
+          # Git blob bytes are stable LF even if Windows checkout uses CRLF.
+          $blobHash = (& python -c 'import hashlib,subprocess; print(hashlib.sha256(subprocess.check_output(["git","show","HEAD:Installation/WindowsKeyboardLayout.cs"])).hexdigest())').Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Could not hash tracked C# source blob' }
+          $candidatePath = Join-Path $folder 'candidate.cs'
+          $candidate = Get-FileHash $candidatePath -Algorithm SHA256
+          if ($blobHash -ne $report.source_sha256 -or
+              $candidate.Hash.ToLowerInvariant() -ne $report.candidate_sha256) {
+            throw 'Tracked source or candidate SHA-256 mismatch'
+          }
+          Copy-Item $candidatePath Installation/WindowsKeyboardLayout.cs -Force
       - uses: microsoft/setup-msbuild@v2
       - name: Compile actual .NET Framework 4.8 WPF Gaslux installer
         shell: pwsh
@@ -184,7 +215,6 @@ jobs:
         run: |
           dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
   integrator_publisher:
     needs: [supervisor, backend_developer, safety_review, windows_wpf_acceptance]
     if: >-
