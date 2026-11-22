@@ -144,7 +144,8 @@ class IntegratorContractTests(unittest.TestCase):
 
     def test_nonproduct_dev_advance_preserves_candidate(self):
         self.live = "c" * 40
-        self.pr["base"]["sha"] = self.live
+        # GitHub retains the historical PR base SHA after dev has advanced.
+        self.assertEqual(self.pr["base"]["sha"], self.dev)
         self.changed = [
             {"filename": "docs/CI_VM_EVIDENCE_INDEX.md", "status": "modified"},
             {"filename": "auto_tests/tests/test_auth_dest_128g_readonly.py", "status": "added"},
@@ -193,8 +194,9 @@ class IntegratorContractTests(unittest.TestCase):
                 integ.inspect(123, "c" * 40)
         self.assertFalse(any(c[0] != "GET" for c in self.calls))
 
-    def test_dev_moved_denied(self):
-        self.pr["base"]["sha"] = "c" * 40
+    def test_live_dev_product_change_denied_even_with_historical_pr_base(self):
+        self.live = "c" * 40
+        self.changed = [{"filename": "Libertix.sln", "status": "modified"}]
         with patch.object(integ, "api", side_effect=self.api):
             with self.assertRaises(integ.StaleProposal):
                 integ.inspect(123, self.head)
