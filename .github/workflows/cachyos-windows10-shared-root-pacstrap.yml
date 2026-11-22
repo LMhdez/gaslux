@@ -164,9 +164,12 @@ jobs:
           echo 'PASS: signed grant and synthetic contracts only; the real guest job below is the only pacstrap writer.' >> "$GITHUB_STEP_SUMMARY"
 
   real-windows10-archiso-pacstrap-and-discard:
-    # One expensive KVM run per change to PR #263: push runs only its
-    # static suite. Preserve earlier push and workflow_dispatch eligibility.
+    # SECURITY HOLD: genuine A/B Windows #44900941635 modified protected ESP
+    # BCD (682 bytes). No new KVM boot/pacstrap until independent Safety review
+    # validates writer identity, checkpoint and recovery. Retain all tests.
+    # Existing consent logic below remains intact but is explicitly blocked.
     if: >-
+      false &&
       (github.event_name != 'pull_request' &&
        !(github.event_name == 'push' &&
          github.ref == 'refs/heads/test/cachyos-postpacstrap-win10-same-cow-issue3')) ||
