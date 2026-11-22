@@ -7,6 +7,7 @@ on:
     paths:
       - auto_tests/tools/windows_mint_ab_offset_rca.py
       - auto_tests/test_windows_mint_ab_offset_rca.py
+      - auto_tests/test_windows_mint_ab_checkpoint.py
       - .github/workflows/mint-ab-protected-offset-rca.yml
   workflow_dispatch:
 
