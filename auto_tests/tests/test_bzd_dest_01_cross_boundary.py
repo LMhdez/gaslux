@@ -1,13 +1,12 @@
 """BZD-DEST-01 independent adversarial contract tests, no disk or writer.
 
 The real experimental #267 no-writer gate is imported at an immutable SHA
-in CI; no gate is reimplemented here. Known-gap tests positively assert that the current gate lacks a required
-interface; these MUST NOT be misread as a passed operational DENY gate.
+in CI; no gate is reimplemented here. Known-gap tests explicitly show that
+required inputs are absent. They are NOT passed operational DENY tests.
 """
 from __future__ import annotations
 
 import copy
-import hashlib
 import os
 import sys
 from pathlib import Path
@@ -53,18 +52,18 @@ def test_a_foreign_disk_identity_in_authenticated_snapshot_denied(change):
     _deny(value)
 
 
-def test_a_same_claims_different_qcow2_actual_destination_must_deny():
+def test_a_known_gap_qcow2_destination_not_bound():
     """Same signed JSON is not proof that the selected QCOW2 is still the same."""
     value = case()
     selected_qcow2 = {"dev": 7, "inode": 200, "size": 16777216}
     swapped_qcow2 = {"dev": 7, "inode": 201, "size": 16777216}
     assert selected_qcow2 != swapped_qcow2
-    # No destination/FD input exists in decide_no_writer; this MUST NOT pass.
+    # CURRENT GAP: no destination/FD input exists in decide_no_writer.
     assert gate.decide_no_writer(**value)["decision"] == "ACCEPT_NO_WRITER"
     assert "destinationFdAuthenticated" not in gate.decide_no_writer(**value)
 
 
-def test_b_fd_alias_same_claims_different_open_description_must_deny():
+def test_b_known_gap_backend_fd_not_bound():
     value = case()
     pinned_fd = {"fd": 7, "dev": 11, "inode": 71}
     aliased_fd = {"fd": 9, "dev": 11, "inode": 72}
@@ -100,7 +99,7 @@ def test_d_foreign_owned_extent_denied():
     _deny(value)
 
 
-def test_d_complete_claims_with_corrupted_checkpoint_must_deny():
+def test_d_known_gap_checkpoint_not_in_decision():
     value = case()
     original_checkpoint = {"transaction": TX, "sha256": "a" * 64, "all_parts_present": True}
     tampered = {**original_checkpoint, "sha256": "b" * 64, "all_parts_present": False}
@@ -122,7 +121,7 @@ def test_e_guest_claims_even_when_resigned_to_wrong_vm_denied():
     _deny(value)
 
 
-def test_e_forged_but_self_consistent_guest_claim_must_not_become_authentic():
+def test_e_known_gap_guest_origin_not_attested():
     value = case()
     assert gate.decide_no_writer(**value)["decision"] == "ACCEPT_NO_WRITER"
     assert "guestOriginExternallyAttested" not in gate.decide_no_writer(**value)
