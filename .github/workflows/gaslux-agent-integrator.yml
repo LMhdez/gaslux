@@ -113,7 +113,7 @@ jobs:
       - name: Run C# Windows product contract regression tests
         shell: pwsh
         run: |
-          dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore
+          dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore --no-build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   trusted_integrator:
