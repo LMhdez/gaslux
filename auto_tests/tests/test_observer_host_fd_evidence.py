@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from auto_tests.installer_observer.host_fd_boundary import ProcessSeal
 from auto_tests.installer_observer.host_qemu_fd_evidence import (
     HostEvidenceRefused,
     HostPins,
@@ -29,7 +30,6 @@ from auto_tests.installer_observer.host_qemu_fd_evidence import (
     observe_pinned_qcow2_chain,
     require_process_identity,
 )
-from auto_tests.installer_observer.host_fd_boundary import ProcessSeal
 
 ROOT = Path(__file__).resolve().parents[2]
 PINNED = ROOT
