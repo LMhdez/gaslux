@@ -256,6 +256,91 @@ def supervise(
         qmp.close()
 
 
+
+
+def _write_report_exclusive(path: Path, qmp_path: Path, report: dict) -> bool:
+    """Write a bounded report only to a freshly created, owned regular inode.
+
+    Pin every directory component without following symlinks. Never re-open
+    the created file by pathname; never unlink foreign or partial reports.
+    Any I/O or close failure is a fixed denial, not a traceback or success.
+    """
+    dirfd = None
+    fd = None
+    try:
+        if not (
+            path.is_absolute()
+            and qmp_path.is_absolute()
+            and path.parent == qmp_path.parent
+            and path.name not in ("", ".", "..")
+        ):
+            return False
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        dirfd = os.open("/", flags)
+        for part in path.parent.parts[1:]:
+            if part in ("", ".", ".."):
+                return False
+            next_dirfd = os.open(part, flags, dir_fd=dirfd)
+            os.close(dirfd)
+            dirfd = next_dirfd
+        directory = os.fstat(dirfd)
+        observed = path.parent.lstat()
+        if not (
+            stat.S_ISDIR(directory.st_mode)
+            and directory.st_uid == os.getuid()
+            and not directory.st_mode & 0o077
+            and (directory.st_dev, directory.st_ino)
+            == (observed.st_dev, observed.st_ino)
+            and stat.S_ISDIR(observed.st_mode)
+        ):
+            return False
+        data = (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        if len(data) > 4096:
+            return False
+        fd = os.open(
+            path.name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=dirfd,
+        )
+        own = os.fstat(fd)
+        named = os.stat(path.name, dir_fd=dirfd, follow_symlinks=False)
+        if not (
+            stat.S_ISREG(own.st_mode)
+            and own.st_uid == os.getuid()
+            and own.st_nlink == 1
+            and own.st_size == 0
+            and own.st_mode & 0o077 == 0
+            and own.st_dev == directory.st_dev
+            and (own.st_dev, own.st_ino) == (named.st_dev, named.st_ino)
+        ):
+            return False
+        offset = 0
+        while offset < len(data):
+            written = os.write(fd, data[offset:])
+            if written <= 0:
+                return False
+            offset += written
+        os.fsync(fd)
+        if os.fstat(fd).st_nlink != 1:
+            return False
+        # File/dir close failures are failures, not verified persistence.
+        os.close(fd)
+        fd = None
+        os.close(dirfd)
+        dirfd = None
+        return True
+    except Exception:
+        # No str(exc), paths, traceback, or sensitive arguments are emitted.
+        return False
+    finally:
+        for owned_fd in (fd, dirfd):
+            if owned_fd is not None:
+                try:
+                    os.close(owned_fd)
+                except OSError:
+                    pass
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--qmp", type=Path, required=True)
@@ -285,14 +370,11 @@ def main() -> int:
             "installationAuthorized": False,
         }
         exit_code = 1
-    require(
-        args.report.parent == args.qmp.parent and not args.report.exists(),
-        "unsafe_report_destination",
-    )
-    with args.report.open("x", encoding="utf-8") as output:
-        json.dump(report, output, indent=2, sort_keys=True)
-        output.write("\n")
-    print("GASLUX_Q4OS_DVD_BOOT_DECISION=" + report["decision"])
+    if not _write_report_exclusive(args.report, args.qmp, report):
+        print("GASLUX_Q4OS_DVD_BOOT_DECISION=refuse")
+        return 1
+    decision = "dvd_key_sent_once" if exit_code == 0 and report["decision"] == "dvd_key_sent_once" else "refuse"
+    print("GASLUX_Q4OS_DVD_BOOT_DECISION=" + decision)
     return exit_code
 
 
