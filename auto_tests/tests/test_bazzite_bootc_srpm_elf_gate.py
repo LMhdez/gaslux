@@ -18,6 +18,7 @@ from bazzite_bootc_srpm_elf_gate import (  # noqa: E402
     EXPECTED_GIT,
     EXPECTED_RPM,
     EXPECTED_SOURCE,
+    EXPECTED_SRPM_SHA256,
     EXPECTED_TARBALL_SHA256,
     NO_ACCESS,
     Refusal,
@@ -52,7 +53,7 @@ def source() -> dict:
         "elfSha256": EXPECTED_ELF_SHA256,
         "elfBuildId": EXPECTED_BUILD_ID,
         "fedoraKeyFingerprint": EXPECTED_F45_FINGERPRINT,
-        "srpmSha256": "a" * 64,
+        "srpmSha256": EXPECTED_SRPM_SHA256,
         "srpmSignatureVerified": True,
         "srpmPayloadVerified": True,
         "sourceTarSha256": EXPECTED_TARBALL_SHA256,
@@ -71,6 +72,7 @@ def test_structural_all_true_claim_does_not_prove_source_or_authorize():
     assert result["decision"] == "SOURCE_ELF_UNPROVEN"
     assert result["authorization"] == "DENY_NO_WRITER"
     assert result["sourceToElfCryptographicBindingVerified"] is False
+    assert result["srpmSha256"] == EXPECTED_SRPM_SHA256
     assert result["srpmSignatureVerifiedByThisModule"] is False
     assert result["espRisk"]["replaceAlongside"].startswith("DENY")
     assert all(result[key] is False for key in NO_ACCESS)
@@ -95,6 +97,7 @@ def test_default_cli_report_cannot_claim_srpm_signature():
         ("sourceCommit", "a" * 40, "FOREIGN_SRPM_ELF_IDENTITY"),
         ("srpmSha256", None, "UNPINNED_SRPM_BYTES"),
         ("srpmSha256", "A" * 64, "UNPINNED_SRPM_BYTES"),
+        ("srpmSha256", "f" * 64, "FOREIGN_SRPM_SHA256"),
         ("sourceTarSha256", None, "UNPINNED_SOURCE_ARCHIVE"),
         ("sourceTarSha256", "d" * 64, "FEDORA_SOURCE_ARCHIVE_NOT_UPSTREAM_RELEASE"),
         ("specPatchNames", ["0001-unsafe-esp.patch"], "PATCHES_NOT_INDEPENDENTLY_REVIEWED"),
