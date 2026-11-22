@@ -606,14 +606,14 @@ class MintAbForensicContracts(unittest.TestCase):
         for title, resource, stage, windows_expected, mint_expected in cases:
             with self.subTest(case=title), tempfile.TemporaryDirectory() as root:
                 lab = self._fake_lab(root)
+
                 def mutation(m, resource=resource):
                     self._set_unavailable(m, resource)
+
                 changes = {stage: mutation}
                 if stage == 0:
                     changes[1] = mutation
-                windows, mint, result = self._run_with_guest_stubs(
-                    lab, inventory_changes=changes
-                )
+                windows, mint, result = self._run_with_guest_stubs(lab, inventory_changes=changes)
                 self.assertEqual((windows, mint), (windows_expected, mint_expected))
                 self.assertIn("F-03", result)
                 phase = {0: "before_windows_a", 2: "after_windows_a", 3: "after_mint_b"}[stage]
@@ -628,9 +628,16 @@ class MintAbForensicContracts(unittest.TestCase):
     def test_f03_276_rejects_noncanonical_paths_before_windows_a(self):
         """Transport #276 relative and traversal aliases, including Unicode handling."""
         variants = (
-            "not-absolute", "/.", "/../boot", "/EFI/../boot.efi",
-            "/EFI//boot.efi", "/EFI/./boot.efi", "//EFI/boot.efi",
-            "/EFI/boot.efi/", "/EFI\\boot.efi", "/EFI/boot.efi\x00bad",
+            "not-absolute",
+            "/.",
+            "/../boot",
+            "/EFI/../boot.efi",
+            "/EFI//boot.efi",
+            "/EFI/./boot.efi",
+            "//EFI/boot.efi",
+            "/EFI/boot.efi/",
+            "/EFI\\boot.efi",
+            "/EFI/boot.efi\x00bad",
         )
         for invalid in variants:
             with self.subTest(path=repr(invalid)), tempfile.TemporaryDirectory() as root:
@@ -640,7 +647,8 @@ class MintAbForensicContracts(unittest.TestCase):
                     m["fileInventories"]["esp"]["fileSha256"] = {path: "a" * 64}
 
                 windows, mint, reason = self._run_with_guest_stubs(
-                    lab, inventory_changes={0: change, 1: change},
+                    lab,
+                    inventory_changes={0: change, 1: change},
                 )
                 self.assertEqual((windows, mint), ([], []))
                 self.assertIn("F-03", reason)
@@ -651,8 +659,14 @@ class MintAbForensicContracts(unittest.TestCase):
 
     def test_f03_authenticated_predecessors_refuse_missing_foreign_and_replaced(self):
         """Protect on-disk prior evidence; a correct looking hash alone is insufficient."""
-        for scenario in ("missing", "foreign_transaction", "foreign_hardlink",
-                         "foreign_symlink", "wrong_hash", "foreign_run"):
+        for scenario in (
+            "missing",
+            "foreign_transaction",
+            "foreign_hardlink",
+            "foreign_symlink",
+            "wrong_hash",
+            "foreign_run",
+        ):
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as root:
                 lab = self._fake_lab(root)
                 evidence = lab["evidence"]
@@ -680,7 +694,8 @@ class MintAbForensicContracts(unittest.TestCase):
                 expected = {
                     "checkpoint": (
                         hashlib.sha256(checkpoint.read_bytes()).hexdigest()
-                        if checkpoint.exists() else "0" * 64
+                        if checkpoint.exists()
+                        else "0" * 64
                     ),
                     "earlyCapacity": hashlib.sha256(capacity.read_bytes()).hexdigest(),
                 }
@@ -694,15 +709,15 @@ class MintAbForensicContracts(unittest.TestCase):
                     self.assertRaisesRegex(forensic.ForensicError, "F-03"),
                 ):
                     forensic.require_complete_forensic_inventories(
-                            phase="before_windows_a",
-                            sources={
-                                "arm_a_preboot": lab["before"],
-                                "arm_b_preboot": lab["before"],
-                            },
-                            evidence=evidence,
-                            transaction_id=lab["checkpoint"]["transactionId"],
-                            preceding_sha256=expected,
-                        )
+                        phase="before_windows_a",
+                        sources={
+                            "arm_a_preboot": lab["before"],
+                            "arm_b_preboot": lab["before"],
+                        },
+                        evidence=evidence,
+                        transaction_id=lab["checkpoint"]["transactionId"],
+                        preceding_sha256=expected,
+                    )
                 report = json.loads(
                     (evidence / "mint-ab-evidence-before-windows-a.json").read_text()
                 )
@@ -726,9 +741,7 @@ class MintAbForensicContracts(unittest.TestCase):
                     transaction_id=lab["checkpoint"]["transactionId"],
                     preceding_sha256={"foreignManifest": "a" * 64},
                 )
-            self.assertFalse(
-                (lab["evidence"] / "mint-ab-evidence-before-windows-a.json").exists()
-            )
+            self.assertFalse((lab["evidence"] / "mint-ab-evidence-before-windows-a.json").exists())
 
     def test_f03_known_tree_independent_oracle_detects_silent_omissions(self):
         """Known physical fixture oracle; does NOT prove exhaustive real guestfs."""
@@ -753,9 +766,7 @@ class MintAbForensicContracts(unittest.TestCase):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(payload)
                 (base / resource / "empty-directory").mkdir()
-                (base / resource / "nested" / "empty-directory").mkdir(
-                    parents=True, exist_ok=True
-                )
+                (base / resource / "nested" / "empty-directory").mkdir(parents=True, exist_ok=True)
 
             def read_files(resource, *, omitted=()):
                 files = {}
@@ -777,8 +788,7 @@ class MintAbForensicContracts(unittest.TestCase):
 
             expected = {
                 resource: {
-                    name: hashlib.sha256(content).hexdigest()
-                    for name, content in filemap.items()
+                    name: hashlib.sha256(content).hexdigest() for name, content in filemap.items()
                 }
                 for resource, filemap in known.items()
             }
@@ -787,11 +797,14 @@ class MintAbForensicContracts(unittest.TestCase):
                 self.assertEqual(complete, expected[resource])
                 self.assertIn("/empty-directory", directories)
                 self.assertIn("/nested/empty-directory", directories)
-                self.assertTrue(forensic.canonical_inventory_path(
-                    next(n for n in expected[resource] if "maçã-" in n)
-                ) if resource == "esp" else True)
-                missing_one, _ = read_files(resource, omitted=(
-                    next(iter(expected[resource])),))
+                self.assertTrue(
+                    forensic.canonical_inventory_path(
+                        next(n for n in expected[resource] if "maçã-" in n)
+                    )
+                    if resource == "esp"
+                    else True
+                )
+                missing_one, _ = read_files(resource, omitted=(next(iter(expected[resource])),))
                 self.assertNotEqual(missing_one, expected[resource])
                 self.assertEqual(len(expected[resource]) - len(missing_one), 1)
             subtree, _ = read_files("esp", omitted=("/EFI/OEM",))
@@ -809,12 +822,10 @@ class MintAbForensicContracts(unittest.TestCase):
                     },
                 }
                 for part in known:
-                    self.assertEqual(sample["fileInventories"][part]["fileSha256"],
-                                     expected[part])
+                    self.assertEqual(sample["fileInventories"][part]["fileSha256"], expected[part])
                 sample["fileInventories"]["esp"]["fileSha256"] = subtree
                 self.assertTrue(sample["fileInventories"]["esp"]["available"])
-                self.assertNotEqual(sample["fileInventories"]["esp"]["fileSha256"],
-                                    expected["esp"])
+                self.assertNotEqual(sample["fileInventories"]["esp"]["fileSha256"], expected["esp"])
                 # Only this controlled fixture's independent oracle proves omission.
                 self.assertEqual(
                     sorted(set(expected["esp"]) - set(subtree)),
@@ -904,8 +915,7 @@ class MintAbForensicContracts(unittest.TestCase):
                     )
                 self.assertEqual(guest.drive_readonly, 1)
                 self.assertFalse(report["fileInventories"][resource]["available"])
-                self.assertEqual(report["fileInventories"][resource]["reason"],
-                                 expected_reason)
+                self.assertEqual(report["fileInventories"][resource]["reason"], expected_reason)
                 for other in ("esp", "recovery"):
                     if other != resource:
                         self.assertTrue(report["fileInventories"][other]["available"])
