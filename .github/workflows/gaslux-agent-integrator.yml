@@ -1,0 +1,147 @@
+name: GASLUX-INTEGRATOR - scheduled exact-HEAD dev merge
+
+on:
+  schedule:
+    - cron: '53 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/gaslux-agent-integrator.yml
+      - auto_tests/tools/gaslux_agent_integrate.py
+      - auto_tests/tests/test_gaslux_agent_integrate.py
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-agent-integrator.yml
+      - auto_tests/tools/gaslux_agent_integrate.py
+      - auto_tests/tests/test_gaslux_agent_integrate.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaslux-trusted-dev-integrator
+  cancel-in-progress: false
+
+jobs:
+  adversarial_contracts:
+    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'push' || github.event_name == 'pull_request')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Reject impersonated model PRs, off-scope changes and stale base
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_integrate.py -v
+
+  select:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      (github.event_name == 'schedule' ||
+       github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      selected: ${{ steps.plan.outputs.selected }}
+      number: ${{ steps.plan.outputs.number }}
+      head: ${{ steps.plan.outputs.head }}
+      base: ${{ steps.plan.outputs.base }}
+    steps:
+      - name: Trusted default-branch integrator source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Offline adverse-case contract validation
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_integrate.py -v
+      - name: Inspect actual bot PRs and current dev ref, no code execution
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B auto_tests/tools/gaslux_agent_integrate.py select > /tmp/gaslux-integration-plan.json
+          cat /tmp/gaslux-integration-plan.json
+          python3 - <<'PY'
+          import json, os
+          item = json.load(open("/tmp/gaslux-integration-plan.json", encoding="utf-8"))
+          if item.get("status") not in ("selected", "idle"):
+              raise SystemExit("Unrecognized integrator state")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("selected=" + ("true" if item["status"] == "selected" else "false") + "\n")
+              if item["status"] == "selected":
+                  output.write("number=" + str(item["number"]) + "\n")
+                  output.write("head=" + item["head"] + "\n")
+                  output.write("base=" + item["base"] + "\n")
+          PY
+
+  windows_acceptance:
+    needs: select
+    if: needs.select.outputs.selected == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable approved bot candidate head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.head }}
+          persist-credentials: false
+      - name: Refuse checkout SHA mismatch
+        env:
+          EXPECTED_HEAD: ${{ needs.select.outputs.head }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EXPECTED_HEAD) {
+            throw 'Wrong candidate HEAD selected'
+          }
+      - uses: microsoft/setup-msbuild@v2
+      - name: Compile actual Gaslux WPF installer with the proposed product line
+        shell: pwsh
+        run: |
+          msbuild Libertix.sln /restore /m /p:Configuration=Release '/p:Platform=Any CPU'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run C# Windows product contract regression tests
+        shell: pwsh
+        run: |
+          dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore --no-build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  trusted_integrator:
+    needs: [select, windows_acceptance]
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      needs.select.outputs.selected == 'true' &&
+      needs.windows_acceptance.result == 'success' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Load trusted main-only code; no model-produced code executed
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Revalidate PR, current dev, exact diff, ancestry and Safety; merge only dev
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GASLUX_WINDOWS_ACCEPTANCE: success
+          PR: ${{ needs.select.outputs.number }}
+          HEAD_SHA: ${{ needs.select.outputs.head }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120 python3 -I auto_tests/tools/gaslux_agent_integrate.py merge \
+            --pr "$PR" --head "$HEAD_SHA"
