@@ -41,7 +41,7 @@ NO_AUTHORITY = (
     "rollbackProven",
     "stable",
 )
-GUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\Z")
+GUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
 
 
 class Refusal(ValueError):
@@ -50,7 +50,7 @@ class Refusal(ValueError):
 
 def git_blob_id(raw: bytes) -> str:
     return hashlib.sha1(
-        f"blob {len(raw)}\\0".encode("ascii") + raw, usedforsecurity=False
+        f"blob {len(raw)}\0".encode("ascii") + raw, usedforsecurity=False
     ).hexdigest()
 
 
