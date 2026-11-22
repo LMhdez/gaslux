@@ -425,6 +425,8 @@ class SixGptNegativeTests(unittest.TestCase):
     def test_safety_f04_zero_overlay_and_invalid_map(self):
         valid = {"start": 0, "length": c.SIZE, "depth": 1, "data": False, "zero": False}
         self.assertEqual(lab.parse_qcow_map(json.dumps([valid])), [valid])
+        real_qemu = {**valid, "zero": True, "present": True, "compressed": False, "offset": 0}
+        self.assertEqual(lab.parse_qcow_map(json.dumps([real_qemu])), [real_qemu])
         zero = {"start": 0, "length": 4096, "depth": 0, "data": False, "zero": True}
         for bad in (
             [zero],
@@ -432,6 +434,11 @@ class SixGptNegativeTests(unittest.TestCase):
             [{**valid, "length": 4096}],
             [{**valid, "start": -1}],
             [{**valid, "depth": 0, "present": False, "data": True}],
+            [{**valid, "compressed": True, "data": False}],
+            [
+                {**valid, "length": 4096},
+                {**valid, "start": 2048, "length": c.SIZE - 2048},
+            ],
         ):
             with self.subTest(map=bad), self.assertRaises(Refusal):
                 lab.parse_qcow_map(json.dumps(bad))

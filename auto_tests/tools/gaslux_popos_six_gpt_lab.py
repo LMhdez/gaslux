@@ -278,7 +278,9 @@ def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
         raise Refusal("REFUSE_RECOVERY_UNPROVEN: malformed qemu-img JSON") from exc
     need(isinstance(rows, list) and bool(rows), "REFUSE_RECOVERY_UNPROVEN: absent qemu-img map")
     cursor = 0
-    allowed = {"start", "length", "depth", "data", "zero", "offset", "present"}
+    # Ubuntu qemu-utils 8.2 emits compressed=false even for sparse RAW backing.
+    # Reject unknown keys; accept only a well-typed, coherent compression flag.
+    allowed = {"start", "length", "depth", "data", "zero", "offset", "present", "compressed"}
     for row in rows:
         need(
             isinstance(row, dict)
@@ -301,6 +303,12 @@ def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
             need(
                 type(row["offset"]) is int and row["offset"] >= 0,
                 "REFUSE_RECOVERY_UNPROVEN: invalid extent offset",
+            )
+        if "compressed" in row:
+            need(
+                type(row["compressed"]) is bool
+                and not (row["compressed"] and (not row["data"] or row["zero"])),
+                "REFUSE_RECOVERY_UNPROVEN: contradictory compressed extent",
             )
         if "present" in row:
             need(
