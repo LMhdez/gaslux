@@ -390,7 +390,9 @@ def test_differential_b_python_relationships_not_schema_authority(
     elif attack == "collector-hashes":
         proposal["collector"]["guestSha256"] = "1" * 64
     elif attack == "dbus-response-method-not-declared":
-        proposal["dbus"]["replies"][0]["method"] = "GetFormatData"
+        undeclared = copy.deepcopy(proposal["dbus"]["replies"][0])
+        undeclared["method"] = "GetFormatData"
+        proposal["dbus"]["replies"].append(undeclared)
     elif attack == "dbus-digest-tampered":
         proposal["dbus"]["replies"][0]["sha256"] = "0" * 64
     elif attack == "dbus-duplicate-reply":
