@@ -126,6 +126,8 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
 
     monkeypatch.setattr(witness, "_birth_identity", fake_birth_identity)
     monkeypatch.setattr(witness, "_witness", guard_process)
+    # This is a protocol simulation, not an issued operational QMP authority.
+    monkeypatch.setattr(witness, "_verify_session_authority", lambda _session: None)
     monkeypatch.setattr(witness, "_peer", guard_peer)
     monkeypatch.setattr(witness, "_socket_identity", socket_identity)
     monkeypatch.setattr(witness, "Qmp", fake_qmp)
