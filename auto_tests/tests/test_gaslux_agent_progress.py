@@ -108,5 +108,37 @@ class ProgressTests(unittest.TestCase):
             self.assertFalse(result["write_or_merge_authority"])
 
 
+    def test_emergency_pause_blocks_all_three_write_entrypoints_before_network(self):
+        roots = Path(__file__).resolve().parents[1] / "tools"
+        from unittest.mock import patch
+        cases = (
+            ("gaslux_agent_integrate.py", "merge", (1, "a" * 40)),
+            ("gaslux_agent_trusted_publish.py", "publish", ()),
+            ("gaslux_agent_feature_factory.py", "publish",
+             (Path("."), Path("."), "mint", "a" * 40)),
+        )
+        for filename, method, args in cases:
+            with self.subTest(entrypoint=filename):
+                spec = importlib.util.spec_from_file_location(filename[:-3], roots / filename)
+                assert spec and spec.loader
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                with patch.dict("os.environ", {"GASLUX_AUTONOMY_PAUSED": "true"}):
+                    with self.assertRaisesRegex(RuntimeError, "GASLUX_AUTONOMY_PAUSED"):
+                        getattr(module, method)(*args)
+
+    def test_workflow_authority_paused_and_reporter_readonly(self):
+        workflows = Path(__file__).resolve().parents[2] / ".github/workflows"
+        for name in ("gaslux-agent-clock.yml", "gaslux-agent-feature-factory.yml",
+                     "gaslux-agent-integrator.yml", "gaslux-agent-lifecycle-research.yml"):
+            with self.subTest(workflow=name):
+                text = (workflows / name).read_text(encoding="utf-8")
+                self.assertIn("GASLUX_AUTONOMY_PAUSED", text)
+        clock = (workflows / "gaslux-agent-clock.yml").read_text(encoding="utf-8")
+        self.assertIn("  autonomy_progress:", clock)
+        self.assertIn("      actions: read", clock)
+        self.assertIn("          persist-credentials: false", clock)
+
+
 if __name__ == "__main__":
     unittest.main()
