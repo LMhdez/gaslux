@@ -274,11 +274,11 @@ class SixGptNegativeTests(unittest.TestCase):
                 (work / lab.PLAN_NAME).unlink()
                 child.unlink()
                 # An incomplete run cannot export partial evidence or clean up.
-                with (
-                    owner.SafeWorkspace(work, evidence) as guard,
-                    self.assertRaisesRegex(Refusal, "missing proof"),
-                ):
-                    guard.export()
+                with owner.SafeWorkspace(work, evidence) as guard:
+                    with self.assertRaisesRegex(Refusal, "missing proof"):
+                        guard.evidence_bytes("pop-six-transaction.json")
+                    with self.assertRaisesRegex(Refusal, "snapshot required"):
+                        guard.export()
                 self.assertTrue(work.is_dir())
 
     def test_f01_ovmf_vars_pinned_inode_replacement(self):
