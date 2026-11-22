@@ -820,6 +820,12 @@ namespace Libertix.Tests
             Assert.ThrowsException<System.Reflection.TargetInvocationException>(() =>
                 parse.Invoke(null, new object[] {
                     System.Text.Encoding.UTF8.GetBytes(duplicated) }));
+
+            // JSON true must never be interpreted as numeric protocol version 1.
+            source["distributions"][0]["capabilities"]["version"] = true;
+            Assert.ThrowsException<System.Reflection.TargetInvocationException>(() =>
+                parse.Invoke(null, new object[] {
+                    System.Text.Encoding.UTF8.GetBytes(source.ToJsonString()) }));
         }
 
         [TestMethod]

@@ -89,3 +89,35 @@ Ao primeiro dado contraditório, STOP antes de escrita; indicar campo, valor esp
 ### Regras de recuperação comprovável versus descarte COW
 O descarte de um overlay QCOW2 sem mutar a base demonstra que **a base ficou protegida** no laboratório; não demonstra uma compensação in-place de ESP, GPT/EBR ou WinRE após escritas reais sobre o Windows. Estas são provas com níveis diferentes. Exigir antes de autorizar escrita em VM um journal transaccional dos **intervalos exactos**, snapshots, hashes e mecanismo de compensação para esse sistema; comparar EFI/MBR/BCD/WinRE, encriptação e boots Windows de verdade na fase final. Não inferir resistência a power-cut de simples `SIGTERM` ou saída voluntária.
 
+## 2026-11-22 — contratos assinados: tipo estrito de `capabilities.version` (PR #326)
+
+**Âmbito da revisão:** metadados de capacidades v1 para Mint, Zorin, CachyOS,
+Pop!_OS, Q4OS e Bazzite. Uma versão de protocolo é um **inteiro JSON**,
+não um booleano ou um número decimal. A implementação Python anterior
+testava `cap["version"] != 1`, aceitando indevidamente `true` porque
+`True == 1`. O emissor `iso-tools/generate-release-metadata.py` e o leitor
+live `assets/live/gaslux_distribution_capabilities.py` tinham a mesma
+divergência. O consumidor C# tem `DistributionCapabilityJson.Version`
+tipado como inteiro; PowerShell exige explicitamente `[int]`. O JSON Schema
+`schemas/distribution-capabilities.schema.json` mantém a versão canónica 1.
+
+**Correção proposta:** ambos os validadores Python exigem
+`type(cap["version"]) is int` **e** `cap["version"] == 1`.
+`auto_tests/tests/test_distribution_capabilities.py` testa os seis perfis,
+incluindo versões booleanas `true`/`false`, decimal `1.0`,
+texto `"1"` e `null`. Os testes C# e Pester bloqueiam a regressão
+na fronteira do catálogo. Não foram mudados o schema, o formato assinado,
+o catálogo estável, os perfis de backend, as autorizações nem os guards
+de disco/boot. Mantêm-se Mint/Zorin released e os outros lab-only
+apenas para registos com identidade já validada e assinatura independente.
+
+**Evidência:** [PR draft #326](https://github.com/LMhdez/gaslux/pull/326),
+[Actions #45030061439](https://github.com/LMhdez/gaslux/actions/runs/45030061439)
+**SUCCESS no HEAD `b4b86c98396ce3f52b7b1afc26b6d68575df6766`**:
+Python lint/format/contratos/schema e testes Mint/Zorin, build WPF
+com 340 testes C# e 70 Pester sem falhas.
+[Pedido Safety anterior à alteração](https://github.com/LMhdez/gaslux/pull/267#issuecomment-7080109036).
+Os testes são **estáticos e de contratos**, sem QEMU, Windows guest, Linux
+boot, mutação física ou prova de rollback. A PR continua experimental/draft
+até reauditoria e gates de integração aplicáveis.
+

@@ -31,6 +31,16 @@ Describe 'Signed catalog capability semantics' {
         { Assert-GasluxDistributionCapabilities -Id $Id -OsReleaseId $Os -Capabilities $cap } | Should -Throw
     }
 
+
+    It 'rejects JSON boolean version for released and experimental capabilities' {
+        $mint = New-Capability 'debian-squashfs' 'casper-squashfs' 'ms-shim' 'grub' 'grub' 'released' @('bios/mbr', 'uefi/gpt')
+        $mint.version = $true
+        { Assert-GasluxDistributionCapabilities -Id mint -OsReleaseId linuxmint -Capabilities $mint } | Should -Throw
+        $candidate = New-Capability 'fedora-atomic' 'fedora-atomic-iso' 'manual-enrollment' 'none' 'grub' 'lab-only' @('uefi/gpt')
+        $candidate.version = $true
+        { Assert-GasluxDistributionCapabilities -Id bazzite -OsReleaseId bazzite -Capabilities $candidate } | Should -Throw
+    }
+
     It 'rejects Bazzite BIOS/MBR' {
         $cap = New-Capability 'fedora-atomic' 'fedora-atomic-iso' 'manual-enrollment' 'none' 'grub' 'lab-only' @('bios/mbr', 'uefi/gpt')
         { Assert-GasluxDistributionCapabilities -Id bazzite -OsReleaseId bazzite -Capabilities $cap } | Should -Throw

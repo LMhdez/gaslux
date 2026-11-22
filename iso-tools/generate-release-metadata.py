@@ -47,7 +47,12 @@ def validate_distribution_capability(distribution_id: str, os_release_id: str, c
         "minimumRamMiB",
         "minimumDiskGiB",
     }
-    if not isinstance(cap, dict) or set(cap) != expected_keys or cap["version"] != 1:
+    if (
+        not isinstance(cap, dict)
+        or set(cap) != expected_keys
+        or type(cap["version"]) is not int
+        or cap["version"] != 1
+    ):
         raise ValueError("invalid distribution capabilities shape/version")
     profiles = {
         "mint": ("linuxmint", "debian-squashfs", "casper-squashfs", "ms-shim", "grub", "grub"),
