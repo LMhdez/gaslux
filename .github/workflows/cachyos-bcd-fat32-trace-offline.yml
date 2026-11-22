@@ -1,0 +1,77 @@
+name: CachyOS BCD FAT32 QEMU ETW offline-only forensic contracts
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/cachyos-bcd-fat32-trace-offline.yml
+      - auto_tests/tools/cachyos_bcd_fat32_offline.py
+      - auto_tests/tools/cachyos_bcd_qemu_trace_offline.py
+      - auto_tests/tools/cachyos_bcd_etw_contract_offline.py
+      - auto_tests/test_cachyos_bcd_fat32_qemu_offline.py
+      - auto_tests/test_cachyos_bcd_etw_offline.py
+      - docs/CACHYOS_BCD_FAT32_QEMU_ETW_OFFLINE.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cachyos-bcd-fat32-offline-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  offline-only:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'test/cachyos-bcd-fat32-trace-correlation-20261122' &&
+      github.event.pull_request.base.ref == 'fix/cachyos-bcd-ab-forensic-contract-no-qemu-20261121'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Compile forensic tools and prove workflow contains no guest launch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m compileall -q \
+            auto_tests/tools/cachyos_bcd_fat32_offline.py \
+            auto_tests/tools/cachyos_bcd_qemu_trace_offline.py \
+            auto_tests/tools/cachyos_bcd_etw_contract_offline.py \
+            auto_tests/test_cachyos_bcd_fat32_qemu_offline.py \
+            auto_tests/test_cachyos_bcd_etw_offline.py
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('.github/workflows/cachyos-bcd-fat32-trace-offline.yml').read_text()
+          for forbidden in ('qemu-system-x86_64', 'workflow_dispatch:', 'pacstrap ',
+                            'efibootmgr', 'GASLUX_WINDOWS_KVM_CONSENT',
+                            'guestfs --rw', 'swtpm socket', 'windows Setup'):
+              assert forbidden not in s, forbidden
+          print('OFFLINE_ONLY: no guest execution step or VM consents')
+          PY
+      - name: Run FAT32 and QEMU trace adversarial fixtures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_bcd_fat32_qemu_offline.py' -v
+      - name: Validate synthetic ETW export and BCD A/B regression
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_bcd_etw_offline.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_windows_cachyos_bcd_ab_control.py' -v
+      - name: Lint Python contracts without running Windows or KVM
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check 'ruff==0.14.5'
+          ruff check --select E4,E7,E9,F --ignore E402 \
+            auto_tests/tools/cachyos_bcd_fat32_offline.py \
+            auto_tests/tools/cachyos_bcd_qemu_trace_offline.py \
+            auto_tests/tools/cachyos_bcd_etw_contract_offline.py \
+            auto_tests/test_cachyos_bcd_fat32_qemu_offline.py \
+            auto_tests/test_cachyos_bcd_etw_offline.py
