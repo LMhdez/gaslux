@@ -17,6 +17,7 @@ from zorin_ubiquity_first_writer_evidence import (
     lstat_member,
     parse_unsquashfs_lstat,
     reject_forged_effect_graph,
+    static_shell_references,
 )
 
 COMMIT = "lib/partman/lib/commit.sh"
@@ -88,6 +89,27 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
         result = candidate_calls(code, "partman_commit.py")
         self.assertEqual(result["selectedCalls"][0]["callee"], "self.preseed")
         self.assertFalse(result["runtimeReachabilityProven"])
+
+    def test_shell_source_is_only_static_token_evidence(self):
+        source = (
+            b"# mkfs.ext4 comment must be ignored\n"
+            b". /lib/partman/lib/base.sh\n"
+            b"mkfs.ext4 \"$dev\"\n"
+            b"eval \"$command\"\n"
+        )
+        report = static_shell_references(source, "usr/lib/partman/lib/commit.sh")
+        tokens = {x["token"] for x in report["effectCandidates"]}
+        self.assertIn("mkfs.ext4", tokens)
+        self.assertIn("eval", tokens)
+        self.assertEqual(report["sourceReferences"][0]["expression"], "/lib/partman/lib/base.sh")
+        self.assertFalse(report["sourceReferences"][0]["targetFileAuthenticated"])
+        self.assertFalse(report["runtimeEffectsAuthenticated"])
+        self.assertFalse(report["firstPersistentWriteVerified"])
+
+    def test_untrusted_shell_encoding_is_not_accepted_as_code(self):
+        with self.assertRaises(SourceCoverageDenied) as caught:
+            static_shell_references(b"\\xff", "usr/lib/partman/lib/resize.sh")
+        self.assertEqual(caught.exception.code, "E_PARTMAN_SHELL_ENCODING")
 
     def test_python_parse_error_fails_closed(self):
         with self.assertRaises(SourceCoverageDenied) as caught:
