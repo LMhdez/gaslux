@@ -341,15 +341,21 @@ c.close();s.close()
             witness,
             "_witness",
             lambda proc, _fd: (
-                None if proc.poll() is None else (_ for _ in ()).throw(
-                    witness.StartupRefusal("QEMU_EARLY_EXIT")
-                )
+                None
+                if proc.poll() is None
+                else (_ for _ in ()).throw(witness.StartupRefusal("QEMU_EARLY_EXIT"))
             ),
         )
         report = {"qmpSocketState": "ABSENT", "qmpHandshakeVerified": False}
         with pytest.raises(witness.StartupRefusal, match="QEMU_QMP_SOCKET_INVALID"):
             witness._await_qmp(
-                monitor, fd, sock, work, report, seconds=0.5, interval=0.01,
+                monitor,
+                fd,
+                sock,
+                work,
+                report,
+                seconds=0.5,
+                interval=0.01,
             )
         assert server.wait(timeout=5) == 0
         assert transcript.read_bytes() == b"", "peer must receive ZERO QMP commands"
@@ -364,9 +370,7 @@ c.close();s.close()
 
 
 @pytest.mark.parametrize("fault,errno_value", [("flush", 28), ("close", 5)])
-def test_real_python_child_reaped_despite_report_io_fault(
-    monkeypatch, lab, fault, errno_value
-):
+def test_real_python_child_reaped_despite_report_io_fault(monkeypatch, lab, fault, errno_value):
     """ENOSPC/EIO on supervisor-owned logfile may not bypass wait/reap."""
 
     holder = {}
@@ -396,9 +400,12 @@ def test_real_python_child_reaped_despite_report_io_fault(
         return result
 
     def start_python(_qemu_args, **kwargs):
-        assert all(x != "/usr/bin/qemu-system-x86_64" for x in [
-            sys.executable,
-        ])
+        assert all(
+            x != "/usr/bin/qemu-system-x86_64"
+            for x in [
+                sys.executable,
+            ]
+        )
         proc = subprocess.Popen(
             [sys.executable, "-c", "import time;time.sleep(30)"],
             **kwargs,
@@ -410,8 +417,15 @@ def test_real_python_child_reaped_despite_report_io_fault(
     monkeypatch.setattr(witness, "_witness", lambda *_args: None)
     work, code, vars_path, image, iso, answer = lab
     report = witness.run_lab(
-        work, code, vars_path, image, iso, answer, "kvm",
-        popen_factory=start_python, connect_seconds=0.03,
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        "kvm",
+        popen_factory=start_python,
+        connect_seconds=0.03,
     )
     child = holder["child"]
     assert report["reportIoFailed"] is True
@@ -423,9 +437,7 @@ def test_real_python_child_reaped_despite_report_io_fault(
     assert child.wait(timeout=1) == child.returncode
 
 
-def test_symlink_swap_after_initial_validation_refused_before_spawn(
-    monkeypatch, lab, tmp_path
-):
+def test_symlink_swap_after_initial_validation_refused_before_spawn(monkeypatch, lab, tmp_path):
     """O_NOFOLLOW + fstat detects TOCTOU, without opening foreign media."""
     work, code, vars_path, image, iso, answer = lab
     foreign = tmp_path / "foreign-synthetic"
@@ -446,7 +458,13 @@ def test_symlink_swap_after_initial_validation_refused_before_spawn(
 
     monkeypatch.setattr(witness, "_pin_file", pin_then_swap)
     report = witness.run_lab(
-        work, code, vars_path, image, iso, answer, "kvm",
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        "kvm",
         popen_factory=forbidden_spawn,
     )
     assert report["decision"] == "refuse"
@@ -475,7 +493,8 @@ def test_pinned_fd_remains_on_original_inode_after_path_swap(monkeypatch, lab, t
             image.rename(work / "original-owned-image")
             image.symlink_to(foreign)
             pinned_fd = next(
-                fd for fd in kwargs["pass_fds"]
+                fd
+                for fd in kwargs["pass_fds"]
                 if os.fstat(fd).st_ino == (work / "original-owned-image").stat().st_ino
             )
             os.lseek(pinned_fd, 0, os.SEEK_SET)
@@ -506,7 +525,13 @@ def test_pinned_fd_remains_on_original_inode_after_path_swap(monkeypatch, lab, t
     monkeypatch.setattr(witness, "_witness", lambda *_args: None)
     monkeypatch.setattr(witness.signal, "pidfd_send_signal", fake_signal)
     report = witness.run_lab(
-        work, code, vars_path, image, iso, answer, "kvm",
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        "kvm",
         popen_factory=spawn,
         pidfd_factory=lambda _pid: os.open(os.devnull, os.O_RDONLY),
         connect_seconds=0.02,
@@ -533,7 +558,8 @@ def test_unproven_qemu_backing_contract_blocks_real_spawn(monkeypatch, lab):
 
 
 @pytest.mark.parametrize(
-    "malicious", [
+    "malicious",
+    [
         "QEMU_",
         "QEMU_QMP_SOCKET_INVALID_token=/tmp/private",
         "QEMU_SECRET=confidential",
