@@ -13,6 +13,7 @@ import json
 import os
 import re
 import selectors
+import signal
 import stat
 import subprocess
 import time
@@ -145,7 +146,7 @@ def _read_exact(fd: int, offset: int, count: int, deadline: float) -> bytes:
 
 
 def _bounded_info(fd: int, budget: LargeReadOnlyBudget, deadline: float) -> list[dict]:
-    """Output-limited subprocess and hard kill on timeout; never trust QMP as source."""
+    """Bounded qemu-img output, with owned POSIX process-group cleanup."""
     _elapsed(deadline)
     command = [
         "/usr/bin/qemu-img",
@@ -155,12 +156,14 @@ def _bounded_info(fd: int, budget: LargeReadOnlyBudget, deadline: float) -> list
         f"/proc/self/fd/{fd}",
     ]
     try:
+        # setsid() happens in the child before exec: no parent-side setpgid race.
         proc = subprocess.Popen(
             command,
             pass_fds=(fd,),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
     except OSError as exc:
         raise LargeDestinationRefused("QEMU_INFO_START_FAILED") from exc
@@ -181,19 +184,66 @@ def _bounded_info(fd: int, budget: LargeReadOnlyBudget, deadline: float) -> list
                     "QEMU_INFO_OUTPUT_LIMIT",
                 )
                 payload.extend(chunk)
-        _elapsed(deadline)
-        _require(
-            proc.wait(timeout=max(0.001, deadline - time.monotonic())) == 0,
-            "QEMU_INFO_FAILED",
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        # Observe the exit without reaping the session leader. Keeping its
+        # zombie PID allocated prevents PID/PGID reuse before killpg below.
+        while True:
+            _elapsed(deadline)
+            exited = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+            if exited is not None:
+                _require(
+                    exited.si_code == os.CLD_EXITED and exited.si_status == 0,
+                    "QEMU_INFO_FAILED",
+                )
+                break
+            time.sleep(min(0.01, max(0, deadline - time.monotonic())))
+    except (OSError, ChildProcessError, subprocess.TimeoutExpired) as exc:
         raise LargeDestinationRefused("QEMU_INFO_IO_OR_TIMEOUT") from exc
     finally:
-        if proc.poll() is None:
-            proc.kill()
-            proc.wait(timeout=3)
-        if proc.stdout is not None:
-            proc.stdout.close()
+        # Signal ONLY our own session/process group, before wait() releases
+        # the leader PID. A dead leader can still have live pipe-holding
+        # descendants. Never signal the caller's or an unknown process group.
+        cleanup_failed = False
+        cleanup_deadline = time.monotonic() + 3
+        try:
+            if os.getpgid(proc.pid) != proc.pid:
+                cleanup_failed = True
+            else:
+                os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            cleanup_failed = True
+        try:
+            proc.wait(timeout=max(0.001, cleanup_deadline - time.monotonic()))
+        except (OSError, subprocess.TimeoutExpired):
+            cleanup_failed = True
+            # The direct PID remains owned by Popen; best-effort final reap.
+            try:
+                proc.kill()
+                proc.wait(timeout=0.25)
+            except (OSError, subprocess.TimeoutExpired):
+                cleanup_failed = True
+        try:
+            if proc.stdout is not None:
+                proc.stdout.close()
+        except OSError:
+            cleanup_failed = True
+        # After reaping the leader, wait for descendants (including adopted
+        # zombies) to leave the group; do not send any more group signals,
+        # since that PGID could subsequently be reused.
+        if not cleanup_failed:
+            while True:
+                try:
+                    os.killpg(proc.pid, 0)
+                except ProcessLookupError:
+                    break
+                except OSError:
+                    cleanup_failed = True
+                    break
+                if time.monotonic() >= cleanup_deadline:
+                    cleanup_failed = True
+                    break
+                time.sleep(min(0.02, cleanup_deadline - time.monotonic()))
+        if cleanup_failed:
+            raise LargeDestinationRefused("QEMU_INFO_CLEANUP_FAILED")
     try:
         chain = json.loads(payload, object_pairs_hook=_unique_pairs)
     except (ValueError, UnicodeError) as exc:
