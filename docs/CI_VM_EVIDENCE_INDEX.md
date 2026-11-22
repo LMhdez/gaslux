@@ -134,3 +134,11 @@ Após essa execução foram adicionados recusa explícita `O_PATH` e um teste ad
 
 
 Para contratos base e critérios de estabilidade, ver [histórico/guia de agentes](AGENT_HISTORICAL_PLAYBOOK.md), [ARCHITECTURE](ARCHITECTURE.md), [issues CachyOS #3](https://github.com/LMhdez/gaslux/issues/3) e [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
+
+## 2026-11-22 — Windows 10 UEFI/GPT resource preflight (new bounded admission prerequisite)
+
+This branch introduces [windows_vm_host_capacity.py](../auto_tests/tools/windows_vm_host_capacity.py) and [Windows 10 host capacity preflight](../.github/workflows/windows10-vm-host-capacity.yml). The tool reads actual `statvfs` free backing-space bytes on the disposable GitHub runner and compares them with a clearly labeled **historical Mint A/B initial requirement** of `867710795776` bytes. The previously measured runner had `91273920512` available bytes, giving a deficit of `776436875264` bytes, as recorded in PR #350. Those figures are *historical measurements*, not claims about the current runner; each CI run measures its own available bytes.
+
+**Evidence scope:** `BLOCKED_STORAGE` or `CAPACITY_ONLY_OK`, both with `windows_lab_admitted=false`. The script does not create QCOW2, attach disks, boot Windows, touch NVRAM/BCD/ESP, assert media provenance, verify snapshot/restore or install Linux. A passing CI job proves only that the negative/positive capacity classification ran correctly; it cannot establish a Windows VM or satisfy the Mint install/dual-boot/recovery acceptance gate. Even `CAPACITY_ONLY_OK` requires a distinct owned virtual disk, authenticated Windows media, actual guest boot, snapshot and restore witnesses before any guest mutation.
+
+This avoids expensive or unsafe VM startup on a runner already known to have insufficient real storage, without conflating sparse QCOW2 *virtual size* with physical host capacity. When real backing storage is sufficient, the next independent admission gates remain open. The tool is deliberately read-only, no model or GitHub write permissions, and cannot promote release eligibility. This is useful to the final project but **not an installer implementation**.
