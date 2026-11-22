@@ -4,6 +4,7 @@ The real canonical Safety #307 inspect_gpt_fd implementation is used unchanged.
 Race hooks change physical fixture inodes/bytes but NEVER mock GPT results or
 bypass a second vulnerable pathname opening.
 """
+
 from __future__ import annotations
 
 import os
@@ -21,7 +22,9 @@ import zorin_synthetic_writeset as verifier
 
 class DescriptorPathToctouAfterFix(unittest.TestCase):
     def setUp(self):
-        self.case = fixture.ZorinSyntheticWriteSetTests("test_no_change_passes_with_canonical_fd_binding")
+        self.case = fixture.ZorinSyntheticWriteSetTests(
+            "test_no_change_passes_with_canonical_fd_binding"
+        )
         self.case.setUp()
         self.addCleanup(self.case.doCleanups)
         self.root = self.case.root
