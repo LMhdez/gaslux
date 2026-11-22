@@ -1,0 +1,39 @@
+name: Safety D-337-01 independent immutable RED oracle on GREEN
+
+on:
+  push:
+    branches:
+      - safety/d337-independent-green-oracle-20261122
+
+permissions:
+  contents: read
+
+jobs:
+  original-oracle-on-current-fd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: b77933ee0eee4807689580d5bb002a65b3ea5d44
+          path: original-safety-red
+          persist-credentials: false
+      - name: Assert original RED oracle and actual corrected real module unchanged
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C original-safety-red rev-parse HEAD)" = b77933ee0eee4807689580d5bb002a65b3ea5d44
+          test "$(git hash-object auto_tests/test_destination_337_partial_pread_red.py)" = c84b979caae17e85eeac3f3cf81532f34c3e9974
+          cmp -s original-safety-red/auto_tests/test_destination_337_partial_pread_red.py auto_tests/test_destination_337_partial_pread_red.py
+          test "$(git hash-object auto_tests/installer_observer/authenticated_destination.py)" = 328653beca42b5ac006974d014e1bc6da1182e63
+      - name: Run original independent Safety oracle and real D-337 A-H cases without QEMU
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p test_destination_337_partial_pread_red.py -v
+          python3 -m unittest discover -s auto_tests -p test_destination_337_fd_digest.py -v
+          python3 -m compileall -q auto_tests/installer_observer/authenticated_destination.py auto_tests/test_destination_337_partial_pread_red.py auto_tests/test_destination_337_fd_digest.py
