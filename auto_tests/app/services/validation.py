@@ -323,11 +323,12 @@ class ValidationService:
         accepted = tuple(f"{prefix}=" for prefix in prefixes)
         return dict(line.split("=", 1) for line in stdout.splitlines() if line.startswith(accepted))
 
-    def prepare_server(
+    def verify_source_provenance(
         self, result: ResultBuilder, *, source: SourceMode = "remote"
-    ) -> PurePosixPath:
+    ) -> None:
+        """Refuse unsafe source identity without Proxmox, SSH or VM side effects."""
+
         s = self.settings
-        # Fail before opening SSH or changing any lab workspace/VM.
         if source == "published":
             raise WorkflowError(
                 "server.source_provenance",
@@ -366,6 +367,13 @@ class ValidationService:
                 assurance="configured origin only; remote HEAD checked after clone",
             )
 
+
+    def prepare_server(
+        self, result: ResultBuilder, *, source: SourceMode = "remote"
+    ) -> PurePosixPath:
+        # Defence in depth for standalone validation and campaign prebuild callers.
+        self.verify_source_provenance(result, source=source)
+        s = self.settings
         password = s.main_ssh_password.get_secret_value()
         source_path = f"{s.smb_root}/{s.source_dir_name}"
         published_executable: PurePosixPath | None = None
