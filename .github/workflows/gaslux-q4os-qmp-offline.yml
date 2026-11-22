@@ -1,0 +1,100 @@
+name: Q4OS QMP process observability offline only (NO QEMU-system)
+
+on:
+  push:
+    branches: [fix/q4os-qmp-process-observability-20261122]
+    paths:
+      - '.github/workflows/gaslux-q4os-qmp-offline.yml'
+      - 'auto_tests/tools/q4os_win10_qmp_supervisor.py'
+      - 'auto_tests/tests/test_q4os_qmp_process_observability.py'
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-q4os-qmp-offline.yml'
+      - '.github/workflows/gaslux-q4os-windows10-qcow2.yml'
+      - '.github/workflows/gaslux-q4os-windows-boundary.yml'
+      - 'auto_tests/tools/q4os_win10_qmp_boot.py'
+      - 'auto_tests/tools/q4os_win10_qmp_supervisor.py'
+      - 'auto_tests/tests/test_q4os_win10_qmp_boot.py'
+      - 'auto_tests/tests/test_q4os_qmp_process_observability.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: q4os-qmp-offline-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qmp-offline-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact source HEAD
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install offline tooling only; never invoke qemu-system
+        run: python -m pip install 'pytest>=9,<10' 'ruff>=0.8,<1' 'jsonschema>=4,<5' 'PyYAML>=6,<7' 'cryptography>=46,<51'
+      - name: Fetch independently pinned Safety source (read-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -m 0700 "$RUNNER_TEMP/q4os-safety-src"
+          git fetch --quiet --no-tags --depth=1 https://github.com/LMhdez/gaslux.git f55633c90973f633dda678f583f7730fc2cdc0ce
+          test "$(git rev-parse FETCH_HEAD)" = f55633c90973f633dda678f583f7730fc2cdc0ce
+          git show FETCH_HEAD:assets/live/libertix_disk_identity_gate.py > "$RUNNER_TEMP/q4os-safety-src/libertix_disk_identity_gate.py"
+          git show FETCH_HEAD:assets/live/libertix_prewrite_no_writer.py > "$RUNNER_TEMP/q4os-safety-src/libertix_prewrite_no_writer.py"
+      - name: Python compileall, Ruff lint and format check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q auto_tests/tools auto_tests/tests assets/live
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/tools/q4os_win10_qmp_boot.py \
+            auto_tests/tools/q4os_win10_qmp_supervisor.py \
+            auto_tests/tools/q4os_win10_qemu_ovmf_preflight.py \
+            auto_tests/tests/test_q4os_win10_qmp_boot.py \
+            auto_tests/tests/test_q4os_qmp_process_observability.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/tools/q4os_win10_qmp_boot.py \
+            auto_tests/tools/q4os_win10_qmp_supervisor.py \
+            auto_tests/tests/test_q4os_win10_qmp_boot.py \
+            auto_tests/tests/test_q4os_qmp_process_observability.py
+      - name: Validate applicable workflows and Q4OS JSON Schema
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import jsonschema
+          import yaml
+          for filename in (
+              ".github/workflows/gaslux-q4os-qmp-offline.yml",
+              ".github/workflows/gaslux-q4os-windows10-qcow2.yml",
+              ".github/workflows/gaslux-q4os-windows-boundary.yml",
+          ):
+              assert isinstance(yaml.safe_load(Path(filename).read_text()), dict)
+          schema = json.loads(Path("schemas/gaslux-q4os-windows-boundary.schema.json").read_text())
+          jsonschema.Draft202012Validator.check_schema(schema)
+          PY
+      - name: Simulated QMP, Q4OS and independent Safety no-writer regressions
+        shell: bash
+        env:
+          GASLUX_Q4OS_PINNED_SAFETY_SOURCE_DIR: ${{ runner.temp }}/q4os-safety-src
+        run: |
+          python -m pytest -q \
+            auto_tests/tests/test_q4os_win10_qmp_boot.py \
+            auto_tests/tests/test_q4os_qmp_process_observability.py \
+            auto_tests/tests/test_q4os_qemu_ovmf_smoke.py \
+            auto_tests/tests/test_q4os_safety_adapter.py \
+            auto_tests/tests/test_q4os_safety_actual_contract.py \
+            auto_tests/tests/test_q4os_ci_no_mutating_formatter.py
+      - name: Assert working tree unmodified
+        run: git diff --exit-code
