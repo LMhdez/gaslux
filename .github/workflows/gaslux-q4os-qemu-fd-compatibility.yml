@@ -23,8 +23,6 @@ jobs:
       github.ref == 'refs/heads/fix/q4os-qmp-legacy-factory-error-boundary-20261122'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      GASLUX_Q4OS_FD_EVIDENCE: ${{ runner.temp }}/q4os-fd-evidence-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,8 +37,10 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$GITHUB_REPOSITORY" = LMhdez/gaslux
           test "$(uname -m)" = x86_64
-          test ! -e "$GASLUX_Q4OS_FD_EVIDENCE"
-          mkdir -m 0700 "$GASLUX_Q4OS_FD_EVIDENCE"
+          evidence="$RUNNER_TEMP/q4os-fd-evidence-$GITHUB_RUN_ID"
+          test ! -e "$evidence" && test ! -L "$evidence"
+          mkdir -m 0700 "$evidence"
+          printf 'GASLUX_Q4OS_FD_EVIDENCE=%s\n' "$evidence" >> "$GITHUB_ENV"
           grep -Fxq 'QEMU_FD_BACKING_VERIFIED = False' \
             auto_tests/tools/q4os_win10_qmp_supervisor.py
       - uses: actions/setup-python@v5
