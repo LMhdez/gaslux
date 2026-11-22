@@ -239,11 +239,7 @@ def bind_rpm(overlay: dict, bootc_file: dict) -> dict:
     # transactions. A nonempty -wal or rollback journal is NOT safe to omit.
     for path in RPMDB_SIDECARS:
         item = overlay.get(path)
-        if (
-            item is not None
-            and path.endswith(("-wal", "-journal"))
-            and item.get("size") != 0
-        ):
+        if item is not None and path.endswith(("-wal", "-journal")) and item.get("size") != 0:
             return {**unproven, "reason": "RPM DB has pending WAL/journal bytes"}
     if not files:
         return {**unproven, "reason": "No supported SQLite RPM DB in final OCI"}
