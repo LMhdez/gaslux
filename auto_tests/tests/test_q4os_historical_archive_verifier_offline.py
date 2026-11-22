@@ -114,7 +114,10 @@ def test_adversarial_mutations_refused(tmp_path, monkeypatch, kind):
     if kind in {"hash", "truncated"}:
         zip_path.write_bytes(raw + b"x" if kind == "hash" else raw[:-5])
         changed = True
-    elif kind in {"extra", "traversal", "symlink", "duplicate", "report", "png", "bomb", "wrong_name", "swapped"}:
+    elif kind in {
+        "extra", "traversal", "symlink", "duplicate", "report", "png",
+        "bomb", "wrong_name", "swapped",
+    }:
         with zipfile.ZipFile(io.BytesIO(raw)) as z:
             members = [(i.filename, z.read(i)) for i in z.infolist()]
         if kind == "extra":
