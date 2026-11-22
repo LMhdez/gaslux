@@ -149,8 +149,12 @@ def lstat_member(rootfs: Path, path: str) -> dict:
         "E_SQUASHFS_LSTAT_UNBOUNDED",
     )
     if proc.returncode != 0:
-        return {"path": path, "type": "UNRESOLVED", "targetText": None,
-                "reason": "NO_SINGLE_REGULAR_INODE_PROVEN"}
+        return {
+            "path": path,
+            "type": "UNRESOLVED",
+            "targetText": None,
+            "reason": "NO_SINGLE_REGULAR_INODE_PROVEN",
+        }
     text = proc.stdout.decode("utf-8", "replace")
     return parse_unsquashfs_lstat(text, path)
 
@@ -166,8 +170,12 @@ def parse_unsquashfs_lstat(text: str, path: str) -> dict:
             perms = line.split()[0] if line.split() else ""
             records.append((perms, found.group(1)))
     if len(records) != 1:
-        return {"path": path, "type": "UNRESOLVED", "targetText": None,
-                "reason": "MISSING_OR_AMBIGUOUS_LSTAT_RECORD"}
+        return {
+            "path": path,
+            "type": "UNRESOLVED",
+            "targetText": None,
+            "reason": "MISSING_OR_AMBIGUOUS_LSTAT_RECORD",
+        }
     perms, target = records[0]
     if perms.startswith("l") and target:
         # Normalize text only. Do not access the target or claim its type/hash.
@@ -192,15 +200,21 @@ def parse_unsquashfs_lstat(text: str, path: str) -> dict:
             "targetText": None,
             "targetProvenanceAuthenticated": False,
         }
-    return {"path": path, "type": "NONREGULAR_OR_UNRESOLVED", "targetText": target,
-            "reason": "NOT_AN_AUTHENTICATED_REGULAR_SOURCE"}
+    return {
+        "path": path,
+        "type": "NONREGULAR_OR_UNRESOLVED",
+        "targetText": target,
+        "reason": "NOT_AN_AUTHENTICATED_REGULAR_SOURCE",
+    }
 
 
 def reject_forged_effect_graph(graph: dict) -> None:
     deny(type(graph) is dict, "E_EFFECT_GRAPH_SHAPE")
     deny(not any(graph.get(k) is True for k in MUTABLE_GATES), "E_FALSE_EFFECT_GRAPH")
-    deny(graph.get("authorization", "DENY_NO_WRITER") == "DENY_NO_WRITER",
-         "E_EFFECT_GRAPH_AUTHORIZATION")
+    deny(
+        graph.get("authorization", "DENY_NO_WRITER") == "DENY_NO_WRITER",
+        "E_EFFECT_GRAPH_AUTHORIZATION",
+    )
 
 
 def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
@@ -216,8 +230,10 @@ def inspect(artifact: Path, iso: Path, mounted: Path) -> dict:
     calls = {}
     for path in BODIES:
         source, status = exact_regular_bytes(rootfs, path, index[path])
-        deny(status == "REGULAR_HASH_MATCHED" and source is not None,
-             "E_SOURCE_BODY_NOT_AUTHENTICATED")
+        deny(
+            status == "REGULAR_HASH_MATCHED" and source is not None,
+            "E_SOURCE_BODY_NOT_AUTHENTICATED",
+        )
         calls[path] = candidate_calls(source, path)
     shell = {p: lstat_member(rootfs, p) for p in UNATTESTED_SHELL}
     result = {
@@ -255,8 +271,9 @@ def main() -> int:
     args = p.parse_args()
     try:
         result = inspect(args.artifact_zip, args.iso, args.mounted)
-        deny(args.out.parent.is_dir() and not args.out.is_symlink(),
-             "E_UNSAFE_EVIDENCE_DESTINATION")
+        deny(
+            args.out.parent.is_dir() and not args.out.is_symlink(), "E_UNSAFE_EVIDENCE_DESTINATION"
+        )
         args.out.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
     except SourceCoverageDenied as exc:
         print(exc.code, file=sys.stderr)
