@@ -219,17 +219,25 @@ def merge(number: int, expected: str) -> dict:
             raise RuntimeError("Missing workflow completion provenance")
         evt = json.loads(Path(event_path).read_text(encoding="utf-8"))
         runner = evt.get("workflow_run", {})
-        if (runner.get("name") != "Gaslux autonomous GitHub agents"
+        allowed = {
+            ("Gaslux autonomous GitHub agents", "main"),
+            ("Gaslux Goal Supervisor - read-only progress", "dev"),
+        }
+        if ((runner.get("name"), runner.get("head_branch")) not in allowed
             or runner.get("conclusion") != "success"
-            or runner.get("head_branch") != "main"
             or runner.get("head_repository", {}).get("full_name") != REPO
             or runner.get("event") not in ("push", "schedule", "workflow_dispatch")):
             raise RuntimeError("Untrusted workflow completion provenance")
     if os.getenv("GASLUX_WINDOWS_ACCEPTANCE") != "success":
         raise RuntimeError("No exact-HEAD Windows build and tests in this run")
-    checked = inspect(number, expected)
-    if inspect(number, expected) != checked:
-        raise RuntimeError("Proposal changed during validation")
+    try:
+        checked = inspect(number, expected)
+        if inspect(number, expected) != checked:
+            raise StaleProposal("dev changed while confirming candidate")
+    except StaleProposal:
+        return {"status": "retry", "reason": "dev_updated", "pr": number}
+    if api("GET", "/git/ref/heads/dev")["object"]["sha"] != checked["base"]:
+        return {"status": "retry", "reason": "dev_updated", "pr": number}
     result = api("PUT", f"/pulls/{number}/merge", {
         "sha": expected,
         "merge_method": "squash",
