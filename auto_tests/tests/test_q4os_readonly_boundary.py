@@ -42,7 +42,7 @@ def test_readonly_geometry_contract_accepts_exact_backing_free_image():
 
 def test_diagnostic_qmp_allowlist_contains_no_guest_or_media_commands():
     expected = frozenset({"qmp_capabilities", "query-status", "query-block", "query-fdsets"})
-    assert lab.ALLOWED_QMP == expected
+    assert expected == lab.ALLOWED_QMP
     assert not supervisor.QEMU_FD_BACKING_VERIFIED
 
 
