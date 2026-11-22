@@ -78,9 +78,7 @@ def _unique_yaml(text: str) -> dict:
                 values[key] = loader.construct_object(value_node)
             return values
 
-        UniqueLoader.add_constructor(
-            yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, unique_mapping
-        )
+        UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, unique_mapping)
         doc = yaml.load(text, Loader=UniqueLoader)
         if not isinstance(doc, dict):
             refuse("MEDIA_INSPECT_BAD_CONFIGURATION")
@@ -110,8 +108,7 @@ def validate_native_fields(
     if not kernel_names or not initrd_names:
         refuse("MEDIA_INSPECT_BAD_KERNEL")
     if any(
-        "/" in name or len(name) > 128 or not name.startswith("vmlinuz")
-        for name in kernel_names
+        "/" in name or len(name) > 128 or not name.startswith("vmlinuz") for name in kernel_names
     ) or any(
         "/" in name or len(name) > 128 or not name.startswith(("initrd", "initramfs"))
         for name in initrd_names
@@ -161,11 +158,13 @@ def inspect_mounted_native_iso(iso_root: Path) -> dict:
         if not stat.S_ISREG(meta.st_mode) or meta.st_size < 1_000_000:
             refuse("MEDIA_INSPECT_MISSING_LIVE_ROOT")
         kernels = sorted(
-            p.name for p in live.iterdir()
+            p.name
+            for p in live.iterdir()
             if p.name.startswith("vmlinuz") and (p.is_file() or p.is_symlink())
         )
         initrds = sorted(
-            p.name for p in live.iterdir()
+            p.name
+            for p in live.iterdir()
             if p.name.startswith(("initrd", "initramfs")) and (p.is_file() or p.is_symlink())
         )
         return validate_native_fields(
