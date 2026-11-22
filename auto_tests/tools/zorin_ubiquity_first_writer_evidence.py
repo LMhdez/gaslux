@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-import os
 from pathlib import Path
 import posixpath
 import re
