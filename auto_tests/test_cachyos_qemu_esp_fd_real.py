@@ -212,8 +212,8 @@ def test_actual_stopped_qemu_raw_qcow2_fat32_gpt_readonly(tmp_path):
     raw = create_owned_raw(root, esp)
     baseline = gate.inspect_gpt_image(raw, logical_sector_size=SECTOR)
     assert len(baseline["partitions"]) == 1
-    assert baseline["partitions"][0]["firstLba"] == ESP_START
-    assert baseline["partitions"][0]["lastLba"] == ESP_END
+    assert baseline["partitions"][0]["offsetBytes"] == ESP_START * SECTOR
+    assert baseline["partitions"][0]["sizeBytes"] == ESP_BYTES
     raw_before = file_sha(raw)
     assert len(raw_before) == 64
     run("qemu-img", "info", "-f", "raw", str(raw))
