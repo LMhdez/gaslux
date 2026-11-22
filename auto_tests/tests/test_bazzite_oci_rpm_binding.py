@@ -305,14 +305,20 @@ def test_bounded_db_paths_are_explicit_and_no_executable_import():
 def test_embedded_to_filesystem_string_never_proves_runtime_subcommand():
     elf = bytearray(elf_fixture())
     claimed = b"install to-filesystem --please-trust-this-string"
-    elf[192:192 + len(claimed)] = claimed
+    elf[192 : 192 + len(claimed)] = claimed
     modified = bytes(elf)
     digest = hashlib.sha256(modified).hexdigest()
     db = sqlite_db(rpm_header_fixture(digest=digest))
-    overlay, budget, descs = apply([layer({
-        "usr/bin/bootc": modified,
-        "usr/share/rpm/rpmdb.sqlite": db,
-    })])
+    overlay, budget, descs = apply(
+        [
+            layer(
+                {
+                    "usr/bin/bootc": modified,
+                    "usr/share/rpm/rpmdb.sqlite": db,
+                }
+            )
+        ]
+    )
     output = result(overlay, budget, descs)
     assert output["bootcRpmIdentity"]["status"] == "BOOTC_RPM_IDENTITY_VERIFIED"
     assert output["bootcToFilesystemAvailableInBinaryVerified"] is False
@@ -322,10 +328,16 @@ def test_embedded_to_filesystem_string_never_proves_runtime_subcommand():
 
 def test_path_hints_never_claim_rpm_package_binding_or_authority():
     elf = elf_fixture()
-    overlay, budget, descs = apply([layer({
-        "usr/bin/bootc": elf,
-        "usr/share/rpm/Packages.db": b"unsupported-non-sqlite",
-    })])
+    overlay, budget, descs = apply(
+        [
+            layer(
+                {
+                    "usr/bin/bootc": elf,
+                    "usr/share/rpm/Packages.db": b"unsupported-non-sqlite",
+                }
+            )
+        ]
+    )
     output = result(overlay, budget, descs)
     assert output["rpmDbPathHintsObserved"] == ["usr/share/rpm/Packages.db"]
     assert output["bootcRpmIdentity"]["status"] == "BOOTC_PACKAGE_BINDING_UNPROVEN"
