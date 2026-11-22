@@ -1,0 +1,110 @@
+name: Bazzite pinned OCI to deployment provenance boundary (deny only)
+
+on:
+  push:
+    branches:
+      - test/bazzite-native-route-readback-20261122
+    paths:
+      - auto_tests/bazzite_deployment_provenance_boundary.py
+      - auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+      - .github/workflows/bazzite-deployment-provenance-readonly.yml
+  pull_request:
+    paths:
+      - auto_tests/bazzite_deployment_provenance_boundary.py
+      - auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+      - .github/workflows/bazzite-deployment-provenance-readonly.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  pinned-source-artifact-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Confirm immutable historical OCI readback artifact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api repos/LMhdez/gaslux/actions/artifacts/14755572085 \
+            > signed-oci-source-artifact-metadata.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('signed-oci-source-artifact-metadata.json').read_text())
+          assert d['id'] == 14755572085
+          assert d['name'] == 'bazzite-bootc-oci-host-readback'
+          assert d['expired'] is False
+          assert d['digest'] == 'sha256:3a9ba3d8560918333640addcc6f4e4caa901581ee568227fda9ce4e4acf1ee88'
+          assert d['workflow_run']['id'] == 45024613641
+          assert d['workflow_run']['head_sha'] == 'e4eee9712fe6d02eb927b4ef94da6780db512b66'
+          print('PINNED_REAL_OCI_ARTIFACT_METADATA_CONFIRMED')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          repository: LMhdez/gaslux
+          run-id: 45024613641
+          name: bazzite-bootc-oci-host-readback
+          path: source-artifact
+          github-token: ${{ github.token }}
+      - name: Verify exact source bytes; run adversarial source-vs-deployment tests
+        shell: bash
+        env:
+          GASLUX_PINNED_OCI_REPORT: source-artifact/bazzite-bootc-oci-readback.json
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff
+          echo '03790bd39a06943d3d9abc6dcd86dfb0c88ca52508e4ee2df9a9ce5bb156a4c9  source-artifact/bazzite-bootc-oci-readback.json' | sha256sum --check
+          python -m pytest -q auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+          python -m ruff check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_deployment_provenance_boundary.py \
+            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+          python -m ruff format --check --config auto_tests/pyproject.toml \
+            auto_tests/bazzite_deployment_provenance_boundary.py \
+            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+          python -m compileall -q \
+            auto_tests/bazzite_deployment_provenance_boundary.py \
+            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+          rc=0
+          python auto_tests/bazzite_deployment_provenance_boundary.py \
+            --oci-report "$GASLUX_PINNED_OCI_REPORT" \
+            --output bazzite-deployment-provenance-decision.json || rc=$?
+          test "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('bazzite-deployment-provenance-decision.json').read_text())
+          assert d['decision'] == 'SOURCE_ARTIFACT_MATCHED_DEPLOYMENT_UNPROVEN'
+          assert d['sourceArtifactByteMatched'] is True
+          assert d['sourceCosignReverifiedInThisStep'] is False
+          for field in ('installationAuthorized', 'partitionWriteAuthorized',
+                        'gptMetadataWriteAuthorized', 'windowsEspWriteAuthorized',
+                        'guestCommandChannelAuthorized', 'nativeDeploymentVerified',
+                        'nativeInstallationVerified', 'realLinuxBootVerified',
+                        'realWindowsBootVerified', 'rollbackProven', 'stable'):
+              assert d[field] is False, field
+          print('PASS: real historical OCI/RPM source matched; deployment UNPROVEN')
+          PY
+          sha256sum source-artifact/bazzite-bootc-oci-readback.json \
+            bazzite-deployment-provenance-decision.json \
+            > bazzite-deployment-provenance-readback-sha256.txt
+      - name: Publish strictly deny-only provenance boundary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-atomic-deployment-provenance-deny-only
+          path: |
+            bazzite-deployment-provenance-decision.json
+            bazzite-deployment-provenance-readback-sha256.txt
+            signed-oci-source-artifact-metadata.json
+          if-no-files-found: warn
+          retention-days: 14
