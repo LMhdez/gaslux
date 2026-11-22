@@ -6,8 +6,11 @@ No QEMU guest, ISO, Windows files, real block devices or destructive operations.
 from __future__ import annotations
 
 import copy
+import errno
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -19,6 +22,7 @@ sys.path.insert(0, str(TOOLS))
 
 import gaslux_popos_six_gpt_contract as c  # noqa: E402
 import gaslux_popos_six_gpt_lab as lab  # noqa: E402
+import gaslux_popos_six_gpt_ownership as owner  # noqa: E402
 from gaslux_popos_reuse_snapshot_gate import Refusal, new_file, regular  # noqa: E402
 
 TX = "a1234567-1234-4abc-9abc-123456789abc"
@@ -178,6 +182,189 @@ class SixGptNegativeTests(unittest.TestCase):
             with self.subTest(trace=trace), self.assertRaises(Refusal):
                 c.audit_qemu_trace(trace)
 
+    def test_f02_mixed_identity_truncated_unknown_and_fabricated(self):
+        for trace in (
+            "vda virtio_blk_handle_write sector 3188736 nsectors 1\n"
+            "virtio_blk_handle_write sector 5285888 nsectors 1",
+            "virtio_blk_handle_write sector 3188736 nsectors 0",
+            "virtio_blk_handle_write sector 3188736 nsectors 1\n"
+            "virtio_blk_handle_write sector 5285888",
+            "virtio_blk_handle_write sector 3188736 nsectors 1\n"
+            "unknown 3",
+            "virtio_blk_handle_write sector 3188736 nsectors 1\n"
+            "virtio_blk_handle_write_zeroes sector 5285888 nsectors 1",
+            "virtio_blk_handle_write sector 3188736 nsectors 1\n"
+            "virtio_blk_handle_discard sector 5285888 nsectors 1",
+        ):
+            with self.subTest(trace=trace), self.assertRaises(Refusal):
+                c.audit_qemu_trace(trace)
+        # A syntactically valid, fully fabricated producer string is never
+        # promoted to independently observed / bound evidence.
+        forged = c.audit_qemu_trace(
+            "vda virtio_blk_handle_write sector 3188736 nsectors 1"
+        )
+        self.assertEqual(forged["traceClassification"], "PARSED_UNTRUSTED")
+        for key in (
+            "traceProvenanceAuthenticated",
+            "virtioDeviceBound",
+            "observationComplete",
+            "observedWritesConfinedToOwnedPopPartitions",
+        ):
+            self.assertIs(forged[key], False)
+
+    def test_f01_path_replacement_preserves_foreign_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory) / "runner"
+            workspace = Path(directory) / "repo"
+            parent.mkdir()
+            workspace.mkdir()
+            work = Path(tempfile.mkdtemp(prefix="gaslux-pop-six-gpt-", dir=parent))
+            evidence = workspace / "pop-six-gpt-evidence"
+            evidence.mkdir(mode=0o700)
+            with patch.dict(
+                os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
+            ):
+                with owner.SafeWorkspace(work, evidence) as guard:
+                    (work / lab.PLAN_NAME).write_text("owned")
+                    guard.inspect()
+                    old = parent / "moved-original"
+                    work.rename(old)
+                    work.mkdir(mode=0o700)
+                    foreign = work / "foreign-private.txt"
+                    foreign.write_text("KEEP ME")
+                    with self.assertRaisesRegex(Refusal, "directory replaced"):
+                        guard.inspect()
+                    self.assertEqual(foreign.read_text(), "KEEP ME")
+                    self.assertTrue((old / lab.PLAN_NAME).exists())
+            self.assertEqual(foreign.read_text(), "KEEP ME")
+
+    def test_f01_inode_symlink_hardlink_reuse_and_partial_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory) / "runner"
+            workspace = Path(directory) / "repo"
+            parent.mkdir()
+            workspace.mkdir()
+            work = Path(tempfile.mkdtemp(prefix="gaslux-pop-six-gpt-", dir=parent))
+            evidence = workspace / "pop-six-gpt-evidence"
+            evidence.mkdir(mode=0o700)
+            with patch.dict(
+                os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
+            ):
+                with owner.SafeWorkspace(work, evidence) as guard:
+                    child = work / lab.CHILD_NAME
+                    child.write_bytes(b"first")
+                    guard.inspect()
+                    child.unlink()
+                    child.write_bytes(b"replacement")
+                    with self.assertRaisesRegex(Refusal, "inode substituted"):
+                        guard.inspect()
+                    self.assertEqual(child.read_bytes(), b"replacement")
+                child.unlink()
+                child.symlink_to(work / lab.PLAN_NAME)
+                with self.assertRaises((Refusal, OSError)):
+                    with owner.SafeWorkspace(work, evidence):
+                        pass
+                child.unlink()
+                child.write_bytes(b"private")
+                os.link(child, work / lab.PLAN_NAME)
+                with self.assertRaisesRegex(Refusal, "symlink/hardlink"):
+                    with owner.SafeWorkspace(work, evidence):
+                        pass
+                (work / lab.PLAN_NAME).unlink()
+                child.unlink()
+                # An incomplete run cannot export partial evidence or clean up.
+                with owner.SafeWorkspace(work, evidence) as guard:
+                    with self.assertRaisesRegex(Refusal, "missing proof"):
+                        guard.export()
+                self.assertTrue(work.is_dir())
+
+    def test_f01_enospc_fails_without_unlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory) / "runner"
+            workspace = Path(directory) / "repo"
+            parent.mkdir()
+            workspace.mkdir()
+            work = Path(tempfile.mkdtemp(prefix="gaslux-pop-six-gpt-", dir=parent))
+            evidence = workspace / "pop-six-gpt-evidence"
+            evidence.mkdir(mode=0o700)
+            for name in owner.EVIDENCE:
+                (work / name).write_text('{"synthetic":true}')
+            with patch.dict(
+                os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(workspace)}
+            ):
+                with owner.SafeWorkspace(work, evidence) as guard:
+                    with (
+                        patch.object(owner.os, "write", side_effect=OSError(errno.ENOSPC, "full")),
+                        self.assertRaises(OSError),
+                    ):
+                        guard.export()
+            for name in owner.EVIDENCE:
+                self.assertEqual((work / name).read_text(), '{"synthetic":true}')
+
+    def test_f03_tool_errors_never_become_typed_detection(self):
+        offset = (c.PARTS[2].start + 4096) * c.SECTOR
+        with tempfile.TemporaryDirectory() as directory:
+            child = Path(directory) / "fault.qcow2"
+            child.write_bytes(b"child")
+            with lab.PinnedResource(child) as pin:
+                for error in (
+                    Refusal("qemu-img failure"),
+                    ValueError("invalid json"),
+                    subprocess.TimeoutExpired("qemu-img", 1),
+                    subprocess.CalledProcessError(1, "qemu-io"),
+                ):
+                    with (
+                        self.subTest(error=str(error)),
+                        patch.object(lab, "child_owned_extents", side_effect=error),
+                        self.assertRaises(type(error)),
+                    ):
+                        lab.verify_injected_fault(child, Path(directory) / "base", offset, 4096, pin)
+                with (
+                    patch.object(
+                        lab, "child_owned_extents",
+                        return_value=[{"start": offset, "length": 4096, "data": True}],
+                    ),
+                    patch.object(lab, "command", side_effect=Refusal("qemu-io read failed")),
+                    self.assertRaises(Refusal),
+                ):
+                    lab.verify_injected_fault(child, Path(directory) / "base", offset, 4096, pin)
+                child.unlink()
+                child.write_bytes(b"other")
+                with self.assertRaisesRegex(Refusal, "inode replaced"):
+                    lab.verify_injected_fault(child, Path(directory) / "base", offset, 4096, pin)
+
+    @unittest.skipUnless(shutil.which("qemu-img") and shutil.which("qemu-io"), "qemu-utils absent")
+    def test_f04_real_offline_qcow2_zero_data_and_clean(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            base = folder / "base.raw"
+            subprocess.run(["truncate", "-s", str(c.SIZE), str(base)], check=True)
+            child = folder / "clean.qcow2"
+            subprocess.run(
+                ["qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(base), str(child)],
+                check=True, capture_output=True,
+            )
+            lab.ensure_empty_child(child, base)
+            subprocess.run(
+                ["qemu-io", "-f", "qcow2", "-c", "write -P 0x5a 3188736 4096", str(child)],
+                check=True, capture_output=True,
+            )
+            with self.assertRaisesRegex(Refusal, "owned extents"):
+                lab.ensure_empty_child(child, base)
+            zero_child = folder / "zero.qcow2"
+            subprocess.run(
+                ["qemu-img", "create", "-f", "qcow2", "-F", "raw", "-b", str(base), str(zero_child)],
+                check=True, capture_output=True,
+            )
+            subprocess.run(
+                ["qemu-io", "-f", "qcow2", "-c", "write -z 3188736 4096", str(zero_child)],
+                check=True, capture_output=True,
+            )
+            with self.assertRaisesRegex(Refusal, "owned extents"):
+                lab.ensure_empty_child(zero_child, base)
+            with self.assertRaises(Refusal):
+                lab.ensure_empty_child(zero_child, folder / "wrong.raw")
+
     def test_safety_f04_zero_overlay_and_invalid_map(self):
         valid = {"start": 0, "length": c.SIZE, "depth": 1,
                  "data": False, "zero": False}
@@ -189,6 +376,7 @@ class SixGptNegativeTests(unittest.TestCase):
             [{**valid, "unknown": True}],
             [{**valid, "length": 4096}],
             [{**valid, "start": -1}],
+            [{**valid, "depth": 0, "present": False, "data": True}],
         ):
             with self.subTest(map=bad), self.assertRaises(Refusal):
                 lab.parse_qcow_map(json.dumps(bad))
@@ -306,7 +494,9 @@ class SixGptNegativeTests(unittest.TestCase):
                 lab.ensure_empty_child(Path("/tmp/foreign"), Path("/tmp/base"))
         runner_source = (TOOLS / "gaslux_popos_six_gpt_lab.py").read_text()
         self.assertIn("verify_injected_fault(fault, base,", runner_source)
-        self.assertIn("regular(fault, write=True).unlink()", runner_source)
+        self.assertIn("with PinnedResource(fault) as child_pin:", runner_source)
+        self.assertIn("fault-rebuilt-child.qcow2", runner_source)
+        self.assertNotIn("regular(fault, write=True).unlink()", runner_source)
         self.assertIn('sha(base) == plan["backingSha256"]', runner_source)
         self.assertIn("verify_canaries(base, plan, work)", runner_source)
 

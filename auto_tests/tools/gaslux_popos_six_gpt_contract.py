@@ -264,6 +264,7 @@ def audit_qemu_trace(trace: str) -> dict:
     bytes_written = 0
     vars_events = 0
     devices = set()
+    prefix_modes = set()
     for line in trace.splitlines():
         need(line and len(line) < 4096, "OBSERVATION_INCOMPLETE: invalid trace line")
         if "virtio_blk_handle_" in line:
@@ -273,6 +274,7 @@ def audit_qemu_trace(trace: str) -> dict:
             )
             match = TRACE_WRITE.fullmatch(line)
             need(match is not None, "OBSERVATION_INCOMPLETE: unsupported/malformed block event")
+            prefix_modes.add(bool(match[1]))
             if match[1]:
                 devices.add(match[1])
             sector, count = int(match[2]), int(match[3])
@@ -287,6 +289,7 @@ def audit_qemu_trace(trace: str) -> dict:
         else:
             raise Refusal("OBSERVATION_INCOMPLETE: unknown QEMU trace record")
     need(len(devices) <= 1, "OBSERVATION_INCOMPLETE: multiple virtio devices")
+    need(len(prefix_modes) <= 1, "OBSERVATION_INCOMPLETE: mixed device identity")
     need(sum(writes.values()) > 0, "OBSERVATION_INCOMPLETE: no QEMU write witness")
     return {
         "traceClassification": "PARSED_UNTRUSTED",
