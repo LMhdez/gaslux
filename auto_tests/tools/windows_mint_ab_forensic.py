@@ -409,16 +409,19 @@ F03_PREDECESSOR_FILES = {
 F03_PREDECESSOR_MAX_BYTES = 2_000_000
 F03_PREDECESSOR_READ_CHUNK = 64 * 1024
 F03_FILE_IDENTITY_FIELDS = (
-    "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink",
-    "st_size", "st_mtime_ns", "st_ctime_ns",
+    "st_dev",
+    "st_ino",
+    "st_mode",
+    "st_uid",
+    "st_nlink",
+    "st_size",
+    "st_mtime_ns",
+    "st_ctime_ns",
 )
 
 
 def _same_predecessor_identity(before, after) -> bool:
-    return all(
-        getattr(before, key) == getattr(after, key)
-        for key in F03_FILE_IDENTITY_FIELDS
-    )
+    return all(getattr(before, key) == getattr(after, key) for key in F03_FILE_IDENTITY_FIELDS)
 
 
 def _pinned_predecessor_bytes(directory_fd: int, filename: str) -> tuple[bytes | None, str | None]:
@@ -430,9 +433,8 @@ def _pinned_predecessor_bytes(directory_fd: int, filename: str) -> tuple[bytes |
     """
     require(
         isinstance(filename, str)
-        and filename in {
-            name for items in F03_PREDECESSOR_FILES.values() for name in items.values()
-        },
+        and filename
+        in {name for items in F03_PREDECESSOR_FILES.values() for name in items.values()},
         "F-03: unrecognized predecessor filename",
     )
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -467,10 +469,7 @@ def _pinned_predecessor_bytes(directory_fd: int, filename: str) -> tuple[bytes |
             if not _same_predecessor_identity(before, after):
                 return None, "predecessor_changed_during_read"
             current = os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
-            if (
-                not _same_predecessor_identity(before, current)
-                or not stat.S_ISREG(current.st_mode)
-            ):
+            if not _same_predecessor_identity(before, current) or not stat.S_ISREG(current.st_mode):
                 return None, "predecessor_path_identity_changed"
             return bytes(payload), None
         except OSError:
