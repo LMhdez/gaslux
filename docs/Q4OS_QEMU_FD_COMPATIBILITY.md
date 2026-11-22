@@ -88,3 +88,30 @@ independentemente pelo GASLUX-SAFETY antes de qualquer desenho para
 o caminho operacional. A PR permanece Draft e não sofre merge automático.
 
 Generated-by: GPT-6; GPL-3.0; revisão humana conforme AI_POLICY.md.
+
+## Resultado experimental verificado — 22/11/2026
+
+Execução de GitHub Actions [#45022713512](https://github.com/LMhdez/gaslux/actions/runs/45022713512) no SHA `4db1364df0a6995300ef017b963580c4c026d61d`: **SUCCESS**. Evidência JSON e logs da Action autenticam a execução, não a integridade criptográfica de toda a infraestrutura do GitHub. A configuração executada utilizou **QEMU 8.2.2** (pacote Ubuntu `1:8.2.2+ds-0ubuntu1.18`), q35/TCG, 1 vCPU, 128 MiB, `-S`, QMP limitado a `qmp_capabilities`, `query-status`, `query-block`, `query-fdsets`. Três casos aprovados de QEMU **parado**, sem executar firmware ou guest:
+
+| Estratégia | QMP `running` | `query-fdsets` | Identidade e limpeza |
+| --- | --- | ---: | --- |
+| `/proc/self/fd/N` | `false` | 0 | PASS |
+| `-add-fd` + `/dev/fdset/K` integral | `false` | 4 | PASS |
+| FD-set QCOW2/CD e `/proc` pflash | `false` | 2 | PASS |
+
+A primeira experiência do FD-set na [Action #45022108131](https://github.com/LMhdez/gaslux/actions/runs/45022108131) tinha falhado com `Permission denied` ao oferecer apenas `O_RDWR` para meios que o QEMU volta a abrir como leitura. **Correção exclusivamente no laboratório:** acrescentar um segundo descritor `O_RDONLY` (aberto de forma independente, mesmo dispositivo/inode) ao mesmo `set` de `-add-fd` para VARS e QCOW2. Esta causa é corroborada pela aprovação de todas as variantes após a correção; os códigos operacionais não foram modificados.
+
+### Geometria e SHA-256 das cópias efémeras do teste
+
+| Recurso | Tamanho físico | SHA-256 inicial |
+| --- | ---: | --- |
+| OVMF CODE | 3 653 632 bytes | `ad23261d43116abc3747d59a7837fbf578c9586a8993f4eeba064cd07eccb083` |
+| OVMF VARS | 540 672 bytes | `5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e` |
+| QCOW2 (64 MiB virtuais; clusters de 65 536 bytes; sem backing) | 196 616 bytes | `1b7af784841125887e688254229e282829e17245d0e47fe7280da9b68a30d9e1` |
+| ISO sintética não arrancável | 4 125 bytes | `1fd4ee3e633f2596da24ec60cd7f69aa834bf8083c155a4ce6aad07310da6e49` |
+
+O manifesto JSON contém hashes pós-encerramento por cenário, contagens de inodes coincidentes obtidas de `/proc/<pid>/fd` e resultado de `pidfd`/limpeza. Os hashes de CODE, VARS e do QCOW2 fixado permaneceram iguais; na substituição do *pathname* QCOW2, o ficheiro estranho não foi alterado e o inode original continuou preso ao FD.
+
+**Provas adversariais da Action #45022713512:** FDs comuns/fechados e PID divergente recusados; pidfd genuíno de outro Python e pidfd obsoleto pós-encerramento recusados; symlink/substituição de socket recusada; backing QCOW2 externo identificado e recusado antes de QEMU; hash de VARS adulterado detetado; erro de spawn de executável inexistente identificado; QEMU vivo sem QMP rejeitado; todos os processos filhos diretos terminados/recolhidos sem descendentes remanescentes observados. `qmpSendKeyAcknowledged` não é autorizado nem produzido pelo laboratório. **Nenhuma escrita de produção**, boot ou recuperação Windows comprovados.
+
+A execução final após atualização documental deve confirmar novamente HEAD/CI e manter a PR em Draft. **A reauditoria independente GASLUX-SAFETY permanece obrigatória** antes de considerar alterações ao contrato de arranque operacional; `QEMU_FD_BACKING_VERIFIED=false` mantém-se sem exceções.
