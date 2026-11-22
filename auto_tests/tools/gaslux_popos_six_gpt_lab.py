@@ -18,6 +18,7 @@ import sys
 import uuid
 from pathlib import Path
 
+from gaslux_popos_gpt_fd_boundary import PinnedSixGpt, inspect_owned_six_gpt
 from gaslux_popos_reuse_snapshot_gate import (
     Refusal,
     chain,
@@ -25,7 +26,6 @@ from gaslux_popos_reuse_snapshot_gate import (
     make_child,
     need,
     new_file,
-    region_hash,
     regular,
     sha,
     system_ovmf_template,
@@ -133,36 +133,19 @@ def write_canary(path: Path, lba: int, txid: str, role: str) -> dict:
     return {"lba": lba, "role": role, "sectorSha256": hashlib.sha256(payload).hexdigest()}
 
 
-def verify_sfdisk_gpt(path: Path) -> dict:
-    """Use authoritative sgdisk CRC verification + sfdisk JSON; NO GPT parser."""
-    regular(path, length=SIZE)
-    command("sgdisk", "--verify", str(path), timeout=120)
-    table = json.loads(command("sfdisk", "--json", str(path), timeout=60))["partitiontable"]
+def verify_fd_gpt(path: Path, *, pinned: PinnedSixGpt | None = None) -> dict:
+    """Read-only GPT evidence from an owned workspace FD, never sfdisk JSON."""
     need(
-        table.get("label") == "gpt"
-        and table.get("id", "").lower() == DISK_GUID
-        and table.get("unit") == "sectors",
-        "REFUSE_IDENTITY_MISMATCH: disk GPT identity/table missing",
+        path.name == BASE_NAME and path.parent.is_absolute(),
+        "REFUSE_GPT_FD: unexpected synthetic RAW path",
     )
-    rows = table.get("partitions", [])
-    need(len(rows) == 6, "REFUSE_IDENTITY_MISMATCH: unexpected GPT entries")
-    for expected, actual in zip(PARTS, rows, strict=True):
+    if pinned is not None:
         need(
-            type(actual.get("start")) is int
-            and type(actual.get("size")) is int
-            and actual["start"] == expected.start
-            and actual["size"] == expected.count
-            and str(actual.get("type", "")).lower() == expected.type_guid
-            and str(actual.get("uuid", "")).lower() == expected.partuuid,
-            "REFUSE_IDENTITY_MISMATCH: GPT LBA/type/PARTUUID changed",
+            path.parent == pinned.work,
+            "REFUSE_GPT_FD: pinned workspace mismatch",
         )
-    return {
-        "diskGuid": DISK_GUID,
-        "primaryAndBackupCrcVerified": True,
-        "pmbrAndPrimary": region_hash(path, 0, 34),
-        "secondary": region_hash(path, COUNT - 33, 33),
-        "partitions": [p.as_dict() for p in PARTS],
-    }
+        return pinned.inspect()
+    return inspect_owned_six_gpt(path.parent)
 
 
 def verify_esp_canary(base: Path, expected_hash: str, work: Path) -> None:
@@ -411,68 +394,77 @@ def prepare(work: Path, template: Path) -> dict:
             )
         )
     command(*args, str(base), timeout=120)
-    baseline = verify_sfdisk_gpt(base)
-    # All formatters touch only this new, private, precheckpoint regular file.
-    for p, label in ((PARTS[0], "SYNPROTESP"), (PARTS[4], "SYNPOPESP")):
+    # A single pinned workspace/resource identity spans the synthetic
+    # formatter subprocesses; foreign pathname swaps cannot become GPT truth.
+    with PinnedSixGpt(work) as pinned:
+        baseline = verify_fd_gpt(base, pinned=pinned)
+        # All formatters touch only this new, private, precheckpoint regular file.
+        for p, label in ((PARTS[0], "SYNPROTESP"), (PARTS[4], "SYNPOPESP")):
+            command(
+                "mkfs.fat",
+                "-F",
+                "32",
+                "-s",
+                "8",
+                "-n",
+                label,
+                "--offset=" + str(p.start),
+                str(base),
+                str(p.count // 2),
+                timeout=600,
+            )
+            need(
+                verify_fd_gpt(base, pinned=pinned) == baseline,
+                "REFUSE_OUT_OF_WRITESET: FAT32 changed GPT",
+            )
+        root = PARTS[5]
         command(
-            "mkfs.fat",
+            "mkfs.ext4",
             "-F",
-            "32",
-            "-s",
-            "8",
-            "-n",
-            label,
-            "--offset=" + str(p.start),
+            "-q",
+            "-b",
+            "4096",
+            "-L",
+            "SYNPOPROOT",
+            "-E",
+            "offset=" + str(root.start * SECTOR),
             str(base),
-            str(p.count // 2),
+            str(root.count // 8),
             timeout=600,
         )
-        need(verify_sfdisk_gpt(base) == baseline, "REFUSE_OUT_OF_WRITESET: FAT32 changed GPT")
-    root = PARTS[5]
-    command(
-        "mkfs.ext4",
-        "-F",
-        "-q",
-        "-b",
-        "4096",
-        "-L",
-        "SYNPOPROOT",
-        "-E",
-        "offset=" + str(root.start * SECTOR),
-        str(base),
-        str(root.count // 8),
-        timeout=600,
-    )
-    need(verify_sfdisk_gpt(base) == baseline, "REFUSE_OUT_OF_WRITESET: ext4 changed GPT")
-    # Protected ESP contains a SIMULATED canary, not a Windows bootloader.
-    marker = work / "synthetic-esp-marker.tmp"
-    with os.fdopen(
-        os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb"
-    ) as out:
-        out.write(ESP_MARKER + txid.encode("ascii") + b"\n")
-        out.flush()
-        os.fsync(out.fileno())
-    esp_image = f"{base}@@{PARTS[0].start * SECTOR}"
-    command("mmd", "-i", esp_image, "::/EFI")
-    command("mmd", "-i", esp_image, "::/EFI/Microsoft")
-    command("mcopy", "-i", esp_image, str(marker), PROTECTED_ESP_FILE)
-    file_hash = sha(marker)
-    # Retain marker rather than risk deleting a swapped same-UID pathname.
-    regular(marker)
-    entries = []
-    for p in PARTS[1:4]:
-        entries.append(
-            write_canary(base, p.start + 8, txid, "protected-" + p.role.rsplit("-", 1)[-1])
+        need(
+            verify_fd_gpt(base, pinned=pinned) == baseline,
+            "REFUSE_OUT_OF_WRITESET: ext4 changed GPT",
         )
-    for sector in UNALLOCATED_CANARIES:
-        entries.append(write_canary(base, sector, txid, "unallocated"))
-    need(len(entries) == 7, "synthetic canary inventory incomplete")
-    need(
-        verify_sfdisk_gpt(base) == baseline,
-        "REFUSE_OUT_OF_WRITESET: synthetic canaries changed GPT",
-    )
-    filesystem_types = verify_fs_types(base)
-    protected_hashes = {str(p.index): sha_region(base, p.start, p.count) for p in PROTECTED}
+        # Protected ESP contains a SIMULATED canary, not a Windows bootloader.
+        marker = work / "synthetic-esp-marker.tmp"
+        with os.fdopen(
+            os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb"
+        ) as out:
+            out.write(ESP_MARKER + txid.encode("ascii") + b"\n")
+            out.flush()
+            os.fsync(out.fileno())
+        esp_image = f"{base}@@{PARTS[0].start * SECTOR}"
+        command("mmd", "-i", esp_image, "::/EFI")
+        command("mmd", "-i", esp_image, "::/EFI/Microsoft")
+        command("mcopy", "-i", esp_image, str(marker), PROTECTED_ESP_FILE)
+        file_hash = sha(marker)
+        # Retain marker rather than risk deleting a swapped same-UID pathname.
+        regular(marker)
+        entries = []
+        for p in PARTS[1:4]:
+            entries.append(
+                write_canary(base, p.start + 8, txid, "protected-" + p.role.rsplit("-", 1)[-1])
+            )
+        for sector in UNALLOCATED_CANARIES:
+            entries.append(write_canary(base, sector, txid, "unallocated"))
+        need(len(entries) == 7, "synthetic canary inventory incomplete")
+        need(
+            verify_fd_gpt(base, pinned=pinned) == baseline,
+            "REFUSE_OUT_OF_WRITESET: synthetic canaries changed GPT",
+        )
+        filesystem_types = verify_fs_types(base)
+        protected_hashes = {str(p.index): sha_region(base, p.start, p.count) for p in PROTECTED}
     os.chmod(base, 0o400)
     backing_sha = sha(base)
     template = system_ovmf_template(template)
@@ -555,7 +547,7 @@ def verify_checkpoint(work: Path, template: Path) -> dict:
         "REFUSE_RECOVERY_UNPROVEN: backing not read-only",
     )
     need(sha(base) == plan["backingSha256"], "REFUSE_RECOVERY_UNPROVEN: backing SHA mismatch")
-    gpt = verify_sfdisk_gpt(base)
+    gpt = verify_fd_gpt(base)
     need(
         {k: gpt[k] for k in ("pmbrAndPrimary", "secondary")} == plan["gpt"],
         "REFUSE_OUT_OF_WRITESET: GPT primary/backup changed",
