@@ -24,7 +24,8 @@ Distinguish three kinds of authority:
 | --- | --- | --- |
 | Repository work | Read code, modify a dedicated branch, commit, create/update PRs, answer reviews, run non-destructive tests | Work is traceable and must stay within the assigned task |
 | Repository integration | Rebase, resolve conflicts, consolidate PRs, merge vetted changes, close duplicates and delete proven-obsolete branches | Requires explicit maintainer delegation, verified dependencies and exact-head checks; no automatic promotion of unproven installation capabilities |
-| Runtime / high-risk execution | Mutate partition tables, NTFS, ESP/MBR, BCD, NVRAM, boot state, recovery state or real physical disks | A repository instruction or green CI run is **not** authorization; use separately approved, verified disposable VM experiments and explicit physical-hardware approval |
+| Disposable GitHub Actions VM testing | Run QEMU/KVM (where available), SeaBIOS/OVMF, guest installs, guest partitioning, virtual power cuts, guest boots and rollback using isolated throwaway VM-owned disk images | **Standing authorization** within the preconfigured isolation/ownership controls below; no separate human approval for each eligible CI run |
+| Runtime / high-risk execution | Mutate real Windows or physical disks, host NTFS, ESP/MBR, BCD, NVRAM, boot state or recovery state | Repository/CI authority is **not** authorization; requires separately approved hardware-specific evidence, backups and restoration |
 
 Generic authorization to "proceed", "continue" or "make stable" allows the next **safe engineering step** within existing permissions, not the disabling of gates or an unbounded production installation. An agent must fail closed when authority, evidence or target identity is ambiguous.
 
@@ -62,9 +63,23 @@ Use only the GitHub account and permissions explicitly authorized for the task. 
 - Every persistent write needs a transaction identifier, validated scope, ownership evidence, durable checkpoint, resumability rules and independently verifiable compensation/rollback. Logs and marker files alone are not recovery proof.
 - Keep experimental backends inaccessible from the signed stable catalogue and production installer until distribution-specific end-to-end acceptance is established.
 - Do not replace actual installed-system backends with shortcuts such as copying an Archiso live root or treating Fedora Atomic as Debian-style squashfs extraction.
-- Test disk writes only in explicitly authorized, disposable VM environments with verified images and recoverable checkpoints. Real physical disk mutation requires separate specific authorization, backup and demonstrated restore capability.
+- Guest disk writes in disposable GitHub Actions VMs are **pre-authorized by the bounded standing delegation in this policy** when the isolation, identity, recovery and workflow guards below are met. Real physical disk mutation requires separate specific authorization, backup and demonstrated restore capability.
 
 The exact executable requirements remain those in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [AGENTS.md](AGENTS.md) and the applicable code/schema contracts. This policy cannot grant exemptions.
+
+### Standing authorization: disposable VM tests in GitHub Actions
+
+**Agents are authorized to create, fix, trigger and rerun bounded CI workflows that use disposable virtual machines on GitHub Actions without asking a human for approval of every run.** This includes QEMU-system, OVMF/UEFI, SeaBIOS/MBR, KVM acceleration if available, isolated virtual NTFS/GPT/MBR/ESP/BCD test disks, real distro media, Windows guest boots where a lawful test image is available, guest-only installer writes, updates, deliberate VM power cuts, rollback and forensic readback. Nested virtualization/acceleration is conditional on the actual runner and must never be assumed.
+
+A destructive *guest* experiment is allowed only when **all** of these verifiable conditions hold:
+
+1. Run on a controlled ephemeral runner/workspace with isolated, disposable **regular-file VM disk images**, fresh copies or restorable snapshots. Verify their exact ownership, path, identity, size and backing chain before attaching them; keep each writable image private to its run. Do not expose host disks, host `/dev/` block devices, live partitions, shared workspaces or external machines as the guest's writable target.
+2. The workflow/configuration must explicitly enable the chosen destructive **guest-only** scenario, reject wrong or ambiguous virtual targets and establish a reset/recovery baseline before writes. Workflow-level opt-in counts; it does **not** require a new manual approval click for each run.
+3. Keep workflow privileges minimal (normally `contents: read`), avoid persistent checkout credentials, and do not expose repository secrets or privileged external credentials to untrusted PR code or guest disks. Only use authenticated, license-compliant media and checksummed artifacts.
+4. Bound CPU, storage, execution time, networking and uploaded artifacts. Record VM image identity, firmware/table mode, commands, checkpoints, failures, final guest-disk diffs and Windows/Linux boot/recovery evidence. Never treat a synthetic image or runner boot as proof of physical hardware.
+5. Stop and fail closed if the runner lacks required isolation, VM support, verified virtual images or recoverable snapshots. Do not weaken protections to force the test green.
+
+This is a **low-risk, isolated test authorization, not a claim of zero risk**: CI runners can still expose secrets, consume resources or be misconfigured. It grants no access to real user disks, production services, release signing, stable catalog promotion or production installer authority. The separate safety/recovery gates still govern what a test result proves.
 
 ## 6. Evidence, testing and claims
 
