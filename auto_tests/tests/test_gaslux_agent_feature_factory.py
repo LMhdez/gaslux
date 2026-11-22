@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -100,6 +101,27 @@ class FeatureFactoryTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         factory.publish(Path(tmp), Path(tmp), "mint", "a" * 40)
                     mock.assert_not_called()
+
+    def test_only_forward_and_byte_identical_product_and_tests_survive_dev_drift(self):
+        root = Path("/tmp/not-used")
+        old, new = "a" * 40, "b" * 40
+        self.assertTrue(factory.safe_forward_draft_base(root, "mint", old, old))
+        with patch.object(factory.subprocess, "run",
+                          return_value=subprocess.CompletedProcess([], 0)), \
+             patch.object(factory.subprocess, "check_output",
+                          side_effect=[b"source", b"source", b"tests", b"tests"]) as read:
+            self.assertTrue(factory.safe_forward_draft_base(root, "mint", old, new))
+            self.assertEqual(read.call_count, 4)
+        with patch.object(factory.subprocess, "run",
+                          return_value=subprocess.CompletedProcess([], 0)), \
+             patch.object(factory.subprocess, "check_output",
+                          side_effect=[b"source", b"tampered"]):
+            self.assertFalse(factory.safe_forward_draft_base(root, "mint", old, new))
+        with patch.object(factory.subprocess, "run",
+                          return_value=subprocess.CompletedProcess([], 1)), \
+             patch.object(factory.subprocess, "check_output") as read:
+            self.assertFalse(factory.safe_forward_draft_base(root, "mint", old, new))
+            read.assert_not_called()
 
     def test_branch_names_are_exactly_scoped_and_no_untrusted_role(self):
         name = factory.origin_branch("bazzite", "a" * 40)
