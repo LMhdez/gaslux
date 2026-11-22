@@ -335,10 +335,7 @@ def test_existing_windows_mount_requires_readonly_norecover_and_known_options(
     assert calls[0][-1] == "TARGET,FSTYPE,OPTIONS"
 
 
-
-def test_existing_windows_mount_rejects_ambiguous_findmnt_state(
-    sharing, monkeypatch, tmp_path
-):
+def test_existing_windows_mount_rejects_ambiguous_findmnt_state(sharing, monkeypatch, tmp_path):
     def fake_run(*arguments, **kwargs):
         assert arguments[:4] == ("findmnt", "-J", "-S", "/dev/mock")
         return json.dumps(
@@ -359,9 +356,7 @@ def test_existing_windows_mount_rejects_ambiguous_findmnt_state(
         )
 
     monkeypatch.setattr(sharing, "run", fake_run)
-    with pytest.raises(RuntimeError, match="ambiguous"), sharing.readonly_volume(
-        Path("/dev/mock")
-    ):
+    with pytest.raises(RuntimeError, match="ambiguous"), sharing.readonly_volume(Path("/dev/mock")):
         pytest.fail("Ambiguous pre-mounted NTFS state was accepted")
 
 

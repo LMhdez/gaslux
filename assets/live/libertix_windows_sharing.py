@@ -320,8 +320,17 @@ def validate_existing_readonly_ntfs_mount(filesystems: Any) -> Path:
         raise RuntimeError("Existing Windows mount cannot prove NTFS-3G no-recovery mode")
     tokens = options.split(",")
     allowed = {
-        "ro", "norecover", "relatime", "strictatime", "noatime", "nodiratime",
-        "nosuid", "nodev", "noexec", "default_permissions", "allow_other",
+        "ro",
+        "norecover",
+        "relatime",
+        "strictatime",
+        "noatime",
+        "nodiratime",
+        "nosuid",
+        "nodev",
+        "noexec",
+        "default_permissions",
+        "allow_other",
     }
     if (
         len(tokens) != len(set(tokens))
@@ -329,8 +338,7 @@ def validate_existing_readonly_ntfs_mount(filesystems: Any) -> Path:
         or "rw" in tokens
         or "norecover" not in tokens
         or any(
-            token not in allowed
-            and not re.fullmatch(r"(?:user_id|group_id|blksize)=\d+", token)
+            token not in allowed and not re.fullmatch(r"(?:user_id|group_id|blksize)=\d+", token)
             for token in tokens
         )
     ):

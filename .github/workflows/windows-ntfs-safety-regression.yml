@@ -34,7 +34,6 @@ jobs:
         run: |
           python3 -m compileall -q assets/live/libertix_windows_sharing.py auto_tests/tests/test_windows_sharing_inventory.py
           python3 -m ruff check --config auto_tests/pyproject.toml assets/live/libertix_windows_sharing.py auto_tests/tests/test_windows_sharing_inventory.py
-          python3 -m ruff format --diff --config auto_tests/pyproject.toml assets/live/libertix_windows_sharing.py auto_tests/tests/test_windows_sharing_inventory.py || true
           python3 -m ruff format --check --config auto_tests/pyproject.toml assets/live/libertix_windows_sharing.py auto_tests/tests/test_windows_sharing_inventory.py
           python3 - <<'PY'
           from pathlib import Path
