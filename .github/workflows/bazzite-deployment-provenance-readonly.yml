@@ -7,12 +7,16 @@ on:
       - test/bazzite-native-route-readback-20261122
     paths:
       - auto_tests/bazzite_deployment_provenance_boundary.py
+      - auto_tests/bazzite_qcow2_deployment_readback.py
       - auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+      - auto_tests/tests/test_bazzite_qcow2_deployment_readback.py
       - .github/workflows/bazzite-deployment-provenance-readonly.yml
   pull_request:
     paths:
       - auto_tests/bazzite_deployment_provenance_boundary.py
+      - auto_tests/bazzite_qcow2_deployment_readback.py
       - auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+      - auto_tests/tests/test_bazzite_qcow2_deployment_readback.py
       - .github/workflows/bazzite-deployment-provenance-readonly.yml
 
 permissions:
@@ -65,16 +69,23 @@ jobs:
           set -Eeuo pipefail
           python -m pip install pytest ruff
           echo '03790bd39a06943d3d9abc6dcd86dfb0c88ca52508e4ee2df9a9ce5bb156a4c9  source-artifact/bazzite-bootc-oci-readback.json' | sha256sum --check
-          python -m pytest -q auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+          python -m pytest -q auto_tests/tests/test_bazzite_deployment_provenance_boundary.py \
+            auto_tests/tests/test_bazzite_qcow2_deployment_readback.py
           python -m ruff check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_deployment_provenance_boundary.py \
-            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+            auto_tests/bazzite_qcow2_deployment_readback.py \
+            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py \
+            auto_tests/tests/test_bazzite_qcow2_deployment_readback.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/bazzite_deployment_provenance_boundary.py \
-            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+            auto_tests/bazzite_qcow2_deployment_readback.py \
+            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py \
+            auto_tests/tests/test_bazzite_qcow2_deployment_readback.py
           python -m compileall -q \
             auto_tests/bazzite_deployment_provenance_boundary.py \
-            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py
+            auto_tests/bazzite_qcow2_deployment_readback.py \
+            auto_tests/tests/test_bazzite_deployment_provenance_boundary.py \
+            auto_tests/tests/test_bazzite_qcow2_deployment_readback.py
           rc=0
           python auto_tests/bazzite_deployment_provenance_boundary.py \
             --oci-report "$GASLUX_PINNED_OCI_REPORT" \
