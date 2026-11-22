@@ -162,9 +162,11 @@ class SnapshotContractTests(unittest.TestCase):
             snapshot = guard.capture_evidence()
             with self.assertRaises(Refusal):
                 guard.export()
-        with owner.SafeWorkspace(self.work, self.evidence) as different:
-            with self.assertRaises(Refusal):
-                different.export(snapshot)
+        with (
+            owner.SafeWorkspace(self.work, self.evidence) as different,
+            self.assertRaises(Refusal),
+        ):
+            different.export(snapshot)
 
     def test_partial_failures_never_return_success(self) -> None:
         for problem in ("ENOSPC", "EIO", "FSYNC", "CLOSE", "COLLISION", "DIRECTORY"):
@@ -254,11 +256,10 @@ class SnapshotContractTests(unittest.TestCase):
             ),
             patch.object(owner.subprocess, "run", side_effect=stub_heavy),
             patch.object(owner.json, "loads", side_effect=mutate_after_json),
+            self.assertRaises((Refusal, OSError)),
         ):
-            # The real run() measures and parses four JSONs, then must refuse.
-            # Heavy preparation is inert; no fake success of export() allowed.
-            with self.assertRaises((Refusal, OSError)):
-                owner.run(self.work, self.evidence, Path("/missing"))
+            # Real run() measures/parses four JSONs; heavy preparation is inert.
+            owner.run(self.work, self.evidence, Path("/missing"))
         self.assertGreater(injected["count"], 0)
         self.assertNotEqual(
             (self.work / "recovery-proof.json").read_bytes(),
