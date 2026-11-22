@@ -32,3 +32,9 @@ Repository `LMhdez/gaslux`; initial verified `dev` at `8e68a475d6397ba8fef2e0f9f
 - Standard public-repo GitHub-hosted runners may offer no per-minute charge, but job limits, fair-use and availability restrictions remain. No unlimited free 24/7 GPU/CPU capacity or ChatGPT-equivalent 13-agent quality is asserted.
 
 Next engineering gate: review publisher and exact safe workflow diff independently; verify repo Actions PR-creation permissions; then, only within a disposable branch/CI, reproduce a real noncritical failing test and validate the end-to-end Draft PR path without bypassing protected Windows safety gates.
+
+## 2026-11-22 UTC — independent no-token publisher guard validation
+
+- [Action #45049079620](https://github.com/LMhdez/gaslux/actions/runs/45049079620), workflow HEAD `11f04d03362a3440f0ea733a595868a04598ac13`: **SUCCESS**. The unprivileged job accepted one valid one-line ranking correction and rejected **four deliberately invalid** candidates (out-of-scope call, multiline change, unrelated change, identical unchanged source). This is a narrowly scoped guard test, **not** a general sandbox certification.
+- In the same Action, Qwen3.5 9B independently generated the correct seeded noncritical ranking patch in one attempt; RED before and GREEN after, 40.244 seconds model inference. Model digest was verified before generation. The privileged publisher was **SKIPPED**, because the event was a pull request.
+- **No real Draft PR was created by the automated publisher.** The repository Actions permission to create PRs and end-to-end automation on a genuine failing dev check still require validation. The workflow is in Draft PR #363, not integrated. No production installer, disk, boot or recovery authority was granted.
