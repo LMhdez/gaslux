@@ -193,7 +193,10 @@ def digest_fd(fd: int, size: int) -> str:
     h = hashlib.sha256()
     for offset in range(0, size, BLOCK):
         length = min(BLOCK, size - offset)
-        content = os.pread(fd, length, offset)
+        try:
+            content = os.pread(fd, length, offset)
+        except OSError as exc:
+            raise WriteSetRefused("E_SOURCE_RACE") from exc
         insist(len(content) == length, "E_TRUNCATED_SOURCE")
         h.update(content)
     return h.hexdigest()
@@ -336,8 +339,11 @@ def compare_raw(a: int, b: int, policy: SyntheticPolicy) -> int:
     linux = policy.linux
     for offset in range(0, policy.disk_bytes, BLOCK):
         length = min(BLOCK, policy.disk_bytes - offset)
-        old = os.pread(a, length, offset)
-        new = os.pread(b, length, offset)
+        try:
+            old = os.pread(a, length, offset)
+            new = os.pread(b, length, offset)
+        except OSError as exc:
+            raise WriteSetRefused("E_SOURCE_RACE") from exc
         insist(len(old) == length and len(new) == length, "E_TRUNCATED_SOURCE")
         if old == new:
             continue
@@ -487,7 +493,12 @@ def verify_private_synthetic(root: Path, record: dict) -> dict:
 
     finally:
         for fd, _ in fds.values():
-            os.close(fd)
+            try:
+                os.close(fd)
+            except OSError:
+                # A concurrently invalidated test FD is already a refusal;
+                # do not replace the explicit result with raw EBADF here.
+                pass
 
 
 def load_policy(root: Path) -> dict:
