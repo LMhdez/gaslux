@@ -261,9 +261,7 @@ def make_resources(work: Path) -> tuple[dict[str, Path], dict]:
     return paths, meta
 
 
-def args_for(
-    mode: str, sock: Path, fds: dict[str, int], readonly_fds: dict[str, int]
-) -> list[str]:
+def args_for(mode: str, sock: Path, fds: dict[str, int], readonly_fds: dict[str, int]) -> list[str]:
     args = [
         QEMU,
         "-machine",
