@@ -367,7 +367,6 @@ class ValidationService:
                 assurance="configured origin only; remote HEAD checked after clone",
             )
 
-
     def prepare_server(
         self, result: ResultBuilder, *, source: SourceMode = "remote"
     ) -> PurePosixPath:
