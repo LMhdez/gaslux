@@ -127,17 +127,7 @@ jobs:
           test "$(git hash-object assets/live/libertix_disk_identity_gate.py)" = e82a401d5a160bfb5ca232b9a820417347dfc22a
           python3 -m compileall -q assets/live/libertix_disk_identity_gate.py             auto_tests/tools/gaslux_popos_gpt_fd_boundary.py             auto_tests/test_popos_gpt_fd_01.py
           ruff check auto_tests/tools/gaslux_popos_gpt_fd_boundary.py auto_tests/test_popos_gpt_fd_01.py
-          ruff format auto_tests/tools/gaslux_popos_gpt_fd_boundary.py auto_tests/test_popos_gpt_fd_01.py
-          python3 - <<'PY'
-          import base64
-          from pathlib import Path
-          for p in ("auto_tests/tools/gaslux_popos_gpt_fd_boundary.py", "auto_tests/test_popos_gpt_fd_01.py"):
-              print("GASLUX_FORMAT_BEGIN " + p)
-              print(base64.b64encode(Path(p).read_bytes()).decode("ascii"))
-              print("GASLUX_FORMAT_END " + p)
-          PY
-          # Never validate CI with uncommitted format fixes.
-          exit 1
+          ruff format --check auto_tests/tools/gaslux_popos_gpt_fd_boundary.py auto_tests/test_popos_gpt_fd_01.py
           # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
           export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
           python3 -m unittest auto_tests.test_popos_six_gpt_contract -v

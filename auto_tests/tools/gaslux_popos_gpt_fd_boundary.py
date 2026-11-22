@@ -110,7 +110,8 @@ class PinnedSixGpt:
         try:
             self.parent_fd = os.open(root, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
             self.work_fd = os.open(
-                work.name, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW,
+                work.name,
+                os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW,
                 dir_fd=self.parent_fd,
             )
             work_stat = os.fstat(self.work_fd)
@@ -122,7 +123,9 @@ class PinnedSixGpt:
             )
             self.work_identity = _identity(work_stat)
             self.fd = os.open(
-                FILE_NAME, os.O_RDONLY | O_NOFOLLOW, dir_fd=self.work_fd,
+                FILE_NAME,
+                os.O_RDONLY | O_NOFOLLOW,
+                dir_fd=self.work_fd,
             )
             item = os.fstat(self.fd)
             need(
@@ -148,7 +151,9 @@ class PinnedSixGpt:
         try:
             pinned_work = os.fstat(self.work_fd)
             visible_work = os.stat(
-                self.work.name, dir_fd=self.parent_fd, follow_symlinks=False,
+                self.work.name,
+                dir_fd=self.parent_fd,
+                follow_symlinks=False,
             )
             pinned = os.fstat(self.fd)
             visible = os.stat(FILE_NAME, dir_fd=self.work_fd, follow_symlinks=False)
@@ -182,8 +187,11 @@ class PinnedSixGpt:
         )
         first_meta = self.verify()
         original = (
-            first_meta.st_dev, first_meta.st_ino, first_meta.st_size,
-            first_meta.st_mtime_ns, first_meta.st_ctime_ns,
+            first_meta.st_dev,
+            first_meta.st_ino,
+            first_meta.st_size,
+            first_meta.st_mtime_ns,
+            first_meta.st_ctime_ns,
         )
         try:
             first = inspect_gpt_fd(self.fd, logical_sector_size=expected_sector)
@@ -197,9 +205,13 @@ class PinnedSixGpt:
         final_meta = self.verify()
         need(
             (
-                final_meta.st_dev, final_meta.st_ino, final_meta.st_size,
-                final_meta.st_mtime_ns, final_meta.st_ctime_ns,
-            ) == original
+                final_meta.st_dev,
+                final_meta.st_ino,
+                final_meta.st_size,
+                final_meta.st_mtime_ns,
+                final_meta.st_ctime_ns,
+            )
+            == original
             and _exact_pread(self.fd, 0, 34 * SECTOR) == pmbr
             and _exact_pread(self.fd, (COUNT - 33) * SECTOR, 33 * SECTOR) == backup,
             "REFUSE_GPT_FD: mutated pinned GPT",

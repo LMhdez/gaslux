@@ -26,7 +26,8 @@ class PinnedPopGptTests(unittest.TestCase):
         self.assertTrue(bool(os.environ.get("RUNNER_TEMP")))
         runner = Path(os.environ["RUNNER_TEMP"])
         self.temp = tempfile.TemporaryDirectory(
-            prefix="gaslux-pop-six-gpt-fd-test-", dir=runner,
+            prefix="gaslux-pop-six-gpt-fd-test-",
+            dir=runner,
         )
         self.addCleanup(self.temp.cleanup)
         self.work = Path(self.temp.name)
@@ -34,7 +35,9 @@ class PinnedPopGptTests(unittest.TestCase):
         with self.base.open("xb") as image:
             image.truncate(SIZE)
         self._sgdisk(
-            "--zap-all", "--clear", "--disk-guid=" + DISK_GUID,
+            "--zap-all",
+            "--clear",
+            "--disk-guid=" + DISK_GUID,
             *[
                 arg
                 for p in PARTS
@@ -58,8 +61,13 @@ class PinnedPopGptTests(unittest.TestCase):
         self.addCleanup(self.vars.stop)
 
     def _sgdisk(self, *args: str) -> None:
-        subprocess.run(["sgdisk", *args, str(self.base)], check=True, capture_output=True,
-                       text=True, timeout=90)
+        subprocess.run(
+            ["sgdisk", *args, str(self.base)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
 
     def test_h_valid_synthetic_gpt_and_byte_exact_region_hashes(self) -> None:
         with PinnedSixGpt(self.work) as pin:
