@@ -131,3 +131,11 @@ hardware or querying QMP is not enough.
 
 No QGA, SSH, guest commands, installer, partition operations, or
 Windows/physical disk writes were added by this experiment.
+
+### Verified runner evidence (2026-11-22, 14:02 UTC)
+
+The first complete [GitHub Action #45030470016](https://github.com/LMhdez/gaslux/actions/runs/45030470016) finished **SUCCESS** at exact candidate HEAD `131f330691b299679a46461616b5e7fa115de882`: 28 real QEMU / Guest Peer tests plus 57 inherited Observer tests, **85/85 PASS**, Ruff, format, compileall and exact pinned #267/#286 source checks. Both the real QEMU disk-FD and local SO_PEERCRED paths ran; the chardev peer was QEMU PID 3293 and had a real host socket descriptor. QEMU was reaped. No guest boot occurred.
+
+[Artifact #14757198793](https://github.com/LMhdez/gaslux/actions/runs/45030470016/artifacts/14757198793) contains the bounded `manifest.json` and local `manifest.sha256`, SHA-256-checked by CI before upload. The artifact ZIP digest was `7f4a4098961b442e95c32637653b9fdb243a7f471b164f20881833c5337ab3b4`; neither the ZIP digest nor the self-hashed manifest provides independent attestation. The manifest explicitly records `guestBooted=false`, `guestObservationsReceived=0`, `guestChannelAuthenticated=false`, `collectorAuthenticated=false`, `replayProtected=false`, `diskWriteAuthorized=false`, `rollbackProven=false`, and `stable=false`.
+
+The real host endpoint is a **negative control**: authenticating its Linux host peer by SO_PEERCRED and the image's QEMU host FD is **not** a guest collector observation. A host process could otherwise impersonate guest origin. Operational installation, replay authorization and Windows recovery remain blocked. Independently Safety-review the new differential before any integration.

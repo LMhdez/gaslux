@@ -10,6 +10,7 @@ on:
       - 'auto_tests/installer_observer/qemu_local_disk_witness.py'
       - 'auto_tests/tests/test_observer_qemu_real_disk_readonly.py'
       - 'docs/OBSERVER_QEMU_REAL_DISK_FD_READONLY.md'
+      - 'docs/CI_VM_EVIDENCE_INDEX.md'
   pull_request:
     branches:
       - dev
@@ -18,6 +19,7 @@ on:
       - 'auto_tests/installer_observer/qemu_local_disk_witness.py'
       - 'auto_tests/tests/test_observer_qemu_real_disk_readonly.py'
       - 'docs/OBSERVER_QEMU_REAL_DISK_FD_READONLY.md'
+      - 'docs/CI_VM_EVIDENCE_INDEX.md'
 
 permissions:
   contents: read
