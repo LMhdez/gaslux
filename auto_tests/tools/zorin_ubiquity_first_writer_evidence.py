@@ -198,7 +198,7 @@ def lstat_member(rootfs: Path, path: str) -> dict:
 
 def parse_unsquashfs_lstat(text: str, path: str) -> dict:
     """Interpret exact metadata line; symlink target is LEXICAL, not dereferenced."""
-    deny(path in UNATTESTED_SHELL, "E_UNEXPECTED_PARTMAN_PATH")
+    deny(path in ALLOWED_METADATA_INODES, "E_UNEXPECTED_PARTMAN_PATH")
     records = []
     prefix = "squashfs-root/" + path
     for line in text.splitlines():
