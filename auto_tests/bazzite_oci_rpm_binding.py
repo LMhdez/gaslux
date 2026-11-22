@@ -143,6 +143,7 @@ def rpm_header(data: bytes) -> dict:
         "name": name, "epoch": epoch, "version": version, "release": release,
         "architecture": arch, "fileSha256": matches[0],
         "sourceRpm": source, "buildTimeUnix": buildtime[0] if buildtime else None,
+        "toFilesystemManpageDeclared": any("bootc-install-to-filesystem." in b for b in base),
         "buildHost": buildhost,
         "rpmHeaderSha256": hashlib.sha256(data).hexdigest(),
     }
@@ -166,7 +167,8 @@ def elf_build_id(prefix: bytes) -> dict:
         typ = struct.unpack_from("<I", prefix, off)[0]
         if typ != 4:  # PT_NOTE
             continue
-        noteoff, notesize = struct.unpack_from("<QQ", prefix, off + 8)
+        noteoff = struct.unpack_from("<Q", prefix, off + 8)[0]
+        notesize = struct.unpack_from("<Q", prefix, off + 32)[0]
         end = noteoff + notesize
         if notesize > MAX_ELF_PREFIX or end > len(prefix):
             raise PackageUnproven("ELF notes outside bounded prefix")
