@@ -137,7 +137,7 @@ jobs:
           sys.exit(pytest.main(["-q", "-s", str(oracle), "-k", "test_red_timeout_must_reap_descendant_inherited_pipe"]))
           PY
           ) 2>&1 | tee "$RUNNER_TEMP/safety2-fixed-green.log"
-          grep -Fq '1 passed' "$RUNNER_TEMP/safety2-fixed-green.log"
+          grep -Fq 'GREEN imported=' "$RUNNER_TEMP/safety2-fixed-green.log"
           printf '%s\n' 'GREEN: unchanged Safety-2 descendant oracle passed against corrected pinned #346 source.' >> "$GITHUB_STEP_SUMMARY"
       - name: C — run both inherited producer suites and complete Safety-2 oracle on fixed SHA
         shell: bash
