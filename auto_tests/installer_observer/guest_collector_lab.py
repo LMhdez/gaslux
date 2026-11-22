@@ -11,6 +11,7 @@ import lzma
 import os
 import re
 import secrets
+import stat
 import shutil
 import socket
 import sqlite3
@@ -61,15 +62,24 @@ def uuid_ok(value: str) -> bool:
 class LabNonceLedger:
     """SQLite FULL-sync one-use challenges in a private, same-runner workspace."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, existing: bool = False):
         require(path.is_absolute() and not path.is_symlink(), "LEDGER_PATH_UNSAFE")
         require(path.parent.is_dir() and path.parent.stat().st_mode & 0o077 == 0, "LEDGER_PARENT_UNSAFE")
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        os.close(fd)
+        if existing:
+            identity = os.lstat(path)
+            require(
+                stat.S_ISREG(identity.st_mode) and identity.st_nlink == 1
+                and identity.st_uid == os.getuid() and identity.st_mode & 0o077 == 0,
+                "LEDGER_FILE_UNSAFE",
+            )
+        else:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+            os.close(fd)
         self.db = sqlite3.connect(path, isolation_level=None)
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.execute("PRAGMA journal_mode=DELETE")
-        self.db.execute("CREATE TABLE challenge (nonce TEXT PRIMARY KEY, session TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('issued','used')))")
+        if not existing:
+            self.db.execute("CREATE TABLE challenge (nonce TEXT PRIMARY KEY, session TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('issued','used')))")
 
     def issue(self, nonce: str, session: str) -> None:
         require(isinstance(nonce, str) and bool(_HEX64.fullmatch(nonce)) and uuid_ok(session), "INVALID_CHALLENGE")
