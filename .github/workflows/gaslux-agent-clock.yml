@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publisher-contracts:
+  publisher_contracts:
     if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'pull_request' || github.event_name == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -109,7 +109,7 @@ jobs:
             echo 'No unclaimed curated product task: no local model run'
           fi
 
-  backend-developer:
+  backend_developer:
     needs: supervisor
     if: needs.supervisor.outputs.active == 'true'
     uses: LMhdez/gaslux/.github/workflows/gaslux-agent-builder.yml@dev
@@ -118,9 +118,9 @@ jobs:
     permissions:
       contents: read
 
-  safety-review:
-    needs: [supervisor, backend-developer]
-    if: needs.backend-developer.outputs.candidate_ready == 'true'
+  safety_review:
+    needs: [supervisor, backend_developer]
+    if: needs.backend_developer.outputs.candidate_ready == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 6
     permissions:
@@ -143,9 +143,9 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_trusted_publish.py -v
           python3 -B auto_tests/tools/gaslux_agent_trusted_publish.py verify
 
-  windows-wpf-acceptance:
-    needs: [supervisor, backend-developer, safety-review]
-    if: needs.backend-developer.outputs.candidate_ready == 'true'
+  windows_wpf_acceptance:
+    needs: [supervisor, backend_developer, safety_review]
+    if: needs.backend_developer.outputs.candidate_ready == 'true'
     runs-on: windows-2022
     timeout-minutes: 22
     permissions:
@@ -183,12 +183,12 @@ jobs:
           dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-  integrator-publisher:
-    needs: [supervisor, backend-developer, safety-review, windows-wpf-acceptance]
+  integrator_publisher:
+    needs: [supervisor, backend_developer, safety_review, windows_wpf_acceptance]
     if: >-
-      needs.backend-developer.outputs.candidate_ready == 'true' &&
-      needs.safety-review.result == 'success' &&
-      needs.windows-wpf-acceptance.result == 'success'
+      needs.backend_developer.outputs.candidate_ready == 'true' &&
+      needs.safety_review.result == 'success' &&
+      needs.windows_wpf_acceptance.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
