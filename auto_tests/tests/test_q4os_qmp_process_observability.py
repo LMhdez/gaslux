@@ -60,10 +60,14 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
             return self.returncode
 
     class FakeChannel:
+        def negotiate_protocol(self):
+            pass
+
         def close(self):
             pass
 
-    def fake_qmp(_path):
+    def fake_qmp(_path, *, negotiate=False):
+        assert negotiate is False
         if mode == "refused":
             raise ConnectionRefusedError()
         if mode in ("greeting", "version", "capabilities", "not_running"):
@@ -106,6 +110,12 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
             raise witness.StartupRefusal("QEMU_QMP_SOCKET_INVALID")
 
     def fake_supervise(*_args, **kwargs):
+        if mode == "poisoned_reason":
+            raise BootRefusal("QEMU_SECRET_key=/tmp/should-not-appear")
+        if mode == "suffix_reason":
+            raise BootRefusal("QEMU_EARLY_EXIT SECRET=/tmp/private")
+        if mode == "valid_reason":
+            raise BootRefusal("QEMU_QMP_SOCKET_INVALID")
         assert kwargs["qmp_channel"] is not None
         assert callable(kwargs["process_guard"])
         kwargs["process_guard"]()
@@ -168,6 +178,8 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
     assert report["rollbackVerified"] is False
     assert report["windowsSetupVerified"] is False
     assert "private" not in repr(report)
+    assert "SECRET" not in repr(report)
+    assert "key=" not in repr(report)
     return report
 
 
@@ -188,6 +200,9 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
         ("foreign", "QEMU_QMP_SOCKET_INVALID"),
         ("cleanup_fail", "QEMU_PROCESS_CLEANUP_FAILED"),
         ("birth_drift", "QEMU_PROCESS_CLEANUP_FAILED"),
+        ("poisoned_reason", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("suffix_reason", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("valid_reason", "QEMU_QMP_SOCKET_INVALID"),
     ],
 )
 def test_bounded_failure_codes(monkeypatch, lab, scenario, reason):
