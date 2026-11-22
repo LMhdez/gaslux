@@ -86,25 +86,30 @@ def _run(*args: str, **kwargs: object) -> subprocess.CompletedProcess:
 
 
 def _kernel_and_modules() -> tuple[Path, str, dict[str, str]]:
-    kernels = sorted(Path("/boot").glob("vmlinuz-*-generic"), reverse=True)
-    for kernel in kernels:
-        release = kernel.name.removeprefix("vmlinuz-")
-        if not (Path("/lib/modules") / release).is_dir():
-            continue
-        dpkg = _run("dpkg-query", "-S", str(kernel)).stdout.decode().strip()
-        package = dpkg.split(":", 1)[0]
-        version = _run("dpkg-query", "-W", "-f=${Version}", package).stdout.decode()
-        if package and version:
-            return (
-                kernel,
-                release,
-                {
-                    "package": package,
-                    "packageVersion": version,
-                    "kernelSha256": hashlib.sha256(kernel.read_bytes()).hexdigest(),
-                },
-            )
-    raise RuntimeError("NO_DPKG_MANAGED_LINUX_KERNEL_WITH_MODULES")
+    staged = Path(os.environ["GASLUX_LAB_KERNEL_STAGE"])
+    assert staged.is_file() and staged.is_absolute() and not staged.is_symlink()
+    assert staged.parent.stat().st_uid == os.getuid()
+    assert staged.parent.stat().st_mode & 0o077 == 0
+    assert staged.stat().st_uid == 0 and staged.stat().st_mode & 0o022 == 0
+    release = staged.name.removeprefix("vmlinuz-")
+    source = Path("/boot") / staged.name
+    if source not in Path("/boot").glob("vmlinuz-*-generic"):
+        raise RuntimeError("NO_APT_GENERIC_KERNEL_REFERENCE")
+    if not (Path("/lib/modules") / release).is_dir():
+        raise RuntimeError("APPLIED_KERNEL_MODULES_MISSING")
+    dpkg = _run("dpkg-query", "-S", str(source)).stdout.decode().strip()
+    package = dpkg.split(":", 1)[0]
+    version = _run("dpkg-query", "-W", "-f=${Version}", package).stdout.decode()
+    assert package and version
+    return (
+        staged,
+        release,
+        {
+            "package": package,
+            "packageVersion": version,
+            "kernelSha256": hashlib.sha256(staged.read_bytes()).hexdigest(),
+        },
+    )
 
 
 def _modules(release: str, root: Path) -> list[str]:
