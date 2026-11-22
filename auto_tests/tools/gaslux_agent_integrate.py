@@ -215,6 +215,8 @@ def select() -> dict:
 
 
 def merge(number: int, expected: str) -> dict:
+    if os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true":
+        raise RuntimeError("GASLUX_AUTONOMY_PAUSED: dev merge blocked")
     if os.getenv("GITHUB_REPOSITORY") != REPO or os.getenv("GITHUB_REF") != "refs/heads/main":
         raise RuntimeError("Trusted default branch only")
     event_name = os.getenv("GITHUB_EVENT_NAME")
