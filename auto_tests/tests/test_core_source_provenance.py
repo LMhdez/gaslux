@@ -6,12 +6,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from app.config import Settings
 from app.errors import WorkflowError
 from app.services.common import ResultBuilder
 from app.services.validation import ValidationService
+from pydantic import ValidationError
 
 
 
