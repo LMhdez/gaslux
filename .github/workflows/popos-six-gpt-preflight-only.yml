@@ -45,26 +45,31 @@ jobs:
             'ruff==0.14.4' 'jsonschema==4.25.1'
           export PATH="$RUNNER_TEMP/pop-six-contract-venv/bin:$PATH"
           python3 -m compileall -q \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff check --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py || true
           ruff check \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --diff \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
             auto_tests/test_popos_six_gpt_contract.py
           ruff format --check \
+            auto_tests/tools/gaslux_popos_six_gpt_ownership.py \
             auto_tests/tools/gaslux_popos_six_gpt_fsck.py \
             auto_tests/tools/gaslux_popos_six_gpt_contract.py \
             auto_tests/tools/gaslux_popos_six_gpt_lab.py \
