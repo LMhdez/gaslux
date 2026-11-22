@@ -145,11 +145,16 @@ def inspect_build20_extraction(
         "REFUSE_BUILD20: not a hosted private source-metadata lab",
     )
     w = workspace.resolve(strict=True)
-    need(stat.S_IMODE(workspace.stat().st_mode) == 0o700,
-         "REFUSE_BUILD20: workspace must be private")
+    need(
+        workspace.stat().st_uid == os.geteuid()
+        and stat.S_IMODE(workspace.stat().st_mode) == 0o700,
+        "REFUSE_BUILD20: workspace must be private",
+    )
     for path in (iso, elf, status):
-        need(path.parent == workspace and path.parent.resolve(strict=True) == w,
-             "REFUSE_BUILD20: input is not owned by workspace")
+        need(
+            path.parent == workspace and path.parent.resolve(strict=True) == w,
+            "REFUSE_BUILD20: input is not owned by workspace",
+        )
     _regular_owned(iso, PINNED_ISO_BYTES, PINNED_ISO_BYTES)
     _regular_owned(elf, MAX_BINARY_BYTES)
     _regular_owned(status, MAX_STATUS_BYTES)
@@ -174,7 +179,10 @@ def inspect_build20_extraction(
         "build20PublicReferenceUtc": BUILD20_EARLIEST_PUBLIC_REFERENCE_UTC,
         "build20Reference": BUILD20_REFERENCE,
         "upstreamCommitPostdatesOriginalBuild20Reference": True,
-        "isoGpgVerificationPerformedByWorkflow": True,
+        "isoGpgVerificationPerformedByWorkflow": False,
+        "isoHashMatchesPreviouslySignedManifestPin": True,
+        "cargoLockOfActualBuildVerified": False,
+        "elfBuildIdSourceBindingVerified": False,
         "sourceToElfCorrespondenceVerified": False,
         "signedBuildinfoVerified": False,
         "aptRepositorySnapshotVerified": False,
