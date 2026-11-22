@@ -69,21 +69,29 @@ def plan(role: str = "") -> dict:
 
 
 def propose(source: str, task: dict, suggestion: str) -> str:
-    matched = LINE.fullmatch(suggestion)
+    # A local model may omit the trailing C# dictionary comma despite
+    # choosing the correct Windows ID and XKB layout. Normalize *only*
+    # this absent punctuation; never rewrite identifiers or function calls.
+    if not isinstance(suggestion, str) or len(suggestion) > 95 or "\\n" in suggestion or "\\r" in suggestion:
+        raise ValueError("Model produced invalid or multiline statement")
+    normalized = suggestion.strip()
+    if normalized.endswith("}") and not normalized.endswith("},"):
+        normalized += ","
+    matched = LINE.fullmatch(normalized)
     if not matched:
         raise ValueError("Model produced unauthorized statement")
     if (matched.group(1).upper(), matched.group(2)) != (
         task["keyboard_identifier"], task["xkb_layout"]
     ):
         raise ValueError("Model candidate does not implement selected feature")
-    if len(suggestion) > 95 or ";" in suggestion or "#" in suggestion:
+    if ";" in normalized or "#" in normalized:
         raise ValueError("Unexpected syntax")
     anchor = re.compile(r'^(\s*\{\s*"' + task["anchor_identifier"] + r'"\s*,.+\n)', re.M)
     matches = list(anchor.finditer(source))
     if len(matches) != 1 or task["keyboard_identifier"] in source:
         raise ValueError("Baseline changed while task executed")
     indentation = re.match(r"^\s*", matches[0].group(1)).group(0)
-    new_line = indentation + suggestion.strip() + "\n"
+    new_line = indentation + normalized + "\n"
     candidate = source[:matches[0].end()] + new_line + source[matches[0].end():]
     if candidate != anchor.sub(lambda m: m.group(1) + new_line, source, count=1):
         raise ValueError("Unexpected unrelated code mutation")
