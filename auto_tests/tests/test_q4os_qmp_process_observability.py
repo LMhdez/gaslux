@@ -179,21 +179,21 @@ def drive(monkeypatch, lab, *, mode="success", stderr=b"", seconds=0.04):
     [
         ("spawn", "QEMU_SPAWN_FAILED"),
         ("early", "QEMU_EARLY_EXIT"),
-        ("absent", "QEMU_QMP_SOCKET_TIMEOUT"),
-        ("invalid", "QEMU_QMP_SOCKET_INVALID"),
-        ("refused", "QEMU_QMP_CONNECTION_REFUSED"),
-        ("greeting", "QEMU_QMP_HANDSHAKE_FAILED"),
-        ("version", "QEMU_QMP_HANDSHAKE_FAILED"),
-        ("capabilities", "QEMU_QMP_HANDSHAKE_FAILED"),
-        ("not_running", "QEMU_QMP_NOT_RUNNING"),
+        ("absent", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("invalid", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("refused", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("greeting", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("version", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("capabilities", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("not_running", "QEMU_STARTUP_UNCLASSIFIED"),
         ("exit_after_socket", "QEMU_EARLY_EXIT"),
-        ("swapped", "QEMU_QMP_SOCKET_INVALID"),
-        ("foreign", "QEMU_QMP_SOCKET_INVALID"),
+        ("swapped", "QEMU_STARTUP_UNCLASSIFIED"),
+        ("foreign", "QEMU_STARTUP_UNCLASSIFIED"),
         ("cleanup_fail", "QEMU_PROCESS_CLEANUP_FAILED"),
         ("birth_drift", "QEMU_PROCESS_CLEANUP_FAILED"),
         ("poisoned_reason", "QEMU_STARTUP_UNCLASSIFIED"),
         ("suffix_reason", "QEMU_STARTUP_UNCLASSIFIED"),
-        ("valid_reason", "QEMU_QMP_SOCKET_INVALID"),
+        ("valid_reason", "QEMU_STARTUP_UNCLASSIFIED"),
     ],
 )
 def test_bounded_failure_codes(monkeypatch, lab, scenario, reason):
@@ -225,11 +225,15 @@ def test_early_exit_has_only_allowlisted_details(monkeypatch, lab, private_log, 
 
 
 @pytest.mark.parametrize("scenario", ["late", "success"])
-def test_late_socket_and_connected_process(monkeypatch, lab, scenario):
+def test_synthetic_qmp_never_reports_operational_success(monkeypatch, lab, scenario):
     result = drive(monkeypatch, lab, mode=scenario)
-    assert result["decision"] == "dvd_key_sent_once"
-    assert result["reasonCode"] is None
-    assert result["qmpHandshakeVerified"] is True
+    assert result["decision"] == "refuse"
+    assert result["reasonCode"] == "QEMU_STARTUP_UNCLASSIFIED"
+    assert result["qemuSpawned"] is False
+    assert result["qemuPidRecorded"] is False
+    assert result["qmpSocketState"] == "ABSENT"
+    assert result["qmpHandshakeVerified"] is False
+    assert result["qmpSendKeyAcknowledged"] is False
     assert result["cleanupVerified"] is True
 
 
@@ -345,20 +349,16 @@ c.close();s.close()
                 else (_ for _ in ()).throw(witness.StartupRefusal("QEMU_EARLY_EXIT"))
             ),
         )
-        report = {"qmpSocketState": "ABSENT", "qmpHandshakeVerified": False}
-        with pytest.raises(witness.StartupRefusal, match="QEMU_QMP_SOCKET_INVALID"):
-            witness._await_qmp(
-                monitor,
-                fd,
-                sock,
-                work,
-                report,
-                seconds=0.5,
-                interval=0.01,
-            )
+        from q4os_win10_qmp_boot import Qmp
+
+        channel = Qmp(sock, negotiate=False)
+        try:
+            with pytest.raises(witness.StartupRefusal, match="QEMU_QMP_SOCKET_INVALID"):
+                witness._peer(channel, monitor)
+        finally:
+            channel.close()
         assert server.wait(timeout=5) == 0
         assert transcript.read_bytes() == b"", "peer must receive ZERO QMP commands"
-        assert report["qmpHandshakeVerified"] is False
     finally:
         if fd is not None:
             os.close(fd)
