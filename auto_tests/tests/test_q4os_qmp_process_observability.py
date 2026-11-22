@@ -367,7 +367,6 @@ c.close();s.close()
 def test_real_python_child_reaped_despite_report_io_fault(monkeypatch, lab, fault, errno_value):
     """ENOSPC/EIO on supervisor-owned logfile may not bypass wait/reap."""
 
-    holder = {}
     native_open = Path.open
 
     class FaultyOutput:
