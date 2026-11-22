@@ -253,3 +253,38 @@ Original #337 HEAD `f1e082c37ab58887f942b1e9ab0a841cb4b2b02a` composed with dev 
 ## 2026-11-22 — #346 reconciled after #337 dev integration
 
 Corrected #346 source at `49389810a46d43bee407304a237b912b2faebc07` was composed after #337 landed in dev at `c97cef409c39f6d488d9ec0722b3cfa845685826`. The paragraphs above are retained as dated snapshots; the later [Safety-2 RED→GREEN decision](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) closed `SAFETY2-346-01` only in the offline HOST read-only boundary. The newly composed HEAD requires fresh CI. No change to `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, guest trust or Windows rollback/writer authority.
+
+## 2026-11-22 — 128GiB #342+#346 canonical deny-only reconciliation
+
+- [PR #356](https://github.com/LMhdez/gaslux/pull/356),
+  code HEAD `72106b2dfe4d38612ea37cdc8b0618a33298fa9e`,
+  [CI push #45037589606](https://github.com/LMhdez/gaslux/actions/runs/45037589606)
+  and [CI PR #45037640437](https://github.com/LMhdez/gaslux/actions/runs/45037640437)
+  **SUCCESS on exact code SHA**.
+- The historical #342 metadata-probe test suite ran from its own
+  immutable source checkout, alongside #346's actual paused-QEMU,
+  sparse 128GiB pinned-FD/GPT/checkpoint contracts and newly
+  imported-only-by-behavior 32-byte QCOW2 header, checkpoint-space estimate,
+  and final allocated-block verification. No duplicate runtime API.
+- Independent upstream #337 D-337-01 digest regressions, #327 BZD,
+  #267 no-writer and HOST/FD tests passed. Entire 128 GiB RAW was
+  **not** hashed, original Windows checkpoint was not authenticated,
+  and QEMU internal backend or guest provenance remain unproven.
+  `DENY_NO_WRITER` stays invariant. Documentation-only changes
+  after this tested code SHA require separate exact-head checks.
+
+## 2026-11-22 — #356 non-destructive reconciliation after #346 Safety-2 closure
+
+The historical PR #356 head `83489eee123c124266b0c514b8f20e6e19ca9bc2` and corrected PR #346 `49389810a46d43bee407304a237b912b2faebc07` share ancestor `9306d0fff8cc89794b83fe002ae133c110e641ae`. This composition preserves both histories using a two-parent merge; the final `_bounded_info` function matches approved #346 byte-for-byte, while 32-byte QCOW2 header/version/geometry, `statvfs` checkpoint estimate and final `st_blocks` recheck from #356 are preserved. The independent [Safety-2 oracle #355](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) was GREEN on **#346's corrected SHA only**, not yet independently reviewed on the combined candidate; its immutable original test blob `c29c68a13967377c4a3ee89c13087b2ce6bad6b5` is reused in the existing #356 CI workflow. Before any decision, confirm CI on the new exact merged HEAD.
+
+**Evidence classification:** QEMU stopped / host-only read-only synthetic files and contracts, NEVER installed Guest, Windows recovery, full 128GiB RAW hash, or writer. Continue to refuse `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, `productionStorageWritesAuthorized=false`, `checkpointReserveProven=false`, `checkpointRestorationProven=false`. No release or dev merge.
+
+## 2026-11-22 — PR #356 corrected parent composition / independent Safety oracle
+
+**Committed histories:** first parent #356 `83489eee123c124266b0c514b8f20e6e19ca9bc2`, second parent corrected #346 `49389810a46d43bee407304a237b912b2faebc07`; merged at `22d8da1df232e0216a882242d349562bbecdcd7d`. Workflow ancestry check fixed at **code HEAD `a6e2f01ee061f05917eb1930dadbc1dfb099905d`** using full checkout depth (the earlier initial merged HEAD run [#45057399777](https://github.com/LMhdez/gaslux/actions/runs/45057399777) failed during preflight because shallow history could not prove both parents, not a QEMU regression). The final code HEAD had **3/3 SUCCESS**: [push QEMU #45057466420](https://github.com/LMhdez/gaslux/actions/runs/45057466420), [PR QEMU #45057470701](https://github.com/LMhdez/gaslux/actions/runs/45057470701), [docs #45057470700](https://github.com/LMhdez/gaslux/actions/runs/45057470700). Both QEMU runs include actual stopped-QEMU HOST FD/GPT, #337, #346/#356, original 12-case #342 suite, inherited #327/#267 and 15 original independent #355 oracle cases using externally pinned checkout and verified composed import blob `a1a6364b12cf9a6b988eb124e2aa66e374c32cfe`. Startup/cleanup failure injection rejects safely.
+
+**Evidence classification:** QEMU_PROTOCOL + SYNTHETIC_DISK + CONTRACT only; NO LIVE_GUEST, INSTALLED_GUEST, WINDOWS_GUEST, SHARED_DISK_DUAL_BOOT or RECOVERY. A sparse 128GiB virtual extent is not an authenticated whole-RAW hash. Maintain `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, `checkpointReserveProven=false`, `checkpointRestorationProven=false`, `productionStorageWritesAuthorized=false`. Independent differential Safety-2 assessment of combined HEAD is **pending**. No merge.
+
+## 2026-11-22 — #356 propagated across merged #337/#346 dev chain
+
+After [PR #337](https://github.com/LMhdez/gaslux/pull/337) and [PR #346](https://github.com/LMhdez/gaslux/pull/346) reached `dev`, the original #356 source approved by [Safety-2](https://github.com/LMhdez/gaslux/pull/356#issuecomment-7084162704) remains at verified module blob `a1a6364b12cf9a6b988eb124e2aa66e374c32cfe`. This entry preserves all current dev historical sections including #361/#368/#369 and the #346 subprocess Safety closure. The new #356 HEAD requires its own exact-head QEMU/GPT/QCOW2 and immutable 15-case #355 oracle, plus post-merge checks; approval of the old SHA alone is not sufficient proof of environment compatibility. Evidence remains HOST read-only; no authenticated RAW 128GiB digest, installed Guest, Windows recovery, physical disk or writer authority. `DENY_NO_WRITER`, `checkpointReserveProven=false`, `checkpointRestorationProven=false`, and `productionStorageWritesAuthorized=false` remain enforced.

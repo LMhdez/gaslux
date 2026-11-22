@@ -348,12 +348,20 @@ def assess_sparse_128g_readonly(
         )
         vfs = os.statvfs(workspace)
         _require(vfs.f_bavail > 0 and vfs.f_frsize > 0, "FILESYSTEM_QUOTA_UNAVAILABLE")
-        _require(
-            vfs.f_bavail * vfs.f_frsize >= 1024 * 1024,
-            "INSUFFICIENT_HOST_FREE_SPACE",
-        )
+        free_space_estimate = vfs.f_bavail * vfs.f_frsize
+        _require(free_space_estimate >= 1024 * 1024, "INSUFFICIENT_HOST_FREE_SPACE")
         _require(raw_st.st_size == MAX_LARGE_VIRTUAL_BYTES, "NOT_128G_BACKING_GEOMETRY")
-        _require(_read_exact(qcow2_fd, 0, 4, deadline) == b"QFI\xfb", "QCOW2_MAGIC_INVALID")
+        # #342 supplied this bounded header/version and geometry cross-check.
+        # qemu-img remains a local chain inspector, not a guest proof.
+        _require(overlay_st.st_size >= 72, "QCOW2_HEADER_TRUNCATED")
+        header = _read_exact(qcow2_fd, 0, 32, deadline)
+        _require(header[:4] == b"QFI\xfb", "QCOW2_MAGIC_INVALID")
+        qcow2_version = int.from_bytes(header[4:8], "big")
+        _require(qcow2_version in (2, 3), "QCOW2_HEADER_VERSION_INVALID")
+        _require(
+            int.from_bytes(header[24:32], "big") == raw_st.st_size,
+            "QCOW2_HEADER_VIRTUAL_GEOMETRY_MISMATCH",
+        )
         with QemuLocalDiskWitness(pins) as witness:
             overlay_hash = _small_full_digest(qcow2_fd, expected_overlay_sha256, budget, deadline)
             _elapsed(deadline)
@@ -436,10 +444,11 @@ def assess_sparse_128g_readonly(
                 (backing_fd, backing_path, raw_st),
                 (checkpoint_fd, checkpoint_path, receipt_st),
             ):
+                current = os.fstat(fd)
+                present = path.lstat()
                 _require(
-                    _stat_identity(os.fstat(fd))
-                    == _stat_identity(path.lstat())
-                    == _stat_identity(initial),
+                    _stat_identity(current) == _stat_identity(present) == _stat_identity(initial)
+                    and _allocated(current) == _allocated(present) == _allocated(initial),
                     "RESOURCE_MUTATED_DURING_INSPECTION",
                 )
             _elapsed(deadline)
@@ -465,7 +474,15 @@ def assess_sparse_128g_readonly(
             "qcow2AllocatedBytes": overlay_blocks,
             "rawApparentBytes": raw_st.st_size,
             "rawAllocatedBytes": raw_blocks,
+            "backingIsSparse": raw_blocks < raw_st.st_size,
+            "qcow2HeaderBytesRead": len(header),
+            "qcow2HeaderVersion": qcow2_version,
             "checkpointApparentBytes": receipt_st.st_size,
+            # A statvfs ESTIMATE, never a reservation or trust root.
+            "freeSpaceEstimatedBytes": free_space_estimate,
+            "fullCheckpointReserveMinimumBytes": raw_st.st_size,
+            "checkpointCapacityEstimateSufficient": free_space_estimate >= raw_st.st_size,
+            "checkpointReserveProven": False,
             "backingGptPartitionTableId": gpt["partitionTableId"],
             "locallyMeasuredRawSampleBytes": 2 * sample_bytes,
             "locallyMeasuredRawSampleSha256": local_sample_sha256,

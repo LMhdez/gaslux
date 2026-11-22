@@ -142,3 +142,36 @@ trust boundaries: [AUTH_DEST_128G_READONLY](../AUTH_DEST_128G_READONLY.md).
 **SUCCESS** at `6a94093271610dbd2ff908c2b8692e332e1585a1`.
 No production write, guest boot, Windows restoration, ESP/BCD/WinRE,
 firmware changes, full RAW hash or release/stability authority.
+
+## 2026-11-22 — canonical #342/#346 composition (experimental DENY-ONLY)
+
+[Draft PR #356](https://github.com/LMhdez/gaslux/pull/356) selects the
+stronger #346 `assess_sparse_128g_readonly` as its **sole proposed**
+large-sparse read-only contract. After examining #342, only its unique
+32-byte QCOW2 version/capacity checks, `statvfs` full-checkpoint
+capacity *estimate*, and final allocated-block remeasurement were
+added. `probe_destination_scale_metadata` from #342 is **not imported**
+or duplicated, and the newer #337 D-337-01 full-SHA guard and RED
+tests are preserved. Both earlier PRs remain open Draft; no merge.
+
+[Actions #45037589606](https://github.com/LMhdez/gaslux/actions/runs/45037589606)
+and [#45037640437](https://github.com/LMhdez/gaslux/actions/runs/45037640437)
+**SUCCESS on composition code HEAD `72106b2dfe4d38612ea37cdc8b0618a33298fa9e`**,
+including unchanged #342 historical tests and current #346 actual
+stopped-QEMU 128GiB/GPT/checkpoint negatives, #337 D-337-01,
+#327/#267/HOST-FD, schema, Ruff. Even structurally valid 128GiB
+resources raise `FULL_BACKING_HASH_NOT_COMPLETED` and deny writes.
+No genuine Windows backing, independent guest, rollback or stable claim.
+See [comparison and limits](../AUTH_DEST_342_346_CANONICAL.md).
+
+## 2026-11-22 — non-destructive #346 fixed + #356 QCOW2 differential
+
+Draft #356 reconciles original child `83489eee123c124266b0c514b8f20e6e19ca9bc2` with corrected parent #346 `49389810a46d43bee407304a237b912b2faebc07` via a non-destructive two-parent merge. The `_bounded_info()` subprocess cleanup is byte-for-byte identical to the exact #346 version [independently approved for that parent only](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456). #356's 32-byte QCOW2 v2/v3/header capacity checks, `statvfs` checkpoint estimate, final `st_blocks` comparison, dedicated original #342 checks and synthetic regressions remain. The original [Safety-2 #355](https://github.com/LMhdez/gaslux/pull/355) oracle is pinned by immutable ref in the existing #356 workflow, and a new exact-head CI plus fresh independent Safety-2 differential assessment are required. `checkpointReserveProven=false`, `checkpointRestorationProven=false`, `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER` and all writer/rollback/guest flags remain denied; no extra API, install, real Windows recovery or release promotion is introduced.
+
+### 2026-11-22 — #356 exact-head composed read-only regressions
+
+#356 code HEAD `a6e2f01ee061f05917eb1930dadbc1dfb099905d` preserves the approved parent #346 process-group cleanup and separate #356 QCOW2 header/statvfs/allocation improvements. [QEMU push #45057466420](https://github.com/LMhdez/gaslux/actions/runs/45057466420), [QEMU PR #45057470701](https://github.com/LMhdez/gaslux/actions/runs/45057470701) and [docs #45057470700](https://github.com/LMhdez/gaslux/actions/runs/45057470700) PASS, including original immutable #355 Safety oracle 15-case suite. This is still a **draft candidate awaiting independent differential Safety**, not writer authority or whole-disk integrity proof. All 128GiB responses remain `FULL_BACKING_HASH_NOT_COMPLETED` / `DENY_NO_WRITER`; checkpoint capacity remains an estimate, never reserved or restored.
+
+## 2026-11-22 — dev chain reconciliation of #356 (still DENY-ONLY)
+
+Original #356 `4886c1e7f1f835c71cf2fe1351ff834e92bea334` carries Safety-2 technical approval for composed blob `a1a6364b12cf9a6b988eb124e2aa66e374c32cfe`. Propagation after #337/#346 dev merges preserves that byte-identical module while retaining the exact historical #355 oracle. The new branch HEAD must independently pass applicable workflows before any dev merge. This host-only contract never authorizes writes, Guest attestation, Windows recovery, checkpoint reservation, or a complete 128GiB RAW digest. Preserve `FULL_BACKING_HASH_NOT_COMPLETED` and `DENY_NO_WRITER`.
