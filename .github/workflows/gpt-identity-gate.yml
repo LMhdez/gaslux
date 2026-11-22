@@ -44,5 +44,7 @@ jobs:
           data = yaml.safe_load(raw)
           assert data["permissions"] == {"contents": "read"}
           assert data["jobs"]["gpt-identity-gate"]["runs-on"] == "ubuntu-latest"
-          assert "workflow_dispatch" not in raw
+          triggers = data.get("on", data.get(True))
+          assert isinstance(triggers, dict)
+          assert set(triggers) == {"push", "pull_request"}
           PY
