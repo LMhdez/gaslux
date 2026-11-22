@@ -243,7 +243,7 @@ def parse_qcow_map(raw: str, *, require_full: bool = True) -> list[dict]:
             isinstance(row, dict)
             and {"start", "length", "depth", "data", "zero"} <= row.keys()
             and row.keys() <= allowed,
-            "REFUSE_RECOVERY_UNPROVEN: unknown/incomplete extent",
+            "REFUSE_RECOVERY_UNPROVEN: unknown/incomplete extent keys=" + str(sorted(row.keys()) if isinstance(row, dict) else type(row).__name__),
         )
         start, length, depth = (row[k] for k in ("start", "length", "depth"))
         need(
