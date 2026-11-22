@@ -705,7 +705,13 @@ def test_r02_direct_internal_core_without_child_has_no_spawn(monkeypatch, lab):
 
     monkeypatch.setattr(witness.subprocess, "Popen", forbidden)
     report = witness._run_lab_impl(
-        work, code, vars_path, image, iso, answer, "kvm",
+        work,
+        code,
+        vars_path,
+        image,
+        iso,
+        answer,
+        "kvm",
     )
     assert report["qemuSpawned"] is False
     assert report["decision"] == "refuse"
@@ -736,13 +742,20 @@ def test_r02_public_cli_refuses_without_spawn_even_with_host_claims(monkeypatch,
         "argv",
         [
             "q4os_win10_qmp_supervisor.py",
-            "--work", str(work),
-            "--code", str(tmp_path / "synthetic-code"),
-            "--vars", str(work / "vars.fd"),
-            "--image", str(work / "disk.qcow2"),
-            "--iso", str(work / "synthetic.iso"),
-            "--answer", str(work / "answer.iso"),
-            "--accel", "tcg",
+            "--work",
+            str(work),
+            "--code",
+            str(tmp_path / "synthetic-code"),
+            "--vars",
+            str(work / "vars.fd"),
+            "--image",
+            str(work / "disk.qcow2"),
+            "--iso",
+            str(work / "synthetic.iso"),
+            "--answer",
+            str(work / "answer.iso"),
+            "--accel",
+            "tcg",
         ],
     )
     assert witness.main() == 1
@@ -752,9 +765,7 @@ def test_r02_public_cli_refuses_without_spawn_even_with_host_claims(monkeypatch,
     assert events == []
 
 
-def test_r03_unexpected_exception_stays_redacted_in_legacy_cli(
-    monkeypatch, tmp_path, capsys
-):
+def test_r03_unexpected_exception_stays_redacted_in_legacy_cli(monkeypatch, tmp_path, capsys):
     import q4os_win10_qmp_boot as boot
 
     root = tmp_path / "private"
@@ -770,10 +781,14 @@ def test_r03_unexpected_exception_stays_redacted_in_legacy_cli(
         "argv",
         [
             "q4os_win10_qmp_boot.py",
-            "--qmp", str(root / "qmp.sock"),
-            "--serial", str(root / "serial.log"),
-            "--disk", str(root / "synthetic.qcow2"),
-            "--report", str(report),
+            "--qmp",
+            str(root / "qmp.sock"),
+            "--serial",
+            str(root / "serial.log"),
+            "--disk",
+            str(root / "synthetic.qcow2"),
+            "--report",
+            str(report),
         ],
     )
     assert boot.main() == 1
