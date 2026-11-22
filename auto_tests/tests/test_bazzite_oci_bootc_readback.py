@@ -139,9 +139,7 @@ def test_untrusted_layer_descriptor_refused(key, value):
     manifest["layers"][0][key] = value
     a = json.dumps(manifest).encode()
     with pytest.raises(Refusal):
-        validate_metadata(
-            a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b)
-        )
+        validate_metadata(a, b, expected_manifest=digest_bytes(a), expected_config=digest_bytes(b))
 
 
 def test_missing_or_extra_rootfs_layer_refused():
@@ -175,8 +173,10 @@ def test_complete_no_binary_image_marked_unavailable_not_signed_runtime():
     data = tar_layer({"etc/os-release": b"ID=bazzite\n"})
     state, budget = scan(data)
     decision = finish(
-        state, [{"digest": digest_bytes(data), "size": len(data)}],
-        budget, {"architecture": "amd64", "os": "linux", "declaredLabels": {}}
+        state,
+        [{"digest": digest_bytes(data), "size": len(data)}],
+        budget,
+        {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
     )
     assert decision["status"] == "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
     assert decision["bootcVersionVerified"] is False
@@ -219,7 +219,8 @@ def test_tampered_layer_gzip_digest_refused():
         scan_layer(
             io.BytesIO(data + b"forged"),
             {"size": len(data), "digest": digest_bytes(data)},
-            {}, {"members": 0, "expanded": 0},
+            {},
+            {"members": 0, "expanded": 0},
         )
 
 
@@ -240,6 +241,10 @@ def test_malformed_gzip_refused_after_matching_descriptor():
 def test_json_has_no_authority_even_when_status_is_present():
     data = tar_layer({"usr/bin/bootc": b"\x7fELF" + b"xyz"})
     state, budget = scan(data)
-    d = finish(state, [{"size": len(data), "digest": digest_bytes(data)}], budget,
-               {"architecture": "amd64", "os": "linux", "declaredLabels": {}})
+    d = finish(
+        state,
+        [{"size": len(data), "digest": digest_bytes(data)}],
+        budget,
+        {"architecture": "amd64", "os": "linux", "declaredLabels": {}},
+    )
     assert all(d[key] is False for key in NO_WRITE)

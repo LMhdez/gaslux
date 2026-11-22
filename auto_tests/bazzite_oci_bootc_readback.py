@@ -21,14 +21,18 @@ from pathlib import Path
 from bazzite_iso_public_readback import CONFIG_DIGEST, PAYLOAD_DIGEST, PAYLOAD_IMAGE
 
 PINNED = PAYLOAD_IMAGE + "@" + PAYLOAD_DIGEST
-MANIFEST_TYPES = frozenset({
-    "application/vnd.oci.image.manifest.v1+json",
-    "application/vnd.docker.distribution.manifest.v2+json",
-})
-LAYER_TYPES = frozenset({
-    "application/vnd.oci.image.layer.v1.tar+gzip",
-    "application/vnd.docker.image.rootfs.diff.tar.gzip",
-})
+MANIFEST_TYPES = frozenset(
+    {
+        "application/vnd.oci.image.manifest.v1+json",
+        "application/vnd.docker.distribution.manifest.v2+json",
+    }
+)
+LAYER_TYPES = frozenset(
+    {
+        "application/vnd.oci.image.layer.v1.tar+gzip",
+        "application/vnd.docker.image.rootfs.diff.tar.gzip",
+    }
+)
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 MAX_MANIFEST = 2 * 1024 * 1024
 MAX_CONFIG = 16 * 1024 * 1024
@@ -39,9 +43,13 @@ MAX_ENTRIES = 500_000
 MAX_BOOTC = 128 * 1024 * 1024
 CANDIDATES = frozenset({"usr/bin/bootc", "usr/libexec/bootc", "bin/bootc"})
 NO_WRITE = (
-    "installationAuthorized", "partitionWriteAuthorized", "gptMetadataWriteAuthorized",
-    "windowsEspWriteAuthorized", "nvramWriteAuthorized",
-    "secureBootEnrollmentAuthorized", "guestCommandChannelAuthorized",
+    "installationAuthorized",
+    "partitionWriteAuthorized",
+    "gptMetadataWriteAuthorized",
+    "windowsEspWriteAuthorized",
+    "nvramWriteAuthorized",
+    "secureBootEnrollmentAuthorized",
+    "guestCommandChannelAuthorized",
 )
 
 
@@ -225,8 +233,10 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     if consumed != member.size:
                         raise Refusal("Truncated executable in OCI tar")
                     entries[name] = {
-                        "kind": "file", "elf": header == b"\x7fELF",
-                        "size": member.size, "sha256": rest.hexdigest(),
+                        "kind": "file",
+                        "elf": header == b"\x7fELF",
+                        "size": member.size,
+                        "sha256": rest.hexdigest(),
                     }
                 elif member.issym():
                     entries[name] = {"kind": "symlink", "target": _link(name, member.linkname)}
@@ -287,9 +297,10 @@ def download_registry() -> dict:
             budget = {"members": 0, "expanded": 0}
             for index, desc in enumerate(descriptors):
                 layer = directory / f"layer-{index}.tar.gz"
-                with _request(base + "blobs/" + desc["digest"], token) as response, layer.open(
-                    "xb"
-                ) as output:
+                with (
+                    _request(base + "blobs/" + desc["digest"], token) as response,
+                    layer.open("xb") as output,
+                ):
                     measured = hashlib.sha256()
                     size = 0
                     while True:
