@@ -25,8 +25,12 @@ SPEC.loader.exec_module(verifier)
 
 def png():
     def chunk(kind, payload):
-        return (len(payload).to_bytes(4, "big") + kind + payload
-                + (zlib.crc32(kind + payload) & 0xffffffff).to_bytes(4, "big"))
+        return (
+            len(payload).to_bytes(4, "big")
+            + kind
+            + payload
+            + (zlib.crc32(kind + payload) & 0xFFFFFFFF).to_bytes(4, "big")
+        )
     return (
         verifier.PNG_SIGNATURE
         + chunk(b"IHDR", struct.pack(">IIBBBBB", 1280, 800, 8, 2, 0, 0, 0))
@@ -59,26 +63,39 @@ def fixture(tmp_path, monkeypatch):
         binary = archive(members.items())
         (zips / f"{aid}.zip").write_bytes(binary)
         run_id = verifier.RUNS[i]
-        runs.append({
-            "artifactId": aid, "runId": str(run_id),
-            "screenshots": [{"path": x, "sha256": digest(p)} for x in paths],
-            "transitions": [{} for _ in range(count - 1)],
-        })
+        runs.append(
+            {
+                "artifactId": aid,
+                "runId": str(run_id),
+                "screenshots": [{"path": x, "sha256": digest(p)} for x in paths],
+                "transitions": [{} for _ in range(count - 1)],
+            }
+        )
         item = {
-            "artifactId": aid, "name": f"pinned-{aid}",
+            "artifactId": aid,
+            "name": f"pinned-{aid}",
             "archiveSha256": digest(binary),
             "workflowCommit": "a" * 40,
             "reports": {"ui-screenshots-report.json": digest(report)},
         }
         archives.append(item)
-        (meta / f"{aid}.json").write_text(json.dumps({
-            "id": aid, "name": item["name"], "expired": False,
-            "digest": "sha256:" + item["archiveSha256"],
-            "workflow_run": {"id": run_id, "head_sha": item["workflowCommit"]},
-        }))
+        (meta / f"{aid}.json").write_text(
+            json.dumps(
+                {
+                    "id": aid,
+                    "name": item["name"],
+                    "expired": False,
+                    "digest": "sha256:" + item["archiveSha256"],
+                    "workflow_run": {"id": run_id, "head_sha": item["workflowCommit"]},
+                }
+            )
+        )
     manifest = {
-        "distribution": "q4os", "schemaVersion": 1,
-        "runs": runs[:2], "summaryRuns": runs[2:], "archives": archives,
+        "distribution": "q4os",
+        "schemaVersion": 1,
+        "runs": runs[:2],
+        "summaryRuns": runs[2:],
+        "archives": archives,
     }
     target = tmp_path / "manifest.json"
     target.write_bytes(canonical(manifest))
@@ -92,17 +109,40 @@ def test_four_synthetic_archives_pass_without_claiming_external_provenance(tmp_p
     assert result["decision"] == "HISTORICAL_ARTIFACT_MATCHED"
     assert (result["screenshots"], result["transitions"]) == (40, 36)
     assert result["externalProvenance"] == "EXTERNAL_PROVENANCE_UNPROVEN"
-    assert not any(result[k] for k in (
-        "inputAuthorized", "diskWritesAuthorized", "trustBoundaryIndependent",
-        "productionInstallationAuthorized", "releaseEligible",
-    ))
+    assert not any(
+        result[k]
+        for k in (
+            "inputAuthorized",
+            "diskWritesAuthorized",
+            "trustBoundaryIndependent",
+            "productionInstallationAuthorized",
+            "releaseEligible",
+        )
+    )
 
 
-@pytest.mark.parametrize("kind", [
-    "hash", "truncated", "extra", "traversal", "symlink", "duplicate",
-    "run", "workflow", "report", "png", "manifest", "missing",
-    "bomb", "wrong_name", "metadata", "swapped", "hardlink",
-])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "hash",
+        "truncated",
+        "extra",
+        "traversal",
+        "symlink",
+        "duplicate",
+        "run",
+        "workflow",
+        "report",
+        "png",
+        "manifest",
+        "missing",
+        "bomb",
+        "wrong_name",
+        "metadata",
+        "swapped",
+        "hardlink",
+    ],
+)
 def test_adversarial_mutations_refused(tmp_path, monkeypatch, kind):
     manifest_path, zip_dir, metadata_dir, manifest = fixture(tmp_path, monkeypatch)
     aid = verifier.ARTIFACTS[0]
@@ -115,8 +155,15 @@ def test_adversarial_mutations_refused(tmp_path, monkeypatch, kind):
         zip_path.write_bytes(raw + b"x" if kind == "hash" else raw[:-5])
         changed = True
     elif kind in {
-        "extra", "traversal", "symlink", "duplicate", "report", "png",
-        "bomb", "wrong_name", "swapped",
+        "extra",
+        "traversal",
+        "symlink",
+        "duplicate",
+        "report",
+        "png",
+        "bomb",
+        "wrong_name",
+        "swapped",
     }:
         with zipfile.ZipFile(io.BytesIO(raw)) as z:
             members = [(i.filename, z.read(i)) for i in z.infolist()]
@@ -144,7 +191,7 @@ def test_adversarial_mutations_refused(tmp_path, monkeypatch, kind):
                 for name, data in members:
                     info = zipfile.ZipInfo(name)
                     info.create_system = 3
-                    info.external_attr = ((0o120777 if name == members[0][0] else 0o100644) << 16)
+                    info.external_attr = (0o120777 if name == members[0][0] else 0o100644) << 16
                     z.writestr(info, data)
             raw = out.getvalue()
         else:
