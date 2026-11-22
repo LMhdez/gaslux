@@ -1,0 +1,17 @@
+{
+  "afterScreenshot": "vnc-summary-page.png",
+  "afterSha256": "bf7c95bd27237a3f907698967d792881a040d571bbdebf2d4e5d9860ef8c94b8",
+  "beforeScreenshot": "vnc-users-dummy-filled.png",
+  "beforeSha256": "2bacbf6419d7a5cee1f7446360de43c80b37e1796c7bf23d5b43e665b895e375",
+  "calamaresInstallClicked": false,
+  "elapsedMs": 3328,
+  "kind": "q4os-users-to-summary-readonly-cow",
+  "partitionWriterAuthorized": false,
+  "phase": "summary-observed",
+  "replica": 2,
+  "runId": "44648406729",
+  "sourceCodeCommit": "6b6d5521dbd4c2c26712fb57cb6ae5b29e0c69bb",
+  "summaryVisualGatePassed": true,
+  "syntheticCredentialsOnly": true,
+  "windowsDiskAttached": false
+}
