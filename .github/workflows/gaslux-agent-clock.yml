@@ -153,26 +153,95 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout exact dev source commit
+      - name: Download reviewed worker artifact outside checkout workspace
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-role-implementation
+          path: ${{ runner.temp }}/gaslux-checked-product
+      - name: Select exact worker commit (safe on partial failed-job retries)
+        id: worker_source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $reportPath = Join-Path $env:RUNNER_TEMP 'gaslux-checked-product/report.json'
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          if ([string]$report.base_commit -cnotmatch '^[0-9a-f]{40}
+      - uses: microsoft/setup-msbuild@v2
+      - name: Compile actual .NET Framework 4.8 WPF Gaslux installer
+        shell: pwsh
+        run: |
+          msbuild Libertix.sln /restore /m /p:Configuration=Release '/p:Platform=Any CPU'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows C# contract tests
+        shell: pwsh
+        run: |
+          dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  integrator_publisher:
+    needs: [supervisor, backend_developer, safety_review, windows_wpf_acceptance]
+    if: >-
+      needs.backend_developer.outputs.candidate_ready == 'true' &&
+      needs.safety_review.result == 'success' &&
+      needs.windows_wpf_acceptance.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Trusted main publisher only, never model-controlled dev source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ needs.supervisor.outputs.base_sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: gaslux-role-implementation
           path: evidence/autonomous-agent/
-      - name: Copy validated candidate into disposable Windows checkout
+      - name: Revalidate dev and publish Draft PR only
         env:
-          BASE_SHA: ${{ needs.supervisor.outputs.base_sha }}
-        shell: pwsh
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $ErrorActionPreference='Stop'
-          $report=Get-Content evidence/autonomous-agent/report.json -Raw | ConvertFrom-Json
-          if ($report.base_commit -ne $env:BASE_SHA -or $report.target -ne 'Installation/WindowsKeyboardLayout.cs' -or $report.candidate_valid -ne $true) {
+          set -euo pipefail
+          timeout 120 python3 -I auto_tests/tools/gaslux_agent_trusted_publish.py publish
+ -or
+              $report.target -ne 'Installation/WindowsKeyboardLayout.cs' -or
+              $report.candidate_valid -ne $true -or
+              $report.status -ne 'candidate_green') {
+            throw 'Untrusted or malformed model worker source identity'
+          }
+          "sha=$($report.base_commit)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Checkout exact source commit from Safety-reviewed worker evidence
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ steps.worker_source.outputs.sha }}
+          persist-credentials: false
+      - name: Verify original file and candidate hashes before Windows compilation
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ steps.worker_source.outputs.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder = Join-Path $env:RUNNER_TEMP 'gaslux-checked-product'
+          $report = Get-Content (Join-Path $folder 'report.json') -Raw | ConvertFrom-Json
+          if ($report.base_commit -ne $env:BASE_SHA -or
+              $report.target -ne 'Installation/WindowsKeyboardLayout.cs' -or
+              $report.candidate_valid -ne $true) {
             throw 'Artifact/source identity mismatch'
           }
-          Copy-Item evidence/autonomous-agent/candidate.cs Installation/WindowsKeyboardLayout.cs -Force
+          $actualHead = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actualHead -ne $env:BASE_SHA) {
+            throw 'Checkout commit differs from validated worker base'
+          }
+          $original = Get-FileHash 'Installation/WindowsKeyboardLayout.cs' -Algorithm SHA256
+          $candidatePath = Join-Path $folder 'candidate.cs'
+          $candidate = Get-FileHash $candidatePath -Algorithm SHA256
+          if ($original.Hash.ToLowerInvariant() -ne $report.source_sha256 -or
+              $candidate.Hash.ToLowerInvariant() -ne $report.candidate_sha256) {
+            throw 'Original/candidate file SHA-256 mismatch'
+          }
+          Copy-Item $candidatePath Installation/WindowsKeyboardLayout.cs -Force
       - uses: microsoft/setup-msbuild@v2
       - name: Compile actual .NET Framework 4.8 WPF Gaslux installer
         shell: pwsh
