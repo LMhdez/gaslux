@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-import q4os_official_iso_provenance as provenance  # noqa: E402
 import q4os_native_live_boot_readiness as readiness  # noqa: E402
+import q4os_official_iso_provenance as provenance  # noqa: E402
 
 OS_RELEASE = 'ID=debian\nVERSION_ID="13"\n'
 VERSION = "6.10-deb13u1"
@@ -60,9 +60,15 @@ def test_native_iso_identity_requires_q4os_marker_and_calamares():
         ({"initrd_names": ["../foo"]}, "MEDIA_INSPECT_BAD_KERNEL"),
         ({"settings_yaml": "bootloader: grub\n"}, "MEDIA_INSPECT_BAD_INSTALLER"),
         ({"settings_yaml": "sequence: [1]\nsequence: [2]\n"}, "MEDIA_INSPECT_BAD_CONFIGURATION"),
-        ({"bootloader_yaml": "installEFIFallback: true\ninstallEFIFallback: false\n"}, "MEDIA_INSPECT_BAD_CONFIGURATION"),
+        (
+            {"bootloader_yaml": "installEFIFallback: true\ninstallEFIFallback: false\n"},
+            "MEDIA_INSPECT_BAD_CONFIGURATION",
+        ),
         ({"bootloader_yaml": "installEFIFallback: unknown\n"}, "MEDIA_INSPECT_BAD_CONFIGURATION"),
-        ({"bootloader_yaml": "installEFIFallback: !!python/object/apply:os.system ['exit 1']"}, "MEDIA_INSPECT_BAD_CONFIGURATION"),
+        (
+            {"bootloader_yaml": "installEFIFallback: !!python/object/apply:os.system ['exit 1']"},
+            "MEDIA_INSPECT_BAD_CONFIGURATION",
+        ),
     ],
 )
 def test_reject_unverified_version_boot_paths_and_unsafe_installer(change, reason):
@@ -153,7 +159,7 @@ def test_inode_or_hash_measurement_changed_between_inspections_denied(tmp_path, 
         provenance.report_for_inspection(tmp_path / readiness.ISO_NAME, tmp_path)
 
 
-def test_candidate_matches_stable_catalog_iso_field_names_but_not_stable_catalog(tmp_path, monkeypatch):
+def test_candidate_matches_stable_catalog_field_names(tmp_path, monkeypatch):
     media = {"sha256": readiness.UPSTREAM_SHA256, "sizeBytes": 1234567890}
     monkeypatch.setattr(provenance.readiness, "measure_official_iso", lambda _p: dict(media))
     monkeypatch.setattr(provenance, "inspect_mounted_native_iso", lambda _p: inspect())
@@ -162,7 +168,11 @@ def test_candidate_matches_stable_catalog_iso_field_names_but_not_stable_catalog
     repo = Path(__file__).resolve().parents[2]
     stable = json.loads((repo / "release-config.json").read_text(encoding="utf-8"))
     example = stable["distributions"][0]
-    for field in ("id", "name", "isoInstaller", "isoInstallerFileName", "isoInstallerSha256", "isoInstallerSizeBytes"):
+    fields = (
+        "id", "name", "isoInstaller", "isoInstallerFileName",
+        "isoInstallerSha256", "isoInstallerSizeBytes",
+    )
+    for field in fields:
         assert field in example and field in candidate
     assert not any(item["id"] == "q4os" for item in stable["distributions"])
     assert candidate["experimental"] is True
