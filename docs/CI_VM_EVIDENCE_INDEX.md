@@ -2,6 +2,24 @@
 
 > Inventário de referência: 2026-11-22 UTC. Obtido por inspeção dos **19 workflows existentes em dev** e de YAMLs referenciados nas PRs históricas/abertas. Não é uma garantia de execução recente, nem um inventário completo de todas as branches antigas. Para cada trabalho, ler o YAML **no HEAD exato da PR** e os scripts chamados; vários títulos mencionam QEMU sem executar um guest.
 
+## MINT-LEAN-VM-DESIGN-01 — topologia compacta não admitida (22-11-2026 UTC)
+
+[Despacho Supervisor #7083475088](https://github.com/LMhdez/gaslux/pull/350#issuecomment-7083475088); [relatório técnico na PR #350 #7083591119](https://github.com/LMhdez/gaslux/pull/350#issuecomment-7083591119). **Estado = BLOCKED_SAFETY (pré-admissão, sem quota/restore/Windows comprovados), não BLOCKED_CAPACITY medido para o desenho compacto.** A PR #350 mantém sem alterações o bloqueio forense A/B: seis QCOW2 de 128 GiB exigem 867710795776 bytes; o runner histórico [#45036462842](https://github.com/LMhdez/gaslux/actions/runs/45036462842) tinha 91273920512 bytes e quota não observável. Estes números não são mínimos para Windows+Mint no mesmo disco.
+
+**Proposta B apenas condicional:** uma VM QEMU/OVMF, 56 GiB virtuais (60129542144 bytes), um Windows 10 GPT baseline imutável, um overlay e OVMF_VARS privados, ISO Mint autenticada. Orçamento hipotético de pico de 84 GiB (90194313216 bytes), composto por teto de overlay 57 GiB, baseline <=13 GiB, ISO Mint <=3 GiB, scratch 2 GiB, logs 1 GiB, recuperação 8 GiB. **Os limites de baseline/overlay/scratch e a quota não foram medidos**, logo não existe prova de que caiba nos ~85 GiB históricos, nem débito/shortfall real quantificável. A fase de ISO Windows/derivada deve ser medida separadamente e não pode coexistir com a fase Mint sem novo orçamento. Uma imagem esparsa não é prova de limite.
+
+**Primeiro gate:** inexistem no âmbito desta execução um runner B com quota efetiva, baseline Windows 10 autenticado e congelado, limite de crescimento verificável, write-set e restauro positivo de overlay+OVMF; sem isso o GASLUX-SAFETY não pode emitir LEAN_VM_ADMITTED. Windows ISO/licença e GPT/ESP/BCD/WinRE também não estão autenticados. A alternativa Mint-only é recusada pelo contrato atual `assets/live/libertix-install-main.sh`: carrega plano preparado no Windows e exige NTFS/offsets do manifesto. O [Mint Live workflow](../.github/workflows/mint-223-live-ovmf-boot.yml) continua prova Live somente, não uma instalação no disco.
+
+**Desenvolvimento concorrente observado:** `dev@3b61b1e767883df89626442db21de794ce12e208` adicionou `windows10-vm-host-capacity.yml` e `windows_vm_host_capacity.py`, um preflight host **read-only** que ainda passa `--required-bytes 867710795776` (orçamento A/B) e nunca afirma admissão/boot; **não** é execução nem medição específica da topologia B. Não foi alterado nem contornado nesta missão.
+
+**Próxima ação:** medir em runner selecionado a quota efetiva, QEMU fully allocated upper bounds, baseline real, picos de fases e testar restauro descartável; depois pedir avaliação Safety antes de qualquer Guest write. Nenhum novo workflow, PR, instalador, snapshot, Guest boot ou ação em disco físico foi executado nesta missão. Nível de evidência `DESIGN/STATIC`; `windows_boot_verified=false`, `gaslux_mint_install_verified=false`, `mint_boot_without_iso=false`, `windows_recovery_verified=false`.
+
+## 2026-11-22 UTC — Compact owned 60-GiB QCOW2 allocation (PR #369)
+
+[PR #369](https://github.com/LMhdez/gaslux/pull/369) implements a **real disposable QEMU target-disk allocation**, not an installer demonstration. [Action #45055079757](https://github.com/LMhdez/gaslux/actions/runs/45055079757) at candidate HEAD `f0aa0554b482087aecbc4593f5b3ac1ebb6b1d7c` **SUCCESS**: runner measured `94,835,286,016` free bytes, created and independently inspected a `64,424,509,440`-byte virtual QCOW2 (`60 GiB`), initial physical allocation `200,704` bytes, with no backing file, private owned temp directory and cleanup. Provisional physical planning envelope `80 GiB`, target ceiling `85 GiB`. This is a **different unadmitted experimental profile**, not the 56-GiB/84-GiB conditional Mint lean design described above. Neither profile enforces a physical quota or authenticates a Windows baseline. Artifact: [compact-ovmf-target-evidence](https://github.com/LMhdez/gaslux/actions/runs/45055079757/artifacts/14766164972). **Evidence level: REAL_QCOW2_ALLOCATION_ONLY** — no QEMU guest started; Windows/Mint installation, co-boot, updates, snapshot restore and Windows recovery are unproven. All guest writer/admission flags are **false**. Complementary to merged capacity-only PR #368; does not supersede its measurements.
+
+**Preflight adicional sobre runner real (22-11-2026 18:24–18:25 UTC):** [Actions #43974311441 — attempt 2](https://github.com/LMhdez/gaslux/actions/runs/43974311441), job `137307884579`, executado novamente a partir do HEAD **histórico** `897648a01214f58ca185b491b6a06f7ced8f8b15` da branch Windows feasibility. Runner `ubuntu-24.04` (Ubuntu 24.04.5; image `20261116.133.1`); relatório `windows-x64-guest-host-readiness`, artefacto `14766706999`: `readyForWindows10X64Guest=false`, `ok=false`, bloqueio **`hardware KVM acceleration unavailable or denied on hosted runner`**. Os jobs de metadados Microsoft e de identidade do Windows runner passaram, mas **não houve download de ISO, guest, checkpoint, teste de overlay ou boot Windows**. O script histórico verifica apenas um limiar de 28 GiB livres e **não publica capacidade/quota em bytes do B**. KVM negativo não exclui TCG; possibilidade de completar Windows Setup por TCG no limite de tempo continua sem evidência. Esta leitura acrescenta-se à proposta B existente; **não altera** o orçamento A/B #350 nem representa `BLOCKED_CAPACITY` para B. O workflow concorrente `windows10-vm-host-capacity.yml` em `dev` usa `--required-bytes 867710795776`, logo mede A/B, não valida automaticamente o pico compacto.
+
 ## Manutenção contínua do índice GitHub Actions / VMs
 
 **Rever e atualizar este índice** quando um workflow/branch de laboratório for criado, modificado, integrado ou encerrado, ou quando uma Action trouxer uma nova prova material. Confirmar o YAML e os scripts de `dev` **e do HEAD de PR relevante**, condições `if`, permissões, `workflow_dispatch`, resultados de cada job, SKIPPED, consents, artifacts e dados de boot. A contagem de 19 workflows abaixo é um **instantâneo de 22-11-2026**, não uma consulta dinâmica.
@@ -9,6 +27,45 @@
 A atualização deve trazer data UTC, SHA exato, PR e URL da execução, tipo de prova (CONTRACT / SYNTHETIC_DISK / QEMU_PROTOCOL / LIVE_GUEST / INSTALLED_GUEST / WINDOWS_GUEST / SHARED_DISK_DUAL_BOOT / RECOVERY), bloqueios, limitações e regressões. O Integrador mantém coerência pós-merge; os agentes Backend, Safety e Observer atualizam as linhas da sua competência. `qemu-img` não implica guest boot e a palavra QEMU num workflow não substitui uma observação real.
 
 Não voltar a executar QEMU apenas para mudar a data de documentação. A atualização é obrigatória nos eventos relevantes, **não um monitorizador autónomo**. Consultar [AGENTS.md](../AGENTS.md), [AI_POLICY.md](../AI_POLICY.md) e o [manual histórico](AGENT_HISTORICAL_PLAYBOOK.md).
+
+### Core / PR #361 — proveniência do laboratório, sem VM (22-11-2026)
+
+**Atualização de integração — CORE-361-DEV-INTEGRATION-01, 22-11-2026 UTC:** A [PR #361](https://github.com/LMhdez/gaslux/pull/361) foi integrada com método `merge` em `dev` no commit [`6129f9cc4b92617d35a4bb5ba47b69c201bbd43a`](https://github.com/LMhdez/gaslux/commit/6129f9cc4b92617d35a4bb5ba47b69c201bbd43a) (parentes: `dev@119b35a4fbc6e74e72171ac4794e37123cfe1b7f` e HEAD Safety `302f4f02e2968428bfd4c2e4bbf1d8e15582c0a7`). **F-361-01/F-361-02 CLOSED**, [Safety #7082951550](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082951550) = `SAFETY_APPROVED_NON_WRITER`; [delegação Supervisor #7082985320](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082985320). Os **12/12** blobs da PR #361 no merge igualam o HEAD aprovado e os **9/9** blobs da PR [#363](https://github.com/LMhdez/gaslux/pull/363) igualam o `dev` anterior, incluindo a sua atualização documental. A distinção das provas é fundamental: esta integração é non-writer e **não** demonstra instalação Mint nem recuperação Windows.
+
+**CI pós-merge, no SHA `6129f9cc`, 6/6 SUCCESS (push em `dev`):** [GPT identity #45051151896](https://github.com/LMhdez/gaslux/actions/runs/45051151896), [media read-only #45051151914](https://github.com/LMhdez/gaslux/actions/runs/45051151914), [multidistro contracts #45051152082](https://github.com/LMhdez/gaslux/actions/runs/45051152082), [GPT FD Safety #45051151973](https://github.com/LMhdez/gaslux/actions/runs/45051151973), [CachyOS evidence #45051151959](https://github.com/LMhdez/gaslux/actions/runs/45051151959) e [Windows recovery evidence #45051151886](https://github.com/LMhdez/gaslux/actions/runs/45051151886). **Cinco checks exatos pré-merge** `source-identity-offline`, `windows-wpf-build`, `evidence-python`, `evidence-powershell`, `Windows recovery evidence rules` completaram SUCCESS no HEAD `302f4f02`: [Core #45049176083](https://github.com/LMhdez/gaslux/actions/runs/45049176083), [CachyOS #45049176040](https://github.com/LMhdez/gaslux/actions/runs/45049176040), [Windows #45049176072](https://github.com/LMhdez/gaslux/actions/runs/45049176072). O Core offline não tem trigger `push dev`, pelo que não existe rerun desse workflow no SHA do merge; a composição foi verificada por blobs, não por teste end-to-end de WPF/automação no código combinado. Nenhuma emissão de release, assinatura de catálogo, escritor de disco ou hardware usado.
+
+**Nível máximo nesta missão:** `CONTRACT / STATIC`. Windows 10 UEFI/GPT, `clean2`, identidade de disco VM, quota e restauro não admitidos; `E2E_BLOCKED_ENVIRONMENT`. Não se pode inferir `INSTALLED_GUEST`, `SHARED_DISK_DUAL_BOOT` nem `RECOVERY`. O texto histórico subsequente ("não integrado", "pendente de Safety") retrata os HEADs antigos descritos na sua própria data; **não é o estado atual após este merge**. As alterações documentais posteriores ao commit de merge não modificam o SHA já aprovado pela Safety.
+
+
+
+[PR #361](https://github.com/LMhdez/gaslux/pull/361), branch `core/mint-wpf-vm-recovery-20261122`, introduz exclusivamente o workflow de contrato [core-source-provenance-offline.yml](../.github/workflows/core-source-provenance-offline.yml) nessa branch (não integrado em `dev`). Dois jobs: runner Ubuntu para origem Git e testes Python; runner `windows-2022` para build WPF, .NET e Pester. Classificação **CONTRACT / STATIC** — runner Windows não é um Windows 10 convidado instalado. Não executa QEMU-system, Proxmox, instalação Mint, GPT/ESP/BCD/WinRE, desinstalação ou recuperação.
+
+- **RED real de contrato:** [Actions #45041672878](https://github.com/LMhdez/gaslux/actions/runs/45041672878), commit `9244960c58f7f9262bbb0b2645c1db998c992fd4`: 7/7 casos adversariais falharam conforme esperado, ao aceitarem origens upstream/falsas, endpoint publicado errado, ou tentarem SSH sem identificar previamente o checkout local.
+- **GREEN parcial de proveniência:** [Actions #45041964939](https://github.com/LMhdez/gaslux/actions/runs/45041964939), commit `988d09ef0336debb06b0a1e7a6ff3a6fd5667e09`: 7/7 testes, Ruff e compileall aprovados. Não valida repositório remoto independente nem bytes do worktree por atestação externa.
+- **Validação herdada separada:** [Actions #45042241970](https://github.com/LMhdez/gaslux/actions/runs/45042241970), commit `c74a84518fe3398f2397a1c3d2f9c9aa981a4200`: 242/242 testes `test_core.py` e `test_published_release.py` aprovados; `deployment_audit` reportou **FAIL**, `undeclared-entry` em `Scripts/libertix-cachyos-windows-evidence.ps1`, presente no baseline de `dev` e não modificado pela PR.
+- **Windows build:** [Actions #45042303433](https://github.com/LMhdez/gaslux/actions/runs/45042303433), commit `28d4bb5cc3190ac045d9a29b25d4d370226f592c`: MSBuild `Libertix.sln` e teste C# pelo VS VSTest concluídos; Pester `pwsh` teve **790 PASS / 7 FAIL** por APIs incompatíveis no runner. [Reexecução #45042543201](https://github.com/LMhdez/gaslux/actions/runs/45042543201), commit `c2ddb1aac24b017eb21a9c4806442177e5c86621`: Pester mudou para Windows PowerShell 5.1; verificar conclusão no HEAD antes de validar.
+
+
+- **Correção source-only do auditor (22-11-2026, nova intervenção):** [RED #45042802666](https://github.com/LMhdez/gaslux/actions/runs/45042802666), HEAD `bb02a7eece00fadde9c6d1b0d3a93a0d7de2a9de`: `undeclared-entry` para `Scripts/libertix-cachyos-windows-evidence.ps1`, apesar de ser um auxiliar manual e read-only da VM CachyOS, não distribuído pelo instalador. Aquele run teve **WPF MSBuild, VS VSTest/C# e Pester PASS**, mas `deployment_audit` FAIL; a conclusão global foi FAIL.
+- **Correcção isolada:** `auto_tests/tools/deployment_audit.py` classifica **apenas** esse auxiliar como `SOURCE_ONLY_LAB_TOOLS`. Continua a validar `Scripts/modules/Gaslux.CachyosWindowsEvidence.psm1`, o `Join-Path $PSScriptRoot` resolúvel, o import requerido e a não inclusão nos layouts da aplicação; scripts de produção não declarados continuam a gerar `undeclared-entry`. Cinco regressões adversariais foram adicionadas a `auto_tests/tests/test_deployment_audit.py`, sem incluir quaisquer ficheiros de laboratório no `Libertix.csproj`.
+- **GREEN estático (observado em 22-11-2026 UTC):** [Actions #45044259938](https://github.com/LMhdez/gaslux/actions/runs/45044259938), commit de código `4f699e4a83c6d17d730576c71dbd9db1f40ca48f`: job `source-identity-offline` **SUCCESS**, auditor **RESULT OK: 0**, **18/18** testes do auditor, **7/7** proveniência Gaslux e **242/242** Python herdado, Ruff e compileall aprovados. Na observação inicial, `windows-wpf-build` desse run permanecia em Pester; verificar resultado final e repetir CI no HEAD documental antes de integrar. Nível **CONTRACT/STATIC** exclusivamente, sem arranque guest, disco QEMU ou recuperação Windows.
+
+**Safety F-361-01/F-361-02 — remediação de contrato, 22-11-2026 UTC:** [revisão Safety inicial](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082353359), [decisão Supervisor](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082376520), HEAD avaliado `b85df554e4b1a410f326f31303e4c59f00b85e2e`.
+
+- **RED adversarial real:** [Actions #45046490577](https://github.com/LMhdez/gaslux/actions/runs/45046490577), commit `33cc39d3f81d33578e5baff99f3b27751cb3ed6c` (testes e instrumentação do workflow, implementação vulnerável ainda inalterada). F-361-01: **4/4 FAIL** em `published/local` com e sem `prepared_release`; o mock de `_restore_clean_snapshots` foi alcançado indevidamente antes da recusa. F-361-02: **4/5 FAIL**, com o caso original de remoção completa 1 PASS; variantes comentadas, strings e here-strings não geraram `source-only-module-not-imported`. Execução exclusivamente offline, sem Proxmox ou SSH reais. Os steps RED temporários foram retirados após reprodução.
+- **Correção limitada:** `ValidationService.verify_source_provenance` reutiliza a mesma política de `prepare_server`, agora chamada por `AutomationService.run` antes de snapshots, preparação de dispositivos/Windows e rede, inclusive com `prepared_release`; validação redundante em `prepare_server` preservada. `deployment_audit.py` reconhece import executável por máscara lexical de comentários, strings e here-strings; construções incompletas levantam `AuditStructureError`. Contratos `SOURCE_ONLY_LAB_TOOLS`, módulos e entradas operacionais preservados. Nenhum writer de instalação alterado.
+- **GREEN estático do código:** [Actions #45046862717](https://github.com/LMhdez/gaslux/actions/runs/45046862717), commit `744371b0438f1e650186eceafcfbe1d80af760b7`: job `source-identity-offline` **SUCCESS**, proveniência/automação **13/13**, auditor **23/23**, auditor completo `RESULT OK: 0 error(s)`, Python herdado **242/242**, Ruff e compileall **PASS**. O job WPF permanecia em curso no registo inicial; confirmar o estado na CI do HEAD documental final.
+- **Sem operações remotas:** os casos inválidos instrumentam `_restore_clean_snapshots`, Proxmox, SSH, preparação Windows e boot secundário com mocks cuja contagem final em GREEN é zero. Não houve guest boot, instalação, rollback real, ou recuperação Windows. Git origin e HEAD são declarações controladas pelo operador, sem atestação de história remota nem dos bytes não commitados/symlinked. Findings marcados **REMEDIATED_PENDING_INDEPENDENT_REVIEW**, não fechados por Safety nem autorização de merge.
+
+**Safety diferencial F-361-02 — terminadores de here-string Windows PowerShell 5.1 (22-11-2026 UTC):** [Safety #7082697059](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082697059) e [Supervisor #7082713603](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082713603) reabriram apenas F-361-02 no HEAD `89d42150e4bb5b9d6077f0782ed96fce27dd29c1`. **F-361-01 permanece CLOSED** e os seus ficheiros/contratos não foram alterados nesta intervenção.
+
+- **Defeito:** `powershell_executable_code()` aceitava whitespace antes/depois do terminador (`^[ \t]*'@[ \t]*` ou `^[ \t]*"@[ \t]*`). Windows PowerShell 5.1 exige marcador de fecho na coluna zero. Um trecho contendo `$text = @'`, a linha `  '@` e de seguida `Import-Module -Name $module -Force -ErrorAction Stop` era aceite falsamente como import executável apesar de a here-string estar mal terminada. Fonte de sintaxe: [PowerShell Team, Microsoft](https://devblogs.microsoft.com/powershell/diagnosing-here-strings-with-powershell_ise/); não foi executado PowerShell sobre o reproducer.
+- **RED provado em CI:** [Actions #45048821161](https://github.com/LMhdez/gaslux/actions/runs/45048821161), commit de testes `f461c6c7fe560cafd989012618e20e29937b4421` (analisador ainda vulnerável). Comando `.core-venv/bin/python -m pytest -q auto_tests/tests/test_deployment_audit.py` reportou **4 FAIL / 31 PASS**: LF/CRLF × aspas simples/duplas, todos com `Failed: DID NOT RAISE AuditStructureError`. A referência `Join-Path` ao módulo foi preservada na substituição em memória. Zero execução de PowerShell, Proxmox ou guest.
+- **Correção mínima:** [commit `3c91147a1e53e27f8a2b22fd9894fbdaa2b2d989`](https://github.com/LMhdez/gaslux/commit/3c91147a1e53e27f8a2b22fd9894fbdaa2b2d989) altera somente a expressão de terminador no analisador canónico para `rf"(?m)^{re.escape(quote + '@')}\r?$"`, recusando indentação e caracteres adicionais, preservando CRLF. Não cria parser, workflow, branch, PR, dependência ou writer novo.
+- **GREEN Python no código corrigido:** [Actions #45049002404](https://github.com/LMhdez/gaslux/actions/runs/45049002404), job `source-identity-offline` **SUCCESS** em `3c91147a1e53e27f8a2b22fd9894fbdaa2b2d989`: **35/35** testes do auditor (inclui 23 históricos e 12 novos), **13/13** testes de proveniência/automação, **242/242** herdados, auditor completo `RESULT OK: 0 error(s)`, Ruff, format e compileall aprovados. O job Windows/WPF estava a executar no momento deste registo; verificar a conclusão em CI no HEAD final documental antes de pedir Safety.
+- **Limites:** máscara lexical estática, não cobertura integral da gramática PowerShell nem interpretação do script PowerShell 5.1 real; verificação de contratos **STATIC/CONTRACT**. Sem `INSTALLED_GUEST`, `SHARED_DISK_DUAL_BOOT`, rollback ou `RECOVERY` demonstrados; nenhuma operação sobre discos físicos, ESP, BCD, WinRE ou NVRAM. F-361-02 **REMEDIATED_PENDING_INDEPENDENT_SAFETY**, PR #361 mantém bloqueio de merge até avaliação diferencial independente.
+
+**Limite operacional:** `BLOCKED_ENVIRONMENT` — não foi disponibilizada VM Windows 10 UEFI/GPT exclusiva, snapshot `clean2`, disco descartável isolado e recuperação demonstrada. Não existe prova de `INSTALLED_GUEST`, `SHARED_DISK_DUAL_BOOT` ou `RECOVERY`; nenhuma mutação de disco físico. A PR permanece Draft e não promove backends.
 
 ## 1. O que os resultados significam
 
@@ -96,6 +153,14 @@ Após essa execução foram adicionados recusa explícita `O_PATH` e um teste ad
 
 Para contratos base e critérios de estabilidade, ver [histórico/guia de agentes](AGENT_HISTORICAL_PLAYBOOK.md), [ARCHITECTURE](ARCHITECTURE.md), [issues CachyOS #3](https://github.com/LMhdez/gaslux/issues/3) e [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
 
+## 2026-11-22 — Windows 10 UEFI/GPT resource preflight (new bounded admission prerequisite)
+
+This branch introduces [windows_vm_host_capacity.py](../auto_tests/tools/windows_vm_host_capacity.py) and [Windows 10 host capacity preflight](../.github/workflows/windows10-vm-host-capacity.yml). The tool reads actual `statvfs` free backing-space bytes on the disposable GitHub runner and compares them with a clearly labeled **historical Mint A/B initial requirement** of `867710795776` bytes. The previously measured runner had `91273920512` available bytes, giving a deficit of `776436875264` bytes, as recorded in PR #350. Those figures are *historical measurements*, not claims about the current runner; each CI run measures its own available bytes.
+
+**Evidence scope:** `BLOCKED_STORAGE` or `CAPACITY_ONLY_OK`, both with `windows_lab_admitted=false`. The script does not create QCOW2, attach disks, boot Windows, touch NVRAM/BCD/ESP, assert media provenance, verify snapshot/restore or install Linux. A passing CI job proves only that the negative/positive capacity classification ran correctly; it cannot establish a Windows VM or satisfy the Mint install/dual-boot/recovery acceptance gate. Even `CAPACITY_ONLY_OK` requires a distinct owned virtual disk, authenticated Windows media, actual guest boot, snapshot and restore witnesses before any guest mutation.
+
+This avoids expensive or unsafe VM startup on a runner already known to have insufficient real storage, without conflating sparse QCOW2 *virtual size* with physical host capacity. When real backing storage is sufficient, the next independent admission gates remain open. The tool is deliberately read-only, no model or GitHub write permissions, and cannot promote release eligibility. This is useful to the final project but **not an installer implementation**.
+
 ## 2026-11-22 — read-only destination cross-backend contract (PR #337)
 
 - [PR #337](https://github.com/LMhdez/gaslux/pull/337) adds host-only
@@ -117,6 +182,10 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   QCOW2 guest GPT and checkpoint authenticity **UNPROVEN**;
   Guest channel, write and installation authority **DENIED**.
   No release or stability claim.
+
+## 2026-11-22 — #337 integration branch reconciled with dev (non-destructive)
+
+Original #337 HEAD `f1e082c37ab58887f942b1e9ab0a841cb4b2b02a` composed with dev `55a70a90bdde29d0d41d4592de205013ee61bc16` by a two-parent merge (common ancestor `8e68a475d6397ba8fef2e0f9f83758545e202a5f`). The only overlapping path was this evidence index: retain the entire dev text including #361/#368/#369 and append the original #337 historical section without editing it. The authenticated_destination.py source blob `328653beca42b5ac006974d014e1bc6da1182e63` remains unchanged; Safety D-337-01 technical closure applies exclusively to the audited offline read-only code. Fresh exact-composition CI and dev integration checks are mandatory. No writer, independent Guest or Windows recovery authorization.
 
 ## 2026-11-22 — AUTH-DEST-128G-READONLY-01, separate dependent branch
 
@@ -143,24 +212,6 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   `stable=false`.
   See [resource and trust contract](AUTH_DEST_128G_READONLY.md).
 
-## 2026-11-22 — 128GiB #342+#346 canonical deny-only reconciliation
-
-- [PR #356](https://github.com/LMhdez/gaslux/pull/356),
-  code HEAD `72106b2dfe4d38612ea37cdc8b0618a33298fa9e`,
-  [CI push #45037589606](https://github.com/LMhdez/gaslux/actions/runs/45037589606)
-  and [CI PR #45037640437](https://github.com/LMhdez/gaslux/actions/runs/45037640437)
-  **SUCCESS on exact code SHA**.
-- The historical #342 metadata-probe test suite ran from its own
-  immutable source checkout, alongside #346's actual paused-QEMU,
-  sparse 128GiB pinned-FD/GPT/checkpoint contracts and newly
-  imported-only-by-behavior 32-byte QCOW2 header, checkpoint-space estimate,
-  and final allocated-block verification. No duplicate runtime API.
-- Independent upstream #337 D-337-01 digest regressions, #327 BZD,
-  #267 no-writer and HOST/FD tests passed. Entire 128 GiB RAW was
-  **not** hashed, original Windows checkpoint was not authenticated,
-  and QEMU internal backend or guest provenance remain unproven.
-  `DENY_NO_WRITER` stays invariant. Documentation-only changes
-  after this tested code SHA require separate exact-head checks.
 
 ## 2026-11-22 — SAFETY2-346-01: inherited-pipe subprocess RED and scoped candidate fix
 
@@ -199,6 +250,29 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   Evidence stays **QEMU_HOST / offline, DENY_NO_WRITER**; source/guest
   authentication and full 128GiB RAW hash remain unproven.
 
+## 2026-11-22 — #346 reconciled after #337 dev integration
+
+Corrected #346 source at `49389810a46d43bee407304a237b912b2faebc07` was composed after #337 landed in dev at `c97cef409c39f6d488d9ec0722b3cfa845685826`. The paragraphs above are retained as dated snapshots; the later [Safety-2 RED→GREEN decision](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) closed `SAFETY2-346-01` only in the offline HOST read-only boundary. The newly composed HEAD requires fresh CI. No change to `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, guest trust or Windows rollback/writer authority.
+
+## 2026-11-22 — 128GiB #342+#346 canonical deny-only reconciliation
+
+- [PR #356](https://github.com/LMhdez/gaslux/pull/356),
+  code HEAD `72106b2dfe4d38612ea37cdc8b0618a33298fa9e`,
+  [CI push #45037589606](https://github.com/LMhdez/gaslux/actions/runs/45037589606)
+  and [CI PR #45037640437](https://github.com/LMhdez/gaslux/actions/runs/45037640437)
+  **SUCCESS on exact code SHA**.
+- The historical #342 metadata-probe test suite ran from its own
+  immutable source checkout, alongside #346's actual paused-QEMU,
+  sparse 128GiB pinned-FD/GPT/checkpoint contracts and newly
+  imported-only-by-behavior 32-byte QCOW2 header, checkpoint-space estimate,
+  and final allocated-block verification. No duplicate runtime API.
+- Independent upstream #337 D-337-01 digest regressions, #327 BZD,
+  #267 no-writer and HOST/FD tests passed. Entire 128 GiB RAW was
+  **not** hashed, original Windows checkpoint was not authenticated,
+  and QEMU internal backend or guest provenance remain unproven.
+  `DENY_NO_WRITER` stays invariant. Documentation-only changes
+  after this tested code SHA require separate exact-head checks.
+
 ## 2026-11-22 — #356 non-destructive reconciliation after #346 Safety-2 closure
 
 The historical PR #356 head `83489eee123c124266b0c514b8f20e6e19ca9bc2` and corrected PR #346 `49389810a46d43bee407304a237b912b2faebc07` share ancestor `9306d0fff8cc89794b83fe002ae133c110e641ae`. This composition preserves both histories using a two-parent merge; the final `_bounded_info` function matches approved #346 byte-for-byte, while 32-byte QCOW2 header/version/geometry, `statvfs` checkpoint estimate and final `st_blocks` recheck from #356 are preserved. The independent [Safety-2 oracle #355](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) was GREEN on **#346's corrected SHA only**, not yet independently reviewed on the combined candidate; its immutable original test blob `c29c68a13967377c4a3ee89c13087b2ce6bad6b5` is reused in the existing #356 CI workflow. Before any decision, confirm CI on the new exact merged HEAD.
@@ -210,3 +284,7 @@ The historical PR #356 head `83489eee123c124266b0c514b8f20e6e19ca9bc2` and corre
 **Committed histories:** first parent #356 `83489eee123c124266b0c514b8f20e6e19ca9bc2`, second parent corrected #346 `49389810a46d43bee407304a237b912b2faebc07`; merged at `22d8da1df232e0216a882242d349562bbecdcd7d`. Workflow ancestry check fixed at **code HEAD `a6e2f01ee061f05917eb1930dadbc1dfb099905d`** using full checkout depth (the earlier initial merged HEAD run [#45057399777](https://github.com/LMhdez/gaslux/actions/runs/45057399777) failed during preflight because shallow history could not prove both parents, not a QEMU regression). The final code HEAD had **3/3 SUCCESS**: [push QEMU #45057466420](https://github.com/LMhdez/gaslux/actions/runs/45057466420), [PR QEMU #45057470701](https://github.com/LMhdez/gaslux/actions/runs/45057470701), [docs #45057470700](https://github.com/LMhdez/gaslux/actions/runs/45057470700). Both QEMU runs include actual stopped-QEMU HOST FD/GPT, #337, #346/#356, original 12-case #342 suite, inherited #327/#267 and 15 original independent #355 oracle cases using externally pinned checkout and verified composed import blob `a1a6364b12cf9a6b988eb124e2aa66e374c32cfe`. Startup/cleanup failure injection rejects safely.
 
 **Evidence classification:** QEMU_PROTOCOL + SYNTHETIC_DISK + CONTRACT only; NO LIVE_GUEST, INSTALLED_GUEST, WINDOWS_GUEST, SHARED_DISK_DUAL_BOOT or RECOVERY. A sparse 128GiB virtual extent is not an authenticated whole-RAW hash. Maintain `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, `checkpointReserveProven=false`, `checkpointRestorationProven=false`, `productionStorageWritesAuthorized=false`. Independent differential Safety-2 assessment of combined HEAD is **pending**. No merge.
+
+## 2026-11-22 — #356 propagated across merged #337/#346 dev chain
+
+After [PR #337](https://github.com/LMhdez/gaslux/pull/337) and [PR #346](https://github.com/LMhdez/gaslux/pull/346) reached `dev`, the original #356 source approved by [Safety-2](https://github.com/LMhdez/gaslux/pull/356#issuecomment-7084162704) remains at verified module blob `a1a6364b12cf9a6b988eb124e2aa66e374c32cfe`. This entry preserves all current dev historical sections including #361/#368/#369 and the #346 subprocess Safety closure. The new #356 HEAD requires its own exact-head QEMU/GPT/QCOW2 and immutable 15-case #355 oracle, plus post-merge checks; approval of the old SHA alone is not sufficient proof of environment compatibility. Evidence remains HOST read-only; no authenticated RAW 128GiB digest, installed Guest, Windows recovery, physical disk or writer authority. `DENY_NO_WRITER`, `checkpointReserveProven=false`, `checkpointRestorationProven=false`, and `productionStorageWritesAuthorized=false` remain enforced.

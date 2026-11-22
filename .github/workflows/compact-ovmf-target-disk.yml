@@ -1,0 +1,108 @@
+name: Compact Windows plus Mint target disk - real sparse QEMU allocation
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/compact-ovmf-target-disk.yml
+      - auto_tests/tools/compact_ovmf_target.py
+      - auto_tests/tests/test_compact_ovmf_target.py
+      - docs/COMPACT_VM_INSTALL_LAB.md
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/compact-ovmf-target-disk.yml
+      - auto_tests/tools/compact_ovmf_target.py
+      - auto_tests/tests/test_compact_ovmf_target.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compact-ovmf-target-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  allocate-verified-disposable-qcow2:
+    if: github.repository == 'LMhdez/gaslux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact code without saved token
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Adversarial budget and disk ownership unit tests
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests \
+            -p test_compact_ovmf_target.py -v
+      - name: Install real qcow2 creation and inspection binary
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-utils
+          command -v qemu-img
+      - name: Measure runner and create one private disposable 60-GiB qcow2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 -B auto_tests/tools/compact_ovmf_target.py \
+            --workspace "$RUNNER_TEMP" --create \
+            --report evidence/compact-ovmf-target.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          data = json.loads(Path("evidence/compact-ovmf-target.json").read_text())
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("## Compact QEMU lab preparation\n\n")
+              for key in ("status", "planned_peak_bytes", "measured_available_bytes",
+                          "virtual_disk_bytes", "deficit_bytes", "lab_writer_admitted",
+                          "windows_guest_booted", "mint_guest_installed"):
+                  out.write(f"- {key}: {data[key]}\n")
+              out.write("Actual QEMU disk image is not uploaded. No Windows/Mint install was run.\n")
+          if data["lab_writer_admitted"] or data["mint_guest_installed"]:
+              raise SystemExit("Unreviewed VM writer or installer assertion")
+          if data.get("disk_created"):
+              import subprocess
+              disk = Path(data["disk_path"])
+              if not disk.is_file() or disk.is_symlink():
+                  raise SystemExit("Missing or unsafe disposable image")
+              actual = json.loads(subprocess.check_output(
+                  ["qemu-img", "info", "--output=json", str(disk)], text=True))
+              if actual["format"] != "qcow2" or actual["virtual-size"] != 60 * 1024**3:
+                  raise SystemExit("QCOW2 identity changed")
+          PY
+      - name: Erase only owned, private temporary guest image
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          report = Path("evidence/compact-ovmf-target.json")
+          if report.is_file():
+              data = json.loads(report.read_text())
+              name = data.get("exclusive_lab_directory")
+              if name:
+                  parent = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+                  candidate = Path(name)
+                  if (candidate.parent == parent and
+                      candidate.name.startswith("gaslux-compact-ovmf-") and
+                      not candidate.is_symlink() and candidate.is_dir()):
+                      shutil.rmtree(candidate)
+                  else:
+                      raise SystemExit("Refuse to delete an unrelated directory")
+          PY
+      - name: Publish small capacity and qcow2 metadata report only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: compact-ovmf-target-evidence
+          path: evidence/compact-ovmf-target.json
+          if-no-files-found: warn
+          retention-days: 14

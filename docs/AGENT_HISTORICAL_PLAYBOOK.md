@@ -10,6 +10,15 @@ Responsáveis: Orquestrador/Prompt Engineer corrige instruções e dependências
 
 **Critério de conclusão:** se uma decisão alterou o estado documentado, atualizar e verificar o documento antes de declarar sucesso; quando não se alterou nenhuma conclusão, uma revalidação não exige reescrita artificial. Se faltar capacidade ou acesso, indicar o ficheiro desatualizado e o bloqueio concreto. Não inventar uma atualização automática agendada: este dever é executado pelos agentes em cada evento relevante. Ver [AGENTS.md](../AGENTS.md) e [AI_POLICY.md](../AI_POLICY.md).
 
+## CORE-361-DEV-INTEGRATION-01 — integração verificada em 22-11-2026 UTC
+
+- A [PR #363](https://github.com/LMhdez/gaslux/pull/363) foi **squash-merged** em `dev` como `09fba3df79302577338d81bd4fbdde9e20913a24`, seguida da correção documental `119b35a4fbc6e74e72171ac4794e37123cfe1b7f`. Pesquisa local-coder read-only não equivale a agente publicador autónomo.
+- A [PR #361](https://github.com/LMhdez/gaslux/pull/361) foi **merged** (método `merge`, sem squash/rebase/force-push) em `dev` como [`6129f9cc4b92617d35a4bb5ba47b69c201bbd43a`](https://github.com/LMhdez/gaslux/commit/6129f9cc4b92617d35a4bb5ba47b69c201bbd43a), com pais exatos `119b35a4fbc6e74e72171ac4794e37123cfe1b7f` e HEAD Safety `302f4f02e2968428bfd4c2e4bbf1d8e15582c0a7`. O merge foi executado pela PR com precondição de HEAD e sem override explícito; `main` não foi alterado nesta missão.
+- **Composição por blobs Git:** **12/12** caminhos aprovados da #361 idênticos ao seu HEAD e **9/9** caminhos da #363 preservados byte a byte relativamente ao `dev` imediatamente anterior. Zero interseções entre conjuntos alterados; documentação posterior da #363 preservada.
+- **Safety:** [parecer #7082951550](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082951550) = `SAFETY_APPROVED_NON_WRITER`, F-361-01/F-361-02 **CLOSED**. [Supervisor #7082985320](https://github.com/LMhdez/gaslux/pull/361#issuecomment-7082985320) delegou integração `dev`. Cinco checks do [HEAD aprovado](https://github.com/LMhdez/gaslux/actions/runs/45049176083) passaram. Branch-protection REST: HTTP 403 `Resource not accessible by integration`, rulesets listados `[]`; tais respostas não comprovam ausência de proteções, mas o endpoint de merge GitHub padrão aceitou a operação. Não foram fabricados reviews ou sign-offs DCO.
+- **CI pós-merge aplicável em `6129f9cc`: 6/6 SUCCESS:** [GPT identity](https://github.com/LMhdez/gaslux/actions/runs/45051151896), [media](https://github.com/LMhdez/gaslux/actions/runs/45051151914), [multidistro](https://github.com/LMhdez/gaslux/actions/runs/45051152082), [GPT FD Safety](https://github.com/LMhdez/gaslux/actions/runs/45051151973), [CachyOS contract](https://github.com/LMhdez/gaslux/actions/runs/45051151959) e [Windows recovery](https://github.com/LMhdez/gaslux/actions/runs/45051151886). O workflow Core específico não dispara em `push dev`; o build WPF, o auditor e os testes de proveniência passaram no HEAD exato Safety e a equivalência dos 12 blobs foi confirmada, **não** foi reexecutada essa suite na árvore de merge completa.
+- **Limites:** apenas `CONTRACT/STATIC` e evidência read-only, sem boot Mint, Windows 10 guest, dual boot ou uninstall/rollback demonstrados. Laboratório Windows 10 UEFI/GPT com snapshot `clean2`, disco virtual exclusivo, quota e restauro continua não admitido (`E2E_BLOCKED_ENVIRONMENT`). `no_physical_disk_writes=true`; nenhuma promoção `main`/stable. Mudanças posteriores independentes em `dev` não alteram os dois pais nem a árvore do merge registado.
+
 ## 1. Como interpretar a história
 
 As PRs documentam hipóteses, código, testes e revisões em pontos diferentes de uma cadeia. **PR fechada não significa integrada**, PR merged para uma branch experimental não significa integrada em dev, CI verde não significa guest boot e boot Linux não significa dual boot Windows recuperável. Verificar sempre os campos state, merged, base.ref, head.sha, merge_commit_sha, checks e artefactos do HEAD exato.
@@ -141,7 +150,6 @@ A [PR #294](https://github.com/LMhdez/gaslux/pull/294) foi **encerrada sem merge
 - [Critérios CachyOS #3](https://github.com/LMhdez/gaslux/issues/3), [Windows 11 #71](https://github.com/LMhdez/gaslux/issues/71), [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
 - [Guias técnicos por backend](distro-backends/README.md), [contratos partilhados](distro-backends/SHARED_CONTRACTS.md).
 
-
 ## 2026-11-22 — Safety-2 process-lifecycle boundary in #346
 
 [Safety #355](https://github.com/LMhdez/gaslux/pull/355) demonstrated on
@@ -172,6 +180,10 @@ re-execution was requested in
 [PR #355 comment #7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427);
 do not close SAFETY2-346-01 before that replay/review.
 
+## 2026-11-22 — #346 reconciled after #337 dev integration
+
+Corrected #346 source at `49389810a46d43bee407304a237b912b2faebc07` was composed after #337 landed in dev at `c97cef409c39f6d488d9ec0722b3cfa845685826`. The paragraphs above are retained as dated snapshots; the later [Safety-2 RED→GREEN decision](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) closed `SAFETY2-346-01` only in the offline HOST read-only boundary. The newly composed HEAD requires fresh CI. No change to `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, guest trust or Windows rollback/writer authority.
+
 ## 2026-11-22 — #356 composition after Safety-2 cleanup closure
 
 The [independent Safety-2 verdict](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) closed **only** `SAFETY2-346-01` in #346 at `49389810a46d43bee407304a237b912b2faebc07`. Draft #356 now composes that corrected subprocess function through a non-destructive two-parent merge with the earlier #356 branch (`83489eee123c124266b0c514b8f20e6e19ca9bc2`). The function retains separate POSIX session, `waitid(WNOWAIT)`, owned group SIGKILL before leader reaping, bounded disappearance and `QEMU_INFO_CLEANUP_FAILED`. The independent oracle is unchanged and replayed using an immutable #355 checkout. The #356-specific QCOW2 header/geometry, estimated free-space checkpoint capacity `checkpointReserveProven=false` and final allocated-block recheck remain. The new composed SHA needs independent *differential* Safety review and exact-head CI; parent approval is not transitively granted. `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, and `checkpointRestorationProven=false` remain mandatory. No guest, actual Windows rollback, full RAW hash or writer authorization.
@@ -179,3 +191,7 @@ The [independent Safety-2 verdict](https://github.com/LMhdez/gaslux/pull/355#iss
 ## 2026-11-22 — Integrator-2 #356 non-destructive merge, actual CI evidence
 
 #356's original `83489eee123c124266b0c514b8f20e6e19ca9bc2` and corrected #346 `49389810a46d43bee407304a237b912b2faebc07` were merged with **both parents** at `22d8da1df232e0216a882242d349562bbecdcd7d`, no force-push, no upstream branch changes. The exact code HEAD `a6e2f01ee061f05917eb1930dadbc1dfb099905d` has [push #45057466420](https://github.com/LMhdez/gaslux/actions/runs/45057466420), [PR #45057470701](https://github.com/LMhdez/gaslux/actions/runs/45057470701), [docs #45057470700](https://github.com/LMhdez/gaslux/actions/runs/45057470700), all SUCCESS. Independent original #355 Safety oracle ran in a separate pinned checkout and passed 15 cases against the composed module; no production writer or Guest boot. **PASS_COMPOSITION_READY_FOR_SAFETY**, awaiting GASLUX-SAFETY-2's separate exact-SHA differential judgement. The original `SAFETY2-346-01` remains CLOSED_OFFLINE_ONLY. No dev/main merge or Windows recovery authority.
+
+## 2026-11-22 — #356 propagated after dev #337/#346 integration
+
+The existing #356 candidate `4886c1e7f1f835c71cf2fe1351ff834e92bea334` was independently approved for HOST read-only by [Safety-2](https://github.com/LMhdez/gaslux/pull/356#issuecomment-7084162704). After #337 and #346 were merged into `dev`, this integration candidate reuses the same verified #356 large-sparse module blob `a1a6364b12cf9a6b988eb124e2aa66e374c32cfe` and independently pinned #355 oracle. Earlier dated lines saying Safety-2 was pending remain historical. The new combined HEAD still needs exact-head CI and ancestry/compatibility checks before a dev merge. `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, `checkpointReserveProven=false`, `checkpointRestorationProven=false`, and `productionStorageWritesAuthorized=false` remain mandatory; no Windows or Guest recovery proof.

@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     release_dir_name: str = "Libertix-release"
     filepool_dir_name: str = "Libertix-filepool"
     filepool_base_url: str
-    published_dev_metadata_base_url: str = "https://ekimiateam.github.io/libertix/dev"
+    published_dev_metadata_base_url: str | None = None
     development_static_ipv4_prefix_length: int = Field(ge=1, le=30)
     development_static_ipv4_gateway: str
     development_dns_servers: tuple[str, ...] = Field(min_length=1)
@@ -156,9 +156,21 @@ class Settings(BaseSettings):
             raise ValueError("allowed_proxmox_vmids must not contain duplicates")
         return values
 
+    @field_validator("repository_url")
+    @classmethod
+    def validate_gaslux_repository_url(cls, value: str) -> str:
+        if value not in {
+            "https://github.com/LMhdez/gaslux",
+            "https://github.com/LMhdez/gaslux.git",
+        }:
+            raise ValueError("Gaslux test repository_url must point to LMhdez/gaslux")
+        return value
+
     @field_validator("filepool_base_url", "published_dev_metadata_base_url")
     @classmethod
-    def validate_filepool_base_url(cls, value: str) -> str:
+    def validate_filepool_base_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         parsed = urlsplit(value)
         if (
             parsed.scheme not in {"http", "https"}

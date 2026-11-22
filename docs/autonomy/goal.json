@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "project": "gaslux",
+  "objective": "Automated USB-free Windows 10/11 to Linux dual-boot installation with proven Windows preservation, upgrades, uninstall and rollback",
+  "reference_docs": [
+    "docs/MULTIDISTRO_PLAN.md",
+    "docs/ARCHITECTURE.md",
+    "AI_POLICY.md"
+  ],
+  "platforms": [
+    "windows10-bios-mbr",
+    "windows10-uefi-gpt",
+    "windows11-uefi-gpt"
+  ],
+  "gates": [
+    "source-authenticity",
+    "windows-preflight",
+    "install",
+    "linux-first-boot",
+    "windows-return",
+    "linux-update-reboot",
+    "uninstall-windows-integrity",
+    "fault-injection-rollback"
+  ],
+  "backends": [
+    {
+      "id": "mint",
+      "name": "Linux Mint",
+      "platforms": [
+        "windows10-bios-mbr",
+        "windows10-uefi-gpt",
+        "windows11-uefi-gpt"
+      ],
+      "priority": 0,
+      "classification": "existing-regression",
+      "issue_numbers": []
+    },
+    {
+      "id": "zorin",
+      "name": "Zorin OS",
+      "platforms": [
+        "windows10-bios-mbr",
+        "windows10-uefi-gpt",
+        "windows11-uefi-gpt"
+      ],
+      "priority": 1,
+      "classification": "existing-regression",
+      "issue_numbers": []
+    },
+    {
+      "id": "cachyos",
+      "name": "CachyOS",
+      "platforms": [
+        "windows10-bios-mbr",
+        "windows10-uefi-gpt",
+        "windows11-uefi-gpt"
+      ],
+      "priority": 2,
+      "classification": "experimental",
+      "issue_numbers": [
+        71,
+        3
+      ]
+    },
+    {
+      "id": "popos",
+      "name": "Pop!_OS",
+      "platforms": [
+        "windows10-bios-mbr",
+        "windows10-uefi-gpt",
+        "windows11-uefi-gpt"
+      ],
+      "priority": 3,
+      "classification": "experimental",
+      "issue_numbers": []
+    },
+    {
+      "id": "q4os",
+      "name": "Q4OS",
+      "platforms": [
+        "windows10-bios-mbr",
+        "windows10-uefi-gpt",
+        "windows11-uefi-gpt"
+      ],
+      "priority": 4,
+      "classification": "experimental",
+      "issue_numbers": []
+    },
+    {
+      "id": "bazzite",
+      "name": "Bazzite",
+      "platforms": [
+        "windows10-uefi-gpt",
+        "windows11-uefi-gpt"
+      ],
+      "priority": 5,
+      "classification": "experimental",
+      "issue_numbers": [
+        254
+      ]
+    }
+  ],
+  "automatic_safe_gates": [
+    "source-authenticity",
+    "windows-preflight"
+  ],
+  "protected_gates": [
+    "install",
+    "linux-first-boot",
+    "windows-return",
+    "linux-update-reboot",
+    "uninstall-windows-integrity",
+    "fault-injection-rollback"
+  ],
+  "prohibited_platforms": [
+    {
+      "backend": "bazzite",
+      "platform": "windows10-bios-mbr",
+      "reason": "Bazzite requires UEFI/GPT"
+    }
+  ]
+}

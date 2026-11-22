@@ -202,7 +202,7 @@ def settings(**overrides: object) -> Settings:
         "development_static_ipv4_prefix_length": 24,
         "development_static_ipv4_gateway": "192.0.2.1",
         "development_dns_servers": ("8.8.8.8", "1.1.1.1"),
-        "repository_url": "https://github.com/ekimiateam/libertix.git",
+        "repository_url": "https://github.com/LMhdez/gaslux.git",
         "smb_root": "/srv/libertix-smb",
         "allowed_smb_roots": ("/srv/libertix-smb",),
         "allowed_proxmox_vmids": (500, 501, 502),

@@ -171,3 +171,7 @@ Draft #356 reconciles original child `83489eee123c124266b0c514b8f20e6e19ca9bc2` 
 ### 2026-11-22 — #356 exact-head composed read-only regressions
 
 #356 code HEAD `a6e2f01ee061f05917eb1930dadbc1dfb099905d` preserves the approved parent #346 process-group cleanup and separate #356 QCOW2 header/statvfs/allocation improvements. [QEMU push #45057466420](https://github.com/LMhdez/gaslux/actions/runs/45057466420), [QEMU PR #45057470701](https://github.com/LMhdez/gaslux/actions/runs/45057470701) and [docs #45057470700](https://github.com/LMhdez/gaslux/actions/runs/45057470700) PASS, including original immutable #355 Safety oracle 15-case suite. This is still a **draft candidate awaiting independent differential Safety**, not writer authority or whole-disk integrity proof. All 128GiB responses remain `FULL_BACKING_HASH_NOT_COMPLETED` / `DENY_NO_WRITER`; checkpoint capacity remains an estimate, never reserved or restored.
+
+## 2026-11-22 — dev chain reconciliation of #356 (still DENY-ONLY)
+
+Original #356 `4886c1e7f1f835c71cf2fe1351ff834e92bea334` carries Safety-2 technical approval for composed blob `a1a6364b12cf9a6b988eb124e2aa66e374c32cfe`. Propagation after #337/#346 dev merges preserves that byte-identical module while retaining the exact historical #355 oracle. The new branch HEAD must independently pass applicable workflows before any dev merge. This host-only contract never authorizes writes, Guest attestation, Windows recovery, checkpoint reservation, or a complete 128GiB RAW digest. Preserve `FULL_BACKING_HASH_NOT_COMPLETED` and `DENY_NO_WRITER`.

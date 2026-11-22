@@ -22,7 +22,7 @@ part of the Libertix installer and do not affect the build VM or the controller 
 
 ## Source and build
 
-The source of truth is `ekimiateam/libertix`, branch `dev`.
+The Gaslux test source is `LMhdez/gaslux` at a recorded commit SHA. The original `ekimiateam/libertix` remains historical upstream, not an accepted origin for a Gaslux laboratory run. Internal `Libertix` executable and folder names remain unchanged.
 
 Samba paths, build hosts, VM definitions, snapshots, and credentials are configured in `.env`.
 The service uses two runtime directories under the configured Samba root:
@@ -53,8 +53,8 @@ Prerequisites:
 Install the exact Python environment recorded in `uv.lock`, including the development tools:
 
 ```bash
-git clone https://github.com/ekimiateam/libertix.git
-cd libertix/auto_tests
+git clone https://github.com/LMhdez/gaslux.git
+cd gaslux/auto_tests
 cp .env.example .env
 uv sync --frozen --extra dev
 ```
@@ -132,9 +132,7 @@ explicitly.
 
 `ValidationRequest` accepts `vms` (a selector list), `vm` (one selector), and `source`. `source` is
 `local` to copy and compile the current working tree, `remote` to clone and compile
-`REPOSITORY_URL` at `REPOSITORY_BRANCH`, or `published` to download the latest RSA-signed `dev`
-metadata from `PUBLISHED_DEV_METADATA_BASE_URL`, verify the advertised WPF archive hash and size,
-and deploy that archive without rebuilding it. In `published` mode Libertix is deliberately
+`REPOSITORY_URL` at `REPOSITORY_BRANCH`, or `published` to download a signed build. **For Gaslux, `published` currently fails closed**: the existing artifact verifier contains Libertix upstream release paths and no Gaslux-signed publication endpoint has been verified. Do not set `PUBLISHED_DEV_METADATA_BASE_URL` to the upstream endpoint or assert a published Gaslux build. `local` requires a Git checkout rooted at `LMhdez/gaslux` and records its Git HEAD and origin before SSH; this identity check does not independently attest remote Git history or uncommitted worktree contents. `remote` validates the configured Gaslux origin, clones the selected branch and records the resulting commit SHA. Use an explicitly selected disposable VM and validated snapshot before any installation. In `published` mode Libertix is deliberately
 launched without `--filepool-base-url`; its embedded `dev_<sha7>` version selects the published
 GitHub Pages `dev` channel.
 
