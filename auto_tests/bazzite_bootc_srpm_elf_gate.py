@@ -51,11 +51,9 @@ NO_ACCESS = NO_AUTHORITY + (
 
 
 def _hex(value: object, length: int) -> bool:
-    return (
-        type(value) is str
-        and len(value) == length
-        and all(c in "0123456789abcdef" for c in value)
-    )
+    if type(value) is not str or len(value) != length:
+        return False
+    return all(c in "0123456789abcdef" for c in value)
 
 
 def analyze_spec(spec: str) -> dict:
@@ -123,9 +121,8 @@ def assess_source_elf_binding(evidence: Mapping, plan: dict) -> dict:
         raise Refusal("FEDORA_SOURCE_ARCHIVE_NOT_UPSTREAM_RELEASE")
     if evidence["specPatchNames"]:
         raise Refusal("SRPM_PATCHES_NOT_INDEPENDENTLY_REVIEWED")
-    if evidence["elfRebuildSha256"] is not None and not _hex(
-        evidence["elfRebuildSha256"], 64
-    ):
+    rebuild = evidence["elfRebuildSha256"]
+    if rebuild is not None and not _hex(rebuild, 64):
         raise Refusal("INVALID_REBUILD_DIGEST")
     if (
         evidence["elfRebuildSha256"] is not None
