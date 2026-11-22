@@ -24,14 +24,38 @@ from q4os_win10_qmp_boot import BootRefusal, Qmp, supervise
 
 QEMU = "/usr/bin/qemu-system-x86_64"
 EARLY_EXIT_DETAIL = "QEMU_EARLY_EXIT_UNCLASSIFIED"
+REASON_CODES = frozenset({
+    "QEMU_SPAWN_FAILED",
+    "QEMU_EARLY_EXIT",
+    "QEMU_QMP_SOCKET_TIMEOUT",
+    "QEMU_QMP_SOCKET_INVALID",
+    "QEMU_QMP_CONNECTION_REFUSED",
+    "QEMU_QMP_HANDSHAKE_FAILED",
+    "QEMU_QMP_NOT_RUNNING",
+    "QEMU_PROCESS_CLEANUP_FAILED",
+    "QEMU_STARTUP_UNCLASSIFIED",
+})
+DETAIL_CODES = frozenset({
+    EARLY_EXIT_DETAIL,
+    "QEMU_KVM_INITIALIZATION_FAILED",
+    "QEMU_HOST_MEMORY_UNAVAILABLE",
+    "QEMU_SATA_BUS_NOT_FOUND",
+    "QEMU_DEVICE_OPTION_UNSUPPORTED",
+    "QEMU_FILE_ACCESS_DENIED",
+    "QEMU_MEDIA_OPEN_FAILED",
+})
+# QEMU /proc/self/fd drive-argument compatibility has not been proven in a
+# separately authorized VM test. Consequently the production spawn is blocked.
+# popen_factory is for offline, injected synthetic process tests ONLY.
+QEMU_FD_BACKING_VERIFIED = False
 
 
 class StartupRefusal(RuntimeError):
     """One allowlisted diagnostic only."""
 
     def __init__(self, code: str):
-        self.code = code
-        super().__init__(code)
+        self.code = code if code in REASON_CODES else "QEMU_STARTUP_UNCLASSIFIED"
+        super().__init__(self.code)
 
 
 def _require(condition: bool, code: str) -> None:
@@ -55,6 +79,35 @@ def _owned_file(path: Path, work: Path) -> None:
         stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid() and st.st_nlink == 1,
         "QEMU_STARTUP_UNCLASSIFIED",
     )
+
+
+def _pin_file(path: Path, expected: os.stat_result, *, dirfd: int | None = None,
+              writable: bool = False) -> int:
+    """Pin the exact initially validated inode, refusing symlinks/hardlinks.
+
+    The child later receives /proc/self/fd/N with pass_fds; no drive media path
+    is re-opened by name. Compatibility with real QEMU remains NOT VERIFIED.
+    """
+    flags = (os.O_RDWR if writable else os.O_RDONLY) | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        fd = os.open(path.name if dirfd is not None else path, flags,
+                     dir_fd=dirfd)
+    except OSError:
+        raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from None
+    try:
+        actual = os.fstat(fd)
+        _require(
+            stat.S_ISREG(actual.st_mode)
+            and actual.st_uid == expected.st_uid
+            and actual.st_uid in (0, os.getuid())
+            and actual.st_nlink == 1
+            and (actual.st_dev, actual.st_ino) == (expected.st_dev, expected.st_ino),
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def _socket_identity(path: Path, work: Path) -> tuple[int, int] | None:
@@ -120,7 +173,13 @@ def _await_qmp(
         report["qmpSocketState"] = "PRESENT"
         channel = None
         try:
-            channel = Qmp(path)
+            # Connect-only. No capabilities/query-status until the peer PID
+            # and actual connected socket have been authenticated.
+            channel = Qmp(path, negotiate=False)
+            _peer(channel, process)
+            _require(_socket_identity(path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
+            _witness(process, pidfd)
+            channel.negotiate_protocol()
             _peer(channel, process)
             _require(_socket_identity(path, work) == identity, "QEMU_QMP_SOCKET_INVALID")
             _witness(process, pidfd)
@@ -155,10 +214,19 @@ def _await_qmp(
 
 
 def _qemu_args(
-    work: Path, code: Path, vars_path: Path, image: Path, iso: Path, answer: Path, accelerator: str
+    work: Path,
+    code: Path,
+    vars_path: Path,
+    image: Path,
+    iso: Path,
+    answer: Path,
+    accelerator: str,
+    pinned: dict[str, int] | None = None,
 ) -> list[str]:
     _require(accelerator in ("kvm", "tcg"), "QEMU_STARTUP_UNCLASSIFIED")
     accel, cpu = ("kvm", "host") if accelerator == "kvm" else ("tcg,thread=multi", "max")
+    def media(name: str, raw: Path) -> str:
+        return f"/proc/self/fd/{pinned[name]}" if pinned is not None else str(raw)
     return [
         QEMU,
         "-no-user-config",
@@ -187,21 +255,21 @@ def _qemu_args(
         "-qmp",
         "unix:" + str(work / "q4os-win10-qmp.sock") + ",server=on,wait=off",
         "-drive",
-        "if=pflash,format=raw,unit=0,readonly=on,file=" + str(code),
+        "if=pflash,format=raw,unit=0,readonly=on,file=" + media("code", code),
         "-drive",
-        "if=pflash,format=raw,unit=1,file=" + str(vars_path),
+        "if=pflash,format=raw,unit=1,file=" + media("vars", vars_path),
         "-device",
         "ich9-ahci,id=sata",
         "-drive",
-        "if=none,id=system,file=" + str(image) + ",format=qcow2,cache=writeback",
+        "if=none,id=system,file=" + media("image", image) + ",format=qcow2,cache=writeback",
         "-device",
         "ide-hd,drive=system,bus=sata.0,bootindex=2",
         "-drive",
-        "if=none,id=install,file=" + str(iso) + ",format=raw,media=cdrom,readonly=on",
+        "if=none,id=install,file=" + media("iso", iso) + ",format=raw,media=cdrom,readonly=on",
         "-device",
         "ide-cd,drive=install,bus=sata.1,bootindex=1",
         "-drive",
-        "if=none,id=answer,file=" + str(answer) + ",format=raw,media=cdrom,readonly=on",
+        "if=none,id=answer,file=" + media("answer", answer) + ",format=raw,media=cdrom,readonly=on",
         "-device",
         "ide-cd,drive=answer,bus=sata.2,bootindex=3",
     ]
@@ -262,24 +330,55 @@ def run_lab(
         "diskWritesAuthorized": False,
         "rollbackVerified": False,
         "errorDetailCode": None,
+        "cleanupReasonCode": None,
+        "reportIoFailed": False,
+        "descendantsCleanupVerified": False,
     }
     process = None
     pidfd = None
     output = None
+    pinned: dict[str, int] = {}
+    work_fd = None
     try:
         _private_dir(work)
-        for path in (vars_path, image, iso, answer):
-            _owned_file(path, work)
-        _require(code.is_file() and not code.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
         _require(
             hasattr(os, "pidfd_open") and hasattr(signal, "pidfd_send_signal"),
             "QEMU_STARTUP_UNCLASSIFIED",
         )
+        expected = {}
+        for name, path in (("vars", vars_path), ("image", image),
+                           ("iso", iso), ("answer", answer)):
+            _owned_file(path, work)
+            expected[name] = path.lstat()
+        _require(code.is_file() and not code.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
+        code_stat = code.lstat()
+        _require(stat.S_ISREG(code_stat.st_mode) and code_stat.st_nlink == 1,
+                 "QEMU_STARTUP_UNCLASSIFIED")
+        work_fd = os.open(work, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        work_stat = os.fstat(work_fd)
+        path_stat = work.stat()
+        _require(
+            (work_stat.st_dev, work_stat.st_ino) == (path_stat.st_dev, path_stat.st_ino)
+            and work_stat.st_uid == os.getuid()
+            and not work_stat.st_mode & 0o077,
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
+        for name, path in (("vars", vars_path), ("image", image),
+                           ("iso", iso), ("answer", answer)):
+            pinned[name] = _pin_file(path, expected[name], dirfd=work_fd,
+                                     writable=name in ("vars", "image"))
+        pinned["code"] = _pin_file(code, code_stat)
         qmp_path = work / "q4os-win10-qmp.sock"
         _require(_socket_identity(qmp_path, work) is None, "QEMU_QMP_SOCKET_INVALID")
         serial = work / "windows10-qemu-serial.log"
         _require(not serial.exists() and not serial.is_symlink(), "QEMU_STARTUP_UNCLASSIFIED")
-        args = _qemu_args(work, code, vars_path, image, iso, answer, accelerator)
+        args = _qemu_args(work, code, vars_path, image, iso, answer, accelerator, pinned)
+        # DENY real QEMU until the backing-file descriptor contract has been
+        # verified independently; never silently fall back to mutable paths.
+        _require(
+            popen_factory is not None or QEMU_FD_BACKING_VERIFIED,
+            "QEMU_STARTUP_UNCLASSIFIED",
+        )
         log = work / "windows10-qemu-process.log"
         output = log.open("xb")
         try:
@@ -291,6 +390,7 @@ def run_lab(
                 stdout=output,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
+                pass_fds=tuple(pinned.values()),
             )
         except OSError:
             raise StartupRefusal("QEMU_SPAWN_FAILED") from None
@@ -337,9 +437,10 @@ def run_lab(
             )
             report["qmpSendKeyAcknowledged"] = result["qmpSendKeyAcknowledged"]
         except BootRefusal as exc:
-            if str(exc).startswith("QEMU_"):
-                raise StartupRefusal(str(exc)) from None
-            raise StartupRefusal("QEMU_STARTUP_UNCLASSIFIED") from None
+            code = str(exc)
+            raise StartupRefusal(
+                code if code in REASON_CODES else "QEMU_STARTUP_UNCLASSIFIED"
+            ) from None
         try:
             exit_code = process.wait(timeout=wait_seconds)
         except subprocess.TimeoutExpired:
@@ -353,34 +454,67 @@ def run_lab(
     except (OSError, ValueError, RuntimeError):
         report["reasonCode"] = "QEMU_STARTUP_UNCLASSIFIED"
     finally:
-        if process is not None:
-            code = process.poll()
-            if code is not None:
-                report["qemuExitCode"] = code
-                report["qemuSignal"] = -code if code < 0 else None
-        if output is not None:
-            output.flush()
-            if (
-                process is not None
-                and report["reasonCode"] == "QEMU_EARLY_EXIT"
-                and (work / "windows10-qemu-process.log").is_file()
-            ):
-                with (work / "windows10-qemu-process.log").open("rb") as source:
-                    report["errorDetailCode"] = classify_qemu_error(source.read(32768))
-        cleaned = _cleanup(process, pidfd)
-        if pidfd is not None:
-            os.close(pidfd)
-        if output is not None:
-            output.close()
-        report["cleanupVerified"] = cleaned
-        if not cleaned:
-            report["decision"] = "refuse"
-            report["reasonCode"] = "QEMU_PROCESS_CLEANUP_FAILED"
-        if process is not None:
-            code = process.poll()
-            if code is not None:
-                report["qemuExitCode"] = code
-                report["qemuSignal"] = -code if code < 0 else None
+        # Every operation before or after cleanup may fail (ENOSPC/EIO,
+        # unexpected filesystem state, broken file.close, etc.). None may
+        # bypass child termination and reaping.
+        try:
+            try:
+                if process is not None:
+                    exit_code = process.poll()
+                    if exit_code is not None:
+                        report["qemuExitCode"] = exit_code
+                        report["qemuSignal"] = -exit_code if exit_code < 0 else None
+                if output is not None:
+                    output.flush()
+                    if process is not None and report["reasonCode"] == "QEMU_EARLY_EXIT":
+                        # Read through the supervisor's already-open file
+                        # descriptor, not an attacker-replaceable pathname.
+                        size = os.fstat(output.fileno()).st_size
+                        with os.fdopen(os.dup(output.fileno()), "rb") as source:
+                            detail = classify_qemu_error(source.read(min(size, 32768)))
+                        report["errorDetailCode"] = (
+                            detail if detail in DETAIL_CODES else EARLY_EXIT_DETAIL
+                        )
+            except Exception:
+                report["reportIoFailed"] = True
+                if report["reasonCode"] in (None, "QEMU_STARTUP_UNCLASSIFIED"):
+                    report["reasonCode"] = "QEMU_STARTUP_UNCLASSIFIED"
+                report["decision"] = "refuse"
+        finally:
+            try:
+                cleaned = _cleanup(process, pidfd)
+            except Exception:
+                cleaned = False
+            report["cleanupVerified"] = cleaned
+            if not cleaned:
+                report["decision"] = "refuse"
+                report["cleanupReasonCode"] = "QEMU_PROCESS_CLEANUP_FAILED"
+                if report["reasonCode"] in (None, "QEMU_STARTUP_UNCLASSIFIED"):
+                    report["reasonCode"] = "QEMU_PROCESS_CLEANUP_FAILED"
+            try:
+                if process is not None:
+                    code_now = process.poll()
+                    if code_now is not None:
+                        report["qemuExitCode"] = code_now
+                        report["qemuSignal"] = -code_now if code_now < 0 else None
+            except Exception:
+                report["reportIoFailed"] = True
+                report["decision"] = "refuse"
+            for fd in (pidfd, *pinned.values(), work_fd):
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        report["reportIoFailed"] = True
+                        report["decision"] = "refuse"
+            if output is not None:
+                try:
+                    output.close()
+                except Exception:
+                    report["reportIoFailed"] = True
+                    report["decision"] = "refuse"
+            if report["decision"] == "refuse" and report["reasonCode"] is None:
+                report["reasonCode"] = "QEMU_STARTUP_UNCLASSIFIED"
     return report
 
 
