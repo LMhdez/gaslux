@@ -138,6 +138,8 @@ jobs:
           ruff format --check auto_tests/tools/gaslux_popos_gpt_fd_boundary.py auto_tests/test_popos_gpt_fd_01.py
           # POP-DISTINST-PREWRITE-01 is pure Python: no ISO, CLI or disk writer.
           python3 -m compileall -q auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py auto_tests/test_popos_distinst_prewrite_gap.py
+          ruff check --diff auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py auto_tests/test_popos_distinst_prewrite_gap.py || true
+          ruff format --diff auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py auto_tests/test_popos_distinst_prewrite_gap.py
           ruff check auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py auto_tests/test_popos_distinst_prewrite_gap.py
           ruff format --check auto_tests/tools/gaslux_popos_distinst_prewrite_gap.py auto_tests/test_popos_distinst_prewrite_gap.py
           # Legacy Windows/Pop fixtures use absolute test_ imports within auto_tests.
