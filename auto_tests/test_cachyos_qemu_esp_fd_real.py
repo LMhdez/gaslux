@@ -36,7 +36,7 @@ from test_observer_qemu_real_disk_readonly import (  # noqa: E402
 
 DISK_BYTES = 64 * 1024 * 1024
 ESP_START = 2048
-ESP_SECTORS = 69300
+ESP_SECTORS = 69280  # mkfs.fat rounds to 32-sector multiples
 ESP_END = ESP_START + ESP_SECTORS - 1
 ESP_BYTES = ESP_SECTORS * 512
 SECTOR = 512
