@@ -153,7 +153,7 @@ def compare_owned_ab_protected_offsets(
             and observed in {directory / name for name in ARMS}
             and evidence.is_dir() and not evidence.is_symlink()
             and evidence.stat().st_uid == os.getuid()
-            and re.fullmatch(r"mint-ab-offset-(arm-a|arm-b)-[a-z-]+\\.json", manifest_name)
+            and re.fullmatch(r"mint-ab-offset-(arm-a|arm-b)-[a-z-]+\.json", manifest_name)
             and isinstance(transaction_id, str) and 0 < len(transaction_id) <= 128
             and valid_hashes(before_partition_sha256)
             and valid_hashes(after_partition_sha256),
