@@ -141,6 +141,15 @@ class TrustedPublisherTests(unittest.TestCase):
         self.assertIn("report.candidate_sha256", segment)
         self.assertNotIn("needs.supervisor.outputs.base_sha", segment)
 
+    def test_windows_contract_tests_use_prebuilt_msbuild_binaries(self):
+        yaml = (SCRIPT.parents[2] / ".github/workflows/gaslux-agent-clock.yml").read_text()
+        segment = yaml.split("  windows_wpf_acceptance:", 1)[1].split(
+            "\n  integrator_publisher:", 1
+        )[0]
+        self.assertIn("msbuild Libertix.sln /restore", segment)
+        self.assertIn("dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore --no-build", segment)
+        self.assertLess(segment.index("msbuild Libertix.sln"), segment.index("dotnet test Libertix.Tests"))
+
     def test_candidate_source_wrong_location_denied(self):
         item = dict(self.report)
         item["target"] = "/dev/sda"

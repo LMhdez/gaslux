@@ -213,7 +213,7 @@ jobs:
       - name: Windows C# contract tests
         shell: pwsh
         run: |
-          dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore
+          dotnet test Libertix.Tests/Libertix.Tests.csproj --configuration Release --no-restore --no-build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   integrator_publisher:
     needs: [supervisor, backend_developer, safety_review, windows_wpf_acceptance]
