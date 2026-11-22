@@ -1099,7 +1099,9 @@ def test_r03_dangling_symlink_report_is_bounded_refusal(monkeypatch, tmp_path, c
     monkeypatch.setattr(
         boot,
         "supervise",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(boot.BootRefusal("dvd_prompt_not_detected")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            boot.BootRefusal("dvd_prompt_not_detected")
+        ),
     )
     monkeypatch.setattr(
         sys,
