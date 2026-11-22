@@ -199,6 +199,17 @@ class EspSourceOfflineTests(unittest.TestCase):
                                          "read-only"):
                 self.capture(fd=rw.fileno())
 
+    @unittest.skipUnless(hasattr(os, "O_PATH"), "Linux O_PATH required")
+    def test_o_path_fd_rejected_at_descriptor_gate(self):
+        # O_PATH has the same O_ACCMODE bits as O_RDONLY (zero), but
+        # cannot be read with pread; refuse before touching ESP bytes.
+        fd = os.open(self.path, os.O_PATH)
+        try:
+            with self.assertRaisesRegex(source.EspProvenanceError, "O_PATH"):
+                self.capture(fd=fd)
+        finally:
+            os.close(fd)
+
     def test_backing_or_disk_container_cannot_be_claimed_as_raw(self):
         fake = Path(self.temp.name) / "fake.qcow2"
         fake.write_bytes(b"QFI\xfb" + b"\x00" * 2048)
