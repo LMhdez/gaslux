@@ -209,7 +209,14 @@ def close_guard(fd: int, original: os.stat_result) -> None:
         raise WriteSetRefused("E_SOURCE_RACE") from exc
     insist(
         (now.st_dev, now.st_ino, now.st_size, now.st_mtime_ns, now.st_ctime_ns, now.st_nlink)
-        == (original.st_dev, original.st_ino, original.st_size, original.st_mtime_ns, original.st_ctime_ns, original.st_nlink),
+        == (
+            original.st_dev,
+            original.st_ino,
+            original.st_size,
+            original.st_mtime_ns,
+            original.st_ctime_ns,
+            original.st_nlink,
+        ),
         "E_SOURCE_RACE",
     )
 
