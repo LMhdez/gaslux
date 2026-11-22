@@ -1,0 +1,334 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Zorin 18.1 native Ubiquity handoff observation — no writer grant",
+  "description": "Specific read-only projection of the separately validated shared installation plan and Safety FD GPT evidence. Never an install plan or an authorization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "distribution",
+    "backend",
+    "iso",
+    "installer",
+    "firmware",
+    "partitionStyle",
+    "planId",
+    "transactionId",
+    "expectedGptSnapshotSha256",
+    "destination",
+    "protectedPartitions",
+    "proposedOperations",
+    "bootloader",
+    "sourceEvidence",
+    "provenance",
+    "recovery",
+    "authorization",
+    "nativeInstallerInvoked",
+    "productionStorageWritesAuthorized",
+    "windowsEspWriteAuthorized",
+    "sameDiskDualBootVerified",
+    "windowsInPlaceRollbackProven",
+    "stable"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "ZORIN_UBIQUITY_HANDOFF_READONLY"
+    },
+    "distribution": {
+      "const": "zorin"
+    },
+    "backend": {
+      "const": "debian-squashfs"
+    },
+    "iso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "osReleaseId",
+        "sizeBytes",
+        "sha256"
+      ],
+      "properties": {
+        "osReleaseId": {
+          "const": "zorin"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "installer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "executable",
+        "executableSha256"
+      ],
+      "properties": {
+        "name": {
+          "const": "ubiquity"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executable": {
+          "const": "usr/bin/ubiquity"
+        },
+        "executableSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "firmware": {
+      "const": "uefi"
+    },
+    "partitionStyle": {
+      "const": "GPT"
+    },
+    "planId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "transactionId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "expectedGptSnapshotSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "diskUniqueId",
+        "partitionTableId",
+        "sizeBytes",
+        "logicalSectorSizeBytes",
+        "partitionNumber",
+        "partGuid",
+        "offsetBytes",
+        "partitionBytes"
+      ],
+      "properties": {
+        "diskUniqueId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "partitionTableId": {
+          "type": "string",
+          "pattern": "^gpt:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "logicalSectorSizeBytes": {
+          "enum": [
+            512,
+            4096
+          ]
+        },
+        "partitionNumber": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "partGuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "offsetBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "partitionBytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "protectedPartitions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "number",
+          "partGuid",
+          "role"
+        ],
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "partGuid": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "role": {
+            "enum": [
+              "ESP",
+              "MSR",
+              "WINDOWS",
+              "RECOVERY",
+              "OEM",
+              "OTHER"
+            ]
+          }
+        }
+      }
+    },
+    "proposedOperations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "partitionNumber",
+          "origin"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "ROOT_CONFIGURE",
+              "ROOT_FORMAT",
+              "PARTMAN_COMMIT",
+              "ESP_WRITE",
+              "NVRAM_WRITE",
+              "GRUB_INSTALL",
+              "BIOS_BOOT_WRITE"
+            ]
+          },
+          "partitionNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "origin": {
+            "const": "STATIC_CODE_REFERENCE_ONLY"
+          }
+        }
+      }
+    },
+    "bootloader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "writeAuthorized"
+      ],
+      "properties": {
+        "strategy": {
+          "const": "GRUB_EFI_UNVERIFIED"
+        },
+        "writeAuthorized": {
+          "const": false
+        }
+      }
+    },
+    "sourceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codeMapSha256",
+        "sourceInspectionRevalidated",
+        "runtimeActionGraphObserved"
+      ],
+      "properties": {
+        "codeMapSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sourceInspectionRevalidated": {
+          "const": false
+        },
+        "runtimeActionGraphObserved": {
+          "const": false
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sharedPlanSignatureAuthenticated",
+        "guestDiskSourceAuthenticated",
+        "partmanActionGraphAuthenticated",
+        "efiWriteSetAuthenticated"
+      ],
+      "properties": {
+        "sharedPlanSignatureAuthenticated": {
+          "const": false
+        },
+        "guestDiskSourceAuthenticated": {
+          "const": false
+        },
+        "partmanActionGraphAuthenticated": {
+          "const": false
+        },
+        "efiWriteSetAuthenticated": {
+          "const": false
+        }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "independentCheckpointRestored",
+        "windowsBcdWinreAuthenticated",
+        "windowsBootAfterRecoveryVerified"
+      ],
+      "properties": {
+        "independentCheckpointRestored": {
+          "const": false
+        },
+        "windowsBcdWinreAuthenticated": {
+          "const": false
+        },
+        "windowsBootAfterRecoveryVerified": {
+          "const": false
+        }
+      }
+    },
+    "authorization": {
+      "const": "DENY_NO_WRITER"
+    },
+    "nativeInstallerInvoked": {
+      "const": false
+    },
+    "productionStorageWritesAuthorized": {
+      "const": false
+    },
+    "windowsEspWriteAuthorized": {
+      "const": false
+    },
+    "sameDiskDualBootVerified": {
+      "const": false
+    },
+    "windowsInPlaceRollbackProven": {
+      "const": false
+    },
+    "stable": {
+      "const": false
+    }
+  }
+}
