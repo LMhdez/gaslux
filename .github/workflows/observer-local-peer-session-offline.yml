@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - integration/observer-host-fd-offline-dev-20261122
+    paths:
+      - 'auto_tests/installer_observer/guest_transport_peer_boundary.py'
+      - 'auto_tests/tests/test_guest_transport_peer_boundary.py'
+      - 'auto_tests/installer_observer/host_fd_boundary.py'
+      - 'auto_tests/tests/test_observer_host_fd_safety_fixes.py'
+      - '.github/workflows/observer-local-peer-session-offline.yml'
+      - 'docs/OBSERVER_LOCAL_PEER_TRUST_BOUNDARY.md'
   pull_request:
     branches:
       - dev
@@ -12,11 +19,6 @@ on:
       - 'auto_tests/tests/test_guest_transport_peer_boundary.py'
       - 'auto_tests/installer_observer/host_fd_boundary.py'
       - 'auto_tests/tests/test_observer_host_fd_safety_fixes.py'
-      - '.github/workflows/observer-local-peer-session-offline.yml'
-      - 'docs/OBSERVER_LOCAL_PEER_TRUST_BOUNDARY.md'
-    paths:
-      - 'auto_tests/installer_observer/guest_transport_peer_boundary.py'
-      - 'auto_tests/tests/test_guest_transport_peer_boundary.py'
       - '.github/workflows/observer-local-peer-session-offline.yml'
       - 'docs/OBSERVER_LOCAL_PEER_TRUST_BOUNDARY.md'
 
