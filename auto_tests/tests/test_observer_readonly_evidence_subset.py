@@ -98,10 +98,9 @@ class ObserverEvidenceReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="gaslux-evidence-") as directory:
             file = Path(directory) / "mutable"
             file.write_bytes(b"first")
-            with self.assertRaises(evidence.Refusal):
-                with evidence.regular(file, 256) as stream:
-                    self.assertEqual(stream.read(), b"first")
-                    file.write_bytes(b"changed-and-longer")
+            with self.assertRaises(evidence.Refusal), evidence.regular(file, 256) as stream:
+                self.assertEqual(stream.read(), b"first")
+                file.write_bytes(b"changed-and-longer")
 
     def test_no_authority_flags_are_produced_by_parser(self) -> None:
         payload = evidence.parse(b'{"qemuAuthorized":true,"diskWritesAuthorized":true}')
