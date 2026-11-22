@@ -392,7 +392,10 @@ def main() -> None:
             **{key: False for key in NO_WRITE},
         }
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(result["status"])
+    if result["status"] == "REFUSED_UNAUTHENTICATED_OCI":
+        print("REFUSED_UNAUTHENTICATED_OCI:", result["reason"])
+    else:
+        print(result["status"])
     raise SystemExit(2 if result["status"] != "REFUSED_UNAUTHENTICATED_OCI" else 3)
 
 
