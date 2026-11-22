@@ -71,7 +71,8 @@ def _read_source(path: Path, expected_git_blob: str) -> tuple[str, dict]:
                 raise Refusal("TRUNCATED_UPSTREAM_SOURCE")
             raw.extend(chunk)
         after = os.fstat(fd)
-        identity = lambda st: (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+        def identity(st):
+            return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
         if identity(before) != identity(after):
             raise Refusal("UPSTREAM_SOURCE_CHANGED_DURING_READ")
         raw = bytes(raw)
