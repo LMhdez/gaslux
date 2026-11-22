@@ -331,10 +331,11 @@ def test_s319_remote_opath_same_inode_and_path_refused_before_measurement(dispos
     remote = Path("/proc") / str(child.pid) / "fd" / str(pins.fd_number)
     assert os.readlink(remote) == str(pins.media_path)
     assert remote.stat().st_ino == pins.expected_inode
+    fdinfo = remote.parent.parent / "fdinfo" / str(pins.fd_number)
     flags = int(
         next(
             line.partition(":")[2].strip()
-            for line in (remote.parent.parent / "fdinfo" / str(pins.fd_number)).read_text().splitlines()
+            for line in fdinfo.read_text().splitlines()
             if line.startswith("flags:")
         ),
         8,
@@ -425,7 +426,11 @@ def test_s319_fdinfo_missing_or_unreadable_is_fail_closed(
         return original_read_text(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "read_text", broken_read_text)
-    expected = "REMOTE_FD_FLAGS_MISSING" if bad_fdinfo == "missing_flags" else "PROC_FD_OBSERVATION_FAILED"
+    expected = (
+        "REMOTE_FD_FLAGS_MISSING"
+        if bad_fdinfo == "missing_flags"
+        else "PROC_FD_OBSERVATION_FAILED"
+    )
     with (
         pytest.raises(HostEvidenceRefused, match=expected),
         borrowed_readonly_proc_fd(
