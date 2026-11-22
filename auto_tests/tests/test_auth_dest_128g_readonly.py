@@ -6,6 +6,7 @@ No 128-GiB whole-file digest is attempted or claimed.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import hashlib
 import json
@@ -398,13 +399,14 @@ def test_qemu_info_reaps_orphaned_pipe_descendant(tmp_path, monkeypatch):
     source.write_bytes(b"read-only")
     descendant_pid = None
     try:
-        with source.open("rb") as image:
-            with pytest.raises(large.LargeDestinationRefused, match="QEMU_INFO_TIMEOUT"):
-                large._bounded_info(
-                    image.fileno(),
-                    large.LargeReadOnlyBudget(known_quota_bytes=64 * 1024**2),
-                    time.monotonic() + 1,
-                )
+        with source.open("rb") as image, pytest.raises(
+            large.LargeDestinationRefused, match="QEMU_INFO_TIMEOUT"
+        ):
+            large._bounded_info(
+                image.fileno(),
+                large.LargeReadOnlyBudget(known_quota_bytes=64 * 1024**2),
+                time.monotonic() + 1,
+            )
         assert len(started) == 1 and started[0].poll() is not None
         assert pidfile.exists()
         descendant_pid = int(pidfile.read_text(encoding="utf-8"))
@@ -414,10 +416,8 @@ def test_qemu_info_reaps_orphaned_pipe_descendant(tmp_path, monkeypatch):
         if descendant_pid is None and pidfile.exists():
             descendant_pid = int(pidfile.read_text(encoding="utf-8"))
         if descendant_pid is not None:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.kill(descendant_pid, 9)
-            except ProcessLookupError:
-                pass
 
 
 @pytest.mark.parametrize(
