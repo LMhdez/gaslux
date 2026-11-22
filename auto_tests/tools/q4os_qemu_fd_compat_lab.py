@@ -294,8 +294,7 @@ def args_for(
             "tcg",
             mapped,
         )
-        require(args[args.index("-qmp") + 1].startswith(f"unix:{sock},"),
-                "PR_QMP_SOCKET_MISMATCH")
+        require(args[args.index("-qmp") + 1].startswith(f"unix:{sock},"), "PR_QMP_SOCKET_MISMATCH")
         # Mandatory experiment-only changes: never execute firmware or an
         # installer; reduce CPU/RAM demand of the CI ephemeral runner.
         require("-S" not in args, "PR_ARGV_ALREADY_PAUSED")
@@ -762,8 +761,7 @@ def main() -> int:
         report["scenarios"]["pr_argv"] = scenario(root, "pr_argv", False)
         report["negative"] = negative_cases(root)
         report["compatible"] = all(
-            report["scenarios"][name]["success"]
-            for name in ("proc", "fdset", "hybrid", "pr_argv")
+            report["scenarios"][name]["success"] for name in ("proc", "fdset", "hybrid", "pr_argv")
         )
     except Exception as exc:
         report["compatible"] = False
