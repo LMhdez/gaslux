@@ -17,8 +17,8 @@ from bazzite_anaconda_write_set_gate import (  # noqa: E402
     LEGACY_URL,
     Refusal,
     assess_legacy_media,
-    compare,
     assess_signed_iso45_native_route,
+    compare,
     expected_actions,
 )
 from bazzite_atomic_destination_plan import propose  # noqa: E402
