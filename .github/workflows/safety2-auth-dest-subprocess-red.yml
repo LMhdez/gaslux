@@ -1,4 +1,4 @@
-name: Safety-2 independent 346 subprocess RED (no writer)
+name: Safety-2 independent #346 RED to GREEN subprocess oracle (no writer)
 on:
   push:
     branches:
@@ -11,77 +11,209 @@ permissions:
 jobs:
   independent-subprocess-review:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       GASLUX_QEMU_NO_GUEST: '1'
     steps:
-      - name: Checkout test-only audit branch
+      - name: Checkout independent Safety-2 oracle (no producer imports)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          path: safety-oracle
           persist-credentials: false
-          fetch-depth: 0
-      - name: Verify exact audited source matches PR 346 HEAD
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-          test "$RUNNER_OS" = Linux
-          base=9306d0fff8cc89794b83fe002ae133c110e641ae
-          git merge-base --is-ancestor "$base" HEAD
-          for path in auto_tests/installer_observer/large_sparse_destination.py auto_tests/installer_observer/authenticated_destination.py; do
-            test "$(git hash-object "$path")" = "$(git rev-parse "$base:$path")"
-          done
-          test -z "$(git status --porcelain --untracked-files=no)"
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - name: Checkout immutable previous #346 source for RED
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          python-version: '3.11'
-      - name: Install limited test runner only
-        run: python -m pip install --disable-pip-version-check 'pytest==9.0.2'
-      - name: Compile independent test without modifying producer
-        run: python -m compileall -q auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py
-      - name: Checkout exact safety 267 and GPT FD 286 dependencies
+          repository: LMhdez/gaslux
+          ref: 9306d0fff8cc89794b83fe002ae133c110e641ae
+          path: producer-old
+          persist-credentials: false
+      - name: Checkout immutable corrected #346 source for GREEN
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 49389810a46d43bee407304a237b912b2faebc07
+          path: producer-fixed
+          persist-credentials: false
+      - name: Checkout immutable Safety #267 dependency
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: LMhdez/gaslux
           ref: 0be04192acd542646a5b6cd952e01620379edf5d
           path: safety267-pinned
           persist-credentials: false
-      - name: Checkout exact GPT FD 286 parser fixture
+      - name: Checkout immutable GPT FD #286 dependency
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: LMhdez/gaslux
           ref: 9aed36cfdb8c09a461dc38811c326c54180273de
           path: gpt286-pinned
           persist-credentials: false
-      - name: Install original QEMU paused and GPT tools
+      - name: Verify exact HEADs and immutable source blobs, separate from oracle
         shell: bash
         run: |
           set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$(git -C safety-oracle rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C producer-old rev-parse HEAD)" = 9306d0fff8cc89794b83fe002ae133c110e641ae
+          test "$(git -C producer-fixed rev-parse HEAD)" = 49389810a46d43bee407304a237b912b2faebc07
+          test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test "$(git -C gpt286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
+          module=auto_tests/installer_observer/large_sparse_destination.py
+          oracle=auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py
+          test "$(git -C producer-old hash-object "$module")" = 5eac9642d942e7ecdff2ea14adb654da57dfca6e
+          test "$(git -C producer-fixed hash-object "$module")" = 61e7c7abc7de14cc6b449eea1a6e02b92e19ef3a
+          test "$(git -C safety-oracle hash-object "$oracle")" = c29c68a13967377c4a3ee89c13087b2ce6bad6b5
+          for tree in safety-oracle producer-old producer-fixed safety267-pinned gpt286-pinned; do
+            test -z "$(git -C "$tree" status --porcelain --untracked-files=no)"
+          done
+          printf 'Oracle HEAD: %s\nOLD producer blob: %s\nFIXED producer blob: %s\n' "$GITHUB_SHA" 5eac9642d942e7ecdff2ea14adb654da57dfca6e 61e7c7abc7de14cc6b449eea1a6e02b92e19ef3a
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install bounded test dependencies and real QEMU tooling
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install --disable-pip-version-check 'pytest==9.0.2'
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils gdisk
           test -x /usr/bin/qemu-system-x86_64
           test -x /usr/bin/qemu-img
-      - name: Replay unchanged inherited 337 and original 346 QEMU adversarial tests
-        env:
-          GASLUX_QEMU_PIN267_ROOT: ${{ github.workspace }}/safety267-pinned
-          GASLUX_QEMU_PIN286_ROOT: ${{ github.workspace }}/gpt286-pinned
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
-          test "$(git -C gpt286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
-          python -m pytest -q auto_tests/tests/test_authenticated_destination_readonly.py auto_tests/tests/test_auth_dest_128g_readonly.py
-      - name: GREEN negative cases using actual subprocess pipes
-        run: python -m pytest -q auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py -k 'not test_red'
-      - name: RED confirm orphan cleanup failure reproducibly
+          python -m compileall -q safety-oracle/auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py
+      - name: A — expected RED using real subprocess and OLD producer (failure REQUIRED)
         shell: bash
         run: |
           set -Eeuo pipefail
           set +e
-          python -m pytest -q -s auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py -k test_red 2>&1 | tee "$RUNNER_TEMP/safety2-red.log"
+          (
+            cd producer-old
+            export PYTHONPATH="$PWD"
+            python - <<'PY'
+          import importlib
+          import pathlib
+          import subprocess
+          import os
+          import sys
+          import pytest
+          module = importlib.import_module("auto_tests.installer_observer.large_sparse_destination")
+          expected = pathlib.Path.cwd() / "auto_tests/installer_observer/large_sparse_destination.py"
+          assert pathlib.Path(module.__file__).resolve() == expected.resolve(), module.__file__
+          blob = subprocess.check_output(["git", "hash-object", str(expected)], text=True).strip()
+          assert blob == "5eac9642d942e7ecdff2ea14adb654da57dfca6e", blob
+          print(f"RED imported={module.__file__} blob={blob}", flush=True)
+          oracle = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "safety-oracle/auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py"
+          sys.exit(pytest.main(["-q", "-s", str(oracle), "-k", "test_red_timeout_must_reap_descendant_inherited_pipe"]))
+          PY
+          ) 2>&1 | tee "$RUNNER_TEMP/safety2-old-red.log"
           result=${PIPESTATUS[0]}
           set -e
           test "$result" -eq 1
-          grep -q 'SAFETY2-346-01 RED: descendant is still alive' "$RUNNER_TEMP/safety2-red.log"
-          printf '%s\n' 'Expected RED independently reproduced at immutable PR #346 source HEAD; NOT a successful cleanup.' >> "$GITHUB_STEP_SUMMARY"
+          grep -Fq 'SAFETY2-346-01 RED: descendant is still alive after' "$RUNNER_TEMP/safety2-old-red.log"
+          grep -Fq '1 failed' "$RUNNER_TEMP/safety2-old-red.log"
+          printf '%s\n' 'EXPECTED RED: old immutable #346 source leaked inherited-pipe descendant; test correctly FAILED.' >> "$GITHUB_STEP_SUMMARY"
+      - name: B — independent GREEN, exactly the same oracle and corrected producer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          (
+            cd producer-fixed
+            export PYTHONPATH="$PWD"
+            python - <<'PY'
+          import importlib
+          import pathlib
+          import subprocess
+          import os
+          import sys
+          import pytest
+          module = importlib.import_module("auto_tests.installer_observer.large_sparse_destination")
+          expected = pathlib.Path.cwd() / "auto_tests/installer_observer/large_sparse_destination.py"
+          assert pathlib.Path(module.__file__).resolve() == expected.resolve(), module.__file__
+          blob = subprocess.check_output(["git", "hash-object", str(expected)], text=True).strip()
+          assert blob == "61e7c7abc7de14cc6b449eea1a6e02b92e19ef3a", blob
+          print(f"GREEN imported={module.__file__} blob={blob}", flush=True)
+          oracle = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "safety-oracle/auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py"
+          sys.exit(pytest.main(["-q", "-s", str(oracle), "-k", "test_red_timeout_must_reap_descendant_inherited_pipe"]))
+          PY
+          ) 2>&1 | tee "$RUNNER_TEMP/safety2-fixed-green.log"
+          grep -Fq '1 passed' "$RUNNER_TEMP/safety2-fixed-green.log"
+          printf '%s\n' 'GREEN: unchanged Safety-2 descendant oracle passed against corrected pinned #346 source.' >> "$GITHUB_STEP_SUMMARY"
+      - name: C — run both inherited producer suites and complete Safety-2 oracle on fixed SHA
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd producer-fixed
+          export PYTHONPATH="$PWD"
+          export GASLUX_QEMU_PIN267_ROOT="$GITHUB_WORKSPACE/safety267-pinned"
+          export GASLUX_QEMU_PIN286_ROOT="$GITHUB_WORKSPACE/gpt286-pinned"
+          python - <<'PY' 2>&1 | tee "$RUNNER_TEMP/safety2-fixed-regressions.log"
+          import importlib
+          import pathlib
+          import subprocess
+          import os
+          import sys
+          import pytest
+          module = importlib.import_module("auto_tests.installer_observer.large_sparse_destination")
+          expected = pathlib.Path.cwd() / "auto_tests/installer_observer/large_sparse_destination.py"
+          assert pathlib.Path(module.__file__).resolve() == expected.resolve(), module.__file__
+          assert subprocess.check_output(["git", "hash-object", str(expected)], text=True).strip() == "61e7c7abc7de14cc6b449eea1a6e02b92e19ef3a"
+          oracle = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "safety-oracle/auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py"
+          print(f"Regression producer={module.__file__} oracle={oracle}", flush=True)
+          sys.exit(pytest.main(["-q",
+              "auto_tests/tests/test_authenticated_destination_readonly.py",
+              "auto_tests/tests/test_auth_dest_128g_readonly.py",
+              str(oracle)]))
+          PY
+      - name: D — start/cleanup failure must refuse without granting writer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd producer-fixed
+          export PYTHONPATH="$PWD"
+          python - <<'PY'
+          import errno
+          import pathlib
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          from unittest.mock import patch
+          from auto_tests.installer_observer import large_sparse_destination as module
+          budget = module.LargeReadOnlyBudget(known_quota_bytes=64 * 1024**2)
+          with tempfile.TemporaryDirectory(prefix="safety2-owned-") as td:
+              target = pathlib.Path(td) / "readonly.bin"
+              target.write_bytes(b"readonly")
+              with target.open("rb") as stream:
+                  with patch.object(module.subprocess, "Popen", side_effect=OSError(errno.ENOENT, "injected")):
+                      try:
+                          module._bounded_info(stream.fileno(), budget, time.monotonic()+2)
+                          raise AssertionError("unexpected successful start")
+                      except module.LargeDestinationRefused as err:
+                          assert err.code == "QEMU_INFO_START_FAILED", err.code
+                  real_popen = subprocess.Popen
+                  def start_real(_argv, **kwargs):
+                      return real_popen([sys.executable, "-c", "import time; time.sleep(10)"], **kwargs)
+                  with patch.object(module.subprocess, "Popen", side_effect=start_real), patch.object(module.os, "killpg", side_effect=PermissionError(errno.EPERM, "injected")):
+                      try:
+                          module._bounded_info(stream.fileno(), budget, time.monotonic()+0.4)
+                          raise AssertionError("cleanup failure was ignored")
+                      except module.LargeDestinationRefused as err:
+                          assert err.code == "QEMU_INFO_CLEANUP_FAILED", err.code
+          print("QEMU_INFO_START_FAILED / QEMU_INFO_CLEANUP_FAILED both refused on real-process diagnostics; no writer", flush=True)
+          PY
+      - name: Verify immutable producer and Safety sources remain unchanged after all cases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          module=auto_tests/installer_observer/large_sparse_destination.py
+          oracle=auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py
+          test "$(git -C producer-old rev-parse HEAD)" = 9306d0fff8cc89794b83fe002ae133c110e641ae
+          test "$(git -C producer-fixed rev-parse HEAD)" = 49389810a46d43bee407304a237b912b2faebc07
+          test "$(git -C producer-old hash-object "$module")" = 5eac9642d942e7ecdff2ea14adb654da57dfca6e
+          test "$(git -C producer-fixed hash-object "$module")" = 61e7c7abc7de14cc6b449eea1a6e02b92e19ef3a
+          test "$(git -C safety-oracle hash-object "$oracle")" = c29c68a13967377c4a3ee89c13087b2ce6bad6b5
+          for tree in safety-oracle producer-old producer-fixed safety267-pinned gpt286-pinned; do
+            test -z "$(git -C "$tree" status --porcelain --untracked-files=no)"
+          done
+          printf '%s\n' 'All tracked source files remain immutable; tests used selected checkouts, no guest or writer.' >> "$GITHUB_STEP_SUMMARY"
