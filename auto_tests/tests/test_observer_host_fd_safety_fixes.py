@@ -127,12 +127,15 @@ import sys
 path, other = sys.argv[1:]
 fd = os.open(path, os.O_RDONLY)
 rw = os.open(path, os.O_RDWR)
+path_fd = os.open(path, os.O_PATH) if hasattr(os, "O_PATH") else -1
 other_fd = os.open(other, os.O_RDONLY)
 print(fd, flush=True)
 for line in sys.stdin:
     operation = line.strip()
     if operation == "rw":
         os.dup2(rw, fd)
+    elif operation == "path":
+        os.dup2(path_fd, fd)
     elif operation == "close":
         os.close(fd)
     elif operation == "other":
@@ -295,3 +298,146 @@ def test_f01_matching_claims_remain_claims(tmp_path):
         assert report["localQmpFdConsistency"] is False
         assert report["deviceFdAssociationProven"] is False
         assert report["vmDiskBindingProven"] is False
+
+
+# S-319-01: the remote original FD must be readable, not merely same-inode.
+# These operate only on real disposable Linux child-process descriptors.
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "O_PATH") or not Path("/proc").is_dir(),
+    reason="Linux procfs and O_PATH required",
+)
+def test_s319_real_remote_readonly_fd_accepted(disposable_child):
+    child, pins = disposable_child
+    with borrowed_readonly_proc_fd(
+        child.pid,
+        pins.fd_number,
+        pins.media_path,
+        expected_dev=pins.expected_dev,
+        expected_inode=pins.expected_inode,
+        expected_size=pins.expected_size,
+        expected_start_ticks=pins.process.start_ticks,
+    ) as observed:
+        assert os.fstat(observed).st_ino == pins.expected_inode
+        assert len(os.pread(observed, 1, 0)) == 1
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "O_PATH") or not Path("/proc").is_dir(),
+    reason="Linux procfs and O_PATH required",
+)
+def test_s319_remote_opath_same_inode_and_path_refused_before_measurement(disposable_child):
+    child, pins = disposable_child
+    _command(child, "path")
+    remote = Path("/proc") / str(child.pid) / "fd" / str(pins.fd_number)
+    assert os.readlink(remote) == str(pins.media_path)
+    assert remote.stat().st_ino == pins.expected_inode
+    flags = int(
+        next(
+            line.partition(":")[2].strip()
+            for line in (remote.parent.parent / "fdinfo" / str(pins.fd_number)).read_text().splitlines()
+            if line.startswith("flags:")
+        ),
+        8,
+    )
+    assert flags & os.O_PATH
+    assert (flags & os.O_ACCMODE) == os.O_RDONLY
+    with (
+        pytest.raises(HostEvidenceRefused, match="QEMU_FD_NOT_READONLY"),
+        borrowed_readonly_proc_fd(
+            child.pid,
+            pins.fd_number,
+            pins.media_path,
+            expected_dev=pins.expected_dev,
+            expected_inode=pins.expected_inode,
+            expected_size=pins.expected_size,
+            expected_start_ticks=pins.process.start_ticks,
+        ) as reopened,
+    ):
+        pytest.fail(f"O_PATH remote FD reached LOCALLY_MEASURED: {reopened}")
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "O_PATH") or not Path("/proc").is_dir(),
+    reason="Linux procfs and O_PATH required",
+)
+def test_s319_remote_readonly_to_opath_same_inode_refused_on_exit(disposable_child):
+    child, pins = disposable_child
+    remote = Path("/proc") / str(child.pid) / "fd" / str(pins.fd_number)
+    with (
+        pytest.raises(HostEvidenceRefused, match="REMOTE_FD_NOT_READONLY_AT_COMPLETION"),
+        borrowed_readonly_proc_fd(
+            child.pid,
+            pins.fd_number,
+            pins.media_path,
+            expected_dev=pins.expected_dev,
+            expected_inode=pins.expected_inode,
+            expected_size=pins.expected_size,
+            expected_start_ticks=pins.process.start_ticks,
+        ) as reopened,
+    ):
+        assert os.fstat(reopened).st_ino == pins.expected_inode
+        _command(child, "path")
+        assert os.readlink(remote) == str(pins.media_path)
+        assert remote.stat().st_ino == pins.expected_inode
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc").is_dir(), reason="Linux procfs required"
+)
+def test_s319_initial_remote_rdwr_refused(disposable_child):
+    child, pins = disposable_child
+    _command(child, "rw")
+    with (
+        pytest.raises(HostEvidenceRefused, match="QEMU_FD_NOT_READONLY"),
+        borrowed_readonly_proc_fd(
+            child.pid,
+            pins.fd_number,
+            pins.media_path,
+            expected_dev=pins.expected_dev,
+            expected_inode=pins.expected_inode,
+            expected_size=pins.expected_size,
+        ),
+    ):
+        pytest.fail("O_RDWR remote FD accepted")
+
+
+@pytest.mark.parametrize("bad_fdinfo", ["missing_flags", "read_error"])
+@pytest.mark.parametrize("when", ["before", "after"])
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc").is_dir(), reason="Linux procfs required"
+)
+def test_s319_fdinfo_missing_or_unreadable_is_fail_closed(
+    disposable_child, monkeypatch, bad_fdinfo, when
+):
+    child, pins = disposable_child
+    info_path = Path("/proc") / str(child.pid) / "fdinfo" / str(pins.fd_number)
+    original_read_text = Path.read_text
+    calls = 0
+
+    def broken_read_text(path, *args, **kwargs):
+        nonlocal calls
+        if path == info_path:
+            calls += 1
+            if (when == "before" and calls == 1) or (when == "after" and calls == 2):
+                if bad_fdinfo == "read_error":
+                    raise OSError("synthetic fdinfo EACCES")
+                return "pos:\t0\n"
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", broken_read_text)
+    expected = "REMOTE_FD_FLAGS_MISSING" if bad_fdinfo == "missing_flags" else "PROC_FD_OBSERVATION_FAILED"
+    with (
+        pytest.raises(HostEvidenceRefused, match=expected),
+        borrowed_readonly_proc_fd(
+            child.pid,
+            pins.fd_number,
+            pins.media_path,
+            expected_dev=pins.expected_dev,
+            expected_inode=pins.expected_inode,
+            expected_size=pins.expected_size,
+            expected_start_ticks=pins.process.start_ticks,
+        ) as reopened,
+    ):
+        assert when == "after", "fdinfo before must reject without reopening"
+        assert os.fstat(reopened).st_ino == pins.expected_inode
+    assert calls >= (1 if when == "before" else 2)
