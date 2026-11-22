@@ -657,9 +657,11 @@ def test_qemu_without_guest_peer_does_not_claim_guest(workspace, pinned):
         qemu = pins_for(child, workspace, overlay, "qcow2")
         with QemuLocalDiskWitness(qemu) as witness:
             assert witness.finish()["guestChannelAuthenticated"] is False
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
-            with pytest.raises(FileNotFoundError):
-                conn.connect(str(workspace / "guest-peer.sock"))
+        with (
+            socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn,
+            pytest.raises(FileNotFoundError),
+        ):
+            conn.connect(str(workspace / "guest-peer.sock"))
     finally:
         shutdown(child)
 
