@@ -40,7 +40,7 @@ jobs:
       OLLAMA_MAX_LOADED_MODELS: '1'
     steps:
       - name: Checkout only the intended disposable source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'dev' }}
           persist-credentials: false
@@ -50,12 +50,29 @@ jobs:
           set -euo pipefail
           python3 -m venv /tmp/gaslux-agent-venv
           /tmp/gaslux-agent-venv/bin/python -m pip install --disable-pip-version-check 'pytest>=9,<10' 'python-json-logger>=2,<4'
-      - name: Start experimental local Ollama CPU server (worker has no write token)
+      - name: Skip model download if existing focused test is already green
+        id: baseline
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --silent --show-error https://ollama.com/install.sh -o /tmp/ollama-install.sh
-          sh /tmp/ollama-install.sh
+          if [[ "$GASLUX_AGENT_SIMULATE" == "1" ]]; then
+            echo needs_model=true >> "$GITHUB_OUTPUT"
+          elif (cd auto_tests && /tmp/gaslux-agent-venv/bin/python -m pytest tests/test_logging_config.py -q); then
+            echo needs_model=false >> "$GITHUB_OUTPUT"
+          else
+            echo needs_model=true >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install verified Ollama release script (worker has no write token)
+        if: steps.baseline.outputs.needs_model == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh \
+            -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 360 sh /tmp/ollama-install.sh
+          ollama --version
           (ollama serve > /tmp/ollama-serve.log 2>&1 &)
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:11434/api/version >/dev/null; then exit 0; fi
@@ -63,12 +80,22 @@ jobs:
           done
           cat /tmp/ollama-serve.log
           exit 1
-      - name: Fetch bounded 3B coding model
+      - name: Pull and verify known 3B model digest prefix
+        if: steps.baseline.outputs.needs_model == 'true'
         shell: bash
         run: |
           set -euo pipefail
           timeout 600 ollama pull "$GASLUX_AGENT_MODEL"
           ollama list
+          python3 - <<'PY'
+          import json
+          import urllib.request
+          response = json.load(urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=15))
+          model = next((m for m in response["models"] if m["name"] == "qwen2.5-coder:3b"), None)
+          if model is None or not model.get("digest", "").startswith("f72c60cabf62"):
+              raise SystemExit("Wrong local model digest; no repair permitted")
+          print("Verified local model digest:", model["digest"])
+          PY
       - name: RED test then bounded model repair and GREEN test
         id: worker
         shell: bash
@@ -82,7 +109,7 @@ jobs:
           fi
       - name: Upload proposed patch and independent test evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gaslux-local-coder-proposal
           path: evidence/
@@ -102,12 +129,12 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout controlled publisher code (never execute proposed module)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: dev
           persist-credentials: false
       - name: Download completed worker evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: gaslux-local-coder-proposal
           path: evidence/
