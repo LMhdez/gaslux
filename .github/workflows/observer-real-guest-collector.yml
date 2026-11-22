@@ -61,9 +61,12 @@ jobs:
           KERNEL=$(find /boot -maxdepth 1 -type f -name 'vmlinuz-*-generic' | sort -V | tail -n 1)
           test -n "$KERNEL" && test -s "$KERNEL"
           test -s "/boot/config-$(basename "$KERNEL" | sed 's/vmlinuz-//')"
-          echo "GASLUX_GUEST_KERNEL=$KERNEL" >> "$GITHUB_ENV"
+          LAB_KERNEL="$RUNNER_TEMP/$(basename "$KERNEL")"
+          sudo install -o "$(id -un)" -g "$(id -gn)" -m 0400 "$KERNEL" "$LAB_KERNEL"
+          test -s "$LAB_KERNEL" && test -O "$LAB_KERNEL"
+          echo "GASLUX_GUEST_KERNEL=$LAB_KERNEL" >> "$GITHUB_ENV"
           echo "GASLUX_GUEST_COLLECTOR=$GITHUB_WORKSPACE/auto_tests/installer_observer/guest_collector_init.sh" >> "$GITHUB_ENV"
-          sha256sum "$KERNEL" auto_tests/installer_observer/guest_collector_init.sh
+          sha256sum "$LAB_KERNEL" auto_tests/installer_observer/guest_collector_init.sh
       - name: Compile, Ruff strict lint and formatting
         shell: bash
         run: |
