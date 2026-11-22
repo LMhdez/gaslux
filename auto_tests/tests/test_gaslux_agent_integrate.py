@@ -107,6 +107,52 @@ class IntegratorContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exceeds"):
                 integ.inspect(123, self.head)
 
+    def test_negative_safety_comment_blocks_merge(self):
+        def response(method, route, body=None):
+            if route == "/issues/123/comments?per_page=100":
+                return [{"body": "BLOCKED_SAFETY — evidence insufficient"}]
+            return self.api(method, route, body)
+        with patch.object(integ, "api", side_effect=response):
+            with self.assertRaisesRegex(ValueError, "Safety hold"):
+                integ.inspect(123, self.head)
+        self.assertFalse(any(m != "GET" for m, _, _ in self.calls))
+
+    def test_requested_changes_block_merge(self):
+        def response(method, route, body=None):
+            if route == "/pulls/123/reviews?per_page=100":
+                return [{"state": "CHANGES_REQUESTED"}]
+            return self.api(method, route, body)
+        with patch.object(integ, "api", side_effect=response):
+            with self.assertRaisesRegex(ValueError, "review objection"):
+                integ.inspect(123, self.head)
+
+    def test_unfinished_candidate_head_checks_block_merge(self):
+        def response(method, route, body=None):
+            if route == "/commits/" + self.head + "/check-runs?per_page=100":
+                return {"check_runs": [{"status": "in_progress", "conclusion": None}]}
+            return self.api(method, route, body)
+        with patch.object(integ, "api", side_effect=response):
+            with self.assertRaisesRegex(ValueError, "not green"):
+                integ.inspect(123, self.head)
+
+    def test_dev_advancement_blocks_proposal(self):
+        def response(method, route, body=None):
+            if route == "/git/ref/heads/dev":
+                return {"object": {"sha": "c" * 40}}
+            return self.api(method, route, body)
+        with patch.object(integ, "api", side_effect=response):
+            with self.assertRaisesRegex(RuntimeError, "dev moved"):
+                integ.inspect(123, self.head)
+
+    def test_non_direct_parent_blocks_proposal(self):
+        def response(method, route, body=None):
+            if route == "/git/commits/" + self.head:
+                return {"parents": [{"sha": "c" * 40}]}
+            return self.api(method, route, body)
+        with patch.object(integ, "api", side_effect=response):
+            with self.assertRaisesRegex(ValueError, "ancestry"):
+                integ.inspect(123, self.head)
+
     def test_stale_head_rejected_before_any_write(self):
         with patch.object(integ, "api", side_effect=self.api):
             with self.assertRaises(ValueError):
