@@ -142,3 +142,10 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   `rollbackProven=false`, `sameDiskDualBootVerified=false`,
   `stable=false`.
   See [resource and trust contract](AUTH_DEST_128G_READONLY.md).
+
+## 2026-11-22 — independent Safety-2 PR #355, old RED / corrected GREEN
+
+- **Audit:** [PR #355](https://github.com/LMhdez/gaslux/pull/355), independent subprocess oracle blob `c29c68a13967377c4a3ee89c13087b2ce6bad6b5`; fixes only `Popen(start_new_session)` forwarding and uses separate immutable `#346` source checkouts with imported-module/blob verification.
+- **Old producer:** `9306d0fff8cc89794b83fe002ae133c110e641ae`, blob `5eac9642d942e7ecdff2ea14adb654da57dfca6e`: expected RED `SAFETY2-346-01 RED: descendant is still alive...`, originally [#45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419), reproduced with faithful adapter.
+- **Corrected producer:** `49389810a46d43bee407304a237b912b2faebc07`, blob `61e7c7abc7de14cc6b449eea1a6e02b92e19ef3a`: unchanged descendant oracle GREEN. [Independent Actions #45055861221](https://github.com/LMhdez/gaslux/actions/runs/45055861221) **SUCCESS**, with 31 producer regressions and 15 independent Safety regressions plus explicit start/cleanup refusal injections and source readback.
+- **Evidence level:** `QEMU_PROTOCOL / SYNTHETIC_DISK / CONTRACT` host-only; independent read-only process cleanup, **not** Guest-identity attestation, `INSTALLED_GUEST`, `WINDOWS_GUEST`, dual boot or `RECOVERY`. Verdict `SAFETY_APPROVED_OFFLINE_DENY_ONLY` applies only to `SAFETY2-346-01` at the exact corrected producer SHA. Maintain `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, and all Windows/boot/write gates. No merge or release promotion.

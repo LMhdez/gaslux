@@ -140,3 +140,7 @@ A [PR #294](https://github.com/LMhdez/gaslux/pull/294) foi **encerrada sem merge
 - [Plano de arquitetura/rollback](ARCHITECTURE.md) e [matriz multidistro](MULTIDISTRO_PLAN.md).
 - [Critérios CachyOS #3](https://github.com/LMhdez/gaslux/issues/3), [Windows 11 #71](https://github.com/LMhdez/gaslux/issues/71), [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
 - [Guias técnicos por backend](distro-backends/README.md), [contratos partilhados](distro-backends/SHARED_CONTRACTS.md).
+
+## Safety-2 historical finding closure — 2026-11-22 UTC
+
+`SAFETY2-346-01`: [#355](https://github.com/LMhdez/gaslux/pull/355) independently reproduced the leaked descendant on #346 old `9306d0fff8cc89794b83fe002ae133c110e641ae` with expected RED [#45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419). Corrected producer #346 `49389810a46d43bee407304a237b912b2faebc07` retains read-only semantics and has an isolated POSIX process-group cleanup. [Actions #45055861221](https://github.com/LMhdez/gaslux/actions/runs/45055861221) established same-oracle RED→GREEN using separate immutable checkouts and verified source blob/import identity; 31 producer + 15 independent regressions passed. Safety-2 verdict is `SAFETY_APPROVED_OFFLINE_DENY_ONLY` **only** for this finding/producer SHA. The distinct #337/#356 dependency review, guest trust, 128GiB whole-image hash, Windows rollback and any writer authority remain separate and unproven. No merge, branch deletion, VM guest writes, or release promotion.
