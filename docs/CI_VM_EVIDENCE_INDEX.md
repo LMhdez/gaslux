@@ -161,3 +161,46 @@ Para contratos base e critérios de estabilidade, ver [histórico/guia de agente
   and QEMU internal backend or guest provenance remain unproven.
   `DENY_NO_WRITER` stays invariant. Documentation-only changes
   after this tested code SHA require separate exact-head checks.
+
+## 2026-11-22 — SAFETY2-346-01: inherited-pipe subprocess RED and scoped candidate fix
+
+- Historical **RED**: [PR #355](https://github.com/LMhdez/gaslux/pull/355),
+  Safety HEAD `b690cf3b7da0ec34b950e354a4b8af8bd94a70c0`,
+  [Actions #45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419),
+  SUCCESS **only as an expected-negative runner**. Source tested:
+  #346 `9306d0fff8cc89794b83fe002ae133c110e641ae`.
+- Producer process cleanup correction in existing
+  [PR #346](https://github.com/LMhdez/gaslux/pull/346),
+  code `4ab0f13b718fabf4d8cb5598626ae3df67eafce1`,
+  regression code `431599b0b5e6f04f9b7617c028bfb1091771cef7`,
+  strict lint adjustment `00f93376210c3bce8ab01e3ceb237a70cb0a78b8`.
+  POSIX session isolation, group kill before leader reap, time-limited group
+  disappearance and cleanup-denial are scoped to `_bounded_info`.
+- Exact-source independent GREEN and Safety-2 judgement **pending**.
+  The original Safety test shim discards `start_new_session`; only its
+  forwarding adapter and checkout reference should be corrected by Safety-2,
+  not its adversarial assertion. No new runtime writer/guest authority.
+- Evidence type: **QEMU_HOST / offline subprocess**, not GUEST_BOOT,
+  INSTALLED, DUAL_BOOT, RECOVERED or CERTIFIED. No Windows/ESP/BCD/WinRE
+  change. Preserve `FULL_BACKING_HASH_NOT_COMPLETED` and
+  `DENY_NO_WRITER`.
+
+
+### 2026-11-22 — #346 producer CI after process-group correction
+
+- #346 tested HEAD `6c2af28acd7da24ce127de0909c66e15147ff873`,
+  [push #45054177113](https://github.com/LMhdez/gaslux/actions/runs/45054177113)
+  **SUCCESS**, [PR #45054181689](https://github.com/LMhdez/gaslux/actions/runs/45054181689)
+  **SUCCESS**. Strict Ruff/format/compile, synthetic sparse-128GiB real
+  **paused** QEMU, real subprocess descendant cleanup and foreign-session
+  isolation, inherited #337/#327/#267, and protected checkout verification.
+- No independent #355 oracle GREEN on corrected head yet. Exact Safety-2
+  request at [#7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427).
+  Evidence stays **QEMU_HOST / offline, DENY_NO_WRITER**; source/guest
+  authentication and full 128GiB RAW hash remain unproven.
+
+## 2026-11-22 — #356 non-destructive reconciliation after #346 Safety-2 closure
+
+The historical PR #356 head `83489eee123c124266b0c514b8f20e6e19ca9bc2` and corrected PR #346 `49389810a46d43bee407304a237b912b2faebc07` share ancestor `9306d0fff8cc89794b83fe002ae133c110e641ae`. This composition preserves both histories using a two-parent merge; the final `_bounded_info` function matches approved #346 byte-for-byte, while 32-byte QCOW2 header/version/geometry, `statvfs` checkpoint estimate and final `st_blocks` recheck from #356 are preserved. The independent [Safety-2 oracle #355](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) was GREEN on **#346's corrected SHA only**, not yet independently reviewed on the combined candidate; its immutable original test blob `c29c68a13967377c4a3ee89c13087b2ce6bad6b5` is reused in the existing #356 CI workflow. Before any decision, confirm CI on the new exact merged HEAD.
+
+**Evidence classification:** QEMU stopped / host-only read-only synthetic files and contracts, NEVER installed Guest, Windows recovery, full 128GiB RAW hash, or writer. Continue to refuse `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, `productionStorageWritesAuthorized=false`, `checkpointReserveProven=false`, `checkpointRestorationProven=false`. No release or dev merge.

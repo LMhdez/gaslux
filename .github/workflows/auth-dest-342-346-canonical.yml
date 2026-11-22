@@ -15,6 +15,8 @@ on:
       - 'auto_tests/tests/test_auth_dest_128g_readonly.py'
       - 'docs/AUTH_DEST_128G_READONLY.md'
       - 'docs/AUTH_DEST_342_346_CANONICAL.md'
+      - 'docs/CI_VM_EVIDENCE_INDEX.md'
+      - 'docs/distro-backends/SHARED_CONTRACTS.md'
   pull_request:
     branches:
       - fix/auth-dest-128g-readonly-20261122
@@ -29,6 +31,8 @@ on:
       - 'auto_tests/tests/test_auth_dest_128g_readonly.py'
       - 'docs/AUTH_DEST_128G_READONLY.md'
       - 'docs/AUTH_DEST_342_346_CANONICAL.md'
+      - 'docs/CI_VM_EVIDENCE_INDEX.md'
+      - 'docs/distro-backends/SHARED_CONTRACTS.md'
 
 permissions:
   contents: read
@@ -73,6 +77,13 @@ jobs:
           ref: 986ccf6d5ee11427e969022f6b8b5d5f48ec16c3
           path: scale342-pinned
           persist-credentials: false
+      - name: Checkout immutable independent Safety-2 oracle #355 (test only)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: f4f882565af2c8cf08b8b656122f9ef9c9dc01a2
+          path: safety355-pinned
+          persist-credentials: false
       - name: Assert hosted-Linux-runner isolation before installing tools or making images
         shell: bash
         run: |
@@ -83,14 +94,19 @@ jobs:
           test "$RUNNER_OS" = Linux
           test "$(uname -m)" = x86_64
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 83489eee123c124266b0c514b8f20e6e19ca9bc2 HEAD
+          git merge-base --is-ancestor 49389810a46d43bee407304a237b912b2faebc07 HEAD
+          test "$(git hash-object auto_tests/installer_observer/large_sparse_destination.py)" = a1a6364b12cf9a6b988eb124e2aa66e374c32cfe
           test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
           test "$(git -C gpt286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
           test "$(git -C safety327-pinned rev-parse HEAD)" = 45c430b6861ba3dce3b9e33bf3f9cccfb2b29a52
           test "$(git -C scale342-pinned rev-parse HEAD)" = 986ccf6d5ee11427e969022f6b8b5d5f48ec16c3
+          test "$(git -C safety355-pinned rev-parse HEAD)" = f4f882565af2c8cf08b8b656122f9ef9c9dc01a2
+          test "$(git -C safety355-pinned hash-object auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py)" = c29c68a13967377c4a3ee89c13087b2ce6bad6b5
           test "$(git hash-object auto_tests/installer_observer/host_fd_boundary.py)" = 35bc7f4a37ec8821aa32c15660f83ef80e3e29b9
           test "$(git hash-object auto_tests/installer_observer/host_qemu_fd_evidence.py)" = 6727ca454b9282079400593356516097a297b9d6
           test "$(git hash-object auto_tests/installer_observer/guest_transport_peer_boundary.py)" = e176d90f487aede071b12bced9d5d3a41d93199e
-          for path in . safety267-pinned gpt286-pinned safety327-pinned scale342-pinned; do
+          for path in . safety267-pinned gpt286-pinned safety327-pinned scale342-pinned safety355-pinned; do
             test -z "$(git -C "$path" status --porcelain --untracked-files=no)"
           done
       - name: Install real QEMU and GPT tooling (no libguestfs appliance)
@@ -127,6 +143,63 @@ jobs:
           python -m pytest -q -s auto_tests/tests/test_authenticated_destination_readonly.py
           python -m pytest -q -s auto_tests/tests/test_auth_dest_128g_readonly.py
           python -m pytest -q -s auto_tests/tests/test_observer_qemu_real_disk_readonly.py
+      - name: Independent Safety-2 oracle against actual composed host module
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import importlib
+          import os
+          import pathlib
+          import subprocess
+          import sys
+          import pytest
+          module = importlib.import_module("auto_tests.installer_observer.large_sparse_destination")
+          expected = pathlib.Path.cwd() / "auto_tests/installer_observer/large_sparse_destination.py"
+          assert pathlib.Path(module.__file__).resolve() == expected.resolve(), module.__file__
+          blob = subprocess.check_output(["git", "hash-object", str(expected)], text=True).strip()
+          assert blob == "a1a6364b12cf9a6b988eb124e2aa66e374c32cfe", blob
+          oracle = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "safety355-pinned/auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py"
+          assert oracle.is_file()
+          print(f"COMPOSED imported={module.__file__} blob={blob} oracle={oracle}", flush=True)
+          sys.exit(pytest.main(["-q", "-s", str(oracle)]))
+          PY
+      - name: Confirm explicit start and cleanup refusals in actual composed module
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import errno
+          import pathlib
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          from unittest.mock import patch
+          from auto_tests.installer_observer import large_sparse_destination as module
+          assert pathlib.Path(module.__file__).resolve() == (pathlib.Path.cwd() / "auto_tests/installer_observer/large_sparse_destination.py").resolve()
+          budget = module.LargeReadOnlyBudget(known_quota_bytes=64 * 1024**2)
+          with tempfile.TemporaryDirectory(prefix="safety356-owned-") as td:
+              path = pathlib.Path(td) / "readonly.bin"
+              path.write_bytes(b"readonly")
+              with path.open("rb") as stream:
+                  with patch.object(module.subprocess, "Popen", side_effect=OSError(errno.ENOENT, "injected")):
+                      try:
+                          module._bounded_info(stream.fileno(), budget, time.monotonic()+2)
+                          raise AssertionError("unexpected successful start")
+                      except module.LargeDestinationRefused as err:
+                          assert err.code == "QEMU_INFO_START_FAILED", err.code
+                  real_popen = subprocess.Popen
+                  def start_real(_argv, **kwargs):
+                      return real_popen([sys.executable, "-c", "import time; time.sleep(10)"], **kwargs)
+                  with patch.object(module.subprocess, "Popen", side_effect=start_real), patch.object(module.os, "killpg", side_effect=PermissionError(errno.EPERM, "injected")):
+                      try:
+                          module._bounded_info(stream.fileno(), budget, time.monotonic()+0.4)
+                          raise AssertionError("cleanup failure ignored")
+                      except module.LargeDestinationRefused as err:
+                          assert err.code == "QEMU_INFO_CLEANUP_FAILED", err.code
+          print("COMPOSED start/cleanup fail-closed; DENY_NO_WRITER",flush=True)
+          PY
       - name: Replay unchanged #342 12-case metadata-only baseline in separate checkout
         shell: bash
         run: |
@@ -159,14 +232,19 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 83489eee123c124266b0c514b8f20e6e19ca9bc2 HEAD
+          git merge-base --is-ancestor 49389810a46d43bee407304a237b912b2faebc07 HEAD
+          test "$(git hash-object auto_tests/installer_observer/large_sparse_destination.py)" = a1a6364b12cf9a6b988eb124e2aa66e374c32cfe
           test "$(git -C safety267-pinned rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
           test "$(git -C gpt286-pinned rev-parse HEAD)" = 9aed36cfdb8c09a461dc38811c326c54180273de
           test "$(git -C safety327-pinned rev-parse HEAD)" = 45c430b6861ba3dce3b9e33bf3f9cccfb2b29a52
           test "$(git -C scale342-pinned rev-parse HEAD)" = 986ccf6d5ee11427e969022f6b8b5d5f48ec16c3
+          test "$(git -C safety355-pinned rev-parse HEAD)" = f4f882565af2c8cf08b8b656122f9ef9c9dc01a2
+          test "$(git -C safety355-pinned hash-object auto_tests/tests/test_safety2_auth_dest_subprocess_independent.py)" = c29c68a13967377c4a3ee89c13087b2ce6bad6b5
           test "$(git hash-object auto_tests/installer_observer/host_fd_boundary.py)" = 35bc7f4a37ec8821aa32c15660f83ef80e3e29b9
           test "$(git hash-object auto_tests/installer_observer/host_qemu_fd_evidence.py)" = 6727ca454b9282079400593356516097a297b9d6
           test "$(git hash-object auto_tests/installer_observer/guest_transport_peer_boundary.py)" = e176d90f487aede071b12bced9d5d3a41d93199e
-          for path in . safety267-pinned gpt286-pinned safety327-pinned scale342-pinned; do
+          for path in . safety267-pinned gpt286-pinned safety327-pinned scale342-pinned safety355-pinned; do
             test -z "$(git -C "$path" status --porcelain --untracked-files=no)"
           done
           echo 'Canonical 342+346: header, estimated checkpoint reserve and final allocation check incorporated in 346; original 342 suite replayed independently; 128GiB RAW remains FULL_BACKING_HASH_NOT_COMPLETED / DENY_NO_WRITER. No writer, guest or Windows recovery.' >> "$GITHUB_STEP_SUMMARY"

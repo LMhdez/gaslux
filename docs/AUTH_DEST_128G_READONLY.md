@@ -129,3 +129,59 @@ also expects the upstream `FD_READ_FAILED` diagnostic on injected EIO.
 A one-line checkpoint receipt length guard remains unique to this branch.
 Do not claim these inherited upstream Safety fixes are new independent
 work in this scalability PR. #342 remains a separate metadata-only draft.
+
+
+## 2026-11-22 — SAFETY2-346-01 subprocess cleanup (correction under review)
+
+Independent [Safety-2 #355](https://github.com/LMhdez/gaslux/pull/355)
+reproduced **RED** against the immutable #346 source
+`9306d0fff8cc89794b83fe002ae133c110e641ae`.
+[Actions #45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419)
+returned SUCCESS **because it explicitly expected the failing oracle**:
+`SAFETY2-346-01 RED: descendant is still alive after _bounded_info() refused the timed-out pipe`.
+No prior process cleanup was proven.
+
+#346 now has a bounded POSIX process-session correction: implementation commit
+[`4ab0f13b`](https://github.com/LMhdez/gaslux/commit/4ab0f13b718fabf4d8cb5598626ae3df67eafce1),
+real subprocess regression addition
+[`431599b0`](https://github.com/LMhdez/gaslux/commit/431599b0b5e6f04f9b7617c028bfb1091771cef7)
+and follow-up test lint correction
+[`00f93376`](https://github.com/LMhdez/gaslux/commit/00f93376210c3bce8ab01e3ceb237a70cb0a78b8).
+The `qemu-img` diagnostic starts with `start_new_session=True`; `waitid(WNOWAIT)`
+observes exit without reaping the session leader before `killpg`.
+Cleanup terminates only the verified owned group, then reaps the direct child and
+checks group disappearance within a finite cleanup window. Unexpected session,
+signal, wait or cleanup-timeout errors produce `QEMU_INFO_CLEANUP_FAILED`;
+original output, JSON and read-only refusals remain intact.
+The correction does **not** authorize any guest or disk writer.
+
+**Independent oracle compatibility finding:** the original #355
+`_fake_popen` launcher does not forward `start_new_session` (or other
+process-session kwargs) to its real Python subprocess. A GREEN replay
+therefore requires Safety-2 to preserve the same adversarial assertion but
+forward the process-session argument and pin the corrected checkout.
+Producer regression tests forward all Popen kwargs and use real disposable
+children. Until #355 independently verifies the fixed exact HEAD, the
+finding remains **OPEN / correction not approved**. #356 remains stacked
+on its original #346 ancestor and is not integrated.
+
+
+### 2026-11-22 — producer CI GREEN (not independent Safety clearance)
+
+The producer candidate at `6c2af28acd7da24ce127de0909c66e15147ff873`
+has both [push Actions #45054177113](https://github.com/LMhdez/gaslux/actions/runs/45054177113)
+and [PR Actions #45054181689](https://github.com/LMhdez/gaslux/actions/runs/45054181689)
+**SUCCESS** on the same exact SHA. The existing workflow ran strict Ruff,
+Python compilation, six-backend contracts, real stopped-QEMU sparse-128GiB
+adversarial cases (including the new orphan and foreign-session subprocess
+tests), inherited small complete-FD readback, #327/#267 no-writer and
+Observer HOST/FD regressions, and final checkout integrity. This GREEN is
+**producer-side**, not the unchanged independent #355 oracle. The original
+#355 adapter omits `start_new_session` forwarding; independent Safety-2
+review was requested in
+[comment #7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427).
+The finding remains OPEN pending independent corrected-oracle replay.
+
+## 2026-11-22 — #356 composition after Safety-2 cleanup closure
+
+The [independent Safety-2 verdict](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) closed **only** `SAFETY2-346-01` in #346 at `49389810a46d43bee407304a237b912b2faebc07`. Draft #356 now composes that corrected subprocess function through a non-destructive two-parent merge with the earlier #356 branch (`83489eee123c124266b0c514b8f20e6e19ca9bc2`). The function retains separate POSIX session, `waitid(WNOWAIT)`, owned group SIGKILL before leader reaping, bounded disappearance and `QEMU_INFO_CLEANUP_FAILED`. The independent oracle is unchanged and replayed using an immutable #355 checkout. The #356-specific QCOW2 header/geometry, estimated free-space checkpoint capacity `checkpointReserveProven=false` and final allocated-block recheck remain. The new composed SHA needs independent *differential* Safety review and exact-head CI; parent approval is not transitively granted. `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, and `checkpointRestorationProven=false` remain mandatory. No guest, actual Windows rollback, full RAW hash or writer authorization.

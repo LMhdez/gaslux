@@ -117,3 +117,7 @@ whole RAW 128GiB authenticity, dual boot or release authority. No real
 Windows checkpoint or root-of-trust was supplied. A fresh Safety verdict
 for this composition remains pending; the prior #346 APPROVED_OFFLINE_DENY_ONLY
 is applicable only to its exact earlier SHA.
+
+## 2026-11-22 — non-destructive #346 fixed + #356 QCOW2 differential
+
+Draft #356 reconciles original child `83489eee123c124266b0c514b8f20e6e19ca9bc2` with corrected parent #346 `49389810a46d43bee407304a237b912b2faebc07` via a non-destructive two-parent merge. The `_bounded_info()` subprocess cleanup is byte-for-byte identical to the exact #346 version [independently approved for that parent only](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456). #356's 32-byte QCOW2 v2/v3/header capacity checks, `statvfs` checkpoint estimate, final `st_blocks` comparison, dedicated original #342 checks and synthetic regressions remain. The original [Safety-2 #355](https://github.com/LMhdez/gaslux/pull/355) oracle is pinned by immutable ref in the existing #356 workflow, and a new exact-head CI plus fresh independent Safety-2 differential assessment are required. `checkpointReserveProven=false`, `checkpointRestorationProven=false`, `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER` and all writer/rollback/guest flags remain denied; no extra API, install, real Windows recovery or release promotion is introduced.

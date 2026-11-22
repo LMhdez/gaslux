@@ -140,3 +140,38 @@ A [PR #294](https://github.com/LMhdez/gaslux/pull/294) foi **encerrada sem merge
 - [Plano de arquitetura/rollback](ARCHITECTURE.md) e [matriz multidistro](MULTIDISTRO_PLAN.md).
 - [Critérios CachyOS #3](https://github.com/LMhdez/gaslux/issues/3), [Windows 11 #71](https://github.com/LMhdez/gaslux/issues/71), [Bazzite #254](https://github.com/LMhdez/gaslux/issues/254).
 - [Guias técnicos por backend](distro-backends/README.md), [contratos partilhados](distro-backends/SHARED_CONTRACTS.md).
+
+
+## 2026-11-22 — Safety-2 process-lifecycle boundary in #346
+
+[Safety #355](https://github.com/LMhdez/gaslux/pull/355) demonstrated on
+the immutable source #346 `9306d0fff8cc89794b83fe002ae133c110e641ae`
+that a dead `qemu-img` leader can leave a live descendant holding stdout:
+[expected RED #45037813419](https://github.com/LMhdez/gaslux/actions/runs/45037813419).
+The outcome SUCCESS is **not** cleanup success. Integrator-2 published a
+scoped process-session correction into the **same #346 branch** at
+`4ab0f13b718fabf4d8cb5598626ae3df67eafce1`, real-process
+regressions at `431599b0b5e6f04f9b7617c028bfb1091771cef7`,
+and test lint adjustment at `00f93376210c3bce8ab01e3ceb237a70cb0a78b8`.
+Independent Safety-2 GREEN and approval remain pending. The original
+Safety oracle's `Popen` test launcher must forward the production
+`start_new_session` kwarg to reproduce the new group ownership
+faithfully; do not weaken its survivor assertion. Dependent #356 remains
+unmerged, and all results remain read-only HOST-only with no authenticated
+128-GiB full backing hash or Windows recovery.
+
+
+### 2026-11-22 — #346 candidate test result
+
+Producer CI on `6c2af28acd7da24ce127de0909c66e15147ff873`
+[push #45054177113](https://github.com/LMhdez/gaslux/actions/runs/45054177113)
+and [PR #45054181689](https://github.com/LMhdez/gaslux/actions/runs/45054181689)
+completed SUCCESS with real stopped-QEMU and new process-group regressions.
+This is not the independent Safety-2 GREEN. Exact-head Safety-2
+re-execution was requested in
+[PR #355 comment #7083477427](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083477427);
+do not close SAFETY2-346-01 before that replay/review.
+
+## 2026-11-22 — #356 composition after Safety-2 cleanup closure
+
+The [independent Safety-2 verdict](https://github.com/LMhdez/gaslux/pull/355#issuecomment-7083769456) closed **only** `SAFETY2-346-01` in #346 at `49389810a46d43bee407304a237b912b2faebc07`. Draft #356 now composes that corrected subprocess function through a non-destructive two-parent merge with the earlier #356 branch (`83489eee123c124266b0c514b8f20e6e19ca9bc2`). The function retains separate POSIX session, `waitid(WNOWAIT)`, owned group SIGKILL before leader reaping, bounded disappearance and `QEMU_INFO_CLEANUP_FAILED`. The independent oracle is unchanged and replayed using an immutable #355 checkout. The #356-specific QCOW2 header/geometry, estimated free-space checkpoint capacity `checkpointReserveProven=false` and final allocated-block recheck remain. The new composed SHA needs independent *differential* Safety review and exact-head CI; parent approval is not transitively granted. `FULL_BACKING_HASH_NOT_COMPLETED`, `DENY_NO_WRITER`, and `checkpointRestorationProven=false` remain mandatory. No guest, actual Windows rollback, full RAW hash or writer authorization.
