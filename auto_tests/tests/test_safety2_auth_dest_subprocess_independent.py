@@ -152,3 +152,20 @@ def test_unknown_quota_is_explicitly_unproven():
     # Budget metadata may carry None; the assessment is responsible for refusal.
     value = actual.LargeReadOnlyBudget(known_quota_bytes=None)
     assert value.known_quota_bytes is None
+
+
+@pytest.mark.parametrize("failure,expected", [("short", "SPARSE_SHORT_READ"), ("eio", "SPARSE_READ_IO_FAILED")])
+def test_real_sparse_module_exact_read_fail_closed(source_fd, monkeypatch, failure, expected):
+    """Call the actual bounded pread helper, not a replacement oracle."""
+    original = actual.os.pread
+
+    def injected(fd, count, offset):
+        if fd == source_fd:
+            if failure == "eio":
+                raise OSError(5, "injected EIO")
+            return original(fd, max(0, count - 1), offset)
+        return original(fd, count, offset)
+
+    monkeypatch.setattr(actual.os, "pread", injected)
+    with pytest.raises(actual.LargeDestinationRefused, match=expected):
+        actual._read_exact(source_fd, 0, 8, time.monotonic() + 2)
