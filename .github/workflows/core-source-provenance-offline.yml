@@ -58,16 +58,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $vswhere = "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           if (!(Test-Path -LiteralPath $vswhere)) { throw 'vswhere missing on Windows build runner' }
-          $msbuild = (& $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\\**\\Bin\\MSBuild.exe' | Select-Object -First 1)
+          $msbuild = (& $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1)
           if (!$msbuild) { throw 'MSBuild missing on Windows build runner' }
-          & $msbuild .\\Libertix.sln /restore /m /p:Configuration=Release '/p:Platform=Any CPU'
+          & $msbuild .\Libertix.sln /restore /m /p:Configuration=Release '/p:Platform=Any CPU'
           if ($LASTEXITCODE -ne 0) { throw "WPF solution build failed: $LASTEXITCODE" }
       - name: Existing .NET Framework contract tests
         shell: pwsh
         run: |
-          dotnet test .\\Libertix.Tests\\Libertix.Tests.csproj -c Release --no-restore
+          dotnet test .\Libertix.Tests\Libertix.Tests.csproj -c Release --no-restore
           if ($LASTEXITCODE -ne 0) { throw "C# contract tests failed: $LASTEXITCODE" }
       - name: Existing PowerShell Pester suite
         shell: pwsh
@@ -75,7 +75,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
           Import-Module Pester -RequiredVersion 5.7.1 -Force
-          $outcome = Invoke-Pester -Path .\\PowerShell.Tests -PassThru
+          $outcome = Invoke-Pester -Path .\PowerShell.Tests -PassThru
           if ($outcome.FailedCount -gt 0 -or $outcome.PassedCount -eq 0) {
             throw "Pester tests failed or none ran"
           }
