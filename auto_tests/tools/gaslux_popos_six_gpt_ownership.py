@@ -72,6 +72,7 @@ class SafeWorkspace:
         self.work_fd = -1
         self.evidence_fd = -1
         self.inventory: dict[str, tuple[int, int]] = {}
+        self.open_files: dict[str, int] = {}
         try:
             need(
                 self.work.is_absolute()
@@ -104,6 +105,10 @@ class SafeWorkspace:
             raise
 
     def close(self) -> None:
+        # Keeping the original file inode open prevents inode reuse between stages.
+        for fd in self.open_files.values():
+            os.close(fd)
+        self.open_files.clear()
         for name in ("work_fd", "evidence_fd", "parent_fd"):
             fd = getattr(self, name, -1)
             if fd != -1:
@@ -159,9 +164,19 @@ class SafeWorkspace:
                     prior is None or prior == identity(info),
                     "REFUSE_IDENTITY_MISMATCH: resource inode substituted",
                 )
+                if prior is not None:
+                    pinned = os.fstat(self.open_files[name])
+                    need(
+                        identity(pinned) == prior and pinned.st_nlink == 1,
+                        "REFUSE_IDENTITY_MISMATCH: pinned inode detached",
+                    )
+                else:
+                    self.open_files[name] = descriptor
+                    descriptor = -1
                 self.inventory[name] = identity(info)
             finally:
-                os.close(descriptor)
+                if descriptor != -1:
+                    os.close(descriptor)
         need(
             all(name in observed for name in self.inventory),
             "REFUSE_IDENTITY_MISMATCH: previously owned resource missing",

@@ -281,6 +281,38 @@ class SixGptNegativeTests(unittest.TestCase):
                     guard.export()
                 self.assertTrue(work.is_dir())
 
+    def test_f01_ovmf_vars_pinned_inode_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = root / "runner"
+            repo = root / "repo"
+            parent.mkdir()
+            repo.mkdir()
+            work = Path(tempfile.mkdtemp(prefix="gaslux-pop-six-gpt-", dir=parent))
+            evidence = repo / "pop-six-gpt-evidence"
+            evidence.mkdir(mode=0o700)
+            vars_path = work / lab.OVMF_NAME
+            vars_path.write_bytes(b"original-private-vars")
+            with (
+                patch.dict(
+                    os.environ, {"RUNNER_TEMP": str(parent), "GITHUB_WORKSPACE": str(repo)}
+                ),
+                owner.SafeWorkspace(work, evidence) as guard,
+            ):
+                old = work / "fault-injected-vars.fd"
+                vars_path.rename(old)
+                vars_path.write_bytes(b"foreign-vars")
+                with self.assertRaisesRegex(Refusal, "inode substituted"):
+                    guard.inspect()
+                self.assertEqual(vars_path.read_bytes(), b"foreign-vars")
+                self.assertEqual(old.read_bytes(), b"original-private-vars")
+            with lab.PinnedResource(old) as pin:
+                old.rename(work / "fault-restored-vars.fd")
+                old.write_bytes(b"replacement-vars")
+                with self.assertRaisesRegex(Refusal, "inode replaced"):
+                    pin.verify()
+            self.assertEqual(old.read_bytes(), b"replacement-vars")
+
     def test_f01_enospc_fails_without_unlink(self):
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory) / "runner"
