@@ -4,7 +4,7 @@
 
 The **main/default branch** owns the clock workflow `.github/workflows/gaslux-agent-clock.yml`: `schedule` at minute 37 each hour, plus manually invoked `workflow_dispatch`. It runs on GitHub-hosted runners, not ChatGPT tasks. `dev` provides the reusable `gaslux-agent-builder.yml` implementation worker. A missing-feature selector chooses at most **one** eligible, curated product task per run. New model inference is skipped when all tasks are done or a candidate branch already exists for the same dev SHA.
 
-The first two tasks are genuine product features in the shared `Installation/WindowsKeyboardLayout.cs`: missing Portuguese (Portugal) `00000816` → `pt` and Brazilian Portuguese `00000416` → `br`. They are intentionally low-risk code changes. Other specialist backend roles (CachyOS, Pop!_OS, Q4OS, Bazzite) are registered but cannot write or create tasks until separately reviewed scope/acceptance tests exist.
+The initial two approved tasks are genuine product features in the shared `Installation/WindowsKeyboardLayout.cs`: missing Portuguese (Portugal) `00000816` → `pt` and Brazilian Portuguese `00000416` → `br`. They are intentionally low-risk code changes. Other specialist backend roles (CachyOS, Pop!_OS, Q4OS, Bazzite) are registered but cannot write or create tasks until separately reviewed scope/acceptance tests exist.
 
 ## Github Actions job boundaries
 
@@ -18,8 +18,8 @@ The first two tasks are genuine product features in the shared `Installation/Win
 
 ## Branch ownership
 
-- The scheduled entrypoint must be merged to **`main`** to execute regularly; `schedule` defined only on `dev` does not run.
-- The reusable model worker, curated tasks and adversarial tests must be merged to **`dev`** and independently checked first. The `main` scheduler references `@dev` and cannot run the builder before that workflow exists there.
+- The scheduled entrypoint must be merged to **`main`** to execute regularly; `schedule` defined only on `dev` does not run. The first merge of this workflow to main also triggers a one-time `push` execution for immediate, observable functional validation.
+- The reusable model worker, curated tasks and adversarial tests **were merged into `dev`** as PR #370 (commit `aad7fdb96973a8b8333255778160612ba00764c3`) and the post-merge task-idle regression test fix PR #372 (commit `66c4bb77cdaa8ce5d2c52a34d2fb859742f655cc`). The `main` scheduler references `@dev` and cannot run the builder before that workflow exists there.
 - The current `main` bootstrap-only workflow is left untouched. The existing Draft PR #362 is a separate read-only monitor, not this programming-agent scheduler.
 - No production installer C# logic is altered by merging this orchestration workflow alone; the protected `main` stable catalog is untouched.
 - Auto-merging model PRs, opening writer access to disk/ESP/BCD/WinRE, promoting `main`, or declaring the 136 release acceptance gates complete is not authorized.
