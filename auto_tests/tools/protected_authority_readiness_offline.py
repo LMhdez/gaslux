@@ -4,6 +4,7 @@ No network, GitHub token, workflow dispatch, ledger, cryptography, QEMU or write
 Only a future separately reviewed administrative adapter could establish provenance.
 Runner-controlled responses and successful CI MUST NOT become authority.
 """
+
 from __future__ import annotations
 
 import json
@@ -130,9 +131,7 @@ def _reason(control: str, entry: dict[str, Any] | None) -> str:
 
 
 def _full_sha(value: object) -> bool:
-    return type(value) is str and len(value) == 40 and all(
-        c in "0123456789abcdef" for c in value
-    )
+    return type(value) is str and len(value) == 40 and all(c in "0123456789abcdef" for c in value)
 
 
 def assess_readiness(untrusted_report: object) -> dict[str, Any]:
@@ -144,8 +143,7 @@ def assess_readiness(untrusted_report: object) -> dict[str, Any]:
     errors = list(VALIDATOR.iter_errors(untrusted_report))
     if errors:
         reasons = {
-            key: {"status": NOT_VERIFIABLE, "reason": "INPUT_SCHEMA_INVALID"}
-            for key in CONTROLS
+            key: {"status": NOT_VERIFIABLE, "reason": "INPUT_SCHEMA_INVALID"} for key in CONTROLS
         }
     else:
         observations = untrusted_report["observations"]
@@ -191,10 +189,18 @@ def probe_existing_denial_contracts(
         observed["exactGitTrigger"] = "UNEXPECTED_ACCEPTANCE_STILL_BLOCKED"
     try:
         safety_module.decide_no_writer(
-            plan={}, plan_bytes=b"", transaction_id="", vm_id="",
-            host_evidence={}, guest_evidence={}, immediate_evidence={},
-            host_key=b"", guest_key=b"", fresh_nonce="",
-            owned_regions=[], write_set=[],
+            plan={},
+            plan_bytes=b"",
+            transaction_id="",
+            vm_id="",
+            host_evidence={},
+            guest_evidence={},
+            immediate_evidence={},
+            host_key=b"",
+            guest_key=b"",
+            fresh_nonce="",
+            owned_regions=[],
+            write_set=[],
         )
     except safety_module.PrewriteDenied:
         observed["noWriter"] = "REFUSED_INVALID_LAB_INPUT"

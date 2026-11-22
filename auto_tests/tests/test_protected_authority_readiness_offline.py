@@ -1,4 +1,5 @@
 """Adversarial static readiness checks. None authenticate an administrative actor."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -13,8 +14,7 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parents[2]
 PIN_ROOT = Path(os.environ["GASLUX_READINESS_PIN_ROOT"]).resolve()
 FIXTURE = (
-    ROOT
-    / "auto_tests/fixtures/protected-authority-readiness/untrusted-github-observations.json"
+    ROOT / "auto_tests/fixtures/protected-authority-readiness/untrusted-github-observations.json"
 )
 SCHEMA = ROOT / "schemas/protected-authority-readiness-v1.schema.json"
 
@@ -64,9 +64,7 @@ def assert_blocked(value):
     assert value["decision"] == "BLOCKED_TRUST_ROOT"
     assert value["readOnlyDiagnostic"] is True
     assert set(value["controls"]) == set(gate.CONTROLS)
-    assert set(value["individualStatusesDefined"]) == {
-        "VERIFIED", "MISSING", "NOT_VERIFIABLE"
-    }
+    assert set(value["individualStatusesDefined"]) == {"VERIFIED", "MISSING", "NOT_VERIFIABLE"}
     assert all(v["status"] == "NOT_VERIFIABLE" for v in value["controls"].values())
     assert set(value["capabilities"]) == set(gate.CAPABILITY_NAMES)
     assert all(item is False for item in value["capabilities"].values())
@@ -89,12 +87,8 @@ def test_realistic_branch_flag_false_with_403_and_ruleset_gap():
     assert result["controls"]["main.protection"]["reason"].startswith(
         "DIRECT_BRANCH_PROTECTION_FLAG_FALSE"
     )
-    assert result["controls"]["reviews.required"]["reason"] == (
-        "API_FORBIDDEN_NOT_VERIFIABLE"
-    )
-    assert result["controls"]["main.rulesets"]["reason"].startswith(
-        "EMPTY_RULESET_LIST"
-    )
+    assert result["controls"]["reviews.required"]["reason"] == ("API_FORBIDDEN_NOT_VERIFIABLE")
+    assert result["controls"]["main.rulesets"]["reason"].startswith("EMPTY_RULESET_LIST")
     assert_blocked(result)
 
 
@@ -217,8 +211,7 @@ def test_all_documents_supplied_by_runner_do_not_become_verified():
     }
     result = outcome(data)
     assert all(
-        value["reason"] == "SELF_ASSERTED_OR_LOCAL_SOURCE"
-        for value in result["controls"].values()
+        value["reason"] == "SELF_ASSERTED_OR_LOCAL_SOURCE" for value in result["controls"].values()
     )
     assert_blocked(result)
 
@@ -257,9 +250,7 @@ def test_matching_sha_remains_untrusted():
 
 def test_unavailable_environment_and_incomplete_response():
     data = report()
-    data["observations"]["environment.requiredReviewers"] = probe(
-        None, status=503
-    )
+    data["observations"]["environment.requiredReviewers"] = probe(None, status=503)
     result = outcome(data)
     assert result["controls"]["environment.requiredReviewers"]["reason"] == (
         "API_UNAVAILABLE_OR_UNSUPPORTED"
@@ -274,9 +265,7 @@ def test_unavailable_environment_and_incomplete_response():
         lambda d: d.update({"contractVersion": 2}),
         lambda d: d.update({"repository": "other/repo"}),
         lambda d: d["observations"]["main.protection"].update({"trusted": True}),
-        lambda d: d["observations"]["main.protection"].update(
-            {"source": "INDEPENDENT_ADMIN"}
-        ),
+        lambda d: d["observations"]["main.protection"].update({"source": "INDEPENDENT_ADMIN"}),
         lambda d: d["observations"]["main.protection"].update({"httpStatus": 999}),
     ],
 )
@@ -284,17 +273,15 @@ def test_structurally_invalid_self_authorization_refused(invalid):
     data = report()
     invalid(data)
     result = outcome(data)
-    assert all(
-        x["reason"] == "INPUT_SCHEMA_INVALID" for x in result["controls"].values()
-    )
+    assert all(x["reason"] == "INPUT_SCHEMA_INVALID" for x in result["controls"].values())
     assert_blocked(result)
 
 
 def test_ledger_v3_original_contracts_remain_denial_only():
     grant = json.loads(
-        (
-            PIN_ROOT / "ledger/auto_tests/fixtures/observer-one-shot/valid-grant.json"
-        ).read_text(encoding="utf-8")
+        (PIN_ROOT / "ledger/auto_tests/fixtures/observer-one-shot/valid-grant.json").read_text(
+            encoding="utf-8"
+        )
     )
     ledger._check_grant(grant)
     assert len(ledger._identities(grant)) == 3
@@ -324,19 +311,27 @@ def test_pinned_275_git_verifier_requires_real_protected_pins(tmp_path):
 def test_original_267_no_writer_refuses_untrusted_input():
     with pytest.raises(safety.PrewriteDenied):
         safety.decide_no_writer(
-            plan={}, plan_bytes=b"", transaction_id="", vm_id="",
-            host_evidence={}, guest_evidence={}, immediate_evidence={},
-            host_key=b"", guest_key=b"", fresh_nonce="",
-            owned_regions=[], write_set=[],
+            plan={},
+            plan_bytes=b"",
+            transaction_id="",
+            vm_id="",
+            host_evidence={},
+            guest_evidence={},
+            immediate_evidence={},
+            host_key=b"",
+            guest_key=b"",
+            fresh_nonce="",
+            owned_regions=[],
+            write_set=[],
         )
     assert_blocked(outcome())
 
 
 def test_probe_existing_original_contracts_reuses_denials():
     grant = json.loads(
-        (
-            PIN_ROOT / "ledger/auto_tests/fixtures/observer-one-shot/valid-grant.json"
-        ).read_text(encoding="utf-8")
+        (PIN_ROOT / "ledger/auto_tests/fixtures/observer-one-shot/valid-grant.json").read_text(
+            encoding="utf-8"
+        )
     )
     value = gate.probe_existing_denial_contracts(
         trigger_module=trigger, ledger_module=ledger, safety_module=safety, grant=grant
@@ -349,14 +344,12 @@ def test_probe_existing_original_contracts_reuses_denials():
 
 
 def test_inert_275_trigger_and_294_producer_are_not_authority():
-    workflow = (
-        PIN_ROOT / "trigger/.github/workflows/observer-gpt-qemu-one-shot.yml"
-    ).read_text(encoding="utf-8")
+    workflow = (PIN_ROOT / "trigger/.github/workflows/observer-gpt-qemu-one-shot.yml").read_text(
+        encoding="utf-8"
+    )
     assert "if: ${{ false }}" in workflow
     assert "qemu-disabled:" in workflow
-    producer = (
-        PIN_ROOT / "observer/auto_tests/installer_observer/host_qemu_fd_evidence.py"
-    )
+    producer = PIN_ROOT / "observer/auto_tests/installer_observer/host_qemu_fd_evidence.py"
     assert producer.is_file()
     assert "no writer" in producer.read_text(encoding="utf-8").lower() or (
         "read-only" in producer.read_text(encoding="utf-8").lower()
