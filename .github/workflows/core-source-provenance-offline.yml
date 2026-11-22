@@ -42,3 +42,40 @@ jobs:
           .core-venv/bin/python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py
       - name: Provenance regressions (no VM access)
         run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_core_source_provenance.py
+      - name: Inherited deployment audit
+        run: cd auto_tests && ../.core-venv/bin/python -m tools.deployment_audit
+      - name: Inherited core and signed-release unit tests
+        run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_core.py auto_tests/tests/test_published_release.py
+
+  windows-wpf-build:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Restore and build inherited WPF solution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+          if (!(Test-Path -LiteralPath $vswhere)) { throw 'vswhere missing on Windows build runner' }
+          $msbuild = (& $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\\**\\Bin\\MSBuild.exe' | Select-Object -First 1)
+          if (!$msbuild) { throw 'MSBuild missing on Windows build runner' }
+          & $msbuild .\\Libertix.sln /restore /m /p:Configuration=Release '/p:Platform=Any CPU'
+          if ($LASTEXITCODE -ne 0) { throw "WPF solution build failed: $LASTEXITCODE" }
+      - name: Existing .NET Framework contract tests
+        shell: pwsh
+        run: |
+          dotnet test .\\Libertix.Tests\\Libertix.Tests.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw "C# contract tests failed: $LASTEXITCODE" }
+      - name: Existing PowerShell Pester suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 5.7.1 -Force
+          $outcome = Invoke-Pester -Path .\\PowerShell.Tests -PassThru
+          if ($outcome.FailedCount -gt 0 -or $outcome.PassedCount -eq 0) {
+            throw "Pester tests failed or none ran"
+          }
