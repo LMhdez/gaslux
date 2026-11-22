@@ -9,6 +9,7 @@ on:
       - 'auto_tests/tests/test_q4os_native_live_boot_readiness.py'
       - 'schemas/gaslux-q4os-native-live-readiness.schema.json'
       - 'docs/Q4OS_NATIVE_LIVE_BOOT_READINESS.md'
+      - 'docs/Q4OS_BACKEND.md'
 
 permissions:
   contents: read
