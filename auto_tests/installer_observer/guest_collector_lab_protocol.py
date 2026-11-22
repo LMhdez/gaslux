@@ -127,7 +127,7 @@ class LabChallengeLedger:
     """Durable lab-only ledger. Host compromise bypasses it. NO external trust."""
 
     def __init__(self, path: Path):
-        _check(type(path) is Path and path.is_absolute(), "INVALID_LEDGER_PATH")
+        _check(isinstance(path, Path) and path.is_absolute(), "INVALID_LEDGER_PATH")
         parent = path.parent
         _check(
             parent.is_dir()
