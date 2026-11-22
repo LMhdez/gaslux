@@ -102,6 +102,28 @@ def validate_mint_cow_boot_evidence(evidence_dir: Path, profile: str,
         "rollbackVerified",
         "releaseEligible",
     )
+    # This verifier is deliberately limited to direct-kernel SquashFS boots.
+    # A forged self-assertion for a stronger capability must never be upgraded
+    # to evidence, even when all hashes in this limited proof match.
+    forbidden_positive_claims = (
+        "nativeInstallerInvoked",
+        "nativeInstallerVerified",
+        "nativeBootloaderVerified",
+        "windowsBcdVerified",
+        "windowsWinreVerified",
+        "windowsRecoveryVerified",
+        "kernelPackageUpdateVerified",
+        "bootloaderUpdateVerified",
+        "postUpdateZorinBootVerified",
+        "postUpdateWindowsBootVerified",
+        "rollbackRestorationVerified",
+        "windowsRollbackVerified",
+    )
+    for document_name, document in (("proof", proof), ("report", report)):
+        for field in forbidden_positive_claims:
+            require(document.get(field) is not True,
+                    f"{document_name} overstates an unverified capability: {field}")
+
     for field in true_fields:
         require(proof.get(field) is True, f"Mint proof is missing positive witness: {field}")
     for field in false_fields:
