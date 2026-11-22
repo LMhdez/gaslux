@@ -133,8 +133,10 @@ def build_guest(workspace: Path) -> dict:
         p.name.removeprefix("vmlinuz-")
         for p in Path("/boot").glob("vmlinuz-*")
         if (Path("/lib/modules") / p.name.removeprefix("vmlinuz-")).is_dir()
+        and p.is_file()
+        and os.access(p, os.R_OK)
     )
-    require(bool(versions), "APT_SIGNED_GUEST_KERNEL_NOT_AVAILABLE")
+    require(bool(versions), "READABLE_APT_SIGNED_GUEST_KERNEL_NOT_AVAILABLE")
     version = versions[-1]
     kernel = Path("/boot") / ("vmlinuz-" + version)
     require(kernel.is_file(), "KERNEL_NOT_REGULAR")
