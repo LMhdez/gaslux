@@ -3,6 +3,7 @@
 Tests import the actual diagnostic module; they do not invoke grub-install,
 update-grub, apt, efibootmgr, bcdedit or any disk/image writer.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -43,19 +44,23 @@ class ReadonlyMintBootWriteSet(unittest.TestCase):
             script.write_bytes(script.read_bytes() + b"\n# synthetic unreviewed change\n")
             mutated = audit.audit_source_pins(target)
             self.assertFalse(mutated["sourcePinned"])
-            self.assertTrue(any(
-                issue["file"] == "assets/live/libertix-sync-efi.sh"
-                and issue["reason"] == "source_git_blob_changed"
-                for issue in mutated["issues"]
-            ))
+            self.assertTrue(
+                any(
+                    issue["file"] == "assets/live/libertix-sync-efi.sh"
+                    and issue["reason"] == "source_git_blob_changed"
+                    for issue in mutated["issues"]
+                )
+            )
             script.unlink()
             script.symlink_to(REPOSITORY / "assets/live/libertix-sync-efi.sh")
             linked = audit.audit_source_pins(target)
             self.assertFalse(linked["sourcePinned"])
-            self.assertTrue(any(
-                issue["file"] == "assets/live/libertix-sync-efi.sh"
-                for issue in linked["issues"]
-            ))
+            self.assertTrue(
+                any(
+                    issue["file"] == "assets/live/libertix-sync-efi.sh"
+                    for issue in linked["issues"]
+                )
+            )
 
     def test_all_known_scenarios_never_grant_boot_or_rollback_authority(self):
         for distro in ("mint", "zorin"):
@@ -66,7 +71,8 @@ class ReadonlyMintBootWriteSet(unittest.TestCase):
                             continue
                         with self.subTest(distro=distro, fw=fw, op=operation, pref=preferred):
                             data = audit.classify_write_set(
-                                firmware=fw, operation=operation,
+                                firmware=fw,
+                                operation=operation,
                                 preferred_active=preferred,
                             )
                             self.assertFalse(data["executeWrites"])
@@ -75,33 +81,36 @@ class ReadonlyMintBootWriteSet(unittest.TestCase):
                             self.assertFalse(data["windowsInPlaceRollbackProven"])
                             self.assertFalse(data["installedPackagesHooksExhaustivelyAudited"])
                             self.assertTrue(data["writeSet"])
-                            self.assertTrue(all(not item["writeAuthorized"]
-                                                for item in data["writeSet"]))
+                            self.assertTrue(
+                                all(not item["writeAuthorized"] for item in data["writeSet"])
+                            )
 
     def test_uefi_preferred_path_explicitly_includes_windows_boot_manager_files(self):
         ordinary = audit.classify_write_set(
-            firmware="uefi", operation="update", preferred_active=False)
+            firmware="uefi", operation="update", preferred_active=False
+        )
         exceptional = audit.classify_write_set(
-            firmware="uefi", operation="update", preferred_active=True)
-        windows = [entry for entry in exceptional["writeSet"]
-                   if entry["impact"] == "WINDOWS_BOOT_CRITICAL"]
+            firmware="uefi", operation="update", preferred_active=True
+        )
+        windows = [
+            entry for entry in exceptional["writeSet"] if entry["impact"] == "WINDOWS_BOOT_CRITICAL"
+        ]
         self.assertEqual(len(windows), 5)
         self.assertTrue(any("bootmgfw.efi" in item["target"] for item in windows))
-        self.assertFalse(any(e["impact"] == "WINDOWS_BOOT_CRITICAL"
-                             for e in ordinary["writeSet"]))
-        self.assertTrue(any(
-            e["impact"] == "UNKNOWN_EXTERNAL_WRITER" for e in ordinary["writeSet"]))
+        self.assertFalse(any(e["impact"] == "WINDOWS_BOOT_CRITICAL" for e in ordinary["writeSet"]))
+        self.assertTrue(any(e["impact"] == "UNKNOWN_EXTERNAL_WRITER" for e in ordinary["writeSet"]))
         self.assertTrue(any("EFI/BOOT" in e["target"] for e in ordinary["writeSet"]))
 
     def test_uninstall_reports_bios_mbr_and_uefi_esp_firmware_and_windows_fallback(self):
         bios = audit.classify_write_set(
-            firmware="bios", operation="uninstall", preferred_active=False)
+            firmware="bios", operation="uninstall", preferred_active=False
+        )
         uefi = audit.classify_write_set(
-            firmware="uefi", operation="uninstall", preferred_active=True)
+            firmware="uefi", operation="uninstall", preferred_active=True
+        )
         self.assertTrue(any("MBR/PBR" in e["target"] for e in bios["writeSet"]))
         self.assertTrue(any("BootNext" in e["target"] for e in uefi["writeSet"]))
-        self.assertTrue(any(e["target"] == "ESP/EFI/Microsoft/Boot/*"
-                            for e in uefi["writeSet"]))
+        self.assertTrue(any(e["target"] == "ESP/EFI/Microsoft/Boot/*" for e in uefi["writeSet"]))
         self.assertFalse(uefi["windowsBootAndRecoveryValidatedAfterAction"])
 
     def test_invalid_or_untrusted_classification_rejected(self):
@@ -127,7 +136,8 @@ class ReadonlyEspTargets(unittest.TestCase):
         (self.esp / "EFI/Microsoft/Boot").mkdir(parents=True)
         (self.esp / "EFI/BOOT").mkdir(parents=True)
         (self.esp / "EFI/Libertix/.libertix-owner").write_text(
-            RUN_ID + "\nBoot0007\n", encoding="ascii")
+            RUN_ID + "\nBoot0007\n", encoding="ascii"
+        )
         (self.esp / "EFI/Microsoft/Boot/bootmgfw.efi").write_bytes(b"MZ-windows-fixture")
         (self.esp / "EFI/Libertix/shimx64.efi").write_bytes(b"MZ-owned-fixture")
 
