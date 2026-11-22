@@ -101,8 +101,8 @@ jobs:
                   "race": 17,
                   "synthetic": 32,
                   "existingRegressions": 140,
-                  "total": 189,
-                  "canonicalSafetyTests": "pytest: see job log",
+                  "canonicalSafetyFD": 25,
+                  "total": 214,
                   "passed": True
               },
               "currentDecision": "SYNTHETIC_NO_CHANGE_IF_ALL_FD_CHECKS_PASS",
