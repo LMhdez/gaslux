@@ -42,6 +42,33 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'dev' }}
           persist-credentials: false
+      - name: Offline unprivileged publisher guard adversarial checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "auto_tests/tools")
+          import ai_rank_publisher
+          source = Path("auto_tests/tools/rank_capture_changes.py").read_text()
+          good = "return sorted(changes, reverse=True, key=lambda item: item[0])"
+          bad = "return sorted(changes, reverse=False, key=lambda item: item[0])"
+          if source.count(good) != 1:
+              raise SystemExit("Baseline target changed")
+          regressed = source.replace(good, bad, 1)
+          ai_rank_publisher.validate(regressed, source)
+          harmful = source.replace(good, 'return __import__("os").system("echo bad")', 1)
+          broad = source.replace(good, 'print("extra")\n    ' + good, 1)
+          unrelated = source.replace("def main() -> int:", "def main() -> bool:", 1)
+          for invalid in (harmful, broad, unrelated, regressed):
+              try:
+                  ai_rank_publisher.validate(regressed, invalid)
+              except (ValueError, SyntaxError):
+                  continue
+              raise SystemExit("Publisher guard accepted unsafe or irrelevant diff")
+          print("Publisher allowlist contract: 1 valid; 4 invalid correctly rejected")
+          PY
       - name: Early test, skip inference if source already green
         id: baseline
         shell: bash
