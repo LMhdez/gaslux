@@ -794,3 +794,110 @@ def test_r03_unexpected_exception_stays_redacted_in_legacy_cli(monkeypatch, tmp_
     assert boot.main() == 1
     assert '"QEMU_STARTUP_UNCLASSIFIED"' in report.read_text()
     assert "SECRET_SENTINEL" not in report.read_text() + capsys.readouterr().out
+
+
+# R-01 residual: execute actual supervisor and Qmp modules with genuine
+# kernel pidfds and same-UID UNIX peers. No QEMU or Windows is started.
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "regular_fd",
+        "other_child_pidfd",
+        "fabricated_process",
+        "direct_session",
+        "send_key_foreign",
+    ],
+)
+def test_r01_pidfd_provenance_and_unsupervised_session_denied(
+    monkeypatch, tmp_path, scenario
+):
+    import socket
+    import time
+
+    from q4os_win10_qmp_boot import Qmp
+
+    work = tmp_path / "private"
+    work.mkdir(mode=0o700)
+    sock = work / "qmp.sock"
+    record = work / "received.bin"
+    server_code = """
+import socket,sys
+from pathlib import Path
+s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.bind(sys.argv[1]);s.listen(1)
+c,_=s.accept();c.settimeout(0.6)
+try:
+    data=c.recv(4096)
+except (TimeoutError, OSError):
+    data=b''
+Path(sys.argv[2]).write_bytes(data)
+c.close();s.close()
+"""
+    server = subprocess.Popen(
+        [sys.executable, "-u", "-c", server_code, str(sock), str(record)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    other = subprocess.Popen(
+        [sys.executable, "-c", "import time;time.sleep(8)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    fd = None
+    qmp = None
+    monkeypatch.setattr(witness, "QEMU", sys.executable)
+    try:
+        deadline = time.monotonic() + 3
+        while not sock.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert sock.exists()
+        if scenario == "regular_fd":
+            fd = os.open(os.devnull, os.O_RDONLY)
+        elif scenario == "other_child_pidfd":
+            fd = os.pidfd_open(other.pid)
+        else:
+            fd = os.pidfd_open(server.pid)
+
+        class Fabricated:
+            pid = server.pid
+
+            def poll(self):
+                return None
+
+        process = (
+            Fabricated()
+            if scenario in ("fabricated_process", "send_key_foreign")
+            else server
+        )
+        qmp = Qmp(sock, negotiate=False)
+        session = witness._BoundQmpSession(
+            qmp, process, fd, sock, work, witness._socket_identity(sock, work)
+        )
+        if scenario == "send_key_foreign":
+            try:
+                qmp.bind_verified_session(session)
+                qmp.send_key_once()
+            except (witness.StartupRefusal, BootRefusal, OSError, ValueError):
+                pass
+        else:
+            with pytest.raises(
+                (witness.StartupRefusal, BootRefusal),
+                match="QEMU_STARTUP_UNCLASSIFIED|qmp_supervisor_required",
+            ):
+                session.verify()
+    finally:
+        if qmp is not None:
+            qmp.close()
+        if fd is not None:
+            os.close(fd)
+        for proc in (server, other):
+            if proc.poll() is None:
+                proc.terminate()
+            proc.wait(timeout=5)
+    # No command, including send-key, may ever reach an unowned peer.
+    if record.exists():
+        assert record.read_bytes() == b""
