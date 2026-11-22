@@ -2,6 +2,10 @@
 
 > Inventário de referência: 2026-11-22 UTC. Obtido por inspeção dos **19 workflows existentes em dev** e de YAMLs referenciados nas PRs históricas/abertas. Não é uma garantia de execução recente, nem um inventário completo de todas as branches antigas. Para cada trabalho, ler o YAML **no HEAD exato da PR** e os scripts chamados; vários títulos mencionam QEMU sem executar um guest.
 
+## 2026-11-22 UTC — Compact owned 60-GiB QCOW2 allocation (PR #369)
+
+[PR #369](https://github.com/LMhdez/gaslux/pull/369) implements a **real disposable QEMU target-disk allocation**, not an installer demonstration. [Action #45055079757](https://github.com/LMhdez/gaslux/actions/runs/45055079757) at HEAD `f0aa0554b482087aecbc4593f5b3ac1ebb6b1d7c` **SUCCESS**: runner measured `94,835,286,016` free bytes, successfully created and independently inspected a sparse `64,424,509,440`-byte virtual QCOW2 (`60 GiB`), initial allocated size `200,704` bytes, no backing file, owned private temp directory and cleanup. Provisional physical planning envelope `80 GiB`, with `85 GiB` target ceiling; the plan is not an enforced runtime quota. Evidence artifact: [compact-ovmf-target-evidence](https://github.com/LMhdez/gaslux/actions/runs/45055079757/artifacts/14766164972). **Evidence level: REAL_QCOW2_ALLOCATION_ONLY** — no QEMU guest started and no Windows/Mint installation, co-boot, updates, snapshot restore or Windows recovery demonstrated. Every writer/guest admission flag remains **false**. This complements the independent read-only host-capacity PR #368 and must not be mistaken for a Windows VM admission or a successful install.
+
 ## Manutenção contínua do índice GitHub Actions / VMs
 
 **Rever e atualizar este índice** quando um workflow/branch de laboratório for criado, modificado, integrado ou encerrado, ou quando uma Action trouxer uma nova prova material. Confirmar o YAML e os scripts de `dev` **e do HEAD de PR relevante**, condições `if`, permissões, `workflow_dispatch`, resultados de cada job, SKIPPED, consents, artifacts e dados de boot. A contagem de 19 workflows abaixo é um **instantâneo de 22-11-2026**, não uma consulta dinâmica.
