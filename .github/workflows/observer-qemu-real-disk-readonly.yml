@@ -79,7 +79,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install only pytest and Ruff
-        run: python -m pip install --disable-pip-version-check 'pytest>=9,<10' 'ruff>=0.14,<0.17'
+        run: python -m pip install --disable-pip-version-check 'pytest>=9,<10' 'ruff>=0.14,<0.17' 'pillow>=11,<13'
       - name: Syntax, strict Ruff lint and formatting checks
         run: |
           set -Eeuo pipefail
