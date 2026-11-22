@@ -255,7 +255,7 @@ def make_ramfs(workspace: Path, collector: Path, kernel: Path) -> tuple[Path, di
         "initrdSha256": sha(result),
         "collectorSha256": sha(collector),
         "moduleCount": len(module_paths),
-        "guestImagePackage": subprocess.check_output(["dpkg-query", "-S", str(kernel)], text=True).strip(),
+        "guestImagePackage": subprocess.check_output(["dpkg-query", "-S", str(Path("/boot") / kernel.name)], text=True).strip(),
     }
 
 
