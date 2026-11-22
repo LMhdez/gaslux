@@ -142,8 +142,9 @@ def run_rank_test(source: str) -> tuple[bool, str]:
         namespace = {
             "__builtins__": {
                 "zip": zip, "sorted": sorted, "print": print,
-                "OSError": OSError,
+                "OSError": OSError, "list": list, "tuple": tuple, "float": float,
             },
+            "Path": Path,
             "image_score": lambda a, b: values[b.name],
         }
         exec(code, namespace)
