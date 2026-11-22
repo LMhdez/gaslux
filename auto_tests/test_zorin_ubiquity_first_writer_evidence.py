@@ -60,7 +60,9 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
             "        subprocess.check_call(['mount', 'device', '/mnt/x'])\n"
         )
         result = candidate_calls(source.encode(), "ubi-partman.py")
-        candidate = next(x for x in result["selectedCalls"] if x["callee"] == "subprocess.check_call")
+        candidate = next(
+            x for x in result["selectedCalls"] if x["callee"] == "subprocess.check_call"
+        )
         self.assertEqual(candidate["enclosingIfBranches"][0]["expression"], "mode == 'special'")
         self.assertEqual(candidate["enclosingIfBranches"][0]["branch"], "if")
         self.assertFalse(result["persistentWriteProven"])
