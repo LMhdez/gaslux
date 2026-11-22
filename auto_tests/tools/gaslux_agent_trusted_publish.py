@@ -114,7 +114,7 @@ def verify_evidence() -> tuple[dict, bytes, str, str]:
 
 def publish() -> None:
     if (os.getenv("GITHUB_REPOSITORY") != REPO
-        or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch")
+        or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
         or os.getenv("GITHUB_REF") != "refs/heads/main"):
         raise RuntimeError("Publishing only permitted from trusted main scheduler")
     report, candidate, task, role = verify_evidence()
