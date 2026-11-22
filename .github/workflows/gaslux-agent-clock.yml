@@ -16,11 +16,13 @@ on:
       - .github/workflows/gaslux-agent-clock.yml
       - auto_tests/tools/gaslux_agent_trusted_publish.py
       - auto_tests/tests/test_gaslux_agent_trusted_publish.py
+      - docs/GASLUX_ACTIONS_AGENT_CLOCK.md
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-clock.yml
       - auto_tests/tools/gaslux_agent_trusted_publish.py
       - auto_tests/tests/test_gaslux_agent_trusted_publish.py
+      - docs/GASLUX_ACTIONS_AGENT_CLOCK.md
 
 permissions:
   contents: read
