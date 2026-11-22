@@ -123,17 +123,16 @@ def validate_metadata(
         d = _obj(desc, "layer descriptor")
         size = d.get("size")
         sha = d.get("digest")
-        if (
-            d.get("mediaType") not in LAYER_TYPES
-            or not isinstance(sha, str)
-            or not DIGEST.fullmatch(sha)
-            or not isinstance(diffid, str)
-            or not DIGEST.fullmatch(diffid)
-            or type(size) is not int
-            or not 0 < size <= MAX_LAYER
-            or "urls" in d
-        ):
-            raise Refusal("Unbounded, foreign or unsupported OCI layer")
+        if d.get("mediaType") not in LAYER_TYPES:
+            raise Refusal("Unsupported OCI layer mediaType: " + str(d.get("mediaType"))[:100])
+        if not isinstance(sha, str) or not DIGEST.fullmatch(sha):
+            raise Refusal("Invalid compressed OCI layer digest")
+        if not isinstance(diffid, str) or not DIGEST.fullmatch(diffid):
+            raise Refusal("Invalid uncompressed OCI diff-id")
+        if type(size) is not int or not 0 < size <= MAX_LAYER:
+            raise Refusal("Unbounded OCI layer size: " + str(size)[:24])
+        if "urls" in d:
+            raise Refusal("Foreign external OCI layer URL")
         total += size
         if total > MAX_TOTAL:
             raise Refusal("Total compressed layers exceed inspection budget")
