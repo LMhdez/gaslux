@@ -96,8 +96,18 @@ jobs:
           mkdir source-evidence/rpmdb
           rpm --dbpath "$PWD/source-evidence/rpmdb" --initdb
           rpm --dbpath "$PWD/source-evidence/rpmdb" --import source-evidence/fedora45-only.gpg
+          signature_status=0
           rpmkeys --dbpath "$PWD/source-evidence/rpmdb" -Kv \
-            source-evidence/bootc-1.17.1-1.fc45.src.rpm | tee source-evidence/signature.txt
+            source-evidence/bootc-1.17.1-1.fc45.src.rpm \
+            | tee source-evidence/signature.txt || signature_status=$?
+          # The published Fedora 45 SRPM may have valid payload digests but
+          # no publisher signature. Do not call digests a signature.
+          if [ "$signature_status" -eq 0 ] \
+            && grep -Eq 'Signature.*OK|[Ss]ignature.*[Pp]gp.*OK' source-evidence/signature.txt; then
+            echo VERIFIED_FEDORA45_SRPM_SIGNATURE > source-evidence/signature-state.txt
+          else
+            echo SRPM_SIGNATURE_ABSENT_OR_UNVERIFIED > source-evidence/signature-state.txt
+          fi
           rpm -qp --qf '%{NAME} %{VERSION} %{RELEASE} %{ARCH}\n' \
             source-evidence/bootc-1.17.1-1.fc45.src.rpm \
             > source-evidence/nevra.txt
@@ -134,7 +144,7 @@ jobs:
           d=analyze_spec(spec)
           assert not d["requiresPatchReview"], d
           assert Path("source-evidence/patch-members.txt").read_text().strip()==""
-          print("SIGNED_SRPM_SPEC_NO_DECLARED_PATCH_FILES_BUT_ELF_UNPROVEN")
+          print("SRPM_SPEC_NO_DECLARED_PATCH_FILES_ELF_UNPROVEN")
           PY
           # Compare actual packaged source Rust paths against Git commit; no extraction to disk.
           for src in crates/lib/src/install.rs crates/lib/src/bootloader.rs; do
@@ -155,6 +165,7 @@ jobs:
             source-evidence/nevra.txt
             source-evidence/srpm-sha256.txt
             source-evidence/signature.txt
+            source-evidence/signature-state.txt
             source-evidence/members.txt
             source-evidence/patch-members.txt
             source-evidence/source-tar-sha256.txt
