@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/schemas/popos-build20-source-elf-deny.schema.json",
+  "title": "Pop!_OS build20 ELF source binding - source unproven, read-only",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "scenario",
+    "result",
+    "isoFullSha256Matched",
+    "elfFullSha256Matched",
+    "isoSha256",
+    "elfSha256",
+    "dpkgStatusSha256",
+    "packageMetadata",
+    "upstreamCommitInspected",
+    "upstreamCommitDateUtc",
+    "build20PublicReferenceUtc",
+    "build20Reference",
+    "upstreamCommitPostdatesOriginalBuild20Reference",
+    "isoGpgVerificationPerformedByWorkflow",
+    "isoHashMatchesPreviouslySignedManifestPin",
+    "cargoLockOfActualBuildVerified",
+    "elfBuildIdSourceBindingVerified",
+    "sourceToElfCorrespondenceVerified",
+    "signedBuildinfoVerified",
+    "aptRepositorySnapshotVerified",
+    "firstPersistentWriteProvenForPinnedElf",
+    "firstStateChangeProvenForPinnedElf",
+    "distinstExecuted",
+    "distinstExecutionAuthorized",
+    "productionInstallationAuthorized",
+    "sameDiskDualBootVerified",
+    "stable",
+    "elfExtractionOriginBoundToPinnedIso",
+    "dpkgStatusOriginBoundToPinnedIso"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "scenario": {
+      "const": "pop-distinst-build20-source-elf-readonly"
+    },
+    "result": {
+      "const": "SOURCE_TO_ELF_UNPROVEN"
+    },
+    "isoFullSha256Matched": {
+      "const": true
+    },
+    "elfFullSha256Matched": {
+      "const": true
+    },
+    "isoSha256": {
+      "const": "a0ef3842ab710db4f4407cf3499560b59dddbbcd59bee17beab7b0e99dc22b4c"
+    },
+    "elfSha256": {
+      "const": "8bfedbc2d6921c440449ec1fda8c4e4d1c0078d69db5aa5832d9a7bf8b13e1a5"
+    },
+    "dpkgStatusSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "packageMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package",
+        "version",
+        "architecture",
+        "sourceField",
+        "maintainer",
+        "depends",
+        "versionGitSuffixCandidates",
+        "aptOriginAuthenticated",
+        "signedBuildinfoVerified",
+        "sourceBuildEnvironmentReproduced"
+      ],
+      "properties": {
+        "package": {
+          "const": "distinst"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "architecture": {
+          "const": "amd64"
+        },
+        "sourceField": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maintainer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "depends": {
+          "type": "string"
+        },
+        "versionGitSuffixCandidates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{7,12}$"
+          }
+        },
+        "aptOriginAuthenticated": {
+          "const": false
+        },
+        "signedBuildinfoVerified": {
+          "const": false
+        },
+        "sourceBuildEnvironmentReproduced": {
+          "const": false
+        }
+      }
+    },
+    "upstreamCommitInspected": {
+      "const": "282dfc441ee608e963930d0ce01f04b672ca4f71"
+    },
+    "upstreamCommitDateUtc": {
+      "const": "2026-09-16T20:49:49Z"
+    },
+    "build20PublicReferenceUtc": {
+      "const": "2025-10-10T03:39:24Z"
+    },
+    "build20Reference": {
+      "const": "https://github.com/pop-os/pop/issues/3612"
+    },
+    "upstreamCommitPostdatesOriginalBuild20Reference": {
+      "const": true
+    },
+    "isoGpgVerificationPerformedByWorkflow": {
+      "const": false
+    },
+    "isoHashMatchesPreviouslySignedManifestPin": {
+      "const": true
+    },
+    "cargoLockOfActualBuildVerified": {
+      "const": false
+    },
+    "elfBuildIdSourceBindingVerified": {
+      "const": false
+    },
+    "sourceToElfCorrespondenceVerified": {
+      "const": false
+    },
+    "signedBuildinfoVerified": {
+      "const": false
+    },
+    "aptRepositorySnapshotVerified": {
+      "const": false
+    },
+    "firstPersistentWriteProvenForPinnedElf": {
+      "const": false
+    },
+    "firstStateChangeProvenForPinnedElf": {
+      "const": false
+    },
+    "distinstExecuted": {
+      "const": false
+    },
+    "distinstExecutionAuthorized": {
+      "const": false
+    },
+    "productionInstallationAuthorized": {
+      "const": false
+    },
+    "sameDiskDualBootVerified": {
+      "const": false
+    },
+    "stable": {
+      "const": false
+    },
+    "elfExtractionOriginBoundToPinnedIso": {
+      "const": false
+    },
+    "dpkgStatusOriginBoundToPinnedIso": {
+      "const": false
+    }
+  }
+}
