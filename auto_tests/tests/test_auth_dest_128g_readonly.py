@@ -10,7 +10,6 @@ import copy
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import uuid
@@ -65,6 +64,26 @@ def _make_sparse(workspace):
     assert backing.stat().st_size == CAPACITY
     assert backing.stat().st_blocks * 512 < 32 * 1024**2
     return backing
+
+
+def _sparse_gpt_copy(source: Path, target: Path):
+    """Create private 128GiB sparse alias without copying all apparent bytes."""
+    front_bytes = 64 * 512
+    source_fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+    dest_fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+    try:
+        os.ftruncate(dest_fd, CAPACITY)
+        front = os.pread(source_fd, front_bytes, 0)
+        rear = os.pread(source_fd, front_bytes, CAPACITY - front_bytes)
+        assert len(front) == len(rear) == front_bytes
+        assert os.pwrite(dest_fd, front, 0) == front_bytes
+        assert os.pwrite(dest_fd, rear, CAPACITY - front_bytes) == front_bytes
+        os.fsync(dest_fd)
+    finally:
+        os.close(dest_fd)
+        os.close(source_fd)
+    assert target.stat().st_size == CAPACITY
+    assert target.stat().st_blocks * 512 < 32 * 1024**2
 
 
 def _make_overlay(workspace, backing):
@@ -263,7 +282,7 @@ def test_integral_qcow2_hash_pin_mismatch_refused(sample):
 
 def test_foreign_raw_fd_same_size_refused(sample, workspace):
     wrong = workspace / "foreign.raw"
-    shutil.copyfile(sample["paths"][1], wrong)
+    _sparse_gpt_copy(sample["paths"][1], wrong)
     with wrong.open("rb") as fd:
         refused(sample, "SPARSE_FOREIGN_FD_OR_GEOMETRY", backing_fd=fd.fileno())
 
@@ -272,7 +291,7 @@ def test_backing_path_replaced_after_fd_pinned_is_refused(sample, workspace):
     raw = sample["paths"][1]
     old = workspace / "old.raw"
     os.replace(raw, old)
-    shutil.copyfile(old, raw)
+    _sparse_gpt_copy(old, raw)
     refused(sample, "SPARSE_FOREIGN_FD_OR_GEOMETRY")
 
 
