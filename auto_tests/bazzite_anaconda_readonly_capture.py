@@ -18,6 +18,8 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from bazzite_gpt_fixture import PARTITIONS
+
 SERVICE = "org.fedoraproject.Anaconda.Modules.Storage"
 BUS = "/usr/bin/busctl"
 READS = (
@@ -248,13 +250,22 @@ def guest_disk_inventory(data: object) -> dict:
     observed = []
     previous_last = 0
     guids = {disk_guid.lower()}
-    for part in partitions:
+    for part, (number, partition_type, _label, expected_first, expected_last) in zip(
+        partitions, PARTITIONS, strict=True
+    ):
         if not isinstance(part, dict) or part.get("type") != "part":
             raise CaptureRefusal("Unexpected synthetic partition type")
         unique = part.get("partuuid")
         start = part.get("start")
         size = part.get("size")
         if (
+            type(part.get("partn")) is not int
+            or part["partn"] != number
+            or not isinstance(part.get("parttype"), str)
+            or part["parttype"].lower() != partition_type.lower()
+            or start != expected_first
+            or size != (expected_last - expected_first + 1) * 512
+            or
             not isinstance(unique, str)
             or not re.fullmatch(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", unique)
             or unique.lower() in guids
@@ -286,7 +297,7 @@ def read_guest_disk() -> dict:
         "--json",
         "--bytes",
         "--output",
-        "NAME,TYPE,SERIAL,PTUUID,PARTUUID,START,SIZE,LOG-SEC",
+        "NAME,TYPE,SERIAL,PTUUID,PARTUUID,PARTN,PARTTYPE,START,SIZE,LOG-SEC",
     ]
     observed = subprocess.run(
         command, check=True, capture_output=True, text=True, timeout=12
