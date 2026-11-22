@@ -237,7 +237,6 @@ def test_invalid_squashfs_member_refusal_does_not_emit_private_path(capsys):
     assert "SECRET_SENTINEL_ABC" not in "".join(capsys.readouterr())
 
 
-
 def test_experimental_iso_candidate_pins_measured_size_without_forging_signature():
     repo = Path(__file__).resolve().parents[2]
     candidate = json.loads(
