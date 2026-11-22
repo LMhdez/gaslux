@@ -80,9 +80,8 @@ def validate_evidence(report: dict, candidate: bytes, git_sha: str) -> None:
         and attempts[-1].get("passed") is True
     ):
         raise ValueError("No valid genuine failing-baseline/repair evidence")
-    if not COMMITTED.fullmatch(report["source_sha256"]) and not (
-        isinstance(report["source_sha256"], str)
-        and re.fullmatch(r"^[0-9a-f]{64}$", report["source_sha256"])
+    if not isinstance(report["source_sha256"], str) or not re.fullmatch(
+        r"^[0-9a-f]{64}$", report["source_sha256"]
     ):
         raise ValueError("Invalid original source SHA-256")
     if not re.fullmatch(r"^[0-9a-f]{64}$", report.get("candidate_sha256", "")):
@@ -136,7 +135,7 @@ def main() -> None:
     if ref["object"]["sha"] != sha:
         raise RuntimeError("dev advanced since worker start: fail closed")
     encoded = request_json("GET", f"/contents/{TARGET}?ref={sha}")
-    base_content = base64.b64decode(encoded["content"], validate=True)
+    base_content = base64.b64decode("".join(encoded["content"].split()), validate=True)
     if sha256(base_content) != report["source_sha256"]:
         raise RuntimeError("Worker source digest does not match exact dev base")
     validate_patch(base_content, candidate)
