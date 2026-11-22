@@ -15,7 +15,7 @@ import stat
 from typing import Any, Mapping
 
 from windows_cachyos_bcd_ab_control import (
-    AB_MIN_FREE_RESERVE_BYTES, TPM_CONTROL, TPM_TREATMENT,
+    TPM_CONTROL, TPM_TREATMENT,
     WINDOWS_CONTROL_OVERLAY, WINDOWS_CONTROL_VARS,
     preflight_ab_clone_capacity, tpm_state_tree_sha256,
     tpm_state_trees_independent,
@@ -28,9 +28,11 @@ PRIVATE_FORENSIC_RETENTION_RESERVE = 2 * 1024**3
 
 
 class CheckpointReadinessRefusal(ValueError):
-    def __init__(self, code: str):
+    def __init__(self, code: str, *, diagnostics: dict[str, Any] | None = None):
         super().__init__(code)
         self.code = code
+        # Only numeric local host measurements; no BCD content or source paths.
+        self.diagnostics = diagnostics
 
 
 def _require(condition: bool, code: str) -> None:
@@ -209,4 +211,28 @@ def inspect_readonly_ab_checkpoint(
     # No self-supplied booleans can prove genuine restore, live Windows boot,
     # independent source provenance, process quiescence, quota or QEMU backing.
     _ = restore_witness
-    raise CheckpointReadinessRefusal("RESTORE_NOT_PROVEN")
+    raise CheckpointReadinessRefusal(
+        "RESTORE_NOT_PROVEN",
+        diagnostics={
+            "localApparentArtifactBytes": sum(
+                st.st_size for st in (
+                    disk_st, control_st, vars_a_st, vars_b_st,
+                    base_st, original_vars_st,
+                )
+            ),
+            "localAllocatedArtifactBytes": sum(
+                st.st_blocks * 512 for st in (
+                    disk_st, control_st, vars_a_st, vars_b_st,
+                    base_st, original_vars_st,
+                )
+            ),
+            "physicalAvailableBytesAtInspection":
+                capacity["availableFreeBytesBeforeClone"],
+            "physicalRequiredFreeBytesBeforeRun": required,
+            "quotaIndependentlyVerified": False,
+            "sourceProvenanceAuthenticated": False,
+            "externalQemuProcessQuiescenceProven": False,
+            "checkpointInPlaceRecoveryProven": False,
+            "operationalWritesAuthorized": False,
+        },
+    )
