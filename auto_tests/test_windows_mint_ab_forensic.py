@@ -606,7 +606,8 @@ class MintAbForensicContracts(unittest.TestCase):
         for title, resource, stage, windows_expected, mint_expected in cases:
             with self.subTest(case=title), tempfile.TemporaryDirectory() as root:
                 lab = self._fake_lab(root)
-                mutation = lambda m, resource=resource: self._set_unavailable(m, resource)
+                def mutation(m, resource=resource):
+                    self._set_unavailable(m, resource)
                 changes = {stage: mutation}
                 if stage == 0:
                     changes[1] = mutation
@@ -685,12 +686,14 @@ class MintAbForensicContracts(unittest.TestCase):
                 }
                 if scenario == "wrong_hash":
                     expected["checkpoint"] = "0" * 64
-                with patch.dict(
-                    os.environ,
-                    {"GITHUB_RUN_ID": "99981", "GITHUB_SHA": "a" * 40},
+                with (
+                    patch.dict(
+                        os.environ,
+                        {"GITHUB_RUN_ID": "99981", "GITHUB_SHA": "a" * 40},
+                    ),
+                    self.assertRaisesRegex(forensic.ForensicError, "F-03"),
                 ):
-                    with self.assertRaisesRegex(forensic.ForensicError, "F-03"):
-                        forensic.require_complete_forensic_inventories(
+                    forensic.require_complete_forensic_inventories(
                             phase="before_windows_a",
                             sources={
                                 "arm_a_preboot": lab["before"],
@@ -798,6 +801,7 @@ class MintAbForensicContracts(unittest.TestCase):
             # shape gate. The independent oracle catches the KNOWN omission.
             with tempfile.TemporaryDirectory() as evidence_root:
                 evidence = Path(evidence_root)
+                self.assertTrue(evidence.is_dir())
                 sample = {
                     "fileInventories": {
                         part: {"available": True, "fileSha256": read_files(part)[0]}
@@ -891,7 +895,7 @@ class MintAbForensicContracts(unittest.TestCase):
             with self.subTest(duplicate=dup, interrupted=interrupted):
                 guest = FixtureGuest(duplicate=dup, interrupted=interrupted)
                 with patch.dict(
-                    sys.modules, {"guestfs": types.SimpleNamespace(GuestFS=lambda **_: guest)}
+                    sys.modules, {"guestfs": types.SimpleNamespace(GuestFS=lambda guest=guest, **_: guest)}
                 ):
                     report = forensic.guest_ro_inventory(
                         Path("synthetic-guestfs-only.qcow2"),
