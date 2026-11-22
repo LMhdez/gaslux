@@ -85,7 +85,7 @@ def _sha1_git_blob(content: bytes) -> str:
 
 
 def _pinned_sources(repo: Path) -> dict[str, Any]:
-    deny(type(repo) is Path and repo.is_absolute()
+    deny(isinstance(repo, Path) and repo.is_absolute()
          and repo.is_dir() and not repo.is_symlink(),
          "REPO_ROOT_UNBOUND")
     manifest: dict[str, Any] = {}
