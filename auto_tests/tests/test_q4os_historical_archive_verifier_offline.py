@@ -1,4 +1,5 @@
 """Adversarial offline Q4OS archive tests; no guest, network or disk writers."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -31,6 +32,7 @@ def png():
             + payload
             + (zlib.crc32(kind + payload) & 0xFFFFFFFF).to_bytes(4, "big")
         )
+
     return (
         verifier.PNG_SIGNATURE
         + chunk(b"IHDR", struct.pack(">IIBBBBB", 1280, 800, 8, 2, 0, 0, 0))
@@ -234,6 +236,7 @@ def test_pathname_swap_after_read_cannot_change_authenticated_bytes(tmp_path, mo
     original_read = verifier.read
     first = verifier.ARTIFACTS[0]
     target = zip_dir / f"{first}.zip"
+
     def swap_after_read(path, limit=1024 * 1024):
         raw = original_read(path, limit)
         if path == target:
@@ -241,6 +244,7 @@ def test_pathname_swap_after_read_cannot_change_authenticated_bytes(tmp_path, mo
             substitute.write_bytes(b"attacker")
             substitute.replace(target)
         return raw
+
     monkeypatch.setattr(verifier, "read", swap_after_read)
     result = verifier.validate_archives(manifest_path, zip_dir, meta_dir)
     assert result["decision"] == "HISTORICAL_ARTIFACT_MATCHED"
@@ -248,6 +252,7 @@ def test_pathname_swap_after_read_cannot_change_authenticated_bytes(tmp_path, mo
 
 def test_archive_module_has_no_controller_or_network_imports():
     import ast
+
     source = (ROOT / "auto_tests/tools/verify_q4os_action_archives_offline.py").read_text()
     nodes = ast.walk(ast.parse(source))
     banned = {"q4os", "replay", "locators", "socket", "subprocess", "requests", "paramiko"}
