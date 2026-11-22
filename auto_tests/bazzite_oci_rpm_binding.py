@@ -12,11 +12,13 @@ import re
 import sqlite3
 import struct
 
-RPMDB_PATHS = frozenset({
-    "usr/share/rpm/rpmdb.sqlite",
-    "usr/lib/sysimage/rpm/rpmdb.sqlite",
-    "var/lib/rpm/rpmdb.sqlite",
-})
+RPMDB_PATHS = frozenset(
+    {
+        "usr/share/rpm/rpmdb.sqlite",
+        "usr/lib/sysimage/rpm/rpmdb.sqlite",
+        "var/lib/rpm/rpmdb.sqlite",
+    }
+)
 RPMDB_SIDECARS = frozenset(
     path + suffix for path in RPMDB_PATHS for suffix in ("-wal", "-shm", "-journal")
 )
@@ -50,8 +52,14 @@ class PackageUnproven(ValueError):
     """Package/ELF identity cannot be established from final signed bytes."""
 
 
-def _read_tag(blob: bytes, wanted: dict[int, tuple[int, int, int, int]], tag: int, *,
-              kind: int, optional: bool = False):
+def _read_tag(
+    blob: bytes,
+    wanted: dict[int, tuple[int, int, int, int]],
+    tag: int,
+    *,
+    kind: int,
+    optional: bool = False,
+):
     entry = wanted.get(tag)
     if entry is None:
         if optional:
@@ -95,8 +103,21 @@ def rpm_header(data: bytes) -> dict:
         raise PackageUnproven("RPM header index/store lengths invalid")
     offset = 16 + 16 * n
     wanted = {}
-    selected = {NAME, VERSION, RELEASE, EPOCH, BUILDTIME, BUILDHOST, ARCH,
-                FILEDIGESTS, SOURCERPM, DIRINDEXES, BASENAMES, DIRNAMES, FILEDIGESTALGO}
+    selected = {
+        NAME,
+        VERSION,
+        RELEASE,
+        EPOCH,
+        BUILDTIME,
+        BUILDHOST,
+        ARCH,
+        FILEDIGESTS,
+        SOURCERPM,
+        DIRINDEXES,
+        BASENAMES,
+        DIRNAMES,
+        FILEDIGESTALGO,
+    }
     for i in range(n):
         tag, typ, pos, count = struct.unpack_from(">IIII", data, 16 + 16 * i)
         if tag not in selected:
@@ -140,9 +161,14 @@ def rpm_header(data: bytes) -> dict:
     source = _read_tag(data, wanted, SOURCERPM, kind=6, optional=True)
     buildhost = _read_tag(data, wanted, BUILDHOST, kind=6, optional=True)
     return {
-        "name": name, "epoch": epoch, "version": version, "release": release,
-        "architecture": arch, "fileSha256": matches[0],
-        "sourceRpm": source, "buildTimeUnix": buildtime[0] if buildtime else None,
+        "name": name,
+        "epoch": epoch,
+        "version": version,
+        "release": release,
+        "architecture": arch,
+        "fileSha256": matches[0],
+        "sourceRpm": source,
+        "buildTimeUnix": buildtime[0] if buildtime else None,
         "toFilesystemManpageDeclared": any("bootc-install-to-filesystem." in b for b in base),
         "buildHost": buildhost,
         "rpmHeaderSha256": hashlib.sha256(data).hexdigest(),
@@ -180,10 +206,10 @@ def elf_build_id(prefix: bytes) -> dict:
             dend = nend + (descsz + 3 & ~3)
             if dend > end:
                 raise PackageUnproven("Truncated ELF note")
-            if kind == 3 and namesz == 4 and prefix[at:at + 4] == b"GNU\x00":
+            if kind == 3 and namesz == 4 and prefix[at : at + 4] == b"GNU\x00":
                 if not 8 <= descsz <= 64:
                     raise PackageUnproven("Unexpected ELF build-id size")
-                ids.add(prefix[nend:nend + descsz].hex())
+                ids.add(prefix[nend : nend + descsz].hex())
             at = dend
     if len(ids) > 1:
         raise PackageUnproven("Inconsistent ELF build-ids")
@@ -237,10 +263,13 @@ def bind_rpm(overlay: dict, bootc_file: dict) -> dict:
         elf = elf_build_id(bootc_file["elfPrefix"])
         return {
             "status": "BOOTC_RPM_IDENTITY_VERIFIED",
-            "rpmdbPath": path, "rpmdbSha256": hashlib.sha256(raw).hexdigest(),
-            "rpmPackage": result, **elf,
+            "rpmdbPath": path,
+            "rpmdbSha256": hashlib.sha256(raw).hexdigest(),
+            "rpmPackage": result,
+            **elf,
             "bootcRuntimeToFilesystemVerified": False,
-            "nativeInstallationVerified": False, "stable": False,
+            "nativeInstallationVerified": False,
+            "stable": False,
         }
     except (PackageUnproven, sqlite3.Error, OverflowError, ValueError, struct.error) as exc:
         return {**unproven, "reason": str(exc)[:160]}

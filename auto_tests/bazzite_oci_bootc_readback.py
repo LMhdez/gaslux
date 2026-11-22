@@ -305,9 +305,7 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                         raw_db = db_stream.read(MAX_RPMDB + 1)
                         if len(raw_db) != member.size:
                             raise Refusal("Truncated RPM DB in signed OCI layer")
-                        entries[name] = {
-                            "kind": "rpmdb", "size": member.size, "content": raw_db
-                        }
+                        entries[name] = {"kind": "rpmdb", "size": member.size, "content": raw_db}
                     elif member.issym():
                         entries[name] = {"kind": "symlink", "target": _link(name, member.linkname)}
                     else:

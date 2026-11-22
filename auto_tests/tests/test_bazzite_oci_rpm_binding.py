@@ -45,8 +45,10 @@ def rpm_header_fixture(*, name="bootc", version="1.17.1", digest=None, arch="x86
     if digest is None:
         digest = "0" * 64
     tags = [
-        rpm_pack_tag(1000, 6, name), rpm_pack_tag(1001, 6, version),
-        rpm_pack_tag(1002, 6, "1.fc45"), rpm_pack_tag(1003, 4, 0),
+        rpm_pack_tag(1000, 6, name),
+        rpm_pack_tag(1001, 6, version),
+        rpm_pack_tag(1002, 6, "1.fc45"),
+        rpm_pack_tag(1003, 4, 0),
         rpm_pack_tag(1006, 4, 1795000000),
         rpm_pack_tag(1007, 6, "build-host"),
         rpm_pack_tag(1022, 6, arch),
@@ -87,7 +89,7 @@ def elf_fixture(buildid=b"\xa5" * 20) -> bytes:
     struct.pack_into("<HH", data, 54, 56, 1)
     note = struct.pack("<III", 4, len(buildid), 3) + b"GNU\x00" + buildid
     struct.pack_into("<IIQQQQQQ", data, 64, 4, 0, 128, 0, 0, len(note), len(note), 4)
-    data[128:128 + len(note)] = note
+    data[128 : 128 + len(note)] = note
     return bytes(data)
 
 
@@ -174,10 +176,14 @@ def test_missing_forged_and_malformed_rpm_binding_refused(scenario):
                 rpm_header_fixture(digest=good_sha, version="../../fake-version")
             ),
         }
-        archives = [layer({
-            "usr/bin/bootc": elf,
-            "usr/share/rpm/rpmdb.sqlite": options[scenario],
-        })]
+        archives = [
+            layer(
+                {
+                    "usr/bin/bootc": elf,
+                    "usr/share/rpm/rpmdb.sqlite": options[scenario],
+                }
+            )
+        ]
     overlay, budget, descs = apply(archives)
     output = result(overlay, budget, descs)
     assert output["status"] == "BOOTC_PRESENT_ROUTE_UNVERIFIED"
@@ -190,15 +196,19 @@ def test_missing_forged_and_malformed_rpm_binding_refused(scenario):
 def test_later_rpmdb_layer_replaces_previous_database_not_stale_package():
     elf = elf_fixture()
     digest = hashlib.sha256(elf).hexdigest()
-    first = layer({
-        "usr/bin/bootc": elf,
-        "usr/share/rpm/rpmdb.sqlite": sqlite_db(rpm_header_fixture(digest=digest)),
-    })
-    second = layer({
-        "usr/share/rpm/rpmdb.sqlite": sqlite_db(
-            rpm_header_fixture(version="2.0.0", digest="0" * 64)
-        )
-    })
+    first = layer(
+        {
+            "usr/bin/bootc": elf,
+            "usr/share/rpm/rpmdb.sqlite": sqlite_db(rpm_header_fixture(digest=digest)),
+        }
+    )
+    second = layer(
+        {
+            "usr/share/rpm/rpmdb.sqlite": sqlite_db(
+                rpm_header_fixture(version="2.0.0", digest="0" * 64)
+            )
+        }
+    )
     overlay, budget, descs = apply([first, second])
     assert result(overlay, budget, descs)["bootcRpmIdentity"]["status"] == (
         "BOOTC_PACKAGE_BINDING_UNPROVEN"
@@ -247,9 +257,16 @@ def test_ambiguous_packages_not_accepted():
     elf = elf_fixture()
     digest = hashlib.sha256(elf).hexdigest()
     db = sqlite_db(rpm_header_fixture(digest=digest), rpm_header_fixture(digest=digest))
-    overlay, budget, descs = apply([layer({
-        "usr/bin/bootc": elf, "usr/share/rpm/rpmdb.sqlite": db,
-    })])
+    overlay, budget, descs = apply(
+        [
+            layer(
+                {
+                    "usr/bin/bootc": elf,
+                    "usr/share/rpm/rpmdb.sqlite": db,
+                }
+            )
+        ]
+    )
     assert result(overlay, budget, descs)["bootcRpmIdentity"]["status"] == (
         "BOOTC_PACKAGE_BINDING_UNPROVEN"
     )
