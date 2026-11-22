@@ -52,6 +52,35 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
         )
         self.assertTrue(all(c["status"] == "STATIC_CALLSITE_NOT_EXECUTION" for c in calls))
 
+    def test_conditional_mount_is_static_not_unconditional_disk_write(self):
+        source = (
+            "import subprocess\n"
+            "def run(mode):\n"
+            "    if mode == 'special':\n"
+            "        subprocess.check_call(['mount', 'device', '/mnt/x'])\n"
+        )
+        result = candidate_calls(source.encode(), "ubi-partman.py")
+        candidate = next(x for x in result["selectedCalls"] if x["callee"] == "subprocess.check_call")
+        self.assertEqual(candidate["enclosingIfBranches"][0]["expression"], "mode == 'special'")
+        self.assertEqual(candidate["enclosingIfBranches"][0]["branch"], "if")
+        self.assertFalse(result["persistentWriteProven"])
+
+    def test_static_module_assignments_are_not_proven_disk_paths(self):
+        source = b"devices = '/var/lib/partman/devices'\ndef use():\n    return devices\n"
+        result = candidate_calls(source, "parted_server.py")
+        self.assertEqual(result["moduleAssignments"][0]["symbol"], "devices")
+        self.assertEqual(result["moduleAssignments"][0]["expression"], "'/var/lib/partman/devices'")
+        self.assertFalse(result["runtimeReachabilityProven"])
+
+    def test_parent_symlink_metadata_does_not_follow_scripts(self):
+        meta = (
+            "lrwxrwxrwx root/root 0 2026-11-22 14:30 "
+            "squashfs-root/lib/partman/lib -> ../../usr/lib/partman/lib\n"
+        )
+        record = parse_unsquashfs_lstat(meta, "lib/partman/lib")
+        self.assertEqual(record["type"], "SYMLINK_NOT_FOLLOWED")
+        self.assertFalse(record["targetProvenanceAuthenticated"])
+
     def test_partman_preseed_does_not_imply_commit_or_safe_dryrun(self):
         code = b"class PartmanCommit:\n def run(self):\n  self.preseed('partman/confirm', 'true')\n"
         result = candidate_calls(code, "partman_commit.py")
