@@ -1,0 +1,12 @@
+# Fast autonomous Gaslux development — GitHub Actions
+The scheduler is GitHub-native; no ChatGPT tasks, external LLM API keys or artificial recurring prompts are needed.
+- 15 minutes: existing Mint/Zorin low-risk feature coder (Qwen3.5 9B); duplicate task detection before inference.
+- 15 minutes (offset): independent Integrator; also retries after successful producer/goal workflows.
+- 15 minutes: six-backend feature-proposal factory selects one unclaimed role for a real backend source change. The model has **no GitHub write credentials**. A second runner validates exact evidence and pure-function behavior. A trusted publisher only creates a **Draft PR to dev**, never merges it.
+- 30 minutes: research and existing backend contract tests for Mint, Zorin, CachyOS, Pop!_OS, Q4OS and Bazzite. Independent per-backend reports.
+- Daily: official SHA-pinned Mint 22.3 live guest boot attempt in isolated QEMU (not an installation or dual-boot certification).
+## Code authority
+The new factory is confined to one allowlisted live backend module per task and appends one fail-closed, read-only lifecycle assessment helper. It cannot edit workflow YAML, boot managers, recovery scripts, storage writers, release manifests or GitHub protections. It validates every eight-gate lifecycle observation, rejects unproved install/release authority, pins the model digest and exact dev source SHA, and refuses a stale base before publication. The existing keyboard-only auto-merger **does not accept** feature-factory bot branch names.
+A Draft PR is a proposed product modification, not verified installation. Full installer implementation across six distributions remains conditional on per-backend signed-media provenance, an isolated Windows/Linux VM lab with owned writable media, snapshot restoration and boot attestation, and independent Safety review before any protected write or main release. The first pass expands **actual source development**, not write authorization.
+## Resource safeguards
+The feature worker selects only an unclaimed role, deduplicated by role/source SHA and remote bot ref; otherwise inference is skipped. GitHub Actions serialization prevents overlapping downloads. Fixed model SHA, no model tokens in write jobs, limited output size, SHA-256 evidence binding, separate Safety gate and path/AST scope checks restrict AI proposals. More frequent schedules can consume Actions minutes and do not guarantee exact cron start times.
