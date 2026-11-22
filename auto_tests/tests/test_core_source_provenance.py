@@ -8,9 +8,9 @@ from unittest.mock import Mock
 
 import pytest
 from app.config import Settings
+from app.errors import WorkflowError
 from app.models import AutomationRequest
 from app.services.automation import AutomationService
-from app.errors import WorkflowError
 from app.services.common import ResultBuilder
 from app.services.validation import ValidationService
 from pydantic import ValidationError
@@ -161,7 +161,6 @@ def test_gaslux_source_local_records_revision_before_ssh(
     assert result.steps[0].context["repository"] == "LMhdez/gaslux"
 
 
-
 @pytest.mark.parametrize("source", ["published", "local"])
 @pytest.mark.parametrize("prepared_release", [None, (r"C:\test\Libertix.exe", "0" * 64)])
 def test_automation_denies_invalid_source_before_any_vm_io(
@@ -195,8 +194,7 @@ def test_automation_denies_invalid_source_before_any_vm_io(
     )
     assert result.status == "error"
     assert any(
-        step.step == "server.source_provenance" and step.status == "error"
-        for step in result.steps
+        step.step == "server.source_provenance" and step.status == "error" for step in result.steps
     )
     remote_restore.assert_not_called()
     remote_proxmox.assert_not_called()
@@ -230,6 +228,5 @@ def test_valid_automation_source_can_reach_mocked_vm_barrier(
     assert restore.call_count == 1
     ssh.assert_not_called()
     assert any(
-        step.step == "server.source_provenance" and step.status == "ok"
-        for step in result.steps
+        step.step == "server.source_provenance" and step.status == "ok" for step in result.steps
     )
