@@ -174,7 +174,7 @@ def assess(
     observed_fd: dict | None = None,
     claim: dict | None = None,
 ) -> dict:
-    """Compare local host *measurements* with claimed pins, without authority.
+    """Compare caller-supplied FD observations with claims, without authority.
 
     Neither a caller-supplied JSON nor its locally calculated hash can attest
     a deployment or satisfy the missing Safety/Integrator transaction contract.
@@ -232,7 +232,7 @@ def assess(
         if claim.get(name) is not True:
             result["reason"] = reason
             return result
-    result["locallyMeasuredQcow2Sha256"] = observed_fd["qcow2Sha256"]
+    result["callerSuppliedQcow2Sha256Unattested"] = observed_fd["qcow2Sha256"]
     result["reason"] = "UNAUTHENTICATED_CLAIMS_CANNOT_PROVE_GPT_BTRFS_OSTREE_RPM_EFI_OR_INSTALLER"
     return result
 

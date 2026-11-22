@@ -94,7 +94,7 @@ def test_actual_readonly_fd_qcow2_header_bytes_not_installed_disk(local_fd):
     assert measured["filesystemOrDeploymentObserved"] is False
     result = assess(observed_fd=measured, claim=claim(measured))
     assert result["reason"].startswith("UNAUTHENTICATED_CLAIMS")
-    assert result["locallyMeasuredQcow2Sha256"] == measured["qcow2Sha256"]
+    assert result["callerSuppliedQcow2Sha256Unattested"] == measured["qcow2Sha256"]
     assert_denied(result)
 
 
