@@ -134,19 +134,29 @@ def start_qemu(folder: Path, media: Path, disk_format: str) -> subprocess.Popen:
     assert not qmp.exists()
     args = [
         QEMU,
-        "-machine", "q35,accel=tcg",
+        "-machine",
+        "q35,accel=tcg",
         "-S",
-        "-m", "64",
+        "-m",
+        "64",
         "-nodefaults",
         "-no-user-config",
-        "-display", "none",
-        "-monitor", "none",
-        "-serial", "none",
-        "-parallel", "none",
-        "-nic", "none",
-        "-qmp", f"unix:{qmp},server=on,wait=off",
-        "-drive", f"file={media},format={disk_format},if=none,id=disk0,readonly=on",
-        "-device", "virtio-blk-pci,drive=disk0",
+        "-display",
+        "none",
+        "-monitor",
+        "none",
+        "-serial",
+        "none",
+        "-parallel",
+        "none",
+        "-nic",
+        "none",
+        "-qmp",
+        f"unix:{qmp},server=on,wait=off",
+        "-drive",
+        f"file={media},format={disk_format},if=none,id=disk0,readonly=on",
+        "-device",
+        "virtio-blk-pci,drive=disk0",
     ]
     previous = os.umask(0o077)
     try:
@@ -224,9 +234,7 @@ def validate_never_auth(report: dict) -> None:
 
 
 @pytest.mark.parametrize("format", ["raw", "qcow2"])
-def test_real_paused_qemu_opens_exact_regular_image_and_reports_qmp(
-    workspace, pinned, format
-):
+def test_real_paused_qemu_opens_exact_regular_image_and_reports_qmp(workspace, pinned, format):
     gate, lab = pinned
     raw = make_raw(workspace, lab)
     expected = gate.inspect_gpt_image(raw, logical_sector_size=512)
@@ -297,9 +305,7 @@ def test_real_qemu_wrong_process_disk_or_block_graph_refuses(workspace, pinned, 
         elif case == "exe":
             pins = replace(
                 pins,
-                process=replace(
-                    pins.process, executable_ino=pins.process.executable_ino + 1
-                ),
+                process=replace(pins.process, executable_ino=pins.process.executable_ino + 1),
             )
         elif case == "media_inode":
             pins = replace(pins, media_inode=pins.media_inode + 1)
@@ -315,9 +321,7 @@ def test_real_qemu_wrong_process_disk_or_block_graph_refuses(workspace, pinned, 
         shutdown(child)
 
 
-def test_two_real_qemu_concurrent_wrong_qmp_socket_and_same_disk_basename(
-    tmp_path, pinned
-):
+def test_two_real_qemu_concurrent_wrong_qmp_socket_and_same_disk_basename(tmp_path, pinned):
     _, lab = pinned
     one, two = tmp_path / "one", tmp_path / "two"
     one.mkdir(mode=0o700)
@@ -334,13 +338,9 @@ def test_two_real_qemu_concurrent_wrong_qmp_socket_and_same_disk_basename(
         with QemuLocalDiskWitness(pins_b) as x:
             validate_never_auth(x.finish())
         with pytest.raises(QemuDiskRefused):
-            QemuLocalDiskWitness(
-                replace(pins_a, qmp_socket=two / "monitor.sock")
-            )
+            QemuLocalDiskWitness(replace(pins_a, qmp_socket=two / "monitor.sock"))
         with pytest.raises(QemuDiskRefused):
-            QemuLocalDiskWitness(
-                replace(pins_a, media_path=two / "disk.raw", workspace=two)
-            )
+            QemuLocalDiskWitness(replace(pins_a, media_path=two / "disk.raw", workspace=two))
     finally:
         shutdown(a)
         shutdown(b)
