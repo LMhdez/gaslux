@@ -478,3 +478,43 @@ def test_real_sqlite_wal_format_header_immutable_read_only_binding(tmp_path):
     assert output["bootcRpmIdentity"]["rpmPackage"]["version"] == "1.17.1"
     assert output["bootcToFilesystemAvailableInBinaryVerified"] is False
     assert all(output[flag] is False for flag in NO_WRITE)
+
+
+def test_rpmdb_sqlite_serialized_header_without_magic_still_binds_exact_elf():
+    """SQLite Packages.blob may omit RPM package magic/reserved prefix."""
+    elf = elf_fixture()
+    digest = hashlib.sha256(elf).hexdigest()
+    rpm_db_blob = rpm_header_fixture(digest=digest)[8:]
+    assert rpm_db_blob[:4] != RPM_HEADER_MAGIC[:4]
+    parsed = rpm_header(rpm_db_blob)
+    assert parsed["name"] == "bootc"
+    assert parsed["fileSha256"] == digest
+    db = sqlite_db(rpm_db_blob)
+    overlay, budget, descs = apply(
+        [
+            layer(
+                {
+                    "usr/bin/bootc": elf,
+                    "usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite": db,
+                }
+            )
+        ]
+    )
+    output = result(overlay, budget, descs)
+    assert output["bootcRpmIdentity"]["status"] == "BOOTC_RPM_IDENTITY_VERIFIED"
+    assert output["bootcRpmIdentity"]["rpmPackage"]["version"] == "1.17.1"
+    assert output["bootcToFilesystemAvailableInBinaryVerified"] is False
+    assert all(output[flag] is False for flag in NO_WRITE)
+
+
+def test_malformed_magicless_rpmdb_header_rejected_before_any_package_claim():
+    good = rpm_header_fixture()[8:]
+    forged = [
+        good[:-1],
+        b"\0" * 8 + good[8:],
+        good[:4] + b"\xff" * 4 + good[8:],
+        good[:8] + b"\xff" * 16 + good[24:],
+    ]
+    for bad in forged:
+        with pytest.raises(PackageUnproven):
+            rpm_header(bad)
