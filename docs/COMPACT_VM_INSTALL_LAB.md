@@ -38,6 +38,15 @@ The existing `compact_ovmf_target.py` now adds a small controlled 16-MiB QCOW2 b
 
 The Core `automation.py` and `automation_preflight.py` still assume a Proxmox-backed Windows VM; the isolated QEMU runner has no authorized Gaslux Windows-manifest handoff yet. A future change must preserve the signed/identified Windows transaction plan and Windows NTFS geometry, not replace Gaslux with an upstream installer or invented manifest.
 
+### Measured RED → GREEN — GitHub Actions, 22-11-2026 UTC
+
+- **RED:** [Actions #45064087180](https://github.com/LMhdez/gaslux/actions/runs/45064087180) on commit `fdc71ecff8a845b4c39025128bada64f30af4917`: 15/15 unit tests passed, but real fixture failed because corrupt QCOW2 was automatically identified as RAW by `qemu-img info` with exit code 0. No success claim.
+- **Fix:** Require the actual detected disk format to differ from `qcow2` (or an explicit QEMU error) when asserting rejection of a corrupted image; two regression tests cover RAW autodetection and a falsely valid QCOW2 identification.
+- **GREEN:** [Actions #45064275028](https://github.com/LMhdez/gaslux/actions/runs/45064275028), source PR head `c4e38fcb39e6712379e3e2e6ef25a987b71ed450`, same-run checkout at PR synthetic merge `fa92d8a1f0034cab852d0d55dd94b52a5229ec4f`, runner `GitHub Actions 1000013078`, **17/17** unit tests, `RESTORE_FIXTURE_VERIFIED: QCOW2 + OVMF only; no Windows recovery`. [JSON evidence artifact #14770284300](https://github.com/LMhdez/gaslux/actions/runs/45064275028/artifacts/14770284300). Two other applicable contract workflows also passed on the exact PR head.
+- **Same-run capacity:** `runner_available_bytes=91233525760`; QEMU fully allocated bound for 60-GiB disk `64434601984`; planned extra reserves `21474836480`; upper bound with reserves `85909438464`; computed shortfall `0` against filesystem availability. Independent effective quota **NOT OBSERVABLE** (`quota_verified=false`). No guest writer admitted. These are resource observations on this single runner, not guaranteed future capacity.
+- **Positive bytes:** 16-MiB private baseline SHA-256 before/after `9d7932ff16d14a173a5a92d565e631eed4223b64f4a0ae76580d7da8b29c175a`; installed OVMF_VARS copied baseline and restored work image SHA-256 `a9b2b13aba3d4629593913471af7545bd8eef1d414f33cab4c86fff7d5bc09b9`. Backing chain and read-after-reset verified; corrupt/foreign/symlink/interrupted/insufficient-capacity fixtures denied.
+- **Claim boundary:** fixture restore is real QCOW2/OVMF data recovery, NOT installed Windows recovery, effective quota enforcement, Windows ISO authentication, Mint guest install, disk-only first boot or safe production writes. GASLUX-SAFETY has not issued `LEAN_VM_ADMITTED`.
+
 ## Next real engineering steps
 
 1. Confirm exact current runner capacity and actual successful sparse image creation from CI evidence. `BLOCKED_STORAGE` is a valid measurement, not proof of installation.
