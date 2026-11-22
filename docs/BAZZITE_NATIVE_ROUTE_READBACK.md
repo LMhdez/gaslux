@@ -161,3 +161,27 @@ partição, canal guest, Linux/Windows boot, dual boot e rollback são \`false\`
 A existência de SHA local, claim JSON ou resultado HOST/FD \`LOCALLY_MEASURED\`
 não substitui um controlador autenticado nem autoriza um writer. PR #320
 permanece Draft.
+
+
+## BZD-QCOW2-DEPLOYMENT-READBACK-01 — CLI de diagnóstico sem escrita
+
+O leitor preexistente `auto_tests/bazzite_qcow2_deployment_readback.py`
+aceitava `--output <path>` e escrevia diretamente no pathname indicado.
+Se fosse executado com privilégios, esse pathname poderia identificar um
+ficheiro não pertencente à transação, mesmo estando proibida qualquer
+instalação. Esta foi uma lacuna concreta na superfície de diagnóstico,
+não evidência de que algum disco real tenha sido alterado.
+
+O CLI devolve agora exclusivamente o JSON de recusa em **stdout** e código
+de saída 3. `--output`, `--image` e quaisquer argumentos adicionais são
+rejeitados por `argparse` antes de qualquer tentativa de abertura de
+ficheiros. A API `inspect_qcow2_fd(fd)` permanece estritamente O_RDONLY
+e não aceita pathnames; as suas limitações de origem, detach de QEMU,
+backing, GPT efetiva e deployment continuam inalteradas.
+
+O novo teste negativo exige que nenhuma saída seja gravada no diretório
+de trabalho e que os bytes de um ficheiro estrangeiro permaneçam intactos
+após tentativas com `--output` e `--image`. **Esta correção não autentica
+QCOW2, instalação, ESP, OSTree, checkpoint ou rollback.** A PR #337
+continua dependência experimental para o contrato partilhado e não concede
+autorização para escrita.
