@@ -225,9 +225,8 @@ def test_hostile_tar_paths_refused(name):
         scan(data)
 
 
-@pytest.mark.parametrize("target", ["/etc/passwd", "../../../etc/shadow"])
 def test_backslash_in_posix_tar_name_is_not_a_directory_separator():
-    archive = tar_layer({"usr\\\\bin\\\\bootc": b"\\x7fELF" + b"not-the-real-path"})
+    archive = tar_layer({"usr\\bin\\bootc": b"\x7fELF" + b"not-the-real-path"})
     state, budget = scan(archive)
     assert "usr/bin/bootc" not in state
     result = finish(
@@ -240,6 +239,7 @@ def test_backslash_in_posix_tar_name_is_not_a_directory_separator():
     assert all(result[field] is False for field in NO_WRITE)
 
 
+@pytest.mark.parametrize("target", ["/etc/passwd", "../../../etc/shadow"])
 def test_executable_symlink_escaping_image_refused(target):
     data = tar_layer({"usr/bin/bootc": ("symlink", target)})
     with pytest.raises(Refusal):
