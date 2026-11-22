@@ -31,6 +31,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git -C original-safety-red rev-parse HEAD)" = 7c6b5d83d73dc633c3f45556b273eb156633d078
+          git fetch --no-tags --depth=8 origin 902d61b0b9ebf7d477c78bcfc9ad2a626b1460b7
           git merge-base --is-ancestor 902d61b0b9ebf7d477c78bcfc9ad2a626b1460b7 HEAD
           test "$(git hash-object auto_tests/test_mint_m278_real_regression.py)" = 797b13e079fefd58f0fc83ac00bf159a7f70dd32
           cmp -s original-safety-red/auto_tests/test_mint_m278_real_regression.py auto_tests/test_mint_m278_real_regression.py
