@@ -32,7 +32,9 @@
     "distinstExecutionAuthorized",
     "productionInstallationAuthorized",
     "sameDiskDualBootVerified",
-    "stable"
+    "stable",
+    "elfExtractionOriginBoundToPinnedIso",
+    "dpkgStatusOriginBoundToPinnedIso"
   ],
   "properties": {
     "schemaVersion": {
@@ -175,6 +177,12 @@
       "const": false
     },
     "stable": {
+      "const": false
+    },
+    "elfExtractionOriginBoundToPinnedIso": {
+      "const": false
+    },
+    "dpkgStatusOriginBoundToPinnedIso": {
       "const": false
     }
   }
