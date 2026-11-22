@@ -46,6 +46,7 @@ def _fake_popen(monkeypatch, program: str, *args: str):
             stdout=kwargs["stdout"],
             stderr=kwargs["stderr"],
             pass_fds=kwargs.get("pass_fds", ()),
+            start_new_session=kwargs.get("start_new_session", False),
         )
         started.append(child)
         return child
