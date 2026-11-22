@@ -167,8 +167,9 @@ def _pidfd_target(pidfd: int, pid: int) -> None:
             "QEMU_STARTUP_UNCLASSIFIED",
         )
         info = Path(f"/proc/self/fdinfo/{pidfd}").read_text(encoding="ascii")
-        target = [line.partition(":")[2].strip() for line in info.splitlines()
-                  if line.startswith("Pid:")]
+        target = [
+            line.partition(":")[2].strip() for line in info.splitlines() if line.startswith("Pid:")
+        ]
         _require(
             len(target) == 1 and int(target[0]) == pid,
             "QEMU_STARTUP_UNCLASSIFIED",
@@ -202,9 +203,7 @@ def _verify_session_authority(session: _BoundQmpSession) -> None:
     _require(type(process) is subprocess.Popen, "QEMU_STARTUP_UNCLASSIFIED")
     record = _OWNED_CHILDREN.get(process)
     _require(
-        record is not None
-        and record[0] == process.pid
-        and record[1] == session.pidfd,
+        record is not None and record[0] == process.pid and record[1] == session.pidfd,
         "QEMU_STARTUP_UNCLASSIFIED",
     )
     _pidfd_target(session.pidfd, process.pid)
