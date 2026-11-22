@@ -140,5 +140,46 @@ class CompactOvmfTargetTests(unittest.TestCase):
             self.assertFalse(result["qemu_img"]["backing_file_present"])
 
 
+    def test_restore_identity_rejects_foreign_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.qcow2"
+            overlay = root / "overlay.qcow2"
+            baseline.write_bytes(b"base")
+            overlay.write_bytes(b"overlay")
+            metadata = [
+                {"format": "qcow2", "virtual-size": 16 * 1024**2,
+                 "full-backing-filename": str(root / "wrong.qcow2")},
+                {"format": "qcow2", "virtual-size": 16 * 1024**2,
+                 "filename": str(root / "wrong.qcow2")},
+            ]
+            with patch.object(mod, "_run_qemu", return_value=json.dumps(metadata)):
+                with self.assertRaisesRegex(ValueError, "backing identity"):
+                    mod._assert_overlay_backing(overlay, baseline)
+
+    def test_restore_owned_file_rejects_symlink_and_hardlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = root / "source.qcow2"
+            base.write_bytes(b"owned")
+            mod._owned_regular(base, root)
+            alias = root / "alias.qcow2"
+            alias.symlink_to(base)
+            with self.assertRaisesRegex(ValueError, "unowned"):
+                mod._owned_regular(alias, root)
+            alias.unlink()
+            import os
+            os.link(base, alias)
+            with self.assertRaisesRegex(ValueError, "unowned"):
+                mod._owned_regular(base, root)
+
+    def test_missing_ovmf_vars_stops_before_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.assertRaises(FileNotFoundError):
+                mod.prove_restore_fixture(root, root / "missing.fd")
+            self.assertEqual(list(root.iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()
