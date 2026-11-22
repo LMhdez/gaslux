@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/gaslux-q4os-qemu-fd-compatibility.yml'
       - 'auto_tests/tools/q4os_qemu_fd_compat_lab.py'
+      - 'auto_tests/tests/test_q4os_readonly_boundary.py'
       - 'docs/Q4OS_QEMU_FD_COMPATIBILITY.md'
       - 'docs/Q4OS_RUNLAB_READONLY_BOUNDARY.md'
 
@@ -72,6 +73,7 @@ jobs:
             auto_tests/tools/q4os_qemu_fd_compat_lab.py
           python -m ruff format --check --config auto_tests/pyproject.toml \
             auto_tests/tools/q4os_qemu_fd_compat_lab.py
+          python -m pytest -q auto_tests/tests/test_q4os_readonly_boundary.py
           python - <<'PY'
           from pathlib import Path
           import yaml
