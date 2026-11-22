@@ -132,7 +132,7 @@ class TrustedPublisherTests(unittest.TestCase):
         # stale supervisor output. Artifacts must live outside checkout.
         yaml = (SCRIPT.parents[2] / ".github/workflows/gaslux-agent-clock.yml").read_text()
         start = yaml.index("  windows_wpf_acceptance:")
-        end = yaml.index("\\n  integrator_publisher:", start)
+        end = yaml.index("\n  integrator_publisher:", start)
         segment = yaml[start:end]
         self.assertIn("id: worker_source", segment)
         self.assertIn("steps.worker_source.outputs.sha", segment)
