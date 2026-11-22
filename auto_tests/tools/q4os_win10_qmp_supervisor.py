@@ -470,7 +470,16 @@ def run_lab(
                         # Read through the supervisor's already-open file
                         # descriptor, not an attacker-replaceable pathname.
                         size = os.fstat(output.fileno()).st_size
-                        with os.fdopen(os.dup(output.fileno()), "rb") as source:
+                        # The log was opened O_WRONLY; dup() cannot make it
+                        # readable. Re-open the pinned procfs FD, never log path.
+                        with open(f"/proc/self/fd/{output.fileno()}", "rb") as source:
+                            base = os.fstat(output.fileno())
+                            observed = os.fstat(source.fileno())
+                            _require(
+                                (observed.st_dev, observed.st_ino)
+                                == (base.st_dev, base.st_ino),
+                                "QEMU_STARTUP_UNCLASSIFIED",
+                            )
                             detail = classify_qemu_error(source.read(min(size, 32768)))
                         report["errorDetailCode"] = (
                             detail if detail in DETAIL_CODES else EARLY_EXIT_DETAIL
