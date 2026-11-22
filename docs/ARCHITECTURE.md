@@ -182,3 +182,15 @@ rules.
 
 The runtime test service is laboratory tooling. Its private topology and credentials belong only in
 the ignored local environment file and runtime `.env`.
+
+## GPT Protective MBR geometry readback (22 November 2026)
+
+The read-only `inspect_gpt_fd` verifier rejects a GPT regular-file image if
+its protective MBR entry does not start at LBA 1 and cover exactly
+`min(total logical sectors - 1, 0xffffffff)` sectors. This prevents an
+otherwise CRC-valid GPT snapshot with a truncated or overextended MBR
+extent from being classified as structurally consistent. The rule applies
+to the canonical FD reader shared by offline consumers; it does not grant
+writer authority, establish host-to-guest provenance, verify NTFS/BCD/WinRE,
+or prove rollback. Test evidence is limited to adversarial synthetic disk
+files until the exact-HEAD CI results are examined.
