@@ -568,7 +568,14 @@ def main() -> int:
         print("Q4OS_FD_LAB=ENVIRONMENT_DENIED")
         return 2
     evidence_dir = Path(os.environ["GASLUX_Q4OS_FD_EVIDENCE"])
-    evidence_dir.mkdir(mode=0o700)
+    if evidence_dir.is_symlink() or evidence_dir.parent != Path(os.environ["RUNNER_TEMP"]):
+        print("GASLUX_Q4OS_FD_COMPATIBILITY=DENY")
+        return 2
+    evidence_dir.mkdir(mode=0o700, exist_ok=True)
+    observed = evidence_dir.lstat()
+    if observed.st_uid != os.getuid() or observed.st_mode & 0o077:
+        print("GASLUX_Q4OS_FD_COMPATIBILITY=DENY")
+        return 2
     root = Path(tempfile.mkdtemp(prefix="q4os-fd-", dir=os.environ["RUNNER_TEMP"]))
     report: dict = {
         "schemaVersion": 1,
