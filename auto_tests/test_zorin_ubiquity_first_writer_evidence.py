@@ -108,7 +108,7 @@ class FirstWriterStaticEvidenceTests(unittest.TestCase):
 
     def test_untrusted_shell_encoding_is_not_accepted_as_code(self):
         with self.assertRaises(SourceCoverageDenied) as caught:
-            static_shell_references(b"\\xff", "usr/lib/partman/lib/resize.sh")
+            static_shell_references(b"\xff", "usr/lib/partman/lib/resize.sh")
         self.assertEqual(caught.exception.code, "E_PARTMAN_SHELL_ENCODING")
 
     def test_python_parse_error_fails_closed(self):
