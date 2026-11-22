@@ -15,7 +15,6 @@ import posixpath
 import re
 import tarfile
 import tempfile
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -153,8 +152,11 @@ def _path(name: str) -> str:
 def _link(path: str, target: str) -> str:
     if not isinstance(target, str) or not target or target.startswith("/"):
         raise Refusal("Absolute or missing image executable link")
-    normalized = _path(posixpath.join(posixpath.dirname(path), target))
-    return normalized
+    combined = posixpath.join(posixpath.dirname(path), target)
+    normalized = posixpath.normpath(combined)
+    if normalized in ("", ".") or normalized.startswith("../") or normalized == "..":
+        raise Refusal("Image symlink escapes OCI root")
+    return _path(normalized)
 
 
 def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
@@ -233,67 +235,6 @@ def scan_layer(file, descriptor: dict, entries: dict, budgets: dict) -> None:
                     entries.pop(name, None)
     except (tarfile.TarError, EOFError, OSError) as exc:
         raise Refusal("Invalid or unsupported OCI layer tar") from exc
-
-
-def decide(manifest: bytes, config: bytes, layer_files: list) -> dict:
-    descriptors, info = validate_metadata(manifest, config)
-    if len(descriptors) != len(layer_files):
-        raise Refusal("Incomplete OCI layer readback")
-    entries: dict = {}
-    budgets = {"members": 0, "expanded": 0}
-    for file, descriptor in zip(layer_files, descriptors, strict=True):
-        scan_layer(file, descriptor, entries, budgets)
-    present = []
-    unresolved = []
-    for path in sorted(CANDIDATES):
-        item = entries.get(path)
-        if item is None:
-            continue
-        visited = {path}
-        for _ in range(8):
-            if item["kind"] == "file":
-                if item["elf"]:
-                    present.append({"path": path, "sha256": item["sha256"], "size": item["size"]})
-                else:
-                    unresolved.append(path + ": non-ELF")
-                break
-            target = item["target"]
-            if target in visited:
-                raise Refusal("Cyclic bootc image link")
-            visited.add(target)
-            item = entries.get(target)
-            if item is None:
-                unresolved.append(path + ": target not observed")
-                break
-        else:
-            raise Refusal("Excessive image link depth")
-    if unresolved and not present:
-        raise Refusal("Executable path is unresolved in OCI layer history")
-    status = (
-        "BOOTC_PRESENT_ROUTE_UNVERIFIED" if present
-        else "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE"
-    )
-    return {
-        "status": status,
-        "image": PINN,
-        "manifestDigest": PAYLOAD_DIGEST,
-        "configDigest": CONFIG_DIGEST,
-        "signatureVerifiedByWorkflow": False,
-        "runtimeExecutionVerified": False,
-        "bootcVersionVerified": False,
-        "bootcVersion": None,
-        "bootcFiles": present,
-        "otherBootcPathsObserved": sorted(set(entries) - CANDIDATES)[:128],
-        "oci": info,
-        "layerCount": len(descriptors),
-        "compressedBytes": sum(x["size"] for x in descriptors),
-        "expandedBytesDeclared": budgets["expanded"],
-        "nativeBootcToFilesystemSupportVerified": False,
-        "btrfsSubvolumesVerified": False,
-        "efiBootloaderWriteSetVerified": False,
-        "windowsEspPreservationVerified": False,
-        **{key: False for key in NO_WRITE},
-    }
 
 
 def _request(url: str, token: str | None = None):
