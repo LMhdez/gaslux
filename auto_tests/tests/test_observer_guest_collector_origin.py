@@ -230,7 +230,8 @@ def real_guest(tmp_path_factory, pinned):
                 assert local["peer"]["pid"] == child.pid
                 assert local["guestChannelAuthenticated"] is False
                 # Genuine fake host proxy cannot claim the pinned QEMU ProcessSeal.
-                with socket.socketpair() as (fake, other):
+                fake, other = socket.socketpair()
+                with fake, other:
                     forged = _peer_pins(
                         fake,
                         pins,
@@ -295,7 +296,8 @@ def test_forged_guest_claims_and_extra_authority_rejected(real_guest):
 
 
 def test_transport_disconnect_without_full_report_refused():
-    with socket.socketpair() as (receiver, sender):
+    receiver, sender = socket.socketpair()
+    with receiver, sender:
         sender.sendall(b"GASLUX_REPORT_V1|truncated")
         sender.shutdown(socket.SHUT_WR)
         with pytest.raises(CollectorLabDenied, match="TRANSPORT_DISCONNECT"):
@@ -303,7 +305,8 @@ def test_transport_disconnect_without_full_report_refused():
 
 
 def test_truncated_response_and_oversized_frame_rejected():
-    with socket.socketpair() as (receiver, sender):
+    receiver, sender = socket.socketpair()
+    with receiver, sender:
         sender.sendall(b"x" * 260)
         with pytest.raises(CollectorLabDenied, match="TRUNCATED_OR_OVERSIZED_RESPONSE"):
             bounded_line(receiver, timeout=1)
