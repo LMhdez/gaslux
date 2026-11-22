@@ -8,9 +8,12 @@ All inputs come from the already verified ordered OCI layer stream.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import sqlite3
 import struct
+import tempfile
+from pathlib import Path
 
 RPMDB_PATHS = frozenset(
     {
@@ -250,24 +253,34 @@ def bind_rpm(overlay: dict, bootc_file: dict) -> dict:
     try:
         if not raw.startswith(b"SQLite format 3\x00") or len(raw) > MAX_RPMDB:
             raise PackageUnproven("Unsupported SQLite RPM DB")
-        conn = sqlite3.connect(":memory:")
-        try:
-            conn.deserialize(raw)  # Host sqlite; no guest executable or shell.
-            conn.execute("PRAGMA query_only=ON")
-            if conn.execute("PRAGMA quick_check(1)").fetchone() != ("ok",):
-                raise PackageUnproven("RPM DB SQLite integrity check failed")
-            count = conn.execute("SELECT count(*) FROM Packages").fetchone()[0]
-            if type(count) is not int or not 0 < count <= MAX_PACKAGES:
-                raise PackageUnproven("RPM DB package count out of bounds")
-            records = []
-            for (value,) in conn.execute("SELECT blob FROM Packages"):
-                if not isinstance(value, bytes):
-                    raise PackageUnproven("RPM package header is not bytes")
-                package = rpm_header(value)
-                if package.get("name") == "bootc":
-                    records.append(package)
-        finally:
-            conn.close()
+        # An rpm-ostree SQLite DB can have WAL-format header bytes even with a
+        # *zero-byte* WAL. Python sqlite3.deserialize() cannot reliably open
+        # this format (SQLITE_CANTOPEN). Materialize ONLY bounded metadata bytes
+        # in a private disposable host directory and use immutable read-only
+        # SQLite. No guest RPM executable, OCI rootfs or arbitrary SQL.
+        with tempfile.TemporaryDirectory(prefix="gaslux-rpm-readonly-") as directory:
+            file = Path(directory) / "rpmdb.sqlite"
+            fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as sink:
+                sink.write(raw)
+            conn = sqlite3.connect(file.as_uri() + "?mode=ro&immutable=1", uri=True)
+            try:
+                conn.execute("PRAGMA query_only=ON")
+                conn.execute("PRAGMA trusted_schema=OFF")
+                if conn.execute("PRAGMA quick_check(1)").fetchone() != ("ok",):
+                    raise PackageUnproven("RPM DB SQLite integrity check failed")
+                count = conn.execute("SELECT count(*) FROM Packages").fetchone()[0]
+                if type(count) is not int or not 0 < count <= MAX_PACKAGES:
+                    raise PackageUnproven("RPM DB package count out of bounds")
+                records = []
+                for (value,) in conn.execute("SELECT blob FROM Packages"):
+                    if not isinstance(value, bytes):
+                        raise PackageUnproven("RPM package header is not bytes")
+                    package = rpm_header(value)
+                    if package.get("name") == "bootc":
+                        records.append(package)
+            finally:
+                conn.close()
         if len(records) != 1:
             raise PackageUnproven("RPM bootc package missing or ambiguous")
         result = records[0]
