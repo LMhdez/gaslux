@@ -140,18 +140,18 @@ def render(report: dict) -> str:
              "|---|---|---|---:|---|"]
     for p in report["pipelines"]:
         link = f"[#{p['run_id']}]({p['run_url']})" if p["run_id"] else "Sem execução"
-        lines.append(f"| {p['title']} | \`{progress_bar(p['passed'], p['total'])}\` "
+        lines.append(f"| {p['title']} | `{progress_bar(p['passed'], p['total'])}` "
                      f"{p['passed']}/{p['total']} | **{p['state'].upper()}** | "
                      f"{p['recent_failures']}/{p['recent_runs']} | {link} |")
     lines.extend(["", "**Checkpoints da última execução**:", ""])
     for p in report["pipelines"]:
-        states = " · ".join(f"\`{name}={status}\`" for name, status in p["stages"].items())
+        states = " · ".join(f"`{name}={status}`" for name, status in p["stages"].items())
         lines.append(f"- **{p['title']}**: {states}")
     lines.extend(["", "**Limite:** estas barras medem fases comprovadas por jobs Actions, "
                   "não a percentagem de funcionalidades concluídas. Skipped/idle/unknown "
                   "não provam execução. O painel tem apenas permissões de leitura.", "",
                   "**Pausa de emergência:** definir a variável de Actions "
-                  "\`GASLUX_AUTONOMY_PAUSED=true\` e cancelar também as execuções já iniciadas.", ""])
+                  "`GASLUX_AUTONOMY_PAUSED=true` e cancelar também as execuções já iniciadas.", ""])
     return "\n".join(lines)
 
 
