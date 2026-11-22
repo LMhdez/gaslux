@@ -236,7 +236,10 @@ def _resume_for_lab(qmp: Path) -> None:
         conn.sendall(b'{"execute":"qmp_capabilities"}\n')
         assert "return" in read()
         conn.sendall(b'{"execute":"cont"}\n')
-        assert "return" in read()
+        answer = read()
+        if answer.get("event") == "RESUME":
+            answer = read()
+        assert answer.get("return") == {}
 
 
 def _wait_marker(log: Path, marker: bytes, child: subprocess.Popen, seconds: float = 30) -> None:
