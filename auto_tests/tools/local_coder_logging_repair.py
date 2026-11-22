@@ -140,7 +140,9 @@ def main() -> int:
             raise RuntimeError("Failure outside missing-close scope; fail closed")
         prompt = (
             "Fix ONE missing Python statement in the following Gaslux logging function. "
-            "The previous RotatingFileHandler must be closed when reconfiguring. "
+            "Close the EXISTING loop variable named handler, NOT file_handler. "
+            "file_handler is the NEW active handler and must remain open. "
+            "The required operation takes no arguments. "
             "Reply with ONLY ONE PYTHON STATEMENT to insert immediately after "
             "'root.removeHandler(handler)'. No full module, no test, no comments, "
             "no Markdown. Output must fit on one line.\n"
@@ -176,7 +178,7 @@ def main() -> int:
                 break
             except Exception as exc:
                 item["error"] = f"{type(exc).__name__}: {str(exc)[:250]}"
-                prompt += "\nPrevious output failed: " + item["error"] + "\nONE STATEMENT ONLY:"
+                prompt += ("\nPrevious output failed: " + item["error"] + "\nUse the loop variable named handler (not file_handler). ONE STATEMENT ONLY:")
             finally:
                 TARGET.write_text(source)
         return result_code
