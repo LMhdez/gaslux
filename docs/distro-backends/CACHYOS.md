@@ -1,5 +1,7 @@
 # CachyOS — ONE-SHOT backend dossier
 
+> **Atualização de navegação (22-11-2026):** este dossier mantém a análise histórica de 19-11. Revalidar HEADs, PRs/merges, media e artefactos antes de usar as propostas. Ver [histórico e instruções por agente](../AGENT_HISTORICAL_PLAYBOOK.md), [índice GitHub Actions/VM](../CI_VM_EVIDENCE_INDEX.md) e [contratos partilhados](SHARED_CONTRACTS.md). Propostas antigas de criação de branch/PR não substituem a regra atual de reutilização e consolidação; testes QEMU descartáveis têm autorização delimitada em [AGENTS](../../AGENTS.md).
+
 **Revisão:** 2026-11-19. **Maturidade:** EXPERIMENTAL / PENDENTE: não autorizado para catálogo estável. Ver [contratos gerais](SHARED_CONTRACTS.md). **Não usar este documento como autorização de escrita.**
 
 ## 1. Resumo executivo e estado
@@ -9,7 +11,7 @@ Rootfs Live Archiso não é target instalado; CI de GPT/ext4/Windows não demons
 - [Origem oficial/media](https://cachyos.org/download/) — versão/release: **nenhuma versão no catálogo estável**. [DOCUMENTADO como endereço de referência; revalidar disponibilidade, conteúdo e assinatura na data da execução.]
 - [Documentação upstream](https://wiki.cachyos.org/installation/installation_on_root/) — instruções gerais, não aprovação de boot sem USB. [DOCUMENTADO; verificar versão, data e parâmetros antes de automatizar.]
 - [Configuração Gaslux main](https://github.com/LMhdez/gaslux/blob/main/release-config.json) — não contém esta distribuição. [IMPLEMENTADO]
-- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [Issue de estabilidade #3](https://github.com/LMhdez/gaslux/issues/3) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
+- [Arquitectura Gaslux](https://github.com/LMhdez/gaslux/blob/dev/docs/ARCHITECTURE.md), [issue de aceitação CachyOS #3](https://github.com/LMhdez/gaslux/issues/3) e [Windows 11 #71](https://github.com/LMhdez/gaslux/issues/71) e [PR multidistro #7](https://github.com/LMhdez/gaslux/pull/7). [IMPLEMENTADO/critério documental]
 - PRs/threads experimentais relacionadas: [#1](https://github.com/LMhdez/gaslux/pull/1), [#2](https://github.com/LMhdez/gaslux/pull/2), [#3 (issue)](https://github.com/LMhdez/gaslux/issues/3), [#34](https://github.com/LMhdez/gaslux/pull/34), [#159](https://github.com/LMhdez/gaslux/pull/159), [#160](https://github.com/LMhdez/gaslux/pull/160), [#162](https://github.com/LMhdez/gaslux/pull/162). **Consultar HEAD, estado de merge, logs e branches antes de reutilizar.**
 - Evidência histórica de CI para contexto: [Actions](https://github.com/LMhdez/gaslux/actions/runs/44125124789); a existência ou êxito do workflow não certifica todas as etapas. [PENDENTE: rever job e artefactos exactos.]
 
