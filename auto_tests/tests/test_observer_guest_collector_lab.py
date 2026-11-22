@@ -4,8 +4,6 @@ The real Linux Guest boot is a separate, non-parallel GitHub Actions step.
 """
 from __future__ import annotations
 
-from copy import deepcopy
-
 import pytest
 
 from auto_tests.installer_observer.guest_collector_lab import (
