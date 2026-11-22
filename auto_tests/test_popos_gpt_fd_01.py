@@ -69,6 +69,17 @@ class PinnedPopGptTests(unittest.TestCase):
             timeout=90,
         )
 
+    def _clone_valid_gpt(self, destination: Path) -> None:
+        """Valid same-geometry *foreign inode* using only sparse GPT sectors."""
+        tail = (COUNT - 33) * SECTOR
+        with self.base.open("rb", buffering=0) as source, destination.open("xb") as target:
+            target.truncate(SIZE)
+            target.seek(0)
+            target.write(source.read(34 * SECTOR))
+            source.seek(tail)
+            target.seek(tail)
+            target.write(source.read(33 * SECTOR))
+
     def test_h_valid_synthetic_gpt_and_byte_exact_region_hashes(self) -> None:
         with PinnedSixGpt(self.work) as pin:
             proof = pin.inspect()
@@ -87,8 +98,7 @@ class PinnedPopGptTests(unittest.TestCase):
 
     def test_a_pathname_swap_after_fd_pin_refuses(self) -> None:
         substitute = self.work / "substitute.raw"
-        with substitute.open("xb") as obj:
-            obj.truncate(SIZE)
+        self._clone_valid_gpt(substitute)
         with PinnedSixGpt(self.work) as pin:
             detached = self.work / "detached-owned.raw"
             self.base.rename(detached)
@@ -132,11 +142,16 @@ class PinnedPopGptTests(unittest.TestCase):
 
     def test_f_foreign_fd_even_with_valid_synthetic_gpt_refuses(self) -> None:
         foreign = self.work / "foreign.raw"
-        with foreign.open("xb") as obj:
-            obj.truncate(SIZE)
+        self._clone_valid_gpt(foreign)
         with PinnedSixGpt(self.work) as pin:
             foreign_fd = os.open(foreign, os.O_RDONLY)
             try:
+                self.assertEqual(
+                    canonical.inspect_gpt_fd(foreign_fd, logical_sector_size=SECTOR)[
+                        "partitionTableId"
+                    ],
+                    "gpt:" + DISK_GUID,
+                )
                 with self.assertRaises(Refusal):
                     pin.inspect(supplied_fd=foreign_fd)
             finally:
