@@ -64,7 +64,7 @@ def analyze_spec(spec: str) -> dict:
         raise Refusal("SRPM_SPEC_NAME_MISMATCH")
     if not re.search(r"(?im)^Version:\s*1\.17\.1\s*$", spec):
         raise Refusal("SRPM_SPEC_VERSION_MISMATCH")
-    if not re.search(r"(?im)^Release:\s*1%\{\?dist\}\s*$", spec):
+    if not re.search(r"(?im)^Release:\s*(?:1%\{\?dist\}|%\{autorelease\})\s*$", spec):
         raise Refusal("SRPM_SPEC_RELEASE_MISMATCH")
     if "%prep" not in spec or "%build" not in spec or "%autosetup" not in spec:
         raise Refusal("SRPM_SPEC_PREP_UNKNOWN")
