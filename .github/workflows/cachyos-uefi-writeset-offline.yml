@@ -1,0 +1,62 @@
+name: CachyOS UEFI boot write-set offline DENY-only
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/cachyos-uefi-writeset-offline.yml'
+      - 'auto_tests/tools/cachyos_uefi_writeset_readonly.py'
+      - 'auto_tests/test_cachyos_uefi_writeset_readonly.py'
+      - 'docs/CACHYOS_UEFI_BOOT_WRITESET_DENY_ONLY.md'
+permissions:
+  contents: read
+concurrency:
+  group: cachy-writeset-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  offline-write-set-only:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'test/cachyos-uefi-boot-writeset-deny-only-20261122' &&
+      github.event.pull_request.base.ref == 'test/cachyos-bcd-fat32-trace-correlation-20261122'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Guard exact source and forbid QEMU and any operational task
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = "LMhdez/gaslux"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git hash-object assets/live/cachyos-stage-target.sh)" = 453f04b0a20ffc475ff3b4fc9614c80dc82515fe
+          test "$(git hash-object assets/live/cachyos-uefi-config.py)" = f5743d5ca1e9d7b33f7ac45713bc24aa0776a2ab
+          test "$(git hash-object assets/live/cachyos-uefi-lab.py)" = 90bd65a2d2df0ce22a83fc9488dcc03f7b64292d
+          test "$(git hash-object auto_tests/tools/cachyos_configure_installed.py)" = 979551dc10adff8ad960642026a395ce18f76f57
+      - name: Compile and lint only reviewed offline Python
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check ruff==0.14.5
+          python3 -m compileall -q \
+            auto_tests/tools/cachyos_uefi_writeset_readonly.py \
+            auto_tests/test_cachyos_uefi_writeset_readonly.py
+          ruff check --select E4,E7,E9,F \
+            auto_tests/tools/cachyos_uefi_writeset_readonly.py \
+            auto_tests/test_cachyos_uefi_writeset_readonly.py
+          bash -n assets/live/cachyos-stage-target.sh
+      - name: Run writeset and existing UEFI/installed native lab contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_uefi_writeset_readonly.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_uefi_config.py' -v
+          python3 -m unittest discover -s auto_tests \
+            -p 'test_cachyos_configure_installed.py' -v
+          echo "OFFLINE_DENY_ONLY: no QEMU Windows pacstrap grub-install efibootmgr or ESP writes" >> "$GITHUB_STEP_SUMMARY"
