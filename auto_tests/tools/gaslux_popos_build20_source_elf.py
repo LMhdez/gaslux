@@ -99,7 +99,7 @@ def parse_dpkg_status(status: bytes) -> dict:
 
 
 def _regular_owned(path: Path, limit: int, expected: int | None = None) -> int:
-    need(type(path) is Path and path.is_absolute() and not path.is_symlink(),
+    need(isinstance(path, Path) and path.is_absolute() and not path.is_symlink(),
          "REFUSE_BUILD20: non-absolute/symlink input")
     try:
         info = path.lstat()
@@ -136,7 +136,7 @@ def inspect_build20_extraction(
         and os.environ.get("RUNNER_OS") == "Linux"
         and os.environ.get("GITHUB_REPOSITORY") == "LMhdez/gaslux"
         and bool(runner)
-        and type(workspace) is Path
+        and isinstance(workspace, Path)
         and workspace.is_absolute()
         and workspace.parent == Path(runner)
         and workspace.name.startswith("gaslux-pop-build20-metadata-")
