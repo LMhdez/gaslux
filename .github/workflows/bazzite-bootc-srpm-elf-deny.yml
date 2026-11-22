@@ -110,8 +110,18 @@ jobs:
           fi
           rpm -qp --qf '%{NAME} %{VERSION} %{RELEASE} %{ARCH}\n' \
             source-evidence/bootc-1.17.1-1.fc45.src.rpm \
-            > source-evidence/nevra.txt
-          grep -Fx 'bootc 1.17.1 1.fc45 src' source-evidence/nevra.txt
+            | tee source-evidence/nevra.txt
+          python - <<'PY'
+          from pathlib import Path
+          fields=Path("source-evidence/nevra.txt").read_text().strip().split()
+          assert fields[:3]==["bootc","1.17.1","1.fc45"], f"FOREIGN_SRPM_NVR:{fields!r}"
+          assert len(fields)==4, f"INVALID_SRPM_METADATA:{fields!r}"
+          # RPM source-package 'arch' headers vary by RPM format. NEVER infer
+          # trust from this field; the key signature is assessed separately.
+          assert fields[3] in ("src", "(none)"), f"FOREIGN_SRPM_ARCH:{fields!r}"
+          print("FEDORA_45_SOURCE_NVR_OBSERVED_NOT_ELF_BOUND", fields)
+          PY
+          cat source-evidence/signature-state.txt
           sha256sum source-evidence/bootc-1.17.1-1.fc45.src.rpm \
             > source-evidence/srpm-sha256.txt
           rpm2cpio source-evidence/bootc-1.17.1-1.fc45.src.rpm \
