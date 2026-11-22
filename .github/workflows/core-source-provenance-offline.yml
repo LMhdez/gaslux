@@ -7,6 +7,7 @@ on:
     paths:
       - 'auto_tests/app/config.py'
       - 'auto_tests/app/services/source_tree.py'
+      - 'auto_tests/app/services/automation.py'
       - 'auto_tests/app/services/validation.py'
       - 'auto_tests/tests/test_core_source_provenance.py'
       - 'auto_tests/tools/deployment_audit.py'
@@ -18,6 +19,7 @@ on:
     paths:
       - 'auto_tests/app/config.py'
       - 'auto_tests/app/services/source_tree.py'
+      - 'auto_tests/app/services/automation.py'
       - 'auto_tests/app/services/validation.py'
       - 'auto_tests/tests/test_core_source_provenance.py'
       - 'auto_tests/tools/deployment_audit.py'
@@ -39,19 +41,11 @@ jobs:
         run: |
           python3 -m venv .core-venv
           .core-venv/bin/python -m pip install -e ./auto_tests 'pytest==9.0.2' 'ruff==0.15.20' 'Twisted[tls]>=24,<26' 'pyOpenSSL==26.4.0'
-      - name: Safety RED F-361-01 (mocked VM barrier; no remote access)
-        run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_core_source_provenance.py -k test_automation_denies_invalid_source_before_any_vm_io
-      - name: Safety RED F-361-02 (commented PowerShell import)
-        if: always()
-        run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_deployment_audit.py -k test_cachyos_manual_module_import_is_required
-      - name: Show exact Ruff formatting diff for RED fixtures
-        if: always()
-        run: .core-venv/bin/python -m ruff format --diff --config auto_tests/pyproject.toml auto_tests/tests/test_core_source_provenance.py auto_tests/tests/test_deployment_audit.py || true
       - name: Check Python source and tests
         run: |
-          .core-venv/bin/python -m compileall -q auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
-          .core-venv/bin/python -m ruff check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
-          .core-venv/bin/python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
+          .core-venv/bin/python -m compileall -q auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/automation.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
+          .core-venv/bin/python -m ruff check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/automation.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
+          .core-venv/bin/python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/app/config.py auto_tests/app/services/source_tree.py auto_tests/app/services/automation.py auto_tests/app/services/validation.py auto_tests/tests/test_core_source_provenance.py auto_tests/tools/deployment_audit.py auto_tests/tests/test_deployment_audit.py
       - name: Provenance regressions (no VM access)
         run: .core-venv/bin/python -m pytest -q auto_tests/tests/test_core_source_provenance.py
       - name: Auditor regression tests
