@@ -201,7 +201,7 @@ def test_whiteout_removes_executable_and_prevents_false_presence():
 )
 def test_hostile_tar_paths_refused(name):
     data = tar_layer({name: b"\x7fELF" + b"abc"})
-    with pytest.raises(Refusal, match="Tar path"):
+    with pytest.raises(Refusal, match="tar path"):
         scan(data)
 
 

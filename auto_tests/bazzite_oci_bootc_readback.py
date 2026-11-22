@@ -336,7 +336,7 @@ def finish(entries: dict, descriptors: list[dict], budgets: dict, info: dict) ->
         raise Refusal("Image bootc path exists but cannot be resolved safely")
     return {
         "status": "BOOTC_PRESENT_ROUTE_UNVERIFIED" if matched else "BOOTC_UNAVAILABLE_IN_PINNED_IMAGE",
-        "image": PINN,
+        "image": PINNED,
         "manifestDigest": PAYLOAD_DIGEST,
         "configDigest": CONFIG_DIGEST,
         "bootcFiles": matched,
