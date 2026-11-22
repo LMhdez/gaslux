@@ -2,8 +2,8 @@ name: GASLUX-LIFECYCLE - autonomous multi-distro read-only research
 
 on:
   schedule:
-    - cron: '13 */6 * * *'
-    - cron: '29 3 * * 0' # weekly official Mint live-guest attempt
+    - cron: '13,43 * * * *' # every 30 minutes
+    - cron: '29 3 * * *' # daily official Mint live-guest attempt
   workflow_dispatch:
     inputs:
       mint_live_boot:
@@ -243,7 +243,7 @@ jobs:
   official_mint_live_guest:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
-      ((github.event_name == 'schedule' && github.event.schedule == '29 3 * * 0') ||
+      ((github.event_name == 'schedule' && github.event.schedule == '29 3 * * *') ||
        (github.event_name == 'workflow_dispatch' && inputs.mint_live_boot == true))
     runs-on: ubuntu-24.04
     timeout-minutes: 50
