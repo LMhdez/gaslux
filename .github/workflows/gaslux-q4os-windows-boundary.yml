@@ -51,6 +51,9 @@ permissions:
 
 jobs:
   windows-native-synthetic-gpt:
+    # This diagnostic PR is strictly offline; the existing job includes a
+    # real synthetic QEMU/OVMF boot, forbidden for this intervention.
+    if: ${{ github.head_ref != 'fix/q4os-qmp-process-observability-20261122' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

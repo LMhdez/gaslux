@@ -233,11 +233,17 @@ def test_workflow_runs_qmp_once_and_never_exports_vm_password():
         Path(__file__).resolve().parents[2] / ".github/workflows/gaslux-q4os-windows10-qcow2.yml"
     ).read_text(encoding="utf-8")
     assert "GASLUX_WIN10_LAB_PASSWORD" not in workflow
-    assert "q4os_win10_qmp_boot.py" in workflow
-    assert '--qmp "$qmp" --serial "$serial" --disk "$image"' in workflow
-    assert "unix:$qmp,server=on,wait=off" in workflow
-    assert "qemu_timeout=7200" in workflow
-    assert "qemu_timeout=14400" in workflow
+    assert "q4os_win10_qmp_supervisor.py" in workflow
+    assert '--work "$work" --code "$code" --vars "$vars"' in workflow
+    assert '--image "$image" --iso "$iso" --answer "$answer"' in workflow
+    assert "qemu_pid=$!" not in workflow
+    supervisor = (
+        Path(__file__).resolve().parents[2] / "auto_tests/tools/q4os_win10_qmp_supervisor.py"
+    ).read_text(encoding="utf-8")
+    assert "unix:" in supervisor and ",server=on,wait=off" in supervisor
+    assert "pidfd_send_signal" in supervisor
+    assert '"send-key"' not in supervisor
+    assert "supervise(" in supervisor
     assert "tail -n 120" not in workflow
     assert "name: q4os-windows10-genuine-readonly-safety-refusal-text" in workflow
     assert "boot-controller.json" in workflow

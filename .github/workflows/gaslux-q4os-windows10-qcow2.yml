@@ -200,82 +200,29 @@ jobs:
           vars="$work/OVMF_VARS.fd"
           answer="$work/unattend.iso"
           code='/usr/share/OVMF/OVMF_CODE_4M.fd'
-          serial="$work/windows10-qemu-serial.log"
-          qemu_log="$work/windows10-qemu-process.log"
-          [[ -s "$code" && -s "$vars" && -s "$iso" && -s "$answer" ]]
-          if [[ "$GASLUX_WIN10_ACCEL" == kvm ]]; then
-            machine='q35'
-            accelerator='kvm'
-            cpu='host'
-          else
-            machine='q35'
-            accelerator='tcg,thread=multi'
-            cpu='max'
-          fi
-          # This folder contains only bounded status JSON, never the ISO, QCOW2,
-          # OVMF state, unattended XML, serial data, passwords or other secrets.
           evidence_dir="$RUNNER_TEMP/q4os-win10-readonly-evidence"
           test -d "$evidence_dir" && test ! -L "$evidence_dir"
-          qmp="$work/q4os-win10-qmp.sock"
-          boot_report="$work/q4os-win10-uefi-dvd-boot.json"
-          test ! -e "$qmp" && test ! -e "$serial" && test ! -e "$boot_report"
-          if [[ "$GASLUX_WIN10_ACCEL" == kvm ]]; then
-            qemu_timeout=7200
-          else
-            qemu_timeout=14400
-          fi
-          timeout --signal=TERM --kill-after=60s "${qemu_timeout}s" qemu-system-x86_64 \
-            -no-user-config -machine "$machine" -accel "$accelerator" -cpu "$cpu" -smp 4 -m 6144 \
-            -rtc base=utc -display none -vga std \
-            -serial "file:$serial" -monitor none -net none \
-            -qmp "unix:$qmp,server=on,wait=off" \
-            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
-            -drive "if=pflash,format=raw,unit=1,file=$vars" \
-            -device ich9-ahci,id=sata \
-            -drive "if=none,id=system,file=$image,format=qcow2,cache=writeback" \
-            -device ide-hd,drive=system,bus=sata.0,bootindex=2 \
-            -drive "if=none,id=install,file=$iso,format=raw,media=cdrom,readonly=on" \
-            -device ide-cd,drive=install,bus=sata.1,bootindex=1 \
-            -drive "if=none,id=answer,file=$answer,format=raw,media=cdrom,readonly=on" \
-            -device ide-cd,drive=answer,bus=sata.2,bootindex=3 \
-            > "$qemu_log" 2>&1 &
-          qemu_pid=$!
-          cleanup_qemu() {
-            if kill -0 "$qemu_pid" 2>/dev/null; then
-              kill -TERM "$qemu_pid" 2>/dev/null || true
-              wait "$qemu_pid" || true
-            fi
-          }
-          trap cleanup_qemu EXIT
-          # Only a single, explicitly observed initial UEFI DVD prompt is
-          # acknowledged. The controller exits permanently before reboots.
+          # The Python supervisor owns the direct child via Popen + pidfd,
+          # pins the QMP peer identity and writes a bounded diagnostic even
+          # after a refusal. No shell background PID or kill(pid).
           set +e
-          python3 auto_tests/tools/q4os_win10_qmp_boot.py \
-            --qmp "$qmp" --serial "$serial" --disk "$image" \
-            --report "$boot_report" --prompt-seconds 90 --progress-seconds 600
+          python3 auto_tests/tools/q4os_win10_qmp_supervisor.py \
+            --work "$work" --code "$code" --vars "$vars" \
+            --image "$image" --iso "$iso" --answer "$answer" \
+            --accel "$GASLUX_WIN10_ACCEL"
           boot_status=$?
           set -e
+          boot_report="$work/q4os-win10-uefi-dvd-boot.json"
           if [[ -f "$boot_report" ]]; then
             cp -- "$boot_report" "$evidence_dir/boot-controller.json"
           fi
           if [[ "$boot_status" -ne 0 ]]; then
-            echo "GASLUX_WIN10_UEFI_BOOT=REFUSE; see bounded boot-controller.json" >&2
+            echo 'GASLUX_WIN10_UEFI_BOOT=REFUSE; bounded process report only' >&2
             exit 1
           fi
           echo 'GASLUX_WIN10_UEFI_DVD_KEY_ACKNOWLEDGED=PASS'
           echo 'GASLUX_WIN10_QCOW2_EARLY_ACTIVITY=PASS'
           echo 'GASLUX_WIN10_SETUP_VERIFIED=NO (await first-logon witness)'
-          set +e
-          wait "$qemu_pid"
-          status=$?
-          set -e
-          trap - EXIT
-          if [[ "$status" -ne 0 ]]; then
-            # Do not print arbitrary guest serial/QEMU logs or unattended
-            # credentials. Fail closed with a bounded status diagnostic.
-            echo "GASLUX_WIN10_QEMU_EXIT_STATUS=$status" >&2
-            exit 1
-          fi
           [[ -s "$image" ]] || { echo 'Windows QCOW2 is empty' >&2; exit 1; }
           qemu-img check "$image"
           printf 'GASLUX_WIN10_QEMU_SHUTDOWN=PASS\n'
