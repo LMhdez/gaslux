@@ -7,6 +7,7 @@ Safety #267 and canonical GPT FD #286 are imported from exact pinned trees.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import socket
@@ -14,12 +15,17 @@ import subprocess
 import sys
 import time
 import uuid
+from io import BytesIO
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from auto_tests.installer_observer.host_fd_boundary import process_seal
+from auto_tests.installer_observer.host_fd_boundary import (
+    HostBoundaryRefused,
+    _read_response,
+    process_seal,
+)
 from auto_tests.installer_observer.host_qemu_fd_evidence import (
     HostPins,
     borrowed_readonly_proc_fd,
@@ -275,15 +281,38 @@ def test_real_paused_qemu_opens_exact_regular_image_and_reports_qmp(workspace, p
             with pytest.raises(QemuDiskRefused, match="QEMU_CLEANUP_NOT_CONFIRMED"):
                 witness.assert_stopped()
             shutdown(child)
-            assert witness.assert_stopped() == {
+            completed = witness.assert_stopped()
+            assert completed == {
                 "qemuPidfdExited": True,
                 "qemuProcessReaped": True,
                 "guestAuthenticated": False,
                 "windowsRollbackProven": False,
             }
+            evidence = {
+                "case": format,
+                "classification": "NOT_INDEPENDENT",
+                "status": report["status"],
+                "qemuPid": pins.process.pid,
+                "startTicks": pins.process.start_ticks,
+                "diskDev": pins.media_dev,
+                "diskInode": pins.media_inode,
+                "diskSizeBytes": pins.media_size,
+                "gptDiskGuid": expected["partitionTableId"],
+                "partitionUuid": expected["partitions"][0]["partGuid"],
+                "qmpDevice": report["qmpReply"]["payload"]["device"],
+                "qemuProcessReaped": completed["qemuProcessReaped"],
+                "guestAuthenticated": False,
+                "diskWriteAuthorized": False,
+            }
+            print("GASLUX_QEMU_HOST_READONLY_EVIDENCE " + json.dumps(evidence, sort_keys=True))
     finally:
         shutdown(child)
     assert image.stat().st_ino == pins.media_inode
+    gate.assert_snapshot_matches(
+        expected, gate.inspect_gpt_image(raw, logical_sector_size=512)
+    )
+    if format == "qcow2":
+        assert lab.verify_chain(image, raw, workspace) == chain
 
 
 @pytest.mark.parametrize(
@@ -426,7 +455,7 @@ def test_fabricated_qmp_reply_is_never_kernel_authenticated(workspace, pinned):
     assert relation["deviceFdAssociationProven"] is False
 
 
-def test_rogue_qmp_peer_and_truncated_greeting_refused(workspace, pinned):
+def test_rogue_qmp_peer_refused(workspace, pinned):
     _, lab = pinned
     raw = make_raw(workspace, lab)
     child = start_qemu(workspace, raw, "raw")
@@ -456,3 +485,9 @@ def test_qemu_cleanup_unconfirmed_is_explicit_refusal(workspace, pinned):
             assert witness.assert_stopped()["qemuProcessReaped"] is True
     finally:
         shutdown(child)
+
+@pytest.mark.parametrize("payload", [b'{"return":', b"", b"x" * 262145])
+def test_truncated_or_oversized_qmp_response_refused(payload):
+    """Untrusted framed QMP cannot bypass the inherited bounded real parser."""
+    with pytest.raises(HostBoundaryRefused):
+        _read_response(BytesIO(payload))
