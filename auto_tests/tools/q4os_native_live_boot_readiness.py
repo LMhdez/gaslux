@@ -154,9 +154,7 @@ def measure_official_iso(path: Path) -> dict:
                 _deny("ISO_SOURCE_DIRECTORY_UNTRUSTED")
             fd = os.open(path.name, flags, dir_fd=directory)
             try:
-                result = measure_fd(
-                    fd, UPSTREAM_SHA256, MIN_HISTORIC_BYTES, MAX_HISTORIC_BYTES
-                )
+                result = measure_fd(fd, UPSTREAM_SHA256, MIN_HISTORIC_BYTES, MAX_HISTORIC_BYTES)
                 after = os.fstat(directory)
                 if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
                     _deny("ISO_SOURCE_DIRECTORY_UNTRUSTED")
