@@ -36,7 +36,19 @@ For each delegated integration, **perform the operation rather than stop at `REA
 
 **Green CI alone is not sufficient for a safety-critical merge**; the evidence and authority checks above still apply. This standing delegation applies only to repository integration in `dev` and never grants runtime disk/boot mutation, real-hardware testing or release/stability approval.
 
-Repository modification permissions never grant disk/boot mutation authority. Destructive testing must remain within explicitly approved disposable VMs with verified ownership and recovery; real-hardware experiments require separate authorization. See [AI_POLICY.md](AI_POLICY.md) for the authority model and reporting requirements.
+### GitHub Actions VM testing: standing authorization
+
+**Agents may create, trigger and rerun GitHub Actions workflows using disposable QEMU virtual machines without a separate human approval for each test run.** This authorization covers SeaBIOS/MBR and OVMF/UEFI guests, KVM if the runner supports it, verified Linux/Windows test media, real guest installation and first boot, virtual GPT/MBR/NTFS/ESP/BCD changes, power-loss fault injection, updates, Windows/Linux dual boot and guest rollback **inside test-owned virtual disk images only**. It is not limited to read-only diagnostics. A workflow's explicit guest-destructive opt-in is sufficient when the controls below are satisfied.
+
+- Use ephemeral, isolated CI runners and fresh **regular-file virtual disks** or known-restorable snapshots; verify exact image ownership, path, hash/geometry/backing where applicable, and recovery baseline before guest writes. Never attach host `/dev/` block devices, physical disks, production partitions, user data or external shared storage as writable guest media.
+- Keep the guest's writable image and test outputs inside an isolated workspace; bound time, size, resources and networking. Avoid leaking credentials: workflow `permissions` should normally be `contents: read`, checkout credentials should not persist, and secrets must not reach untrusted PR guests.
+- Pin and verify the intended ISO/OS media and test-image provenance. Deny absent/wrong images, ambiguous targets, unsupported firmware/layouts, insufficient space or failed snapshot preparation; do not assume nested KVM or Windows VM availability on every runner.
+- Record actual QEMU configuration, boot observations, disk-image identity, pre/post geometry, state/checkpoints, Windows/WinRE/BCD checks when applicable, fault-injection result and rollback evidence. Distinguish live boot, installation, dual boot and in-place Windows recovery; **CI success alone never proves a stable backend**.
+- If a job cannot maintain these boundaries, stop before mutation and report the blocker. GitHub Actions VMs are low-risk when isolated, **not literally risk-free**; do not expose host disks or relax privilege/safety controls.
+
+The project delegates this bounded CI VM test authority in [AI_POLICY.md](AI_POLICY.md). **No per-run human confirmation is required** when the workflow meets these guards. This does not authorize physical hardware experiments, production disk/boot writes, credential changes, or release/stable promotion.
+
+Repository modification permissions never grant authority to mutate real disks or production boot state. Destructive *guest-only* experiments are permitted under the standing GitHub Actions VM authorization above; real-hardware experiments require separate explicit authorization. See [AI_POLICY.md](AI_POLICY.md) for the authority model and reporting requirements.
 
 ## Non-negotiable safety rules
 
