@@ -1,0 +1,495 @@
+name: Bazzite official ISO public readback and Atomic payload binding
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/bazzite-atomic-write-set-readonly-20261120
+    paths:
+      - 'assets/live/bazzite_cosign_20261120.pub'
+      - 'auto_tests/bazzite_iso_public_readback.py'
+      - 'auto_tests/tests/test_bazzite_iso_public_readback.py'
+
+permissions:
+  contents: read
+  actions: read
+  attestations: read
+  packages: read
+
+concurrency:
+  group: bazzite-iso-public-readback-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  public-readback:
+    name: Download and cryptographically verify official ISO (read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Gaslux
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Install read-only ISO inspection tools and run contracts
+        id: contracts
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xorriso squashfs-tools skopeo jq
+          python -m pip install --disable-pip-version-check pytest ruff
+          python -m pytest -q auto_tests/tests/test_bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso45_passive_gate.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py auto_tests/bazzite_iso45_passive_gate.py auto_tests/tests/test_bazzite_iso45_passive_gate.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py auto_tests/bazzite_iso45_passive_gate.py auto_tests/tests/test_bazzite_iso45_passive_gate.py
+          python -m compileall -q auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py auto_tests/bazzite_iso45_passive_gate.py auto_tests/tests/test_bazzite_iso45_passive_gate.py
+          bash -n auto_tests/bazzite_iso45_passive_boot.sh
+
+      - name: Install upstream-pinned Cosign
+        id: cosign
+        continue-on-error: true
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        with:
+          cosign-release: 'v2.6.5'
+
+      - name: Install upstream-pinned payload Cosign
+        id: cosign-payload
+        continue-on-error: true
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        with:
+          cosign-release: 'v3.1.3'
+          install-dir: ${{ runner.temp }}/cosign-v3.1.3
+
+      - name: Authenticate public GHCR reads
+        id: ghcr
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          set -Eeuo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GH_ACTOR" --password-stdin
+          gh --version
+          cosign version
+
+      - name: Read back and verify ISO, attestations and embedded OCI payload
+        id: verify
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -Eeuo pipefail
+          WORK="$RUNNER_TEMP/bazzite-iso-public-readback-work"
+          EVIDENCE="$RUNNER_TEMP/bazzite-iso-public-readback-evidence"
+          MOUNT="$RUNNER_TEMP/bazzite-iso-readonly-mount"
+          ISO_NAME='bazzite-stable-live-amd64.iso'
+          COSIGN_ISO="$HOME/.cosign/cosign"
+          COSIGN_PAYLOAD="$RUNNER_TEMP/cosign-v3.1.3/cosign"
+          ISO_URL="https://download.bazzite.gg/$ISO_NAME"
+          SOURCE_COMMIT='5d71c4376169910c25bc06a3537f4780521e7435'
+          ISO_SHA256='6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5'
+          PAYLOAD_IMAGE='ghcr.io/ublue-os/bazzite'
+          PAYLOAD_VERSION='45.20261117.1'
+          PAYLOAD_TAG="$PAYLOAD_IMAGE:stable-$PAYLOAD_VERSION"
+          PAYLOAD_DIGEST='sha256:492f83c738838861464685aed341783c2ea2266c82a9f19f0c867fd301783fd4'
+          ISO_WORKFLOW='github.com/ublue-os/bazzite/.github/workflows/build_iso.yml'
+          PAYLOAD_WORKFLOW='github.com/ublue-os/bazzite/.github/workflows/build.yml'
+          stage='initialization'
+          mounted='false'
+          mkdir -p "$WORK" "$EVIDENCE" "$MOUNT"
+          trap '
+            rc=$?
+            if [[ "$mounted" == "true" ]]; then sudo umount "$MOUNT" || true; fi
+            printf "exitCode=%s\nfailedStage=%s\n" "$rc" "$stage" > "$EVIDENCE/run-status.txt"
+            exit "$rc"
+          ' EXIT
+
+          stage='download-sidecars'
+          curl --fail --location --show-error --silent --retry 3 --retry-all-errors --connect-timeout 30 --max-time 300 --output "$WORK/$ISO_NAME.sig" "$ISO_URL.sig"
+          curl --fail --location --show-error --silent --retry 3 --retry-all-errors --connect-timeout 30 --max-time 300 --output "$WORK/$ISO_NAME.json" "$ISO_URL.json"
+          curl --fail --location --show-error --silent --retry 3 --retry-all-errors --connect-timeout 30 --max-time 300 --output "$WORK/$ISO_NAME-CHECKSUM" "$ISO_URL-CHECKSUM"
+          cp "$WORK/$ISO_NAME.sig" "$WORK/$ISO_NAME.json" "$WORK/$ISO_NAME-CHECKSUM" "$EVIDENCE/"
+
+          stage='download-iso'
+          curl --fail --location --show-error --silent --retry 3 --retry-all-errors --connect-timeout 30 --max-time 7200 --output "$WORK/$ISO_NAME" "$ISO_URL"
+          ISO_SIZE="$(stat -c '%s' "$WORK/$ISO_NAME")"
+          ISO_ACTUAL_SHA="$(sha256sum "$WORK/$ISO_NAME" | awk '{print $1}')"
+          printf '{"url":"%s","sizeBytes":%s,"sha256":"%s","expectedSha256":"%s"}\n' "$ISO_URL" "$ISO_SIZE" "$ISO_ACTUAL_SHA" "$ISO_SHA256" > "$EVIDENCE/iso-byte-identity.json"
+          test "$ISO_ACTUAL_SHA" = "$ISO_SHA256"
+
+          stage='checksum-and-metadata'
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from auto_tests.bazzite_iso_public_readback import parse_checksum, sha256_file, validate_metadata
+          root = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-work"
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          iso = root / "bazzite-stable-live-amd64.iso"
+          checksum = parse_checksum((root / (iso.name + "-CHECKSUM")).read_bytes())
+          actual = sha256_file(iso)
+          assert checksum == actual, "official checksum sidecar mismatch"
+          metadata = validate_metadata((root / (iso.name + ".json")).read_bytes())
+          (evidence / "sidecar-validation.json").write_text(json.dumps({"checksumVerified": True, "metadata": metadata}, indent=2) + "\n")
+          PY
+
+          stage='pinned-key-readback'
+          KEY="$GITHUB_WORKSPACE/assets/live/bazzite_cosign_20261120.pub"
+          curl --fail --location --show-error --silent --retry 2 --retry-all-errors --output "$WORK/upstream-cosign.pub" "https://raw.githubusercontent.com/ublue-os/bazzite/f8580007fb1fb4241378fd99b33800aefe62c3b5/cosign.pub"
+          curl --fail --location --show-error --silent --retry 2 --retry-all-errors --output "$WORK/build-commit-cosign.pub" "https://raw.githubusercontent.com/ublue-os/bazzite/5d71c4376169910c25bc06a3537f4780521e7435/cosign.pub"
+          cmp -- "$KEY" "$WORK/upstream-cosign.pub"
+          cmp -- "$KEY" "$WORK/build-commit-cosign.pub"
+          test "$(sha256sum "$KEY" | awk '{print $1}')" = 'af78ecfda6eb21c35195af3739341715e9cfc3f2f5911dd9c10b0670547bf6e8'
+          test "$(openssl pkey -pubin -in "$KEY" -outform DER | sha256sum | awk '{print $1}')" = 'efaae036a5afefcfe2c64686db0311ab64e57ae794be634d80c25286695336a6'
+          gh api repos/ublue-os/bazzite/commits/f8580007fb1fb4241378fd99b33800aefe62c3b5 > "$EVIDENCE/key-introduction-commit.json"
+          gh api 'repos/ublue-os/bazzite/contents/cosign.pub?ref=f8580007fb1fb4241378fd99b33800aefe62c3b5' > "$EVIDENCE/key-file-github-record.json"
+          gh api 'repos/ublue-os/bazzite/contents/cosign.pub?ref=5d71c4376169910c25bc06a3537f4780521e7435' > "$EVIDENCE/key-file-build-commit-record.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          commit = json.loads((evidence / "key-introduction-commit.json").read_text())
+          key = json.loads((evidence / "key-file-github-record.json").read_text())
+          build_key = json.loads((evidence / "key-file-build-commit-record.json").read_text())
+          assert commit["commit"]["verification"]["verified"] is True
+          assert commit["sha"] == "f8580007fb1fb4241378fd99b33800aefe62c3b5"
+          assert key["sha"] == "bd5b1927189e8af5566a8ff399c46cbf7085d3b1"
+          assert build_key["sha"] == key["sha"]
+          PY
+
+          stage='cosign-iso-signature'
+          "$COSIGN_ISO" version > "$EVIDENCE/cosign-iso-version.txt"
+          grep -F 'v2.6.5' "$EVIDENCE/cosign-iso-version.txt"
+          "$COSIGN_ISO" verify-blob --key "$KEY" --signature "$WORK/$ISO_NAME.sig" "$WORK/$ISO_NAME" > "$EVIDENCE/iso-cosign-verification.txt" 2>&1
+          touch "$EVIDENCE/iso-cosign-verified.ok"
+
+          stage='iso-github-attestation'
+          gh attestation verify "$WORK/$ISO_NAME" \
+            --repo ublue-os/bazzite \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --signer-workflow "$ISO_WORKFLOW" \
+            --source-ref refs/heads/main \
+            --source-digest "$SOURCE_COMMIT" \
+            --deny-self-hosted-runners \
+            --format json > "$EVIDENCE/iso-attestation-verification.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from auto_tests.bazzite_iso_public_readback import validate_attestation_report
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          digest = json.loads((evidence / "iso-byte-identity.json").read_text())["sha256"]
+          report = validate_attestation_report(
+              json.loads((evidence / "iso-attestation-verification.json").read_text()),
+              expected_digest="sha256:" + digest,
+              expected_workflow="github.com/ublue-os/bazzite/.github/workflows/build_iso.yml",
+          )
+          (evidence / "iso-attestation-policy.json").write_text(json.dumps(report, indent=2) + "\n")
+          PY
+
+          stage='upstream-build-identities'
+          gh api repos/ublue-os/bazzite/actions/runs/44121421800 > "$EVIDENCE/iso-build-run.json"
+          gh api repos/ublue-os/bazzite/actions/runs/44115557508 > "$EVIDENCE/payload-build-run.json"
+          gh api repos/ublue-os/bazzite/releases/tags/45.20261117.1 > "$EVIDENCE/payload-release.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from auto_tests.bazzite_iso_public_readback import validate_run_metadata
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          iso = validate_run_metadata(json.loads((evidence / "iso-build-run.json").read_text()), run_id="44121421800", workflow="build_iso")
+          payload = validate_run_metadata(json.loads((evidence / "payload-build-run.json").read_text()), run_id="44115557508", workflow="build")
+          release = json.loads((evidence / "payload-release.json").read_text())
+          assert release.get("tag_name") == "45.20261117.1"
+          (evidence / "upstream-build-identities.json").write_text(json.dumps({"iso": iso, "payload": payload, "releaseTag": release["tag_name"]}, indent=2) + "\n")
+          PY
+
+          stage='payload-cosign-signature'
+          PAYLOAD_REF="$PAYLOAD_IMAGE@$PAYLOAD_DIGEST"
+          "$COSIGN_PAYLOAD" version > "$EVIDENCE/cosign-payload-version.txt"
+          grep -F 'v3.1.3' "$EVIDENCE/cosign-payload-version.txt"
+          "$COSIGN_PAYLOAD" verify --new-bundle-format=false --key "$KEY" "$PAYLOAD_REF" > "$EVIDENCE/payload-cosign-verification.json" 2>&1
+          touch "$EVIDENCE/payload-cosign-verified.ok"
+
+          stage='payload-github-attestation'
+          gh attestation verify "oci://$PAYLOAD_REF" \
+            --repo ublue-os/bazzite \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --signer-workflow "$PAYLOAD_WORKFLOW" \
+            --source-ref refs/heads/main \
+            --source-digest "$SOURCE_COMMIT" \
+            --deny-self-hosted-runners \
+            --format json > "$EVIDENCE/payload-attestation-verification.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from auto_tests.bazzite_iso_public_readback import validate_attestation_report
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          report = validate_attestation_report(
+              json.loads((evidence / "payload-attestation-verification.json").read_text()),
+              expected_digest="sha256:492f83c738838861464685aed341783c2ea2266c82a9f19f0c867fd301783fd4",
+              expected_workflow="github.com/ublue-os/bazzite/.github/workflows/build.yml",
+          )
+          (evidence / "payload-attestation-policy.json").write_text(json.dumps(report, indent=2) + "\n")
+          PY
+
+          stage='versioned-payload-manifest'
+          skopeo inspect --raw "docker://$PAYLOAD_TAG" > "$EVIDENCE/versioned-payload-manifest.json"
+          test "sha256:$(sha256sum "$EVIDENCE/versioned-payload-manifest.json" | awk '{print $1}')" = "$PAYLOAD_DIGEST"
+          stage='ghcr-config-blob-readback'
+          GHCR_BEARER_TOKEN="$(curl --fail --location --show-error --silent --retry 3 --retry-all-errors --get \
+            --data-urlencode 'scope=repository:ublue-os/bazzite:pull' \
+            --data-urlencode 'service=ghcr.io' \
+            'https://ghcr.io/token' | jq -er '.token // .access_token')"
+          curl --fail --location --show-error --silent --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer $GHCR_BEARER_TOKEN" \
+            --header 'Accept: application/vnd.oci.image.config.v1+json,application/vnd.docker.container.image.v1+json' \
+            --output "$WORK/payload-config.json" \
+            "https://ghcr.io/v2/ublue-os/bazzite/blobs/sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb"
+          unset GHCR_BEARER_TOKEN
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from auto_tests.bazzite_iso_public_readback import verify_config_blob
+          root = Path(os.environ["RUNNER_TEMP"])
+          work = root / "bazzite-iso-public-readback-work"
+          evidence = root / "bazzite-iso-public-readback-evidence"
+          result = verify_config_blob(
+              (work / "payload-config.json").read_bytes(),
+              expected_config_digest="sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb",
+              expected_version="45.20261117.1",
+          )
+          (evidence / "payload-config-readback.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+          stage='read-only-iso-mount'
+          sudo mount -o loop,ro,nosuid,nodev,noexec "$WORK/$ISO_NAME" "$MOUNT"
+          mounted='true'
+          OPTIONS="$(findmnt -no OPTIONS "$MOUNT")"
+          case ",$OPTIONS," in *,ro,*) ;; *) echo "ISO mount is not read-only" >&2; exit 1 ;; esac
+          test -f "$MOUNT/LiveOS/squashfs.img"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from auto_tests.bazzite_iso_public_readback import inspect_embedded_payload
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          mount = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-readonly-mount"
+          try:
+              result = inspect_embedded_payload(
+                  mount / "LiveOS" / "squashfs.img",
+                  diagnostics_path=evidence / "embedded-payload-diagnostics.json",
+              )
+          except Exception:
+              diagnostic_path = evidence / "embedded-payload-diagnostics.json"
+              if diagnostic_path.exists():
+                  print("Embedded payload inspection diagnostics:")
+                  print(diagnostic_path.read_text(encoding="utf-8"))
+              raise
+          config_report = json.loads((evidence / "payload-config-readback.json").read_text())
+          if result["configDigestFromManifest"] != config_report["configDigest"]:
+              raise RuntimeError("Embedded manifest config digest does not match verified OCI config blob")
+          embedded_config = result.get("embeddedConfigBlobVerification")
+          if embedded_config and embedded_config["configDigest"] != config_report["configDigest"]:
+              raise RuntimeError("Embedded config blob does not match the authenticated GHCR config blob")
+          result["verifiedConfigBlob"] = config_report
+          result["mountOptions"] = "ro"
+          (evidence / "embedded-oci-payload.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+          PY
+          sudo umount "$MOUNT"
+          mounted='false'
+
+          stage='complete'
+          printf '{"sizeBytes":%s,"sha256":"%s","checksumVerified":true,"cosignIsoVerified":true,"isoAttestationVerified":true,"payloadCosignVerified":true,"payloadAttestationVerified":true,"payloadConfigBlobVerified":true,"embeddedPayloadVerified":true,"isoMountedReadOnly":true}\n' "$ISO_SIZE" "$ISO_ACTUAL_SHA" > "$EVIDENCE/readback-facts.json"
+
+      - name: Build fail-closed evidence manifest
+        id: report
+        if: always()
+        shell: bash
+        env:
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
+          COSIGN_OUTCOME: ${{ steps.cosign.outcome }}
+          COSIGN_PAYLOAD_OUTCOME: ${{ steps.cosign-payload.outcome }}
+          GHCR_OUTCOME: ${{ steps.ghcr.outcome }}
+        run: |
+          set -Eeuo pipefail
+          EVIDENCE="$RUNNER_TEMP/bazzite-iso-public-readback-evidence"
+          mkdir -p "$EVIDENCE"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          status_path = evidence / "run-status.txt"
+          status = {}
+          if status_path.exists():
+              for line in status_path.read_text().splitlines():
+                  if "=" in line:
+                      key, value = line.split("=", 1)
+                      status[key] = value
+          outcomes = {
+              "contracts": os.environ["CONTRACTS_OUTCOME"],
+              "cosignIsoInstaller": os.environ["COSIGN_OUTCOME"],
+              "cosignPayloadInstaller": os.environ["COSIGN_PAYLOAD_OUTCOME"],
+              "ghcrAuthentication": os.environ["GHCR_OUTCOME"],
+              "readback": os.environ["VERIFY_OUTCOME"],
+          }
+          identity_path = evidence / "iso-byte-identity.json"
+          sidecar_path = evidence / "sidecar-validation.json"
+          public_readback = {
+              "isoByteIdentity": json.loads(identity_path.read_text()) if identity_path.exists() else None,
+              "sidecarValidation": json.loads(sidecar_path.read_text()) if sidecar_path.exists() else None,
+              "detachedCosignSignatureVerified": (evidence / "iso-cosign-verified.ok").is_file(),
+              "githubAttestationVerified": (evidence / "iso-attestation-policy.json").is_file(),
+              "payloadCosignVerified": (evidence / "payload-cosign-verified.ok").is_file(),
+              "payloadAttestationVerified": (evidence / "payload-attestation-policy.json").is_file(),
+              "payloadConfigBlobVerified": (evidence / "payload-config-readback.json").is_file(),
+          }
+          if (evidence / "readback-facts.json").exists():
+              public_readback.update(json.loads((evidence / "readback-facts.json").read_text()))
+          passed = (
+              all(value == "success" for value in outcomes.values())
+              and status.get("exitCode") == "0"
+              and status.get("failedStage") == "complete"
+              and (evidence / "readback-facts.json").is_file()
+              and (evidence / "payload-config-readback.json").is_file()
+              and (evidence / "embedded-oci-payload.json").is_file()
+              and json.loads((evidence / "payload-config-readback.json").read_text()).get("configDigest")
+              == "sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb"
+              and json.loads((evidence / "embedded-oci-payload.json").read_text()).get(
+                  "configDigestFromManifest"
+              )
+              == "sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb"
+              and json.loads((evidence / "embedded-oci-payload.json").read_text()).get(
+                  "verifiedConfigBlob", {}
+              ).get("configBytesSha256Verified")
+              is True
+          )
+          report = {
+              "schemaVersion": 1,
+              "agent": "GASLUX-BAZZITE",
+              "candidate": {
+                  "version": "45.20261117.1",
+                  "iso": "bazzite-stable-live-amd64.iso",
+                  "expectedIsoSha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
+                  "payload": "ghcr.io/ublue-os/bazzite",
+                  "expectedPayloadDigest": "sha256:492f83c738838861464685aed341783c2ea2266c82a9f19f0c867fd301783fd4",
+                  "expectedConfigDigest": "sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb",
+              },
+              "workflowOutcomes": outcomes,
+              "runStatus": status,
+              "publicReadback": public_readback,
+              "embeddedPayload": json.loads((evidence / "embedded-oci-payload.json").read_text()) if (evidence / "embedded-oci-payload.json").exists() else None,
+              "result": "A" if passed else "B",
+              "installationAuthorized": False,
+              "policy": {
+                  "firmware": "UEFI",
+                  "partitionTable": "GPT",
+                  "biosMbrAllowed": False,
+                  "anacondaExecuted": False,
+                  "diskWrites": False,
+                  "efiWrites": False,
+                  "nvramWrites": False,
+                  "secureBootKeyChanges": False,
+                  "isoBooted": False,
+              },
+          }
+          (evidence / "bazzite-iso-public-readback.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          (evidence / "SUMMARY.md").write_text(
+              "# Bazzite ISO public readback\n\n"
+              f"- Result: {report['result']}\n"
+              "- Installation authorized: false\n"
+              f"- Readback stage: {status.get('failedStage', 'not-started')}\n"
+              f"- Failure exit code: {status.get('exitCode', 'unknown')}\n"
+              "- ISO and OCI payload binaries are not uploaded.\n"
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"result={report['result']}\n")
+          PY
+
+      - name: Boot verified ISO45 once with isolated read-only GPT (no UI input)
+        id: passive_boot
+        if: steps.report.outputs.result == 'A'
+        continue-on-error: true
+        shell: bash
+        run: |
+          bash auto_tests/bazzite_iso45_passive_boot.sh
+
+      - name: Classify bounded passive screenshot evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "auto_tests")
+          from bazzite_iso45_passive_gate import classify
+          ev = Path(os.environ["RUNNER_TEMP"]) / "bazzite-iso-public-readback-evidence"
+          ev.mkdir(parents=True, exist_ok=True)
+          readback_file = ev / "bazzite-iso-public-readback.json"
+          readback = json.loads(readback_file.read_text()) if readback_file.exists() else {}
+          ocr = sorted(ev.glob("iso45-ocr-*.txt"))
+          texts = [p.read_text(encoding="utf-8", errors="replace")[:8192] for p in ocr]
+          exitfile = ev / "iso45-boot-step-exit.txt"
+          boot_succeeded = exitfile.exists() and exitfile.read_text().strip() == "0"
+          attempted = (ev / "iso45-cpu-resume-requested.flag").exists()
+          result = classify(texts, boot_succeeded and attempted)
+          if readback.get("result") != "A":
+              result["result"] = "C"
+              result["reason"] = "Same-run ISO/OCI authentication not completed"
+          result.update({
+              "provenanceResult": readback.get("result"),
+              "qemuBootStepExitCode": exitfile.read_text().strip() if exitfile.exists() else None,
+              "cpuResumeRequested": attempted,
+              "screenshotCount": len(ocr),
+              "screenshotsSha256Recorded": (ev / "iso45-screen-sha256.txt").exists(),
+              "hostGuestIdentityAuthenticated": False,
+              "runtimeAnacondaVersionProven": False,
+              "runtimeBlivetVersionProven": False,
+              "realGetActionsCaptured": False,
+              "nativeInstallerWriteSetVerified": False,
+              "noWindowsDiskAttached": True,
+              "guestDiskConfiguredReadOnly": True,
+              "bootloaderOrNVRAMPersistenceVerified": False,
+              "windowsBootVerified": False,
+              "rollbackVerified": False,
+          })
+          (ev / "iso45-passive-boot-result.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+      - name: Upload signed provenance and passive boot screens
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: bazzite-iso-public-readback-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/bazzite-iso-public-readback-evidence/**
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 6
+
+      - name: Fail closed unless every byte and provenance check passed
+        if: always()
+        shell: bash
+        env:
+          RESULT: ${{ steps.report.outputs.result }}
+        run: |
+          set -Eeuo pipefail
+          test "$RESULT" = 'A' || {
+            echo "RESULT B: public ISO or embedded payload provenance is incomplete; installation remains denied."
+            exit 1
+          }

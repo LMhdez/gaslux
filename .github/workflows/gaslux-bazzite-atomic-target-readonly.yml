@@ -1,0 +1,279 @@
+name: Bazzite Atomic native target read-only write-set (synthetic)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/gaslux-bazzite-atomic-target-readonly.yml'
+      - 'auto_tests/bazzite_atomic_destination_plan.py'
+      - 'auto_tests/tests/test_bazzite_atomic_destination_plan.py'
+      - 'auto_tests/bazzite_anaconda_write_set_gate.py'
+      - 'auto_tests/tests/test_bazzite_anaconda_write_set_gate.py'
+      - 'auto_tests/bazzite_anaconda_readonly_capture.py'
+      - 'auto_tests/tests/test_bazzite_anaconda_readonly_capture.py'
+      - 'auto_tests/bazzite_live_channel_boundary.py'
+      - 'auto_tests/tests/test_bazzite_live_channel_boundary.py'
+      - 'docs/BAZZITE_LIVE_GUEST_CHANNEL_BLOCKER.md'
+      - 'docs/BAZZITE_ISO_ATOMIC_PROVENANCE_20261120.md'
+      - 'auto_tests/bazzite_official_iso_candidate_20261117.json'
+      - 'auto_tests/tests/test_bazzite_official_iso_candidate.py'
+      - '.github/workflows/bazzite-iso-public-readback.yml'
+      - 'assets/live/bazzite_cosign_20261120.pub'
+      - 'auto_tests/bazzite_iso_public_readback.py'
+      - 'auto_tests/tests/test_bazzite_iso_public_readback.py'
+      - 'docs/BAZZITE_PUBLIC_ISO_READBACK.md'
+      - 'auto_tests/bazzite_gpt_fixture.py'
+  workflow_dispatch:
+  push:
+    branches:
+      - test/bazzite-atomic-write-set-readonly-20261120
+    paths:
+      - '.github/workflows/gaslux-bazzite-atomic-target-readonly.yml'
+      - 'auto_tests/bazzite_anaconda_write_set_gate.py'
+      - 'auto_tests/tests/test_bazzite_anaconda_write_set_gate.py'
+      - 'auto_tests/bazzite_anaconda_readonly_capture.py'
+      - 'auto_tests/tests/test_bazzite_anaconda_readonly_capture.py'
+      - 'auto_tests/bazzite_live_channel_boundary.py'
+      - 'auto_tests/tests/test_bazzite_live_channel_boundary.py'
+      - 'docs/BAZZITE_ISO_ATOMIC_PROVENANCE_20261120.md'
+      - 'auto_tests/bazzite_official_iso_candidate_20261117.json'
+      - 'auto_tests/tests/test_bazzite_official_iso_candidate.py'
+      - '.github/workflows/bazzite-iso-public-readback.yml'
+      - 'assets/live/bazzite_cosign_20261120.pub'
+      - 'auto_tests/bazzite_iso_public_readback.py'
+      - 'auto_tests/tests/test_bazzite_iso_public_readback.py'
+      - 'docs/BAZZITE_PUBLIC_ISO_READBACK.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bazzite-atomic-target-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fail-closed-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate native Atomic target and adversarial provenance contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install pytest ruff
+          # Real sgdisk/qemu-img fixture requires manual QEMU job; do not skip tests.
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_atomic_preflight.py auto_tests/tests/test_bazzite_iso_signature.py auto_tests/tests/test_bazzite_official_iso_candidate.py auto_tests/tests/test_bazzite_iso_public_readback.py -k 'not test_real_gpt_readonly_proposal_and_immutable_backing'
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_official_iso_candidate.py auto_tests/tests/test_bazzite_official_iso_candidate.py auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_official_iso_candidate.py auto_tests/tests/test_bazzite_official_iso_candidate.py auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
+          python -m compileall -q auto_tests/bazzite_*.py auto_tests/tests/test_bazzite_official_iso_candidate.py assets/live/gaslux_bazzite_preflight.py assets/live/gaslux_bazzite_iso_signature.py auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
+          echo 'Signed modern Bazzite ISO and OCI embedded payload passed separate readback #44759529218; no authenticated real Anaconda GetActions export or approved write-set exists: installation remains denied; legacy ISO 42 is still untrusted'
+
+  synthetic-gpt-native-target:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    needs: fail-closed-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real GPT and QEMU inventory tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive timeout 240s apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive timeout 360s apt-get install -y -qq gdisk qemu-utils qemu-system-x86 ovmf
+          python -m pip install pytest ruff
+      - name: Reject forged identities and non-UEFI/GPT layouts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_atomic_preflight.py auto_tests/tests/test_bazzite_iso_signature.py auto_tests/tests/test_bazzite_official_iso_candidate.py auto_tests/tests/test_bazzite_iso_public_readback.py
+          python -m ruff check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_official_iso_candidate.py auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
+          python -m ruff format --check --config auto_tests/pyproject.toml auto_tests/bazzite_atomic_destination_plan.py auto_tests/tests/test_bazzite_atomic_destination_plan.py auto_tests/bazzite_anaconda_write_set_gate.py auto_tests/tests/test_bazzite_anaconda_write_set_gate.py auto_tests/bazzite_anaconda_readonly_capture.py auto_tests/tests/test_bazzite_anaconda_readonly_capture.py auto_tests/bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_live_channel_boundary.py auto_tests/tests/test_bazzite_official_iso_candidate.py auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
+      - name: Compile Bazzite Python sources including the no-execution boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q auto_tests/bazzite_*.py auto_tests/tests/test_bazzite_official_iso_candidate.py assets/live/gaslux_bazzite_preflight.py assets/live/gaslux_bazzite_iso_signature.py auto_tests/bazzite_iso_public_readback.py auto_tests/tests/test_bazzite_iso_public_readback.py
+      - name: Build and inspect the verified immutable GPT fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python auto_tests/bazzite_gpt_fixture.py prepare --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > synthetic-gpt-before.json
+          python auto_tests/bazzite_atomic_destination_plan.py --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > atomic-target-proposal.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('atomic-target-proposal.json').read_text())
+          assert [p['number'] for p in report['candidateNewPartitions']] == [4, 5, 6]
+          assert all(report[key] is False for key in (
+              'installationAuthorized', 'partitionWriteAuthorized', 'windowsEspWriteAuthorized',
+              'gptMetadataWriteAuthorized', 'nvramWriteAuthorized', 'secureBootEnrollmentAuthorized',
+              'legacyIso42IndependentSignatureVerified', 'nativeInstallerWriteSetObserved'))
+          assert report['gptHeadersAndPartitionTablesWouldChange'] is True
+          assert all(p['partuuid'] for p in report['protectedExistingPartitions'])
+          print('Verified proposal only; zero installation or disk-write authority')
+          PY
+      - name: Refuse signed ISO45 modern automatic-only GPT 4-6 route
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY' > bazzite-iso45-native-route-denial.json
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'auto_tests')
+          from bazzite_anaconda_write_set_gate import assess_signed_iso45_native_route
+          plan = json.loads(Path('atomic-target-proposal.json').read_text())
+          ledger = json.loads(
+              Path('auto_tests/bazzite_official_iso_candidate_20261117.json').read_text()
+          )
+          print(json.dumps(assess_signed_iso45_native_route(plan, ledger), indent=2))
+          PY
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('bazzite-iso45-native-route-denial.json').read_text())
+          assert report['status'] == 'REFUSED_SIGNED_ISO45_NO_VERIFIED_CUSTOM_GPT_4_6_ROUTE'
+          assert report['installationAuthorized'] is False
+          assert report['partitionWriteAuthorized'] is False
+          assert report['windowsEspWriteAuthorized'] is False
+          assert report['realAnacondaActionsCaptured'] is False
+          print('PASS: Signed ISO45 has no verified exact GPT 4-6 native route')
+          PY
+      - name: Prove Anaconda evidence is unavailable and must fail closed
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          printf '{}\n' > "$RUNNER_TEMP/missing-anaconda-actions.json"
+          rc=0
+          python auto_tests/bazzite_anaconda_write_set_gate.py \
+            --proposal atomic-target-proposal.json \
+            --observation "$RUNNER_TEMP/missing-anaconda-actions.json" \
+            > "$RUNNER_TEMP/invalid-action-result.json" 2> anaconda-comparison-refusal.txt || rc=$?
+          test "$rc" -eq 2
+          grep -F 'REFUSED:' anaconda-comparison-refusal.txt
+          python - <<'PY' > anaconda-write-set-status.json
+          import json
+          print(json.dumps({
+              "comparisonAllowed": False,
+              "realAnacondaActionsCaptured": False,
+              "realActionGraphAuthenticated": False,
+              "legacyIsoIndependentlyAuthenticated": False,
+              "partitionWriteAuthorized": False,
+              "windowsEspWriteAuthorized": False,
+              "installationAuthorized": False,
+              "reason": "No signed installer and no actual GetActions DBus action graph"
+          }, sort_keys=True, indent=2))
+          PY
+      - name: Inventory QEMU/OVMF attachment without starting guest or writing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          code=/usr/share/OVMF/OVMF_CODE_4M.fd
+          vars=/usr/share/OVMF/OVMF_VARS_4M.fd
+          if [[ ! -f "$code" || ! -f "$vars" ]]; then
+            code=/usr/share/OVMF/OVMF_CODE.fd
+            vars=/usr/share/OVMF/OVMF_VARS.fd
+          fi
+          test -f "$code" && test -f "$vars"
+          cp -- "$vars" "$RUNNER_TEMP/bazzite-ovmf-vars-disposable.fd"
+          chmod 600 "$RUNNER_TEMP/bazzite-ovmf-vars-disposable.fd"
+          overlay="$RUNNER_TEMP/bazzite-gpt-fixture/gpt-layout-scratch.qcow2"
+          printf 'info block\ninfo qtree\nquit\n' | timeout 30s qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 512 -nodefaults -display none -S \
+            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,unit=1,file=$RUNNER_TEMP/bazzite-ovmf-vars-disposable.fd" \
+            -monitor stdio \
+            -drive "file=$overlay,format=qcow2,if=none,id=owned,readonly=on" \
+            -device virtio-blk-pci,drive=owned,serial=GLXBAZRO001 \
+            > qemu-ovmf-no-boot-inventory.txt
+          grep -F GLXBAZRO001 qemu-ovmf-no-boot-inventory.txt
+          grep -F gpt-layout-scratch.qcow2 qemu-ovmf-no-boot-inventory.txt
+          echo 'QEMU monitor-only attachment; guest was deliberately not started'
+      - name: Host attestation of real paused QEMU process and hard refusal of guest execution
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          code=/usr/share/OVMF/OVMF_CODE_4M.fd
+          if [[ ! -f "$code" ]]; then code=/usr/share/OVMF/OVMF_CODE.fd; fi
+          vars="$RUNNER_TEMP/bazzite-ovmf-vars-disposable.fd"
+          overlay="$RUNNER_TEMP/bazzite-gpt-fixture/gpt-layout-scratch.qcow2"
+          test -f "$code" && test -f "$vars" && test -f "$overlay"
+          tx=$(python -c 'import secrets; print(secrets.token_hex(16))')
+          collector_sha=$(sha256sum auto_tests/bazzite_anaconda_readonly_capture.py | awk '{print $1}')
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 512 -nodefaults -display none -S \
+            -nic none -monitor none \
+            -drive "if=pflash,format=raw,unit=0,readonly=on,file=$code" \
+            -drive "if=pflash,format=raw,unit=1,file=$vars" \
+            -drive "file=$overlay,format=qcow2,if=none,id=owned,readonly=on" \
+            -device virtio-blk-pci,drive=owned,serial=GLXBAZRO001 \
+            -name "gaslux-bazzite-$tx" \
+            > qemu-paused-stdout.txt 2> qemu-paused-stderr.txt &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || :; wait "$pid" 2>/dev/null || :' EXIT
+          sleep 2
+          kill -0 "$pid"
+          status=0
+          python auto_tests/bazzite_live_channel_boundary.py \
+            --qemu-pid "$pid" --transaction "$tx" \
+            --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" \
+            --collector-sha256 "$collector_sha" \
+            > bazzite-live-channel-denial.json 2> bazzite-live-channel-refusal.txt || status=$?
+          test "$status" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          proof = json.loads(Path("bazzite-live-channel-denial.json").read_text())
+          assert proof["status"] == "REFUSED_NO_AUTHENTICATED_GUEST_COLLECTOR_CHANNEL"
+          assert proof["qemu"]["qemuCpuStopped"] is True
+          assert proof["qemu"]["guestNetworkConfigured"] is False
+          assert proof["qemu"]["guestCommandChannelConfigured"] is False
+          assert proof["collectorInvoked"] is False
+          assert proof["hostGuestIdentityIndependentlyAuthenticated"] is False
+          assert proof["installationAuthorized"] is False
+          assert proof["getActionsObserved"] is False
+          print("PASS: real QEMU /proc attest, collector execution explicitly refused")
+          PY
+          kill "$pid"
+          wait "$pid" || :
+          trap - EXIT
+      - name: Audit backing and discard disposable COW
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$RUNNER_TEMP/bazzite-gpt-fixture/manifest.json" ]]; then
+            python auto_tests/bazzite_gpt_fixture.py audit --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > synthetic-gpt-after.json
+            python auto_tests/bazzite_gpt_fixture.py discard --root "$RUNNER_TEMP/bazzite-gpt-fixture" --runner-temp "$RUNNER_TEMP" > synthetic-gpt-discard.json
+          fi
+      - name: Publish bounded read-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazzite-atomic-target-readonly
+          path: |
+            synthetic-gpt-before.json
+            atomic-target-proposal.json
+            bazzite-iso45-native-route-denial.json
+            anaconda-write-set-status.json
+            anaconda-comparison-refusal.txt
+            qemu-ovmf-no-boot-inventory.txt
+            bazzite-live-channel-denial.json
+            bazzite-live-channel-refusal.txt
+            qemu-paused-stdout.txt
+            qemu-paused-stderr.txt
+            synthetic-gpt-after.json
+            synthetic-gpt-discard.json
+          if-no-files-found: error
+          retention-days: 7

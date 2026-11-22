@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "evidenceRecordOnly": true,
+  "status": "PUBLIC_ISO_AND_EMBEDDED_OCI_MANIFEST_CONFIG_DIGEST_BOUND_READBACK_VERIFIED_NO_INSTALL_AUTHORITY",
+  "distribution": "bazzite",
+  "artifact": {
+    "name": "bazzite-stable-live-amd64.iso",
+    "version": "45.20261117.1",
+    "channel": "stable",
+    "architecture": "x86_64",
+    "sizeBytes": 8377878528,
+    "sha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
+    "signature": {
+      "method": "cosign-sign-blob",
+      "sidecar": "bazzite-stable-live-amd64.iso.sig",
+      "generatedInOfficialBuild": true,
+      "publicReadbackVerified": true,
+      "verifiedAgainstLocalIsoBytes": true
+    },
+    "provenance": {
+      "provider": "GitHub Actions / Sigstore Public Good",
+      "attestationId": "68711578",
+      "rekorLogIndex": "3949128808",
+      "subjectSha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
+      "repository": "ublue-os/bazzite",
+      "workflow": ".github/workflows/build_iso.yml",
+      "workflowIdentity": "https://github.com/ublue-os/bazzite/.github/workflows/build_iso.yml@refs/heads/main",
+      "runId": 44121421800,
+      "sourceCommit": "5d71c4376169910c25bc06a3537f4780521e7435",
+      "verifiedAgainstLocalIsoBytes": true
+    }
+  },
+  "trust": {
+    "publicKeyPath": "ublue-os/bazzite/cosign.pub",
+    "algorithm": "ECDSA-P256",
+    "pemSha256": "af78ecfda6eb21c35195af3739341715e9cfc3f2f5911dd9c10b0670547bf6e8",
+    "subjectPublicKeyInfoSha256": "efaae036a5afefcfe2c64686db0311ab64e57ae794be634d80c25286695336a6",
+    "keyBlobSha": "bd5b1927189e8af5566a8ff399c46cbf7085d3b1",
+    "keyIntroductionCommit": "f8580007fb1fb4241378fd99b33800aefe62c3b5",
+    "keyIntroductionCommitVerifiedByGitHub": true,
+    "outOfBandFingerprintVerified": false
+  },
+  "payload": {
+    "image": "ghcr.io/ublue-os/bazzite",
+    "version": "45.20261117.1",
+    "digest": "sha256:492f83c738838861464685aed341783c2ea2266c82a9f19f0c867fd301783fd4",
+    "configDigest": "sha256:938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb",
+    "cosignSignedInOfficialBuild": true,
+    "provenance": {
+      "provider": "GitHub Actions / Sigstore Public Good",
+      "attestationId": "68695561",
+      "rekorLogIndex": "3948558954",
+      "repository": "ublue-os/bazzite",
+      "workflow": ".github/workflows/build.yml",
+      "workflowIdentity": "https://github.com/ublue-os/bazzite/.github/workflows/build.yml@refs/heads/main",
+      "runId": 44115557508,
+      "sourceCommit": "5d71c4376169910c25bc06a3537f4780521e7435"
+    },
+    "cosignSignatureVerifiedAgainstImmutableDigest": true,
+    "githubAttestationVerifiedAgainstImmutableDigest": true,
+    "versionedManifestReadBackVerified": true
+  },
+  "relationship": {
+    "installImagePayload": "ghcr.io/ublue-os/bazzite:stable",
+    "configDigestCrossMatchedInOfficialBuildLogs": true,
+    "embeddedOciManifestReadBackVerified": true,
+    "isoAttestationResolvedPayloadDigestIndependentlyVerified": false,
+    "cryptographicIsoToPayloadBindingVerified": true
+  },
+  "support": {
+    "upstreamStableBuild": true,
+    "firmware": [
+      "uefi"
+    ],
+    "partitionTables": [
+      "gpt"
+    ],
+    "gasluxSupport": "experimental-unverified"
+  },
+  "result": "A",
+  "installationAuthorized": false,
+  "publicReadback": {
+    "workflowRunId": 44759529218,
+    "workflowRunUrl": "https://github.com/LMhdez/gaslux/actions/runs/44759529218",
+    "evidenceArtifactId": 14641606769,
+    "evidenceArtifactUrl": "https://github.com/LMhdez/gaslux/actions/runs/44759529218/artifacts/14641606769",
+    "url": "https://download.bazzite.gg/bazzite-stable-live-amd64.iso",
+    "sizeBytes": 8377878528,
+    "sha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
+    "sha256MatchesPinnedBuildSubject": true,
+    "officialChecksumVerified": true,
+    "detachedCosignSignatureVerified": true,
+    "cosignVersion": "v2.6.5",
+    "keyPemSha256Verified": true,
+    "keySpkiSha256Verified": true,
+    "keyIntroductionCommitGitHubVerified": true,
+    "metadataJsonVerified": true,
+    "githubIsoAttestationVerified": true,
+    "embeddedOciManifestReadBackVerified": true,
+    "isoToPayloadBindingVerified": true,
+    "sidecars": {
+      "signature": {
+        "file": "bazzite-stable-live-amd64.iso.sig",
+        "sizeBytes": 96,
+        "sha256": "8d09506458f13b34609d2b6c6992621fe30cbac1119265a379fbdc7614eb4c1d"
+      },
+      "metadata": {
+        "file": "bazzite-stable-live-amd64.iso.json",
+        "sizeBytes": 167,
+        "sha256": "9d8e7cb940b4c096bc7c700b765b9c05b22d0ce0d6329eab80bdd62f071f83f5"
+      },
+      "checksum": {
+        "file": "bazzite-stable-live-amd64.iso-CHECKSUM",
+        "sizeBytes": 96,
+        "sha256": "7f29f544cbfc27cd6b77c95df88ac52eae7e075fa387f57c77223ec4f793881f"
+      }
+    },
+    "isoAttestation": {
+      "predicateType": "https://slsa.dev/provenance/v1",
+      "subjectSha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
+      "certificateIdentity": "https://github.com/ublue-os/bazzite/.github/workflows/build_iso.yml@refs/heads/main",
+      "issuer": "https://token.actions.githubusercontent.com",
+      "githubWorkflowRepository": "ublue-os/bazzite",
+      "githubWorkflowRef": "refs/heads/main",
+      "sourceRepositoryURI": "https://github.com/ublue-os/bazzite",
+      "sourceRepositoryDigest": "5d71c4376169910c25bc06a3537f4780521e7435",
+      "runnerEnvironment": "github-hosted",
+      "runInvocationURI": "https://github.com/ublue-os/bazzite/actions/runs/44121421800/attempts/1",
+      "verifiedTimestamps": 1
+    },
+    "isoBuildRunIdentityVerified": true,
+    "payloadBuildRunIdentityVerified": true,
+    "payloadReleaseTagVerified": true,
+    "payloadCosignVerifierVersionUsed": "v3.1.3",
+    "payloadCosignUpstreamVersion": "v3.1.3",
+    "payloadCosignSignatureVerified": true,
+    "payloadAttestationVerified": true,
+    "isoSizeBytes": 8377878528,
+    "isoSha256": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5",
+    "isoCosignVerified": true,
+    "isoAttestationVerified": true,
+    "isoCosignVersion": "v2.6.5",
+    "payloadCosignVerified": true,
+    "payloadCosignVersion": "v3.1.3",
+    "versionedPayloadManifestDigestVerified": true,
+    "embeddedStorageImageRecordObserved": true,
+    "embeddedImagesJsonPath": "var/lib/containers/storage/overlay-images/images.json",
+    "embeddedImageName": "ghcr.io/ublue-os/bazzite:stable",
+    "embeddedImageId": "938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb",
+    "embeddedManifestPath": "var/lib/containers/storage/overlay-images/938000b71e57a251c3720e90ad7422b6636b1cbcbecc928479c0a8f32350badb/manifest",
+    "embeddedManifestPathObserved": true,
+    "embeddedManifestBytesVerified": true,
+    "embeddedConfigBlobVerified": false,
+    "result": "A",
+    "installationAuthorized": false,
+    "failureStage": "complete",
+    "failureReason": null,
+    "payloadConfigBlobVerified": true,
+    "terminalZipSha256": "1ad0ccbfec8b2316c89aac9bf58067d73a2541d734c7fcff3e053dd55757fee2",
+    "terminalRunExitCode": 0,
+    "configBlobRetrievedFromISO": false,
+    "configBlobVerificationSource": "ghcr-immutable-oci-config-digest-crosschecked-with-embedded-iso-manifest"
+  }
+}
