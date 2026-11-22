@@ -303,7 +303,6 @@ def test_kvm_and_tcg_machine_graph_and_wait_budgets(lab):
 
 def test_real_foreign_same_uid_qmp_peer_receives_zero_commands(tmp_path, monkeypatch):
     """Real Unix socket and two real Python PIDs, no QEMU/installer."""
-    import signal
     import time
 
     work = tmp_path / "private"
@@ -369,7 +368,6 @@ def test_real_python_child_reaped_despite_report_io_fault(
     monkeypatch, lab, fault, errno_value
 ):
     """ENOSPC/EIO on supervisor-owned logfile may not bypass wait/reap."""
-    import errno
 
     holder = {}
     native_open = Path.open
