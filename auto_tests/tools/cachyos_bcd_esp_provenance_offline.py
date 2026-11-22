@@ -95,8 +95,11 @@ def _check_open_descriptor(fd: int, path: Path, pinned: dict) -> dict:
         pathname = path.lstat()
     except OSError as exc:
         raise EspProvenanceError("open descriptor identity unavailable") from exc
-    require(mode & os.O_ACCMODE == os.O_RDONLY,
-            "descriptor is not read-only")
+    # Linux O_PATH has O_ACCMODE == O_RDONLY (both zero), but is not
+    # readable. Reject it before any pread or provenance classification.
+    require(mode & os.O_ACCMODE == os.O_RDONLY
+            and not (mode & getattr(os, "O_PATH", 0)),
+            "descriptor is not read-only or is O_PATH")
     require(stat.S_ISREG(desc.st_mode) and stat.S_ISREG(pathname.st_mode)
             and not path.is_symlink()
             and desc.st_uid == os.getuid()
