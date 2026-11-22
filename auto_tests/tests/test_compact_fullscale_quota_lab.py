@@ -4,11 +4,13 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import tempfile
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 import unittest
 
 SRC = Path(__file__).resolve().parents[1] / "tools/compact_fullscale_quota_lab.py"
+sys.path.insert(0, str(SRC.parent))
 SPEC = importlib.util.spec_from_file_location("gaslux_fullscale_quota", SRC)
 assert SPEC is not None and SPEC.loader is not None
 full = importlib.util.module_from_spec(SPEC)
