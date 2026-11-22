@@ -239,12 +239,13 @@ def run(work: Path, evidence: Path, template: Path) -> None:
     )
     tools = Path(__file__).resolve().parent
     with SafeWorkspace(work, evidence) as workspace:
+        base_args = ("--work", str(work), "--ovmf-template", str(template))
         tasks = (
-            ("gaslux_popos_six_gpt_lab.py", ("prepare", "--work", str(work), "--ovmf-template", str(template))),
-            ("gaslux_popos_six_gpt_lab.py", ("preflight", "--work", str(work), "--ovmf-template", str(template))),
+            ("gaslux_popos_six_gpt_lab.py", ("prepare", *base_args)),
+            ("gaslux_popos_six_gpt_lab.py", ("preflight", *base_args)),
             ("gaslux_popos_six_gpt_fsck.py", ("--work", str(work), "--phase", "before")),
-            ("gaslux_popos_six_gpt_lab.py", ("recover", "--work", str(work), "--ovmf-template", str(template))),
-            ("gaslux_popos_six_gpt_lab.py", ("preflight", "--work", str(work), "--ovmf-template", str(template))),
+            ("gaslux_popos_six_gpt_lab.py", ("recover", *base_args)),
+            ("gaslux_popos_six_gpt_lab.py", ("preflight", *base_args)),
             ("gaslux_popos_six_gpt_fsck.py", ("--work", str(work), "--phase", "after")),
         )
         for tool, args in tasks:
