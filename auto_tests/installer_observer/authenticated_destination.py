@@ -213,7 +213,7 @@ def assess_authenticated_destination(
             "DESTINATION_SWAP_OR_FD_ALIAS",
         )
         require(
-            raw_st.st_size in (64 * 1024 * 1024,)
+            68 * 512 <= raw_st.st_size <= MAX_BYTES
             and raw_st.st_size % 512 == 0,
             "GPT_GEOMETRY_MISMATCH",
         )
