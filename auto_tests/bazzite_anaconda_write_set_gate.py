@@ -355,8 +355,7 @@ def assess_signed_iso45_native_route(plan: dict, evidence: object) -> dict:
     trust = evidence.get("trust")
     support = evidence.get("support")
     if any(
-        not isinstance(x, dict)
-        for x in (artifact, payload, relation, readback, trust, support)
+        not isinstance(x, dict) for x in (artifact, payload, relation, readback, trust, support)
     ):
         raise Refusal("Incomplete signed ISO45 provenance evidence")
     signature = artifact.get("signature")
@@ -405,9 +404,7 @@ def assess_signed_iso45_native_route(plan: dict, evidence: object) -> dict:
     # modern ISO family. This does not establish actual Anaconda behavior.
     return {
         "status": "REFUSED_SIGNED_ISO45_NO_VERIFIED_CUSTOM_GPT_4_6_ROUTE",
-        "upstreamDocument": (
-            "https://docs.bazzite.gg/General/Installation_Guide/install-guide/"
-        ),
+        "upstreamDocument": ("https://docs.bazzite.gg/General/Installation_Guide/install-guide/"),
         "provenanceEvidenceRun": 44759529218,
         "isoSha256": ISO_SHA256,
         "ociManifestDigest": PAYLOAD_DIGEST,

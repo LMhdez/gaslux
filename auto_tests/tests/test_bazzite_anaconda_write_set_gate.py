@@ -364,9 +364,7 @@ def test_signed_iso45_manual_gpt_4_6_incompatible_with_modern_installer():
         (("installationAuthorized",), True),
     ],
 )
-def test_signed_iso45_wrong_artifact_payload_signer_or_compatibility_refused(
-    path, replacement
-):
+def test_signed_iso45_wrong_artifact_payload_signer_or_compatibility_refused(path, replacement):
     ledger = signed_iso45_ledger()
     target = ledger
     for key in path[:-1]:
