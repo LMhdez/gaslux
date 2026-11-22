@@ -119,7 +119,10 @@ jobs:
           python3 -m ruff format --check --config auto_tests/pyproject.toml auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
           python3 -m compileall -q auto_tests/tools/protected_authority_readiness_offline.py auto_tests/tests/test_protected_authority_readiness_offline.py
       - name: Actual pinned PR 275 trigger and exact Git-parent tests (synthetic)
-        run: python3 -m pytest -q "$GASLUX_READINESS_PIN_ROOT/trigger/auto_tests/tests/test_observer_gpt_qemu_one_shot.py"
+        shell: bash
+        run: |
+          cd "$GASLUX_READINESS_PIN_ROOT/trigger"
+          python3 -m pytest -q auto_tests/tests/test_observer_gpt_qemu_one_shot.py
       - name: Actual pinned PR 285 SQLite v3 offline adversarial tests
         shell: bash
         run: |
