@@ -261,7 +261,9 @@ def make_resources(work: Path) -> tuple[dict[str, Path], dict]:
     return paths, meta
 
 
-def args_for(mode: str, sock: Path, fds: dict[str, int]) -> list[str]:
+def args_for(
+    mode: str, sock: Path, fds: dict[str, int], readonly_fds: dict[str, int]
+) -> list[str]:
     args = [
         QEMU,
         "-machine",
@@ -291,7 +293,12 @@ def args_for(mode: str, sock: Path, fds: dict[str, int]) -> list[str]:
     backing = {}
     for index, (name, fd) in enumerate(fds.items(), start=1):
         if mode == "fdset" or (mode == "hybrid" and name in ("disk.qcow2", "synthetic.iso")):
-            args += ["-add-fd", f"fd={fd},set={index},opaque={name}"]
+            args += ["-add-fd", f"fd={fd},set={index},opaque={name}-native"]
+            if name in readonly_fds:
+                args += [
+                    "-add-fd",
+                    f"fd={readonly_fds[name]},set={index},opaque={name}-readonly",
+                ]
             backing[name] = f"/dev/fdset/{index}"
         else:
             backing[name] = f"/proc/self/fd/{fd}"
@@ -319,6 +326,7 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
     work.mkdir(mode=0o700)
     paths, geometry = make_resources(work)
     fds = {}
+    readonly_fds = {}
     child = None
     pidfd = None
     start = None
@@ -334,6 +342,17 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
     try:
         for name, path in paths.items():
             fds[name] = pinned(path, name in ("vars.fd", "disk.qcow2"))
+        # QEMU fdsets select descriptors by requested access mode. Supply
+        # read-only AND read-write handles for mutable media (QEMU docs).
+        # Never turn O_RDWR into O_RDONLY with dup(): it shares access flags.
+        if mode in ("fdset", "hybrid"):
+            for name in ("vars.fd", "disk.qcow2"):
+                readonly_fds[name] = pinned(paths[name], False)
+                require(
+                    (os.fstat(readonly_fds[name]).st_dev, os.fstat(readonly_fds[name]).st_ino)
+                    == (os.fstat(fds[name]).st_dev, os.fstat(fds[name]).st_ino),
+                    "ACCESS_MODE_FD_INODE_MISMATCH",
+                )
         original = {
             name: (os.fstat(fd).st_dev, os.fstat(fd).st_ino, sha256_fd(fd))
             for name, fd in fds.items()
@@ -349,10 +368,10 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
             report["renameForeignUnchanged"] = False
         with stderr.open("xb") as error_output:
             child = subprocess.Popen(
-                args_for(mode, work / "qmp.sock", fds),
+                args_for(mode, work / "qmp.sock", fds, readonly_fds),
                 cwd=work,
                 start_new_session=True,
-                pass_fds=tuple(fds.values()),
+                pass_fds=tuple(fds.values()) + tuple(readonly_fds.values()),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=error_output,
@@ -430,7 +449,7 @@ def scenario(root: Path, mode: str, rename: bool) -> dict:
                 "descendantsAbsent": False,
                 "reason": str(exc) if isinstance(exc, LabRefusal) else "CLEANUP_FAILED",
             }
-        for fd in fds.values():
+        for fd in (*fds.values(), *readonly_fds.values()):
             os.close(fd)
         if stderr.is_file():
             data = stderr.read_bytes()[:8192].lower()
