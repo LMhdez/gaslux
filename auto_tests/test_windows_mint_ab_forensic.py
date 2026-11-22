@@ -817,16 +817,93 @@ class MintAbForensicContracts(unittest.TestCase):
                     ["/EFI/OEM/nested/child.efi"],
                 )
 
-    def test_f03_duplicate_raw_entries_must_be_rejected_before_mapping(self):
-        """A dict silently overwrites keys; reject duplicates at acquisition."""
-        entries = ["/EFI/one.efi", "/EFI/one.efi"]
-        for path in entries:
-            self.assertTrue(forensic.canonical_inventory_path(path))
-        self.assertNotEqual(len(set(entries)), len(entries))
-        # Verify the production acquisition checks raw identities before dict.
-        source = (Path(__file__).parent / "tools" / "windows_mint_ab_forensic.py").read_text()
-        self.assertIn("absolute not in seen", source)
-        self.assertIn("seen.add(absolute)", source)
+    def test_f03_duplicate_and_partial_guestfs_enumeration_fail_closed(self):
+        """Exercise actual acquisition against a fake read-only guestfs interface."""
+        import types
+
+        from windows_cachyos_qcow2_gpt_readonly import VIRTUAL_BYTES
+
+        class FixtureGuest:
+            def __init__(self, *, duplicate=False, interrupted=False, **kwargs):
+                self.duplicate = duplicate
+                self.interrupted = interrupted
+                self.device = None
+
+            def add_drive_opts(self, *args, **kwargs):
+                self.drive_readonly = kwargs.get("readonly")
+
+            def launch(self):
+                pass
+
+            def list_devices(self):
+                return ["/dev/sda"]
+
+            def blockdev_getsize64(self, device):
+                return VIRTUAL_BYTES
+
+            def list_partitions(self):
+                return ["/dev/sda" + str(i) for i in range(1, 6)]
+
+            def vfs_type(self, partition):
+                return "ext4"
+
+            def vfs_uuid(self, partition):
+                return "00000000-0000-4000-8000-000000000001"
+
+            def checksum_device(self, algorithm, partition):
+                return "a" * 64
+
+            def mount_ro(self, volume, directory):
+                self.device = volume
+
+            def is_file(self, name):
+                return True
+
+            def checksum(self, algorithm, name):
+                return hashlib.sha256(name.encode("utf-8")).hexdigest()
+
+            def ls(self, directory):
+                return ["vmlinuz-6.0", "initrd.img-6.0"]
+
+            def find(self, directory):
+                if self.device == "/dev/sda1":
+                    paths = ["EFI", "EFI/Microsoft/bootmgfw.efi", "EFI/empty.bin"]
+                    if self.duplicate:
+                        paths.insert(2, "EFI/Microsoft/bootmgfw.efi")
+                    return paths
+                if self.interrupted:
+                    raise OSError("synthetic guestfs enumeration interrupted")
+                return ["Recovery", "Recovery/winre.wim"]
+
+            def umount_all(self):
+                pass
+
+            def shutdown(self):
+                pass
+
+            def close(self):
+                pass
+
+        for dup, interrupted, resource, expected_reason in (
+            (True, False, "esp", "ForensicError"),
+            (False, True, "recovery", "OSError"),
+        ):
+            with self.subTest(duplicate=dup, interrupted=interrupted):
+                guest = FixtureGuest(duplicate=dup, interrupted=interrupted)
+                with patch.dict(
+                    sys.modules, {"guestfs": types.SimpleNamespace(GuestFS=lambda **_: guest)}
+                ):
+                    report = forensic.guest_ro_inventory(
+                        Path("synthetic-guestfs-only.qcow2"),
+                        "00000000-0000-4000-8000-000000000001",
+                    )
+                self.assertEqual(guest.drive_readonly, 1)
+                self.assertFalse(report["fileInventories"][resource]["available"])
+                self.assertEqual(report["fileInventories"][resource]["reason"],
+                                 expected_reason)
+                for other in ("esp", "recovery"):
+                    if other != resource:
+                        self.assertTrue(report["fileInventories"][other]["available"])
 
     def test_valid_two_gates_allow_only_the_next_mock_windows_boundary(self):
         with tempfile.TemporaryDirectory() as root:
