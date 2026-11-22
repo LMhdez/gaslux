@@ -76,6 +76,22 @@ class IntegratorContractTests(unittest.TestCase):
             return {"merged": True, "sha": "c" * 40}
         raise AssertionError((method, path))
 
+    def test_live_compare_api_path_is_allowed_but_traversal_is_not(self):
+        with patch.dict(os.environ, {"GH_TOKEN": "test"}):
+            with patch.object(integ.urllib.request, "urlopen") as opener:
+                opener.return_value.__enter__.return_value.read.return_value = b"{}"
+                self.assertEqual(
+                    integ.api("GET", f"/compare/{self.dev}...{self.head}"), {}
+                )
+                request = opener.call_args.args[0]
+                self.assertTrue(request.full_url.endswith(
+                    f"/compare/{self.dev}...{self.head}"
+                ))
+                with self.assertRaisesRegex(ValueError, "Untrusted"):
+                    integ.api("GET", "/compare/../../secrets")
+                with self.assertRaisesRegex(ValueError, "Untrusted"):
+                    integ.api("GET", "/compare/" + self.dev + "...." + self.head)
+
     def test_exact_curated_mapping_allowed(self):
         self.assertTrue(integ.exact_insert(self.old, self.new, "mint"))
         self.assertFalse(integ.exact_insert(self.old, self.old, "mint"))
