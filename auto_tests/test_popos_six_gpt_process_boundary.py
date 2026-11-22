@@ -71,32 +71,31 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
                 foreign = self.root / "foreign"
                 foreign.write_bytes(b"FOREIGN\n")
                 original_run = subprocess.run
-                invoked = []
-
-                def attack(command, **kwargs):
+                def attack(command, *, target_name=name,
+                           runner=original_run, attacker_file=foreign, **kwargs):
                     self.assertTrue(command[-1].startswith("/proc/self/fd/"))
-                    self.assertNotIn(str(self.work / name), command)
-                    invoked.append(tuple(command))
+                    self.assertNotIn(str(self.work / target_name), command)
                     code = (
                         "import os,sys;"
                         "os.rename(sys.argv[1],sys.argv[3]);"
                         "os.replace(sys.argv[2],sys.argv[1])"
                     )
-                    original_run(
-                        [sys.executable, "-c", code, str(self.work / name),
-                         str(foreign), str(self.root / "detached")],
+                    runner(
+                        [sys.executable, "-c", code, str(self.work / target_name),
+                         str(attacker_file), str(self.root / "detached")],
                         check=True, timeout=10,
                     )
-                    return original_run(command, **kwargs)
+                    return runner(command, **kwargs)
 
-                with SafeWorkspace(self.work, self.evidence) as workspace:
-                    with patch(
+                with (
+                    SafeWorkspace(self.work, self.evidence) as workspace,
+                    patch(
                         "gaslux_popos_six_gpt_process_boundary.subprocess.run",
                         side_effect=attack,
-                    ):
-                        with self.assertRaises((Refusal, OSError)):
-                            measure_pinned_evidence(workspace, self.name)
-                self.assertTrue(invoked)
+                    ),
+                    self.assertRaises((Refusal, OSError)),
+                ):
+                    measure_pinned_evidence(workspace, self.name)
                 self.assertEqual((self.work / name).read_bytes(), b"FOREIGN\n")
                 (self.work / name).unlink()
                 if (self.root / "detached").exists():
@@ -122,13 +121,15 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
             )
             return original_run(command, **kwargs)
 
-        with SafeWorkspace(self.work, self.evidence) as workspace:
-            with patch(
+        with (
+            SafeWorkspace(self.work, self.evidence) as workspace,
+            patch(
                 "gaslux_popos_six_gpt_process_boundary.subprocess.run",
                 side_effect=attack,
-            ):
-                with self.assertRaises((Refusal, OSError)):
-                    measure_pinned_evidence(workspace, self.name)
+            ),
+            self.assertRaises((Refusal, OSError)),
+        ):
+            measure_pinned_evidence(workspace, self.name)
 
     def test_in_place_change_and_tool_errors_refuse(self):
         original_run = subprocess.run
@@ -137,22 +138,26 @@ class PinnedSubprocessBoundaryTests(unittest.TestCase):
             (self.work / self.name).write_bytes(b"MUTATED\n")
             return original_run(command, **kwargs)
 
-        with SafeWorkspace(self.work, self.evidence) as workspace:
-            with patch(
+        with (
+            SafeWorkspace(self.work, self.evidence) as workspace,
+            patch(
                 "gaslux_popos_six_gpt_process_boundary.subprocess.run",
                 side_effect=mutate,
-            ):
-                with self.assertRaises(Refusal):
-                    measure_pinned_evidence(workspace, self.name)
+            ),
+            self.assertRaises(Refusal),
+        ):
+            measure_pinned_evidence(workspace, self.name)
         for error in (subprocess.TimeoutExpired("sha256sum", 1), OSError("missing")):
-            with self.subTest(error=repr(error)):
-                with SafeWorkspace(self.work, self.evidence) as workspace:
-                    with patch(
-                        "gaslux_popos_six_gpt_process_boundary.subprocess.run",
-                        side_effect=error,
-                    ):
-                        with self.assertRaises(Refusal):
-                            measure_pinned_evidence(workspace, self.name)
+            with (
+                self.subTest(error=repr(error)),
+                SafeWorkspace(self.work, self.evidence) as workspace,
+                patch(
+                    "gaslux_popos_six_gpt_process_boundary.subprocess.run",
+                    side_effect=error,
+                ),
+                self.assertRaises(Refusal),
+            ):
+                measure_pinned_evidence(workspace, self.name)
 
     def test_no_mutable_output_or_qcow2_backing_interface(self):
         self.assertIn("qemu-img", UNISOLATED_EXTERNAL_COMMANDS)
