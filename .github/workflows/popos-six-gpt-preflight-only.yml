@@ -48,6 +48,7 @@ jobs:
           saved="$RUNNER_TEMP/p324-green-ownership.py"
           cp "$file" "$saved"
           trap 'cp "$saved" "$file"' EXIT
+          git fetch --no-tags --depth=1 origin ed299115923289f6188004a3a51a1d38df35e772
           git show ed299115923289f6188004a3a51a1d38df35e772:"$file" > "$file"
           export PYTHONPATH="auto_tests:auto_tests/tools${PYTHONPATH:+:$PYTHONPATH}"
           set +e
