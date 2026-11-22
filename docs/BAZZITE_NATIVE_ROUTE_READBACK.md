@@ -70,3 +70,45 @@ https://docs.bazzite.gg/General/Installation_Guide/legacy-install/
 https://bootc.dev/bootc/man/bootc-install-to-disk.8.html
 https://bootc.dev/bootc/man/bootc-install-to-filesystem.8.html
 https://bootc.dev/bootc/man/bootc-install-to-existing-root.8.html
+
+
+## Atualização de evidência — 22/11/2026: OCI/RPM versus deployment
+
+COMPROVADO APENAS NA ORIGEM: a Actions
+https://github.com/LMhdez/gaslux/actions/runs/45024613641
+revalidou a assinatura Cosign, a atestação GitHub/SLSA, o manifesto OCI por
+digest imutável, a configuração e 256 layers/DiffIDs. O pacote real
+bootc-0:1.17.1-1.fc45.x86_64 foi identificado na RPM DB da imagem
+usr/lib/sysimage/rpm-ostree-base-db/rpmdb.sqlite; o SHA-256 RPM de
+/usr/bin/bootc coincide com o ELF medido
+f8944e5431de613133aa56bd7ac623dcf223f40ec3745a8c87b9cdcff4956e08.
+Artefacto original #14755572085: ZIP SHA-256
+3a9ba3d8560918333640addcc6f4e4caa901581ee568227fda9ce4e4acf1ee88.
+A presença de uma página de manual bootc-install-to-filesystem não comprova
+a operação runtime nem um deployment Atomic.
+
+NOVO CONTRATO DE FRONTEIRA (DENY ONLY): o módulo
+auto_tests/bazzite_deployment_provenance_boundary.py valida o JSON original
+do artefacto anterior, fixado pelo seu SHA-256
+03790bd39a06943d3d9abc6dcd86dfb0c88ca52508e4ee2df9a9ce5bb156a4c9,
+e não promove alegações do guest/runner a provas. O workflow
+.github/workflows/bazzite-deployment-provenance-readonly.yml descarrega
+somente o pequeno artefacto histórico e verifica também a identidade do
+run, HEAD, ID e ZIP digest registados pela API GitHub. Não executa QEMU,
+bootc, Anaconda, disk writer ou bootloader. Resultado esperado:
+SOURCE_ARTIFACT_MATCHED_DEPLOYMENT_UNPROVEN (exit 2, não autorização).
+Relatório autoafirmado: BLOCKED_UNAUTHENTICATED_DEPLOYMENT (exit 3).
+Esta repetição de bytes não revalida independentemente as assinaturas neste
+novo job; herda a prova do run de origem.
+
+BLOQUEADO: não existe testemunho autenticado de instalação nativa
+Fedora Atomic, QCOW2 pós-escrita, identidade FD-QEMU/disk GUID, deployment
+OSTree, binário instalado, GPT/ESP pós-instalação, BootOrder, Linux boot,
+Windows boot, atualização ou rollback. Todos os flags de instalação,
+partição, ESP, NVRAM, canal guest, deployment, boot e estabilidade continuam
+false. A auditoria Safety Lane 2, comentário
+https://github.com/LMhdez/gaslux/pull/320#issuecomment-7080109724,
+classifica destino e recuperação como INSUFFICIENT_EVIDENCE.
+O próximo passo de execução depende de um controlador independente
+Safety/Observer, prova de ownership do QCOW2/FD e um checkpoint de
+recuperação; não reinterpretar JSON ou fixtures como prova de deploy.
