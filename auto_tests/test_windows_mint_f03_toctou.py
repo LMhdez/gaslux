@@ -98,7 +98,7 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                 original_hash = forensic.sha256_file
                 original_read = os.read
 
-                def alter():
+                def alter(*, attack=attack, target=target):
                     nonlocal modified
                     if modified:
                         return
@@ -124,13 +124,13 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                         else:
                             target.write_bytes(foreign.read_bytes())
 
-                def legacy_hash(path):
+                def legacy_hash(path, original_hash=original_hash, target=target):
                     digest = original_hash(path)
                     if path == target:
                         alter()
                     return digest
 
-                def pinned_read(fd, size):
+                def pinned_read(fd, size, original_read=original_read, inode=inode):
                     data = original_read(fd, size)
                     if os.fstat(fd).st_ino == inode and data:
                         alter()
@@ -221,7 +221,7 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                 elif fault == "uid":
                     inode = target.stat().st_ino
 
-                    def wrong_uid(fd):
+                    def wrong_uid(fd, original_fstat=original_fstat, inode=inode):
                         info = original_fstat(fd)
                         if info.st_ino != inode:
                             return info
@@ -231,7 +231,7 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                                         "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
                         })
                 else:
-                    def wrong_inode(name, *args, **kwargs):
+                    def wrong_inode(name, *args, original_stat=original_stat, target=target, **kwargs):
                         info = original_stat(name, *args, **kwargs)
                         if name != target.name or kwargs.get("dir_fd") is None:
                             return info
@@ -257,7 +257,7 @@ class MintF03PinnedPredecessorTests(unittest.TestCase):
                 inode = paths["checkpoint"].stat().st_ino
                 real_read = os.read
 
-                def read(fd, count):
+                def read(fd, count, inode=inode, fault=fault, real_read=real_read):
                     if os.fstat(fd).st_ino == inode:
                         if fault == "eio":
                             raise OSError(errno.EIO, "synthetic EIO")
