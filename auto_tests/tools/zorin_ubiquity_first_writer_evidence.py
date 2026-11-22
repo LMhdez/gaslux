@@ -81,14 +81,18 @@ def candidate_calls(data: bytes, path: str) -> dict:
     branch_guards: list[dict] = []
     all_calls = 0
     module_assignments: list[dict] = []
-    tracked = {"devices", "infifo", "outfifo", "stopfifo", "logfile", "parted_server" }
+    tracked = {"devices", "infifo", "outfifo", "stopfifo", "logfile", "parted_server"}
     for statement in tree.body:
         if isinstance(statement, ast.Assign):
             for target in statement.targets:
                 if isinstance(target, ast.Name) and target.id in tracked:
                     module_assignments.append(
-                        {"symbol": target.id, "expression": arg_repr(statement.value),
-                         "line": statement.lineno, "basis": "STATIC_ASSIGNMENT_ONLY"}
+                        {
+                            "symbol": target.id,
+                            "expression": arg_repr(statement.value),
+                            "line": statement.lineno,
+                            "basis": "STATIC_ASSIGNMENT_ONLY",
+                        }
                     )
 
     class Scan(ast.NodeVisitor):
