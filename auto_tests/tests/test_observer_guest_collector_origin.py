@@ -131,7 +131,12 @@ def _modules(release: str, root: Path) -> list[str]:
         output.write_bytes(decompressed)
         modules.append(hashlib.sha256(decompressed).hexdigest())
     if not modules:
-        raise RuntimeError("VIRTIO_CONSOLE_MODULES_NOT_RESOLVED")
+        builtins = Path("/lib/modules") / release / "modules.builtin"
+        if not builtins.is_file():
+            raise RuntimeError("KERNEL_BUILTIN_MODULE_INDEX_MISSING")
+        entries = builtins.read_bytes()
+        if b"virtio_console.ko" not in entries or b"virtio_pci.ko" not in entries:
+            raise RuntimeError("VIRTIO_CONSOLE_NOT_RESOLVED_AS_BUILTIN_OR_MODULE")
     return modules
 
 
