@@ -1,4 +1,5 @@
 name: Gaslux autonomous GitHub agents
+run-name: "GASLUX-CLOCK/${{ github.event_name == 'schedule' && 'auto' || (inputs.role || 'auto') }}"
 
 on:
   schedule:
