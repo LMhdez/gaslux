@@ -1,4 +1,5 @@
 name: GASLUX-LIFECYCLE - autonomous multi-distro read-only research
+run-name: "GASLUX-LIFECYCLE/${{ ((github.event_name == 'schedule' && github.event.schedule == '31 3 * * *') || (github.event_name == 'workflow_dispatch' && inputs.mint_live_boot == true)) && 'mint-daily' || 'research' }}"
 
 on:
   schedule:
