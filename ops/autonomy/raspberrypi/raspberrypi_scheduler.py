@@ -316,7 +316,7 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
                 # One workflow run already executes all its regular jobs:
                 # a daily Mint run also covers any older lifecycle research.
                 for earlier_slot, earlier_task in due:
-                    if earlier_task[1] != key and earlier_slot <= slot:
+                    if earlier_task[1] != key and (key == "mint_daily" or earlier_slot <= slot):
                         state[earlier_task[1]] = earlier_slot.isoformat()
                 state["post:" + workflow] = now.astimezone(timezone.utc).isoformat()
                 set_state(home, state)
