@@ -301,6 +301,10 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
             # GitHub scheduler we record that slot without a POST.
             for slot, task in due:
                 key = task[1]
+                # A verified daily Mint run can cover the regular Lifecycle
+                # slot earlier in this SAME tick; do not re-dispatch it.
+                if state.get(key) == slot.isoformat():
+                    continue
                 verdict = decision(runs, slot, task=key, daily=(key == "mint_daily"))
                 if verdict == "ALREADY_TRIGGERED":
                     state[key] = slot.isoformat()
