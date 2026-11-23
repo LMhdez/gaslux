@@ -244,7 +244,15 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
     with exclusive_session():
         state = get_state(home)
         outcomes = []
-        token = None
+        # Authenticate EVERY read to avoid unauthenticated GitHub REST's
+        # 60-request/hour limit. Four workflows queried each minute would
+        # exhaust that quota after about 15 minutes.
+        token = secure_file(home / ".config" / "gaslux" / TOKEN_NAME,
+                            required=not conf["dry_run"])
+        if token is not None:
+            token = token.strip()
+            if len(token) < 8:
+                raise ValueError("Invalid GitHub Actions token")
         for workflow in dict.fromkeys(task[0] for task in TASKS):
             tasks = [task for task in TASKS if task[0] == workflow]
             due = [(last_due(now, task[2], task[3]), task) for task in tasks]
@@ -286,10 +294,7 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
                     outcomes.append({"task": key, "status": "WOULD_DISPATCH"})
                     break
                 if token is None:
-                    token = secure_file(home / ".config" / "gaslux" / TOKEN_NAME)
-                    if not token or len(token.strip()) < 8:
-                        raise ValueError("Missing GitHub Actions dispatch token")
-                    token = token.strip()
+                    raise ValueError("GitHub Actions dispatch credential required")
                 dispatch(opener, token, workflow, task[4])
                 state[key] = slot.isoformat()
                 # One workflow run already executes all its regular jobs:
