@@ -93,7 +93,7 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
                 host._permit_owned_iso_staging_write(path, mountpoint)
             commands.assert_not_called()
 
-    def test_genuine_vm_apt_stalls_fail_before_guest_launch(self):
+    def test_genuine_vm_apt_stalls_are_bounded_and_guest_is_security_held(self):
         workflow = (TOOLS.parent.parent / ".github/workflows/"
                     "cachyos-windows10-shared-root-pacstrap.yml").read_text()
         self.assertIn("timeout --kill-after=10s 300s sudo apt-get", workflow)
@@ -118,20 +118,19 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         self.assertNotIn('libguestfs-tools linux-image-generic', workflow)
         self.assertIn("Kernel packaging unexpectedly requires firmware", workflow)
         self.assertIn("real-windows10-archiso-pacstrap-and-discard:", workflow)
-        # PR #263 alone runs the expensive guest on this experimental
-        # branch; its push event still runs static contracts. Other historical
-        # push/dispatch cases remain unchanged and forks are never accepted.
-        self.assertIn("if: >-", workflow)
-        self.assertIn("github.event_name != 'pull_request' &&", workflow)
-        self.assertIn("github.event_name == 'push' &&", workflow)
-        self.assertIn("github.ref == 'refs/heads/test/cachyos-postpacstrap-win10-same-cow-issue3'", workflow)
-        self.assertIn("github.event_name == 'pull_request' &&", workflow)
-        self.assertIn("github.event.pull_request.number == 263", workflow)
-        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", workflow)
-        self.assertIn("github.event.pull_request.head.ref == 'test/cachyos-postpacstrap-win10-same-cow-issue3'", workflow)
-        self.assertIn("github.event.pull_request.base.ref == 'fix/cachyos-configured-root-grant-binding-issue3'", workflow)
-        self.assertNotIn("github.event.pull_request.head.ref == 'fix/cachyos-configured-root-grant-binding-issue3'", workflow)
-        self.assertNotIn("github.event.pull_request.base.ref == 'feature/cachyos-shared-cow-installed-readonly-boot-issue3'", workflow)
+        # The previous A/B run changed protected ESP BCD. Keep the
+        # expensive KVM/pacstrap job unconditionally held until independent
+        # Safety review; only static and synthetic contracts may run meanwhile.
+        self.assertIn(
+            "  real-windows10-archiso-pacstrap-and-discard:\\n"
+            "    # SECURITY HOLD: genuine A/B Windows #44900941635 modified protected ESP",
+            workflow,
+        )
+        self.assertIn(
+            "    if: false\\n    needs: static-and-synthetic-contracts",
+            workflow,
+        )
+        self.assertNotIn("    if: >-", workflow)
 
     def test_trial_firmware_uses_fresh_ovmf_template_not_windows_bootorder(self):
         with tempfile.TemporaryDirectory(prefix="gaslux-ovmf-template-") as temp:
