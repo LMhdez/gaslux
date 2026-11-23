@@ -24,7 +24,8 @@ SHA = "a" * 40
 def run(when=None, **kw):
     row = {"id": 101, "head_branch": "main", "head_sha": SHA,
            "event": "schedule", "status": "completed", "conclusion": "success",
-           "created_at": (when or (NOW - timedelta(hours=3))).isoformat()}
+           "created_at": (when or (NOW - timedelta(hours=3))).isoformat(),
+           "display_title": "GASLUX-CLOCK/auto"}
     row.update(kw)
     return row
 
@@ -195,6 +196,79 @@ class ScheduleTests(unittest.TestCase):
                              [url.split("/")[8] for url, method, _ in calls
                               if method == "POST"])
             self.assertEqual(result["decisions"][0]["status"],"ALREADY_TRIGGERED")
+
+    def test_safety_f38901_manual_mint_false_does_not_cover_daily(self):
+        slot = datetime(2026, 11, 23, 3, 31, tzinfo=timezone.utc)
+        other = run(when=slot + timedelta(minutes=1), event="workflow_dispatch",
+                    display_title="GASLUX-LIFECYCLE/research")
+        self.assertEqual(pi.decision([other], slot, daily=True, task="mint_daily"),
+                         "DISPATCH")
+
+    def test_safety_f38901_delayed_regular_lifecycle_does_not_cover_daily(self):
+        slot = datetime(2026, 11, 23, 3, 31, tzinfo=timezone.utc)
+        regular = run(when=slot + timedelta(minutes=1), event="schedule",
+                      display_title="GASLUX-LIFECYCLE/research")
+        self.assertEqual(pi.decision([regular], slot, daily=True, task="mint_daily"),
+                         "DISPATCH")
+
+    def test_safety_f38901_manual_role_mint_does_not_cover_auto(self):
+        slot = datetime(2026, 11, 23, 7, 3, tzinfo=timezone.utc)
+        manual = run(when=slot + timedelta(minutes=1), event="workflow_dispatch",
+                     display_title="GASLUX-CLOCK/mint")
+        self.assertEqual(pi.decision([manual], slot, task="clock"), "DISPATCH")
+
+    def test_safety_f38901_matching_daily_identity_counts_as_delivered(self):
+        slot = datetime(2026, 11, 23, 3, 31, tzinfo=timezone.utc)
+        daily = run(when=slot + timedelta(minutes=1), event="schedule",
+                    display_title="GASLUX-LIFECYCLE/mint-daily")
+        self.assertEqual(pi.decision([daily], slot, daily=True, task="mint_daily"),
+                         "ALREADY_TRIGGERED")
+
+    def test_safety_f38901_no_false_daily_ledger_or_dropped_dispatch(self):
+        now = datetime(2026, 11, 23, 3, 33, tzinfo=timezone.utc)
+        false_daily = run(when=now - timedelta(minutes=1), event="workflow_dispatch",
+                          display_title="GASLUX-LIFECYCLE/research")
+        url = pi.API + "gaslux-agent-lifecycle-research.yml/runs?branch=main&per_page=100"
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self.home(tmp, dry_run=False)
+            calls = []
+            self.tick(home, now=now, opener=mock_api(calls, {url: [false_daily]}))
+            lifecycle_posts = [json.loads(body) for uri, method, body in calls
+                               if method == "POST" and "lifecycle" in uri]
+            self.assertEqual(lifecycle_posts, [
+                {"ref": "main", "inputs": {"mint_live_boot": "true"}}])
+            self.assertIn("mint_daily", pi.get_state(home))
+
+    def test_safety_f38901_matching_daily_covers_regular_without_duplicate(self):
+        now = datetime(2026, 11, 23, 3, 33, tzinfo=timezone.utc)
+        native_daily = run(when=now - timedelta(minutes=1), event="schedule",
+                           display_title="GASLUX-LIFECYCLE/mint-daily")
+        url = pi.API + "gaslux-agent-lifecycle-research.yml/runs?branch=main&per_page=100"
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self.home(tmp, dry_run=False)
+            calls = []
+            self.tick(home, now=now, opener=mock_api(calls, {url: [native_daily]}))
+            self.assertFalse(any(method == "POST" and "lifecycle" in uri
+                                 for uri, method, _ in calls))
+            state = pi.get_state(home)
+            self.assertIn("mint_daily", state)
+            self.assertIn("lifecycle", state)
+
+    def test_safety_f38901_workflow_run_names_encode_semantic_inputs(self):
+        workflows = Path(__file__).resolve().parents[3] / ".github" / "workflows"
+        clock = (workflows / "gaslux-agent-clock.yml").read_text()
+        mint = (workflows / "gaslux-agent-lifecycle-research.yml").read_text()
+        factory = (workflows / "gaslux-agent-feature-factory.yml").read_text()
+        integrator = (workflows / "gaslux-agent-integrator.yml").read_text()
+        self.assertIn("run-name:", clock)
+        self.assertIn("inputs.role", clock)
+        self.assertIn("GASLUX-CLOCK/", clock)
+        self.assertIn("run-name:", mint)
+        self.assertIn("inputs.mint_live_boot == true", mint)
+        self.assertIn("github.event.schedule == '31 3 * * *'", mint)
+        self.assertIn("GASLUX-LIFECYCLE/", mint)
+        self.assertIn("run-name: GASLUX-FACTORY/default", factory)
+        self.assertIn("run-name: GASLUX-INTEGRATOR/default", integrator)
 
     def test_dry_run_zero_post_even_when_every_task_due(self):
         with tempfile.TemporaryDirectory() as tmp:
