@@ -17,12 +17,20 @@ on:
       - auto_tests/tools/gaslux_agent_trusted_publish.py
       - auto_tests/tests/test_gaslux_agent_trusted_publish.py
       - docs/GASLUX_ACTIONS_AGENT_CLOCK.md
+      - ops/autonomy/fallback/worker.mjs
+      - ops/autonomy/fallback/worker.test.mjs
+      - ops/autonomy/fallback/wrangler.toml
+      - ops/autonomy/fallback/README.md
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-clock.yml
       - auto_tests/tools/gaslux_agent_trusted_publish.py
       - auto_tests/tests/test_gaslux_agent_trusted_publish.py
       - docs/GASLUX_ACTIONS_AGENT_CLOCK.md
+      - ops/autonomy/fallback/worker.mjs
+      - ops/autonomy/fallback/worker.test.mjs
+      - ops/autonomy/fallback/wrangler.toml
+      - ops/autonomy/fallback/README.md
 
 permissions:
   contents: read
@@ -47,6 +55,7 @@ jobs:
           set -euo pipefail
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_trusted_publish.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_progress.py -v
+          node --test ops/autonomy/fallback/worker.test.mjs
 
   supervisor:
     if: >-
