@@ -1,4 +1,5 @@
 name: GASLUX-FEATURE-FACTORY - six distro Qwen Draft PR proposals
+run-name: GASLUX-FACTORY/default
 
 on:
   schedule:
