@@ -63,7 +63,7 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_progress.py -v
           python3 -B -m unittest discover -s ops/autonomy/raspberrypi -p test_raspberrypi_scheduler.py -v
           sh -n ops/autonomy/raspberrypi/install-user.sh
-          systemd-analyze calendar '*-*-* *:08,23,38,53:00 UTC'
+          systemd-analyze calendar '*-*-* *:*:00 UTC'
           systemd-analyze verify ops/autonomy/raspberrypi/gaslux-fallback.service ops/autonomy/raspberrypi/gaslux-fallback.timer
 
   supervisor:
