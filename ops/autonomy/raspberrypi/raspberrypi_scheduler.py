@@ -129,7 +129,7 @@ def get_state(home: Path) -> dict[str, str]:
     if raw is None:
         return {}
     document = json.loads(raw)
-    valid_keys = {entry[1] for entry in TASKS}
+    valid_keys = {entry[1] for entry in TASKS} | {"post:" + entry[0] for entry in TASKS}
     if (not isinstance(document, dict) or set(document) - valid_keys or
             any(not isinstance(value, str) or len(value) > 40 or
                 parse_time(value).isoformat() != value
@@ -258,6 +258,17 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
             data = api_json(opener, API + workflow +
                             "/runs?branch=main&per_page=100", token=token)
             runs = parse_runs(data)
+            # A successful POST may take time to appear in GitHub run listings.
+            # Suppress further POSTs to this workflow briefly after our own
+            # confirmed dispatch, even when the API response is still stale.
+            previous_post = state.get("post:" + workflow)
+            if previous_post is not None:
+                elapsed = (now - parse_time(previous_post)).total_seconds()
+                if elapsed < 0:
+                    raise ValueError("Future local dispatch ledger timestamp")
+                if elapsed < 120:
+                    outcomes.append({"task": workflow, "status": "WAITING_FOR_VISIBILITY"})
+                    continue
             # If an earlier/later slot is already covered by the native
             # GitHub scheduler we record that slot without a POST.
             for slot, task in due:
@@ -281,6 +292,12 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
                     token = token.strip()
                 dispatch(opener, token, workflow, task[4])
                 state[key] = slot.isoformat()
+                # One workflow run already executes all its regular jobs:
+                # a daily Mint run also covers any older lifecycle research.
+                for earlier_slot, earlier_task in due:
+                    if earlier_task[1] != key and earlier_slot <= slot:
+                        state[earlier_task[1]] = earlier_slot.isoformat()
+                state["post:" + workflow] = now.astimezone(timezone.utc).isoformat()
                 set_state(home, state)
                 outcomes.append({"task": key, "status": "DISPATCH_REQUESTED"})
                 break
