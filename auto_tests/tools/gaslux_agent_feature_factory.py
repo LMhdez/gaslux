@@ -188,6 +188,30 @@ def call_model(prompt: str) -> str:
     return result["addition"]
 
 
+
+def rejection_category(addition: str | None, error: Exception) -> str:
+    """Describe rejected AST *types*, never log or echo untrusted model source."""
+    if type(addition) is str:
+        try:
+            nodes = tuple(ast.walk(ast.parse(addition)))
+        except SyntaxError:
+            return "SyntaxError"
+        denied = sorted({type(n).__name__ for n in nodes if isinstance(n, FORBIDDEN)})
+        if denied:
+            return "Forbidden AST nodes: " + ", ".join(denied)
+        if any(isinstance(n, ast.Attribute) and n.attr != "get" for n in nodes):
+            return "Forbidden AST attribute"
+        if any(isinstance(n, ast.Call) and
+               not ((isinstance(n.func, ast.Name) and n.func.id in SAFE_BUILTINS) or
+                    (isinstance(n.func, ast.Attribute) and n.func.attr == "get"))
+               for n in nodes):
+            return "Unauthorized AST call"
+    if isinstance(error, ValueError):
+        # These messages are fixed by trusted validation, not generated text.
+        return str(error)[:120]
+    return type(error).__name__
+
+
 def generate(root: Path, evidence_dir: Path, role: str, base: str) -> None:
     if git(root, "rev-parse", "HEAD") != base or role not in TASKS:
         raise ValueError("Wrong worker source identity")
@@ -201,16 +225,30 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str) -> None:
         "installationAuthorized=False, releaseEligible=False.\n"
         f"The eight required gate keys are: {list(GATES)!r}. Only an actual boolean True "
         "can satisfy each key, absent/false/non-boolean never satisfies.\n"
-        "No imports, no I/O, no OS operations, no shell, no decorators, no loops, "
-        "no globals, no other functions. Calls allowed: sorted/list/set/tuple/len/bool/"
-        "isinstance/dict.get. No module modification outside this new function.\n"
-        "Return JSON with exactly one key addition containing the entire function "
-        "source only (not markdown).\n"
-        "Relevant actual code (for context; do not repeat it):\n"
-        + original.decode("utf-8")[:10000]
+        "Produce exactly ONE top-level Python function, and no other statements "
+        "outside it. The addition string MUST begin with the exact signature above.\n"
+        "Inside the function, define a tuple named gates containing the eight exact "
+        "gate keys shown above, then compute missing as "
+        "sorted([name for name in gates if evidence.get(name) is not True]). "
+        "The list comprehension is ALLOWED; a standalone 'for' statement (AST For) "
+        "and 'while' statement (AST While) are FORBIDDEN. "
+        "Do not use other loops, helper functions, classes, imports, decorators, "
+        "I/O, OS/shell operations, comprehensions with side effects or globals.\n"
+        "Only use literals, assignments, a list comprehension, identity comparison "
+        "'is not True', return, and dict construction. "
+        "The only permitted attribute is evidence.get; do not use .append, .keys, "
+        ".items, .sort or any other attribute. "
+        "Permitted built-in calls: sorted, list, set, tuple, len, bool, "
+        "isinstance, dict, all, any, str. "
+        "Never grant installation or release: both flags must be literal False.\n"
+        "Respond with a JSON object containing exactly one key, 'addition', "
+        "whose value is ONLY the Python function source. "
+        "No markdown, prose, explanation, surrounding source or code fences.\n"
     )
     last: Exception | None = None
+    last_category = "No response"
     for attempt in range(2):
+        addition: str | None = None
         try:
             addition = call_model(task)
             validate_addition(role, addition, execute=True)
@@ -229,8 +267,18 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str) -> None:
             return
         except (ValueError, KeyError, SyntaxError, OSError) as error:
             last = error
-            task += f"\nLast attempt refused: {str(error)[:100]}. Return an exact pure function.\n"
-    raise RuntimeError(f"Isolated Qwen proposal failed acceptance: {last}")
+            last_category = rejection_category(addition, error)
+            print(f"Qwen attempt {attempt + 1}/2 rejected: {last_category}",
+                  file=sys.stderr)
+            task += (
+                f"\nPrior attempt rejected: {last_category}. "
+                "Correct the rejected construct; never use a standalone for/while "
+                "statement. A side-effect-free list comprehension is allowed. "
+                "Return only the exact scoped Python function in JSON addition.\n"
+            )
+    raise RuntimeError(
+        f"Isolated Qwen proposal failed acceptance ({last_category}): {last}"
+    )
 
 
 
