@@ -217,6 +217,17 @@ class ScheduleTests(unittest.TestCase):
                      display_title="GASLUX-CLOCK/mint")
         self.assertEqual(pi.decision([manual], slot, task="clock"), "DISPATCH")
 
+    def test_safety_f38901_missing_title_is_not_proof_of_same_work(self):
+        clock_slot = datetime(2026, 11, 23, 7, 3, tzinfo=timezone.utc)
+        past = run(when=clock_slot + timedelta(minutes=1),
+                   event="workflow_dispatch", display_title=None)
+        self.assertEqual(pi.decision([past], clock_slot, task="clock"), "DISPATCH")
+        mint_slot = datetime(2026, 11, 23, 3, 31, tzinfo=timezone.utc)
+        unknown = run(when=mint_slot + timedelta(minutes=1), event="schedule",
+                      display_title="GASLUX-LIFECYCLE/unknown")
+        self.assertEqual(pi.decision([unknown], mint_slot, task="mint_daily", daily=True),
+                         "DISPATCH")
+
     def test_safety_f38901_matching_daily_identity_counts_as_delivered(self):
         slot = datetime(2026, 11, 23, 3, 31, tzinfo=timezone.utc)
         daily = run(when=slot + timedelta(minutes=1), event="schedule",
