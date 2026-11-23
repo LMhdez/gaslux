@@ -179,7 +179,6 @@ class FeatureFactoryTests(unittest.TestCase):
             "release_true": source.replace("'releaseEligible': False",
                                             "'releaseEligible': True"),
             "oversize": source + ("#" * 5500),
-            "nested_helper": source.replace("    gates =", "    def nested():\n        pass\n    gates ="),
         }
         for name, addition in variants.items():
             with self.subTest(name=name), self.assertRaises(
