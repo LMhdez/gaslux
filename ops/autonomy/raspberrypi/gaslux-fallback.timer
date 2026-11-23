@@ -1,0 +1,12 @@
+[Unit]
+Description=Gaslux Raspberry Pi independent read-only GitHub Actions watchdog
+
+[Timer]
+OnCalendar=*-*-* *:08,23,38,53:00 UTC
+Persistent=true
+AccuracySec=30s
+RandomizedDelaySec=15s
+Unit=gaslux-fallback.service
+
+[Install]
+WantedBy=timers.target
