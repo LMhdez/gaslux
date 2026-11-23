@@ -202,6 +202,68 @@ class FeatureFactoryTests(unittest.TestCase):
                 self.assertIs(result["installationAuthorized"], False)
                 self.assertIs(result["releaseEligible"], False)
 
+    def test_f39101_nested_callback_is_rejected_without_execution(self):
+        """Never accept an inner FunctionDef passed as sorted(key=...)."""
+        src = valid("mint").replace(
+            "    gates =",
+            "    def helper(item):\n"
+            "        evidence['injected'] = True\n"
+            "        return item\n"
+            "    sorted([0], key=helper)\n"
+            "    gates =",
+        )
+        self.assertIn("FunctionDef", {
+            type(n).__name__ for n in factory.ast.walk(factory.ast.parse(src))
+        })
+        with patch.dict(factory.SAFE_BUILTINS, {
+            "sorted": unittest.mock.Mock(side_effect=AssertionError(
+                "untrusted source was executed"))
+        }):
+            with self.assertRaisesRegex(ValueError, "Nested function"):
+                factory.validate_addition("mint", src, execute=True)
+
+    def test_f39101_direct_and_aliased_evidence_mutation_rejected(self):
+        """Store into evidence or aliases/subscripts must fail before execution."""
+        template = valid("mint")
+        variants = {
+            "direct_subscript": "    evidence['new-authority-flag'] = True\n",
+            "augmented_subscript": "    evidence['new-authority-flag'] += 1\n",
+            "indirect_alias": "    same = evidence\n    same['new-authority-flag'] = True\n",
+            "nested_dict": ("    nested = evidence.get('source-authenticity')\n"
+                            "    nested['new-authority-flag'] = True\n"),
+            "subscript_store_in_comprehension": (
+                "    [item for evidence['new-authority-flag'] in [True]]\n"),
+            "delete_subscript": "    del evidence['source-authenticity']\n",
+        }
+        for category, insert in variants.items():
+            with self.subTest(category=category):
+                src = template.replace("    gates =", insert + "    gates =")
+                with patch.dict(factory.SAFE_BUILTINS, {
+                    "sorted": unittest.mock.Mock(side_effect=AssertionError(
+                        "untrusted source was executed"))
+                }):
+                    with self.assertRaises((ValueError, SyntaxError)):
+                        factory.validate_addition("mint", src, execute=True)
+
+    def test_f39101_input_evidence_remains_unchanged_for_valid_helpers(self):
+        """Canonical proposals preserve read-only fixtures across all six roles."""
+        for role in factory.TASKS:
+            with self.subTest(role=role):
+                env = {"__builtins__": factory.SAFE_BUILTINS}
+                scope = {}
+                exec(compile(valid(role), "<trusted-test-fixture>", "exec"),
+                     env, scope)
+                fn = scope[f"assess_{role}_lifecycle"]
+                for value in (True, False, 1, "True", None):
+                    evidence = {gate: value for gate in factory.GATES}
+                    evidence["extra"] = {"nested": [1, 2, 3]}
+                    before = json.dumps(evidence, sort_keys=True)
+                    result = fn(evidence)
+                    self.assertEqual(json.dumps(evidence, sort_keys=True), before)
+                    self.assertIs(result["installationAuthorized"], False)
+                    self.assertIs(result["releaseEligible"], False)
+                factory.validate_addition(role, valid(role), execute=True)
+
     def test_mocked_qwen_retries_with_ast_specific_feedback_and_real_bytes(self):
         bad = valid("mint").replace(
             "    missing = sorted",
