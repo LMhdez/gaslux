@@ -129,7 +129,10 @@ def validate_addition(role: str, addition: str, *, execute: bool) -> None:
     fn = scope[f"assess_{role}_lifecycle"]
     for checked in ((), GATES):
         evidence = {gate: (gate in checked) for gate in GATES}
+        expected_evidence = dict(evidence)
         result = fn(evidence)
+        if evidence != expected_evidence:
+            raise ValueError("Lifecycle helper mutated input evidence")
         if (type(result) is not dict or set(result) !=
                 {"backend", "missingGates", "installationAuthorized", "releaseEligible"} or
             result["backend"] != role or
