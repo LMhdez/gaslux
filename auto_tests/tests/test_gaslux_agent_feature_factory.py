@@ -147,5 +147,105 @@ class FeatureFactoryTests(unittest.TestCase):
                 factory.origin_branch(role, "a" * 40)
 
 
+    def test_statement_loops_forbidden_but_list_comprehension_accepted(self):
+        good = valid("mint")
+        self.assertIn("ListComp", {type(n).__name__ for n in factory.ast.walk(
+            factory.ast.parse(good))})
+        factory.validate_addition("mint", good, execute=True)
+        for statement, category in (
+            ("for item in ():\\n        pass", "For"),
+            ("while False:\\n        pass", "While"),
+        ):
+            bad = good.replace("    missing = sorted", "    " + statement.replace(
+                "\\n", "\n    ") + "\n    missing = sorted")
+            self.assertIn(category, factory.rejection_category(
+                bad, ValueError("Code includes a prohibited operation")))
+            with self.assertRaisesRegex(ValueError, "prohibited operation"):
+                factory.validate_addition("mint", bad, execute=True)
+
+    def test_adversarial_rejections_keep_validator_fail_closed(self):
+        source = valid("mint")
+        variants = {
+            "import": source.replace("    gates =", "    import os\n    gates ="),
+            "I/O": source.replace("    gates =", "    open('/tmp/a', 'w')\n    gates ="),
+            "exec": source.replace("    gates =", "    exec('1')\n    gates ="),
+            "eval": source.replace("    gates =", "    eval('1')\n    gates ="),
+            "system": source.replace("    gates =", "    __import__('os').system('id')\n    gates ="),
+            "foreign_backend": source.replace("'backend': 'mint'", "'backend': 'zorin'"),
+            "wrong_signature": source.replace("evidence: dict", "data: dict"),
+            "second_function": source + "\ndef bypass():\n    return True\n",
+            "installation_true": source.replace("'installationAuthorized': False",
+                                                 "'installationAuthorized': True"),
+            "release_true": source.replace("'releaseEligible': False",
+                                            "'releaseEligible': True"),
+            "oversize": source + ("#" * 5500),
+            "nested_helper": source.replace("    gates =", "    def nested():\n        pass\n    gates ="),
+        }
+        for name, addition in variants.items():
+            with self.subTest(name=name), self.assertRaises(
+                (ValueError, SyntaxError)
+            ):
+                factory.validate_addition("mint", addition, execute=True)
+        with self.assertRaises(ValueError):
+            factory.validate_addition("mint", valid("zorin"), execute=True)
+
+    def test_valid_helper_non_boolean_and_missing_evidence_never_satisfies_gates(self):
+        ns = {}
+        exec(compile(valid("mint"), "<test-only-canonical-fixture>", "exec"), ns)
+        fn = ns["assess_mint_lifecycle"]
+        self.assertEqual(fn({})["missingGates"], sorted(factory.GATES))
+        for value in ("True", 1, [True], {}, None, False, 0):
+            with self.subTest(value=repr(value)):
+                evidence = {gate: True for gate in factory.GATES}
+                evidence[factory.GATES[0]] = value
+                result = fn(evidence)
+                self.assertEqual(result["missingGates"], [factory.GATES[0]])
+                self.assertIs(result["installationAuthorized"], False)
+                self.assertIs(result["releaseEligible"], False)
+
+    def test_mocked_qwen_retries_with_ast_specific_feedback_and_real_bytes(self):
+        bad = valid("mint").replace(
+            "    missing = sorted",
+            "    for item in ():\n        pass\n    missing = sorted",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / factory.TASKS["mint"][0]
+            path.parent.mkdir(parents=True)
+            path.write_text("# offline source\n", encoding="utf-8")
+            evidence = root / "evidence"
+            with patch.object(factory, "git", return_value="a" * 40), \
+                 patch.object(factory, "call_model", side_effect=[bad, valid("mint")]) as mocked:
+                factory.generate(root, evidence, "mint", "a" * 40)
+                self.assertEqual(mocked.call_count, 2)
+                retry_prompt = mocked.call_args_list[1].args[0]
+                self.assertIn("Forbidden AST nodes: For", retry_prompt)
+                self.assertIn("list comprehension", retry_prompt)
+                self.assertIn("AST For", mocked.call_args_list[0].args[0])
+                self.assertEqual((evidence / "addition.py").read_text(), valid("mint"))
+                report = json.loads((evidence / "report.json").read_text())
+                self.assertEqual(report["addition_sha256"],
+                                 factory.sha256(valid("mint").encode()))
+                self.assertEqual(report["model"], factory.MODEL)
+
+    def test_mocked_qwen_bounded_rejection_writes_no_candidate(self):
+        bad = valid("mint").replace(
+            "    missing = sorted",
+            "    while False:\n        pass\n    missing = sorted",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / factory.TASKS["mint"][0]
+            target.parent.mkdir(parents=True)
+            target.write_text("# source\n")
+            evidence = root / "evidence"
+            with patch.object(factory, "git", return_value="a" * 40), \
+                 patch.object(factory, "call_model", return_value=bad) as mocked:
+                with self.assertRaisesRegex(RuntimeError, "AST nodes: While"):
+                    factory.generate(root, evidence, "mint", "a" * 40)
+                self.assertEqual(mocked.call_count, 2)
+                self.assertFalse(evidence.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
