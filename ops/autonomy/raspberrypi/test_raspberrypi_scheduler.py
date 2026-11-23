@@ -91,6 +91,19 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(pi.last_due(NOW, (3,18,33,48), None),
                          datetime(2026,11,23,6,48,tzinfo=timezone.utc))
 
+    def test_fixed_times_match_actual_yaml_and_daily_mint_guard(self):
+        workflows = Path(__file__).resolve().parents[3] / ".github" / "workflows"
+        for name, task_key, minutes, hour, inputs in pi.TASKS:
+            text = (workflows / name).read_text()
+            minute_str = ",".join(str(x) for x in minutes)
+            cron = minute_str + (" * * * *" if hour is None
+                                 else " " + str(hour) + " * * *")
+            self.assertIn("- cron: '" + cron + "'", text, name)
+            self.assertIn("workflow_dispatch:", text)
+            if task_key == "mint_daily":
+                self.assertIn("github.event.schedule == '" + cron + "'", text)
+                self.assertIn("inputs.mint_live_boot == true", text)
+
     def test_paused_default_never_calls_github(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = self.tick(Path(tmp), opener=lambda *_args, **_kw:
@@ -146,7 +159,7 @@ class ScheduleTests(unittest.TestCase):
             self.tick(home, NOW+timedelta(minutes=16), mock_api(calls))
             self.assertEqual({url.split("/")[8] for url, method, _ in calls if
                               method == "POST"},
-                             {row[0] for row in pi.TASKS[:3]})
+                             {row[0] for row in pi.TASKS[:4]})
 
     def test_queued_in_progress_or_waiting_prevents_all_duplicates(self):
         for status in ("queued", "in_progress", "waiting", "pending", "requested"):
