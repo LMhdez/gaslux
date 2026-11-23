@@ -321,6 +321,104 @@ class IntegratorContractTests(unittest.TestCase):
                 integ.inspect(123, self.head)
 
 
+    def test_f38902_exact_clock_completion_names_reach_real_merge(self):
+        """RED before fix: actual merge() must admit each exact trusted new title."""
+        for title in ("GASLUX-CLOCK/auto", "GASLUX-CLOCK/mint",
+                      "GASLUX-CLOCK/zorin"):
+            with self.subTest(title=title), tempfile.TemporaryDirectory() as tmp:
+                self.calls.clear()
+                event_path = Path(tmp) / "event.json"
+                event_path.write_text(json.dumps({"workflow_run": {
+                    "name": title,
+                    "conclusion": "success",
+                    "head_branch": "main",
+                    "head_repository": {"full_name": integ.REPO},
+                    "event": "workflow_dispatch",
+                }}), encoding="utf-8")
+                env = {
+                    "GITHUB_REPOSITORY": integ.REPO,
+                    "GITHUB_REF": "refs/heads/main",
+                    "GITHUB_EVENT_NAME": "workflow_run",
+                    "GITHUB_EVENT_PATH": str(event_path),
+                    "GASLUX_WINDOWS_ACCEPTANCE": "success",
+                    "GASLUX_AUTONOMY_PAUSED": "false",
+                }
+                with patch.dict(os.environ, env), patch.object(
+                    integ, "api", side_effect=self.api
+                ):
+                    result = integ.merge(123, self.head)
+                self.assertEqual(result["status"], "merged")
+                writes = [(method, path, body) for method, path, body in self.calls
+                          if method != "GET"]
+                self.assertEqual(len(writes), 1)
+                self.assertEqual(writes[0][1], "/pulls/123/merge")
+                self.assertEqual(writes[0][2]["sha"], self.head)
+
+    def test_f38902_foreign_or_modified_clock_provenance_denied_before_network(self):
+        """Do not admit unlisted titles, foreign repos, branches or conclusions."""
+        baseline = {"name": "GASLUX-CLOCK/auto", "conclusion": "success",
+                    "head_branch": "main",
+                    "head_repository": {"full_name": integ.REPO},
+                    "event": "workflow_dispatch"}
+        variants = [
+            {"name": "GASLUX-CLOCK/custom"},
+            {"name": "GASLUX-CLOCK/auto-extra"},
+            {"name": "GASLUX-FACTORY/default"},
+            {"head_branch": "dev"},
+            {"head_branch": "feature/attacker"},
+            {"head_repository": {"full_name": "attacker/gaslux"}},
+            {"conclusion": "failure"},
+            {"conclusion": "cancelled"},
+            {"event": "pull_request"},
+        ]
+        for change in variants:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                event_path = Path(tmp) / "event.json"
+                event_path.write_text(json.dumps({"workflow_run": {
+                    **baseline, **change,
+                }}), encoding="utf-8")
+                with patch.dict(os.environ, {
+                    "GITHUB_REPOSITORY": integ.REPO,
+                    "GITHUB_REF": "refs/heads/main",
+                    "GITHUB_EVENT_NAME": "workflow_run",
+                    "GITHUB_EVENT_PATH": str(event_path),
+                    "GASLUX_WINDOWS_ACCEPTANCE": "success",
+                    "GASLUX_AUTONOMY_PAUSED": "false",
+                }), patch.object(integ, "api") as api:
+                    with self.assertRaisesRegex(RuntimeError, "provenance"):
+                        integ.merge(123, self.head)
+                    api.assert_not_called()
+
+    def test_f38902_typed_clock_still_requires_windows_and_unpaused(self):
+        """Provenance admission cannot disable Windows or emergency pause."""
+        with tempfile.TemporaryDirectory() as tmp:
+            event_path = Path(tmp) / "event.json"
+            event_path.write_text(json.dumps({"workflow_run": {
+                "name": "GASLUX-CLOCK/auto",
+                "conclusion": "success",
+                "head_branch": "main",
+                "head_repository": {"full_name": integ.REPO},
+                "event": "workflow_dispatch",
+            }}), encoding="utf-8")
+            env = {
+                "GITHUB_REPOSITORY": integ.REPO,
+                "GITHUB_REF": "refs/heads/main",
+                "GITHUB_EVENT_NAME": "workflow_run",
+                "GITHUB_EVENT_PATH": str(event_path),
+                "GASLUX_WINDOWS_ACCEPTANCE": "skipped",
+                "GASLUX_AUTONOMY_PAUSED": "false",
+            }
+            with patch.dict(os.environ, env), patch.object(integ, "api") as api:
+                with self.assertRaisesRegex(RuntimeError, "Windows"):
+                    integ.merge(123, self.head)
+                api.assert_not_called()
+            env.update({"GASLUX_WINDOWS_ACCEPTANCE": "success",
+                        "GASLUX_AUTONOMY_PAUSED": "true"})
+            with patch.dict(os.environ, env), patch.object(integ, "api") as api:
+                with self.assertRaisesRegex(RuntimeError, "AUTONOMY_PAUSED"):
+                    integ.merge(123, self.head)
+                api.assert_not_called()
+
     def test_workflow_run_admits_existing_and_typed_clock_titles_only(self):
         yaml = (SCRIPT.parents[2] / ".github/workflows/gaslux-agent-integrator.yml").read_text()
         for title in ("Gaslux autonomous GitHub agents",
