@@ -321,5 +321,17 @@ class IntegratorContractTests(unittest.TestCase):
                 integ.inspect(123, self.head)
 
 
+    def test_workflow_run_admits_existing_and_typed_clock_titles_only(self):
+        yaml = (SCRIPT.parents[2] / ".github/workflows/gaslux-agent-integrator.yml").read_text()
+        for title in ("Gaslux autonomous GitHub agents",
+                      "GASLUX-CLOCK/auto", "GASLUX-CLOCK/mint",
+                      "GASLUX-CLOCK/zorin"):
+            self.assertIn("github.event.workflow_run.name == '" + title + "'", yaml)
+        self.assertIn("github.event.workflow_run.head_repository.full_name == 'LMhdez/gaslux'", yaml)
+        self.assertIn("github.event.workflow_run.head_branch == 'main'", yaml)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", yaml)
+
+
+
 if __name__ == "__main__":
     unittest.main()
