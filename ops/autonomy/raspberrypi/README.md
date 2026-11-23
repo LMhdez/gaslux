@@ -19,7 +19,7 @@ O serviço `systemd --user` acorda **uma vez por minuto**, verifica se há insta
 ## Única condição de supressão: não duplicar trabalho
 
 - Se houver execução **queued, in_progress, pending, waiting ou requested** desse workflow em `main`, não inicia outra.
-- Se GitHub já entregou o disparo do mesmo instante, não repete.
+- Se GitHub já entregou um disparo do mesmo instante **e da mesma função/inputs comprovados**, não repete. A identidade é validada pelo `display_title` da API GitHub, calculado pelo `run-name` de cada workflow em `main`; um Lifecycle normal `research` ou manual `mint_live_boot=false` **nunca** cobre o Mint diário `mint-daily`, e um Clock manual `role=mint` não cobre `role=auto`. Runs sem identificação semântica não são tratados como prova de execução do slot. Esta verificação corrige o finding **F-389-01**.
 - Guarda em disco privado (`~/.config/gaslux/last-dispatched-slots.json`) os instantes pedidos; um reboot ou listagem GitHub temporariamente desatualizada não repete a mesma execução. Também espera a visibilidade do último POST.
 - **Falhas dos jobs NÃO suspendem o relógio.** O ciclo seguinte volta a chamar o mesmo workflow normalmente. Se Pi ou Internet estiverem temporariamente em baixo, ao regressar tenta o último ciclo em falta por workflow, incluindo Mint diário.
 - A prevenção de duplicados entre servidores **não é atomicamente garantida**: o cron nativo do GitHub pode começar durante a janela entre consulta e POST do Pi. A exclusão perfeita exigiria um bloqueio partilhado com GitHub, não suportado por um simples trigger. Não há limitação artificial de agentes ou modos no Pi.
