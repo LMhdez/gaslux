@@ -1,4 +1,5 @@
 name: GASLUX-INTEGRATOR - scheduled exact-HEAD dev merge
+run-name: GASLUX-INTEGRATOR/default
 
 on:
   schedule:
