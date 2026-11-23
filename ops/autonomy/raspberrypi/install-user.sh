@@ -11,8 +11,21 @@ home=$HOME
 dest="$home/.local/lib/gaslux"
 units="$home/.config/systemd/user"
 private="$home/.config/gaslux"
+# Refuse unexpected symlink directories and existing service/script targets.
+# Existing state is not overwritten: reinstallation requires explicit inspection.
+for directory in "$dest" "$units" "$private"; do
+    [ ! -L "$directory" ] || { echo "Refusing symlink directory: $directory" >&2; exit 1; }
+done
 mkdir -p "$dest" "$units" "$private"
 chmod 700 "$private"
+for target in "$dest/raspberrypi_scheduler.py" \
+              "$units/gaslux-fallback.service" \
+              "$units/gaslux-fallback.timer"; do
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        echo "Refusing to overwrite existing file: $target" >&2
+        exit 1
+    fi
+done
 install -m 600 "$base/raspberrypi_scheduler.py" "$dest/raspberrypi_scheduler.py"
 install -m 600 "$base/gaslux-fallback.service" "$units/gaslux-fallback.service"
 install -m 600 "$base/gaslux-fallback.timer" "$units/gaslux-fallback.timer"
