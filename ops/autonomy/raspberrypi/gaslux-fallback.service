@@ -1,5 +1,5 @@
 [Unit]
-Description=Gaslux read-only GitHub Actions liveness watchdog (Raspberry Pi)
+Description=Gaslux all-four-workflows GitHub Actions scheduled trigger (Raspberry Pi)
 Documentation=https://github.com/LMhdez/gaslux/tree/main/ops/autonomy/raspberrypi
 
 [Service]
