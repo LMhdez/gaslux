@@ -373,6 +373,7 @@ def _permit_owned_iso_staging_write(image: Path, mountpoint: Path) -> None:
 
 def run_shared_root_pacstrap(
     *,
+    original: list[str],
     iso: Path,
     pinned_sha256: str,
     base: Path,
@@ -395,6 +396,17 @@ def run_shared_root_pacstrap(
     overlay = base.parent / CHECKPOINT_DIR / OVERLAY_NAME
     _owned(overlay, base.parent / CHECKPOINT_DIR, OVERLAY_NAME, mode=0o600)
     _owned(nvram, base.parent, "ovmf-variables.fd")
+    # Arm A boots Windows from an exact independent clone of the fourth-boot
+    # checkpoint before Arm B receives Archiso/pacstrap. Both arms share only
+    # immutable backing bytes and use independent OVMF VARS + TPM state.
+    from windows_cachyos_bcd_ab_control import run_windows_only_bcd_control
+    bcd_ab_control, treatment_tpm_state, trace_events_file, treatment_trace_file = (
+        run_windows_only_bcd_control(
+            original=original, base=base, nvram=nvram,
+            geometry=geometry, checkpoint=checkpoint, staged=staged,
+            third=third, ext4=ext4, fourth=fourth, workspace=workspace,
+        )
+    )
     root_uuid = ext4.get("rootFilesystem", {}).get("filesystemUuid")
     root_partuuid = staged.get("linuxRoot", {}).get("uniqueGuid")
     require(isinstance(root_uuid, str) and isinstance(root_partuuid, str),
@@ -744,6 +756,10 @@ def run_shared_root_pacstrap(
         "releaseEligible": False,
         "pacstrapSerialSha256": _sha(serial),
         "pacstrapQemuStderrSha256": _sha(stderr),
+        "bcdAbControl": bcd_ab_control,
+        "_treatmentTpmStatePath": str(treatment_tpm_state),
+        "_qemuTraceEventsPath": str(trace_events_file) if trace_events_file else "",
+        "_treatmentQemuTracePath": str(treatment_trace_file) if treatment_trace_file else "",
     }
 
 

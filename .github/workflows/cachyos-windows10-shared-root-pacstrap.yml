@@ -10,6 +10,7 @@ on:
       - feature/cachyos-shared-cow-installed-readonly-boot-issue3
       - feature/cachyos-writable-child-cow-firstboot-issue3
       - fix/cachyos-configured-root-grant-binding-issue3
+      - test/cachyos-postpacstrap-win10-same-cow-issue3
     paths:
       - .github/workflows/cachyos-windows10-shared-root-pacstrap.yml
       - auto_tests/tools/windows_x64_tcg_firstboot.py
@@ -20,6 +21,15 @@ on:
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
       - auto_tests/tools/cachyos_windows_shared_cow_firstboot.py
       - auto_tests/tools/cachyos_windows_shared_cow_rw_child.py
+      - auto_tests/tools/windows_cachyos_postext4_windows.py
+      - auto_tests/test_windows_cachyos_postext4_windows.py
+      - auto_tests/tools/windows_cachyos_postpacstrap_windows.py
+      - auto_tests/tools/windows_cachyos_bcd_ab_control.py
+      - auto_tests/test_windows_cachyos_postpacstrap_windows.py
+      - auto_tests/test_windows_cachyos_bcd_ab_control.py
+      - auto_tests/tools/windows_cachyos_checkpoint_readiness.py
+      - auto_tests/test_windows_cachyos_checkpoint_readiness.py
+      - docs/distro-backends/evidence/CACHY_WIN10_CHECKPOINT_READINESS_20261122.md
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -51,6 +61,15 @@ on:
       - auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py
       - auto_tests/tools/cachyos_windows_shared_cow_firstboot.py
       - auto_tests/tools/cachyos_windows_shared_cow_rw_child.py
+      - auto_tests/tools/windows_cachyos_postext4_windows.py
+      - auto_tests/test_windows_cachyos_postext4_windows.py
+      - auto_tests/tools/windows_cachyos_postpacstrap_windows.py
+      - auto_tests/tools/windows_cachyos_bcd_ab_control.py
+      - auto_tests/test_windows_cachyos_postpacstrap_windows.py
+      - auto_tests/test_windows_cachyos_bcd_ab_control.py
+      - auto_tests/tools/windows_cachyos_checkpoint_readiness.py
+      - auto_tests/test_windows_cachyos_checkpoint_readiness.py
+      - docs/distro-backends/evidence/CACHY_WIN10_CHECKPOINT_READINESS_20261122.md
       - auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py
       - auto_tests/tools/cachyos_windows_shared_archiso_handoff.py
       - auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py
@@ -100,6 +119,12 @@ jobs:
             auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py \
             auto_tests/tools/cachyos_windows_shared_cow_firstboot.py \
             auto_tests/tools/cachyos_windows_shared_cow_rw_child.py \
+            auto_tests/tools/windows_cachyos_postpacstrap_windows.py \
+            auto_tests/tools/windows_cachyos_bcd_ab_control.py \
+            auto_tests/test_windows_cachyos_bcd_ab_control.py \
+            auto_tests/tools/windows_cachyos_checkpoint_readiness.py \
+            auto_tests/test_windows_cachyos_checkpoint_readiness.py \
+            auto_tests/test_windows_cachyos_postpacstrap_windows.py \
             auto_tests/tools/cachyos_windows_archiso_signed_plan_lab.py \
             auto_tests/tools/cachyos_windows_shared_archiso_handoff.py \
             auto_tests/tools/cachyos_windows_shared_archiso_guest_probe.py \
@@ -126,6 +151,9 @@ jobs:
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_shared_root_pacstrap_host_contract.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_firstboot.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_cachyos_windows_shared_cow_rw_child.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postpacstrap_windows.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_bcd_ab_control.py' -v
+          python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_checkpoint_readiness.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_cow_rollback.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_postext4_windows.py' -v
           python3 -m unittest discover -s auto_tests -p 'test_windows_cachyos_overlay_ext4_only.py' -v
@@ -145,13 +173,11 @@ jobs:
           echo 'PASS: signed grant and synthetic contracts only; the real guest job below is the only pacstrap writer.' >> "$GITHUB_STEP_SUMMARY"
 
   real-windows10-archiso-pacstrap-and-discard:
-    # Run the expensive guest proof on push as before, and on this exact same-repository
-    # experimental PR only. No secrets are exposed; all writable storage is disposable QCOW2.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-       github.event.pull_request.head.ref == 'fix/cachyos-configured-root-grant-binding-issue3' &&
-       github.event.pull_request.base.ref == 'feature/cachyos-shared-cow-installed-readonly-boot-issue3')
+    # SECURITY HOLD: genuine A/B Windows #44900941635 modified protected ESP
+    # BCD (682 bytes). No new KVM boot/pacstrap until independent Safety review
+    # validates writer identity, checkpoint and recovery. Retain all tests.
+    # Existing consent logic below remains intact but is explicitly blocked.
+    if: false
     needs: static-and-synthetic-contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 220
@@ -169,6 +195,8 @@ jobs:
       GASLUX_CACHYOS_SHARED_ROOT_PACSTRAP_CONSENT: I_ACCEPT_CACHYOS_SHARED_ROOT_PACSTRAP_ON_DISPOSABLE_WINDOWS_COW
       GASLUX_CACHYOS_INSTALLED_RO_BOOT_CONSENT: I_ACCEPT_READONLY_CACHYOS_INSTALLED_ROOT_POWER_OFF_VM_ONLY
       GASLUX_CACHYOS_RW_CHILD_CONSENT: I_ACCEPT_CHILD_QCOW2_WRITABLE_CACHYOS_FIRSTBOOT_VM_ONLY
+      GASLUX_CACHYOS_POST_PACSTRAP_WINDOWS_CONSENT: I_ACCEPT_WIN10_BOOT_WITH_INSTALLED_CACHYOS_FIFTH_ROOT_ON_DISPOSABLE_COW
+      GASLUX_CACHYOS_BCD_AB_CONTROL_CONSENT: I_ACCEPT_WINDOWS_ONLY_BCD_AB_CONTROL_ON_DISPOSABLE_COW
       GASLUX_CACHYOS_VERIFIED_ISO_SHA256: '959f6577f45e25ee9fd8c220fd221b08e4ea79412c7315c0f922dd6d86d5e33c'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -230,7 +258,7 @@ jobs:
             aria2 qemu-system-x86 qemu-utils ovmf swtpm gdisk \
             dosfstools mtools p7zip-full genisoimage \
             python3-guestfs libguestfs-tools "$generic_kernel" "$extra_modules" \
-            grub-efi-amd64-bin grub-common e2fsprogs openssl
+            grub-efi-amd64-bin grub-common e2fsprogs openssl swtpm-tools
           test -c /dev/kvm && test ! -L /dev/kvm
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
@@ -275,8 +303,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
-          import hashlib, json
+          import hashlib, json, sys
           from pathlib import Path
+          # The audit executes from the repository root in a fresh Python process.
+          # Resolve the existing tools directory before importing the real
+          # Windows COM1 verifier (independent of earlier unit-test sys.path).
+          sys.path.insert(0, str((Path.cwd() / "auto_tests/tools").resolve(strict=True)))
           root = Path("windows-x64-tcg-evidence")
           profile = "win10_22h2_en_us_x64"
           report = json.loads((root / (profile + "-result.json")).read_text())
@@ -323,6 +355,102 @@ jobs:
           assert pacstrap["windowsEspWritesAllowed"] is False
           assert pacstrap["efiBootloaderInstalled"] is False
           assert pacstrap["sameDiskDualBootVerified"] is False
+          # Arm A is Windows-only; arm B is the matched Archiso/pacstrap
+          # treatment. Both start after the same fourth Windows boot and each
+          # performs exactly one fifth Windows boot with independent VARS/TPM.
+          ab = pacstrap["bcdAbControl"]
+          for key in (
+              "controlWindowsBootVerified", "sameWindowsBootCountVerified",
+              "sameCheckpointDiskCloneVerified", "sameCheckpointGuestVisibleDiskVerified",
+              "sameCheckpointPrimaryAndSecondaryGptVerified",
+              "controlAndTreatmentInitialGptEqual",
+              "controlAndTreatmentInitialProtectedHashesEqual",
+              "controlAndTreatmentInitialBcdEqual",
+              "controlOtherProtectedHashesUnchanged", "controlWindowsGptUnchanged",
+              "controlFifthExt4IdentityPreserved",
+              "controlWindowsBackingAndOriginalNVRAMUnchanged",
+              "sameImmutableWindowsBackingImageVerified", "treatmentArmUntouchedByControlVerified",
+              "controlBcdReadOnlyBytesMatchProtectedHash", "controlAndTreatmentInitialTpmStateEqual",
+              "independentOvmfCopiesVerified", "controlAndTreatmentInitialOvmfVarsEqual",
+              "independentTpmStateClonesVerified", "matchedArmsUseSameFreshTpm2Baseline",
+              "sameQemuArgumentsExceptOwnedPathsVerified",
+          ):
+              assert ab[key] is True, key
+          assert ab["controlWindowsBootOrdinal"] == ab["treatmentWindowsBootOrdinal"] == 5
+          assert ab["previousWindows10ProfileHadNoTpm"] is True
+          assert ab["tpmVersion"] == "2.0"
+          if ab["qemuWriteTraceBackendAvailable"] is True:
+              events = root / (profile + "-bcd-ab-qemu-write-events.txt")
+              assert events.is_file() and not events.is_symlink()
+              events_digest, events_name = events.with_suffix(".sha256").read_text().split()
+              assert events_name == events.name
+              assert events_digest == hashlib.sha256(events.read_bytes()).hexdigest()
+              if ab.get("controlQemuWriteTraceSha256"):
+                  trace = root / (profile + "-bcd-control-windows-only-qemu-trace.bin")
+                  assert trace.is_file() and not trace.is_symlink()
+                  assert hashlib.sha256(trace.read_bytes()).hexdigest() == ab["controlQemuWriteTraceSha256"]
+          control_serial = root / (profile + "-bcd-control-windows-only-serial.log")
+          assert control_serial.is_file() and not control_serial.is_symlink()
+          control_recorded, control_name = control_serial.with_suffix(".sha256").read_text().split()
+          assert control_name == control_serial.name
+          assert control_recorded == hashlib.sha256(control_serial.read_bytes()).hexdigest()
+          from windows_cachyos_overlay_reboot import audit_complete_third_serial
+          assert audit_complete_third_serial(control_serial) == control_recorded
+          assert control_recorded == ab["controlWindowsSerialSha256"]
+          assert control_serial.read_bytes().splitlines().count(
+              b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1") == 1
+
+          side = json.loads((root / (profile + "-post-pacstrap-windows-with-linux.json")).read_text())
+          assert side["cachyosBootloaderInstalledToWindowsEsp"] is False
+          assert side["sameDiskDualBootVerified"] is False
+          assert side["rollbackProven"] is False
+          if side.get("windowsBootWithPacstrappedCachyosOnSameDiskVerified") is True:
+              assert side["installedCachyosRootSurvivedWindowsBoot"] is True
+              assert side["windowsProtectedFilesAndGptAfterReentryUnchanged"] is True
+              assert side["windowsBaseAndOriginalNvramAfterReentryUnchanged"] is True
+              assert side["windowsEfiBootManagerUsed"] is True
+              treatment_bcd = side["bcdReadOnlyForensic"]
+          else:
+              assert side["failureType"] == "PostPacstrapWindowsError"
+              diagnosis = side["readonlyDiagnostics"]
+              assert diagnosis["postbootGptMatchesSignedPlan"] is True
+              assert diagnosis["postbootInstalledRootAndBackingPreserved"] is True
+              assert diagnosis["protectedFileHashMismatchKeys"] == ["espBcdSha256"]
+              treatment_bcd = diagnosis["bcdReadOnlyForensic"]
+          comparison = side["bcdAbComparison"]
+          assert comparison["initialBcdEqual"] is True
+          assert comparison["processAttributionProven"] is False
+          assert comparison["approvedMutation"] is False
+          assert comparison["classification"] != "INVALID_INITIAL_BCD_MISMATCH"
+          assert comparison["controlBcdChanged"] == (
+              ab["controlBcdForensic"]["changedByteCount"] > 0
+          )
+          assert comparison["treatmentBcdChanged"] == (treatment_bcd["changedByteCount"] > 0)
+
+          sixth = root / (profile + "-sixth-post-pacstrap-windows-serial.log")
+          assert sixth.is_file() and not sixth.is_symlink()
+          recorded, name = sixth.with_suffix(".sha256").read_text().split()
+          assert name == sixth.name
+          assert recorded == hashlib.sha256(sixth.read_bytes()).hexdigest()
+          assert audit_complete_third_serial(sixth) == recorded
+          assert sixth.read_bytes().splitlines().count(
+              b"GASLUX_COW_WIN10_REBOOT_FIFTH_GPT=1") == 1
+          if side.get("windowsPostPacstrapSerialSha256"):
+              assert recorded == side["windowsPostPacstrapSerialSha256"]
+          treatment_trace_sha = side.get("qemuWriteTraceSha256") or side.get(
+              "readonlyDiagnostics", {}
+          ).get("qemuWriteTraceSha256")
+          if treatment_trace_sha:
+              treatment_trace = root / (profile + "-sixth-post-pacstrap-qemu-trace.bin")
+              assert treatment_trace.is_file() and not treatment_trace.is_symlink()
+              assert hashlib.sha256(treatment_trace.read_bytes()).hexdigest() == treatment_trace_sha
+          # Integrity remains fail-closed even if Windows-only control
+          # reproduces the exact same BCD mutation.
+          if comparison["controlBcdChanged"] or comparison["treatmentBcdChanged"]:
+              print("BCD A/B classification: " + comparison["classification"])
+              raise AssertionError(
+                  "protected BCD changed; diagnostic does not authorize mutation"
+              )
           discard = json.loads((root / (profile + "-post-pacstrap-cow-discard.json")).read_text())
           assert discard["ownedExt4OverlayDiscarded"] is True
           assert discard["windowsBaselineFourGptVerifiedAfterDiscard"] is True
@@ -406,6 +534,7 @@ jobs:
           print("PASS: genuine Archiso pacstrap populated the existing fifth ext4 partition on a Windows-backed disposable COW.")
           print("PASS: minimal READ-ONLY installed kernel/systemd poweroff without Archiso or Windows ESP writes.")
           print("PASS: native RW child-only root witness; Windows/backing/ESP preserved; nested COW discarded.")
+          print("PASS: genuine Windows re-entered with signed pacstrapped fifth CachyOS root still present on the SAME disposable COW; no ESP Linux bootloader.")
           print("PASS: Windows GPT/ESP/BCD/WinRE hashes and immutable base stayed unchanged; COW discarded; clean Windows baseline booted.")
           print("NOT PROVEN: native CachyOS bootloader, first boot, same-disk dual boot, updates, in-place recovery, physical hardware or production safety.")
           PY
