@@ -1,0 +1,13 @@
+name = "gaslux-liveness-fallback"
+main = "worker.mjs"
+compatibility_date = "2026-11-23"
+
+[triggers]
+crons = ["8,23,38,53 * * * *"]
+
+[vars]
+# Fail-closed. Must be explicitly reviewed and enabled out of band.
+GASLUX_EXTERNAL_PAUSED = "true"
+GASLUX_EXTERNAL_DISPATCH_ENABLED = "false"
+GASLUX_EXTERNAL_PRIVILEGED_ENABLED = "false"
+GASLUX_EXTERNAL_DRY_RUN = "true"
