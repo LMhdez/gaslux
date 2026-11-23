@@ -286,7 +286,8 @@ class PostPacstrapWindowsContracts(unittest.TestCase):
         kvm = workflow.split(
             "  real-windows10-archiso-pacstrap-and-discard:", 1
         )[1].split("\n    runs-on:", 1)[0]
-        self.assertIn("    if: >-\n      false &&\n", kvm)
+        self.assertIn("    if: false\n", kvm)
+        self.assertNotIn("github.event.pull_request.number == 263", kvm)
         self.assertIn("BCD (682 bytes)", kvm)
         step = workflow.split(
             "      - name: Independently gate pacstrap, Windows integrity "

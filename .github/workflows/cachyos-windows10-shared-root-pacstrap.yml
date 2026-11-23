@@ -177,16 +177,7 @@ jobs:
     # BCD (682 bytes). No new KVM boot/pacstrap until independent Safety review
     # validates writer identity, checkpoint and recovery. Retain all tests.
     # Existing consent logic below remains intact but is explicitly blocked.
-    if: >-
-      false &&
-      (github.event_name != 'pull_request' &&
-       !(github.event_name == 'push' &&
-         github.ref == 'refs/heads/test/cachyos-postpacstrap-win10-same-cow-issue3')) ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.number == 263 &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       github.event.pull_request.head.ref == 'test/cachyos-postpacstrap-win10-same-cow-issue3' &&
-       github.event.pull_request.base.ref == 'fix/cachyos-configured-root-grant-binding-issue3')
+    if: false
     needs: static-and-synthetic-contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 220
