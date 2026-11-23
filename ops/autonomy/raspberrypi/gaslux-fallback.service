@@ -8,7 +8,6 @@ ExecStart=/usr/bin/python3 -I %h/.local/lib/gaslux/raspberrypi_scheduler.py
 WorkingDirectory=%h
 UMask=0077
 NoNewPrivileges=true
-PrivateTmp=true
 MemoryMax=128M
 CPUQuota=25%
 TimeoutStartSec=45
