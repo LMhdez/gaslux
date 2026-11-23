@@ -228,6 +228,7 @@ class FeatureFactoryTests(unittest.TestCase):
         variants = {
             "direct_subscript": "    evidence['new-authority-flag'] = True\n",
             "augmented_subscript": "    evidence['new-authority-flag'] += 1\n",
+            "in_place_union": "    evidence |= {\'new-authority-flag\': True}\n",
             "indirect_alias": "    same = evidence\n    same['new-authority-flag'] = True\n",
             "nested_dict": ("    nested = evidence.get('source-authenticity')\n"
                             "    nested['new-authority-flag'] = True\n"),
