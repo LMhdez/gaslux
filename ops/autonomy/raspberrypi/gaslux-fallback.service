@@ -1,0 +1,16 @@
+[Unit]
+Description=Gaslux read-only GitHub Actions liveness watchdog (Raspberry Pi)
+Documentation=https://github.com/LMhdez/gaslux/tree/main/ops/autonomy/raspberrypi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/gaslux/raspberrypi_scheduler.py
+WorkingDirectory=%h
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+MemoryMax=128M
+CPUQuota=25%
+TimeoutStartSec=45
+StandardOutput=journal
+StandardError=journal
