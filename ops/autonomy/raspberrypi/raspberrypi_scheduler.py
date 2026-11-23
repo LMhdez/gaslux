@@ -40,6 +40,17 @@ TASKS = (
      {"mint_live_boot": "true"}),
 )
 
+# GitHub Actions evaluates the trusted run-name expression on main.
+# display_title is returned by the existing REST workflow runs endpoint.
+# Never claim that an unrelated manual/regular run delivered a different slot.
+TASK_TITLES = {
+    "clock": "GASLUX-CLOCK/auto",
+    "factory": "GASLUX-FACTORY/default",
+    "integrator": "GASLUX-INTEGRATOR/default",
+    "lifecycle": "GASLUX-LIFECYCLE/research",
+    "mint_daily": "GASLUX-LIFECYCLE/mint-daily",
+}
+
 
 def secure_file(path: Path, *, required: bool = True) -> str | None:
     """Open only a regular, single-link, private file in our owned config dir."""
@@ -189,22 +200,24 @@ def parse_runs(data: dict) -> list[dict]:
     return runs
 
 
-def decision(runs: list[dict], slot: datetime, *, daily: bool = False) -> str:
-    """Only suppress duplicate slots or a workflow already running, not failures."""
+def decision(runs: list[dict], slot: datetime, *, task: str, daily: bool = False) -> str:
+    """Suppress only truly equivalent completed slots or a workflow in progress.
+
+    GitHub lists event/time but does NOT expose a schedule cron or dispatched
+    inputs directly in the workflow-runs response. The trusted, main-branch
+    run-name labels those semantics; display_title is the observable proof.
+    """
+    expected_title = TASK_TITLES[task]
     if any(row["status"] in ACTIVE for row in runs):
         return "ALREADY_RUNNING"
-    # Check whether GitHub itself already delivered this slot. For the daily
-    # Mint guest use a narrow timestamp range: a regular lifecycle run later
-    # that morning is not proof that the Mint guest was booted.
     for run in runs:
-        if run["event"] not in RUN_EVENTS:
+        if run["event"] not in RUN_EVENTS or run.get("display_title") != expected_title:
             continue
         when = parse_time(run["created_at"])
         delta = (when - slot).total_seconds()
-        if (0 <= delta < (180 if daily else 60 * 15)):
+        if 0 <= delta < (180 if daily else 60 * 15):
             return "ALREADY_TRIGGERED"
     return "DISPATCH"
-
 
 def api_json(opener, url: str, *, token: str | None = None) -> dict:
     headers = {"Accept": "application/vnd.github+json",
@@ -288,9 +301,15 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
             # GitHub scheduler we record that slot without a POST.
             for slot, task in due:
                 key = task[1]
-                verdict = decision(runs, slot, daily=(key == "mint_daily"))
+                verdict = decision(runs, slot, task=key, daily=(key == "mint_daily"))
                 if verdict == "ALREADY_TRIGGERED":
                     state[key] = slot.isoformat()
+                    # A semantically proven Mint guest dispatch includes all
+                    # ordinary Lifecycle research. Avoid firing it again.
+                    if key == "mint_daily":
+                        for regular_slot, regular_task in due:
+                            if regular_task[1] == "lifecycle":
+                                state["lifecycle"] = regular_slot.isoformat()
                     set_state(home, state)
                     outcomes.append({"task": key, "status": verdict})
                     continue
