@@ -1,0 +1,71 @@
+name: Mint Zorin boot update remove read-only write-set audit
+
+on:
+  push:
+    branches:
+      - audit/mint-boot-update-remove-writeset-20261122
+    paths:
+      - auto_tests/tools/mint_boot_update_remove_writeset.py
+      - auto_tests/test_mint_boot_update_remove_writeset.py
+      - docs/distro-backends/MINT.md
+      - .github/workflows/mint-boot-update-remove-writeset.yml
+  workflow_dispatch:
+
+concurrency:
+  group: mint-maintenance-writeset-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  offline-write-set:
+    name: Mint and Zorin source/ESP fixtures only — no boot or disk writer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify hosted repository and branch identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$GITHUB_REF" = refs/heads/audit/mint-boot-update-remove-writeset-20261122
+      - name: Synthetic read-only write-set regressions against actual pinned dev scripts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s auto_tests -p test_mint_boot_update_remove_writeset.py -v
+      - name: Mint and Zorin existing boot maintenance regressions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-boot-audit-pytest" "pytest==8.4.2"
+          PYTHONPATH="$RUNNER_TEMP/gaslux-boot-audit-pytest" python3 -m pytest -q \
+            auto_tests/test_mint_boot_update_remove_writeset.py \
+            auto_tests/tests/test_boot_maintenance.py \
+            auto_tests/tests/test_preferred_boot_path.py
+      - name: Bash syntax, Python compileall and Ruff 0.15.20
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n assets/live/libertix-update-grub.sh
+          bash -n assets/live/libertix-sync-efi.sh
+          bash -n assets/live/configure-target-main.sh
+          bash -n assets/live/libertix-uefi-adapter.sh
+          bash -n assets/live/libertix-bios-adapter.sh
+          python3 -m compileall -q \
+            auto_tests/tools/mint_boot_update_remove_writeset.py \
+            auto_tests/test_mint_boot_update_remove_writeset.py
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-boot-audit-ruff" --no-deps "ruff==0.15.20"
+          export PYTHONPATH="$RUNNER_TEMP/gaslux-boot-audit-ruff"
+          python3 -m ruff check \
+            auto_tests/tools/mint_boot_update_remove_writeset.py \
+            auto_tests/test_mint_boot_update_remove_writeset.py
+          python3 -m ruff format --check \
+            auto_tests/tools/mint_boot_update_remove_writeset.py \
+            auto_tests/test_mint_boot_update_remove_writeset.py
