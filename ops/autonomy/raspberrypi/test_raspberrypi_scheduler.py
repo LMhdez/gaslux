@@ -256,6 +256,53 @@ class ScheduleTests(unittest.TestCase):
             self.assertEqual(pi.get_state(home)["clock"],
                              "2026-11-23T06:48:00+00:00")
 
+    def test_one_api_failure_does_not_starve_other_workflows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self.home(tmp, dry_run=False)
+            calls = []
+            fallback = mock_api(calls)
+            def opener(req, timeout):
+                if req.get_method() == "GET" and "gaslux-agent-clock.yml/" in req.full_url:
+                    raise OSError("offline sample")
+                return fallback(req, timeout)
+            result = self.tick(home, opener=opener)
+            self.assertEqual(result["decisions"][0]["status"], "API_RETRY_NEXT_TICK")
+            self.assertEqual(len([c for c in calls if c[1] == "POST"]), 3)
+
+    def test_ambiguous_post_not_repeated_until_visibility_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self.home(tmp, dry_run=False)
+            calls = []
+            fallback = mock_api(calls)
+            def uncertain(req, timeout):
+                if req.get_method()=="POST" and "gaslux-agent-clock.yml/" in req.full_url:
+                    raise OSError("response lost after GitHub may have accepted")
+                return fallback(req, timeout)
+            first = self.tick(home, opener=uncertain)
+            self.assertEqual(first["decisions"][0]["status"], "POST_UNCONFIRMED")
+            self.assertIn("post:gaslux-agent-clock.yml", pi.get_state(home))
+            second_calls = []
+            second = self.tick(home, NOW+timedelta(minutes=1), mock_api(second_calls))
+            self.assertIn("WAITING_FOR_VISIBILITY",
+                          [item["status"] for item in second["decisions"]])
+            self.assertFalse(any(method=="POST" for _url,method,_body in second_calls))
+            third_calls=[]
+            self.tick(home, NOW+timedelta(minutes=3), mock_api(third_calls))
+            self.assertEqual(len([x for x in third_calls if x[1]=="POST"]),1)
+            self.assertIn("gaslux-agent-clock.yml",
+                          [url for url,method,_ in third_calls if method=="POST"][0])
+
+    def test_authenticated_github_reads_not_anonymous_rate_limited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home=self.home(tmp,dry_run=True)
+            calls=[]
+            fallback=mock_api(calls)
+            def checked(req, timeout):
+                self.assertTrue(req.has_header("Authorization"))
+                return fallback(req,timeout)
+            self.tick(home,opener=checked)
+            self.assertEqual(len([x for x in calls if x[1]=="GET"]),4)
+
     def test_systemd_poll_minutely_and_existing_safety_unmodified(self):
         base=Path(__file__).parent
         unit=(base/"gaslux-fallback.service").read_text()
