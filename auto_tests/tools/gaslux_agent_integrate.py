@@ -230,6 +230,9 @@ def merge(number: int, expected: str) -> dict:
         runner = evt.get("workflow_run", {})
         allowed = {
             ("Gaslux autonomous GitHub agents", "main"),
+            ("GASLUX-CLOCK/auto", "main"),
+            ("GASLUX-CLOCK/mint", "main"),
+            ("GASLUX-CLOCK/zorin", "main"),
             ("Gaslux Goal Supervisor - read-only progress", "dev"),
         }
         if ((runner.get("name"), runner.get("head_branch")) not in allowed
