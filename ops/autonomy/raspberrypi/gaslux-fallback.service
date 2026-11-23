@@ -10,6 +10,6 @@ UMask=0077
 NoNewPrivileges=true
 MemoryMax=128M
 CPUQuota=25%
-TimeoutStartSec=45
+TimeoutStartSec=180
 StandardOutput=journal
 StandardError=journal
