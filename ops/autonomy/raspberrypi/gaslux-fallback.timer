@@ -1,11 +1,11 @@
 [Unit]
-Description=Gaslux Raspberry Pi independent read-only GitHub Actions watchdog
+Description=Gaslux Raspberry Pi independent full GitHub agent schedule trigger
 
 [Timer]
-OnCalendar=*-*-* *:08,23,38,53:00 UTC
+OnCalendar=*-*-* *:*:00 UTC
 Persistent=true
-AccuracySec=30s
-RandomizedDelaySec=15s
+AccuracySec=10s
+RandomizedDelaySec=0s
 Unit=gaslux-fallback.service
 
 [Install]
