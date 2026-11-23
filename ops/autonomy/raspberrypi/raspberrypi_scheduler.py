@@ -263,9 +263,16 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
                    if state.get(task[1]) != slot.isoformat()]
             if not due:
                 continue
-            data = api_json(opener, API + workflow +
-                            "/runs?branch=main&per_page=100", token=token)
-            runs = parse_runs(data)
+            try:
+                data = api_json(opener, API + workflow +
+                                "/runs?branch=main&per_page=100", token=token)
+                runs = parse_runs(data)
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                # One unavailable workflow must not starve other scheduled agents.
+                # Never print a token, HTTP response body, or URL query.
+                outcomes.append({"task": workflow, "status": "API_RETRY_NEXT_TICK",
+                                 "error_type": type(exc).__name__})
+                continue
             # A successful POST may take time to appear in GitHub run listings.
             # Suppress further POSTs to this workflow briefly after our own
             # confirmed dispatch, even when the API response is still stale.
@@ -295,7 +302,16 @@ def tick(*, home: Path, now: datetime, opener=urllib.request.urlopen) -> dict:
                     break
                 if token is None:
                     raise ValueError("GitHub Actions dispatch credential required")
-                dispatch(opener, token, workflow, task[4])
+                try:
+                    dispatch(opener, token, workflow, task[4])
+                except (OSError, ValueError) as exc:
+                    # GitHub might have accepted POST before a timeout. Record
+                    # an uncertainty window instead of instantly retrying.
+                    state["post:" + workflow] = now.astimezone(timezone.utc).isoformat()
+                    set_state(home, state)
+                    outcomes.append({"task": key, "status": "POST_UNCONFIRMED",
+                                     "error_type": type(exc).__name__})
+                    break
                 state[key] = slot.isoformat()
                 # One workflow run already executes all its regular jobs:
                 # a daily Mint run also covers any older lifecycle research.
