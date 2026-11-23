@@ -1,9 +1,10 @@
 name: GASLUX-LIFECYCLE - autonomous multi-distro read-only research
+run-name: "GASLUX-LIFECYCLE/${{ ((github.event_name == 'schedule' && github.event.schedule == '31 3 * * *') || (github.event_name == 'workflow_dispatch' && inputs.mint_live_boot == true)) && 'mint-daily' || 'research' }}"
 
 on:
   schedule:
-    - cron: '13,43 * * * *' # every 30 minutes
-    - cron: '29 3 * * *' # daily official Mint live-guest attempt
+    - cron: '16,46 * * * *' # staggered 30-minute refresh
+    - cron: '31 3 * * *' # daily official Mint live-guest attempt
   workflow_dispatch:
     inputs:
       mint_live_boot:
@@ -82,7 +83,7 @@ jobs:
           bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
 
   backend_research:
-    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: vars.GASLUX_AUTONOMY_PAUSED != 'true' && github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     strategy:
@@ -208,7 +209,7 @@ jobs:
           retention-days: 14
 
   compact_vm_admission:
-    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: vars.GASLUX_AUTONOMY_PAUSED != 'true' && github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -242,8 +243,9 @@ jobs:
 
   official_mint_live_guest:
     if: >-
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
       github.repository == 'LMhdez/gaslux' &&
-      ((github.event_name == 'schedule' && github.event.schedule == '29 3 * * *') ||
+      ((github.event_name == 'schedule' && github.event.schedule == '31 3 * * *') ||
        (github.event_name == 'workflow_dispatch' && inputs.mint_live_boot == true))
     runs-on: ubuntu-24.04
     timeout-minutes: 50

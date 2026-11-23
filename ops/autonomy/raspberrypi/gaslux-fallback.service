@@ -1,0 +1,15 @@
+[Unit]
+Description=Gaslux all-four-workflows GitHub Actions scheduled trigger (Raspberry Pi)
+Documentation=https://github.com/LMhdez/gaslux/tree/main/ops/autonomy/raspberrypi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/gaslux/raspberrypi_scheduler.py
+WorkingDirectory=%h
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=128M
+CPUQuota=25%
+TimeoutStartSec=180
+StandardOutput=journal
+StandardError=journal

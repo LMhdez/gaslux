@@ -1,8 +1,9 @@
 name: Gaslux autonomous GitHub agents
+run-name: "GASLUX-CLOCK/${{ github.event_name == 'schedule' && 'auto' || (inputs.role || 'auto') }}"
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # every 15 minutes; dedupe and no-model idle gate
+    - cron: '3,18,33,48 * * * *' # staggered 15-minute registration refresh; dedupe and no-model idle gate
   workflow_dispatch:
     inputs:
       role:
@@ -17,12 +18,26 @@ on:
       - auto_tests/tools/gaslux_agent_trusted_publish.py
       - auto_tests/tests/test_gaslux_agent_trusted_publish.py
       - docs/GASLUX_ACTIONS_AGENT_CLOCK.md
+      - ops/autonomy/raspberrypi/raspberrypi_scheduler.py
+      - ops/autonomy/raspberrypi/test_raspberrypi_scheduler.py
+      - ops/autonomy/raspberrypi/gaslux-fallback.service
+      - ops/autonomy/raspberrypi/gaslux-fallback.timer
+      - ops/autonomy/raspberrypi/scheduler.example.json
+      - ops/autonomy/raspberrypi/install-user.sh
+      - ops/autonomy/raspberrypi/README.md
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-clock.yml
       - auto_tests/tools/gaslux_agent_trusted_publish.py
       - auto_tests/tests/test_gaslux_agent_trusted_publish.py
       - docs/GASLUX_ACTIONS_AGENT_CLOCK.md
+      - ops/autonomy/raspberrypi/raspberrypi_scheduler.py
+      - ops/autonomy/raspberrypi/test_raspberrypi_scheduler.py
+      - ops/autonomy/raspberrypi/gaslux-fallback.service
+      - ops/autonomy/raspberrypi/gaslux-fallback.timer
+      - ops/autonomy/raspberrypi/scheduler.example.json
+      - ops/autonomy/raspberrypi/install-user.sh
+      - ops/autonomy/raspberrypi/README.md
 
 permissions:
   contents: read
@@ -41,10 +56,23 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_trusted_publish.py -v
+      - name: Test trusted publisher and read-only checkpoint boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_trusted_publish.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_progress.py -v
+          python3 -B -m unittest discover -s ops/autonomy/raspberrypi -p test_raspberrypi_scheduler.py -v
+          sh -n ops/autonomy/raspberrypi/install-user.sh
+          systemd-analyze calendar '*-*-* *:*:00 UTC'
+          systemd-analyze verify ops/autonomy/raspberrypi/gaslux-fallback.service ops/autonomy/raspberrypi/gaslux-fallback.timer
 
   supervisor:
-    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 7
     outputs:
@@ -239,6 +267,51 @@ jobs:
       - name: Revalidate dev and publish Draft PR only
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
         run: |
           set -euo pipefail
           timeout 120 python3 -I auto_tests/tools/gaslux_agent_trusted_publish.py publish
+
+  autonomy_progress:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout trusted main-only reporter without credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - name: Checkout current dev evidence as untrusted JSON data only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          path: source
+          persist-credentials: false
+      - name: Test reporter and generate GitHub summary / machine-readable checkpoints
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_progress.py -v
+          export GASLUX_DEV_SHA="$(git -C source rev-parse HEAD)"
+          python3 -I trusted/auto_tests/tools/gaslux_agent_progress.py \
+            --source source --output evidence/agent-checkpoints.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+      - name: Retain checkpoint JSON only, no model bytes or tokens
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-autonomous-progress
+          path: evidence/agent-checkpoints.json
+          if-no-files-found: warn
+          retention-days: 14

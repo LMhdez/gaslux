@@ -268,6 +268,8 @@ def safe_forward_draft_base(root: Path, role: str, old: str, current: str) -> bo
     return True
 
 def publish(root: Path, evidence_dir: Path, role: str, base: str) -> None:
+    if os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true":
+        raise RuntimeError("GASLUX_AUTONOMY_PAUSED: model Draft publisher blocked")
     if os.getenv("GITHUB_REPOSITORY") != REPO or os.getenv("GITHUB_REF") != "refs/heads/main":
         raise ValueError("Only trusted default-branch Actions may publish")
     # Static-only checks: never execute model text in a token-bearing job.

@@ -1,8 +1,9 @@
 name: GASLUX-FEATURE-FACTORY - six distro Qwen Draft PR proposals
+run-name: GASLUX-FACTORY/default
 
 on:
   schedule:
-    - cron: '4,19,34,49 * * * *'
+    - cron: '6,21,36,51 * * * *' # staggered scheduler registration refresh
   workflow_dispatch:
   push:
     branches: [main]
@@ -38,7 +39,11 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
 
   select:
-    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     permissions:
@@ -228,6 +233,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           ROLE: ${{ needs.select.outputs.role }}
           BASE: ${{ needs.select.outputs.base }}
         run: |

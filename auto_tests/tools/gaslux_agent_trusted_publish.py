@@ -155,6 +155,8 @@ def verify_evidence() -> tuple[dict, bytes, str, str]:
 
 
 def publish() -> None:
+    if os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true":
+        raise RuntimeError("GASLUX_AUTONOMY_PAUSED: no Draft PR publication")
     if (os.getenv("GITHUB_REPOSITORY") != REPO
         or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
         or os.getenv("GITHUB_REF") != "refs/heads/main"):
