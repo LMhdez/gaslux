@@ -92,6 +92,11 @@ def inspect_gpt_fd(fd: int, *, logical_sector_size: int) -> dict:
                 "hybrid or missing protective MBR")
         require(struct.unpack_from("<I", slots[0], 8)[0] == 1,
                 "invalid protective partition start")
+        # The protective MBR covers every representable LBA after sector zero.
+        # On disks above the 32-bit MBR limit its length must saturate.
+        require(struct.unpack_from("<I", slots[0], 12)[0] ==
+                min(sectors - 1, 0xffffffff),
+                "protective MBR extent disagrees with disk geometry")
         primary = read_header(pinned_fd, sector, 1, sectors)
         backup = read_header(pinned_fd, sector, sectors - 1, sectors)
         require(primary["alternate"] == sectors - 1 and backup["alternate"] == 1,

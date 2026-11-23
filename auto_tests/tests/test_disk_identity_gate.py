@@ -103,6 +103,19 @@ def test_corrupt_gpt_is_rejected(tmp_path, corruption):
         gate.inspect_gpt_image(image, logical_sector_size=SECTOR)
 
 
+@pytest.mark.parametrize("claimed_sectors", [0, 1, 4094, 4096, 0xffffffff])
+def test_pmbr_extent_must_match_disk_geometry(snapshot, claimed_sectors):
+    path, _ = snapshot
+    original = path.read_bytes()
+    mutated = bytearray(original)
+    struct.pack_into("<I", mutated, 446 + 12, claimed_sectors)
+    path.write_bytes(mutated)
+    before = path.read_bytes()
+    with pytest.raises(gate.DiskIdentityError, match="protective MBR extent"):
+        gate.inspect_gpt_image(path, logical_sector_size=SECTOR)
+    assert path.read_bytes() == before
+
+
 def test_mbr_rejected_without_validated_ebr_chain(snapshot):
     _, expected = snapshot
     with pytest.raises(gate.DiskIdentityError):
