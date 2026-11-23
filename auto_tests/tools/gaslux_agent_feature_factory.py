@@ -101,6 +101,12 @@ def validate_addition(role: str, addition: str, *, execute: bool) -> None:
         node.args.kwonlyargs or node.args.vararg or node.args.kwarg):
         raise ValueError("Unexpected callable signature")
     for n in ast.walk(node):
+        if isinstance(n, ast.FunctionDef) and n is not node:
+            raise ValueError("Nested function is forbidden")
+        if isinstance(n, (ast.Subscript, ast.Attribute)) and not isinstance(n.ctx, ast.Load):
+            raise ValueError("Only local variable assignments are permitted")
+        if isinstance(n, (ast.AugAssign, ast.NamedExpr)):
+            raise ValueError("In-place mutation is forbidden")
         if isinstance(n, FORBIDDEN):
             raise ValueError("Code includes a prohibited operation")
         if isinstance(n, ast.Attribute) and n.attr != "get":
