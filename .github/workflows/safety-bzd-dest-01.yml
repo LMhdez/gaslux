@@ -1,0 +1,47 @@
+name: Safety BZD-DEST-01 read-only cross-boundary contracts
+
+on:
+  push:
+    branches:
+      - test/safety-bzd-dest-01-contract-regressions-20261122
+    paths:
+      - auto_tests/tests/test_bzd_dest_01_cross_boundary.py
+      - .github/workflows/safety-bzd-dest-01.yml
+      - docs/BZD_DEST_01_MISSING_SHARED_CONTRACT.md
+  pull_request:
+    paths:
+      - auto_tests/tests/test_bzd_dest_01_cross_boundary.py
+      - .github/workflows/safety-bzd-dest-01.yml
+      - docs/BZD_DEST_01_MISSING_SHARED_CONTRACT.md
+
+permissions:
+  contents: read
+
+jobs:
+  no-writer-negative-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 0be04192acd542646a5b6cd952e01620379edf5d
+          path: pinned-267
+          persist-credentials: false
+      - name: Confirm immutable reference and deny-only modules
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C pinned-267 rev-parse HEAD)" = 0be04192acd542646a5b6cd952e01620379edf5d
+          test -f pinned-267/assets/live/libertix_prewrite_no_writer.py
+          test -f pinned-267/auto_tests/tests/test_prewrite_no_writer.py
+          python -m pip install pytest==9.0.2
+      - name: Execute pinned #267 gate, negative regressions and explicit known-gap detections
+        env:
+          GASLUX_267_SOURCE: pinned-267
+        run: |
+          set -Eeuo pipefail
+          python -m pytest -q auto_tests/tests/test_bzd_dest_01_cross_boundary.py
+          python -m pytest -q pinned-267/auto_tests/tests/test_prewrite_no_writer.py
