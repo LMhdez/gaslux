@@ -122,12 +122,12 @@ class SharedRootPacstrapHostContracts(unittest.TestCase):
         # expensive KVM/pacstrap job unconditionally held until independent
         # Safety review; only static and synthetic contracts may run meanwhile.
         self.assertIn(
-            "  real-windows10-archiso-pacstrap-and-discard:\\n"
+            "  real-windows10-archiso-pacstrap-and-discard:\n"
             "    # SECURITY HOLD: genuine A/B Windows #44900941635 modified protected ESP",
             workflow,
         )
         self.assertIn(
-            "    if: false\\n    needs: static-and-synthetic-contracts",
+            "    if: false\n    needs: static-and-synthetic-contracts",
             workflow,
         )
         self.assertNotIn("    if: >-", workflow)
