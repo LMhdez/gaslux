@@ -116,3 +116,44 @@ formal-review list were empty. Historical contract workflow successes are not
 installed-guest proof. #263 contains historical Windows/CachyOS experiments;
 these do not prove the current candidate or current dev. Revalidate exact
 ancestry, current base, actual CI and independent evidence before any merge.
+
+
+## CI provenance and historical lab receipts (2026-11-24)
+
+The read-only admission now requires successful named check runs AND actual
+pull_request workflow runs for the immutable repository ID 1460159259, candidate
+HEAD, observed workflow IDs (420402269, 420417743 and either 420471368 or
+420371034), and exact run attempt/job metadata. Incomplete pages, mismatched
+origin, unknown workflow, failed/skipped jobs, duplicate job names and stale
+HEADs fail closed. It adds only actions:read to the existing admission job.
+These checks identify workflow provenance, not a proof of actual installed
+guest behavior or of an independently observed checkout tree. Live API
+compatibility and scheduled behavior still need verification on trusted main.
+No merge authority is granted.
+
+Existing historical laboratory evidence, inspected via authenticated GitHub
+run/job logs and artifact metadata (not downloaded or independently rehashed):
+
+- #383 HEAD f6c79778b780d8abdfaf73a8beeef664dbca6a5c:
+  run [45064724367](https://github.com/LMhdez/gaslux/actions/runs/45064724367),
+  artifact 14770149177, reported ZIP SHA256
+  9f387e95c5fe1e9d7166aa150a2eb11fbf91411224d4ac982c92827af06a2a82.
+  Private synthetic QCOW2/OVMF restore verified; writer and quota denied.
+- #388 HEAD ba1817d41330d33e500c36dc17c2f88e313c5fee:
+  run [45067845469](https://github.com/LMhdez/gaslux/actions/runs/45067845469),
+  artifact 14771887332, reported ZIP SHA256
+  63c48150bb0108be5934c5b24dc9079780ec316dc319ce11cfb68258d69229e0.
+  Actual 384-MiB ENOSPC/restore fixture and 60-GiB physical reservation plus
+  synthetic overlay write/reset verified; not full-size exhaustion or guest
+  recovery. Readiness report 2/11, next gate windows_iso_exact_microsoft_hash
+  BLOCKED_MEDIA. Both artifacts expire 2026-12-06 unless retained elsewhere.
+
+These are historical receipts, NOT current candidate acceptance. They do not
+set full_vm_acceptance_verified or alter dev:docs/autonomy/evidence.json.
+#418 is the existing private media preflight path; legal media provenance,
+private environment, source URL, digest and exact byte length must be
+provisioned independently before enabling it. #416 and #418 overlap the
+Lifecycle workflow and require reviewed composition. #383/#388 remain Draft.
+Do not reuse the old quota results as a guarantee of current runner capacity.
+The full VM producer does not yet exist at the required evidence level;
+do not introduce a permissive synthetic VM acceptance verifier to compensate.
