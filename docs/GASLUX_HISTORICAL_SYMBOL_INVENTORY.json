@@ -7956,6 +7956,550 @@
       "blob": "c84b979caae17e85eeac3f3cf81532f34c3e9974",
       "symbol_count": 4,
       "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/test_windows_guest_recovery_proof.py",
+      "blob": "4efb29c81d9dedcf72d9837457026bf1eaf150e3",
+      "symbol_count": 31,
+      "matches": [
+        {
+          "name": "part",
+          "kind": "def",
+          "qualified": "part",
+          "line": 25,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/__init__.py",
+      "blob": "60d9be4728bc340014757412581e56f601b70b05",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/asgi_client.py",
+      "blob": "d3ccd32c09e0e4414c63a95cdfe3bfed40cb1cd0",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "AsgiTestClient.__init__",
+          "line": 15,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "AsgiTestClient.__enter__",
+          "line": 27,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "AsgiTestClient.__exit__",
+          "line": 42,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/campaign_evidence.py",
+      "blob": "e08aff667d10a4ce2b8d5d430154aa5537e4cfa9",
+      "symbol_count": 3,
+      "matches": [
+        {
+          "name": "check",
+          "kind": "def",
+          "qualified": "successful_campaign_steps.check",
+          "line": 90,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/conftest.py",
+      "blob": "a53795d665c153fd2a60184358b1e50d76dff7ce",
+      "symbol_count": 3,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "run_shell_function.run",
+          "line": 31,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_api.py",
+      "blob": "dd793dc51c289d901ab40fabb6d3770eb218f5f7",
+      "symbol_count": 27,
+      "matches": [
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_stream_worker_shuts_down_vnc_runtime_and_flushes_result.FakeConnection.close",
+          "line": 22,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_stream_worker_finishes_when_its_parent_event_pipe_is_gone.BrokenConnection.close",
+          "line": 61,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_force_kill_endpoint_terminates_only_the_active_operation.FakeProcess.__init__",
+          "line": 297,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_api_runtime.py",
+      "blob": "943303e22a3b5ecd81c041eaf4557d210b1da511",
+      "symbol_count": 105,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeOperationLock.__init__",
+          "line": 56,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_times_out_one_vm_while_another_keeps_reporting_progress.Service.__init__",
+          "line": 96,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_stream_times_out_one_vm_while_another_keeps_reporting_progress.Service.run",
+          "line": 99,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_progress_during_timeout_capture_rearms_the_watchdog.Service.__init__",
+          "line": 178,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_progress_during_timeout_capture_rearms_the_watchdog.Service.run",
+          "line": 181,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_worker_serializes_parallel_vm_events.ConcurrentWriteDetector.__init__",
+          "line": 252,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_stream_worker_serializes_parallel_vm_events.ConcurrentWriteDetector.close",
+          "line": 268,
+          "test": false
+        },
+        {
+          "name": "prepare",
+          "kind": "def",
+          "qualified": "test_full_campaign_endpoint_keeps_one_lock_and_returns_all_scenario_logs.prepare",
+          "line": 669,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_emits_steps_then_one_terminal_result_and_releases_lock.FakeAutomationService.__init__",
+          "line": 736,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_stream_emits_steps_then_one_terminal_result_and_releases_lock.FakeAutomationService.run",
+          "line": 739,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_timeout_captures_selected_vms_and_returns_a_terminal_error.HangingAutomationService.__init__",
+          "line": 802,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_stream_timeout_captures_selected_vms_and_returns_a_terminal_error.HangingAutomationService.run",
+          "line": 805,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_json_automation_uses_isolated_timeout_and_captures_selected_vms.HangingAutomationService.__init__",
+          "line": 977,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_json_automation_uses_isolated_timeout_and_captures_selected_vms.HangingAutomationService.run",
+          "line": 980,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_inactivity_timeout_resets_after_each_progress_step.ProgressingAutomationService.__init__",
+          "line": 1058,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_stream_inactivity_timeout_resets_after_each_progress_step.ProgressingAutomationService.run",
+          "line": 1061,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_synchronous_operation_persists_steps_and_result_in_its_run_workspace.FakeAutomationService.__init__",
+          "line": 1116,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_synchronous_operation_persists_steps_and_result_in_its_run_workspace.FakeAutomationService.run",
+          "line": 1119,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_converts_worker_exception_to_safe_terminal_result.FailingAutomationService.__init__",
+          "line": 1172,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_stream_converts_worker_exception_to_safe_terminal_result.FailingAutomationService.run",
+          "line": 1175,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_refuses_concurrent_operation_without_starting_service.ForbiddenAutomationService.__init__",
+          "line": 1213,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_workspace_finalization_failure_does_not_hide_operation_result_or_hold_lock.FakeAutomationService.__init__",
+          "line": 1278,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_workspace_finalization_failure_does_not_hide_operation_result_or_hold_lock.FakeAutomationService.run",
+          "line": 1281,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_keeps_full_log_but_emits_only_phase_changes.FakeAutomationService.__init__",
+          "line": 1330,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_stream_keeps_full_log_but_emits_only_phase_changes.FakeAutomationService.run",
+          "line": 1333,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_stream_preserves_complete_installation_errors.FailingInstallationService.__init__",
+          "line": 1426,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_stream_preserves_complete_installation_errors.FailingInstallationService.run",
+          "line": 1429,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_compact_stream_uses_short_success_lines_and_verbose_errors.FakeAutomationService.__init__",
+          "line": 1489,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_compact_stream_uses_short_success_lines_and_verbose_errors.FakeAutomationService.run",
+          "line": 1492,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_auth_dest_128g_readonly.py",
+      "blob": "3aec49b49c53d17c90684bb14431425e2b9f08fb",
+      "symbol_count": 44,
+      "matches": [
+        {
+          "name": "assess",
+          "kind": "def",
+          "qualified": "assess",
+          "line": 196,
+          "test": false
+        },
+        {
+          "name": "refused",
+          "kind": "def",
+          "qualified": "refused",
+          "line": 216,
+          "test": false
+        },
+        {
+          "name": "launch",
+          "kind": "def",
+          "qualified": "_real_disposable_qemu_info.launch",
+          "line": 495,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_authenticated_destination_readonly.py",
+      "blob": "1ccbb4cb80f8d1b1032d8a82246768e2eb2bbced",
+      "symbol_count": 17,
+      "matches": [
+        {
+          "name": "prepare",
+          "kind": "def",
+          "qualified": "prepare",
+          "line": 39,
+          "test": false
+        },
+        {
+          "name": "assess",
+          "kind": "def",
+          "qualified": "assess",
+          "line": 121,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_automation_campaign.py",
+      "blob": "de931b99d003a808a42fe80713aad6b378d65f2e",
+      "symbol_count": 14,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_extended_campaign_preserves_oem_and_secondary_data_then_uninstalls.run",
+          "line": 29,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_extended_campaign_continues_all_scenarios_but_retains_early_errors.run",
+          "line": 125,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_campaign_runs_four_nominal_three_vm_scenarios_and_retains_failures.run",
+          "line": 173,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_campaign_does_not_claim_success_without_vm_verdicts.run",
+          "line": 236,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_campaign_preserves_a_recap_when_the_worker_is_interrupted.run",
+          "line": 260,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_automation_diagnostics.py",
+      "blob": "888e72669b40c05abc81a7f3cefa7e586f31692c",
+      "symbol_count": 28,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeSftp.__init__",
+          "line": 23,
+          "test": false
+        },
+        {
+          "name": "read",
+          "kind": "def",
+          "qualified": "test_collection_records_unreadable_logs_without_discarding_other_files.read",
+          "line": 100,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_failure_bundle_waits_then_collects_and_records_original_error.FakeSSH.__init__",
+          "line": 142,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_failure_bundle_waits_then_collects_and_records_original_error.FakeSSH.__enter__",
+          "line": 146,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_failure_bundle_waits_then_collects_and_records_original_error.FakeSSH.__exit__",
+          "line": 153,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_failure_bundle_waits_then_collects_and_records_original_error.FakeSSH.run",
+          "line": 174,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_windows_context_keeps_sections_after_a_transport_timeout.FakeSSH.run",
+          "line": 269,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_automation_progress.py",
+      "blob": "2f3c6a338b6c4aa502014892f9cad357892c93ae",
+      "symbol_count": 6,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_bazzite_atomic_preflight.py",
+      "blob": "27786853842c3b721d18a015d3e2dbd81e17d0ad",
+      "symbol_count": 6,
+      "matches": [
+        {
+          "name": "media",
+          "kind": "def",
+          "qualified": "media",
+          "line": 16,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_bazzite_iso_signature.py",
+      "blob": "ded56c5d449859cb34442f702564b9cd662417d3",
+      "symbol_count": 19,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_bios_boot_payload.py",
+      "blob": "43d0bb96ae2eb1f23ca21ddbe53964d38349cac7",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_boot_guardian_campaign.py",
+      "blob": "1181d9c8afb7f78e43480c62e3fe3b1d3e2719da",
+      "symbol_count": 15,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_full_campaign_adds_exactly_twelve_uefi_recovery_cells.run",
+          "line": 116,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_recovery_vm_lanes_do_not_wait_for_each_other.run",
+          "line": 183,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_recovery_missing_proof_retries_once_and_preserves_failure.run",
+          "line": 216,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_local_filepool_cases_remain_nominal_and_require_source_evidence.run",
+          "line": 310,
+          "test": false
+        }
+      ]
     }
   ],
   "limitations": [
