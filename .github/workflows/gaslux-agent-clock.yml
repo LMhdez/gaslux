@@ -70,9 +70,10 @@ jobs:
   supervisor:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
-       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+       github.event_name == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 7
     outputs:
@@ -246,9 +247,13 @@ jobs:
   integrator_publisher:
     needs: [supervisor, backend_developer, safety_review, windows_wpf_acceptance]
     if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
       needs.backend_developer.outputs.candidate_ready == 'true' &&
       needs.safety_review.result == 'success' &&
       needs.windows_wpf_acceptance.result == 'success'
+    environment: gaslux-main-publisher
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
