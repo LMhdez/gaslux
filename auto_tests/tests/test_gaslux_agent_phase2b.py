@@ -74,6 +74,44 @@ class Scope2BTests(unittest.TestCase):
         self.assertFalse("sourceAuthenticityVerified': True" in accepted())
         self.assertFalse("installationAuthorized': True" in accepted())
 
+    def test_f40501_equality_only_model_is_rejected_for_wrong_types(self):
+        """RED fixture: Python float/int and subclasses can compare equal."""
+        with self.assertRaises(ValueError):
+            factory.validate_addition(
+                "mint", accepted(), execute=True, scope=factory.SCOPE2B_ID
+            )
+
+    def test_f40501_subclasses_and_float_rejected_by_trusted_oracle(self):
+        class StrSubclass(str):
+            pass
+
+        class IntSubclass(int):
+            pass
+
+        class DictSubclass(dict):
+            pass
+
+        good = dict(factory.SCOPE2B_PINS)
+        wrong = [
+            {**good, "isoInstallerSizeBytes": 3091660800.0},
+            {**good, "isoInstallerSizeBytes": IntSubclass(3091660800)},
+            {**good, "isoInstaller": StrSubclass(good["isoInstaller"])},
+            {**good, "isoInstallerSha256": StrSubclass(good["isoInstallerSha256"])},
+            {**good, "id": StrSubclass("mint")},
+            DictSubclass(good),
+        ]
+        self.assertEqual(good["isoInstallerSizeBytes"], wrong[0]["isoInstallerSizeBytes"])
+        self.assertNotEqual(type(good["isoInstallerSizeBytes"]), type(wrong[0]["isoInstallerSizeBytes"]))
+        for descriptor in wrong:
+            with self.subTest(descriptor_type=type(descriptor).__name__,
+                              size_type=type(descriptor["isoInstallerSizeBytes"]).__name__):
+                self.assertFalse(
+                    type(descriptor) is dict and all(
+                        type(descriptor.get(k)) is type(v) and descriptor.get(k) == v
+                        for k, v in factory.SCOPE2B_PINS.items()
+                    )
+                )
+
     def test_wrong_backend_unknown_scope_and_synthetic_authority_rejected(self):
         for role, scope in [
             ("zorin", factory.SCOPE2B_ID),
