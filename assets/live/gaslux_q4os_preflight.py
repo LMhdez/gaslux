@@ -65,7 +65,22 @@ def probe_q4os(
     result["q4osIdentityBoundToIso"] = False
     return result
 
+
 def assess_q4os_lifecycle(evidence: dict) -> dict:
-    gates = ('source-authenticity', 'windows-preflight', 'install', 'linux-first-boot', 'windows-return', 'linux-update-reboot', 'uninstall-windows-integrity', 'fault-injection-rollback')
+    gates = (
+        "source-authenticity",
+        "windows-preflight",
+        "install",
+        "linux-first-boot",
+        "windows-return",
+        "linux-update-reboot",
+        "uninstall-windows-integrity",
+        "fault-injection-rollback",
+    )
     missing = sorted([name for name in gates if evidence.get(name) is not True])
-    return {'backend': 'q4os', 'missingGates': missing, 'installationAuthorized': False, 'releaseEligible': False}
+    return {
+        "backend": "q4os",
+        "missingGates": missing,
+        "installationAuthorized": False,
+        "releaseEligible": False,
+    }
