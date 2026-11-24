@@ -1,0 +1,346 @@
+{
+  "schema_version": 1,
+  "kind": "historical_findings_discovery_only",
+  "repository": "LMhdez/gaslux",
+  "observed_date": "2026-11-24",
+  "complete": false,
+  "findings": [
+    {
+      "role": "mint",
+      "id": "F-383-01",
+      "pr": 383,
+      "review_sha": "f6c79778b780d8abdfaf73a8beeef664dbca6a5c",
+      "comment": 7085401815,
+      "status": "open_at_review",
+      "summary": "Report path confinement and exclusive creation",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "mint",
+      "id": "F-383-02",
+      "pr": 383,
+      "review_sha": "f6c79778b780d8abdfaf73a8beeef664dbca6a5c",
+      "comment": 7085401815,
+      "status": "open_at_review",
+      "summary": "OVMF copy destination TOCTOU",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "popos",
+      "id": "F-01",
+      "pr": 291,
+      "review_sha": "1f1e3a92a19d45451ad8cea26b8caa23bfe14677",
+      "comment": 7066892313,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "Pathname ownership and deletion",
+      "fix_pr": 298,
+      "fix_sha": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "fix_comment": 7077439234,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "popos",
+      "id": "F-02",
+      "pr": 291,
+      "review_sha": "1f1e3a92a19d45451ad8cea26b8caa23bfe14677",
+      "comment": 7066892313,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "Ambiguous synthetic QEMU trace",
+      "fix_pr": 298,
+      "fix_sha": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "fix_comment": 7077439234,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "popos",
+      "id": "F-03",
+      "pr": 291,
+      "review_sha": "1f1e3a92a19d45451ad8cea26b8caa23bfe14677",
+      "comment": 7066892313,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "Verification error mistaken for injected fault",
+      "fix_pr": 298,
+      "fix_sha": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "fix_comment": 7077439234,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "popos",
+      "id": "F-04",
+      "pr": 291,
+      "review_sha": "1f1e3a92a19d45451ad8cea26b8caa23bfe14677",
+      "comment": 7066892313,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "QCOW2 zero extents mistaken for empty child",
+      "fix_pr": 298,
+      "fix_sha": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "fix_comment": 7077439234,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "q4os",
+      "id": "R-01",
+      "pr": 299,
+      "review_sha": "4ea4c363ea2de4fd9d2cc8d4e1a82604eb5cef18",
+      "comment": 7078059250,
+      "status": "resolved_offline_at_review",
+      "summary": "Legacy QMP unauthenticated peer",
+      "fix_pr": 318,
+      "fix_sha": "f8b6313f087af40e5df9db988add4b9fd041c192",
+      "fix_comment": 7078921738,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "q4os",
+      "id": "R-02",
+      "pr": 299,
+      "review_sha": "4ea4c363ea2de4fd9d2cc8d4e1a82604eb5cef18",
+      "comment": 7078059250,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "Injected factory bypass plus cleanup identity regression",
+      "fix_pr": 318,
+      "fix_sha": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "fix_comment": 7080249734,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "q4os",
+      "id": "R-03",
+      "pr": 299,
+      "review_sha": "4ea4c363ea2de4fd9d2cc8d4e1a82604eb5cef18",
+      "comment": 7078059250,
+      "status": "resolved_offline_at_review",
+      "summary": "Unbounded CLI reason disclosure",
+      "fix_pr": 318,
+      "fix_sha": "f8b6313f087af40e5df9db988add4b9fd041c192",
+      "fix_comment": 7078921738,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "q4os",
+      "id": "R-02-CLEANUP-01",
+      "pr": 318,
+      "review_sha": "f8b6313f087af40e5df9db988add4b9fd041c192",
+      "comment": 7078921738,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "Foreign pidfd accepted for cleanup",
+      "fix_pr": 318,
+      "fix_sha": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "fix_comment": 7080249734,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "bazzite",
+      "id": "BZD-CLI-OUTPUT-BOUNDARY-01",
+      "pr": 320,
+      "review_sha": "b2b4675bf988ca9fb2918b43106a47d0edfc7e4a",
+      "comment": 7080851676,
+      "status": "resolved_offline_at_review",
+      "summary": "Arbitrary output pathname replaced by stdout-only deny CLI",
+      "fix_pr": 320,
+      "fix_sha": "b2b4675bf988ca9fb2918b43106a47d0edfc7e4a",
+      "fix_comment": 7080851676,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "bazzite",
+      "id": "BZD-BOOTC-PREWRITE-SOURCE-01",
+      "pr": 320,
+      "review_sha": "3782b053191dc4dd0411ec3fbf12d018a06406ad",
+      "comment": 7081050352,
+      "status": "producer_blocker",
+      "summary": "Native binary first-write and ESP ownership not proved",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    }
+  ],
+  "runs": [
+    {
+      "run": 45064087180,
+      "sha": "fdc71ecff8a845b4c39025128bada64f30af4917",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45064724367,
+      "sha": "f6c79778b780d8abdfaf73a8beeef664dbca6a5c",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45008842451,
+      "sha": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45015332942,
+      "sha": "36ac7bcf20d57fdbd9dfd1e7bfb978e739e8c06b",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45016230742,
+      "sha": "55fd6c7fb01e22d164a43bc2b9993db7b85454cd",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45029941312,
+      "sha": "fc3c3b1049f6ceddf6729392ad54e5fa09786f40",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45030505844,
+      "sha": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45030500724,
+      "sha": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45033764291,
+      "sha": "b2b4675bf988ca9fb2918b43106a47d0edfc7e4a",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45036376285,
+      "sha": "3782b053191dc4dd0411ec3fbf12d018a06406ad",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 44572398014,
+      "sha": "0f3613a67e542ab630ba933e0f96c12325367199",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 44704787925,
+      "sha": "98d7b450a275d6150406e3feb9f4947cc2d2c388",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    }
+  ],
+  "failure_correction_pairs": [
+    {
+      "role": "mint",
+      "pr": 260,
+      "red": 44572398014,
+      "green": 44704787925,
+      "scope": "shutdown recognition CRLF; same-COW witness only",
+      "source": "historical PR body and prior job audit"
+    },
+    {
+      "role": "mint",
+      "pr": 383,
+      "red": 45064087180,
+      "green": 45064724367,
+      "scope": "qemu-img format autodetection; separate two Safety findings remain",
+      "source": "comment 7085175406"
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "red": 45015332942,
+      "green": 45016230742,
+      "scope": "initial QMP/FD/CLI offline remediation; later cleanup regression",
+      "source": "comment 7078349450"
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "red": 45029941312,
+      "green": 45030505844,
+      "scope": "pidfd cleanup identity; offline GREEN, independent re-review required",
+      "source": "comment 7080249734"
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "red": null,
+      "green": 45008842451,
+      "scope": "four synthetic findings remediation; not independently accepted",
+      "source": "comment 7077439234"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "red": null,
+      "green": 45033764291,
+      "scope": "stdout-only CLI narrow deny-only review at historical SHA",
+      "source": "comment 7080851676"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "red": null,
+      "green": 45036376285,
+      "scope": "bootc source prewrite deny-only; not runtime provenance",
+      "source": "comment 7081050352"
+    }
+  ],
+  "limitations": "Selected findings and producer blockers; review status at recorded SHA only, not live closure or formal authenticated approval. Run metadata independently queried; causal statements from cited comments, not all logs rerun."
+}
