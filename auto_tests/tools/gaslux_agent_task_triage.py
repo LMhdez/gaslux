@@ -79,8 +79,67 @@ def all_issues() -> list[dict]:
     raise RuntimeError("Issue history exceeds bounded dedup scope")
 
 
+# Exact issue author identities only; contributor-controlled text has no authority.
+TRUSTED_TASK_BOT = "github-actions[bot]"
+TRUSTED_REVIEW_AUTHORS = frozenset(("LMhdez", "Dinisiho"))
+
+
+def trusted_task_keys(issues: list[dict]) -> set[tuple[str, str, str]]:
+    """Only canonical, same-repository issues written by the trusted bot count."""
+    if type(issues) is not list:
+        raise ValueError("Untrusted issue history")
+    result = set()
+    for issue in issues:
+        if type(issue) is not dict:
+            raise ValueError("Malformed issue")
+        body = issue.get("body") or ""
+        if type(body) is not str:
+            raise ValueError("Malformed issue body")
+        author = issue.get("user")
+        if (issue.get("repository_url") != API or
+            type(author) is not dict or author.get("login") != TRUSTED_TASK_BOT or
+            "pull_request" in issue):
+            continue
+        # A foreign user's pasted marker, even in a legitimate issue, is inert.
+        first = body.split("\n", 1)[0]
+        match = KEY.fullmatch(first)
+        if match is None or not body.startswith(first + "\n"):
+            continue
+        role, platform, gate = match.groups()
+        expected_title = (
+            f"[GASLUX-AUTO] {role} / {platform} / {gate}: scope & acceptance"
+        )
+        if issue.get("title") == expected_title:
+            result.add((role, platform, gate))
+    return result
+
+
+def trusted_related_issues(
+    issues: list[dict], role: str, numbers: list[int],
+) -> list[int]:
+    """A dev-declared reference is not an existing task until checked via API."""
+    if type(numbers) is not list or any(type(n) is not int for n in numbers):
+        raise ValueError("Untrusted related issue list")
+    matching = []
+    for issue in issues:
+        if type(issue) is not dict:
+            raise ValueError("Malformed issue")
+        author = issue.get("user")
+        title = issue.get("title")
+        if (issue.get("number") not in numbers or
+            issue.get("repository_url") != API or
+            issue.get("state") != "open" or
+            "pull_request" in issue or
+            type(author) is not dict or
+            author.get("login") not in TRUSTED_REVIEW_AUTHORS or
+            type(title) is not str or role not in title.lower()):
+            continue
+        matching.append(issue["number"])
+    return sorted(set(matching))
+
+
 def choose(backlog: dict, prs: list[dict], issues: list[dict]) -> dict:
-    """Select a single reviewable missing gate, not an executable code patch."""
+    """Choose one reviewable gate; never accept foreign PR/issue dedup claims."""
     if backlog.get("status") != "blocked" or type(backlog.get("next_gates")) is not list:
         raise ValueError("Unreviewed task-discovery status")
     if type(prs) is not list or len(prs) >= 100:
@@ -89,21 +148,19 @@ def choose(backlog: dict, prs: list[dict], issues: list[dict]) -> dict:
     for pr in prs:
         if type(pr) is not dict:
             raise ValueError("Malformed PR")
-        head, base = pr.get("head"), pr.get("base")
+        head, base, author = pr.get("head"), pr.get("base"), pr.get("user")
         if type(head) is not dict or type(base) is not dict:
             raise ValueError("Malformed PR refs")
         name = head.get("ref", "")
         match = BOT_BRANCH.fullmatch(name) if type(name) is str else None
-        if match and base.get("ref") == "dev":
+        if (match is not None and base.get("ref") == "dev" and
+            type(head.get("repo")) is dict and
+            head["repo"].get("full_name") == REPO and
+            type(base.get("repo")) is dict and
+            base["repo"].get("full_name") == REPO and
+            type(author) is dict and author.get("login") == TRUSTED_TASK_BOT):
             open_roles.add(match.group(1))
-    tracked = set()
-    for issue in issues:
-        if type(issue) is not dict:
-            raise ValueError("Malformed issue")
-        body = issue.get("body") or ""
-        if type(body) is not str:
-            raise ValueError("Malformed issue body")
-        tracked.update(KEY.findall(body))
+    tracked = trusted_task_keys(issues)
     pending = []
     for task in backlog["next_gates"]:
         if (type(task) is not dict or task.get("role") not in TASKS or
@@ -117,10 +174,11 @@ def choose(backlog: dict, prs: list[dict], issues: list[dict]) -> dict:
         if role in open_roles:
             pending.append({"role": role, "status": "pending_existing_pr"})
             continue
-        # Existing manually tracked backend issues take precedence.
-        if task["related_issues"]:
+        # IDs from dev are untrusted until a live issue verifies origin and role.
+        related = trusted_related_issues(issues, role, task["related_issues"])
+        if related:
             pending.append({"role": role, "status": "linked_existing_issue",
-                            "issues": task["related_issues"]})
+                            "issues": related})
             continue
         if key in tracked:
             pending.append({"role": role, "status": "already_queued"})
@@ -189,10 +247,7 @@ def sync(root: Path, *, dry_run: bool = False) -> dict:
         raise RuntimeError("Dev changed during triage")
     # Re-read issue history immediately before create. A concurrent runner
     # must never create a second issue with the same stable marker.
-    if picked["key"] in {
-        key for issue in all_issues()
-        for key in KEY.findall(issue.get("body") or "")
-    }:
+    if picked["key"] in trusted_task_keys(all_issues()):
         return {"status": "already_queued", "base": base, "role": picked["role"]}
     created = api("POST", "/issues", payload)
     if (type(created) is not dict or type(created.get("number")) is not int or
