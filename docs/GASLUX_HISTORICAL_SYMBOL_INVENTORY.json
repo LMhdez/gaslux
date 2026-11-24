@@ -7273,6 +7273,210 @@
       "blob": "12250cf41f1111cf99800aad3ab4ec5d4cc4bbf3",
       "symbol_count": 1,
       "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-copy-logs.sh",
+      "blob": "c768b63f9af66500574b08e1b65f5e1791b9c1db",
+      "symbol_count": 2,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-development-ssh-first-boot.sh",
+      "blob": "a0b1c750809ffee626d00bb250901b9517887ff5",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-distribution-common.sh",
+      "blob": "59844707d9d8042f9c60b4eb9bffaad6bb3bf0b8",
+      "symbol_count": 5,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-first-boot-result.py",
+      "blob": "a9427d0408f2783a78b065f64028a6152d95a8eb",
+      "symbol_count": 14,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 380,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-first-boot-verify.py",
+      "blob": "1bc8768a030c0b20ce19afd4171543d95a62276c",
+      "symbol_count": 41,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "run",
+          "line": 46,
+          "test": false
+        },
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 346,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 1267,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-gui.py",
+      "blob": "7cced8980bbdddbf09c615581a59a762116d5e48",
+      "symbol_count": 28,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "LibertixGui.__init__",
+          "line": 135,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "LibertixGui.run",
+          "line": 530,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-i18n.py",
+      "blob": "c47d66ae2c97d745fc96432b634452c2b98d5995",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 56,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-i18n.sh",
+      "blob": "e58782cc33471368956cc1ad94a15b4d1d842120",
+      "symbol_count": 2,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-install-main.sh",
+      "blob": "f176249b0744905c2cc431869555837813b2ce2c",
+      "symbol_count": 6,
+      "matches": [
+        {
+          "name": "die",
+          "kind": "shell_function",
+          "qualified": "die",
+          "line": 72,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-install-platform-common.sh",
+      "blob": "19f263b45409508fcdeda0e9a3b418a627662cdd",
+      "symbol_count": 5,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-install-runtime-common.sh",
+      "blob": "5407a4c5749c716a3a90ca34ab1ade28c9846155",
+      "symbol_count": 19,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-installation-plan.py",
+      "blob": "4ffb3b80cf07ddafe4504dc414814ef9bae6f3e4",
+      "symbol_count": 16,
+      "matches": [
+        {
+          "name": "validate_plan",
+          "kind": "def",
+          "qualified": "validate_plan",
+          "line": 198,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 782,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-installation-plan.sh",
+      "blob": "a760717160e819d48b451f7b091932e65707550d",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-installation-state.py",
+      "blob": "a9925826de25afbc6580a3f4ec66f5caad377077",
+      "symbol_count": 16,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 326,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-live-context.sh",
+      "blob": "40488a7c51e385456dcf13c4f089c044ad6b0235",
+      "symbol_count": 23,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-log-archive.py",
+      "blob": "6c5d2324830af15685a5e52ce7e2e9c30f75d02a",
+      "symbol_count": 3,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 58,
+          "test": false
+        }
+      ]
     }
   ],
   "limitations": [
