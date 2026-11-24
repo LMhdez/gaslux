@@ -174,14 +174,26 @@ class AdmissionTests(unittest.TestCase):
                   for name in gate.COMMON_CHECKS | {"read-only-contracts"}]
 
         for scenario in ("valid", "self_repair_review", "no_review",
-                         "stale_base", "head_drift", "offscope_intermediate"):
+                         "stale_base", "head_drift", "offscope_intermediate",
+                         "owner_approved", "owner_wrong_role", "owner_self_review",
+                         "owner_stale_base", "owner_objection"):
             with self.subTest(scenario=scenario):
-                live_dev = drift if scenario == "stale_base" else BASE
+                live_dev = drift if scenario in ("stale_base", "owner_stale_base") else BASE
                 reviewer = 9 if scenario == "self_repair_review" else 2
                 reviews = [] if scenario == "no_review" else [{
                     "user": {"id": reviewer}, "state": "APPROVED", "commit_id": HEAD,
                     "body": f"GASLUX-SAFETY-V1 head={HEAD} base={live_dev}",
                 }]
+                owner_id = None
+                if scenario.startswith("owner_"):
+                    owner_id = 9 if scenario == "owner_self_review" else 3
+                    owner_role = "bazzite" if scenario == "owner_wrong_role" else "zorin"
+                    reviews.append({
+                        "user": {"id": owner_id}, "state": "APPROVED", "commit_id": HEAD,
+                        "body": f"GASLUX-BACKEND-OWNER-V1 role={owner_role} head={HEAD} base={live_dev}",
+                    })
+                    if scenario == "owner_objection":
+                        reviews.append({"user": {"id": 5}, "state": "CHANGES_REQUESTED"})
                 pr_reads = 0
 
                 def api(method, route):
@@ -225,20 +237,53 @@ class AdmissionTests(unittest.TestCase):
                 # Only the API transport is mocked; real source checks and AST
                 # validation run without executing the proposed helper.
                 with patch.object(gate, "api", side_effect=api):
-                    row = gate.inspect(395, "zorin", reviewer)
+                    row = gate.inspect(395, "zorin", reviewer, owner_id)
                 self.assertEqual(row["status"], "blocked")
                 for key in ("merge_authorized", "release_eligible",
-                            "backend_owner_verified", "full_vm_acceptance_verified"):
+                            "full_vm_acceptance_verified"):
                     self.assertFalse(row[key])
+                self.assertEqual(row["backend_owner_verified"], scenario == "owner_approved")
                 if scenario in ("head_drift", "offscope_intermediate"):
                     self.assertFalse(row["exact_scope_verified"])
                     self.assertFalse(row["safety_review_verified"])
                 else:
                     self.assertTrue(row["exact_scope_verified"])
                     self.assertTrue(row["ci_verified"])
-                    self.assertEqual(row["current_base_verified"], scenario != "stale_base")
+                    self.assertEqual(row["current_base_verified"], scenario not in ("stale_base", "owner_stale_base"))
                     self.assertEqual(row["safety_review_verified"],
-                                     scenario not in ("self_repair_review", "no_review"))
+                                     scenario not in ("self_repair_review", "no_review", "owner_objection"))
+
+    def test_owner_config_is_strict(self):
+        self.assertEqual(gate.parse_owner_ids('{"zorin":3,"cachyos":4}'),
+                         {"zorin": 3, "cachyos": 4})
+        for raw in ('', '[]', 'null', '{"zorin":true}', '{"zorin":"3"}',
+                    '{"zorin":0}', '{"zorin":-1}', '{"mint":3}',
+                    '{"zorin":3,"zorin":4}', '{"zorin":10000000000000000000}',
+                    ' ' * 1025):
+            with self.subTest(raw=raw):
+                self.assertEqual(gate.parse_owner_ids(raw), {})
+
+    def test_owner_review_is_separate_and_exact(self):
+        marker = f"GASLUX-BACKEND-OWNER-V1 role=zorin head={HEAD} base={BASE}"
+        owner = {"user": {"id": 3}, "state": "APPROVED",
+                 "commit_id": HEAD, "body": marker}
+        self.assertTrue(gate.owner_review_ok([owner], 3, 2, 1, 9, "zorin", HEAD, BASE))
+        for owner_id, safety_id, author_id, repair_id in (
+            (None, 2, 1, 9), (True, 2, 1, 9), (3, None, 1, 9),
+            (3, 3, 1, 9), (3, 2, 3, 9), (3, 2, 1, 3), (3, 2, 1, 2),
+        ):
+            self.assertFalse(gate.owner_review_ok(
+                [owner], owner_id, safety_id, author_id, repair_id, "zorin", HEAD, BASE))
+        for reviews in (
+            [], [{**owner, "state": "COMMENTED"}],
+            [{**owner, "state": "DISMISSED"}],
+            [{**owner, "body": marker.replace("role=zorin", "role=bazzite")}],
+            [{**owner, "commit_id": BASE}],
+            [{**owner, "body": marker.replace(f"base={BASE}", f"base={HEAD}")}],
+            [owner, {**owner, "state": "DISMISSED"}],
+            [owner, {"user": {"id": 5}, "state": "CHANGES_REQUESTED"}],
+        ):
+            self.assertFalse(gate.owner_review_ok(reviews, 3, 2, 1, 9, "zorin", HEAD, BASE))
 
     def test_api_failure_is_blocked(self):
         with patch.object(gate, "api", side_effect=RuntimeError("offline")):
