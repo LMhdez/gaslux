@@ -17,7 +17,9 @@ factory = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(factory)
 
 
-def accepted() -> str:
+
+def equality_only() -> str:
+    """Original wrong-type false-positive candidate, intentionally untrusted."""
     return (
         "def match_mint_223_iso_descriptor(candidate: dict) -> dict:\n"
         "    matched = isinstance(candidate, dict) and "
@@ -30,6 +32,27 @@ def accepted() -> str:
         "    return {'backend': 'mint', 'pinnedDescriptorMatches': matched, "
         "'sourceAuthenticityVerified': False, 'installationAuthorized': False, "
         "'releaseEligible': False}\n"
+    )
+
+
+def accepted() -> str:
+    """Reference producer candidate must use exact type identities for all pins."""
+    return (
+        "def match_mint_223_iso_descriptor(candidate: dict) -> dict:\\n"
+        "    matched = type(candidate) is dict and "
+        "type(candidate.get('id')) is str and "
+        "candidate.get('id') == 'mint' and "
+        "type(candidate.get('isoInstaller')) is str and "
+        "candidate.get('isoInstaller') == "
+        "'https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso' "
+        "and type(candidate.get('isoInstallerSha256')) is str and "
+        "candidate.get('isoInstallerSha256') == "
+        "'a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4' "
+        "and type(candidate.get('isoInstallerSizeBytes')) is int and "
+        "candidate.get('isoInstallerSizeBytes') == 3091660800\\n"
+        "    return {'backend': 'mint', 'pinnedDescriptorMatches': matched, "
+        "'sourceAuthenticityVerified': False, 'installationAuthorized': False, "
+        "'releaseEligible': False}\\n"
     )
 
 
@@ -78,7 +101,7 @@ class Scope2BTests(unittest.TestCase):
         """RED fixture: Python float/int and subclasses can compare equal."""
         with self.assertRaises(ValueError):
             factory.validate_addition(
-                "mint", accepted(), execute=True, scope=factory.SCOPE2B_ID
+                "mint", equality_only(), execute=True, scope=factory.SCOPE2B_ID
             )
 
     def test_f40501_subclasses_and_float_rejected_by_trusted_oracle(self):
@@ -111,6 +134,35 @@ class Scope2BTests(unittest.TestCase):
                         for k, v in factory.SCOPE2B_PINS.items()
                     )
                 )
+
+    def test_f40501_type_builtin_is_confined_to_exact_scope_and_input(self):
+        """Three-argument type can create classes and must always be rejected."""
+        bad = [
+            accepted().replace("type(candidate) is dict", "type(candidate, (), {}) is dict"),
+            accepted().replace("type(candidate) is dict", "type(123) is dict"),
+            accepted().replace("type(candidate.get('id'))", "type(candidate.get('unknown'))"),
+            accepted().replace("type(candidate.get('id'))", "type({'id': 'mint'})"),
+            accepted().replace(
+                "type(candidate.get('isoInstallerSizeBytes')) is int",
+                "int(candidate.get('isoInstallerSizeBytes')) == 3091660800"
+            ),
+        ]
+        for addition in bad:
+            with self.subTest(source=addition[:120]), self.assertRaises(ValueError):
+                factory.validate_addition(
+                    "mint", addition, execute=True, scope=factory.SCOPE2B_ID
+                )
+        self.assertNotIn("type", factory.SAFE_BUILTINS)
+        self.assertNotIn("int", factory.SAFE_BUILTINS)
+        # The legacy validator cannot import the scope-only builtins.
+        lifecycle = (
+            "def assess_mint_lifecycle(evidence: dict) -> dict:\\n"
+            "    result = type(evidence) is dict\\n"
+            "    return {'backend': 'mint', 'missingGates': [], "
+            "'installationAuthorized': False, 'releaseEligible': False}\\n"
+        )
+        with self.assertRaises(ValueError):
+            factory.validate_addition("mint", lifecycle, execute=True)
 
     def test_wrong_backend_unknown_scope_and_synthetic_authority_rejected(self):
         for role, scope in [
