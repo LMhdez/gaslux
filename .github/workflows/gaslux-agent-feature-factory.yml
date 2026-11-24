@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: '6,21,36,51 * * * *' # staggered scheduler registration refresh
   workflow_dispatch:
+    inputs:
+      opencode_trial:
+        description: 'Run isolated OpenCode comparison only (no publishing)'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -20,6 +25,8 @@ on:
       - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
       - docs/GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json
       - 'docs/agent-skills/**'
+      - auto_tests/tools/gaslux_opencode_trial.py
+      - auto_tests/tests/test_gaslux_opencode_trial.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-feature-factory.yml
@@ -34,6 +41,8 @@ on:
       - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
       - docs/GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json
       - 'docs/agent-skills/**'
+      - auto_tests/tools/gaslux_opencode_trial.py
+      - auto_tests/tests/test_gaslux_opencode_trial.py
 
 permissions:
   contents: read
@@ -58,11 +67,97 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_task_triage.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_phase2b.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_history.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_trial.py -v
+
+  opencode_trial:
+    # Same-repo pilot on #419 only; after integration, explicit main dispatch.
+    # No dependency on select, and no publisher/safety job consumes its output.
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      ((github.event_name == 'pull_request' && github.event.pull_request.number == 419 &&
+        github.event.pull_request.head.repo.full_name == github.repository) ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+        inputs.opencode_trial))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_CONTEXT_LENGTH: '65536'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Offline trial admission and event parser tests
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_trial.py -v
+      - name: Fetch pinned OpenCode v1.19.6 release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          lab=$(mktemp -d "$RUNNER_TEMP/gaslux-opencode.XXXXXXXX")
+          curl --fail --location --proto '=https' --retry 2 --max-time 180 \
+            https://github.com/anomalyco/opencode/releases/download/v1.19.6/opencode-linux-x64-baseline.tar.gz \
+            -o "$lab/opencode.tar.gz"
+          echo "8443113b3f3dfebf8b0fa91c4377e5519a62b9231732d9344a5df001e4a852b3  $lab/opencode.tar.gz" | sha256sum -c -
+          python3 -B - "$lab" <<'PY'
+          import pathlib, sys, tarfile
+          root = pathlib.Path(sys.argv[1])
+          with tarfile.open(root / 'opencode.tar.gz') as archive:
+              files = [m for m in archive.getmembers()
+                       if m.isfile() and pathlib.PurePosixPath(m.name).name == 'opencode']
+              assert len(files) == 1 and 0 < files[0].size <= 300_000_000
+              with archive.extractfile(files[0]) as src, (root / 'opencode').open('xb') as dst:
+                  import shutil
+                  shutil.copyfileobj(src, dst)
+          (root / 'opencode').chmod(0o700)
+          PY
+          echo "GASLUX_OPENCODE_BIN=$lab/opencode" >> "$GITHUB_ENV"
+      - name: Install hash-pinned unprivileged local inference engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
+          (ollama serve > /tmp/ollama.log 2>&1 &)
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:11434/api/version >/dev/null; then break; fi
+            sleep 2
+          done
+          timeout 720 ollama pull qwen3.5:9b
+          python3 - <<'PY'
+          import json, urllib.request
+          tags = json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/tags'))
+          model = next((x for x in tags.get('models', []) if x.get('name') == 'qwen3.5:9b'), None)
+          assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          PY
+      - name: Compare original Qwen path with native skill tool use
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/opencode-trial
+          python3 -B auto_tests/tools/gaslux_opencode_trial.py \
+            --binary "$GASLUX_OPENCODE_BIN" --report evidence/opencode-trial/report.json
+      - name: Retain comparison report only (never a Factory candidate)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-opencode-comparison
+          path: evidence/opencode-trial/report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   select:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      github.ref == 'refs/heads/main' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.opencode_trial) &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-24.04
