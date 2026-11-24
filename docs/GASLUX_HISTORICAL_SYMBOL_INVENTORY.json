@@ -9418,6 +9418,211 @@
       "blob": "cc21a37cd1319fbd9cbcae8216f2d7238ffbfc97",
       "symbol_count": 9,
       "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_distro_docs_integration.py",
+      "blob": "979648a9bd59e4c8ea811968ae99a4de5fd293c3",
+      "symbol_count": 7,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_distro_ui_schema_offline.py",
+      "blob": "6696f4887efae3b4d0963505ab5b436c31f0f23b",
+      "symbol_count": 6,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_early_live_recovery.py",
+      "blob": "6d1e9d3319f87a7db4857ec05cde7965d553fc39",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_filepool_checksums.py",
+      "blob": "159c106d36972c24a38858e6b1f403fa152e9ce9",
+      "symbol_count": 7,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_first_boot_result.py",
+      "blob": "53bb111b2da42eb3d1f9f7653ed7edd144d3d080",
+      "symbol_count": 13,
+      "matches": [
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "test_dialog_uses_a_modal_provider_before_notifications.fake_run",
+          "line": 115,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_first_boot_storage.py",
+      "blob": "6575f659f07e9aa4e9f10a92445941e15c26c9ec",
+      "symbol_count": 15,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "disks.run",
+          "line": 33,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "evidence_environment.configure.run",
+          "line": 155,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_first_boot_verifier.py",
+      "blob": "8ebc54cf5ec944c1d6a8856e416a2d4ac8c157fb",
+      "symbol_count": 27,
+      "matches": [
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "test_installed_system_proof_rejects_failed_units.fake_run",
+          "line": 413,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_gaslux_agent_implement.py",
+      "blob": "ddc2597e9a37b2641b8d2192c6c7f17a6b4e3f2c",
+      "symbol_count": 12,
+      "matches": [
+        {
+          "name": "setUp",
+          "kind": "def",
+          "qualified": "AgentImplementationTests.setUp",
+          "line": 18,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_goal_supervisor.py",
+      "blob": "4f20197195f07c42d7007b9269e1f5e6bfc1233b",
+      "symbol_count": 12,
+      "matches": [
+        {
+          "name": "setUp",
+          "kind": "def",
+          "qualified": "GoalSupervisorTests.setUp",
+          "line": 19,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py",
+      "blob": "0126359b8c76d957c0172e536bc2620ae3f9659b",
+      "symbol_count": 26,
+      "matches": [
+        {
+          "name": "scan",
+          "kind": "def",
+          "qualified": "scan",
+          "line": 60,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_guest_transport_peer_boundary.py",
+      "blob": "37062e0158b3a35813b6ae321cb06dea2fa94281",
+      "symbol_count": 21,
+      "matches": [
+        {
+          "name": "fileno",
+          "kind": "def",
+          "qualified": "test_forged_socket_getsockopt_cannot_self_certify_kernel_peer.ForgedSocket.fileno",
+          "line": 278,
+          "test": false
+        },
+        {
+          "name": "getsockopt",
+          "kind": "def",
+          "qualified": "test_forged_socket_getsockopt_cannot_self_certify_kernel_peer.ForgedSocket.getsockopt",
+          "line": 281,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_installation_contracts.py",
+      "blob": "54c7f4ea1932e0b0520f96489e70d272ef982822",
+      "symbol_count": 60,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_installation_guards.py",
+      "blob": "b9239fcc8f721d42a4e49de2023841e0b30f2f76",
+      "symbol_count": 287,
+      "matches": [
+        {
+          "name": "read",
+          "kind": "def",
+          "qualified": "read",
+          "line": 21,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_iso_workspace_isolation.py",
+      "blob": "eec5c2bd8f3d13c0172052ec90e2d022507f5d77",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_lab_media_probe.py",
+      "blob": "21d45e2b8335a5cca64c5c3c78c997169ee6d146",
+      "symbol_count": 7,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_linux_greeter.py",
+      "blob": "1d50d03bbcd53cd8a408ce89b0cbedf7d2df205b",
+      "symbol_count": 10,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_password_probe_executes_shell_and_excludes_existing_session.run",
+          "line": 167,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_password_probe_refuses_failed_session_inventory.run",
+          "line": 180,
+          "test": false
+        }
+      ]
     }
   ],
   "limitations": [
