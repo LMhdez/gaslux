@@ -144,7 +144,7 @@ CANONICAL_ISSUE_SCOPE = {
         )),
     },
 }
-APP_BOT_LOGIN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,78})\\[bot\\]\\Z")
+APP_BOT_LOGIN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,78})\[bot\]\Z")
 
 
 def checked_app_bot_login(value: str) -> str:
