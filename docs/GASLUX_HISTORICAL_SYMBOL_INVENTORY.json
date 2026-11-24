@@ -9774,6 +9774,310 @@
       "blob": "50964527b61bdc02f962d0544c189a368c970960",
       "symbol_count": 11,
       "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_screenshot_dev_integration.py",
+      "blob": "5ad6fda7efbf97fc3b6d558db20992352970fb88",
+      "symbol_count": 6,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_oem_recovery_layouts.py",
+      "blob": "a3658252e73ba0e03e299125a5ca3557ba73a6a6",
+      "symbol_count": 7,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_popos_native_preflight.py",
+      "blob": "cdb76b8529f9e4e529dd130259a1bfe4758ef510",
+      "symbol_count": 5,
+      "matches": [
+        {
+          "name": "media",
+          "kind": "def",
+          "qualified": "media",
+          "line": 16,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_preference_evidence.py",
+      "blob": "3720a09713749e51b38c0170e88320ea33f854e5",
+      "symbol_count": 19,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_default_wallpaper_evidence_checks_both_backgrounds_and_the_actual_file.Value.__init__",
+          "line": 106,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_preferred_boot_path.py",
+      "blob": "139d5de1e8a5cf672d1bf803f132b8abd2189fa0",
+      "symbol_count": 13,
+      "matches": [
+        {
+          "name": "digest",
+          "kind": "def",
+          "qualified": "digest",
+          "line": 19,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_protected_authority_readiness_f01.py",
+      "blob": "6a511348fd91d016cdc8493b0fd14008b432f439",
+      "symbol_count": 10,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_protected_authority_readiness_offline.py",
+      "blob": "cfeaae358065a7dca97760233c6e39dc3011cc91",
+      "symbol_count": 20,
+      "matches": [
+        {
+          "name": "report",
+          "kind": "def",
+          "qualified": "report",
+          "line": 55,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_proxmox.py",
+      "blob": "b7ce69c8ba35d3cb5a1238739ac426aeb7e18465",
+      "symbol_count": 47,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_tls_verification_is_explicit.FakeHttpClient.__init__",
+          "line": 74,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_serial_capture_reconnects_and_never_persists_console_ticket.FakeWebSocket.__init__",
+          "line": 315,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_serial_capture_reconnects_and_never_persists_console_ticket.FakeWebSocket.__enter__",
+          "line": 320,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_serial_capture_reconnects_and_never_persists_console_ticket.FakeWebSocket.__exit__",
+          "line": 323,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_serial_capture_retries_a_transient_invalid_websocket_handshake.FakeWebSocket.__enter__",
+          "line": 387,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_serial_capture_retries_a_transient_invalid_websocket_handshake.FakeWebSocket.__exit__",
+          "line": 390,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_serial_capture_reports_unconfigured_serial_interface.FakeWebSocket.__enter__",
+          "line": 440,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_serial_capture_reports_unconfigured_serial_interface.FakeWebSocket.__exit__",
+          "line": 443,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_published_release.py",
+      "blob": "c5c6729bf103d95653d720d04adbf0c2ef8694a0",
+      "symbol_count": 9,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_q4os_native_preflight.py",
+      "blob": "a19b9a2319637109f26e797b1091b5b720aba070",
+      "symbol_count": 5,
+      "matches": [
+        {
+          "name": "media",
+          "kind": "def",
+          "qualified": "media",
+          "line": 16,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_reboot_evidence.py",
+      "blob": "95612448cfc0cb6a30753255aa9f9eabc16a280e",
+      "symbol_count": 14,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_missing_exit_status_during_reboot_is_pending_not_proven.DisconnectedSSH.run",
+          "line": 21,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_windows_ssh_wait_rejects_the_old_boot_session.ConnectedSSH.__init__",
+          "line": 47,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_windows_ssh_wait_rejects_the_old_boot_session.ConnectedSSH.__enter__",
+          "line": 51,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_windows_ssh_wait_rejects_the_old_boot_session.ConnectedSSH.__exit__",
+          "line": 54,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_windows_ssh_wait_rejects_the_old_boot_session.ConnectedSSH.close",
+          "line": 57,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_windows_ssh_wait_rejects_the_old_boot_session.ConnectedSSH.run",
+          "line": 60,
+          "test": false
+        },
+        {
+          "name": "wait",
+          "kind": "def",
+          "qualified": "test_windows_ssh_wait_rejects_the_old_boot_session.wait",
+          "line": 71,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_unanswered_consent_records_boot_identity_before_request.DisconnectedSSH.run",
+          "line": 103,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_redirected_documents_evidence.py",
+      "blob": "da57de3255050e945671fe7b49208bad60742640",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_release_metadata.py",
+      "blob": "dddc92faf63ed631fe0d4c75d7ee2f821b10b6fb",
+      "symbol_count": 6,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_secondary_boot_devices.py",
+      "blob": "c7b2e006cbda0567f72a65273d66b4741a625ab8",
+      "symbol_count": 17,
+      "matches": [
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_boot_override_cold_starts_before_network_probe.FakeProxmox.__enter__",
+          "line": 76,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_boot_override_cold_starts_before_network_probe.FakeProxmox.__exit__",
+          "line": 79,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_secondary_rollback_evidence.py",
+      "blob": "75a4e20821cd5c034f42dd002203f16bd5dc93f4",
+      "symbol_count": 4,
+      "matches": [
+        {
+          "name": "check",
+          "kind": "def",
+          "qualified": "test_rollback_cannot_pass_with_only_the_system_disk_restored.check",
+          "line": 35,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_rollback_also_requires_fixture_hashes_and_redirected_documents.run",
+          "line": 85,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_secure_boot_chain.py",
+      "blob": "1b7a144dacf4cef6d44a8ae7e699fef1fa817873",
+      "symbol_count": 22,
+      "matches": [
+        {
+          "name": "verify",
+          "kind": "def",
+          "qualified": "test_signer_chain_and_authenticode_must_accept_the_same_signature.verify",
+          "line": 193,
+          "test": false
+        }
+      ]
     }
   ],
   "limitations": [
