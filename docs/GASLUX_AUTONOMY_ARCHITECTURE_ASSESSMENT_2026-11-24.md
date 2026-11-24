@@ -197,3 +197,7 @@ Antes de selecionar ou implementar missão: pesquisar histórico de PRs abertas/
 - Reutilizar #300/#302 (autoridade protegida/ledger offline deny-only), #307 (FD GPT), #337/#346/#356 (QEMU/GPT read-only), #393/#407 (Mint já merged) e #414 (dedup/Ruff). Não confundir contratos offline com trust root operacional.
 
 Referências de decisões e auditoria: [issue #401, reconciliação histórica](https://github.com/LMhdez/gaslux/issues/401#issuecomment-7143774099), [inventário completo](https://github.com/LMhdez/gaslux/issues/401#issuecomment-7143839879). Nenhum gate formal, código runtime, workflow, scheduler, permissão ou política é alterado por este índice documental.
+
+## 10. Memória operacional — implementação proposta
+
+A mesma PR acrescenta inventário completo de PRs com candidatos de dependência por base-ref (não prova de ancestralidade), um SKILL.md portável, parser delimitado de histórico e testes adversariais. O workflow Factory existente publica referências por distribuição no job select; a triagem acrescenta leads a novas issues de revisão. Não existe carregamento nativo de skills pelo Qwen, nem alteração dos prompts/modelo, AST, publisher ou permissões. A consulta histórica não concede autoridade. A execução operacional depende de revisão e integração desta PR.

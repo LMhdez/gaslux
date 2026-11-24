@@ -14,6 +14,10 @@ on:
       - auto_tests/tools/gaslux_agent_task_triage.py
       - auto_tests/tests/test_gaslux_agent_task_triage.py
       - auto_tests/tests/test_gaslux_agent_phase2b.py
+      - auto_tests/tools/gaslux_agent_history.py
+      - auto_tests/tests/test_gaslux_agent_history.py
+      - docs/GASLUX_HISTORICAL_EVIDENCE_INDEX.json
+      - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-feature-factory.yml
@@ -22,6 +26,10 @@ on:
       - auto_tests/tools/gaslux_agent_task_triage.py
       - auto_tests/tests/test_gaslux_agent_task_triage.py
       - auto_tests/tests/test_gaslux_agent_phase2b.py
+      - auto_tests/tools/gaslux_agent_history.py
+      - auto_tests/tests/test_gaslux_agent_history.py
+      - docs/GASLUX_HISTORICAL_EVIDENCE_INDEX.json
+      - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
 
 permissions:
   contents: read
@@ -45,6 +53,7 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_task_triage.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_phase2b.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_history.py -v
 
   select:
     if: >-
@@ -74,6 +83,28 @@ jobs:
           ref: dev
           path: source
           persist-credentials: false
+      - name: Produce bounded historical context for existing Factory and specialists
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_agent_history.py > /tmp/gaslux-history-context.json
+          python3 - <<'PY'
+          import json, os
+          with open('/tmp/gaslux-history-context.json') as inp:
+              data = json.load(inp)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('### Historical reuse leads — not gate evidence\\n\\n')
+              for row in data['contexts']:
+                  refs = ', '.join('#' + str(n) for n in row['role_pr_leads'])
+                  out.write(f"- {row['role']}: {refs}\\n")
+          PY
+      - name: Retain historical reference context only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-historical-context
+          path: /tmp/gaslux-history-context.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Choose first missing and unclaimed backend feature
         id: plan
         shell: bash
