@@ -354,20 +354,30 @@ def expected_source(root: Path, role: str, addition: str, *, scope: str = "lifec
     return original, proposed
 
 
-def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: bool) -> dict:
+def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: bool,
+           scope: str = "lifecycle") -> dict:
     if role not in TASKS or not SHA.fullmatch(base) or git(root, "rev-parse", "HEAD") != base:
         raise ValueError("Wrong immutable source checkout")
     report = json.loads((evidence_dir / "report.json").read_text(encoding="utf-8"))
     addition_raw = (evidence_dir / "addition.py").read_bytes()
     addition = addition_raw.decode("utf-8")
+    expected_task = SCOPE2B_TASK if scope == SCOPE2B_ID else TASKS[role][2]
+    if scope not in ("lifecycle", SCOPE2B_ID):
+        raise ValueError("Unapproved source scope")
+    if (report.get("scope", "lifecycle") != scope or
+        (scope == SCOPE2B_ID and
+         (report.get("issue") != SCOPE2B_ISSUE or
+          report.get("gate") != SCOPE2B_GATE or
+          report.get("platform") != SCOPE2B_PLATFORM))):
+        raise ValueError("Scope evidence binding mismatch")
     if (report.get("role") != role or report.get("base") != base or
-        report.get("task") != TASKS[role][2] or
+        report.get("task") != expected_task or
         report.get("target") != TASKS[role][0] or
         report.get("model") != MODEL or report.get("model_digest") != MODEL_DIGEST or
         report.get("addition_sha256") != sha256(addition_raw)):
         raise ValueError("Untrusted source/report identity")
-    validate_addition(role, addition, execute=execute)
-    before, after = expected_source(root, role, addition)
+    validate_addition(role, addition, execute=execute, scope=scope)
+    before, after = expected_source(root, role, addition, scope=scope)
     if (report.get("source_sha256") != sha256(before) or
         report.get("candidate_sha256") != sha256(after)):
         raise ValueError("Model artifact/source digest mismatch")
@@ -417,10 +427,14 @@ def rejection_category(addition: str | None, error: Exception) -> str:
     return type(error).__name__
 
 
-def generate(root: Path, evidence_dir: Path, role: str, base: str) -> None:
-    if git(root, "rev-parse", "HEAD") != base or role not in TASKS:
-        raise ValueError("Wrong worker source identity")
+def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str = "lifecycle") -> None:
+    if (git(root, "rev-parse", "HEAD") != base or role not in TASKS or
+        scope not in ("lifecycle", SCOPE2B_ID) or
+        (scope == SCOPE2B_ID and role != "mint")):
+        raise ValueError("Wrong worker source identity or scope")
     source, test, objective = TASKS[role]
+    if scope == SCOPE2B_ID:
+        objective = SCOPE2B_TASK
     original = (root / source).read_bytes()
     task = (
         f"ROLE {role}; real Gaslux product source: {source}; task: {objective}.\n"
@@ -450,23 +464,49 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str) -> None:
         "whose value is ONLY the Python function source. "
         "No markdown, prose, explanation, surrounding source or code fences.\n"
     )
+    if scope == SCOPE2B_ID:
+        task = (
+            "Implement a REAL read-only preflight function that compares the "
+            "Linux Mint 22.3 Cinnamon ISO descriptor fields with the exact "
+            "trusted pinned release metadata. No I/O, SHA calculation, install "
+            "or release authority. Only match already-declared pins. "
+            "EXACT signature: def match_mint_223_iso_descriptor(candidate: dict) -> dict:\n"
+            "The descriptor keys/values to compare are: "
+            f"{SCOPE2B_PINS!r}. Check all four with candidate.get and "
+            "isinstance(candidate, dict). Missing, wrong-type or mismatched "
+            "fields MUST be rejected. Return EXACT dict keys: "
+            "backend='mint', pinnedDescriptorMatches=boolean match, "
+            "sourceAuthenticityVerified=False, installationAuthorized=False, "
+            "releaseEligible=False. Descriptor matching is NOT authentication. "
+            "Do not use import, class, nested function, for, while, I/O, "
+            "filesystem, globals, external data, side effects or assert. "
+            "Only permitted attribute is candidate.get, only built-in calls "
+            "isinstance, sorted, all, any, list, dict, bool, len, str, set, tuple. "
+            "Return ONE function in JSON with EXACT key addition; no markdown.\n"
+        )
     last: Exception | None = None
     last_category = "No response"
     for attempt in range(2):
         addition: str | None = None
         try:
             addition = call_model(task)
-            validate_addition(role, addition, execute=True)
-            before, after = expected_source(root, role, addition)
+            validate_addition(role, addition, execute=True, scope=scope)
+            before, after = expected_source(root, role, addition, scope=scope)
             evidence_dir.mkdir(parents=True, exist_ok=True)
             data = addition.rstrip().encode() + b"\n"
             (evidence_dir / "addition.py").write_bytes(data)
             report = {
                 "role": role, "base": base, "task": objective, "target": source,
+                "scope": scope,
                 "model": MODEL, "model_digest": MODEL_DIGEST,
                 "source_sha256": sha256(before), "candidate_sha256": sha256(after),
                 "addition_sha256": sha256(data),
             }
+            if scope == SCOPE2B_ID:
+                report.update({
+                    "issue": SCOPE2B_ISSUE, "gate": SCOPE2B_GATE,
+                    "platform": SCOPE2B_PLATFORM,
+                })
             (evidence_dir / "report.json").write_text(
                 json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
             return
