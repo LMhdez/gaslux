@@ -340,9 +340,9 @@ class FeatureFactoryTests(unittest.TestCase):
                             "def assess_mint_lifecycle(evidence: dict) -> dict:\n"
                             "    return {}\n"
                         )
-            with patch.object(factory, "git", return_value="b" * 40), \\
+            with patch.object(factory, "git", return_value="b" * 40), \
                  patch.object(factory, "claimed_lifecycle_roles",
-                              return_value=claimed), \\
+                              return_value=claimed), \
                  patch.object(factory.subprocess, "run") as gh:
                 result = factory.plan(root)
                 gh.assert_not_called()
