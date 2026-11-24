@@ -61,3 +61,24 @@ stale base, concurrent HEAD drift and an off-scope intermediate commit.
 Even the valid fixture must report blocked, with owner and VM evidence,
 merge and release authorization false. This is an offline regression; live
 scheduled admission and independent review remain separate gates.
+
+### Fixed semantic admission and remaining authorization gates (2026-11-24)
+
+The generic Factory AST allowlist is necessary but not sufficient to prove
+all-input non-writer behavior. For these five known lifecycle helpers, the
+admission stage additionally requires AST equivalence to a fixed trusted
+function: precisely eight named gates, strict identity with True, sorted
+missing gates, correct backend and literal False installation/release flags.
+Only the two observed local variable names are permitted. A Ruff repair must
+still preserve the original AST. This does not execute candidate code or
+prove the behavior of the rest of its enclosing module. Unusual but equivalent
+helpers are rejected rather than extending the scope automatically.
+
+Before granting integration authority, require: independent Safety identity
+and exact-HEAD review; exact current dev base; authenticated candidate and CI
+provenance; backend-owner acceptance; independently checked full VM evidence;
+verified branch protection and exact-head merge mechanism; successful live
+read-only admission on trusted main; and separate reviewed, bounded merge
+implementation with pause, race, revocation and post-merge checks. The current
+PR is read-only and does not grant that authority. Never reuse the CI from a
+previous HEAD. No credentials or Safety approval are provisioned here.
