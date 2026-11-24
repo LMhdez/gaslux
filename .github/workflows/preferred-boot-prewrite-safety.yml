@@ -42,10 +42,11 @@ jobs:
           test "$RUNNER_OS" = Linux
       - name: Install isolated Python test/lint tools
         run: python3 -m pip install 'pytest==9.0.2' 'ruff==0.15.20'
+      - name: Exercise preferred boot journal and adversarial staging cases
+        run: python3 -m pytest -q auto_tests/tests/test_preferred_boot_path.py
       - name: Compile and enforce Python lint/format
         run: |
           python3 -m compileall -q assets/live/libertix-preferred-boot-path.py auto_tests/tests/test_preferred_boot_path.py
           python3 -m ruff check --config auto_tests/pyproject.toml assets/live/libertix-preferred-boot-path.py auto_tests/tests/test_preferred_boot_path.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml assets/live/libertix-preferred-boot-path.py auto_tests/tests/test_preferred_boot_path.py
           python3 -m ruff format --check --config auto_tests/pyproject.toml assets/live/libertix-preferred-boot-path.py auto_tests/tests/test_preferred_boot_path.py
-      - name: Exercise preferred boot journal and adversarial staging cases
-        run: python3 -m pytest -q auto_tests/tests/test_preferred_boot_path.py
