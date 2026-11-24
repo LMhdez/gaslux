@@ -254,7 +254,7 @@ def discover_goal_backlog(root: Path) -> dict:
 # proposals. A role is claimed by any authenticated same-repository Draft PR
 # with an approved lifecycle branch name, regardless of its original base SHA.
 FEATURE_BRANCH = re.compile(
-    r"bot/gaslux-feature-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}\\Z"
+    r"bot/gaslux-feature-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}\Z"
 )
 FEATURE_BOTS = {"github-actions[bot]", "gaslux-autonomous-publisher[bot]"}
 
