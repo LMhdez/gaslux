@@ -2,6 +2,7 @@
 """Read-only candidate admission evidence. Never authorizes a distro merge."""
 from __future__ import annotations
 
+import ast
 import base64
 import json
 import os
@@ -41,8 +42,8 @@ def source_at(path, ref):
     return raw
 
 
-def exact_append(before, after, role):
-    prefix = before.rstrip(b"\n") + b"\n\n"
+def exact_append(before, after, role, *, formatted=False):
+    prefix = before.rstrip(b"\n") + (b"\n\n\n" if formatted else b"\n\n")
     signature = f"def assess_{role}_lifecycle(".encode()
     if len(before) > 25000 or signature in before or not after.startswith(prefix):
         raise ValueError("Not a single new append")
@@ -50,6 +51,51 @@ def exact_append(before, after, role):
     if after != prefix + addition.rstrip().encode("utf-8") + b"\n":
         raise ValueError("Noncanonical append")
     validate_addition(role, addition.rstrip(), execute=False)
+    return addition.rstrip()
+
+
+def single_parent(sha):
+    parents = api("GET", f"/git/commits/{sha}")["parents"]
+    if len(parents) != 1 or not valid_sha(parents[0].get("sha")):
+        raise ValueError("Unexpected ancestry")
+    return parents[0]["sha"]
+
+
+def one_path_commit(parent, head, path):
+    comparison = api("GET", f"/compare/{parent}...{head}")
+    files = complete_page(comparison["files"])
+    if (comparison.get("status") != "ahead" or comparison.get("ahead_by") != 1
+            or comparison.get("behind_by") != 0 or comparison.get("total_commits") != 1
+            or comparison.get("merge_base_commit", {}).get("sha") != parent
+            or len(files) != 1 or files[0].get("filename") != path
+            or files[0].get("status") != "modified"
+            or files[0].get("previous_filename") is not None):
+        raise ValueError("Unexpected intermediate commit scope")
+
+
+def candidate_append(pr, role, sha, path):
+    """Accept one bot append, or that append plus one semantic-neutral Ruff repair."""
+    count = pr.get("commits")
+    if type(count) is not int or count not in (1, 2):
+        raise ValueError("Unsupported candidate history")
+    generated = single_parent(sha) if count == 2 else sha
+    original = single_parent(generated)
+    if pr["head"]["ref"] != f"bot/gaslux-feature-{role}-{original[:12]}":
+        raise ValueError("Branch identity mismatch")
+    one_path_commit(original, generated, path)
+    before = source_at(path, original)
+    first = exact_append(before, source_at(path, generated), role)
+    repair_actor = None
+    if count == 2:
+        one_path_commit(generated, sha, path)
+        final = exact_append(before, source_at(path, sha), role, formatted=True)
+        if ast.dump(ast.parse(first)) != ast.dump(ast.parse(final)):
+            raise ValueError("Repair changed generated semantics")
+        repair = api("GET", f"/commits/{sha}")
+        repair_actor = (repair.get("author") or {}).get("id")
+        if type(repair_actor) is not int or repair_actor <= 0:
+            raise ValueError("Repair author not authenticated")
+    return original, repair_actor
 
 
 def checks_ok(response, head, role):
@@ -109,13 +155,6 @@ def inspect(number, role, reviewer_id):
                 or head["repo"]["full_name"] != REPO or base["repo"]["full_name"] != REPO
                 or base["ref"] != "dev"):
             raise ValueError("Candidate identity mismatch")
-        parents = api("GET", f"/git/commits/{sha}")["parents"]
-        if len(parents) != 1 or not valid_sha(parents[0].get("sha")):
-            raise ValueError("Unexpected ancestry")
-        original = parents[0]["sha"]
-        if head["ref"] != f"bot/gaslux-feature-{role}-{original[:12]}":
-            raise ValueError("Branch identity mismatch")
-        out["current_base_verified"] = original == dev
         files = complete_page(api("GET", f"/pulls/{number}/files?per_page=100"))
         path = TASKS[role][0]
         if (len(files) != 1 or files[0].get("filename") != path
@@ -125,12 +164,16 @@ def inspect(number, role, reviewer_id):
                 or type(files[0].get("additions")) is not int
                 or not 1 <= files[0]["additions"] <= 101):
             raise ValueError("Candidate exceeds append-only scope")
-        exact_append(source_at(path, original), source_at(path, sha), role)
+        original, repair_actor = candidate_append(pr, role, sha, path)
+        out["current_base_verified"] = original == dev
         out["exact_scope_verified"] = True
         out["ci_verified"] = checks_ok(
             api("GET", f"/commits/{sha}/check-runs?per_page=100"), sha, role)
         reviews = api("GET", f"/pulls/{number}/reviews?per_page=100")
-        out["safety_review_verified"] = review_ok(reviews, reviewer_id, pr["user"]["id"], sha, dev)
+        out["safety_review_verified"] = (
+            reviewer_id != repair_actor
+            and review_ok(reviews, reviewer_id, pr["user"]["id"], sha, dev)
+        )
         comments = complete_page(api("GET", f"/issues/{number}/comments?per_page=100"))
         if any(marker in str(row.get("body", "")).upper()
                for row in comments for marker in ("SAFETY_DENIED", "BLOCKED_SAFETY", "DO_NOT_MERGE")):
