@@ -95,3 +95,23 @@ def assess_mint_lifecycle(evidence: dict) -> dict:
         "installationAuthorized": False,
         "releaseEligible": False,
     }
+
+def match_mint_223_iso_descriptor(candidate: dict) -> dict:
+    matched = (
+        type(candidate) is dict
+        and type(candidate.get('id')) is str
+        and candidate.get('id') == 'mint'
+        and type(candidate.get('isoInstaller')) is str
+        and candidate.get('isoInstaller') == 'https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso'
+        and type(candidate.get('isoInstallerSha256')) is str
+        and candidate.get('isoInstallerSha256') == 'a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4'
+        and type(candidate.get('isoInstallerSizeBytes')) is int
+        and candidate.get('isoInstallerSizeBytes') == 3091660800
+    )
+    return {
+        'backend': 'mint',
+        'pinnedDescriptorMatches': matched,
+        'sourceAuthenticityVerified': False,
+        'installationAuthorized': False,
+        'releaseEligible': False,
+    }
