@@ -202,6 +202,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
         run: |
           set -euo pipefail
           mkdir -p evidence
