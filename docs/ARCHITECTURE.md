@@ -171,10 +171,16 @@ uses a durable journal when refreshing `EFI/Microsoft/Boot` and owned recovery
 references. For every replacement payload, staging now requires exclusive,
 non-following creation (`O_CREAT | O_EXCL | O_NOFOLLOW`); an existing staging
 path must fail closed without overwriting or unlinking another inode.
-The offline collision regression covers pre-existing regular files and symlinks,
-not ESP mount identity, mutable directory aliases, post-validation races,
-physical Windows boot safety or end-to-end rollback. Such evidence does not
-authorize writes outside an approved, disposable guest.
+A second adversarial regression found that a staging pathname swapped to a
+symlink *after* exclusive creation could redirect the old path-based chmod
+outside the owned directory. The staged payload is now chmodded, fsynced and
+hashed through its original pinned file descriptor, and its inode identity is
+rechecked without following symlinks before rename. Cleanup only removes an
+unchanged owned staging inode; swapped paths fail closed. This does not
+establish complete atomic pathname fencing: a replacement after the final
+identity check or a mutable ESP parent directory remains outside this proof.
+The synthetic tests do not authenticate ESP mounts, physical Windows boot
+safety or end-to-end rollback, and they grant no operational disk authority.
 
 These guards cover official kernel, GRUB, shim, and signed-loader package updates. Custom unsigned
 kernels or third-party modules remain subject to the distribution's normal Secure Boot and MOK
