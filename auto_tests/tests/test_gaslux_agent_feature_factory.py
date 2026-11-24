@@ -368,6 +368,13 @@ class FeatureFactoryTests(unittest.TestCase):
                     "def assess_mint_lifecycle(evidence: dict) -> dict:\n"
                     if role == "mint" else "# product source\n"
                 )
+            # Mint and CachyOS intentionally share one module: the loop
+            # above replaces the same fixture path for the CachyOS role.
+            mint_target = root / factory.TASKS["mint"][0]
+            mint_target.write_text(
+                mint_target.read_text() +
+                "def assess_mint_lifecycle(evidence: dict) -> dict:\n"
+            )
             old_sha_drafts = [
                 self.role_pr(role, suffix="5c34b16651f1")
                 for role in ("zorin", "cachyos", "popos", "q4os", "bazzite")
