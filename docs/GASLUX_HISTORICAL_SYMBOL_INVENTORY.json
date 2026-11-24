@@ -7659,6 +7659,303 @@
           "test": false
         }
       ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_json_schema.py",
+      "blob": "4097645396c0f76bd62f8056362377abf2f63056",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_progress.py",
+      "blob": "6af2d1d11a1b2dbc93c3264d7a8da1268c5ca693",
+      "symbol_count": 13,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "IncrementalLogReader.__init__",
+          "line": 28,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 163,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_windows_sharing.py",
+      "blob": "3a8eb6e86a32ee2bb53cb8dba9b24cda75ef52f2",
+      "symbol_count": 19,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "run",
+          "line": 134,
+          "test": false
+        },
+        {
+          "name": "preflight",
+          "kind": "def",
+          "qualified": "preflight",
+          "line": 369,
+          "test": false
+        },
+        {
+          "name": "verify",
+          "kind": "def",
+          "qualified": "verify",
+          "line": 529,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 578,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/setup-live-rootfs.sh",
+      "blob": "ab48d2fad709e4d05c8d5a957f7208b084fa5e63",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/__init__.py",
+      "blob": "5d24fed62cb3d49623e222efa5b6cd39b28c833b",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/authenticated_destination.py",
+      "blob": "727074eec3a02f859e3ac42fbd60d5e4e600864f",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 41,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/boundary_model.py",
+      "blob": "39d650b853d6a19b5e340f541d36711e41eb9ae5",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "ObservationBoundaryModel.__init__",
+          "line": 58,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/evidence.py",
+      "blob": "51bb6558c13650b68e5a8f0148877d840a94854e",
+      "symbol_count": 13,
+      "matches": [
+        {
+          "name": "Refusal",
+          "kind": "class",
+          "qualified": "Refusal",
+          "line": 16,
+          "test": false
+        },
+        {
+          "name": "digest",
+          "kind": "def",
+          "qualified": "digest",
+          "line": 20,
+          "test": false
+        },
+        {
+          "name": "read",
+          "kind": "def",
+          "qualified": "read",
+          "line": 149,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/guest_transport_peer_boundary.py",
+      "blob": "e176d90f487aede071b12bced9d5d3a41d93199e",
+      "symbol_count": 11,
+      "matches": [
+        {
+          "name": "_require",
+          "kind": "def",
+          "qualified": "_require",
+          "line": 43,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "LocalTransportWitness.__init__",
+          "line": 182,
+          "test": false
+        },
+        {
+          "name": "finish",
+          "kind": "def",
+          "qualified": "LocalTransportWitness.finish",
+          "line": 204,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/host_fd_boundary.py",
+      "blob": "35bc7f4a37ec8821aa32c15660f83ef80e3e29b9",
+      "symbol_count": 6,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/host_qemu_fd_evidence.py",
+      "blob": "6727ca454b9282079400593356516097a297b9d6",
+      "symbol_count": 17,
+      "matches": [
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 40,
+          "test": false
+        },
+        {
+          "name": "_identity",
+          "kind": "def",
+          "qualified": "_identity",
+          "line": 100,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/large_sparse_destination.py",
+      "blob": "a1a6364b12cf9a6b988eb124e2aa66e374c32cfe",
+      "symbol_count": 12,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "LargeDestinationRefused.__init__",
+          "line": 47,
+          "test": false
+        },
+        {
+          "name": "_require",
+          "kind": "def",
+          "qualified": "_require",
+          "line": 88,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/qemu_local_disk_witness.py",
+      "blob": "b7fab5ab0211904af5f43f089c54a6a72141d0ed",
+      "symbol_count": 17,
+      "matches": [
+        {
+          "name": "_require",
+          "kind": "def",
+          "qualified": "_require",
+          "line": 35,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "QemuLocalDiskWitness.__init__",
+          "line": 116,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "QemuLocalDiskWitness.__enter__",
+          "line": 136,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "QemuLocalDiskWitness.__exit__",
+          "line": 139,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "QemuLocalDiskWitness.close",
+          "line": 142,
+          "test": false
+        },
+        {
+          "name": "finish",
+          "kind": "def",
+          "qualified": "QemuLocalDiskWitness.finish",
+          "line": 268,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/screenshot.py",
+      "blob": "153851be4da1a921b0aa7dd0c409895db44da0cf",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/test_destination_337_fd_digest.py",
+      "blob": "a4ed7842b52bfc584c297dffd497ed530b1ac6b9",
+      "symbol_count": 17,
+      "matches": [
+        {
+          "name": "_sha",
+          "kind": "def",
+          "qualified": "FullFdDigestContracts._sha",
+          "line": 25,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/test_destination_337_partial_pread_red.py",
+      "blob": "c84b979caae17e85eeac3f3cf81532f34c3e9974",
+      "symbol_count": 4,
+      "matches": []
     }
   ],
   "limitations": [
