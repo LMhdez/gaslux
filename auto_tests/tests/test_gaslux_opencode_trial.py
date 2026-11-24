@@ -117,7 +117,7 @@ class OpenCodeTrialTests(unittest.TestCase):
                     [sys.executable, "-c",
                      "open('cache.bin','wb').write(b'x' * (3 * 1024 * 1024)); print('ok')"],
                     work, {}, timeout=10)
-            self.assertEqual((code, out, err), (0, b"ok\\n", b""))
+            self.assertEqual((code, out, err), (0, b"ok\n", b""))
             self.assertGreater((work / "cache.bin").stat().st_size, trial.MAX_EVENTS)
 
     def test_output_stream_limits_independent_of_internal_limit(self):
