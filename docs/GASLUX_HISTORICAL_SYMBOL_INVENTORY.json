@@ -10695,11 +10695,69 @@
           "test": false
         }
       ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/verify_windows_guest_recovery.py",
+      "blob": "fc12eb1d36c251748ef1dc488d940eded1d49344",
+      "symbol_count": 9,
+      "matches": [
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 53,
+          "test": false
+        },
+        {
+          "name": "read",
+          "kind": "def",
+          "qualified": "read",
+          "line": 333,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 346,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/windows_vm_host_capacity.py",
+      "blob": "6bf076c6125bafc6fa91e2d89c749774b32fec4c",
+      "symbol_count": 5,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 107,
+          "test": false
+        }
+      ]
     }
   ],
   "limitations": [
     "Only six selected historical PRs; no execution or import of code.",
     "Dev expected scope is Python and shell in assets/live, auto_tests/tools, installer_observer and test paths. Not all languages or paths.",
     "No formal gate, writer, merge, release or equivalence approval."
-  ]
+  ],
+  "coverage": {
+    "historical_expected": 42,
+    "historical_scanned": 42,
+    "dev_expected": 178,
+    "dev_scanned": 178,
+    "historical_declarations": 788,
+    "dev_declarations": 3006,
+    "historical_declarations_with_name_match": 120,
+    "historical_distinct_name_kind_matches": 46,
+    "dev_matching_declarations": 324,
+    "whole_blob_matches": 0,
+    "historical_declarations_without_name_match": 668,
+    "semantic_equivalence_verified": 0
+  }
 }
