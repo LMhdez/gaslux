@@ -14,7 +14,7 @@ from gaslux_agent_integrate import REPO, SHA, api
 QUEUE = {395: "zorin", 400: "bazzite", 411: "cachyos", 412: "popos", 413: "q4os"}
 BOTS = {"github-actions[bot]": 41898282,
         "gaslux-autonomous-publisher[bot]": 360620437}
-ROLES = frozenROLES
+ROLES = frozenset(QUEUE.values())
 MAX_CANDIDATES = 10
 BRANCH = re.compile(r"bot/gaslux-feature-([a-z0-9]+)-([0-9a-f]{12})")
 COMMON_CHECKS = {
@@ -301,7 +301,7 @@ def parse_owner_ids(raw):
     try:
         data = json.loads(raw, object_pairs_hook=unique_pairs)
         if (type(data) is not dict
-                or not set(data) <= set(QUEUE.values())
+                or not set(data) <= ROLES
                 or any(type(value) is not int or not 1 <= value < 10**19
                        for value in data.values())):
             return {}
