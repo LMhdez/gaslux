@@ -45,3 +45,31 @@ generator continues to accept only the previously reviewed AST-restricted
 six-distro helpers; it is not expanded by task intake. This phase does not
 implement generic automatic coding, installation, dual boot, uninstall or
 recovery, and is not a successful GitHub App Draft-publication smoke test.
+
+### F-403-01 and F-403-03: issue scope and GitHub App provenance
+
+An issue number found in the untrusted `dev` goal matrix is **not** proof that
+the issue covers the selected gate. Existing manual trackers #3, #71 and #254
+are only accepted where a **trusted main-source canonical mapping** binds the
+exact GitHub issue number, maintainer login, full title, backend, platform and
+acceptance gate. The live GitHub issue must also be open, from this repository,
+and must not be a pull request. A same-backend but unrelated owner-authored
+issue, a forged user issue marker or a nonexistent issue ID cannot suppress
+the legitimate backlog. This is a deduplication rule, not a declaration that
+the linked issue satisfies an acceptance gate.
+
+The original `github-actions[bot]` publisher and the new GitHub App have
+different authenticated GitHub actor logins. The task-triage script accepts
+only the exact legacy login, or **one explicitly configured App bot login** from
+the trusted repository variable `GASLUX_PUBLISH_APP_BOT_LOGIN`, additionally
+requiring `user.type=Bot` and same-repository head/base refs with the scoped
+bot branch pattern. Configure that variable with the **actual GitHub App bot
+login observed on an App-authored PR**, not the Client ID, arbitrary
+`*[bot]` pattern, synthetic test value or unknown guessed slug. The installed
+App bot's actual login has not yet been verified operationally.
+
+If the triage sees an unrecognized Bot author on a same-repository scoped PR,
+it fails closed without publishing a duplicate issue, while keeping the
+absence of the trusted App login visible as an operational configuration
+prerequisite. This does not require exposing an installation token or key,
+and the model/publisher permissions are unchanged.
