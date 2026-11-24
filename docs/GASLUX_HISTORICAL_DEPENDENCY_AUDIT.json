@@ -3658,7 +3658,7 @@
       "merge_authorized": false
     }
   ],
-  "notes": "Exact historical SHA comparisons; not current branch state, feature equivalence, Safety approval, or merge authority. Other comparisons record behind/identical separately from strict ancestor/divergence.",
+  "notes": "All 286 candidate pairs in the fixed 414-PR inventory were compared at immutable historical SHAs. This is not a complete audit of all commits, code, branches, or acceptance evidence; ancestry is not current composition or authority.",
   "other_comparisons": [
     {
       "parent_pr": 20,
@@ -4016,5 +4016,19 @@
         "remaining": 0
       }
     }
-  ]
+  ],
+  "coverage": {
+    "snapshot_pr_count": 414,
+    "candidate_count": 286,
+    "conclusive_comparisons": 286,
+    "remaining": 0,
+    "complete_for_fixed_candidate_snapshot": true,
+    "independent_safety_approval": false,
+    "counts": {
+      "ahead": 244,
+      "diverged": 37,
+      "behind": 4,
+      "identical": 1
+    }
+  }
 }

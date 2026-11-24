@@ -132,6 +132,21 @@ class HistoryTests(unittest.TestCase):
         self.assertTrue(all("merge_authorized" not in row for row in rows))
         self.assertLessEqual(len(history.task_context("mint")["historical_comparisons"]), 12)
 
+    def test_completed_candidate_snapshot_has_exact_coverage(self):
+        data = json.loads(history.DEPENDENCIES.read_text())
+        inventory = json.loads(history.INVENTORY.read_text())
+        coverage = data["coverage"]
+        self.assertIs(coverage["complete_for_fixed_candidate_snapshot"], True)
+        self.assertIs(coverage["independent_safety_approval"], False)
+        expected = {(e["possible_parent_pr"], e["pr"]) for e in inventory["possible_stack_edges"]}
+        rows = history.load_dependencies()
+        self.assertEqual({(r["parent_pr"], r["child_pr"]) for r in rows}, expected)
+        self.assertEqual(len(rows), coverage["conclusive_comparisons"])
+        self.assertEqual(len(expected), coverage["candidate_count"])
+        for status, count in coverage["counts"].items():
+            self.assertEqual(sum(r["comparison_status"] == status for r in rows), count)
+        self.assertEqual(coverage["remaining"], 0)
+
     def test_skill_files_present(self):
         for name in history.SKILLS:
             path = history.ROOT / "docs/agent-skills" / name / "SKILL.md"
