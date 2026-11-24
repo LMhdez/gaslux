@@ -194,7 +194,7 @@ class Scope2BTests(unittest.TestCase):
         workflow = (SCRIPT.parents[2] /
                     ".github/workflows/gaslux-agent-feature-factory.yml").read_text()
         self.assertNotIn("pull_request_target:", workflow)
-        self.assertEqual(workflow.count("      SCOPE: ${{ needs.select.outputs.scope }}"), 1)
+        self.assertEqual(workflow.count("SCOPE: ${{ needs.select.outputs.scope }}"), 3)
         self.assertIn("      scope: ${{ steps.plan.outputs.scope }}", workflow)
         self.assertIn("out.write('scope='", workflow)
         self.assertEqual(workflow.count('--scope "$SCOPE"'), 4)
