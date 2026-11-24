@@ -1,0 +1,3171 @@
+{
+  "schema_version": 1,
+  "kind": "historical_symbol_discovery_only",
+  "repository": "LMhdez/gaslux",
+  "observed_date": "2026-11-24",
+  "dev": "d89f1547c50787e4640164e34bfd1863134e2908",
+  "method": "Lexical declaration discovery by anchored Python def/class and shell name() patterns; not an AST, may miss or misclassify declarations. Exact blob identity is whole-file identity, not proof of behavioral or Safety equivalence. Same names are review leads only.",
+  "historical_expected": [
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/test_windows_mint_cow_boot_evidence.py",
+      "blob": "d977e84950d1f10a0e3c4b8beac8a20ad54e4368"
+    },
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/test_windows_mint_overlay_root.py",
+      "blob": "a9f39c5f76e981e1020b8fd26a30cad6061c38df"
+    },
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/tools/validate_mint_cow_boot_evidence.py",
+      "blob": "7df55346178923a1625542cc2605e424ce59a53d"
+    },
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/tools/windows_mint_overlay_root.py",
+      "blob": "6f0a2cf8fe35e80955c987120aca2495ade1b678"
+    },
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/tools/windows_x64_tcg_firstboot.py",
+      "blob": "705de8571d8ff814f9f59995ff00e71c39cfd783"
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "ref": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "path": "auto_tests/test_windows_zorin_synthetic_cow_root.py",
+      "blob": "a83fdf587e4b1921d7bc4099ff55dd9f3609a499"
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "ref": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "path": "auto_tests/tools/gaslux_legacy_installed_target_lab.sh",
+      "blob": "2f3c9a62390f84ea0972a7947ccd5f6b3a182a57"
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "ref": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "path": "auto_tests/tools/gaslux_zorin_installed_target_lab.sh",
+      "blob": "e915fe0928477f75d3a07b63aed4303345004c89"
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "ref": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "path": "auto_tests/tools/windows_zorin_synthetic_cow_root.py",
+      "blob": "d65891f7d16ba3c08ac3f4d8b9265f092b3c186b"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_cachyos_shared_root_pacstrap_host_contract.py",
+      "blob": "f2a20bf9156595afb298c7ddf20b6ffcf72886e6"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_windows_cachyos_bcd_ab_control.py",
+      "blob": "4b4daa8e2d4ea96e85b5e10f5387ed68fa829aa6"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_windows_cachyos_checkpoint_readiness.py",
+      "blob": "f17851719c7a9258d68d66a154ab46469ea3840a"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_windows_cachyos_postext4_windows.py",
+      "blob": "5f5d97d13b881c3b11704be8d9c92b6f921ffdc8"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_windows_cachyos_postpacstrap_windows.py",
+      "blob": "a0b3bcbc0ba0a78de9ca52487d97c72608136583"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py",
+      "blob": "d05622012cd771d901e91081bb79f66c501803b7"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_cachyos_bcd_ab_control.py",
+      "blob": "080950022354b68db95e6d11ee35b6e185d262fd"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_cachyos_checkpoint_readiness.py",
+      "blob": "242dd87ae526c1e42d35be5926ba447fda3d4886"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_cachyos_postext4_windows.py",
+      "blob": "341200b803bd22f0d7e4d58013851712b3711456"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_cachyos_postpacstrap_windows.py",
+      "blob": "6ff053ffa07b187d1c7a777002881f2133ff9b76"
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_x64_tcg_firstboot.py",
+      "blob": "2e1a8127119028c1bf50d48e6b318620784a5232"
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/test_popos_six_gpt_contract.py",
+      "blob": "7a6181768776468e9a9b4147342412689a75f6ea"
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/tools/gaslux_popos_six_gpt_contract.py",
+      "blob": "c06b1ed6348172eadf74afc62e4e5ed0a7890077"
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/tools/gaslux_popos_six_gpt_fsck.py",
+      "blob": "952703a501df3aa6ffcb277d50297858edc6f963"
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/tools/gaslux_popos_six_gpt_lab.py",
+      "blob": "e74749e3a1a573ced382178c740e686263287567"
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/tools/gaslux_popos_six_gpt_ownership.py",
+      "blob": "5f22534ea8666eef15bcef3a44826bac3835418f"
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tests/test_q4os_qmp_process_observability.py",
+      "blob": "2e396bc1c3a194f04c586e5756104c019cdbd21a"
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tests/test_q4os_win10_qmp_boot.py",
+      "blob": "da3452f0dd1663eab99e2a08db5f538196a36b18"
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tools/q4os_qemu_fd_compat_lab.py",
+      "blob": "3875852e030a5ac71821c9463279e0197a92e4a9"
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tools/q4os_win10_qmp_boot.py",
+      "blob": "31c3ede2e49513374391812adeaaaf207c3be1f1"
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tools/q4os_win10_qmp_supervisor.py",
+      "blob": "946c2ade5c421517997ef921808b587749a01b10"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_bootc_prewrite_source.py",
+      "blob": "31f5944e56bbb9dc2b8198d3559615e779cc9111"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_deployment_provenance_boundary.py",
+      "blob": "a0c6d4e9cda397b37702fc63b8d95ec03d46314f"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_native_route_readback.py",
+      "blob": "caa219382bb2454898d651d2be39d2e83fb2de32"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_oci_bootc_readback.py",
+      "blob": "4029bae8ef8d2a71f7745e8d805b737c3e2faaf7"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_oci_rpm_binding.py",
+      "blob": "ee52cec1309464dd045ca6109d7871024d653c4f"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_qcow2_deployment_readback.py",
+      "blob": "0148d943b0f2eda9779c995427a1f1d2d65ad21e"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_bootc_prewrite_source.py",
+      "blob": "db14c4885828b2ed76cb2a35a871ea8c3b958c4c"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_deployment_provenance_boundary.py",
+      "blob": "e61d3b8a2d6ec9a84f4e87ed401f5bab135f0345"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_native_route_readback.py",
+      "blob": "df90662a876521e8d7036da84e4842d37d9c9a32"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_oci_bootc_readback.py",
+      "blob": "0edc375eed9060c99d8ae1b6b87ccc3d5ad1a528"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_oci_rpm_binding.py",
+      "blob": "e6dadac3b5e2b811e3939792da8591acce8eea17"
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_qcow2_deployment_readback.py",
+      "blob": "bd3337e5089fa31e895d8379bbfe0eb03446a9ec"
+    }
+  ],
+  "dev_expected": [
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/cleanup-bcd-main.py",
+      "blob": "b9c3e45a1361587124cc6244791025c8bc8401af"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/configure-development-access.sh",
+      "blob": "d45490cad2e7d5b0414626f27813e2414b39e52c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/configure-target-main.sh",
+      "blob": "c5ea624dbbd61aabd36c0ab886c171559b79433f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/first-boot-resize.sh",
+      "blob": "1fb5b7927c1dc52f20417092fad399235ecb4191"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_bazzite_iso_signature.py",
+      "blob": "3782de9ba4bc4d1d7218b86080d182053f7653b9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_bazzite_preflight.py",
+      "blob": "9af04a55017528e9e42cea4fca118323fead18a4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_candidate_handoff.py",
+      "blob": "12b93e4eefacd19e73a92500896503880a13d27e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_candidate_target_audit.py",
+      "blob": "8af32277d38a93f97d22270f026831a9abf3b690"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_distribution_capabilities.py",
+      "blob": "2f0396f0f82cf7be46c5ee573d7660c5bd1c3ba2"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_lab_media_probe.py",
+      "blob": "fed7c257acc60a3747a7dd2eb08384a806864c5e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_popos_preflight.py",
+      "blob": "a372bb201cc1402e8c09531a0f0ab4075a84212d"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_q4os_preflight.py",
+      "blob": "5df15b228d576ce9f385f6e4768a5d0dee8c56ac"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-apply-keyboard-once.sh",
+      "blob": "f15e5c8461647616a71ba4ff1be0be00cf97792f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-apply-windows-preferences.py",
+      "blob": "3e80489068bb8cd00cb2b109277831512564ba77"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-bios-adapter.sh",
+      "blob": "93b4085aa1cd55c2d09f7ea00c8aa50d0b4e261d"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-bios-boot-payload.py",
+      "blob": "12250cf41f1111cf99800aad3ab4ec5d4cc4bbf3"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-copy-logs.sh",
+      "blob": "c768b63f9af66500574b08e1b65f5e1791b9c1db"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-development-ssh-first-boot.sh",
+      "blob": "a0b1c750809ffee626d00bb250901b9517887ff5"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-distribution-common.sh",
+      "blob": "59844707d9d8042f9c60b4eb9bffaad6bb3bf0b8"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-first-boot-result.py",
+      "blob": "a9427d0408f2783a78b065f64028a6152d95a8eb"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-first-boot-verify.py",
+      "blob": "1bc8768a030c0b20ce19afd4171543d95a62276c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-gui.py",
+      "blob": "7cced8980bbdddbf09c615581a59a762116d5e48"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-i18n.py",
+      "blob": "c47d66ae2c97d745fc96432b634452c2b98d5995"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-i18n.sh",
+      "blob": "e58782cc33471368956cc1ad94a15b4d1d842120"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-install-main.sh",
+      "blob": "f176249b0744905c2cc431869555837813b2ce2c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-install-platform-common.sh",
+      "blob": "19f263b45409508fcdeda0e9a3b418a627662cdd"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-install-runtime-common.sh",
+      "blob": "5407a4c5749c716a3a90ca34ab1ade28c9846155"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-installation-plan.py",
+      "blob": "4ffb3b80cf07ddafe4504dc414814ef9bae6f3e4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-installation-plan.sh",
+      "blob": "a760717160e819d48b451f7b091932e65707550d"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-installation-state.py",
+      "blob": "a9925826de25afbc6580a3f4ec66f5caad377077"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-live-context.sh",
+      "blob": "40488a7c51e385456dcf13c4f089c044ad6b0235"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-log-archive.py",
+      "blob": "6c5d2324830af15685a5e52ce7e2e9c30f75d02a"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-ntfs-permissions.py",
+      "blob": "4fc7aa220de842821c2d0b82dca99a13bc1e6901"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-offline-ntfs-resize.sh",
+      "blob": "38afe94e5bd606bf26216ded755a10bc69a93ca8"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-preferred-boot-path.py",
+      "blob": "2202e84f094c1f3e7b2d67ddd8fbb90f51a478c5"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-rollback-common.sh",
+      "blob": "7691c415d2cac9cf7238bfaa62b74249dfc195e1"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-runner-main.sh",
+      "blob": "28ced1edf72832882dc1a3cff27fe5ff25b16109"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-runner-stage-common.sh",
+      "blob": "f692394647b0e9ee9cd185d79d352ab958a7267b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-secure-boot-chain.py",
+      "blob": "848226a7e29540ea17e17dc27359cd420a60cd14"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-storage-common.sh",
+      "blob": "6d7fc85b9216625cbf46a247ae83ba3af95b9d0c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-sync-efi.sh",
+      "blob": "3c93d6ba0c4538dcf209644a10503ea9f5e1c650"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-target-common.sh",
+      "blob": "85caac6a1a3b615962f236c32e8049a6ebea5735"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-uefi-adapter.sh",
+      "blob": "fed5228b27c8f4fa8da9f83f08e6c727da83d6a1"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-uefi-bootentries.py",
+      "blob": "ade36c549ad21bdc9bdda186e7df839f1ad6beee"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-update-grub.sh",
+      "blob": "1cf3ac619fcbaed4958a94cc189b2fc86c94e700"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-validate-grub.sh",
+      "blob": "e468cb13c9cda0e85b304e1ca13f59b14d5e3cea"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_disk_identity_gate.py",
+      "blob": "e82a401d5a160bfb5ca232b9a820417347dfc22a"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_installation_policy.py",
+      "blob": "019ae38412d80e98727f8e50e2f5e9adcefce0ea"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_json_schema.py",
+      "blob": "4097645396c0f76bd62f8056362377abf2f63056"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_progress.py",
+      "blob": "6af2d1d11a1b2dbc93c3264d7a8da1268c5ca693"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_windows_sharing.py",
+      "blob": "3a8eb6e86a32ee2bb53cb8dba9b24cda75ef52f2"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/setup-live-rootfs.sh",
+      "blob": "ab48d2fad709e4d05c8d5a957f7208b084fa5e63"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/__init__.py",
+      "blob": "5d24fed62cb3d49623e222efa5b6cd39b28c833b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/authenticated_destination.py",
+      "blob": "727074eec3a02f859e3ac42fbd60d5e4e600864f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/boundary_model.py",
+      "blob": "39d650b853d6a19b5e340f541d36711e41eb9ae5"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/evidence.py",
+      "blob": "51bb6558c13650b68e5a8f0148877d840a94854e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/guest_transport_peer_boundary.py",
+      "blob": "e176d90f487aede071b12bced9d5d3a41d93199e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/host_fd_boundary.py",
+      "blob": "35bc7f4a37ec8821aa32c15660f83ef80e3e29b9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/host_qemu_fd_evidence.py",
+      "blob": "6727ca454b9282079400593356516097a297b9d6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/large_sparse_destination.py",
+      "blob": "a1a6364b12cf9a6b988eb124e2aa66e374c32cfe"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/qemu_local_disk_witness.py",
+      "blob": "b7fab5ab0211904af5f43f089c54a6a72141d0ed"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/installer_observer/screenshot.py",
+      "blob": "153851be4da1a921b0aa7dd0c409895db44da0cf"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/test_destination_337_fd_digest.py",
+      "blob": "a4ed7842b52bfc584c297dffd497ed530b1ac6b9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/test_destination_337_partial_pread_red.py",
+      "blob": "c84b979caae17e85eeac3f3cf81532f34c3e9974"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/test_windows_guest_recovery_proof.py",
+      "blob": "4efb29c81d9dedcf72d9837457026bf1eaf150e3"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/__init__.py",
+      "blob": "60d9be4728bc340014757412581e56f601b70b05"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/asgi_client.py",
+      "blob": "d3ccd32c09e0e4414c63a95cdfe3bfed40cb1cd0"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/campaign_evidence.py",
+      "blob": "e08aff667d10a4ce2b8d5d430154aa5537e4cfa9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/conftest.py",
+      "blob": "a53795d665c153fd2a60184358b1e50d76dff7ce"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_api.py",
+      "blob": "dd793dc51c289d901ab40fabb6d3770eb218f5f7"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_api_runtime.py",
+      "blob": "943303e22a3b5ecd81c041eaf4557d210b1da511"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_auth_dest_128g_readonly.py",
+      "blob": "3aec49b49c53d17c90684bb14431425e2b9f08fb"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_authenticated_destination_readonly.py",
+      "blob": "1ccbb4cb80f8d1b1032d8a82246768e2eb2bbced"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_automation_campaign.py",
+      "blob": "de931b99d003a808a42fe80713aad6b378d65f2e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_automation_diagnostics.py",
+      "blob": "888e72669b40c05abc81a7f3cefa7e586f31692c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_automation_progress.py",
+      "blob": "2f3c6a338b6c4aa502014892f9cad357892c93ae"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_bazzite_atomic_preflight.py",
+      "blob": "27786853842c3b721d18a015d3e2dbd81e17d0ad"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_bazzite_iso_signature.py",
+      "blob": "ded56c5d449859cb34442f702564b9cd662417d3"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_bios_boot_payload.py",
+      "blob": "43d0bb96ae2eb1f23ca21ddbe53964d38349cac7"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_boot_guardian_campaign.py",
+      "blob": "1181d9c8afb7f78e43480c62e3fe3b1d3e2719da"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_boot_maintenance.py",
+      "blob": "bbde6f2bb6480162f7d28132fa2c0025b6147039"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_campaign_dispatch.py",
+      "blob": "fd3af773b816cf9aba034821048cd18731754626"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_campaign_evidence.py",
+      "blob": "3f540185dbdc3454ca5f87a957e9d240a80ca55f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_campaign_lanes.py",
+      "blob": "5ebe0d9bd3c4ece0e5d228045ae19df36a74cf5c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_campaign_terminal.py",
+      "blob": "f9c4c13be2c748fe9e636c5a163205c195dbc414"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_candidate_handoff.py",
+      "blob": "5b3866d75632f220a8e2d270c51bafa98c33c246"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_candidate_target_audit.py",
+      "blob": "6ecc604f7bc0bdef29a834446fd3dea15f702ab1"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_compact_ovmf_target.py",
+      "blob": "9ff7ba7dbb43c7dc3feb9eb4902e9567312aee1f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_core.py",
+      "blob": "0881134a9476fce45796a56890826db49635ba2b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_core_source_provenance.py",
+      "blob": "188c8583daeade0a387ed820e8e256dc4395670d"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_debian_squashfs_backend.py",
+      "blob": "761790452284074165826105f0cc31a0f2ca5587"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_deployment_audit.py",
+      "blob": "6adcf21027715c0e917d4872f071d9bc7ed78128"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_disabled_sharing_evidence.py",
+      "blob": "73797512b0d94554abcc7dad85ddd5ce2c4024c7"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_disk_identity_gate.py",
+      "blob": "dd2fd467291db0731915498cf1c6aab03a95160e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_disk_identity_snapshot_semantics.py",
+      "blob": "45746d851da0709a9063679665109f2d3cf9f6c7"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_distribution_capabilities.py",
+      "blob": "cc21a37cd1319fbd9cbcae8216f2d7238ffbfc97"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_distro_docs_integration.py",
+      "blob": "979648a9bd59e4c8ea811968ae99a4de5fd293c3"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_distro_ui_schema_offline.py",
+      "blob": "6696f4887efae3b4d0963505ab5b436c31f0f23b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_early_live_recovery.py",
+      "blob": "6d1e9d3319f87a7db4857ec05cde7965d553fc39"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_filepool_checksums.py",
+      "blob": "159c106d36972c24a38858e6b1f403fa152e9ce9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_first_boot_result.py",
+      "blob": "53bb111b2da42eb3d1f9f7653ed7edd144d3d080"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_first_boot_storage.py",
+      "blob": "6575f659f07e9aa4e9f10a92445941e15c26c9ec"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_first_boot_verifier.py",
+      "blob": "8ebc54cf5ec944c1d6a8856e416a2d4ac8c157fb"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_gaslux_agent_implement.py",
+      "blob": "ddc2597e9a37b2641b8d2192c6c7f17a6b4e3f2c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_goal_supervisor.py",
+      "blob": "4f20197195f07c42d7007b9269e1f5e6bfc1233b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_gpt_fd_crosscheck_offline_compat.py",
+      "blob": "0126359b8c76d957c0172e536bc2620ae3f9659b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_guest_transport_peer_boundary.py",
+      "blob": "37062e0158b3a35813b6ae321cb06dea2fa94281"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_installation_contracts.py",
+      "blob": "54c7f4ea1932e0b0520f96489e70d272ef982822"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_installation_guards.py",
+      "blob": "b9239fcc8f721d42a4e49de2023841e0b30f2f76"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_iso_workspace_isolation.py",
+      "blob": "eec5c2bd8f3d13c0172052ec90e2d022507f5d77"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_lab_media_probe.py",
+      "blob": "21d45e2b8335a5cca64c5c3c78c997169ee6d146"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_linux_greeter.py",
+      "blob": "1d50d03bbcd53cd8a408ce89b0cbedf7d2df205b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_linux_result_focus.py",
+      "blob": "507c2d348feb72a343f9365763f841a58e5811d4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_live_allocation_resize.py",
+      "blob": "59483c9a0be4785f52efe89110a9034eede4e9a0"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_live_label_inheritance.py",
+      "blob": "5d328c3ff5a0bac2e46f3a024be5f0392d2d9455"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_live_log_archive.py",
+      "blob": "77a88851c73c1513725cc0f2c4d5c4f0d48fbb03"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_live_storage_preflight.py",
+      "blob": "8dffec71b9a255a58694c68be0a04ae5c7587c18"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_local_filepool.py",
+      "blob": "62a2190d89a466e36d387ec24b7c1c189b6a851f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_localization.py",
+      "blob": "e70976a248111706b85c699a574fee2fa9812cc9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_logging_config.py",
+      "blob": "088465609d7f460d3a34d4d75b38c14647350bda"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_boundary_dev_integration.py",
+      "blob": "b21ac463a53840a8c249378d9be490badf933e64"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_boundary_model.py",
+      "blob": "550e8b2e0fa0ef386438e45af477cf6b63645389"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_host_fd_dev_integration.py",
+      "blob": "7543af67332c2c07db7decfba95f1527fa5a4480"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_host_fd_evidence.py",
+      "blob": "43dfeb4d4019245a0f45079d40e2961502bbbce2"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_host_fd_safety_fixes.py",
+      "blob": "9223ffe076ab2a7369760b136ee492ac2e35e4a4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_one_shot_ledger_offline.py",
+      "blob": "a930ba6f3b9c36257964c0cfd350bd33d3b058b0"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_qemu_real_disk_readonly.py",
+      "blob": "ab57c014b9b47c1444c877d9e029994923c3b775"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_readonly_evidence_subset.py",
+      "blob": "50964527b61bdc02f962d0544c189a368c970960"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_screenshot_dev_integration.py",
+      "blob": "5ad6fda7efbf97fc3b6d558db20992352970fb88"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_oem_recovery_layouts.py",
+      "blob": "a3658252e73ba0e03e299125a5ca3557ba73a6a6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_popos_native_preflight.py",
+      "blob": "cdb76b8529f9e4e529dd130259a1bfe4758ef510"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_preference_evidence.py",
+      "blob": "3720a09713749e51b38c0170e88320ea33f854e5"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_preferred_boot_path.py",
+      "blob": "139d5de1e8a5cf672d1bf803f132b8abd2189fa0"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_protected_authority_readiness_f01.py",
+      "blob": "6a511348fd91d016cdc8493b0fd14008b432f439"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_protected_authority_readiness_offline.py",
+      "blob": "cfeaae358065a7dca97760233c6e39dc3011cc91"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_proxmox.py",
+      "blob": "b7ce69c8ba35d3cb5a1238739ac426aeb7e18465"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_published_release.py",
+      "blob": "c5c6729bf103d95653d720d04adbf0c2ef8694a0"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_q4os_native_preflight.py",
+      "blob": "a19b9a2319637109f26e797b1091b5b720aba070"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_reboot_evidence.py",
+      "blob": "95612448cfc0cb6a30753255aa9f9eabc16a280e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_redirected_documents_evidence.py",
+      "blob": "da57de3255050e945671fe7b49208bad60742640"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_release_metadata.py",
+      "blob": "dddc92faf63ed631fe0d4c75d7ee2f821b10b6fb"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_secondary_boot_devices.py",
+      "blob": "c7b2e006cbda0567f72a65273d66b4741a625ab8"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_secondary_rollback_evidence.py",
+      "blob": "75a4e20821cd5c034f42dd002203f16bd5dc93f4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_secure_boot_chain.py",
+      "blob": "1b7a144dacf4cef6d44a8ae7e699fef1fa817873"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_separate_allocation_plan.py",
+      "blob": "ce801d91b7e0811b4d0406c8874ff54f23955357"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_storage_fixture_decryption.py",
+      "blob": "df46e844452285e0d9a74f08dd022afdae8f9fe8"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_storage_fixtures.py",
+      "blob": "a1eb14e353812bef292263b447b42f2b9c764b99"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_storage_test_modes.py",
+      "blob": "b34a5afd656fca3258ed8545e097d514e04af977"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_temporary_efi_rollback.py",
+      "blob": "3cbec8584756022599450595a56386e2d7c83469"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_transport_clients.py",
+      "blob": "d34075d886a8eaf2b9e257ef1789be4061f1730f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_ubuntu_target_backend_preflight.py",
+      "blob": "6f291af33251ededa3b4876e761be76754690550"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_uefi_bootentries.py",
+      "blob": "1d119b20df9643123e472e64abfe9628e68a4ccf"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_uefi_vendor_config.py",
+      "blob": "63adfdc25eda65c155253aec263530a4e27553f2"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_vision_llm.py",
+      "blob": "36910d2f00d84929f1e705950e94484dbe7a504d"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_lab_login.py",
+      "blob": "380c5b38dc9a5e974c65f701cbe73fd4ac7c6817"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_preference_migration.py",
+      "blob": "48e06a31f85769b8f595424ec1b074ffad2e0c3e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_profile_shortcuts.py",
+      "blob": "edb4f8cb524252dc9a35f1b505e991ae55404a68"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_sharing_inventory.py",
+      "blob": "067f533ffd50f0574a2a3295bf9e408095801f3c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_vm_host_capacity.py",
+      "blob": "06f9914bda14067972d21015a44bf504924a88c2"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/ai_rank_candidate.py",
+      "blob": "f79ae9efb2d6e196e306c172708fc05ccc8082cb"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/azerty_qwerty.py",
+      "blob": "cc6fc755d51ec5be317e9246e01b9f068cf0e1b4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/campaign_client.py",
+      "blob": "501a4a7858fed73bf39fc4b3ab71f313b20dc291"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/campaign_display.py",
+      "blob": "05b90b5900119b014144a4cb2ec7b6416e6368b6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/compact_ovmf_target.py",
+      "blob": "a3541aefb7f11be30fb198c0f7ebca24dba06b66"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/deployment_audit.py",
+      "blob": "fa72fefbc0c931b4b3f3b297ed4103e1d0c51d2f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/force_uefi_bootnext_failure.py",
+      "blob": "69aa7a93301562a664db454c9e911ad8a799912b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/gaslux_agent_implement.py",
+      "blob": "a38b77cac1347fe15f0b3d10e9267fc9de2f9f32"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/gaslux_candidate_live_boot.sh",
+      "blob": "251ca4f645576ec3c3401cbe9a4cbe40683c9ad7"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/goal_supervisor.py",
+      "blob": "1edc1b71105e48f6f92a20e00d45455310f23ba6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/gpt_fd_crosscheck_offline_compat.py",
+      "blob": "f77922802dddf351c2be8554b29162e3d271f16d"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/local_coder_agent_benchmark.py",
+      "blob": "8c997969cfaae1f8237f4256e8d4dda8d68ccbed"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/local_coder_logging_repair.py",
+      "blob": "6e0c19fb844d44287398f971b8eaaeb4e48bbb95"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/observer_one_shot_ledger_offline.py",
+      "blob": "f9b7f556aaf1672454008e42e92736814caa83ef"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/protected_authority_readiness_offline.py",
+      "blob": "8107393f01f36d8ec362ef8c7923793e75e1df37"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/rank_capture_changes.py",
+      "blob": "170d13c14ac2d430b913d2ecaf5c74aedd1e79c2"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/structured_coder_probe.py",
+      "blob": "6209887e29a416713e8899b686e7fb5331d79553"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/verify_windows_guest_recovery.py",
+      "blob": "fc12eb1d36c251748ef1dc488d940eded1d49344"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/windows_vm_host_capacity.py",
+      "blob": "6bf076c6125bafc6fa91e2d89c749774b32fec4c"
+    }
+  ],
+  "historical_files": [
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/test_windows_mint_cow_boot_evidence.py",
+      "blob": "d977e84950d1f10a0e3c4b8beac8a20ad54e4368",
+      "symbols": [
+        {
+          "name": "MintCowBootEvidenceTests",
+          "kind": "class",
+          "qualified": "MintCowBootEvidenceTests",
+          "line": 35,
+          "test": false
+        },
+        {
+          "name": "setUp",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.setUp",
+          "line": 36,
+          "test": false
+        },
+        {
+          "name": "tearDown",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.tearDown",
+          "line": 65,
+          "test": false
+        },
+        {
+          "name": "_write_evidence",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests._write_evidence",
+          "line": 68,
+          "test": false
+        },
+        {
+          "name": "test_accepts_legitimate_windows_system_ntfs_changes_after_reboot",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_accepts_legitimate_windows_system_ntfs_changes_after_reboot",
+          "line": 135,
+          "test": true
+        },
+        {
+          "name": "test_accepts_hash_bound_mint_root_after_genuine_windows_boot",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_accepts_hash_bound_mint_root_after_genuine_windows_boot",
+          "line": 148,
+          "test": true
+        },
+        {
+          "name": "test_rejects_missing_read_only_mint_persistence_proof",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_missing_read_only_mint_persistence_proof",
+          "line": 152,
+          "test": true
+        },
+        {
+          "name": "test_rejects_rehashed_tampered_mint_kernel_after_windows",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_rehashed_tampered_mint_kernel_after_windows",
+          "line": 158,
+          "test": true
+        },
+        {
+          "name": "test_rejects_rehashed_wrong_windows_partition_after_mint",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_rehashed_wrong_windows_partition_after_mint",
+          "line": 172,
+          "test": true
+        },
+        {
+          "name": "test_rejects_fourth_windows_serial_not_bound_to_mint_persistence",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_fourth_windows_serial_not_bound_to_mint_persistence",
+          "line": 186,
+          "test": true
+        },
+        {
+          "name": "test_accepts_bound_direct_kernel_boot_and_shutdown_evidence",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_accepts_bound_direct_kernel_boot_and_shutdown_evidence",
+          "line": 200,
+          "test": true
+        },
+        {
+          "name": "test_accepts_systemd_poweroff_unit_as_orderly_shutdown",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_accepts_systemd_poweroff_unit_as_orderly_shutdown",
+          "line": 208,
+          "test": true
+        },
+        {
+          "name": "test_accepts_kernel_power_down_as_orderly_shutdown",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_accepts_kernel_power_down_as_orderly_shutdown",
+          "line": 219,
+          "test": true
+        },
+        {
+          "name": "test_accepts_crlf_shutdown_with_hash_bound_serial_evidence",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_accepts_crlf_shutdown_with_hash_bound_serial_evidence",
+          "line": 230,
+          "test": true
+        },
+        {
+          "name": "test_rejects_embedded_cr_even_with_rehashed_serial_evidence",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_embedded_cr_even_with_rehashed_serial_evidence",
+          "line": 240,
+          "test": true
+        },
+        {
+          "name": "test_rejects_login_without_any_shutdown_witness",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_login_without_any_shutdown_witness",
+          "line": 251,
+          "test": true
+        },
+        {
+          "name": "test_rejects_shutdown_words_embedded_in_unrelated_log_line",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_shutdown_words_embedded_in_unrelated_log_line",
+          "line": 262,
+          "test": true
+        },
+        {
+          "name": "test_rejects_missing_fourth_windows_efi_bcd_winre_proof",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_missing_fourth_windows_efi_bcd_winre_proof",
+          "line": 274,
+          "test": true
+        },
+        {
+          "name": "test_rejects_changed_fourth_windows_proof_digest",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_changed_fourth_windows_proof_digest",
+          "line": 279,
+          "test": true
+        },
+        {
+          "name": "test_rejects_efi_bcd_winre_failure_even_if_fourth_proof_is_rehashed",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_efi_bcd_winre_failure_even_if_fourth_proof_is_rehashed",
+          "line": 287,
+          "test": true
+        },
+        {
+          "name": "test_rejects_missing_guest_winre_marker",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_missing_guest_winre_marker",
+          "line": 300,
+          "test": true
+        },
+        {
+          "name": "test_rejects_duplicate_guest_esp_marker",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_duplicate_guest_esp_marker",
+          "line": 306,
+          "test": true
+        },
+        {
+          "name": "test_rejects_guest_audit_failure_even_with_all_markers",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_guest_audit_failure_even_with_all_markers",
+          "line": 312,
+          "test": true
+        },
+        {
+          "name": "test_rejects_unbound_fourth_serial_hash",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_unbound_fourth_serial_hash",
+          "line": 318,
+          "test": true
+        },
+        {
+          "name": "_replace_fourth_serial",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests._replace_fourth_serial",
+          "line": 324,
+          "test": false
+        },
+        {
+          "name": "test_accepts_legacy_proof_without_fourth_boot_claim",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_accepts_legacy_proof_without_fourth_boot_claim",
+          "line": 339,
+          "test": true
+        },
+        {
+          "name": "test_rejects_unbound_fourth_boot_files_without_report_claim",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_unbound_fourth_boot_files_without_report_claim",
+          "line": 356,
+          "test": true
+        },
+        {
+          "name": "test_rejects_partial_fourth_boot_claim",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_partial_fourth_boot_claim",
+          "line": 367,
+          "test": true
+        },
+        {
+          "name": "test_rejects_missing_serial_login",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_missing_serial_login",
+          "line": 375,
+          "test": true
+        },
+        {
+          "name": "test_rejects_serial_root_uuid_mismatch_even_with_updated_hashes",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_serial_root_uuid_mismatch_even_with_updated_hashes",
+          "line": 380,
+          "test": true
+        },
+        {
+          "name": "test_rejects_false_native_grub_claim",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_false_native_grub_claim",
+          "line": 386,
+          "test": true
+        },
+        {
+          "name": "test_rejects_missing_windows_partition_hashes",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_missing_windows_partition_hashes",
+          "line": 392,
+          "test": true
+        },
+        {
+          "name": "test_rejects_report_without_windows_reboot_after_mint",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_report_without_windows_reboot_after_mint",
+          "line": 398,
+          "test": true
+        },
+        {
+          "name": "test_rejects_wrong_pinned_iso",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_wrong_pinned_iso",
+          "line": 406,
+          "test": true
+        },
+        {
+          "name": "test_rejects_legacy_misleading_installation_field",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_legacy_misleading_installation_field",
+          "line": 412,
+          "test": true
+        },
+        {
+          "name": "test_rejects_report_not_bound_to_proof",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_report_not_bound_to_proof",
+          "line": 418,
+          "test": true
+        },
+        {
+          "name": "test_rejects_symlinked_proof",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_symlinked_proof",
+          "line": 426,
+          "test": true
+        },
+        {
+          "name": "test_rejects_missing_orderly_shutdown",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests.test_rejects_missing_orderly_shutdown",
+          "line": 436,
+          "test": true
+        },
+        {
+          "name": "_replace_serial",
+          "kind": "def",
+          "qualified": "MintCowBootEvidenceTests._replace_serial",
+          "line": 442,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/test_windows_mint_overlay_root.py",
+      "blob": "a9f39c5f76e981e1020b8fd26a30cad6061c38df",
+      "symbols": [
+        {
+          "name": "FakeGuest",
+          "kind": "class",
+          "qualified": "FakeGuest",
+          "line": 17,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeGuest.__init__",
+          "line": 18,
+          "test": false
+        },
+        {
+          "name": "add_drive_opts",
+          "kind": "def",
+          "qualified": "FakeGuest.add_drive_opts",
+          "line": 27,
+          "test": false
+        },
+        {
+          "name": "launch",
+          "kind": "def",
+          "qualified": "FakeGuest.launch",
+          "line": 28,
+          "test": false
+        },
+        {
+          "name": "list_devices",
+          "kind": "def",
+          "qualified": "FakeGuest.list_devices",
+          "line": 29,
+          "test": false
+        },
+        {
+          "name": "blockdev_getsize64",
+          "kind": "def",
+          "qualified": "FakeGuest.blockdev_getsize64",
+          "line": 30,
+          "test": false
+        },
+        {
+          "name": "list_partitions",
+          "kind": "def",
+          "qualified": "FakeGuest.list_partitions",
+          "line": 32,
+          "test": false
+        },
+        {
+          "name": "vfs_type",
+          "kind": "def",
+          "qualified": "FakeGuest.vfs_type",
+          "line": 33,
+          "test": false
+        },
+        {
+          "name": "vfs_uuid",
+          "kind": "def",
+          "qualified": "FakeGuest.vfs_uuid",
+          "line": 34,
+          "test": false
+        },
+        {
+          "name": "checksum_device",
+          "kind": "def",
+          "qualified": "FakeGuest.checksum_device",
+          "line": 35,
+          "test": false
+        },
+        {
+          "name": "shutdown",
+          "kind": "def",
+          "qualified": "FakeGuest.shutdown",
+          "line": 37,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "FakeGuest.close",
+          "line": 38,
+          "test": false
+        },
+        {
+          "name": "MintOverlayContracts",
+          "kind": "class",
+          "qualified": "MintOverlayContracts",
+          "line": 41,
+          "test": false
+        },
+        {
+          "name": "test_orderly_shutdown_witness_accepts_systemd_poweroff_unit",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_orderly_shutdown_witness_accepts_systemd_poweroff_unit",
+          "line": 42,
+          "test": true
+        },
+        {
+          "name": "test_orderly_shutdown_witness_accepts_kernel_power_down_line",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_orderly_shutdown_witness_accepts_kernel_power_down_line",
+          "line": 46,
+          "test": true
+        },
+        {
+          "name": "test_orderly_shutdown_witness_accepts_crlf_serial_output",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_orderly_shutdown_witness_accepts_crlf_serial_output",
+          "line": 50,
+          "test": true
+        },
+        {
+          "name": "test_orderly_shutdown_witness_rejects_embedded_carriage_return",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_orderly_shutdown_witness_rejects_embedded_carriage_return",
+          "line": 60,
+          "test": true
+        },
+        {
+          "name": "test_orderly_shutdown_witness_rejects_boot_or_login_only",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_orderly_shutdown_witness_rejects_boot_or_login_only",
+          "line": 64,
+          "test": true
+        },
+        {
+          "name": "test_orderly_shutdown_witness_rejects_unrelated_embedded_words",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_orderly_shutdown_witness_rejects_unrelated_embedded_words",
+          "line": 68,
+          "test": true
+        },
+        {
+          "name": "test_consent_is_required_before_touching_paths_or_guestfs",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_consent_is_required_before_touching_paths_or_guestfs",
+          "line": 73,
+          "test": true
+        },
+        {
+          "name": "test_exactly_one_disk_and_five_partitions_are_required",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_exactly_one_disk_and_five_partitions_are_required",
+          "line": 86,
+          "test": true
+        },
+        {
+          "name": "test_post_windows_read_only_guestfs_checks_mint_files_and_hashes",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_read_only_guestfs_checks_mint_files_and_hashes",
+          "line": 93,
+          "test": true
+        },
+        {
+          "name": "AfterWindowsGuest",
+          "kind": "class",
+          "qualified": "MintOverlayContracts.test_post_windows_read_only_guestfs_checks_mint_files_and_hashes.AfterWindowsGuest",
+          "line": 98,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_read_only_guestfs_checks_mint_files_and_hashes.AfterWindowsGuest.__init__",
+          "line": 99,
+          "test": false
+        },
+        {
+          "name": "mount_ro",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_read_only_guestfs_checks_mint_files_and_hashes.AfterWindowsGuest.mount_ro",
+          "line": 102,
+          "test": false
+        },
+        {
+          "name": "read_file",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_read_only_guestfs_checks_mint_files_and_hashes.AfterWindowsGuest.read_file",
+          "line": 104,
+          "test": false
+        },
+        {
+          "name": "checksum",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_read_only_guestfs_checks_mint_files_and_hashes.AfterWindowsGuest.checksum",
+          "line": 110,
+          "test": false
+        },
+        {
+          "name": "umount_all",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_read_only_guestfs_checks_mint_files_and_hashes.AfterWindowsGuest.umount_all",
+          "line": 113,
+          "test": false
+        },
+        {
+          "name": "test_post_windows_individual_digests_fail_closed_and_ntfs_is_informative",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_individual_digests_fail_closed_and_ntfs_is_informative",
+          "line": 206,
+          "test": true
+        },
+        {
+          "name": "test_post_windows_refuses_incomplete_digest_without_success",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_refuses_incomplete_digest_without_success",
+          "line": 245,
+          "test": true
+        },
+        {
+          "name": "test_post_windows_persistence_rejects_missing_fourth_boot_before_guestfs",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_post_windows_persistence_rejects_missing_fourth_boot_before_guestfs",
+          "line": 262,
+          "test": true
+        },
+        {
+          "name": "test_ephemeral_shutdown_service_is_explicit_and_one_boot_scoped",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_ephemeral_shutdown_service_is_explicit_and_one_boot_scoped",
+          "line": 271,
+          "test": true
+        },
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_ephemeral_shutdown_service_is_explicit_and_one_boot_scoped.fake_run",
+          "line": 277,
+          "test": false
+        },
+        {
+          "name": "test_ephemeral_shutdown_service_refuses_existing_unit_or_symlink",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_ephemeral_shutdown_service_refuses_existing_unit_or_symlink",
+          "line": 297,
+          "test": true
+        },
+        {
+          "name": "test_installed_root_configuration_uses_real_newlines",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_installed_root_configuration_uses_real_newlines",
+          "line": 309,
+          "test": true
+        },
+        {
+          "name": "test_installed_root_configuration_rejects_invalid_uuid",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_installed_root_configuration_rejects_invalid_uuid",
+          "line": 322,
+          "test": true
+        },
+        {
+          "name": "test_success_returns_four_windows_partition_hashes",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_success_returns_four_windows_partition_hashes",
+          "line": 332,
+          "test": true
+        },
+        {
+          "name": "_make_kernel_tree",
+          "kind": "def",
+          "qualified": "MintOverlayContracts._make_kernel_tree",
+          "line": 343,
+          "test": false
+        },
+        {
+          "name": "test_prepare_initramfs_requests_loadable_storage_drivers",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_prepare_initramfs_requests_loadable_storage_drivers",
+          "line": 357,
+          "test": true
+        },
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_prepare_initramfs_requests_loadable_storage_drivers.fake_run",
+          "line": 362,
+          "test": false
+        },
+        {
+          "name": "test_prepare_initramfs_accepts_all_drivers_built_into_kernel",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_prepare_initramfs_accepts_all_drivers_built_into_kernel",
+          "line": 376,
+          "test": true
+        },
+        {
+          "name": "test_prepare_initramfs_fails_closed_when_kernel_driver_is_missing",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_prepare_initramfs_fails_closed_when_kernel_driver_is_missing",
+          "line": 393,
+          "test": true
+        },
+        {
+          "name": "test_prepare_initramfs_rejects_symlinked_modules_configuration",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_prepare_initramfs_rejects_symlinked_modules_configuration",
+          "line": 405,
+          "test": true
+        },
+        {
+          "name": "test_initramfs_validation_accepts_builtins_and_requires_loadable_modules",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_initramfs_validation_accepts_builtins_and_requires_loadable_modules",
+          "line": 418,
+          "test": true
+        },
+        {
+          "name": "test_initramfs_module_preparation_precedes_update_initramfs",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_initramfs_module_preparation_precedes_update_initramfs",
+          "line": 434,
+          "test": true
+        },
+        {
+          "name": "test_bind_and_fuse_unmounts_are_checked_and_verified",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_bind_and_fuse_unmounts_are_checked_and_verified",
+          "line": 441,
+          "test": true
+        },
+        {
+          "name": "test_unmount_private_tree_recursively_cleans_nested_mounts",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_unmount_private_tree_recursively_cleans_nested_mounts",
+          "line": 455,
+          "test": true
+        },
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_unmount_private_tree_recursively_cleans_nested_mounts.fake_run",
+          "line": 457,
+          "test": false
+        },
+        {
+          "name": "test_unmount_private_tree_fails_closed_when_nested_mount_remains",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_unmount_private_tree_fails_closed_when_nested_mount_remains",
+          "line": 469,
+          "test": true
+        },
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_unmount_private_tree_fails_closed_when_nested_mount_remains.fake_run",
+          "line": 470,
+          "test": false
+        },
+        {
+          "name": "test_unmount_private_tree_rejects_symlinked_path_before_commands",
+          "kind": "def",
+          "qualified": "MintOverlayContracts.test_unmount_private_tree_rejects_symlinked_path_before_commands",
+          "line": 482,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/tools/validate_mint_cow_boot_evidence.py",
+      "blob": "7df55346178923a1625542cc2605e424ce59a53d",
+      "symbols": [
+        {
+          "name": "MintBootEvidenceError",
+          "kind": "class",
+          "qualified": "MintBootEvidenceError",
+          "line": 42,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 46,
+          "test": false
+        },
+        {
+          "name": "has_orderly_shutdown_witness",
+          "kind": "def",
+          "qualified": "has_orderly_shutdown_witness",
+          "line": 51,
+          "test": false
+        },
+        {
+          "name": "read_regular",
+          "kind": "def",
+          "qualified": "read_regular",
+          "line": 63,
+          "test": false
+        },
+        {
+          "name": "validate_fourth_windows_evidence",
+          "kind": "def",
+          "qualified": "validate_fourth_windows_evidence",
+          "line": 78,
+          "test": false
+        },
+        {
+          "name": "validate_mint_cow_boot_evidence",
+          "kind": "def",
+          "qualified": "validate_mint_cow_boot_evidence",
+          "line": 138,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 336,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/tools/windows_mint_overlay_root.py",
+      "blob": "6f0a2cf8fe35e80955c987120aca2495ade1b678",
+      "symbols": [
+        {
+          "name": "MintOverlayError",
+          "kind": "class",
+          "qualified": "MintOverlayError",
+          "line": 28,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 32,
+          "test": false
+        },
+        {
+          "name": "has_orderly_shutdown_witness",
+          "kind": "def",
+          "qualified": "has_orderly_shutdown_witness",
+          "line": 37,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "run",
+          "line": 50,
+          "test": false
+        },
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 56,
+          "test": false
+        },
+        {
+          "name": "write_target_configuration",
+          "kind": "def",
+          "qualified": "write_target_configuration",
+          "line": 61,
+          "test": false
+        },
+        {
+          "name": "configure_ephemeral_shutdown_service",
+          "kind": "def",
+          "qualified": "configure_ephemeral_shutdown_service",
+          "line": 85,
+          "test": false
+        },
+        {
+          "name": "guestmount_command",
+          "kind": "def",
+          "qualified": "guestmount_command",
+          "line": 126,
+          "test": false
+        },
+        {
+          "name": "guestfish_copy_in_command",
+          "kind": "def",
+          "qualified": "guestfish_copy_in_command",
+          "line": 135,
+          "test": false
+        },
+        {
+          "name": "guestfish_download_command",
+          "kind": "def",
+          "qualified": "guestfish_download_command",
+          "line": 142,
+          "test": false
+        },
+        {
+          "name": "unmount_private_tree",
+          "kind": "def",
+          "qualified": "unmount_private_tree",
+          "line": 150,
+          "test": false
+        },
+        {
+          "name": "_guest_disk_audit",
+          "kind": "def",
+          "qualified": "_guest_disk_audit",
+          "line": 181,
+          "test": false
+        },
+        {
+          "name": "classify_mint_post_windows_differences",
+          "kind": "def",
+          "qualified": "classify_mint_post_windows_differences",
+          "line": 215,
+          "test": false
+        },
+        {
+          "name": "verify_mint_persistence_after_windows",
+          "kind": "def",
+          "qualified": "verify_mint_persistence_after_windows",
+          "line": 260,
+          "test": false
+        },
+        {
+          "name": "_kernel_module_names",
+          "kind": "def",
+          "qualified": "_kernel_module_names",
+          "line": 423,
+          "test": false
+        },
+        {
+          "name": "module_name",
+          "kind": "def",
+          "qualified": "_kernel_module_names.module_name",
+          "line": 434,
+          "test": false
+        },
+        {
+          "name": "prepare_initramfs_modules",
+          "kind": "def",
+          "qualified": "prepare_initramfs_modules",
+          "line": 450,
+          "test": false
+        },
+        {
+          "name": "validate_initramfs_driver_support",
+          "kind": "def",
+          "qualified": "validate_initramfs_driver_support",
+          "line": 494,
+          "test": false
+        },
+        {
+          "name": "install_mint_root_and_boot",
+          "kind": "def",
+          "qualified": "install_mint_root_and_boot",
+          "line": 510,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "mint",
+      "pr": 260,
+      "ref": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "path": "auto_tests/tools/windows_x64_tcg_firstboot.py",
+      "blob": "705de8571d8ff814f9f59995ff00e71c39cfd783",
+      "symbols": [
+        {
+          "name": "LabError",
+          "kind": "class",
+          "qualified": "LabError",
+          "line": 49,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 53,
+          "test": false
+        },
+        {
+          "name": "workspace_has_active_mount",
+          "kind": "def",
+          "qualified": "workspace_has_active_mount",
+          "line": 58,
+          "test": false
+        },
+        {
+          "name": "cleanup_private_workspace",
+          "kind": "def",
+          "qualified": "cleanup_private_workspace",
+          "line": 64,
+          "test": false
+        },
+        {
+          "name": "validate_environment",
+          "kind": "def",
+          "qualified": "validate_environment",
+          "line": 102,
+          "test": false
+        },
+        {
+          "name": "MicrosoftOnlyRedirect",
+          "kind": "class",
+          "qualified": "MicrosoftOnlyRedirect",
+          "line": 155,
+          "test": false
+        },
+        {
+          "name": "redirect_request",
+          "kind": "def",
+          "qualified": "MicrosoftOnlyRedirect.redirect_request",
+          "line": 158,
+          "test": false
+        },
+        {
+          "name": "download_verified_iso",
+          "kind": "def",
+          "qualified": "download_verified_iso",
+          "line": 167,
+          "test": false
+        },
+        {
+          "name": "derive_no_prompt_uefi_lab_iso",
+          "kind": "def",
+          "qualified": "derive_no_prompt_uefi_lab_iso",
+          "line": 199,
+          "test": false
+        },
+        {
+          "name": "witness_powershell",
+          "kind": "def",
+          "qualified": "witness_powershell",
+          "line": 255,
+          "test": false
+        },
+        {
+          "name": "generate_unattend",
+          "kind": "def",
+          "qualified": "generate_unattend",
+          "line": 321,
+          "test": false
+        },
+        {
+          "name": "tag",
+          "kind": "def",
+          "qualified": "generate_unattend.tag",
+          "line": 329,
+          "test": false
+        },
+        {
+          "name": "child",
+          "kind": "def",
+          "qualified": "generate_unattend.child",
+          "line": 332,
+          "test": false
+        },
+        {
+          "name": "component",
+          "kind": "def",
+          "qualified": "generate_unattend.component",
+          "line": 339,
+          "test": false
+        },
+        {
+          "name": "validate_oobe_answer_pass",
+          "kind": "def",
+          "qualified": "validate_oobe_answer_pass",
+          "line": 452,
+          "test": false
+        },
+        {
+          "name": "send_first_iso_boot_key",
+          "kind": "def",
+          "qualified": "send_first_iso_boot_key",
+          "line": 489,
+          "test": false
+        },
+        {
+          "name": "boot_vm",
+          "kind": "def",
+          "qualified": "boot_vm",
+          "line": 519,
+          "test": false
+        },
+        {
+          "name": "build_two_stage_qemu_args",
+          "kind": "def",
+          "qualified": "build_two_stage_qemu_args",
+          "line": 618,
+          "test": false
+        },
+        {
+          "name": "restart_owned_swtpm_for_second_guest",
+          "kind": "def",
+          "qualified": "restart_owned_swtpm_for_second_guest",
+          "line": 659,
+          "test": false
+        },
+        {
+          "name": "scan_dvd_firmware_starts",
+          "kind": "def",
+          "qualified": "scan_dvd_firmware_starts",
+          "line": 733,
+          "test": false
+        },
+        {
+          "name": "scan_two_stage_dvd_serial",
+          "kind": "def",
+          "qualified": "scan_two_stage_dvd_serial",
+          "line": 743,
+          "test": false
+        },
+        {
+          "name": "boot_two_stage_windows",
+          "kind": "def",
+          "qualified": "boot_two_stage_windows",
+          "line": 770,
+          "test": false
+        },
+        {
+          "name": "probe_no_prompt_uefi_dvd",
+          "kind": "def",
+          "qualified": "probe_no_prompt_uefi_dvd",
+          "line": 863,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 898,
+          "test": false
+        },
+        {
+          "name": "restart_guest_tpm",
+          "kind": "def",
+          "qualified": "main.restart_guest_tpm",
+          "line": 1192,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "ref": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "path": "auto_tests/test_windows_zorin_synthetic_cow_root.py",
+      "blob": "a83fdf587e4b1921d7bc4099ff55dd9f3609a499",
+      "symbols": [
+        {
+          "name": "FakeGuest",
+          "kind": "class",
+          "qualified": "FakeGuest",
+          "line": 16,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeGuest.__init__",
+          "line": 19,
+          "test": false
+        },
+        {
+          "name": "add_drive_opts",
+          "kind": "def",
+          "qualified": "FakeGuest.add_drive_opts",
+          "line": 29,
+          "test": false
+        },
+        {
+          "name": "launch",
+          "kind": "def",
+          "qualified": "FakeGuest.launch",
+          "line": 33,
+          "test": false
+        },
+        {
+          "name": "list_devices",
+          "kind": "def",
+          "qualified": "FakeGuest.list_devices",
+          "line": 36,
+          "test": false
+        },
+        {
+          "name": "blockdev_getsize64",
+          "kind": "def",
+          "qualified": "FakeGuest.blockdev_getsize64",
+          "line": 39,
+          "test": false
+        },
+        {
+          "name": "list_partitions",
+          "kind": "def",
+          "qualified": "FakeGuest.list_partitions",
+          "line": 42,
+          "test": false
+        },
+        {
+          "name": "vfs_type",
+          "kind": "def",
+          "qualified": "FakeGuest.vfs_type",
+          "line": 45,
+          "test": false
+        },
+        {
+          "name": "vfs_uuid",
+          "kind": "def",
+          "qualified": "FakeGuest.vfs_uuid",
+          "line": 48,
+          "test": false
+        },
+        {
+          "name": "checksum_device",
+          "kind": "def",
+          "qualified": "FakeGuest.checksum_device",
+          "line": 51,
+          "test": false
+        },
+        {
+          "name": "mount_ro",
+          "kind": "def",
+          "qualified": "FakeGuest.mount_ro",
+          "line": 54,
+          "test": false
+        },
+        {
+          "name": "is_file",
+          "kind": "def",
+          "qualified": "FakeGuest.is_file",
+          "line": 57,
+          "test": false
+        },
+        {
+          "name": "is_dir",
+          "kind": "def",
+          "qualified": "FakeGuest.is_dir",
+          "line": 64,
+          "test": false
+        },
+        {
+          "name": "cat",
+          "kind": "def",
+          "qualified": "FakeGuest.cat",
+          "line": 67,
+          "test": false
+        },
+        {
+          "name": "shutdown",
+          "kind": "def",
+          "qualified": "FakeGuest.shutdown",
+          "line": 70,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "FakeGuest.close",
+          "line": 73,
+          "test": false
+        },
+        {
+          "name": "ZorinCowContracts",
+          "kind": "class",
+          "qualified": "ZorinCowContracts",
+          "line": 77,
+          "test": false
+        },
+        {
+          "name": "test_opt_in_is_required",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_opt_in_is_required",
+          "line": 78,
+          "test": true
+        },
+        {
+          "name": "test_cannot_start_disk_without_verified_iso",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_cannot_start_disk_without_verified_iso",
+          "line": 83,
+          "test": true
+        },
+        {
+          "name": "test_fake_sha_or_file_size_never_authorizes_media",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_fake_sha_or_file_size_never_authorizes_media",
+          "line": 93,
+          "test": true
+        },
+        {
+          "name": "test_fifth_audit_uses_readonly_libguestfs",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_fifth_audit_uses_readonly_libguestfs",
+          "line": 100,
+          "test": true
+        },
+        {
+          "name": "test_symlinked_os_release_must_be_resolved_as_regular_file",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_symlinked_os_release_must_be_resolved_as_regular_file",
+          "line": 110,
+          "test": true
+        },
+        {
+          "name": "test_resolved_os_release_with_different_id_is_rejected",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_resolved_os_release_with_different_id_is_rejected",
+          "line": 120,
+          "test": true
+        },
+        {
+          "name": "WrongDistroGuest",
+          "kind": "class",
+          "qualified": "ZorinCowContracts.test_resolved_os_release_with_different_id_is_rejected.WrongDistroGuest",
+          "line": 121,
+          "test": false
+        },
+        {
+          "name": "cat",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_resolved_os_release_with_different_id_is_rejected.WrongDistroGuest.cat",
+          "line": 122,
+          "test": false
+        },
+        {
+          "name": "test_broken_os_release_symlink_is_rejected",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_broken_os_release_symlink_is_rejected",
+          "line": 134,
+          "test": true
+        },
+        {
+          "name": "BrokenLinkGuest",
+          "kind": "class",
+          "qualified": "ZorinCowContracts.test_broken_os_release_symlink_is_rejected.BrokenLinkGuest",
+          "line": 135,
+          "test": false
+        },
+        {
+          "name": "is_file",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_broken_os_release_symlink_is_rejected.BrokenLinkGuest.is_file",
+          "line": 136,
+          "test": false
+        },
+        {
+          "name": "test_hash_mismatch_refuses_lookalike_partitions",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_hash_mismatch_refuses_lookalike_partitions",
+          "line": 150,
+          "test": true
+        },
+        {
+          "name": "test_root_uuid_mismatch_refused_before_ro_mount",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_root_uuid_mismatch_refused_before_ro_mount",
+          "line": 161,
+          "test": true
+        },
+        {
+          "name": "test_source_checks_before_synthetic_partition_writes",
+          "kind": "def",
+          "qualified": "ZorinCowContracts.test_source_checks_before_synthetic_partition_writes",
+          "line": 172,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "ref": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "path": "auto_tests/tools/gaslux_legacy_installed_target_lab.sh",
+      "blob": "2f3c9a62390f84ea0972a7947ccd5f6b3a182a57",
+      "symbols": [
+        {
+          "name": "die",
+          "kind": "shell_function",
+          "qualified": "die",
+          "line": 6,
+          "test": false
+        },
+        {
+          "name": "lab_mounts_remaining",
+          "kind": "shell_function",
+          "qualified": "lab_mounts_remaining",
+          "line": 59,
+          "test": false
+        },
+        {
+          "name": "release_chroot_mounts_or_die",
+          "kind": "shell_function",
+          "qualified": "release_chroot_mounts_or_die",
+          "line": 73,
+          "test": false
+        },
+        {
+          "name": "cleanup",
+          "kind": "shell_function",
+          "qualified": "cleanup",
+          "line": 97,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "ref": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "path": "auto_tests/tools/gaslux_zorin_installed_target_lab.sh",
+      "blob": "e915fe0928477f75d3a07b63aed4303345004c89",
+      "symbols": [],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "ref": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "path": "auto_tests/tools/windows_zorin_synthetic_cow_root.py",
+      "blob": "d65891f7d16ba3c08ac3f4d8b9265f092b3c186b",
+      "symbols": [
+        {
+          "name": "ZorinSyntheticError",
+          "kind": "class",
+          "qualified": "ZorinSyntheticError",
+          "line": 32,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 36,
+          "test": false
+        },
+        {
+          "name": "cmd",
+          "kind": "def",
+          "qualified": "cmd",
+          "line": 41,
+          "test": false
+        },
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 49,
+          "test": false
+        },
+        {
+          "name": "ensure_hosted_only",
+          "kind": "def",
+          "qualified": "ensure_hosted_only",
+          "line": 54,
+          "test": false
+        },
+        {
+          "name": "verify_official_zorin",
+          "kind": "def",
+          "qualified": "verify_official_zorin",
+          "line": 67,
+          "test": false
+        },
+        {
+          "name": "inspect_fifth",
+          "kind": "def",
+          "qualified": "inspect_fifth",
+          "line": 89,
+          "test": false
+        },
+        {
+          "name": "run_synthetic_zorin",
+          "kind": "def",
+          "qualified": "run_synthetic_zorin",
+          "line": 128,
+          "test": false
+        },
+        {
+          "name": "sha256_window",
+          "kind": "def",
+          "qualified": "sha256_window",
+          "line": 353,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_cachyos_shared_root_pacstrap_host_contract.py",
+      "blob": "f2a20bf9156595afb298c7ddf20b6ffcf72886e6",
+      "symbols": [
+        {
+          "name": "SharedRootPacstrapHostContracts",
+          "kind": "class",
+          "qualified": "SharedRootPacstrapHostContracts",
+          "line": 18,
+          "test": false
+        },
+        {
+          "name": "test_iso_private_loop_permission_fix_requires_exact_backing_identity",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_iso_private_loop_permission_fix_requires_exact_backing_identity",
+          "line": 19,
+          "test": true
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_iso_private_loop_permission_fix_requires_exact_backing_identity.run",
+          "line": 29,
+          "test": false
+        },
+        {
+          "name": "test_iso_private_loop_fails_before_chown_if_device_is_foreign",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_iso_private_loop_fails_before_chown_if_device_is_foreign",
+          "line": 53,
+          "test": true
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_iso_private_loop_fails_before_chown_if_device_is_foreign.run",
+          "line": 66,
+          "test": false
+        },
+        {
+          "name": "test_iso_private_mount_cannot_use_symlink_image",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_iso_private_mount_cannot_use_symlink_image",
+          "line": 82,
+          "test": true
+        },
+        {
+          "name": "test_genuine_vm_apt_stalls_are_bounded_and_guest_is_security_held",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_genuine_vm_apt_stalls_are_bounded_and_guest_is_security_held",
+          "line": 96,
+          "test": true
+        },
+        {
+          "name": "test_trial_firmware_uses_fresh_ovmf_template_not_windows_bootorder",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_trial_firmware_uses_fresh_ovmf_template_not_windows_bootorder",
+          "line": 135,
+          "test": true
+        },
+        {
+          "name": "test_trial_firmware_refuses_symlink_and_reused_destination",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_trial_firmware_refuses_symlink_and_reused_destination",
+          "line": 146,
+          "test": true
+        },
+        {
+          "name": "test_archiso_efi_loader_has_explicit_qemu_boot_priority",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_archiso_efi_loader_has_explicit_qemu_boot_priority",
+          "line": 161,
+          "test": true
+        },
+        {
+          "name": "test_iso_transport_is_uefi_visible_but_only_windows_cow_is_writable",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_iso_transport_is_uefi_visible_but_only_windows_cow_is_writable",
+          "line": 170,
+          "test": true
+        },
+        {
+          "name": "test_grub_missing_iso_uuid_emits_diagnostic_without_fallback",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_grub_missing_iso_uuid_emits_diagnostic_without_fallback",
+          "line": 179,
+          "test": true
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_grub_missing_iso_uuid_emits_diagnostic_without_fallback.run",
+          "line": 199,
+          "test": false
+        },
+        {
+          "name": "test_grub_multiple_iso_uuid_searches_are_rejected_before_boot",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_grub_multiple_iso_uuid_searches_are_rejected_before_boot",
+          "line": 222,
+          "test": true
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_grub_multiple_iso_uuid_searches_are_rejected_before_boot.run",
+          "line": 233,
+          "test": false
+        },
+        {
+          "name": "test_host_keeps_checkpoint_and_readonly_media_integrity_guards",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_host_keeps_checkpoint_and_readonly_media_integrity_guards",
+          "line": 248,
+          "test": true
+        },
+        {
+          "name": "test_pacstrap_and_discard_evidence_are_valid_json_whitespace",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_pacstrap_and_discard_evidence_are_valid_json_whitespace",
+          "line": 261,
+          "test": true
+        },
+        {
+          "name": "test_guest_installer_remains_root_only_and_never_installs_efi",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_guest_installer_remains_root_only_and_never_installs_efi",
+          "line": 268,
+          "test": true
+        },
+        {
+          "name": "test_boot_config_failure_surfaces_sanitized_generator_diagnostic",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_boot_config_failure_surfaces_sanitized_generator_diagnostic",
+          "line": 277,
+          "test": true
+        },
+        {
+          "name": "test_boot_config_failure_does_not_publish_unstructured_output",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_boot_config_failure_does_not_publish_unstructured_output",
+          "line": 305,
+          "test": true
+        },
+        {
+          "name": "test_deferred_root_requires_orderly_shutdown_and_offline_ext4_state",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_deferred_root_requires_orderly_shutdown_and_offline_ext4_state",
+          "line": 330,
+          "test": true
+        },
+        {
+          "name": "test_fifth_windows_serial_manifest_name_matches_evidence_producer",
+          "kind": "def",
+          "qualified": "SharedRootPacstrapHostContracts.test_fifth_windows_serial_manifest_name_matches_evidence_producer",
+          "line": 348,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_windows_cachyos_bcd_ab_control.py",
+      "blob": "4b4daa8e2d4ea96e85b5e10f5387ed68fa829aa6",
+      "symbols": [
+        {
+          "name": "forensic",
+          "kind": "def",
+          "qualified": "forensic",
+          "line": 19,
+          "test": false
+        },
+        {
+          "name": "BcdAbControlContracts",
+          "kind": "class",
+          "qualified": "BcdAbControlContracts",
+          "line": 28,
+          "test": false
+        },
+        {
+          "name": "test_windows_only_control_reproduces_identical_bcd_change",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_windows_only_control_reproduces_identical_bcd_change",
+          "line": 29,
+          "test": true
+        },
+        {
+          "name": "test_treatment_only_bcd_change_is_association_not_process_attribution",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_treatment_only_bcd_change_is_association_not_process_attribution",
+          "line": 48,
+          "test": true
+        },
+        {
+          "name": "test_different_postboot_hives_are_not_overattributed",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_different_postboot_hives_are_not_overattributed",
+          "line": 57,
+          "test": true
+        },
+        {
+          "name": "test_initial_bcd_mismatch_invalidates_experiment",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_initial_bcd_mismatch_invalidates_experiment",
+          "line": 70,
+          "test": true
+        },
+        {
+          "name": "test_no_change_in_either_arm",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_no_change_in_either_arm",
+          "line": 78,
+          "test": true
+        },
+        {
+          "name": "test_bcd_forensic_bounds_spans_but_hashes_the_complete_offset_set",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_bcd_forensic_bounds_spans_but_hashes_the_complete_offset_set",
+          "line": 85,
+          "test": true
+        },
+        {
+          "name": "test_qemu_write_event_discovery_filters_read_only_and_unrelated_events",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_qemu_write_event_discovery_filters_read_only_and_unrelated_events",
+          "line": 98,
+          "test": true
+        },
+        {
+          "name": "test_swtpm_interrupted_and_healthy_session_are_host_only",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_swtpm_interrupted_and_healthy_session_are_host_only",
+          "line": 111,
+          "test": true
+        },
+        {
+          "name": "test_swtpm_emulator_uses_qemu_control_not_command_server",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_swtpm_emulator_uses_qemu_control_not_command_server",
+          "line": 129,
+          "test": true
+        },
+        {
+          "name": "test_tpm_state_digest_is_stable_for_independent_byte_copies",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_tpm_state_digest_is_stable_for_independent_byte_copies",
+          "line": 145,
+          "test": true
+        },
+        {
+          "name": "test_tpm_state_trees_must_not_share_hardlinked_files",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_tpm_state_trees_must_not_share_hardlinked_files",
+          "line": 164,
+          "test": true
+        },
+        {
+          "name": "test_windows_only_control_requires_explicit_consent_before_disk_access",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_windows_only_control_requires_explicit_consent_before_disk_access",
+          "line": 180,
+          "test": true
+        },
+        {
+          "name": "test_bcd_ab_rejects_invalid_hash_types",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_bcd_ab_rejects_invalid_hash_types",
+          "line": 196,
+          "test": true
+        },
+        {
+          "name": "test_tpm_state_digest_rejects_symlinks",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_tpm_state_digest_rejects_symlinks",
+          "line": 204,
+          "test": true
+        },
+        {
+          "name": "_real_checkpoint",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts._real_checkpoint",
+          "line": 215,
+          "test": false
+        },
+        {
+          "name": "_fake_volume",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts._fake_volume",
+          "line": 227,
+          "test": false
+        },
+        {
+          "name": "test_preflight_uses_physical_bavail_and_apparent_clone_bytes",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_preflight_uses_physical_bavail_and_apparent_clone_bytes",
+          "line": 234,
+          "test": true
+        },
+        {
+          "name": "test_insufficient_space_refuses_before_any_clone",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_insufficient_space_refuses_before_any_clone",
+          "line": 257,
+          "test": true
+        },
+        {
+          "name": "test_reserved_blocks_cannot_satisfy_clone_capacity",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_reserved_blocks_cannot_satisfy_clone_capacity",
+          "line": 278,
+          "test": true
+        },
+        {
+          "name": "test_invalid_or_missing_physical_capacity_is_fail_closed",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_invalid_or_missing_physical_capacity_is_fail_closed",
+          "line": 295,
+          "test": true
+        },
+        {
+          "name": "test_cross_filesystem_source_refused_before_clone",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_cross_filesystem_source_refused_before_clone",
+          "line": 320,
+          "test": true
+        },
+        {
+          "name": "test_prepare_real_clones_in_correct_order",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_real_clones_in_correct_order",
+          "line": 333,
+          "test": true
+        },
+        {
+          "name": "test_prepare_refuses_missing_source_and_reused_destinations",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_missing_source_and_reused_destinations",
+          "line": 348,
+          "test": true
+        },
+        {
+          "name": "test_prepare_refuses_symlinks_hardlinks_and_bad_modes",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_symlinks_hardlinks_and_bad_modes",
+          "line": 364,
+          "test": true
+        },
+        {
+          "name": "test_prepare_refuses_divergent_clone_and_cleans_owned_outputs",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_divergent_clone_and_cleans_owned_outputs",
+          "line": 385,
+          "test": true
+        },
+        {
+          "name": "corrupt",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_divergent_clone_and_cleans_owned_outputs.corrupt",
+          "line": 389,
+          "test": false
+        },
+        {
+          "name": "test_prepare_cleans_both_clones_on_partial_second_copy",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_cleans_both_clones_on_partial_second_copy",
+          "line": 401,
+          "test": true
+        },
+        {
+          "name": "fail_second",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_cleans_both_clones_on_partial_second_copy.fail_second",
+          "line": 405,
+          "test": false
+        },
+        {
+          "name": "test_prepare_refuses_source_modified_during_copy",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_source_modified_during_copy",
+          "line": 418,
+          "test": true
+        },
+        {
+          "name": "concurrent_writer",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_source_modified_during_copy.concurrent_writer",
+          "line": 422,
+          "test": false
+        },
+        {
+          "name": "test_prepare_refuses_source_modified_between_two_clones",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_source_modified_between_two_clones",
+          "line": 433,
+          "test": true
+        },
+        {
+          "name": "source_changed",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_source_modified_between_two_clones.source_changed",
+          "line": 437,
+          "test": false
+        },
+        {
+          "name": "test_prepare_refuses_reused_symlink_target_without_cleanup",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_prepare_refuses_reused_symlink_target_without_cleanup",
+          "line": 448,
+          "test": true
+        },
+        {
+          "name": "test_clone_copy_refuses_reused_target_and_symlink_source",
+          "kind": "def",
+          "qualified": "BcdAbControlContracts.test_clone_copy_refuses_reused_target_and_symlink_source",
+          "line": 458,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_windows_cachyos_checkpoint_readiness.py",
+      "blob": "f17851719c7a9258d68d66a154ab46469ea3840a",
+      "symbols": [
+        {
+          "name": "digest",
+          "kind": "def",
+          "qualified": "digest",
+          "line": 27,
+          "test": false
+        },
+        {
+          "name": "CheckpointReadinessTests",
+          "kind": "class",
+          "qualified": "CheckpointReadinessTests",
+          "line": 31,
+          "test": false
+        },
+        {
+          "name": "setUp",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.setUp",
+          "line": 32,
+          "test": false
+        },
+        {
+          "name": "check",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.check",
+          "line": 81,
+          "test": false
+        },
+        {
+          "name": "refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.refused",
+          "line": 93,
+          "test": false
+        },
+        {
+          "name": "test_A_checkpoint_not_found",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_A_checkpoint_not_found",
+          "line": 98,
+          "test": true
+        },
+        {
+          "name": "test_B_source_hash_mismatch",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_B_source_hash_mismatch",
+          "line": 102,
+          "test": true
+        },
+        {
+          "name": "test_C_source_still_in_use_by_current_process",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_C_source_still_in_use_by_current_process",
+          "line": 106,
+          "test": true
+        },
+        {
+          "name": "test_D_insufficient_capacity_includes_growth_and_forensic_reserve",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_D_insufficient_capacity_includes_growth_and_forensic_reserve",
+          "line": 113,
+          "test": true
+        },
+        {
+          "name": "test_E_unknown_quota_refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_E_unknown_quota_refused",
+          "line": 117,
+          "test": true
+        },
+        {
+          "name": "test_unknown_quota_none_is_denied_even_with_valid_files",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_unknown_quota_none_is_denied_even_with_valid_files",
+          "line": 120,
+          "test": true
+        },
+        {
+          "name": "test_F_shared_ovmf_vars_refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_F_shared_ovmf_vars_refused",
+          "line": 130,
+          "test": true
+        },
+        {
+          "name": "test_G_shared_tpm_state_refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_G_shared_tpm_state_refused",
+          "line": 135,
+          "test": true
+        },
+        {
+          "name": "test_H_foreign_transaction_refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_H_foreign_transaction_refused",
+          "line": 141,
+          "test": true
+        },
+        {
+          "name": "test_I_backing_identity_mismatch_refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_I_backing_identity_mismatch_refused",
+          "line": 145,
+          "test": true
+        },
+        {
+          "name": "test_J_restore_not_proven_even_with_self_reported_witness",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_J_restore_not_proven_even_with_self_reported_witness",
+          "line": 149,
+          "test": true
+        },
+        {
+          "name": "test_initial_bcd_claim_mismatch_refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_initial_bcd_claim_mismatch_refused",
+          "line": 180,
+          "test": true
+        },
+        {
+          "name": "test_shared_mutable_overlay_refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_shared_mutable_overlay_refused",
+          "line": 184,
+          "test": true
+        },
+        {
+          "name": "test_missing_origin_ovmf_file_refused",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_missing_origin_ovmf_file_refused",
+          "line": 189,
+          "test": true
+        },
+        {
+          "name": "test_fake_quota_never_grants_operational_authority",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_fake_quota_never_grants_operational_authority",
+          "line": 193,
+          "test": true
+        },
+        {
+          "name": "test_module_has_no_guest_writer_or_qemu_execution",
+          "kind": "def",
+          "qualified": "CheckpointReadinessTests.test_module_has_no_guest_writer_or_qemu_execution",
+          "line": 198,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    }
+  ],
+  "dev_files": [],
+  "limitations": [
+    "Only six selected historical PRs; no execution or import of code.",
+    "Dev expected scope is Python and shell in assets/live, auto_tests/tools, installer_observer and test paths. Not all languages or paths.",
+    "No formal gate, writer, merge, release or equivalence approval."
+  ]
+}
