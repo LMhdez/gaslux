@@ -202,6 +202,31 @@ class FeatureFactoryTests(unittest.TestCase):
                 x["release_eligible"] is False for x in claimed
             ))
 
+    def test_six_backend_backlog_artifact_does_not_expand_model_permissions(self):
+        workflow = (
+            SCRIPT.parents[2] /
+            ".github/workflows/gaslux-agent-feature-factory.yml"
+        ).read_text()
+        before_model, after_model = workflow.split("  model:\n", 1)
+        self.assertIn(
+            "if: steps.plan.outputs.blocked == 'true'", before_model
+        )
+        self.assertIn(
+            "name: gaslux-six-backend-gate-backlog", before_model
+        )
+        self.assertIn(
+            "path: /tmp/gaslux-feature-plan.json", before_model
+        )
+        self.assertIn(
+            "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+            before_model,
+        )
+        self.assertNotIn("issues: write", before_model)
+        self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", before_model)
+        self.assertIn("if: needs.select.outputs.active == 'true'", after_model)
+        self.assertIn("No new Qwen code scope authorized", before_model)
+        self.assertIn("protected_vm_slots", before_model)
+
     def test_plan_reports_real_blocked_gates_when_all_six_roles_claimed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
