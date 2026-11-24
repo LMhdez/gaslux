@@ -80,6 +80,86 @@ def issue_row(*, author: str = "github-actions[bot]", number: int = 404) -> dict
 
 
 class Scope2BTests(unittest.TestCase):
+    def test_mint_scope_prompt_provides_valid_loop_free_exact_source(self):
+        """Prevent recurrence of actual Qwen AST For rejection in Mint scope."""
+        import ast
+
+        source = factory.SCOPE2B_NO_LOOP_EXAMPLE
+        self.assertEqual(
+            source.splitlines()[0],
+            "def match_mint_223_iso_descriptor(candidate: dict) -> dict:",
+        )
+        parsed = ast.parse(source)
+        self.assertFalse(any(
+            isinstance(node, (ast.For, ast.AsyncFor, ast.While,
+                              ast.ListComp, ast.DictComp, ast.SetComp,
+                              ast.GeneratorExp))
+            for node in ast.walk(parsed)
+        ))
+        factory.validate_addition(
+            "mint", source, execute=True, scope=factory.SCOPE2B_ID
+        )
+        prompt = factory.scope2b_prompt()
+        self.assertIn(source, prompt)
+        self.assertIn("NO", prompt.upper())
+        self.assertIn("type(candidate) is dict", prompt)
+        self.assertNotIn("A side-effect-free list comprehension is allowed", prompt)
+        self.assertFalse(any(
+            flag + "': True" in source for flag in (
+                "sourceAuthenticityVerified",
+                "installationAuthorized", "releaseEligible",
+            )
+        ))
+
+    def test_mint_scope_retry_discards_for_and_uses_reviewed_template(self):
+        """Model rejection must not append the legacy comprehension hint."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture_repo(root)
+            evidence = root / "evidence"
+            original = factory.SCOPE2B_NO_LOOP_EXAMPLE
+            bad = original.replace(
+                "    matched = (\n",
+                "    for index in (): pass\n    matched = (\n",
+            )
+            self.assertNotEqual(bad, original)
+            with patch.object(factory, "git", return_value="a" * 40), \
+                 patch.object(factory, "call_model",
+                              side_effect=[bad, original]) as model:
+                factory.generate(
+                    root, evidence, "mint", "a" * 40, scope=factory.SCOPE2B_ID
+                )
+            self.assertEqual(model.call_count, 2)
+            retry = model.call_args_list[1].args[0]
+            self.assertIn("Forbidden AST nodes: For", retry)
+            self.assertIn(original, retry)
+            self.assertIn("Discard that output", retry)
+            self.assertNotIn("A side-effect-free list comprehension is allowed",
+                             retry)
+            self.assertEqual((evidence / "addition.py").read_text(), original)
+            report = json.loads((evidence / "report.json").read_text())
+            self.assertEqual(report["scope"], factory.SCOPE2B_ID)
+            self.assertEqual(report["issue"], 404)
+
+    def test_mint_scope_two_for_failures_publish_no_candidate(self):
+        """Never substitute the scaffold automatically when Qwen fails."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture_repo(root)
+            evidence = root / "evidence"
+            forbidden = factory.SCOPE2B_NO_LOOP_EXAMPLE.replace(
+                "    matched = (\n",
+                "    for index in (): pass\n    matched = (\n",
+            )
+            with patch.object(factory, "git", return_value="a" * 40), \
+                 patch.object(factory, "call_model", return_value=forbidden) as model:
+                with self.assertRaises(RuntimeError):
+                    factory.generate(root, evidence, "mint", "a" * 40,
+                                     scope=factory.SCOPE2B_ID)
+            self.assertEqual(model.call_count, 2)
+            self.assertFalse((evidence / "addition.py").exists())
+            self.assertFalse((evidence / "report.json").exists())
+
     def test_pins_match_existing_signed_release_descriptor_without_attestation(self):
         main = SCRIPT.parents[2]
         release = json.loads((main / "release-config.json").read_text())

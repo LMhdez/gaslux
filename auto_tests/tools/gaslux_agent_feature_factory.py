@@ -495,6 +495,68 @@ def rejection_category(addition: str | None, error: Exception) -> str:
     return type(error).__name__
 
 
+# The scope-specific reference is an *allowed* source shape, not a
+# substitute model artifact. Qwen must still return the addition, whose
+# bytes, AST, behavior, source base and hashes are checked independently.
+SCOPE2B_NO_LOOP_EXAMPLE = (
+    "def match_mint_223_iso_descriptor(candidate: dict) -> dict:\n"
+    "    matched = (\n"
+    "        type(candidate) is dict\n"
+    "        and type(candidate.get('id')) is str\n"
+    "        and candidate.get('id') == 'mint'\n"
+    "        and type(candidate.get('isoInstaller')) is str\n"
+    "        and candidate.get('isoInstaller') == "
+    "'https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso'\n"
+    "        and type(candidate.get('isoInstallerSha256')) is str\n"
+    "        and candidate.get('isoInstallerSha256') == "
+    "'a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4'\n"
+    "        and type(candidate.get('isoInstallerSizeBytes')) is int\n"
+    "        and candidate.get('isoInstallerSizeBytes') == 3091660800\n"
+    "    )\n"
+    "    return {\n"
+    "        'backend': 'mint',\n"
+    "        'pinnedDescriptorMatches': matched,\n"
+    "        'sourceAuthenticityVerified': False,\n"
+    "        'installationAuthorized': False,\n"
+    "        'releaseEligible': False,\n"
+    "    }\n"
+)
+
+
+def scope2b_prompt(rejection: str = "") -> str:
+    """Keep Mint 2B retry guidance distinct from lifecycle comprehension hints."""
+    if type(rejection) is not str or len(rejection) > 160:
+        raise ValueError("Noncanonical model rejection category")
+    task = (
+        "Implement the exact reviewed read-only Linux Mint 22.3 ISO metadata "
+        "pin comparison for issue #404. Emit a JSON object with exactly one "
+        "string property addition containing ONLY one Python function. "
+        "No markdown or explanations. The complete permitted Python source "
+        "is provided below; copy this Python source exactly into addition, "
+        "preserving the four pin values and the three literal False flags. "
+        "This is descriptor equality, NOT verified upstream authenticity. "
+        "Do NOT add a for statement, list/dict/set/generator comprehension, "
+        "while statement, loop, helper, import, class, decorator, mutation, "
+        "filesystem access, I/O, extra function or any additional statements. "
+        "There is no iteration needed: use one boolean expression with "
+        "short-circuit 'and' for the four exact-type and exact-value checks. "
+        "The type(x) builtin is available ONLY for candidate or "
+        "candidate.get(one of the four pinned keys), with ONE argument. "
+        "Never use type(x,y,z), int(...), .items(), .keys() or .append(). "
+        "The three protected flags sourceAuthenticityVerified, "
+        "installationAuthorized, releaseEligible must be literal False "
+        "in the final single return dict, for ALL inputs.\n"
+    )
+    if rejection:
+        task += (
+            "The last output was rejected by the unchanged AST/functional "
+            f"validator as {rejection}. Discard that output and copy the "
+            "allowed function below. In particular, do NOT generate a "
+            "'for' statement: a for-loop causes an immediate failure.\n"
+        )
+    return task + "EXACT ALLOWED PYTHON FUNCTION SOURCE:\n" + SCOPE2B_NO_LOOP_EXAMPLE
+
+
 def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str = "lifecycle") -> None:
     if (git(root, "rev-parse", "HEAD") != base or role not in TASKS or
         scope not in ("lifecycle", SCOPE2B_ID) or
@@ -533,36 +595,7 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str
         "No markdown, prose, explanation, surrounding source or code fences.\n"
     )
     if scope == SCOPE2B_ID:
-        task = (
-            "Implement a REAL read-only preflight function that compares the "
-            "Linux Mint 22.3 Cinnamon ISO descriptor fields with the exact "
-            "trusted pinned release metadata. No I/O, SHA calculation, install "
-            "or release authority. Only match already-declared pins. "
-            "EXACT signature: def match_mint_223_iso_descriptor(candidate: dict) -> dict:\n"
-            "The descriptor keys/values to compare are: "
-            f"{SCOPE2B_PINS!r}. Require type(candidate) is dict (never "
-            "isinstance, as dict subclasses are forbidden). For all four "
-            "fields compare BOTH type(candidate.get(key)) is str/int and "
-            "candidate.get(key) == its exact pinned value. The size MUST "
-            "have type int, rejecting 3091660800.0, bool and int subclasses. "
-            "For id, URL and SHA256 require type str, rejecting str subclasses. "
-            "The safe type(x) call is allowed in THIS scope only, with exactly "
-            "one argument: candidate or candidate.get(one of four pin keys). "
-            "Do not use type(x,y,z), int(...), or other constructor calls. "
-            "Missing, wrong-type or mismatched fields MUST be rejected. "
-            "Return EXACT dict keys: "
-            "backend='mint', pinnedDescriptorMatches=boolean match, "
-            "sourceAuthenticityVerified=False, installationAuthorized=False, "
-            "releaseEligible=False. All three protected flags MUST be "
-            "literal False constants in exactly ONE return dict literal. "
-            "Descriptor matching is NOT authentication. "
-            "Do not use import, class, nested function, for, while, I/O, "
-            "filesystem, globals, external data, side effects or assert. "
-            "Only permitted attribute is candidate.get. Only approved "
-            "legacy builtins and scoped single-argument type(...) are allowed. "
-            "The int name is a type identity, never a callable conversion. "
-            "Return ONE function in JSON with EXACT key addition; no markdown.\n"
-        )
+        task = scope2b_prompt()
     last: Exception | None = None
     last_category = "No response"
     for attempt in range(2):
@@ -594,12 +627,17 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str
             last_category = rejection_category(addition, error)
             print(f"Qwen attempt {attempt + 1}/2 rejected: {last_category}",
                   file=sys.stderr)
-            task += (
-                f"\nPrior attempt rejected: {last_category}. "
-                "Correct the rejected construct; never use a standalone for/while "
-                "statement. A side-effect-free list comprehension is allowed. "
-                "Return only the exact scoped Python function in JSON addition.\n"
-            )
+            if scope == SCOPE2B_ID:
+                # No lifecycle 'comprehension allowed' hint for the stricter
+                # pin-comparison task, which requires no iteration at all.
+                task = scope2b_prompt(last_category)
+            else:
+                task += (
+                    f"\nPrior attempt rejected: {last_category}. "
+                    "Correct the rejected construct; never use a standalone for/while "
+                    "statement. A side-effect-free list comprehension is allowed. "
+                    "Return only the exact scoped Python function in JSON addition.\n"
+                )
     raise RuntimeError(
         f"Isolated Qwen proposal failed acceptance ({last_category}): {last}"
     )
