@@ -596,6 +596,216 @@
           "test": false
         }
       ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/config.py",
+      "blob": "eefd737153a4d9fc72b2dea95988e34e65182ea1",
+      "symbol_count": 16,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/distributions.py",
+      "blob": "e20e3cf389d7e84053e4a3f98411a64f01636f1c",
+      "symbol_count": 2,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/errors.py",
+      "blob": "f5ec6ecd21fcf22d2663c1b175fe675f3c272d47",
+      "symbol_count": 3,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "WorkflowError.__init__",
+          "line": 7,
+          "test": false
+        },
+        {
+          "name": "as_dict",
+          "kind": "def",
+          "qualified": "WorkflowError.as_dict",
+          "line": 13,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/filepool/linux-integrity.sh",
+      "blob": "ee1f883ffc69bd2f40f10836a90dd0b16dc1678d",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/logging_config.py",
+      "blob": "7644ca5c5c820c07f1430a37f1b3183ce88a09c4",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/main.py",
+      "blob": "95e629f40b0aec8d636e0a9277b321a139508b94",
+      "symbol_count": 56,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "_StreamedOperation.__init__",
+          "line": 704,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "LazyApp.__init__",
+          "line": 1236,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/models.py",
+      "blob": "010331d727a7cead9707089df77bf259fc490d8f",
+      "symbol_count": 9,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/published_release.py",
+      "blob": "60c78512673edee50799f8f13ffadbed4da9c968",
+      "symbol_count": 8,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/check_linux_preference_migration.py",
+      "blob": "a1d00e09b20820e146249754e41d59f6a80ad01b",
+      "symbol_count": 11,
+      "matches": [
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 19,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 186,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/check_linux_redirected_documents.py",
+      "blob": "3fb66396cdaa55d608caff370978f0b295b73994",
+      "symbol_count": 2,
+      "matches": [
+        {
+          "name": "verify",
+          "kind": "def",
+          "qualified": "verify",
+          "line": 12,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 67,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/collect_linux_diagnostics.sh",
+      "blob": "f91f006510e5ffa2037785d9cec5cfaeb24608a6",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/focus_linux_post_install_result.py",
+      "blob": "e9b6eb2c0c02fd87e7002ac79dd3e10ec17ca3fd",
+      "symbol_count": 15,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 279,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/linux_check_helper.py",
+      "blob": "7d3de60ad1e4d97b61cb6f701b7819f8cd43c7a1",
+      "symbol_count": 13,
+      "matches": [
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 25,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 170,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/__init__.py",
+      "blob": "06390ea6c03c9f5a41488c62717ae24742d91024",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation.py",
+      "blob": "47af0dec383cc85ce9317d40e93faa6a59c5b9d1",
+      "symbol_count": 25,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "AutomationService.__init__",
+          "line": 77,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "AutomationService.run",
+          "line": 94,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_campaign.py",
+      "blob": "f71f920d26dd6ff029369bad63b178bf931dcab7",
+      "symbol_count": 25,
+      "matches": []
     }
   ]
 }
