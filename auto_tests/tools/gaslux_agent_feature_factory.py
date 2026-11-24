@@ -239,19 +239,25 @@ def plan(root: Path) -> dict:
     return {"base": base, **backlog}
 
 
-def validate_addition(role: str, addition: str, *, execute: bool) -> None:
+def validate_addition(
+    role: str, addition: str, *, execute: bool, scope: str = "lifecycle",
+) -> None:
+    if scope not in ("lifecycle", SCOPE2B_ID) or (scope == SCOPE2B_ID and role != "mint"):
+        raise ValueError("Unreviewed code task scope")
     if role not in TASKS or type(addition) is not str or not 75 <= len(addition) <= 5500:
         raise ValueError("Invalid scope or empty proposal")
     if "\r" in addition or "\x00" in addition or addition.count("\n") > 100:
         raise ValueError("Oversized or noncanonical source")
-    if not addition.startswith(f"def assess_{role}_lifecycle(evidence: dict) -> dict:"):
-        raise ValueError("Model must implement the exact scoped lifecycle function")
+    function_name = SCOPE2B_FN if scope == SCOPE2B_ID else f"assess_{role}_lifecycle"
+    argument_name = "candidate" if scope == SCOPE2B_ID else "evidence"
+    if not addition.startswith(f"def {function_name}({argument_name}: dict) -> dict:"):
+        raise ValueError("Model must implement the exact reviewed function signature")
     parsed = ast.parse(addition)
     if len(parsed.body) != 1 or not isinstance(parsed.body[0], ast.FunctionDef):
         raise ValueError("Only one function permitted")
     node = parsed.body[0]
     if (node.decorator_list or len(node.args.args) != 1 or
-        node.args.args[0].arg != "evidence" or node.args.defaults or
+        node.args.args[0].arg != argument_name or node.args.defaults or
         node.args.kwonlyargs or node.args.vararg or node.args.kwarg):
         raise ValueError("Unexpected callable signature")
     for n in ast.walk(node):
@@ -278,9 +284,42 @@ def validate_addition(role: str, addition: str, *, execute: bool) -> None:
     if not execute:
         return
     env = {"__builtins__": SAFE_BUILTINS}
-    scope: dict = {}
-    exec(compile(parsed, "<isolated-lifecycle-proposal>", "exec"), env, scope)
-    fn = scope[f"assess_{role}_lifecycle"]
+    namespace: dict = {}
+    exec(compile(parsed, "<isolated-code-proposal>", "exec"), env, namespace)
+    fn = namespace[function_name]
+    if scope == SCOPE2B_ID:
+        good = dict(SCOPE2B_PINS)
+        mutations = [
+            {"id": "zorin"},
+            {"isoInstaller": "https://invalid.example/mint.iso"},
+            {"isoInstallerSha256": "0" * 64},
+            {"isoInstallerSizeBytes": 3091660799},
+            {"isoInstallerSizeBytes": "3091660800"},
+            {"isoInstallerSizeBytes": True},
+            {"id": True},
+        ]
+        fixtures = [good, {}, {"id": "mint"}, None, [], "mint"]
+        fixtures += [{**good, **row} for row in mutations]
+        for candidate in fixtures:
+            before = dict(candidate) if type(candidate) is dict else candidate
+            result = fn(candidate)
+            expected = type(candidate) is dict and all(
+                type(candidate.get(k)) is type(v) and candidate.get(k) == v
+                for k, v in SCOPE2B_PINS.items()
+            )
+            if type(candidate) is dict and candidate != before:
+                raise ValueError("Model mutated source descriptor")
+            if (type(result) is not dict or set(result) != {
+                "backend", "pinnedDescriptorMatches", "sourceAuthenticityVerified",
+                "installationAuthorized", "releaseEligible"
+            } or result["backend"] != "mint" or
+                type(result["pinnedDescriptorMatches"]) is not bool or
+                result["pinnedDescriptorMatches"] != expected or
+                result["sourceAuthenticityVerified"] is not False or
+                result["installationAuthorized"] is not False or
+                result["releaseEligible"] is not False):
+                raise ValueError("Mint media pin contract failed")
+        return
     for checked in ((), GATES):
         evidence = {gate: (gate in checked) for gate in GATES}
         expected_evidence = dict(evidence)
@@ -299,12 +338,15 @@ def validate_addition(role: str, addition: str, *, execute: bool) -> None:
         raise ValueError("Untrusted empty evidence was treated as proof")
 
 
-def expected_source(root: Path, role: str, addition: str) -> tuple[bytes, bytes]:
+def expected_source(root: Path, role: str, addition: str, *, scope: str = "lifecycle") -> tuple[bytes, bytes]:
     path = root / TASKS[role][0]
     original = path.read_bytes()
     if len(original) > 25000 or b"\r" in original:
         raise ValueError("Unexpected source file format")
-    if f"def assess_{role}_lifecycle(".encode() in original:
+    if scope not in ("lifecycle", SCOPE2B_ID) or (scope == SCOPE2B_ID and role != "mint"):
+        raise ValueError("Unexpected code scope")
+    function_name = SCOPE2B_FN if scope == SCOPE2B_ID else f"assess_{role}_lifecycle"
+    if f"def {function_name}(".encode() in original:
         raise ValueError("Feature already implemented")
     proposed = original.rstrip(b"\n") + b"\n\n" + addition.rstrip().encode("utf-8") + b"\n"
     if len(proposed) > 32000:
