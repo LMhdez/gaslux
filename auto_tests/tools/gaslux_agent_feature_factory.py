@@ -257,7 +257,7 @@ TRUSTED_FEATURE_PR_BOTS = frozenset({
     "github-actions[bot]", "gaslux-autonomous-publisher[bot]",
 })
 FEATURE_PR_BRANCH = re.compile(
-    r"bot/gaslux-feature-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}\\Z"
+    r"bot/gaslux-feature-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}\Z"
 )
 
 
