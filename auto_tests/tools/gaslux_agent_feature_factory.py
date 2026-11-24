@@ -114,6 +114,8 @@ def scope2b_eligible(root: Path, base: str) -> bool:
         f"https://api.github.com/repos/{REPO}" or
         type(row.get("user")) is not dict or
         row["user"].get("login") != "github-actions[bot]" or
+        row["user"].get("type") != "Bot" or
+        row["user"].get("id") != 41898282 or
         row.get("title") !=
         "[GASLUX-AUTO] mint / windows10-bios-mbr / source-authenticity: scope & acceptance" or
         not isinstance(row.get("body"), str) or
@@ -284,6 +286,24 @@ def validate_addition(
         if isinstance(n, ast.Name) and (n.id.startswith("__") or
                                          n.id in {"open", "exec", "eval", "compile", "globals", "locals"}):
             raise ValueError("Untrusted runtime reference")
+    if scope == SCOPE2B_ID:
+        # Provable static invariant: no branch may turn authentication,
+        # installation or release flags on, including inputs outside fixtures.
+        returns = [n for n in ast.walk(node) if isinstance(n, ast.Return)]
+        if len(returns) != 1 or not isinstance(returns[0].value, ast.Dict):
+            raise ValueError("Scoped task requires one literal result dict")
+        returned = returns[0].value
+        if any(not isinstance(k, ast.Constant) or type(k.value) is not str
+               for k in returned.keys):
+            raise ValueError("Scoped return keys must be literal strings")
+        values = dict(zip((k.value for k in returned.keys), returned.values))
+        if set(values) != {
+            "backend", "pinnedDescriptorMatches", "sourceAuthenticityVerified",
+            "installationAuthorized", "releaseEligible"
+        } or any(not isinstance(values[k], ast.Constant) or values[k].value is not False
+                 for k in ("sourceAuthenticityVerified",
+                           "installationAuthorized", "releaseEligible")):
+            raise ValueError("Protected flags must be literal False in AST")
     if not execute:
         return
     env = {"__builtins__": SAFE_BUILTINS}
@@ -480,7 +500,9 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str
             "fields MUST be rejected. Return EXACT dict keys: "
             "backend='mint', pinnedDescriptorMatches=boolean match, "
             "sourceAuthenticityVerified=False, installationAuthorized=False, "
-            "releaseEligible=False. Descriptor matching is NOT authentication. "
+            "releaseEligible=False. All three protected flags MUST be "
+            "literal False constants in exactly ONE return dict literal. "
+            "Descriptor matching is NOT authentication. "
             "Do not use import, class, nested function, for, while, I/O, "
             "filesystem, globals, external data, side effects or assert. "
             "Only permitted attribute is candidate.get, only built-in calls "
