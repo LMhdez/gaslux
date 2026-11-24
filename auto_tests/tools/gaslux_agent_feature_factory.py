@@ -279,7 +279,30 @@ def validate_addition(
         if isinstance(n, ast.Call):
             f = n.func
             if isinstance(f, ast.Name):
-                if f.id not in SAFE_BUILTINS:
+                if f.id == "type" and scope == SCOPE2B_ID:
+                    # Only introspection of the exact reviewed input/fields:
+                    # never type(name, bases, namespace) or arbitrary objects.
+                    if len(n.args) != 1 or n.keywords:
+                        raise ValueError("Scoped type check must have one argument")
+                    arg = n.args[0]
+                    if isinstance(arg, ast.Name):
+                        admitted = arg.id == "candidate"
+                    elif (isinstance(arg, ast.Call) and
+                          isinstance(arg.func, ast.Attribute) and
+                          arg.func.attr == "get" and
+                          isinstance(arg.func.value, ast.Name) and
+                          arg.func.value.id == "candidate" and
+                          len(arg.args) == 1 and
+                          isinstance(arg.args[0], ast.Constant) and
+                          type(arg.args[0].value) is str and
+                          arg.args[0].value in SCOPE2B_PINS and
+                          not arg.keywords):
+                        admitted = True
+                    else:
+                        admitted = False
+                    if not admitted:
+                        raise ValueError("Unapproved scoped type introspection")
+                elif f.id not in SAFE_BUILTINS:
                     raise ValueError("Unauthorized call")
             elif not (isinstance(f, ast.Attribute) and f.attr == "get"):
                 raise ValueError("Unauthorized call")
@@ -306,22 +329,44 @@ def validate_addition(
             raise ValueError("Protected flags must be literal False in AST")
     if not execute:
         return
-    env = {"__builtins__": SAFE_BUILTINS}
+    # Do not expand the legacy AST/builtins. "int" is an immutable type
+    # reference, not an allowed call; "type" is single-argument, scope2b-only.
+    admitted_builtins = (
+        {**SAFE_BUILTINS, "type": type, "int": int}
+        if scope == SCOPE2B_ID else SAFE_BUILTINS
+    )
+    env = {"__builtins__": admitted_builtins}
     namespace: dict = {}
     exec(compile(parsed, "<isolated-code-proposal>", "exec"), env, namespace)
     fn = namespace[function_name]
     if scope == SCOPE2B_ID:
         good = dict(SCOPE2B_PINS)
+        class _StrSubclass(str):
+            pass
+
+        class _IntSubclass(int):
+            pass
+
+        class _DictSubclass(dict):
+            def get(self, *_args, **_kwargs):
+                raise ValueError("Subclass .get must never be executed")
+
         mutations = [
             {"id": "zorin"},
             {"isoInstaller": "https://invalid.example/mint.iso"},
             {"isoInstallerSha256": "0" * 64},
             {"isoInstallerSizeBytes": 3091660799},
+            {"isoInstallerSizeBytes": 3091660800.0},
             {"isoInstallerSizeBytes": "3091660800"},
             {"isoInstallerSizeBytes": True},
+            {"isoInstallerSizeBytes": _IntSubclass(3091660800)},
+            {"isoInstaller": _StrSubclass(SCOPE2B_PINS["isoInstaller"])},
+            {"isoInstallerSha256": _StrSubclass(SCOPE2B_PINS["isoInstallerSha256"])},
+            {"id": _StrSubclass("mint")},
             {"id": True},
         ]
-        fixtures = [good, {}, {"id": "mint"}, None, [], "mint"]
+        fixtures = [good, {}, {"id": "mint"}, None, [], "mint",
+                    _DictSubclass(good)]
         fixtures += [{**good, **row} for row in mutations]
         for candidate in fixtures:
             before = dict(candidate) if type(candidate) is dict else candidate
@@ -495,9 +540,17 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str
             "or release authority. Only match already-declared pins. "
             "EXACT signature: def match_mint_223_iso_descriptor(candidate: dict) -> dict:\n"
             "The descriptor keys/values to compare are: "
-            f"{SCOPE2B_PINS!r}. Check all four with candidate.get and "
-            "isinstance(candidate, dict). Missing, wrong-type or mismatched "
-            "fields MUST be rejected. Return EXACT dict keys: "
+            f"{SCOPE2B_PINS!r}. Require type(candidate) is dict (never "
+            "isinstance, as dict subclasses are forbidden). For all four "
+            "fields compare BOTH type(candidate.get(key)) is str/int and "
+            "candidate.get(key) == its exact pinned value. The size MUST "
+            "have type int, rejecting 3091660800.0, bool and int subclasses. "
+            "For id, URL and SHA256 require type str, rejecting str subclasses. "
+            "The safe type(x) call is allowed in THIS scope only, with exactly "
+            "one argument: candidate or candidate.get(one of four pin keys). "
+            "Do not use type(x,y,z), int(...), or other constructor calls. "
+            "Missing, wrong-type or mismatched fields MUST be rejected. "
+            "Return EXACT dict keys: "
             "backend='mint', pinnedDescriptorMatches=boolean match, "
             "sourceAuthenticityVerified=False, installationAuthorized=False, "
             "releaseEligible=False. All three protected flags MUST be "
@@ -505,8 +558,9 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str
             "Descriptor matching is NOT authentication. "
             "Do not use import, class, nested function, for, while, I/O, "
             "filesystem, globals, external data, side effects or assert. "
-            "Only permitted attribute is candidate.get, only built-in calls "
-            "isinstance, sorted, all, any, list, dict, bool, len, str, set, tuple. "
+            "Only permitted attribute is candidate.get. Only approved "
+            "legacy builtins and scoped single-argument type(...) are allowed. "
+            "The int name is a type identity, never a callable conversion. "
             "Return ONE function in JSON with EXACT key addition; no markdown.\n"
         )
     last: Exception | None = None
