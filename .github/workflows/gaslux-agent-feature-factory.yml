@@ -208,7 +208,13 @@ jobs:
 
   publish_draft:
     needs: [select, model, safety]
-    if: needs.model.result == 'success' && needs.safety.result == 'success' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      needs.model.result == 'success' &&
+      needs.safety.result == 'success'
+    environment: gaslux-main-publisher
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -229,10 +235,24 @@ jobs:
         with:
           name: gaslux-feature-candidate
           path: evidence/feature-factory/
+      - name: Create repository-scoped GitHub App token for Draft PR publication
+        id: publish_identity
+        if: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_PUBLISH_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Explain legacy PR approval until GitHub App is configured
+        if: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID == '' }}
+        run: echo '::warning::GASLUX_PUBLISH_APP_CLIENT_ID unset; GITHUB_TOKEN PRs will require CI approval.'
       - name: Publish verified-only Draft PR with normal GitHub protections; never execute model code
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.publish_identity.outputs.token || secrets.GITHUB_TOKEN }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           ROLE: ${{ needs.select.outputs.role }}
           BASE: ${{ needs.select.outputs.base }}

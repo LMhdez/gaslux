@@ -1,6 +1,8 @@
 """Offline independent Safety contract tests for trusted default-branch publisher."""
 from __future__ import annotations
+import ast
 import base64
+import re
 import hashlib
 import importlib.util
 import json
@@ -220,6 +222,127 @@ class TrustedPublisherTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pub.validate(item, self.original, self.changed)
 
+
+
+    @staticmethod
+    def _job_allowed(workflow: str, job: str, facts: dict[str, str]) -> bool:
+        """Evaluate the actual YAML if expression, with no eval/exec."""
+        section = re.split(r"(?m)^  [A-Za-z0-9_]+:\s*$", workflow.split(f"  {job}:\n", 1)[1], maxsplit=1)[0]
+        header = section.split("    runs-on:", 1)[0]
+        predicate = header.split("    if: >-\n", 1)[1].split(
+            "    environment:", 1
+        )[0]
+        expression = " ".join(line.strip() for line in predicate.splitlines())
+        expression = re.sub(
+            r"\b(?:github|vars|needs)\.[A-Za-z0-9_.]+",
+            lambda match: "facts[" + repr(match.group()) + "]",
+            expression,
+        ).replace("&&", " and ").replace("||", " or ")
+        tree = ast.parse(expression, mode="eval")
+
+        def interpret(node):
+            if isinstance(node, ast.Expression):
+                return interpret(node.body)
+            if isinstance(node, ast.BoolOp):
+                values = [bool(interpret(value)) for value in node.values]
+                if isinstance(node.op, ast.And):
+                    return all(values)
+                if isinstance(node.op, ast.Or):
+                    return any(values)
+            if isinstance(node, ast.Compare) and len(node.ops) == 1:
+                left, right = interpret(node.left), interpret(node.comparators[0])
+                if isinstance(node.ops[0], ast.Eq):
+                    return left == right
+                if isinstance(node.ops[0], ast.NotEq):
+                    return left != right
+            if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                    and node.value.id == "facts"
+                    and isinstance(node.slice, ast.Constant)):
+                return facts[node.slice.value]
+            if isinstance(node, ast.Constant):
+                return node.value
+            raise AssertionError("Unexpected workflow predicate node: " + type(node).__name__)
+
+        return bool(interpret(tree))
+
+    def test_f_397_01_nonmain_dispatch_cannot_reach_app_publisher(self):
+        workflow = (SCRIPT.parents[2] / ".github/workflows/gaslux-agent-clock.yml").read_text()
+        trusted = {
+            "github.repository": "LMhdez/gaslux",
+            "github.ref": "refs/heads/main",
+            "github.event_name": "workflow_dispatch",
+            "vars.GASLUX_AUTONOMY_PAUSED": "false",
+            "needs.backend_developer.outputs.candidate_ready": "true",
+            "needs.safety_review.result": "success",
+            "needs.windows_wpf_acceptance.result": "success",
+        }
+        for event in ("schedule", "workflow_dispatch", "push"):
+            main = dict(trusted, **{"github.event_name": event})
+            self.assertTrue(self._job_allowed(workflow, "supervisor", main), event)
+            self.assertTrue(self._job_allowed(workflow, "integrator_publisher", main), event)
+        for untrusted_ref in ("refs/heads/attacker-controlled", "refs/heads/dev",
+                              "refs/tags/attacker"):
+            attempt = dict(trusted, **{"github.ref": untrusted_ref})
+            self.assertFalse(self._job_allowed(workflow, "supervisor", attempt))
+            self.assertFalse(self._job_allowed(workflow, "integrator_publisher", attempt))
+        self.assertFalse(self._job_allowed(
+            workflow, "integrator_publisher", dict(trusted, **{
+                "needs.safety_review.result": "failure",
+            }),
+        ))
+        self.assertFalse(self._job_allowed(
+            workflow, "integrator_publisher", dict(trusted, **{
+                "vars.GASLUX_AUTONOMY_PAUSED": "true",
+            }),
+        ))
+        self.assertFalse(self._job_allowed(
+            workflow, "integrator_publisher", dict(trusted, **{
+                "github.repository": "attacker/gaslux",
+            }),
+        ))
+
+    def test_publishers_require_protected_environment_and_no_key_fallback(self):
+        for file, job in (
+            (".github/workflows/gaslux-agent-clock.yml", "integrator_publisher"),
+            (".github/workflows/gaslux-agent-feature-factory.yml", "publish_draft"),
+        ):
+            workflow = (SCRIPT.parents[2] / file).read_text()
+            section = re.split(r"(?m)^  [A-Za-z0-9_]+:\s*$", workflow.split(f"  {job}:\n", 1)[1], maxsplit=1)[0]
+            before, credential = section.split("    steps:\n", 1)
+            self.assertIn("github.repository == 'LMhdez/gaslux'", before)
+            self.assertIn("github.ref == 'refs/heads/main'", before)
+            self.assertIn("    environment: gaslux-main-publisher", before)
+            self.assertIn("id: publish_identity", credential)
+            self.assertIn("if: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID != '' }}", credential)
+            self.assertIn("private-key: ${{ secrets.GASLUX_PUBLISH_APP_PRIVATE_KEY }}", credential)
+            self.assertIn("repositories: gaslux", credential)
+            self.assertIn("permission-contents: write", credential)
+            self.assertIn("permission-pull-requests: write", credential)
+            self.assertNotIn("continue-on-error: true", credential)
+            # GitHub's pinned create-token action has required: true for private-key.
+            # If App ID is set and env secret is missing, the token action fails,
+            # so the publishing step cannot use the GH_TOKEN fallback.
+            self.assertLess(credential.index("id: publish_identity"),
+                            credential.index("GH_TOKEN:"))
+            self.assertNotIn("pull_request_target:", workflow)
+
+    def test_clock_pr_publish_token_is_not_shared_with_untrusted_worker(self):
+        workflow = (
+            SCRIPT.parents[2] / ".github/workflows/gaslux-agent-clock.yml"
+        ).read_text(encoding="utf-8")
+        developer, publisher = workflow.split("  integrator_publisher:\n", 1)
+        self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", developer)
+        self.assertIn("id: publish_identity", publisher)
+        self.assertIn("vars.GASLUX_PUBLISH_APP_CLIENT_ID != ''", publisher)
+        self.assertIn("secrets.GASLUX_PUBLISH_APP_PRIVATE_KEY", publisher)
+        self.assertIn("repositories: gaslux", publisher)
+        self.assertIn("permission-contents: write", publisher)
+        self.assertIn("permission-pull-requests: write", publisher)
+        self.assertIn(
+            "GH_TOKEN: ${{ steps.publish_identity.outputs.token || secrets.GITHUB_TOKEN }}",
+            publisher,
+        )
+        self.assertNotIn("pull_request_target:", workflow)
 
 if __name__ == "__main__":
     unittest.main()
