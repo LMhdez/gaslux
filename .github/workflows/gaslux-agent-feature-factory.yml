@@ -307,6 +307,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_PUBLISH_APP_BOT_LOGIN: ${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN }}
         shell: bash
         run: |
           set -euo pipefail
