@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
 import uuid
@@ -122,27 +123,48 @@ def replace_atomic(source: Path, destination: Path, expected_hash: str) -> None:
     if sha256(source) != expected_hash:
         raise PreferredBootPathError(f"source hash changed before staging: {source}")
     temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
-    created = False
+    owned: os.stat_result | None = None
+
+    def still_owned() -> bool:
+        if owned is None:
+            return False
+        try:
+            current = temporary.lstat()
+        except FileNotFoundError:
+            return False
+        return (
+            stat.S_ISREG(current.st_mode)
+            and (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino)
+        )
+
     try:
         with source.open("rb") as source_stream:
-            # Exclusive, non-following creation: never truncate another inode.
+            # Refuse collisions and keep the file descriptor pinned until verified.
             descriptor = os.open(
-                temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+                temporary, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
             )
-            created = True
-            with os.fdopen(descriptor, "wb") as staged:
+            owned = os.fstat(descriptor)
+            with os.fdopen(descriptor, "w+b") as staged:
                 shutil.copyfileobj(source_stream, staged, length=1024 * 1024)
-        os.chmod(temporary, 0o644)
-        with temporary.open("rb") as stream:
-            os.fsync(stream.fileno())
-        if sha256(temporary) != expected_hash:
-            raise PreferredBootPathError(f"staged hash mismatch: {destination}")
+                staged.flush()
+                os.fchmod(staged.fileno(), 0o644)
+                os.fsync(staged.fileno())
+                staged.seek(0)
+                digest = hashlib.sha256()
+                for block in iter(lambda: staged.read(1024 * 1024), b""):
+                    digest.update(block)
+                if digest.hexdigest() != expected_hash:
+                    raise PreferredBootPathError(f"staged hash mismatch: {destination}")
+        # A symlink or new inode substituted during copying must never publish.
+        if not still_owned():
+            raise PreferredBootPathError(f"staged path identity changed: {destination}")
         os.replace(temporary, destination)
         sync_directory(destination.parent)
         if sha256(destination) != expected_hash:
             raise PreferredBootPathError(f"destination hash mismatch: {destination}")
     finally:
-        if created:
+        # Never remove a staging pathname now owned by another actor.
+        if still_owned():
             temporary.unlink(missing_ok=True)
 
 
