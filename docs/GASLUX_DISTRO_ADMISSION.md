@@ -192,3 +192,41 @@ fixtures/role scope only, not the live PR inventory. The earlier technical
 verdict on 04da81ce5be9fe8478d886377fcd495f6944640e remains historical:
 fresh CI and independent review are required before integrating the new
 HEAD. #417 remains unchanged. Do not activate by bypassing main protection.
+
+
+## Safety-to-Factory repair routing (2026-11-24)
+
+The existing Factory triage job previously treated every existing bot PR
+as pending, even if its generated parent was no longer current dev.
+The follow-on to #421 adds an explicit bounded stale-candidate route to
+that same job, before normal missing-gate triage when generation is
+blocked. It recomputes admission from authenticated live API responses,
+not an uploaded candidate report or model text. Only exact-scope,
+CI-provenance-verified, non-objected stale candidates can produce a repair
+request. Unknown scope, failed CI, objections or uncertain inventory
+cannot initiate this route.
+
+One issue at most per invocation, using the existing issues:write token
+and existing serialized Factory runtime group. The dedup identity is
+PR number plus candidate HEAD, not the advancing dev base; even a closed
+canonical issue prevents another for that identity. Dedup checks exact
+repository, title, canonical first-line marker and Actions bot login plus
+numeric ID 41898282. Revalidate the candidate and dev, then reread
+inventory and issue history before publishing. This is bounded
+best-effort dedup, not an atomic GitHub unique constraint; a later
+revision can make an issue historical, never authoritative.
+
+Only actions:read and checks:read are added to the existing triage job.
+No App key, contents:write or pull-requests:write is added. The issue
+explicitly requires checking existing code, preserving historical evidence
+and using the applicable Factory/Safety gates before proposing a fresh
+candidate. It does not dispatch arbitrary model code, rewrite or close
+a PR, transfer CI, approve, merge, install or release. Automatic repair
+execution/publication and independent review remain separate steps.
+
+Dependency: exact #421 HEAD 910e403fcf4e3a568e7b404b8c897d9dea6bbb51
+passed CI 45496299321 (27 Integrator + 22 Admission tests). This
+composition must receive its own CI/review. #419 also edits the Factory
+workflow; reconcile exact changes and test the resulting tree before
+main activation. Do not assume the new runtime job has executed merely
+because PR tests passed.
