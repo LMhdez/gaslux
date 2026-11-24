@@ -1222,6 +1222,49 @@
       "blob": "555e4b819d74c7808630429fec318a3f51518c95",
       "symbol_count": 0,
       "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-uefi/target/configure-target.sh",
+      "blob": "650312666517dc0f5123e2ba9e225b8925cde8f0",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso/build.sh",
+      "blob": "acbce0e542beb28f04127d35f028ce2501e1ac68",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso/live/libertix-install.sh",
+      "blob": "fd173c16ffdd5a13ab66091bf3c68e286f41b73c",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso/live/libertix-runner.sh",
+      "blob": "5893a3982617de810e569e714d3eb4894470a60b",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso/target/configure-target.sh",
+      "blob": "fea56c5617e3bae7c32c47ed4ecbfe0830e1eb57",
+      "symbol_count": 0,
+      "matches": []
     }
-  ]
+  ],
+  "coverage": {
+    "dev_files": 247,
+    "dev_declarations": 3625,
+    "historical_declarations_with_name_match": 122,
+    "distinct_name_kind_matches": 48,
+    "dev_matching_declarations": 380,
+    "semantic_equivalence_verified": 0
+  }
 }
