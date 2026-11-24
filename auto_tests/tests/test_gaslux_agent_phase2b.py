@@ -47,7 +47,7 @@ def issue_row(*, author: str = "github-actions[bot]", number: int = 404) -> dict
         "number": number,
         "state": "open",
         "repository_url": "https://api.github.com/repos/LMhdez/gaslux",
-        "user": {"login": author, "type": "Bot"},
+        "user": {"login": author, "type": "Bot", "id": 41898282},
         "title": "[GASLUX-AUTO] mint / windows10-bios-mbr / source-authenticity: scope & acceptance",
         "body": (
             "<!-- GASLUX-AUTOTASK:mint:windows10-bios-mbr:source-authenticity -->\n"
@@ -99,6 +99,10 @@ class Scope2BTests(unittest.TestCase):
                                "True"),
             accepted().replace("'pinnedDescriptorMatches': matched",
                                "'pinnedDescriptorMatches': True"),
+            accepted().replace("'sourceAuthenticityVerified': False",
+                               "'sourceAuthenticityVerified': (candidate == {})"),
+            accepted().replace("'installationAuthorized': False",
+                               "'installationAuthorized': (candidate.get('hidden') is True)"),
         ]
         for item in bad:
             with self.subTest(item=item[:90]), self.assertRaises((SyntaxError, ValueError)):
