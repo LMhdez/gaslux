@@ -122,8 +122,16 @@ def replace_atomic(source: Path, destination: Path, expected_hash: str) -> None:
     if sha256(source) != expected_hash:
         raise PreferredBootPathError(f"source hash changed before staging: {source}")
     temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+    created = False
     try:
-        shutil.copyfile(source, temporary)
+        with source.open("rb") as source_stream:
+            # Exclusive, non-following creation: never truncate another inode.
+            descriptor = os.open(
+                temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+            )
+            created = True
+            with os.fdopen(descriptor, "wb") as staged:
+                shutil.copyfileobj(source_stream, staged, length=1024 * 1024)
         os.chmod(temporary, 0o644)
         with temporary.open("rb") as stream:
             os.fsync(stream.fileno())
@@ -134,7 +142,8 @@ def replace_atomic(source: Path, destination: Path, expected_hash: str) -> None:
         if sha256(destination) != expected_hash:
             raise PreferredBootPathError(f"destination hash mismatch: {destination}")
     finally:
-        temporary.unlink(missing_ok=True)
+        if created:
+            temporary.unlink(missing_ok=True)
 
 
 def verify_windows_loader(verifier: Path, loader: Path) -> None:
