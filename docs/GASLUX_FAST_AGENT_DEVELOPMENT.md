@@ -118,3 +118,45 @@ Qwen requires its own CI, backend owner review and independent Safety.
 No installer writes, Windows ESP/BCD/WinRE, physical disk tests or stable
 promotion are introduced. General multi-task coding beyond this specific
 reviewed scope remains separate future work under #401.
+
+## Phase 2C — full six-distro acceptance inventory (read-only)
+
+After the first **real** Qwen → AST → Safety → GitHub App Draft pipeline
+([Mint #407](https://github.com/LMhdez/gaslux/pull/407), merged to `dev`
+following independent exact-HEAD Safety and CI), the remaining objective is
+**not** completed: all six backends must pass actual, independently observed
+Windows/Linux VM lifecycle acceptance gates before any release can be promoted.
+
+The existing Factory selector now enumerates the bounded goal matrix into
+**136 exact backend/platform/gate slots**: five backends × three Windows
+platforms and Bazzite × two supported UEFI/GPT platforms, each with eight
+gates. Of these, **34** concern the `source-authenticity` /
+`windows-preflight` class requiring separately reviewed coding and evidence
+scopes; **102** concern protected install, boot, update, Windows return,
+uninstall or recovery evidence that cannot be promoted without an isolated,
+disposable VM lab and independent Safety review.
+
+The `work_items` snapshot is derived from the current `dev` goal/evidence
+files under the trusted `main` allowlist. Each item records backend,
+platform, gate, ordered gate dependencies, a static existing source/test
+candidate, evidence declaration state and explicit `code_authorized=false`,
+`installation_authorized=false`, `release_eligible=false`. Even an evidence
+record claiming success is `declared_unverified`, **never** independently
+accepted. The six historical `next_gates` are preserved for the existing
+safe issue-triage/dedup job; no new generic Qwen execution scope is granted.
+
+On `status=blocked` the **existing** Factory workflow uploads the bounded
+`gaslux-six-backend-gate-backlog` JSON artifact and publishes counts in the
+GitHub Step Summary. The snapshot is a planning/evidence-inspection input,
+**not** a write token, immutable code authorization, signed ISO proof, or
+installation certificate. The scheduler, independent Safety chain and
+publisher are unchanged; existing lifecycle research keeps running separately.
+
+Next required work under [#401](https://github.com/LMhdez/gaslux/issues/401):
+approve genuinely actionable, narrow source/test scopes for other distros
+without relaxing AST; obtain authentic ISO provenance **from upstream evidence**
+rather than mere metadata equality; provision an authorized Windows test image
+and isolated QEMU/OVMF **disposable** guest disks/snapshots; attest actual guest
+observations; and test installation, dual boot, update/reboot, Windows return,
+uninstall, fault injection and rollback per supported backend/platform.
+None may write to physical disks or promote stable from an unverified report.
