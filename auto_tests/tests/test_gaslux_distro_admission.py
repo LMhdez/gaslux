@@ -60,6 +60,60 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             gate.exact_append(before, b"# replaced\n" + after, "zorin")
 
+    def test_formatted_append_requires_exact_separator(self):
+        before = b"# original\n"
+        after = before + b"\n\ndef assess_zorin_lifecycle(evidence: dict) -> dict:\n    return {}\n"
+        with patch.object(gate, "validate_addition"):
+            gate.exact_append(before, after, "zorin", formatted=True)
+            with self.assertRaises(ValueError):
+                gate.exact_append(before, after, "zorin")
+
+    def test_repaired_candidate_and_semantic_change(self):
+        generated = "c" * 40
+        path = "assets/live/example.py"
+        pr = {"commits": 2, "head": {"ref": f"bot/gaslux-feature-zorin-{BASE[:12]}"}}
+        before = b"# original\n"
+        original = before + (
+            b"\ndef assess_zorin_lifecycle(evidence: dict) -> dict:\n"
+            b"    return {'safe': False}\n"
+        )
+        formatted = before + (
+            b'\n\ndef assess_zorin_lifecycle(evidence: dict) -> dict:\n'
+            b'    return {"safe": False}\n'
+        )
+        for final in (formatted, formatted.replace(b"False", b"True")):
+            with (
+                patch.object(gate, "single_parent", side_effect=[generated, BASE]),
+                patch.object(gate, "one_path_commit") as scope,
+                patch.object(gate, "source_at", side_effect=[before, original, final]),
+                patch.object(gate, "validate_addition") as validator,
+                patch.object(gate, "api", return_value={"author": {"id": 9}}),
+            ):
+                if final == formatted:
+                    self.assertEqual(gate.candidate_append(pr, "zorin", HEAD, path), (BASE, 9))
+                    self.assertEqual(scope.call_count, 2)
+                    self.assertEqual(validator.call_count, 2)
+                else:
+                    with self.assertRaises(ValueError):
+                        gate.candidate_append(pr, "zorin", HEAD, path)
+
+    def test_intermediate_offscope_commit_rejected(self):
+        good = {"status": "ahead", "ahead_by": 1, "behind_by": 0, "total_commits": 1,
+                "merge_base_commit": {"sha": BASE},
+                "files": [{"filename": "allowed.py", "status": "modified"}]}
+        with patch.object(gate, "api", return_value=good):
+            gate.one_path_commit(BASE, HEAD, "allowed.py")
+        for changed in ({**good, "files": good["files"] + [{"filename": "other.py"}]},
+                        {**good, "ahead_by": 2}, {**good, "behind_by": 1}):
+            with patch.object(gate, "api", return_value=changed):
+                with self.assertRaises(ValueError):
+                    gate.one_path_commit(BASE, HEAD, "allowed.py")
+
+    def test_unsupported_history_rejected(self):
+        for count in (0, 3, True, "2"):
+            with self.assertRaises(ValueError):
+                gate.candidate_append({"commits": count}, "zorin", HEAD, "allowed.py")
+
     def test_api_failure_is_blocked(self):
         with patch.object(gate, "api", side_effect=RuntimeError("offline")):
             row = gate.inspect(395, "zorin", 2)
