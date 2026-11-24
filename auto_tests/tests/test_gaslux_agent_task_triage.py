@@ -76,7 +76,7 @@ class TaskTriageTests(unittest.TestCase):
         return {
             "number": 99, "title": payload["title"], "body": payload["body"],
             "state": "open", "repository_url": repo or triage.API,
-            "user": {"login": author},
+            "user": {"login": author, "type": "Bot"},
         }
 
     def task_claim_pr(self, *, repo=None, author="github-actions[bot]"):
@@ -84,7 +84,7 @@ class TaskTriageTests(unittest.TestCase):
             "head": {"ref": "bot/gaslux-feature-mint-" + "a" * 12,
                      "repo": {"full_name": repo or triage.REPO}},
             "base": {"ref": "dev", "repo": {"full_name": triage.REPO}},
-            "user": {"login": author},
+            "user": {"login": author, "type": "Bot"},
         }
 
     def test_existing_bot_pr_and_existing_issue_defer_not_duplicate(self):
@@ -129,6 +129,85 @@ class TaskTriageTests(unittest.TestCase):
             {("mint", "windows10-bios-mbr", "source-authenticity")},
         )
 
+    def test_f40301_owner_issue_unrelated_to_platform_and_gate_not_deduped(self):
+        backlog = self.backlog()
+        backlog["next_gates"][0]["related_issues"] = [90017]
+        issue = {
+            "number": 90017, "title": "Mint application icon design",
+            "state": "open", "repository_url": triage.API,
+            "user": {"login": "LMhdez", "type": "User"},
+        }
+        # Owner identity and backend word do not prove source-authenticity scope.
+        result = triage.choose(backlog, [], [issue])
+        self.assertEqual(result["role"], "mint")
+
+    def test_f40301_vetted_cachyos_bazzite_issue_scope_is_exact(self):
+        backlog = self.backlog()
+        for task in backlog["next_gates"][:-1]:
+            task["related_issues"] = [3]
+        legacy_cachyos = {
+            "number": 3,
+            "title": "CachyOS production-stability acceptance criteria (UEFI, dual boot, rollback)",
+            "state": "open", "repository_url": triage.API,
+            "user": {"login": "Dinisiho", "type": "User"},
+        }
+        # A legitimate broad source/provenance work tracker may match CachyOS,
+        # but never Mint, Zorin, Pop!_OS or Q4OS through fake dev references.
+        self.assertEqual(triage.choose(backlog, [], [legacy_cachyos])["role"], "mint")
+        for task in backlog["next_gates"][:-1]:
+            if task["role"] != "cachyos":
+                task["related_issues"] = []
+        self.assertEqual(
+            triage.trusted_related_issues(
+                [legacy_cachyos], "cachyos", "windows10-bios-mbr",
+                "source-authenticity", [3]
+            ),
+            [3],
+        )
+        # #254 covers only Bazzite UEFI, no unrelated backend/firmware.
+        bazzite = {
+            "number": 254,
+            "title": "Bazzite: bloquear promoção até provar ISO autenticada, write-set e recuperação Windows",
+            "state": "open", "repository_url": triage.API,
+            "user": {"login": "LMhdez", "type": "User"},
+        }
+        self.assertEqual(
+            triage.trusted_related_issues(
+                [bazzite], "bazzite", "windows10-uefi-gpt", "source-authenticity", [254]
+            ), [254],
+        )
+        self.assertEqual(
+            triage.trusted_related_issues(
+                [bazzite], "bazzite", "windows10-bios-mbr", "source-authenticity", [254]
+            ), [],
+        )
+        altered = dict(bazzite, title="Bazzite application icon design")
+        self.assertEqual(
+            triage.trusted_related_issues(
+                [altered], "bazzite", "windows10-uefi-gpt", "source-authenticity", [254]
+            ), [],
+        )
+
+    def test_f40303_known_app_bot_is_deduped_unknown_bot_fails_closed(self):
+        backlog = self.backlog()
+        app_name = "example-gaslux-app[bot]"  # fixture, NOT a claimed real app actor
+        app = self.task_claim_pr(author=app_name)
+        app["user"]["type"] = "Bot"
+        result = triage.choose(backlog, [app], [], app_bot_login=app_name)
+        self.assertEqual(result["role"], "zorin")
+        self.assertEqual(result["pending"][0]["status"], "pending_existing_pr")
+        with self.assertRaises(ValueError):
+            triage.choose(backlog, [app], [], app_bot_login="")
+        with self.assertRaises(ValueError):
+            triage.choose(backlog, [app], [], app_bot_login="another-app[bot]")
+        with self.assertRaises(ValueError):
+            triage.choose(backlog, [app], [], app_bot_login="malformed-app")
+        spoof = self.task_claim_pr(author="outside-user")
+        spoof["user"]["type"] = "User"
+        self.assertEqual(
+            triage.choose(backlog, [spoof], [], app_bot_login=app_name)["role"], "mint"
+        )
+
     def test_f40301_untrusted_dev_issue_reference_cannot_claim_task(self):
         backlog = self.backlog()
         backlog["next_gates"][0]["related_issues"] = [99999999]
@@ -142,8 +221,9 @@ class TaskTriageTests(unittest.TestCase):
         self.assertEqual(triage.choose(backlog, [], [unrelated])["role"],
                          "mint")
         unrelated["title"] = "Mint media authenticity scope review"
+        # A title alone is NOT a trusted canonical gate binding.
         self.assertEqual(triage.choose(backlog, [], [unrelated])["role"],
-                         "zorin")
+                         "mint")
         unrelated["user"]["login"] = "external-user"
         self.assertEqual(triage.choose(backlog, [], [unrelated])["role"],
                          "mint")
@@ -167,8 +247,8 @@ class TaskTriageTests(unittest.TestCase):
                 "repository_url": triage.API,
                 "user": {"login": "LMhdez"},
             })
-        self.assertEqual(triage.choose(backlog, [], manual)["status"],
-                         "waiting_for_review")
+        # Only explicit main-source issue-to-gate mappings may defer work.
+        self.assertEqual(triage.choose(backlog, [], manual)["role"], "mint")
         backlog["next_gates"][-1]["related_issues"] = []
         self.assertEqual(triage.choose(backlog, [], manual)["role"], "bazzite")
         backlog["next_gates"][-1]["gate"] = "install"
